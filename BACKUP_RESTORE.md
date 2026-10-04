@@ -58,7 +58,7 @@ Após restore, requisições de artwork já enfileiradas recebem uma nova geraç
 
 ## Settings
 
-O backup usa o `SettingsStore` existente e inclui somente as preferências suportadas/exportáveis. Nenhum `settings.json` paralelo é criado.
+O backup usa o `SettingsStore` existente e inclui somente as preferências suportadas/exportáveis. O `reianix-compose/settings.json`, quando presente no Android, é apenas uma projeção IPC derivada para a UI Compose; não é fonte de verdade nem armazenamento de preferências.
 
 ## Migração e compatibilidade
 
