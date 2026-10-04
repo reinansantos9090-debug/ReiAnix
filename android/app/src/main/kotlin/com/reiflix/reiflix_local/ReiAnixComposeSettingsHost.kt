@@ -3,6 +3,11 @@ package com.reiflix.reiflix_local
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -75,16 +80,23 @@ class ReiAnixComposeSettingsHost(
 
         view.setContent {
             ReiAnixComposeRoot {
-                ReiAnixSettingsRoute(
-                    viewModel = settingsViewModel,
-                    onBack = { handleBack() },
-                    onOpenCategory = { label ->
-                        if (label != "Armazenamento") {
-                            hide()
-                        }
-                        publishNavigation("category", label)
-                    },
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .safeDrawingPadding()
+                        .imePadding(),
+                ) {
+                    ReiAnixSettingsRoute(
+                        viewModel = settingsViewModel,
+                        onBack = { handleBack() },
+                        onOpenCategory = { label ->
+                            if (label != "Armazenamento") {
+                                hide()
+                            }
+                            publishNavigation("category", label)
+                        },
+                    )
+                }
             }
         }
 
