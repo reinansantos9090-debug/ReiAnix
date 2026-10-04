@@ -1315,7 +1315,7 @@ class MainActivity : FlutterFragmentActivity() {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeSettingsHost.hide()
                     composeStorageHost.hide()
-                    composeLibraryHost.show(ReiAnixRoutes.LIBRARY)
+                    composeLibraryHost.show(ReiAnixRoutes.LIBRARY, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
@@ -1329,7 +1329,7 @@ class MainActivity : FlutterFragmentActivity() {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeSettingsHost.hide()
                     composeStorageHost.hide()
-                    composeLibraryHost.show(ReiAnixRoutes.STORAGE)
+                    composeLibraryHost.show(ReiAnixRoutes.STORAGE, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
@@ -1337,7 +1337,7 @@ class MainActivity : FlutterFragmentActivity() {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeSettingsHost.hide()
                     composeStorageHost.hide()
-                    composeLibraryHost.show(ReiAnixRoutes.SETTINGS)
+                    composeLibraryHost.show(ReiAnixRoutes.SETTINGS, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
