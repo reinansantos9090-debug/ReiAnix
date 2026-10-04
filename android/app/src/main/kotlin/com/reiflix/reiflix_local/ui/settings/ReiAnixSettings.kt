@@ -177,8 +177,7 @@ fun ReiAnixSettingsScreen(
                     ) {
                         Text(
                             text = "Não foi possível carregar as configurações." +
-                                state.error?.let { "
-$it" }.orEmpty(),
+                                state.error?.let { "\n$it" }.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(ReiAnixTokens.Spacing.lg),
