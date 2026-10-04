@@ -79,26 +79,26 @@ private val topLevelDestinations = listOf(
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.HOME,
         label = "Início",
-        selectedIcon = androidx.compose.material.icons.Icons.Filled.Home,
-        unselectedIcon = androidx.compose.material.icons.Icons.Outlined.Home,
+        selectedIcon = androidx.compose.material.icons.filled.Home,
+        unselectedIcon = androidx.compose.material.icons.outlined.Home,
     ),
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.LIBRARY,
         label = "Biblioteca",
-        selectedIcon = androidx.compose.material.icons.Icons.Filled.List,
-        unselectedIcon = androidx.compose.material.icons.Icons.Outlined.List,
+        selectedIcon = androidx.compose.material.icons.filled.List,
+        unselectedIcon = androidx.compose.material.icons.outlined.List,
     ),
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.SEARCH,
         label = "Buscar",
-        selectedIcon = androidx.compose.material.icons.Icons.Filled.Search,
-        unselectedIcon = androidx.compose.material.icons.Icons.Outlined.Search,
+        selectedIcon = androidx.compose.material.icons.filled.Search,
+        unselectedIcon = androidx.compose.material.icons.outlined.Search,
     ),
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.SETTINGS,
         label = "Ajustes",
-        selectedIcon = androidx.compose.material.icons.Icons.Filled.Settings,
-        unselectedIcon = androidx.compose.material.icons.Icons.Filled.Settings,
+        selectedIcon = androidx.compose.material.icons.filled.Settings,
+        unselectedIcon = androidx.compose.material.icons.filled.Settings,
     ),
 )
 
@@ -245,7 +245,7 @@ fun ReiAnixNavigationHost(
         bottomDestinations = topLevelDestinations,
         onBottomDestinationClick = navController::navigateToTopLevel,
         showBottomNavigation = shouldShowBottomNavigation,
-    ) { innerPadding ->
+        navigationContent = { innerPadding ->
         NavHost(
             navController = navController,
             startDestination = startDestination,
