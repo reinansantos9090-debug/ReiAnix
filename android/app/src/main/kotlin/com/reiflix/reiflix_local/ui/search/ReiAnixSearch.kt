@@ -529,9 +529,9 @@ private fun SearchNoResultsState(
     ReiAnixEmptyState(
         title = "Nenhum resultado encontrado",
         message = if (filtersActive) {
-            "Nenhum conteúdo local corresponde a \\"" +
+            "Nenhum conteúdo local corresponde à busca: " +
                 query.trim() +
-                "\\" com os filtros atuais."
+                " com os filtros atuais."
         } else {
             "Tente pesquisar por outro nome, ano, gênero ou episódio."
         },
