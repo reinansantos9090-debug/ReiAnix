@@ -313,6 +313,7 @@ fun ReiAnixAnimeCard(
             ?.progressFraction,
         favorite = anime.favorite,
         watched = anime.contentEpisodes.any { it.isWatched },
+        watching = anime.isWatching,
         completed = anime.isCompleted,
         modifier = modifier,
         onClick = onClick,
@@ -327,10 +328,12 @@ fun ReiAnixAnimeCard(
     metadata: List<String> = emptyList(),
     progress: Float? = null,
     favorite: Boolean = false,
+    watching: Boolean = false,
     watched: Boolean = false,
     completed: Boolean = false,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onFavoriteClick: (() -> Unit)? = null,
     maxDimensionPx: Int = 512,
 ) {
     Card(
@@ -372,10 +375,11 @@ fun ReiAnixAnimeCard(
                     placeholder = "Sem arte",
                     maxDimensionPx = maxDimensionPx,
                 )
-                if (favorite || watched || completed) {
+                if (favorite || watching || watched || completed) {
                     Text(
                         text = when {
                             completed -> "Concluído"
+                            watching -> "Assistindo"
                             watched -> "Assistido"
                             else -> "Minha lista"
                         },
@@ -393,6 +397,35 @@ fun ReiAnixAnimeCard(
                                 vertical = ReiAnixTokens.Spacing.xs,
                             ),
                     )
+                }
+                onFavoriteClick?.let { favoriteAction ->
+                    androidx.compose.material3.IconButton(
+                        onClick = favoriteAction,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(ReiAnixTokens.Dimensions.touchTarget)
+                            .semantics {
+                                this.contentDescription = if (favorite) {
+                                    "Remover da Minha Lista"
+                                } else {
+                                    "Adicionar à Minha Lista"
+                                }
+                            },
+                    ) {
+                        Icon(
+                            imageVector = if (favorite) {
+                                Icons.Filled.Favorite
+                            } else {
+                                Icons.Filled.FavoriteBorder
+                            },
+                            contentDescription = null,
+                            tint = if (favorite) {
+                                ReiAnixTokens.Colors.warning
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                    }
                 }
                 progress?.let {
                     ReiAnixProgressIndicator(
