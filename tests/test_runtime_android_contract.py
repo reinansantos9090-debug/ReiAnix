@@ -8,7 +8,7 @@ from core.android_bridge import AndroidBridge
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 PLAYER_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-SYSTEM_UI = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SystemUiController.kt"
+SYSTEM_UI = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt"
 PLAYER_LAYOUT = ROOT / "android/app/src/main/res/layout/native_player_view.xml"
 
 

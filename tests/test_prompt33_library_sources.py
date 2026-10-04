@@ -14,7 +14,7 @@ from core.storage_access import (
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "main.py"
-SAF = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SafScanner.kt"
+SAF = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt"
 
 
 class FakeStore:
