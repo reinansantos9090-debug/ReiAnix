@@ -78,6 +78,32 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         }
     }
 
+    fun requestAccountAction(action: String) {
+        val normalizedAction = action.trim().lowercase()
+        if (normalizedAction !in setOf("login", "logout", "switch")) return
+        scope.launch {
+            val requestId = UUID.randomUUID().toString()
+            val event = JSONObject()
+                .put("type", "compose_account_action")
+                .put("requestId", requestId)
+                .put(
+                    "payload",
+                    JSONObject()
+                        .put("action", normalizedAction)
+                        .put("requestId", requestId),
+                )
+            val published = runCatching {
+                NativeMailbox.write(appContext, event)
+            }.getOrElse { false }
+            if (!published) {
+                Log.e(
+                    TAG,
+                    "Failed to publish Compose account action requestId=$requestId action=$normalizedAction",
+                )
+            }
+        }
+    }
+
     private suspend fun loadSnapshot() {
         val raw = runCatching {
             if (!snapshotFile.isFile) return
