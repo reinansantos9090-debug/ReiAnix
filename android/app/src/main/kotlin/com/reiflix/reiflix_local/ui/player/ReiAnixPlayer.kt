@@ -99,8 +99,10 @@ fun ReiAnixPlayerRoute(
     // Prevent a fast Back press from popping the route while the handoff is
     // pending; otherwise the native player could start after Details/Home
     // has already become visible again.
-    BackHandler(enabled = canLeave) {
-        navController.popBackStack()
+    BackHandler {
+        if (canLeave) {
+            navController.popBackStack()
+        }
     }
 
     when {
