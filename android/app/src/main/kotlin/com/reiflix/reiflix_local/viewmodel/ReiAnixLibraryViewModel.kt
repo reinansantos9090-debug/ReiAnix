@@ -30,13 +30,13 @@ class ReiAnixLibraryViewModel(context: Context) :
     
     companion object {
         internal fun projectHomeState(state: ReiAnixLibraryUiState): ReiAnixHomeLibraryUiState =
-            projectHomeState(state)
+            ReiAnixHomeLibraryUiState.from(state)
 
         internal fun projectDetailsState(
             state: ReiAnixLibraryUiState,
             animeId: Long,
         ): ReiAnixDetailsUiState =
-            projectDetailsState(state, animeId)
+            ReiAnixDetailsUiStateProjection.from(state, animeId)
     }
 
     private val repository = ReiAnixLibraryRepository(context)
