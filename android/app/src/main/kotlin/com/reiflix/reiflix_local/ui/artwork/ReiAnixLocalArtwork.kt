@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.ui.artwork
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalDensity
+import com.reiflix.reiflix_local.ui.ReiAnixArtworkMissingState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -38,8 +40,17 @@ import kotlin.math.roundToInt
 private sealed interface LocalArtworkLoadState {
     data object Loading : LocalArtworkLoadState
     data class Ready(val bitmap: ImageBitmap) : LocalArtworkLoadState
+    data object Missing : LocalArtworkLoadState
     data object Error : LocalArtworkLoadState
 }
+
+private sealed interface LocalArtworkDecodeResult {
+    data class Ready(val bitmap: ImageBitmap) : LocalArtworkDecodeResult
+    data object Missing : LocalArtworkDecodeResult
+    data object Error : LocalArtworkDecodeResult
+}
+
+private const val TAG = "ReiAnixLocalArtwork"
 
 /**
  * Offline artwork renderer for Compose.
@@ -96,7 +107,7 @@ fun ReiAnixLocalArtwork(
             key2 = targetMaxDimensionPx,
         ) {
             if (localPath.isNullOrBlank() || targetMaxDimensionPx <= 0) {
-                value = LocalArtworkLoadState.Error
+                value = LocalArtworkLoadState.Missing
                 return@produceState
             }
 
@@ -106,12 +117,16 @@ fun ReiAnixLocalArtwork(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                null
+            } catch (exception: Exception) {
+                Log.w(TAG, "Artwork decode failed for a local reference", exception)
+                LocalArtworkDecodeResult.Error
             }
 
-            value = decoded?.let(LocalArtworkLoadState::Ready)
-                ?: LocalArtworkLoadState.Error
+            value = when (decoded) {
+                is LocalArtworkDecodeResult.Ready -> LocalArtworkLoadState.Ready(decoded.bitmap)
+                LocalArtworkDecodeResult.Missing -> LocalArtworkLoadState.Missing
+                LocalArtworkDecodeResult.Error -> LocalArtworkLoadState.Error
+            }
         }
 
         when (val state = imageState) {
@@ -137,17 +152,12 @@ fun ReiAnixLocalArtwork(
                 )
             }
 
+            LocalArtworkLoadState.Missing -> {
+                ReiAnixArtworkMissingState(label = placeholder)
+            }
+
             LocalArtworkLoadState.Error -> {
-                Text(
-                    text = placeholder,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ReiAnixTokens.Colors.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics {
-                        this.contentDescription = "Falha ao carregar " + (contentDescription ?: placeholder)
-                    },
-                )
+                ReiAnixArtworkMissingState(label = "Não foi possível carregar a arte")
             }
         }
     }
@@ -172,27 +182,43 @@ private fun decodeLocalArtwork(
     context: Context,
     rawPath: String?,
     maxDimensionPx: Int,
-): ImageBitmap? {
+): LocalArtworkDecodeResult {
     val path = rawPath?.trim().orEmpty()
-    if (path.isEmpty() || maxDimensionPx <= 0) return null
+    if (path.isEmpty() || maxDimensionPx <= 0) {
+        return LocalArtworkDecodeResult.Missing
+    }
 
-    val bounds = openArtworkStream(context, path)?.use { stream ->
-        BitmapFactory.Options().also { options ->
-            options.inJustDecodeBounds = true
-            BitmapFactory.decodeStream(stream, null, options)
+    val bounds = try {
+        openArtworkStream(context, path)?.use { stream ->
+            BitmapFactory.Options().also { options ->
+                options.inJustDecodeBounds = true
+                BitmapFactory.decodeStream(stream, null, options)
+            }
         }
-    } ?: return null
+    } catch (exception: Exception) {
+        Log.w(TAG, "Artwork source could not be inspected", exception)
+        return LocalArtworkDecodeResult.Error
+    } ?: return LocalArtworkDecodeResult.Missing
 
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+        return LocalArtworkDecodeResult.Error
+    }
 
     val sample = calculateSampleSize(bounds.outWidth, bounds.outHeight, maxDimensionPx)
-    return openArtworkStream(context, path)?.use { stream ->
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sample
-            inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+    val bitmap = try {
+        openArtworkStream(context, path)?.use { stream ->
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+            }
+            BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
         }
-        BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
-    }
+    } catch (exception: Exception) {
+        Log.w(TAG, "Artwork pixels could not be decoded", exception)
+        return LocalArtworkDecodeResult.Error
+    } ?: return LocalArtworkDecodeResult.Error
+
+    return LocalArtworkDecodeResult.Ready(bitmap)
 }
 
 internal fun calculateSampleSize(width: Int, height: Int, maxDimensionPx: Int): Int {
@@ -208,10 +234,8 @@ internal fun calculateSampleSize(width: Int, height: Int, maxDimensionPx: Int): 
 }
 
 private fun openArtworkStream(context: Context, path: String): InputStream? =
-    runCatching {
-        if (path.startsWith("content://", ignoreCase = true)) {
-            context.contentResolver.openInputStream(Uri.parse(path))
-        } else {
-            File(path).takeIf { it.isFile && it.canRead() }?.inputStream()
-        }
-    }.getOrNull()
+    if (path.startsWith("content://", ignoreCase = true)) {
+        context.contentResolver.openInputStream(Uri.parse(path))
+    } else {
+        File(path).takeIf { it.isFile && it.canRead() }?.inputStream()
+    }
