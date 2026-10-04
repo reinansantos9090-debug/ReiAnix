@@ -360,7 +360,7 @@ private fun ConfiguredSourceRow(
                 )
                 Text(
                     text = source.name.ifBlank { source.reference },
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
