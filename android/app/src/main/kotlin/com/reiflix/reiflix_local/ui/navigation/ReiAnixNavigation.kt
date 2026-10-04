@@ -226,13 +226,25 @@ fun ReiAnixNavigationHost(
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+    val detailOrigin = backStackEntry?.arguments
+        ?.getString(ReiAnixRoutes.ARG_ORIGIN)
+        ?.trim()
+        .orEmpty()
+    val selectedBottomRoute = when {
+        currentRoute == ReiAnixRoutes.DETAILS &&
+            topLevelDestinations.any { it.route == detailOrigin } -> detailOrigin
+        topLevelDestinations.any { it.route == currentRoute } -> currentRoute
+        else -> null
+    }
+    val shouldShowBottomNavigation = showBottomNavigation &&
+        (selectedBottomRoute != null || currentRoute == ReiAnixRoutes.DETAILS)
 
     ReiAnixAppShell(
         modifier = modifier,
-        currentRoute = currentRoute,
+        selectedRoute = selectedBottomRoute,
         bottomDestinations = topLevelDestinations,
         onBottomDestinationClick = navController::navigateToTopLevel,
-        showBottomNavigation = showBottomNavigation,
+        showBottomNavigation = shouldShowBottomNavigation,
     ) { innerPadding ->
         NavHost(
             navController = navController,
