@@ -356,9 +356,6 @@ private fun ReiAnixDetailsReady(
     var savedSeasonKey by rememberSaveable(anime.id) {
         mutableStateOf(firstSeasonKey)
     }
-    // The saved logical identity survives canonical snapshot replacement. When a
-    // season disappears, fall back to the first real season instead of leaving
-    // the selector visually unselected.
     val selectedSeasonKey = savedSeasonKey
         ?.takeIf { key -> anime.seasons.any { it.stableKey == key } }
         ?: firstSeasonKey
@@ -368,8 +365,6 @@ private fun ReiAnixDetailsReady(
 
     val showSeasonSelector = anime.seasons.size > 1
     val listState = rememberLazyListState()
-    // Hero=0, About=1, optional Seasons=2, Episode heading follows.
-    // Keep the anchor stable so season changes never target a different item.
     val episodeAnchor = if (showSeasonSelector) 3 else 2
 
     LazyColumn(
@@ -443,18 +438,18 @@ private fun ReiAnixDetailsReady(
                         ),
                     )
                 }
-            } else {
-                items(
-                    items = season.episodes,
-                    key = { episode -> episode.stableKey },
-                    contentType = { "details-episode" },
-                ) { episode ->
-                    DetailsEpisodeItem(
-                        episode = episode,
-                        onWatch = onWatch,
-                        onSetEpisodeWatched = onSetEpisodeWatched,
-                    )
-                }
+            }
+
+            items(
+                items = season.episodes,
+                key = { episode -> episode.stableKey },
+                contentType = { "details-episode" },
+            ) { episode ->
+                DetailsEpisodeItem(
+                    episode = episode,
+                    onWatch = onWatch,
+                    onSetEpisodeWatched = onSetEpisodeWatched,
+                )
             }
         }
 
