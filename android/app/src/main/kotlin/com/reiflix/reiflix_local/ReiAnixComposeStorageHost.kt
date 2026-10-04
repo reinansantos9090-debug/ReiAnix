@@ -75,9 +75,9 @@ class ReiAnixComposeStorageHost(
                 ReiAnixStorageRoute(
                     viewModel = viewModel,
                     onBack = ::hide,
-                    onRequestMediaAccess = { activity.requestNativeStorageAction("request_media_access"); Unit },
-                    onOpenBroadSettings = { activity.requestNativeStorageAction("open_broad_storage_settings"); Unit },
-                    onCheckAccess = { activity.requestNativeStorageAction("check_storage_access"); Unit },
+                    onRequestMediaAccess = { activity.requestNativeStorageAction("request_media_access") },
+                    onOpenBroadSettings = { activity.requestNativeStorageAction("open_broad_storage_settings") },
+                    onCheckAccess = { activity.requestNativeStorageAction("check_storage_access") },
                 )
             }
         }
