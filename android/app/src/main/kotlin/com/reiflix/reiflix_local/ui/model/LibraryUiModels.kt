@@ -82,6 +82,9 @@ data class ReiAnixEpisodeUiModel(
     val watched: Boolean?,
     val consumptionState: ReiAnixConsumptionState?,
     val artwork: ReiAnixArtworkUiModel?,
+    val lastPlayedAt: Double? = null,
+    val modifiedAt: Double? = null,
+    val fileSizeBytes: Long? = null,
 ) {
     /**
      * Episode identity is the persisted SQLite primary key. It is global and
@@ -172,6 +175,10 @@ data class ReiAnixAnimeUiModel(
     val playbackTargetEpisodeId: Long? = null,
     /** Source score in the library metadata (0..100), when actually stored. */
     val score: Double? = null,
+    /** Canonical local-library timestamps used only for existing sort semantics. */
+    val addedAt: Double? = null,
+    val lastPlayedAt: Double? = null,
+    val pinned: Boolean = false,
 ) {
     val stableKey: String
         get() = "anime:" + id
@@ -184,7 +191,7 @@ data class ReiAnixAnimeUiModel(
         }
 
     val availableContentCount: Int
-        get() = contentEpisodes.size
+        get() = contentEpisodes.count { it.media.availability == ReiAnixMediaAvailability.AVAILABLE }
 
     val episodeCountLabel: String
         get() = when (availableContentCount) {
