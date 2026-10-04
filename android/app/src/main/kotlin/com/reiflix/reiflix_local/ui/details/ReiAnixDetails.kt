@@ -250,6 +250,7 @@ private fun ReiAnixDetailsTopBar(
 @Composable
 private fun ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
+    modifier: Modifier = Modifier,
     onWatch: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
 ) {
@@ -260,8 +261,9 @@ private fun ReiAnixDetailsReady(
         ?: anime.seasons.firstOrNull()
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
+            .fillMaxWidth()
+            .weight(1f)
             .testTag("details-episode-list"),
         contentPadding = PaddingValues(bottom = ReiAnixTokens.Spacing.xxxl),
     ) {
