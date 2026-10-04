@@ -40,7 +40,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,7 +57,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
@@ -130,6 +128,7 @@ fun ReiAnixSearchRoute(
         onBack = { navController.popBackStack() },
         onRefresh = viewModel::refresh,
         onOpenFilters = { showFilterSheet = true },
+        onClearFilters = viewModel::clearSearchFilters,
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
                 animeId = animeId.toString(),
@@ -149,6 +148,7 @@ fun ReiAnixSearchScreen(
     onBack: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onOpenFilters: () -> Unit = {},
+    onClearFilters: () -> Unit = {},
     onOpenDetails: (Long) -> Unit = {},
 ) {
     val listState = rememberSaveable(
@@ -270,7 +270,8 @@ fun ReiAnixSearchScreen(
         if (searchState.filters.hasAnyFilter) {
             SearchActiveFilters(
                 filters = searchState.filters,
-                onClear = { onQueryChange(searchState.query) },
+                genres = genres,
+                onClear = onClearFilters,
             )
         }
 
@@ -544,6 +545,7 @@ private fun SearchNoResultsState(
 @Composable
 private fun SearchActiveFilters(
     filters: ReiAnixSearchFilters,
+    genres: List<ReiAnixGenreUiModel>,
     onClear: () -> Unit,
 ) {
     LazyRow(
@@ -585,7 +587,9 @@ private fun SearchActiveFilters(
         if (filters.selectedGenreKey != null) {
             item(key = "active-filter-genre") {
                 ReiAnixChip(
-                    text = "Gênero selecionado",
+                    text = genres.firstOrNull {
+                        it.stableKey == filters.selectedGenreKey
+                    }?.name ?: "Gênero selecionado",
                     selected = true,
                     onClick = onClear,
                 )
