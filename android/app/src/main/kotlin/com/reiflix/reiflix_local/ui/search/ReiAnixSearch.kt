@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -360,4 +362,67 @@ private fun SearchNoResultsState(
         title = "Nenhum resultado",
         message = "Nenhum conteúdo local corresponde a \"" + query.trim() + "\".",
     )
+
+@Composable
+private fun SearchLoading(
+    scanInProgress: Boolean,
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            modifier = Modifier.padding(ReiAnixTokens.Dimensions.screenHorizontalPadding),
+        ) {
+            CircularProgressIndicator()
+            Text(
+                text = if (scanInProgress) {
+                    "Carregando biblioteca enquanto a varredura continua…"
+                } else {
+                    "Carregando biblioteca…"
+                },
+                color = ReiAnixTokens.Colors.textMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchMessageState(
+    title: String,
+    message: String,
+    actionLabel: String?,
+    onAction: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(ReiAnixTokens.Dimensions.screenHorizontalPadding),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall,
+            color = ReiAnixTokens.Colors.text,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyLarge,
+            color = ReiAnixTokens.Colors.textMuted,
+            modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
+        )
+        if (actionLabel != null) {
+            Button(
+                onClick = onAction,
+                modifier = Modifier.padding(top = ReiAnixTokens.Spacing.lg),
+            ) {
+                Text(actionLabel)
+            }
+        }
+    }
+}
 }
