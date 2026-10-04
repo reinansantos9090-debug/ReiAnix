@@ -13,17 +13,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Cached
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,16 +46,16 @@ data class ReiAnixSettingsCategoryUiModel(
     companion object {
         fun defaultCategories(): List<ReiAnixSettingsCategoryUiModel> = listOf(
             ReiAnixSettingsCategoryUiModel("Geral", "Comportamento geral do aplicativo", Icons.Filled.Settings),
-            ReiAnixSettingsCategoryUiModel("Aparência", "Tema e apresentação", Icons.Filled.DarkMode),
-            ReiAnixSettingsCategoryUiModel("Biblioteca", "Catálogo, grade e Continue Watching", Icons.Filled.VideoLibrary),
-            ReiAnixSettingsCategoryUiModel("Player", "Reprodução, vídeo, controles e tela", Icons.Filled.PlayCircle),
+            ReiAnixSettingsCategoryUiModel("Aparência", "Tema e apresentação", Icons.Filled.Settings),
+            ReiAnixSettingsCategoryUiModel("Biblioteca", "Catálogo, grade e Continue Watching", Icons.Filled.Info),
+            ReiAnixSettingsCategoryUiModel("Player", "Reprodução, vídeo, controles e tela", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Gestos", "Interações de toque do player", Icons.Filled.Settings),
-            ReiAnixSettingsCategoryUiModel("Áudio e Legendas", "Idiomas, legendas e áudio", Icons.Filled.Headphones),
+            ReiAnixSettingsCategoryUiModel("Áudio e Legendas", "Idiomas, legendas e áudio", Icons.Filled.Info),
             ReiAnixSettingsCategoryUiModel("Metadata", "AniList e matching", Icons.Filled.Search),
             ReiAnixSettingsCategoryUiModel("Artwork", "Capas, thumbnails e cache", Icons.Filled.Info),
-            ReiAnixSettingsCategoryUiModel("Armazenamento", "Permissões, SAF, MediaStore e volumes", Icons.Filled.Storage),
-            ReiAnixSettingsCategoryUiModel("Dados e Cache", "Configurações, importação, exportação e cache", Icons.Filled.Cached),
-            ReiAnixSettingsCategoryUiModel("Backup e Restauração", "Backup, restauração, integridade e reconciliação", Icons.Filled.Security),
+            ReiAnixSettingsCategoryUiModel("Armazenamento", "Permissões, SAF, MediaStore e volumes", Icons.Filled.Settings),
+            ReiAnixSettingsCategoryUiModel("Dados e Cache", "Configurações, importação, exportação e cache", Icons.Filled.Info),
+            ReiAnixSettingsCategoryUiModel("Backup e Restauração", "Backup, restauração, integridade e reconciliação", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Privacidade", "Dados locais e conectividade", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Varredura", "Estado e histórico das varreduras", Icons.Filled.Refresh),
             ReiAnixSettingsCategoryUiModel("Diagnóstico", "Informações técnicas e diagnóstico", Icons.Filled.Settings),
@@ -312,4 +305,3 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
         }
         else -> ""
     }
-}
