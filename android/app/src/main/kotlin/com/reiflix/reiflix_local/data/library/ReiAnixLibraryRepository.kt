@@ -25,6 +25,25 @@ import java.util.UUID
  * player behavior.
  */
 class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
+    companion object {
+        /**
+         * Snapshot reconciliation belongs to the repository boundary: a new
+         * library projection must replace domain state while preserving the
+         * command status that belongs to the in-flight IPC request.
+         *
+         * Kept pure so the repository's state-transition contract can be
+         * exercised by JVM unit tests without touching Android/SQLite.
+         */
+        internal fun mergeSnapshotState(
+            decoded: ReiAnixLibraryUiState,
+            previous: ReiAnixLibraryUiState,
+        ): ReiAnixLibraryUiState = decoded.copy(
+            lastCommandId = previous.lastCommandId,
+            lastCommandAction = previous.lastCommandAction,
+            lastCommandStatus = previous.lastCommandStatus,
+            lastCommandError = previous.lastCommandError,
+        )
+    }
     private val appContext = context.applicationContext
     private val dataDirectory = File(appContext.filesDir, "data")
     private val bridgeDirectory = File(dataDirectory, "reianix-compose")
@@ -126,12 +145,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             val currentRevision = _state.value.revision
             ReiAnixLibrarySnapshotCodec.decode(raw, currentRevision)
         }.onSuccess { decoded ->
-            _state.value = decoded.copy(
-                lastCommandId = _state.value.lastCommandId,
-                lastCommandAction = _state.value.lastCommandAction,
-                lastCommandStatus = _state.value.lastCommandStatus,
-                lastCommandError = _state.value.lastCommandError,
-            )
+            _state.value = mergeSnapshotState(decoded, _state.value)
         }.onFailure { error ->
             val message = error.message.orEmpty()
             if (message.startsWith("Stale Compose library snapshot")) return@onFailure
