@@ -52,7 +52,7 @@ import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 fun ReiAnixSurface(
     modifier: Modifier = Modifier,
     shape: androidx.compose.ui.graphics.Shape = ReiAnixTokens.Shapes.card,
-    color: androidx.compose.ui.graphics.Color = ReiAnixTokens.Colors.surface,
+    color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surface,
     borderColor: androidx.compose.ui.graphics.Color? = null,
     content: @Composable () -> Unit,
 ) {
@@ -82,7 +82,7 @@ fun ReiAnixDivider(
     HorizontalDivider(
         modifier = modifier,
         thickness = ReiAnixTokens.Dimensions.dividerHeight,
-        color = ReiAnixTokens.Colors.divider,
+        color = MaterialTheme.colorScheme.outlineVariant,
     )
 }
 
@@ -93,15 +93,15 @@ fun ReiAnixBadge(
     tone: ReiAnixBadgeTone = ReiAnixBadgeTone.Neutral,
 ) {
     val container = when (tone) {
-        ReiAnixBadgeTone.Primary -> ReiAnixTokens.Colors.primaryContainer
+        ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.primaryContainer
         ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success.copy(alpha = ReiAnixTokens.Colors.statusContainerAlpha)
         ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning.copy(alpha = ReiAnixTokens.Colors.statusContainerAlpha)
         ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.errorContainer
         ReiAnixBadgeTone.Info -> ReiAnixTokens.Colors.secondaryContainer
-        ReiAnixBadgeTone.Neutral -> ReiAnixTokens.Colors.surfaceRaised
+        ReiAnixBadgeTone.Neutral -> MaterialTheme.colorScheme.surfaceRaised
     }
     val content = when (tone) {
-        ReiAnixBadgeTone.Primary -> ReiAnixTokens.Colors.onPrimaryContainer
+        ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.onPrimaryContainer
         ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success
         ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning
         ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.onErrorContainer
@@ -148,14 +148,14 @@ fun ReiAnixCard(
             .semantics { },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            containerColor = MaterialTheme.colorScheme.surfaceCard,
             contentColor = MaterialTheme.colorScheme.onSurface,
             disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
             disabledContentColor = ReiAnixTokens.Colors.textDisabled,
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
-            color = ReiAnixTokens.Colors.border.copy(alpha = ReiAnixTokens.Colors.subtleBorderAlpha),
+            color = MaterialTheme.colorScheme.outline.copy(alpha = ReiAnixTokens.Colors.subtleBorderAlpha),
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = ReiAnixTokens.Elevation.card,
@@ -221,7 +221,7 @@ fun ReiAnixSecondaryButton(
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
-            color = if (enabled) ReiAnixTokens.Colors.border else ReiAnixTokens.Colors.divider,
+            color = if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
         Text(
@@ -279,20 +279,20 @@ fun ReiAnixTextField(
         enabled = enabled,
         shape = ReiAnixTokens.Shapes.textField,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = ReiAnixTokens.Colors.surfaceVariant,
-            unfocusedContainerColor = ReiAnixTokens.Colors.surfaceVariant,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
-            focusedBorderColor = ReiAnixTokens.Colors.primary,
-            unfocusedBorderColor = ReiAnixTokens.Colors.border,
-            disabledBorderColor = ReiAnixTokens.Colors.divider,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
             disabledTextColor = ReiAnixTokens.Colors.textDisabled,
-            focusedLabelColor = ReiAnixTokens.Colors.primary,
-            unfocusedLabelColor = ReiAnixTokens.Colors.textMuted,
+            focusedLabelColor = MaterialTheme.colorScheme.primary,
+            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
             disabledLabelColor = ReiAnixTokens.Colors.textDisabled,
-            focusedPlaceholderColor = ReiAnixTokens.Colors.textMuted,
-            unfocusedPlaceholderColor = ReiAnixTokens.Colors.textMuted,
+            focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
             disabledPlaceholderColor = ReiAnixTokens.Colors.textDisabled,
         ),
     )
@@ -320,17 +320,17 @@ fun ReiAnixSearchField(
         trailingIcon = trailingIcon,
         shape = ReiAnixTokens.Shapes.textField,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = ReiAnixTokens.Colors.surfaceVariant,
-            unfocusedContainerColor = ReiAnixTokens.Colors.surfaceVariant,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
-            focusedBorderColor = ReiAnixTokens.Colors.primary,
-            unfocusedBorderColor = ReiAnixTokens.Colors.border,
-            disabledBorderColor = ReiAnixTokens.Colors.divider,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
             disabledTextColor = ReiAnixTokens.Colors.textDisabled,
-            focusedPlaceholderColor = ReiAnixTokens.Colors.textMuted,
-            unfocusedPlaceholderColor = ReiAnixTokens.Colors.textMuted,
+            focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
             disabledPlaceholderColor = ReiAnixTokens.Colors.textDisabled,
         ),
     )
@@ -366,19 +366,19 @@ fun ReiAnixChip(
         },
         shape = ReiAnixTokens.Shapes.chip,
         colors = FilterChipDefaults.filterChipColors(
-            containerColor = ReiAnixTokens.Colors.surfaceVariant,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
             labelColor = MaterialTheme.colorScheme.onSurface,
-            selectedContainerColor = ReiAnixTokens.Colors.primaryContainer,
-            selectedLabelColor = ReiAnixTokens.Colors.onPrimaryContainer,
-            disabledContainerColor = ReiAnixTokens.Colors.surfaceVariant.copy(alpha = 0.45f),
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
             disabledLabelColor = ReiAnixTokens.Colors.textDisabled,
         ),
         border = FilterChipDefaults.filterChipBorder(
             enabled = enabled,
             selected = selected,
-            borderColor = ReiAnixTokens.Colors.border,
-            selectedBorderColor = ReiAnixTokens.Colors.primary,
-            disabledBorderColor = ReiAnixTokens.Colors.divider,
+            borderColor = MaterialTheme.colorScheme.outline,
+            selectedBorderColor = MaterialTheme.colorScheme.primary,
+            disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
         ),
     )
 }
@@ -465,7 +465,7 @@ fun ReiAnixSecondaryText(
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        color = ReiAnixTokens.Colors.textMuted,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
@@ -566,7 +566,7 @@ fun ReiAnixAnimeCard(
             ),
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            containerColor = MaterialTheme.colorScheme.surfaceCard,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
@@ -695,7 +695,7 @@ fun ReiAnixEpisodeCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            containerColor = MaterialTheme.colorScheme.surfaceCard,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
@@ -809,7 +809,7 @@ fun ReiAnixSettingCard(
         enabled = onClick != null && enabled,
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            containerColor = MaterialTheme.colorScheme.surfaceCard,
             disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
         ),
         modifier = Modifier
