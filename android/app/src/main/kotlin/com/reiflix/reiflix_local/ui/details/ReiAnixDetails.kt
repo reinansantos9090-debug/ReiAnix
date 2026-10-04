@@ -146,7 +146,6 @@ fun ReiAnixDetailsScreen(
                         anime = anime,
                         onWatch = onWatch,
                         onSetEpisodeWatched = onSetEpisodeWatched,
-                        onRefresh = onRetry,
                     )
                 } else {
                     ReiAnixRecoverableErrorState(
@@ -251,7 +250,6 @@ private fun ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
     onWatch: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
-    onRefresh: () -> Unit,
 ) {
     var selectedSeasonKey by rememberSaveable(anime.id) {
         mutableStateOf(anime.seasons.firstOrNull()?.stableKey)
@@ -382,7 +380,6 @@ private fun ReiAnixDetailsReady(
                     episode = episode,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
-                    onRefresh = onRefresh,
                 )
             }
         }
@@ -465,7 +462,6 @@ private fun DetailsEpisodeItem(
     episode: ReiAnixEpisodeUiModel,
     onWatch: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
-    onRefresh: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
