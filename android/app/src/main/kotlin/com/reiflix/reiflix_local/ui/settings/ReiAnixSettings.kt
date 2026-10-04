@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountCircle
@@ -96,6 +97,10 @@ fun ReiAnixSettingsRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedCategory by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+
+    BackHandler(enabled = selectedCategory != null) {
+        selectedCategory = null
     }
 
     com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme(
