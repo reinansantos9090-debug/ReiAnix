@@ -46,7 +46,10 @@ class ReiAnixComposeLibraryHost(
      * Shows the shell, using [startDestination] only when the Compose root is
      * first attached. Subsequent calls navigate inside the existing back stack.
      */
-    fun show(startDestination: String = ReiAnixRoutes.LIBRARY) {
+    fun show(
+        startDestination: String = ReiAnixRoutes.LIBRARY,
+        resetBackStack: Boolean = false,
+    ) {
         val view = ensureAttached()
         if (view.tag != CONTENT_TAG) {
             view.tag = CONTENT_TAG
@@ -132,7 +135,10 @@ class ReiAnixComposeLibraryHost(
                 }
             }
         } else {
-            navigateToRequestedDestination(startDestination)
+            navigateToRequestedDestination(
+                route = startDestination,
+                resetBackStack = resetBackStack,
+            )
         }
 
         view.visibility = View.VISIBLE
@@ -155,8 +161,9 @@ class ReiAnixComposeLibraryHost(
 
         val route = controller.currentBackStackEntry?.destination?.route
         when (route) {
-            ReiAnixRoutes.SETTINGS -> hideAndPublishSettingsBack()
-            ReiAnixRoutes.STORAGE -> hide()
+            ReiAnixRoutes.SETTINGS,
+            ReiAnixRoutes.STORAGE,
+            -> hideAndPublishSettingsBack()
             else -> hideAndPublishLegacyBack()
         }
         return true
@@ -171,8 +178,24 @@ class ReiAnixComposeLibraryHost(
         composeView = null
     }
 
-    private fun navigateToRequestedDestination(route: String) {
+    private fun navigateToRequestedDestination(
+        route: String,
+        resetBackStack: Boolean,
+    ) {
         val controller = composeNavController ?: return
+
+        if (resetBackStack) {
+            val startDestinationId = controller.graph.findStartDestination().id
+            controller.popBackStack(startDestinationId, true)
+            controller.navigate(
+                route,
+                navOptions {
+                    launchSingleTop = true
+                },
+            )
+            return
+        }
+
         when (route) {
             ReiAnixRoutes.HOME,
             ReiAnixRoutes.LIBRARY,
