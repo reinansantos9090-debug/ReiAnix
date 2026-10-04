@@ -21,11 +21,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +52,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
@@ -82,6 +84,26 @@ import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+
+private val ReiAnixFilterIcon: ImageVector = ImageVector.Builder(
+    name = "ReiAnixFilter",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+).apply {
+    path(
+        fill = SolidColor(androidx.compose.ui.graphics.Color.Black),
+    ) {
+        moveTo(4f, 6f)
+        lineTo(20f, 6f)
+        lineTo(14f, 13f)
+        lineTo(14f, 19f)
+        lineTo(10f, 21f)
+        lineTo(10f, 13f)
+        close()
+    }
+}.build()
 
 @Composable
 fun ReiAnixSearchRoute(
@@ -242,7 +264,7 @@ fun ReiAnixSearchScreen(
                     ) {
                         Icon(
                             imageVector = if (searchState.filters.hasAnyFilter) {
-                                Icons.Filled.FilterList
+                                ReiAnixFilterIcon
                             } else {
                                 Icons.Filled.FilterList
                             },
