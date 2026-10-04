@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -118,8 +117,7 @@ private fun ReiAnixHomeObservedScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background)
-            .safeDrawingPadding(),
+            .background(ReiAnixTokens.Colors.background),
     ) {
         HomeHeader(
             onSearch = onSearch,
@@ -176,7 +174,9 @@ private fun HomeObservedContent(
     val favorites = renderAnimes.filter(HomeAnimeRenderData::favorite)
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth(),
         contentPadding = PaddingValues(
             start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
             end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
@@ -244,8 +244,7 @@ fun ReiAnixHomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background)
-            .safeDrawingPadding(),
+            .background(ReiAnixTokens.Colors.background),
     ) {
         HomeHeader(
             onSearch = onSearch,
@@ -341,7 +340,9 @@ private fun HomeContent(
     val continueWatching = state.continueWatching
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth(),
         contentPadding = PaddingValues(
             start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
             end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
