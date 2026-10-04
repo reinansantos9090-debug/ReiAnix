@@ -98,7 +98,7 @@ private val topLevelDestinations = listOf(
         route = ReiAnixRoutes.SETTINGS,
         label = "Ajustes",
         selectedIcon = androidx.compose.material.icons.Icons.Filled.Settings,
-        unselectedIcon = androidx.compose.material.icons.Icons.Outlined.Settings,
+        unselectedIcon = androidx.compose.material.icons.Icons.Filled.Settings,
     ),
 )
 
