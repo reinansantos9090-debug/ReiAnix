@@ -508,7 +508,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val originTransitionDirection = intent.getStringExtra("transitionDirection")?.trim()?.uppercase().orEmpty()
         val recreatedPlayer = savedInstanceState?.getString("session_request_id")?.trim()
             ?.takeIf { it.isNotEmpty() } == requestId &&
-            savedInstanceState.getString("player_session_id")?.trim() == playerSessionId
+            savedInstanceState?.getString("player_session_id")?.trim() == playerSessionId
 
         if (recreatedPlayer) {
             episodeChangePending = savedInstanceState.getBoolean("episode_change_pending", false)
