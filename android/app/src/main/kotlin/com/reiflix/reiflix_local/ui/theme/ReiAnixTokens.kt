@@ -118,6 +118,15 @@ object ReiAnixTokens {
         val bottomNavigationMinHeight = 64.dp
         val bottomNavigationIndicatorHeight = 32.dp
         val artworkMinSize = 96.dp
+        val animeCardWidth = 154.dp
+        val continueCardWidth = 250.dp
+        val posterAspectRatio = 0.7f
+        val libraryGridMinWidth = 140.dp
+        val searchGridMinWidth = 150.dp
+        val episodeThumbnailWidth = 88.dp
+        val episodeThumbnailHeight = 68.dp
+        val detailsEpisodeThumbnailFraction = 0.27f
+        val detailsHeroHeight = 250.dp
         val progressHeight = 4.dp
         val dividerHeight = 1.dp
         val borderWidth = 1.dp
