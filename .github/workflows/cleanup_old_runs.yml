@@ -9,14 +9,14 @@ permissions:
 
 jobs:
   cleanup:
-    name: Keep newest 500 runs and remove Actions artifacts
+    name: Keep newest 50 runs and remove Actions artifacts
     runs-on: ubuntu-latest
     steps:
-      - name: Keep newest 500 workflow runs and delete all Actions artifacts
+      - name: Keep newest 50 workflow runs and delete all Actions artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-          KEEP_RUNS: "500"
+          KEEP_RUNS: "50"
         shell: bash
         run: |
           set -euo pipefail
