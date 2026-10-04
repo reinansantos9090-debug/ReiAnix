@@ -70,13 +70,11 @@ import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixEpisodeCard
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.ReiAnixSurface
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
 import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsAnimeUiModel
@@ -362,9 +360,9 @@ private fun ReiAnixDetailsReady(
     } ?: anime.seasons.firstOrNull()
 
     val listState = rememberLazyListState()
-    val episodeAnchor = remember(anime.id, anime.seasons.size, anime.specials.size, anime.mediaFiles.size) {
-        2
-    }
+    // Hero=0, About=1, Seasons=2, Episode heading=3. Keep this anchor stable
+    // so a season change never scrolls into a different structural item.
+    val episodeAnchor = 3
 
     LazyColumn(
         state = listState,
@@ -600,7 +598,7 @@ private fun DetailsHero(
                 )
             }
 
-            Column(
+            Row(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
@@ -608,7 +606,25 @@ private fun DetailsHero(
                         horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                         vertical = ReiAnixTokens.Spacing.lg,
                     ),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
             ) {
+                if (maxWidth >= 500.dp && !anime.artwork?.localPath.isNullOrBlank()) {
+                    ReiAnixLocalArtwork(
+                        localPath = anime.artwork?.localPath,
+                        contentDescription = "Poster de " + anime.title,
+                        modifier = Modifier
+                            .width(112.dp)
+                            .height(160.dp),
+                        contentScale = ContentScale.Crop,
+                        placeholder = "Poster",
+                        maxDimensionPx = 512,
+                        shape = ReiAnixTokens.Shapes.artwork,
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                ) {
                 anime.status?.let { rawStatus ->
                     DetailsStatusBadge(rawStatus)
                     Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.xs))
