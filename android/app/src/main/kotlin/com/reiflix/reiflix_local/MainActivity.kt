@@ -78,6 +78,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val nativeRequestState = NativeRequestState()
     private lateinit var composeLibraryHost: ReiAnixComposeLibraryHost
     private lateinit var composeStorageHost: ReiAnixComposeStorageHost
+    private lateinit var composeSettingsHost: ReiAnixComposeSettingsHost
 
     private val playerActivityLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
@@ -764,6 +765,7 @@ class MainActivity : FlutterFragmentActivity() {
         systemUiController = SystemUiController(window)
         composeLibraryHost = ReiAnixComposeLibraryHost(this)
         composeStorageHost = ReiAnixComposeStorageHost(this)
+        composeSettingsHost = ReiAnixComposeSettingsHost(this)
         // Flet owns the visual theme/system-overlay appearance; the native host
         // owns edge-to-edge + normal system-bar visibility.
         systemUiController.applyApplicationPolicy(useContextAppearance = false)
@@ -968,6 +970,7 @@ class MainActivity : FlutterFragmentActivity() {
         PerformanceDiagnostics.detach()
         cancelSafPickerWatchdog()
         if (::composeStorageHost.isInitialized) composeStorageHost.dispose()
+        if (::composeSettingsHost.isInitialized) composeSettingsHost.dispose()
         if (::composeLibraryHost.isInitialized) composeLibraryHost.dispose()
         googleSignInJob?.cancel()
         googleSignInJob = null
@@ -1024,6 +1027,12 @@ class MainActivity : FlutterFragmentActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    if (::composeSettingsHost.isInitialized && composeSettingsHost.isVisible) {
+                        if (composeSettingsHost.handleBack()) {
+                            Log.i(tag, "BACK_COMPOSE_SETTINGS_DISMISSED")
+                            return
+                        }
+                    }
                     if (::composeStorageHost.isInitialized && composeStorageHost.isVisible) {
                         if (composeStorageHost.handleBack()) {
                             Log.i(tag, "BACK_COMPOSE_STORAGE_DISMISSED")
@@ -1297,6 +1306,18 @@ class MainActivity : FlutterFragmentActivity() {
                 "open_storage_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeStorageHost.show()
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "open_settings" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeSettingsHost.show()
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "hide_settings" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeSettingsHost.hide()
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
