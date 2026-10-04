@@ -263,11 +263,7 @@ fun ReiAnixSearchScreen(
                         },
                     ) {
                         Icon(
-                            imageVector = if (searchState.filters.hasAnyFilter) {
-                                ReiAnixFilterIcon
-                            } else {
-                                Icons.Filled.FilterList
-                            },
+                            imageVector = ReiAnixFilterIcon,
                             contentDescription = null,
                             tint = if (searchState.filters.hasAnyFilter) {
                                 MaterialTheme.colorScheme.primary
