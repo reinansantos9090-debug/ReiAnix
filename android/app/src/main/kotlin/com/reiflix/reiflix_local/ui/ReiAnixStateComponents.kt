@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -250,7 +250,7 @@ fun ReiAnixRecoverableErrorState(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     retryLabel: String = "Tentar novamente",
-    icon: ImageVector? = Icons.Filled.Error,
+    icon: ImageVector? = Icons.Filled.Info,
 ) {
     Column(
         modifier = modifier
