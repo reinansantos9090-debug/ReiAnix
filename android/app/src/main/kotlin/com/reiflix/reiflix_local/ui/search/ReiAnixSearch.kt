@@ -239,7 +239,7 @@ private fun SearchResults(
     onOpenDetails: (Long) -> Unit,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 150.dp),
+        columns = GridCells.Adaptive(minSize = ReiAnixTokens.Dimensions.searchGridMinWidth),
         modifier = Modifier
             .fillMaxSize()
             .padding(top = ReiAnixTokens.Spacing.sm),
