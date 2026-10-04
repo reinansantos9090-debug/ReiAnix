@@ -274,7 +274,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     contentDescription = anime.title,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(250.dp)
+                         .height(ReiAnixTokens.Dimensions.detailsHeroHeight)
                         .padding(horizontal = ReiAnixTokens.Spacing.lg),
                     contentScale = ContentScale.Crop,
                     placeholder = "Sem capa",
@@ -489,7 +489,7 @@ private fun DetailsEpisodeItem(
                 contentDescription = episode.displayTitle,
                 modifier = Modifier
                     .height(64.dp)
-                    .fillMaxWidth(0.27f),
+                     .fillMaxWidth(ReiAnixTokens.Dimensions.detailsEpisodeThumbnailFraction),
                 contentScale = ContentScale.Crop,
                 placeholder = "Sem thumbnail",
                 maxDimensionPx = 320,
@@ -539,7 +539,7 @@ private fun DetailsEpisodeItem(
                     progress = { episode.progressFraction },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp),
+                         .height(ReiAnixTokens.Dimensions.progressHeight),
                 )
                 if (!episode.isPlayable) {
                     ReiAnixFileUnavailableState(
