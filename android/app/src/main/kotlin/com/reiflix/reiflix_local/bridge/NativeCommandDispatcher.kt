@@ -1,5 +1,9 @@
-package com.reiflix.reiflix_local
+package com.reiflix.reiflix_local.bridge
 
+import com.reiflix.reiflix_local.scanner.BroadStorageScanner
+import com.reiflix.reiflix_local.scanner.MediaStoreScanner
+import com.reiflix.reiflix_local.scanner.SafScanner
+import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import android.content.Context
 import android.content.Intent
 import android.net.Uri

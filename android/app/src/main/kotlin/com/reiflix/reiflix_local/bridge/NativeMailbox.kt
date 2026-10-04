@@ -1,5 +1,4 @@
-package com.reiflix.reiflix_local
-
+package com.reiflix.reiflix_local.bridge
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
