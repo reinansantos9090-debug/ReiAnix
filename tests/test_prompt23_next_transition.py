@@ -208,6 +208,34 @@ class Prompt23NextTransitionTests(unittest.TestCase):
         ):
             self.assertIn(token, self.main)
 
+    def test_recreation_restores_transition_state_before_origin_fencing(self):
+        create = self.player[
+            self.player.index("override fun onCreate(savedInstanceState"):
+            self.player.index("publishPlayerLifecycle(\"onCreate\")")
+        ]
+        self.assertIn('transitionGeneration = savedInstanceState?.getLong("transition_generation", transitionGeneration)', create)
+        self.assertIn('val recreatedPlayer = savedInstanceState?.getString("session_request_id")', create)
+        self.assertIn('if (recreatedPlayer)', create)
+        self.assertIn('episodeChangePending = savedInstanceState.getBoolean("episode_change_pending", false)', create)
+        self.assertIn('TransitionPhase.valueOf(savedInstanceState.getString("transition_phase").orEmpty())', create)
+        self.assertIn('if (recreatedPlayer) {', create)
+        self.assertIn('if (originRequestId.isNotBlank() && !isEpisodeSuccessor && !recreatedPlayer)', create)
+        save = self.player[
+            self.player.index("override fun onSaveInstanceState"):
+            self.player.index("override fun onDestroy", self.player.index("override fun onSaveInstanceState"))
+        ]
+        for token in (
+            '"episode_change_pending"',
+            '"transition_phase"',
+            '"transition_source_request_id"',
+            '"transition_source_generation"',
+            '"transition_source_direction"',
+            '"transition_source_monotonic_ns"',
+            '"next_transition_active"',
+            '"previous_transition_active"',
+        ):
+            self.assertIn(token, save)
+
     def test_activity_exit_and_recreation_have_native_session_authorization(self):
         for token in (
             "notePlayerSession",
