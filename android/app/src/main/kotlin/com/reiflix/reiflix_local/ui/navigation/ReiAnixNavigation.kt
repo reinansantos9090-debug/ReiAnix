@@ -5,6 +5,7 @@ import androidx.annotation.Keep
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
@@ -236,7 +237,7 @@ private fun ReiAnixBottomNavigation(
     ) {
         topLevelDestinations.forEach { destination ->
             val selected = currentRoute == destination.route
-            androidx.compose.material3.NavigationBarItem(
+            NavigationBarItem(
                 selected = selected,
                 onClick = { navController.navigateToTopLevel(destination.route) },
                 colors = NavigationBarItemDefaults.colors(
