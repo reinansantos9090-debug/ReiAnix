@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 /**
@@ -47,7 +46,7 @@ fun ReiAnixLoadingState(
             text = title,
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
-                    )
+        )
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
@@ -91,9 +90,10 @@ fun ReiAnixEmptyState(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (actionLabel != null && onAction != null) {
-            OutlinedButton(onClick = onAction) {
-                Text(actionLabel)
-            }
+            ReiAnixSecondaryButton(
+                text = actionLabel,
+                onClick = onAction,
+            )
         }
     }
 }
