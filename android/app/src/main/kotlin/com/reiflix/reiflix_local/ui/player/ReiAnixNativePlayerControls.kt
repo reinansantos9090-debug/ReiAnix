@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -401,14 +400,11 @@ private fun PlayerBottomOverlay(
                     .height(36.dp)
                     .semantics {
                         contentDescription = "Barra de progresso"
-                        role = Role.Adjustable
                     },
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary,
                     inactiveTrackColor = Color.White.copy(alpha = 0.24f),
-                    activeTickColor = Color.Transparent,
-                    inactiveTickColor = Color.Transparent,
                 ),
                 steps = 0,
             )
@@ -432,9 +428,8 @@ private fun PlayerBottomOverlay(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlayerAction(
-                icon = if (canNext) Icons.Filled.SkipNext else Icons.Filled.SkipNext,
+                icon = Icons.Filled.Lock,
                 label = "Bloquear toques",
-                selectedIcon = Icons.Filled.Lock,
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
                 modifier = Modifier.weight(1f),
