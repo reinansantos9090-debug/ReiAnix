@@ -413,6 +413,8 @@ class AndroidBridge:
     async def cancel_scans(self): return await self._launch("cancel_scan")
     async def open_library(self): return await self._launch("open_library")
     async def hide_library(self): return await self._launch("hide_library")
+    async def open_settings(self): return await self._launch("open_settings")
+    async def hide_settings(self): return await self._launch("hide_settings")
     async def verify_tree(self, tree_uri: str): return await self._launch("verify_tree", tree_uri=tree_uri)
     async def release_tree(self, tree_uri: str): return await self._launch("release_tree", tree_uri=tree_uri)
     async def sign_in(self, server_client_id: str): return await self._launch("google_sign_in", server_client_id=server_client_id)
