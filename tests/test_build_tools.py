@@ -18,17 +18,17 @@ DESCRIPTORS = (
     b"Lcom/reiflix/reiflix_local/ReiAnixComposeLibraryHost;",
     b"Lcom/reiflix/reiflix_local/ReiAnixComposeSettingsHost;",
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
-    b"Lcom/reiflix/reiflix_local/NativeMailbox;",
-    b"Lcom/reiflix/reiflix_local/NativeRequestState;",
-    b"Lcom/reiflix/reiflix_local/SafScanner;",
-    b"Lcom/reiflix/reiflix_local/MediaStoreScanner;",
-    b"Lcom/reiflix/reiflix_local/BroadStorageScanner;",
-    b"Lcom/reiflix/reiflix_local/NativeIndex;",
-    b"Lcom/reiflix/reiflix_local/NativeScanController;",
+    b"Lcom/reiflix/reiflix_local/bridge/NativeMailbox;",
+    b"Lcom/reiflix/reiflix_local/bridge/NativeRequestState;",
+    b"Lcom/reiflix/reiflix_local/scanner/SafScanner;",
+    b"Lcom/reiflix/reiflix_local/scanner/MediaStoreScanner;",
+    b"Lcom/reiflix/reiflix_local/scanner/BroadStorageScanner;",
+    b"Lcom/reiflix/reiflix_local/storage/NativeIndex;",
+    b"Lcom/reiflix/reiflix_local/scanner/NativeScanController;",
     b"Lcom/reiflix/reiflix_local/NativePlayerActivity;",
-    b"Lcom/reiflix/reiflix_local/NativePlayerRequest;",
+    b"Lcom/reiflix/reiflix_local/player/NativePlayerRequest;",
     b"Lcom/reiflix/reiflix_local/VideoThumbnailExtractor;",
-    b"Lcom/reiflix/reiflix_local/GoogleIdentity;",
+    b"Lcom/reiflix/reiflix_local/bridge/GoogleIdentity;",
     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixViewModel;",
@@ -298,7 +298,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             copied = template / "reiflix_android_overlay" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local"
-            self.assertTrue((copied / "NativeMailbox.kt").is_file())
+            self.assertTrue((copied / "bridge" / "NativeMailbox.kt").is_file())
             hook_path = template / "hooks" / "post_gen_project.py"
             hook = hook_path.read_text(encoding="utf-8")
             self.assertIn("NativePlayerActivity", hook)
