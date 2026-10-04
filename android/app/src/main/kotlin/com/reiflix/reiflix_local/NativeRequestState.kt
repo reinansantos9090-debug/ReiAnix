@@ -20,7 +20,7 @@ class NativeRequestState {
 
     private val supportedActions=setOf(
         "select_tree","scan_tree","verify_tree","release_tree","scan_media_store",
-        "request_media_access","open_broad_storage_settings","open_storage_settings","check_storage_access",
+        "request_media_access","open_broad_storage_settings","open_storage_settings","check_storage_access","open_settings","hide_settings",
         "scan_all_storage","extract_thumbnail","cancel_scan","cancel_player_transition","google_sign_in","play"
     )
     private val seenRequestIds=LinkedHashSet<String>()
