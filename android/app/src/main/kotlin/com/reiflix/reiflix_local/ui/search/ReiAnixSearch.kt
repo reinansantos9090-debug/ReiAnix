@@ -21,7 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -168,8 +168,9 @@ fun ReiAnixSearchScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                    start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                     top = ReiAnixTokens.Dimensions.screenTopPadding,
+                    end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                     bottom = ReiAnixTokens.Spacing.sm,
                 ),
             verticalAlignment = Alignment.CenterVertically,
@@ -241,9 +242,9 @@ fun ReiAnixSearchScreen(
                     ) {
                         Icon(
                             imageVector = if (searchState.filters.hasAnyFilter) {
-                                Icons.Filled.FilterAlt
+                                Icons.Filled.FilterList
                             } else {
-                                Icons.Filled.Tune
+                                Icons.Filled.FilterList
                             },
                             contentDescription = null,
                             tint = if (searchState.filters.hasAnyFilter) {
@@ -494,11 +495,7 @@ private fun SearchResultRow(
                 imageVector = Icons.Filled.MoreVert,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .size(ReiAnixTokens.Dimensions.iconMedium)
-                    .semantics {
-                        contentDescription = "Opções de " + anime.title
-                    },
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
             )
         }
     }
