@@ -529,8 +529,9 @@ private fun DetailsHero(
             .fillMaxWidth()
             .clip(ReiAnixTokens.Shapes.hero),
     ) {
+        val availableWidth = maxWidth
         val heroHeight = (
-            maxWidth * if (maxWidth >= 600.dp) 0.62f else 0.86f
+            availableWidth * if (availableWidth >= 600.dp) 0.62f else 0.86f
         ).coerceIn(
             300.dp,
             ReiAnixTokens.Dimensions.detailsHeroMaxHeight,
@@ -625,7 +626,7 @@ private fun DetailsHero(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
             ) {
-                if (maxWidth >= 500.dp && !anime.artwork?.localPath.isNullOrBlank()) {
+                if (availableWidth >= 500.dp && !anime.artwork?.localPath.isNullOrBlank()) {
                     ReiAnixLocalArtwork(
                         localPath = anime.artwork?.localPath,
                         contentDescription = "Poster de " + anime.title,
