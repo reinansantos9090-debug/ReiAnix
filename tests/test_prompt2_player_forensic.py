@@ -44,7 +44,7 @@ class Prompt2PlayerForensicTests(unittest.TestCase):
         self.assertIn("authorized_successor_activity", self.player)
 
     def test_stale_successor_still_closes_itself_without_emitting_exit(self):
-        start = self.player.index("if (originRequestId.isNotBlank() && !isEpisodeSuccessor)")
+        start = self.player.index("if (originRequestId.isNotBlank() && !isEpisodeSuccessor && !recreatedPlayer)")
         end = self.player.index("val traceEpisodeId", start)
         stale = self.player[start:end]
         self.assertIn("PLAYER_NEXT_STALE_REJECTED", stale)
