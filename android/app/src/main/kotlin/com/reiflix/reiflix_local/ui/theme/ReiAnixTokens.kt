@@ -235,16 +235,16 @@ object ReiAnixTokens {
     }
 
     val typography = Typography(
-        displayLarge = TypeScale.display,
-        headlineLarge = TypeScale.screenTitle,
-        headlineSmall = TypeScale.screenTitle,
-        titleLarge = TypeScale.sectionTitle,
-        titleMedium = TypeScale.cardTitle,
-        bodyLarge = TypeScale.body,
-        bodyMedium = TypeScale.bodySecondary,
-        bodySmall = TypeScale.metadata,
-        labelLarge = TypeScale.button,
-        labelMedium = TypeScale.chip,
+        displayLarge = TypographyTokens.display,
+        headlineLarge = TypographyTokens.screenTitle,
+        headlineSmall = TypographyTokens.screenTitle,
+        titleLarge = TypographyTokens.sectionTitle,
+        titleMedium = TypographyTokens.cardTitle,
+        bodyLarge = TypographyTokens.body,
+        bodyMedium = TypographyTokens.bodySecondary,
+        bodySmall = TypographyTokens.metadata,
+        labelLarge = TypographyTokens.button,
+        labelMedium = TypographyTokens.chip,
     )
 
     val shapes = androidx.compose.material3.Shapes(
