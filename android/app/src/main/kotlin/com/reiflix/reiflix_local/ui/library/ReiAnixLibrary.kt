@@ -278,8 +278,7 @@ private fun LibraryHeader(
 
             IconButton(
                 onClick = onRefresh,
-                enabled = !isRefreshing,
-                modifier = Modifier.semantics {
+                        modifier = Modifier.semantics {
                     contentDescription = if (isRefreshing) {
                         "Atualizando biblioteca"
                     } else {
