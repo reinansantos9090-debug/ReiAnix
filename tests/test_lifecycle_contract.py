@@ -32,7 +32,7 @@ class LifecycleContractTests(unittest.TestCase):
 
     def test_long_running_native_scan_batch_helper_is_not_bound_to_activity_instance(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeScanPublisher.kt").read_text(encoding="utf-8")
+        publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun publishNativeScanBatch", source)
         self.assertIn("NativeScanPublisher.publish(", source)
         self.assertIn("appContext: Context", publisher)
@@ -59,7 +59,7 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("storageReceiverRegistered = false", source)
         self.assertNotIn("private val mediaStoreRetryHandler", source)
         self.assertNotIn("private val mediaStoreRetryScheduled = AtomicBoolean(false)", source)
-        scheduler = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreRetryScheduler.kt").read_text(encoding="utf-8")
+        scheduler = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreRetryScheduler.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun scheduleMediaStoreScanRequest", source)
         self.assertIn("MediaStoreRetryScheduler.schedule(", source)
         self.assertNotIn("this@MainActivity", scheduler)
@@ -275,7 +275,7 @@ class LifecycleContractTests(unittest.TestCase):
 
     def test_media_store_delayed_retry_does_not_capture_activity_instance(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        scheduler = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreRetryScheduler.kt").read_text(encoding="utf-8")
+        scheduler = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreRetryScheduler.kt").read_text(encoding="utf-8")
         self.assertIn("MediaStoreRetryScheduler.schedule(", source)
         self.assertNotIn("private fun scheduleMediaStoreScanRequest", source)
         self.assertNotIn("this@MainActivity", scheduler)

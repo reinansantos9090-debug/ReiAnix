@@ -279,7 +279,7 @@ class ScanCoordinatorSourceContractTests(unittest.TestCase):
         start = source.index("private fun scheduleMediaStoreIncrementalRescan()")
         end = source.index("private val storageReceiver", start)
         block = source[start:end]
-        scheduler = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreRetryScheduler.kt")
+        scheduler = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreRetryScheduler.kt")
         self.assertIn("MediaStoreRetryScheduler.schedule(", block)
         self.assertIn("fun schedule(", scheduler)
         self.assertIn('"content_observer_debounce"', block)
@@ -313,7 +313,7 @@ class ScanCoordinatorSourceContractTests(unittest.TestCase):
         self.assertIn("on_catalog_changed(refresh_request_id=refresh_request_id)", hook)
 
     def test_media_observer_has_single_register_unregister_contract(self):
-        source = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreScanner.kt")
+        source = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt")
         self.assertIn("if (changeObserver != null) return", source)
         self.assertIn("registerContentObserver", source)
         self.assertIn("unregisterContentObserver", source)
