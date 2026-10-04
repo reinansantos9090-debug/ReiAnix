@@ -8,8 +8,9 @@ shared Material 3 visual design system without migrating any complete applicatio
 ## Current entry boundary
 
 MainActivity remains the existing FlutterFragmentActivity entry used by the Flet-generated Android
-host. Compose is enabled in the same Android module but is not attached to that launcher in these
-foundation steps. The current Flet UI therefore remains reversible and unchanged.
+host. Compose runs in the same Android module and, from Prompt 03 onward, is attached through the
+existing Compose host boundary as the native App Shell is activated. The legacy Flet UI remains
+available outside the migrated shell until each individual surface is explicitly cut over.
 
 NativePlayerActivity remains a View-based ComponentActivity using Media3. No player UI migration is
 performed here.
