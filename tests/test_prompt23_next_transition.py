@@ -121,6 +121,16 @@ class Prompt23NextTransitionTests(unittest.TestCase):
             "duplicate player commands must exit before transition acceptance",
         )
 
+    def test_handoff_diagnostic_preserves_transition_direction(self):
+        handoff_start = self.main.index('elif diagnostic_event == "PLAYER_HANDOFF_DISPATCHED"')
+        handoff_end = self.main.index('elif diagnostic_event == "PLAYER_ACTIVITY_RESULT"', handoff_start)
+        # MainActivity must forward the actual request direction so stale diagnostics
+        # cannot misclassify Previous as Next.
+        for direction in ('activity_direct', 'activity_result'):
+            block_start = self.main.rfind('publishNativeDiagnostic(', handoff_start, handoff_end)
+        self.assertIn('transitionDirection = playerRequest.transitionDirection', self.main[handoff_start:handoff_end])
+        self.assertIn('payload.put("transitionDirection", transitionDirection.uppercase())', self.main)
+
     def test_stale_handoff_cannot_mutate_player_session_state(self):
         handoff = self.main[
             self.main.index('elif diagnostic_event == "PLAYER_HANDOFF_DISPATCHED"'):
