@@ -49,6 +49,12 @@ import android.view.TextureView
 import android.animation.ValueAnimator
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerControls
+import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerUiState
+import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -90,6 +96,9 @@ class NativePlayerActivity : ComponentActivity() {
     private val traceId = UUID.randomUUID().toString()
     private val activityInstanceId = UUID.randomUUID().toString()
     private lateinit var player: ExoPlayer
+    private lateinit var composePlayerView: ComposeView
+    private val composePlayerUiState = mutableStateOf(ReiAnixNativePlayerUiState())
+    private var composeControlsEnabled = false
     private lateinit var uri: Uri
     private lateinit var playerView: PlayerView
     private lateinit var root: FrameLayout
@@ -2192,10 +2201,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         topBar.addView(lockButton, weightParams(48))
 
         val moreButton = actionButton("⋮", 48) {
-            findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
-            moreVisible = !moreVisible
-            findViewByTag<View>("reiflix_more_panel")?.visibility = if (moreVisible) View.VISIBLE else View.GONE
-            touchControls()
+            toggleMorePanel()
         }
         moreButton.contentDescription = "Mais opções"
         moreButton.tag = "reiflix_more_button"
@@ -2518,7 +2524,169 @@ override fun onCreate(savedInstanceState: Bundle?) {
             topMargin = dp(56)
             rightMargin = dp(8)
         })
+
+        // Compose owns the primary p
+    private fun installComposePlayerControls() {
+        composeControlsEnabled = true
+        composePlayerView = ComposeView(this).apply {
+            tag = "reiflix_compose_player_controls"
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ReiAnixComposeTheme {
+                    ReiAnixNativePlayerControls(
+                        state = composePlayerUiState.value,
+                        onBack = { finishPlayer("back_button") },
+                        onPlayPause = { togglePlayPause() },
+                        onSeekRelative = { deltaMs ->
+                            val seconds = deltaMs / 1000L
+                            val label = if (seconds < 0L) "−" + (-seconds) + "s" else "+" + seconds + "s"
+                            seekBy(deltaMs, label)
+                        },
+                        onSeekTo = { targetMs ->
+                            if (::player.isInitialized && player.duration > 0L) {
+                                val safeTarget = targetMs.coerceIn(0L, player.duration)
+                                player.seekTo(safeTarget)
+                                saveProgress("player_progress", force = true)
+                                showFeedback(formatTime(safeTarget))
+                                touchControls()
+                            }
+                        },
+                        onToggleLock = { setLocked(!locked) },
+                        onResize = {
+                            findViewByTag<TextView>("reiflix_aspect_button")?.let(::showAspectSelection)
+                        },
+                        onSource = { toggleMorePanel() },
+                        onNext = {
+                            if (intent.getBooleanExtra("canNext", false)) {
+                                requestEpisode("player_next_request")
+                            }
+                        },
+                    )
+                }
+            }
+        }
+        controls.addView(
+            composePlayerView,
+            0,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        syncComposePlayerUiState()
+    }
+
+    private fun syncComposePlayerUiState() {
+        if (!composeControlsEnabled) return
+        val currentDuration = if (::player.isInitialized) player.duration else 0L
+        val currentPosition = if (::player.isInitialized) player.currentPosition else 0L
+        val videoSize = if (::player.isInitialized) player.videoSize else null
+        val resolution = videoSize
+            ?.takeIf { it.width > 0 && it.height > 0 }
+            ?.let { it.width.toString() + "×" + it.height }
+        val episodeLabel = Regex("(?i)epis(?:ó|o)dio\\s+([0-9]+(?:[.,][0-9]+)?)")
+            .find(titleValue)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.replace(',', '.')
+            ?.let { raw ->
+                val normalized = raw.toDoubleOrNull()
+                if (normalized != null && normalized % 1.0 == 0.0) {
+                    "Episódio " + normalized.toInt().toString().padStart(2, '0')
+                } else {
+                    "Episódio " + raw
+                }
+            }
+            ?: "Episódio"
+
+        composePlayerUiState.value = ReiAnixNativePlayerUiState(
+            title = titleValue,
+            episodeLabel = listOfNotNull(episodeLabel, resolution).joinToString(" • "),
+            technicalLine = buildPlayerTechnicalLine(),
+            positionMs = currentPosition.coerceAtLeast(0L),
+            durationMs = currentDuration.coerceAtLeast(0L),
+            isPlaying = ::player.isInitialized && player.isPlaying,
+            isBuffering = ::player.isInitialized && player.playbackState == Player.STATE_BUFFERING,
+            ended = ::player.isInitialized && player.playbackState == Player.STATE_ENDED,
+            errorVisible = errorVisible,
+            controlsVisible = controlsVisible,
+            locked = locked,
+            canNext = intent.getBooleanExtra("canNext", false),
+            canPrevious = intent.getBooleanExtra("canPrevious", false),
+            aspectLabel = aspectModeLabel,
+            playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
+            safeTopPx = gestureSafeTop,
+            safeBottomPx = gestureSafeBottom,
+        )
+    }
+
+    private fun buildPlayerTechnicalLine(): String {
+        if (!::player.isInitialized) return ""
+        fun selectedFormat(type: Int): Format? =
+            player.currentTracks.groups
+                .filter { it.type == type && it.isSupported }
+                .flatMap { group ->
+                    (0 until group.length)
+                        .filter { group.isTrackSupported(it) && group.isTrackSelected(it) }
+                        .map { group.getTrackFormat(it) }
+                }
+                .firstOrNull()
+
+        fun codecLabel(mime: String?): String? = when (mime?.lowercase(Locale.ROOT)) {
+            "video/avc" -> "AVC"
+            "video/hevc", "video/h265" -> "HEVC"
+            "video/x-vnd.on2.vp9" -> "VP9"
+            "video/av01" -> "AV1"
+            "audio/mp4a-latm" -> "AAC"
+            "audio/opus" -> "Opus"
+            "audio/vorbis" -> "Vorbis"
+            "audio/ac3" -> "AC-3"
+            "audio/eac3" -> "E-AC-3"
+            "audio/flac" -> "FLAC"
+            else -> null
+        }
+
+        val video = selectedFormat(C.TRACK_TYPE_VIDEO)
+        val audio = selectedFormat(C.TRACK_TYPE_AUDIO)
+        val audioLayout = when (audio?.channelCount ?: 0) {
+            1 -> "Mono"
+            2 -> "Stereo"
+            in 3..9 -> (audio?.channelCount ?: 0).toString() + "ch"
+            else -> null
+        }
+        return listOfNotNull(
+            codecLabel(video?.sampleMimeType),
+            audioLayout,
+            codecLabel(audio?.sampleMimeType),
+        ).joinToString(" • ")
+    }
+
+    private fun toggleMorePanel() {
+        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        moreVisible = !moreVisible
+        val panel = findViewByTag<View>("reiflix_more_panel")
+        panel?.visibility = if (moreVisible) View.VISIBLE else View.GONE
+        if (moreVisible) {
+            panel?.bringToFront()
+        }
         controls.bringToFront()
+        touchControls()
+    }
+
+    private fun hideLegacyPrimaryControls() {
+        if (::topBar.isInitialized) topBar.visibility = View.GONE
+        if (::centerControls.isInitialized) centerControls.visibility = View.GONE
+        if (::bottomBar.isInitialized) bottomBar.visibility = View.GONE
+    }
+
+layback controls. The existing View tree remains
+        // available for secondary menus and legacy keyboard/TV interaction.
+        topBar.visibility = View.GONE
+        centerControls.visibility = View.GONE
+        bottomBar.visibility = View.GONE
+        findViewByTag<View>("reiflix_marker_row")?.visibility = View.GONE
+        installComposePlayerControls()
+
     }
     private fun installBackHandler() {
         onBackPressedDispatcher.addCallback(
@@ -2565,6 +2733,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             max(dp(4), gestureSafeRight),
             0,
         )
+        syncComposePlayerUiState()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -2626,13 +2795,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun updatePlayPauseButton() {
-        if (!::playPauseButton.isInitialized) return
-        playPauseButton.text = when {
-            !::player.isInitialized -> "▶"
-            player.isPlaying -> "❚❚"
-            player.playbackState == Player.STATE_ENDED -> "↻"
-            else -> "▶"
+        if (::playPauseButton.isInitialized) {
+            playPauseButton.text = when {
+                !::player.isInitialized -> "▶"
+                player.isPlaying -> "❚❚"
+                player.playbackState == Player.STATE_ENDED -> "↻"
+                else -> "▶"
+            }
         }
+        syncComposePlayerUiState()
     }
 
     private fun updateTrackButtons() {
@@ -2649,18 +2820,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun updateProgressUi() {
-        if (!::seekBar.isInitialized || !::player.isInitialized) return
+        if (!::player.isInitialized) {
+            syncComposePlayerUiState()
+            return
+        }
         val duration = player.duration
         val position = player.currentPosition.coerceAtLeast(0L)
-        if (duration > 0L) {
+        if (::seekBar.isInitialized && duration > 0L) {
             seekBar.progress = ((position.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
                 .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
-        } else {
+        } else if (::seekBar.isInitialized) {
             seekBar.progress = 0
         }
-        positionLabel.text = formatTime(position)
-        durationLabel.text = formatTime(duration.coerceAtLeast(0L))
+        if (::positionLabel.isInitialized) positionLabel.text = formatTime(position)
+        if (::durationLabel.isInitialized) {
+            durationLabel.text = if (duration > 0L) formatTime(duration) else "--:--"
+        }
         updateMetadataControls(position)
+        syncComposePlayerUiState()
     }
 
     private fun startProgressReporting() {
@@ -2718,9 +2895,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         button.text = if (mode == "Preencher") "Preencher" else "Ajustar"
         button.isSelected = mode == "Preencher"
+        aspectModeLabel = button.text.toString()
         showFeedback(button.text.toString())
         touchControls()
         playerView.requestLayout()
+        syncComposePlayerUiState()
     }
 
     private fun captureTrackFormatSummaries() {
@@ -2749,6 +2928,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             .firstOrNull()
             ?.let { formatSummary(it, true) }
+        syncComposePlayerUiState()
     }
 
     private fun formatSummary(format: Format, selected: Boolean): String {
@@ -3013,9 +3193,8 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
             moreVisible = false
             findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
             controls.visibility = View.INVISIBLE
-            topBar.visibility = View.GONE
-            centerControls.visibility = View.GONE
-            bottomBar.visibility = View.GONE
+            hideLegacyPrimaryControls()
+            syncComposePlayerUiState()
             return
         }
         if (locked) {
@@ -3032,21 +3211,25 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
             } else {
                 handler.removeCallbacks(lockAffordanceHider)
             }
+            syncComposePlayerUiState()
             return
         }
 
         controls.visibility = if (visible || errorVisible) View.VISIBLE else View.INVISIBLE
-        topBar.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
-        bottomBar.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
-        centerControls.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
-        findViewByTag<View>("reiflix_back_button")?.visibility = View.VISIBLE
-        findViewByTag<View>("reiflix_more_button")?.visibility = View.VISIBLE
-        if (visible) {
-            touchControls()
+        if (composeControlsEnabled) {
+            hideLegacyPrimaryControls()
         } else {
-            moreVisible = false
-            findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
+            topBar.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
+            bottomBar.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
+            centerControls.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
         }
+        findViewByTag<View>("reiflix_back_button")?.visibility =
+            if (composeControlsEnabled) View.GONE else View.VISIBLE
+        findViewByTag<View>("reiflix_more_button")?.visibility =
+            if (composeControlsEnabled) View.GONE else View.VISIBLE
+        moreVisible = false
+        findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
+        syncComposePlayerUiState()
     }
 
     private fun touchControls() {
@@ -3059,14 +3242,13 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
         }
         controlsVisible = true
         controls.visibility = View.VISIBLE
-        topBar.visibility = View.VISIBLE
-        bottomBar.visibility = View.VISIBLE
-        centerControls.visibility = View.VISIBLE
+        hideLegacyPrimaryControls()
         lastControlsInteraction = System.currentTimeMillis()
         handler.removeCallbacks(controlsHider)
-        if (::player.isInitialized && player.isPlaying && !errorVisible) {
-            if (autoHideTimeoutMs > 0L) handler.postDelayed(controlsHider, autoHideTimeoutMs)
+        if (::player.isInitialized && player.isPlaying && !errorVisible && autoHideTimeoutMs > 0L) {
+            handler.postDelayed(controlsHider, autoHideTimeoutMs)
         }
+        syncComposePlayerUiState()
     }
 
     private fun scheduleControlsHide() {
@@ -3298,7 +3480,9 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
         findViewByTag<View>("reiflix_error_retry")?.visibility =
             if (::player.isInitialized && resolvedRetryable) View.VISIBLE else View.GONE
         findViewByTag<View>("reiflix_error_panel")?.visibility = View.VISIBLE
+        findViewByTag<View>("reiflix_error_panel")?.bringToFront()
         findViewByTag<View>("reiflix_error_back")?.requestFocus()
+        syncComposePlayerUiState()
         if (::feedback.isInitialized) feedback.visibility = View.GONE
 
         val effectivePayload = diagnosticPayload()
