@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +44,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
+import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
+import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
+import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -146,27 +150,35 @@ fun ReiAnixLibraryScreen(
         )
 
         when (state.status) {
-            ReiAnixLibraryLoadStatus.LOADING -> LibraryLoading(
-                scanInProgress = state.scanInProgress,
-                scanState = state.scanState,
-            )
-            ReiAnixLibraryLoadStatus.ERROR -> LibraryMessageState(
+            ReiAnixLibraryLoadStatus.LOADING -> if (state.scanInProgress) {
+                ReiAnixScannerInProgressState(
+                    scanState = state.scanState,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                ReiAnixLoadingState(
+                    title = "Carregando biblioteca",
+                    message = "Lendo o catálogo local…",
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
                 title = "Erro na biblioteca",
                 message = state.error ?: "Não foi possível carregar a biblioteca local.",
-                actionLabel = "Tentar novamente",
-                onAction = onRefresh,
+                onRetry = onRefresh,
+                modifier = Modifier.fillMaxSize(),
             )
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> LibraryMessageState(
+            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = "Biblioteca local indisponível",
                 message = "A fonte local configurada não está disponível agora.",
-                actionLabel = "Atualizar",
                 onAction = onRefresh,
+                modifier = Modifier.fillMaxSize(),
             )
-            ReiAnixLibraryLoadStatus.EMPTY -> LibraryMessageState(
-                title = "Biblioteca vazia",
+            ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                 message = "Nenhum conteúdo local está disponível.",
                 actionLabel = "Atualizar",
                 onAction = onRefresh,
+                modifier = Modifier.fillMaxSize(),
             )
             ReiAnixLibraryLoadStatus.READY -> LibraryReadyContent(
                 state = state,
@@ -328,14 +340,25 @@ private fun LibraryReadyContent(
         }
 
         if (state.scanInProgress) {
-            LibraryScanBanner(
+            ReiAnixScannerInProgressState(
                 scanState = state.scanState,
+                compact = true,
                 modifier = Modifier.padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
             )
         }
 
         if (visibleAnimes.isEmpty()) {
-            LibraryFilteredEmptyState(filters = filters, onClearFilters = onClearFilters)
+            ReiAnixEmptyLibraryState(
+                title = if (filters.hasAnyFilter) "Nenhum resultado" else "Nenhum conteúdo",
+                message = if (filters.hasAnyFilter) {
+                    "Nenhum título corresponde aos filtros atuais."
+                } else {
+                    "A biblioteca local ainda não possui conteúdo visível."
+                },
+                actionLabel = if (filters.hasAnyFilter) "Limpar filtros" else null,
+                onAction = if (filters.hasAnyFilter) onClearFilters else null,
+                modifier = Modifier.fillMaxWidth(),
+            )
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 140.dp),
