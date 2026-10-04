@@ -96,7 +96,9 @@ class NativePlayerActivity : ComponentActivity() {
     private val traceId = UUID.randomUUID().toString()
     private val activityInstanceId = UUID.randomUUID().toString()
     private lateinit var player: ExoPlayer
-    private lateinit var composePlayerView: ComposeView
+    private lateinit var composeTopView: ComposeView
+    private lateinit var composeCenterView: ComposeView
+    private lateinit var composeBottomView: ComposeView
     private val composePlayerUiState = mutableStateOf(ReiAnixNativePlayerUiState())
     private var composeControlsEnabled = false
     private lateinit var uri: Uri
@@ -2528,20 +2530,43 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // Compose owns the primary p
     private fun installComposePlayerControls() {
         composeControlsEnabled = true
-        composePlayerView = ComposeView(this).apply {
-            tag = "reiflix_compose_player_controls"
+
+        composeTopView = ComposeView(this).apply {
+            tag = "reiflix_compose_player_top"
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 ReiAnixComposeTheme {
-                    ReiAnixNativePlayerControls(
+                    ReiAnixNativePlayerTopControls(
                         state = composePlayerUiState.value,
                         onBack = { finishPlayer("back_button") },
+                    )
+                }
+            }
+        }
+        composeCenterView = ComposeView(this).apply {
+            tag = "reiflix_compose_player_center"
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ReiAnixComposeTheme {
+                    ReiAnixNativePlayerCenterControls(
+                        state = composePlayerUiState.value,
                         onPlayPause = { togglePlayPause() },
                         onSeekRelative = { deltaMs ->
                             val seconds = deltaMs / 1000L
                             val label = if (seconds < 0L) "−" + (-seconds) + "s" else "+" + seconds + "s"
                             seekBy(deltaMs, label)
                         },
+                    )
+                }
+            }
+        }
+        composeBottomView = ComposeView(this).apply {
+            tag = "reiflix_compose_player_bottom"
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ReiAnixComposeTheme {
+                    ReiAnixNativePlayerBottomControls(
+                        state = composePlayerUiState.value,
                         onSeekTo = { targetMs ->
                             if (::player.isInitialized && player.duration > 0L) {
                                 val safeTarget = targetMs.coerceIn(0L, player.duration)
@@ -2565,15 +2590,62 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
             }
         }
+
         controls.addView(
-            composePlayerView,
-            0,
+            composeTopView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(132),
+                Gravity.TOP,
             ),
         )
+        controls.addView(
+            composeCenterView,
+            FrameLayout.LayoutParams(
+                dp(240),
+                dp(110),
+                Gravity.CENTER,
+            ),
+        )
+        controls.addView(
+            composeBottomView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(154),
+                Gravity.BOTTOM,
+            ),
+        )
+        updateComposeOverlayBounds()
         syncComposePlayerUiState()
+    }
+
+    private fun updateComposeOverlayBounds() {
+        if (!composeControlsEnabled) return
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val topHeight = dp(if (landscape) 108 else 132)
+        val centerHeight = dp(if (landscape) 100 else 110)
+        val bottomHeight = dp(if (landscape) 128 else 154)
+        if (::composeTopView.isInitialized) {
+            composeTopView.layoutParams = (composeTopView.layoutParams as FrameLayout.LayoutParams).apply {
+                width = FrameLayout.LayoutParams.MATCH_PARENT
+                height = topHeight
+                gravity = Gravity.TOP
+            }
+        }
+        if (::composeCenterView.isInitialized) {
+            composeCenterView.layoutParams = (composeCenterView.layoutParams as FrameLayout.LayoutParams).apply {
+                width = dp(240)
+                height = centerHeight
+                gravity = Gravity.CENTER
+            }
+        }
+        if (::composeBottomView.isInitialized) {
+            composeBottomView.layoutParams = (composeBottomView.layoutParams as FrameLayout.LayoutParams).apply {
+                width = FrameLayout.LayoutParams.MATCH_PARENT
+                height = bottomHeight
+                gravity = Gravity.BOTTOM
+            }
+        }
     }
 
     private fun syncComposePlayerUiState() {
@@ -2618,76 +2690,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             safeTopPx = gestureSafeTop,
             safeBottomPx = gestureSafeBottom,
         )
+        val overlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
+        if (::composeTopView.isInitialized) composeTopView.visibility = if (overlaysVisible) View.VISIBLE else View.INVISIBLE
+        if (::composeCenterView.isInitialized) composeCenterView.visibility = if (overlaysVisible) View.VISIBLE else View.INVISIBLE
+        if (::composeBottomView.isInitialized) composeBottomView.visibility = if (overlaysVisible) View.VISIBLE else View.INVISIBLE
     }
 
-    private fun buildPlayerTechnicalLine(): String {
-        if (!::player.isInitialized) return ""
-        fun selectedFormat(type: Int): Format? =
-            player.currentTracks.groups
-                .filter { it.type == type && it.isSupported }
-                .flatMap { group ->
-                    (0 until group.length)
-                        .filter { group.isTrackSupported(it) && group.isTrackSelected(it) }
-                        .map { group.getTrackFormat(it) }
-                }
-                .firstOrNull()
-
-        fun codecLabel(mime: String?): String? = when (mime?.lowercase(Locale.ROOT)) {
-            "video/avc" -> "AVC"
-            "video/hevc", "video/h265" -> "HEVC"
-            "video/x-vnd.on2.vp9" -> "VP9"
-            "video/av01" -> "AV1"
-            "audio/mp4a-latm" -> "AAC"
-            "audio/opus" -> "Opus"
-            "audio/vorbis" -> "Vorbis"
-            "audio/ac3" -> "AC-3"
-            "audio/eac3" -> "E-AC-3"
-            "audio/flac" -> "FLAC"
-            else -> null
-        }
-
-        val video = selectedFormat(C.TRACK_TYPE_VIDEO)
-        val audio = selectedFormat(C.TRACK_TYPE_AUDIO)
-        val audioLayout = when (audio?.channelCount ?: 0) {
-            1 -> "Mono"
-            2 -> "Stereo"
-            in 3..9 -> (audio?.channelCount ?: 0).toString() + "ch"
-            else -> null
-        }
-        return listOfNotNull(
-            codecLabel(video?.sampleMimeType),
-            audioLayout,
-            codecLabel(audio?.sampleMimeType),
-        ).joinToString(" • ")
-    }
-
-    private fun toggleMorePanel() {
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
-        moreVisible = !moreVisible
-        val panel = findViewByTag<View>("reiflix_more_panel")
-        panel?.visibility = if (moreVisible) View.VISIBLE else View.GONE
-        if (moreVisible) {
-            panel?.bringToFront()
-        }
-        controls.bringToFront()
-        touchControls()
-    }
-
-    private fun hideLegacyPrimaryControls() {
-        if (::topBar.isInitialized) topBar.visibility = View.GONE
-        if (::centerControls.isInitialized) centerControls.visibility = View.GONE
-        if (::bottomBar.isInitialized) bottomBar.visibility = View.GONE
-    }
-
-layback controls. The existing View tree remains
-        // available for secondary menus and legacy keyboard/TV interaction.
-        topBar.visibility = View.GONE
-        centerControls.visibility = View.GONE
-        bottomBar.visibility = View.GONE
-        findViewByTag<View>("reiflix_marker_row")?.visibility = View.GONE
-        installComposePlayerControls()
-
-    }
     private fun installBackHandler() {
         onBackPressedDispatcher.addCallback(
             this,
@@ -4244,6 +4252,7 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        updateComposeOverlayBounds()
         logPlayer("onConfigurationChanged orientation=" + newConfig.orientation)
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
         cancelFirstFrameDiagnostics("configuration_change")
