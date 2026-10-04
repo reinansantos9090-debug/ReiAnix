@@ -1,47 +1,55 @@
 package com.reiflix.reiflix_local.ui.host
 
-import com.reiflix.reiflix_local.MainActivity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navOptions
+import com.reiflix.reiflix_local.MainActivity
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
+import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
+import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
+import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
+import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
+import org.json.JSONObject
 
 /**
- * Reversible presentation bridge for the real Library route.
+ * Single native Compose root used during the incremental Flet -> Compose cutover.
  *
- * Flutter/Flet remains the application's primary host. This view is attached
- * only while the existing logical navigation route is "library"; all data and
- * commands still flow through the established Python/SQLite projection.
- *
- * Navigation inside this Compose surface is real Navigation Compose:
- * Library -> Details, using the canonical anime ID in the route.
+ * The legacy class name is retained because MainActivity, packaging checks and
+ * the existing bridge already depend on it. Runtime-wise this is now the app
+ * shell host rather than a Library-only surface.
  */
 class ReiAnixComposeLibraryHost(
     private val activity: MainActivity,
 ) {
     private var composeView: ComposeView? = null
+
     @Volatile
     private var composeNavController: NavHostController? = null
 
     val isVisible: Boolean
         get() = composeView?.visibility == View.VISIBLE
 
-    fun show() {
-        composeNavController?.let { controller ->
-            if (controller.currentDestination?.route != ReiAnixRoutes.LIBRARY) {
-                controller.popBackStack(ReiAnixRoutes.LIBRARY, false)
-            }
-        }
+    /**
+     * Shows the shell, using [startDestination] only when the Compose root is
+     * first attached. Subsequent calls navigate inside the existing back stack.
+     */
+    fun show(startDestination: String = ReiAnixRoutes.LIBRARY) {
         val view = ensureAttached()
-        view.visibility = View.VISIBLE
         if (view.tag != CONTENT_TAG) {
+            view.tag = CONTENT_TAG
             view.setContent {
                 ReiAnixComposeRoot {
                     val navController = rememberNavController()
@@ -54,15 +62,80 @@ class ReiAnixComposeLibraryHost(
                         }
                     }
 
+                    val libraryViewModel = androidx.compose.runtime.remember {
+                        ViewModelProvider(
+                            activity,
+                            ReiAnixLibraryViewModelFactory(activity.applicationContext),
+                        ).get(ReiAnixLibraryViewModel::class.java)
+                    }
+                    val settingsViewModel = androidx.compose.runtime.remember {
+                        ViewModelProvider(
+                            activity,
+                            ReiAnixSettingsViewModelFactory(activity.applicationContext),
+                        ).get(ReiAnixSettingsViewModel::class.java)
+                    }
+
                     ReiAnixNavigationHost(
                         navController = navController,
-                        startDestination = ReiAnixRoutes.LIBRARY,
-                        showBottomNavigation = false,
+                        homeViewModel = libraryViewModel,
+                        myList = {
+                            com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListRoute(
+                                navController = navController,
+                                viewModel = libraryViewModel,
+                            )
+                        },
+                        settings = {
+                            ReiAnixSettingsRoute(
+                                viewModel = settingsViewModel,
+                                onBack = {
+                                    if (!navController.popBackStack()) {
+                                        hideAndPublishSettingsBack()
+                                    }
+                                },
+                                onOpenCategory = { label ->
+                                    if (label == "Armazenamento") {
+                                        navController.navigate(
+                                            ReiAnixRoutes.STORAGE,
+                                            navOptions {
+                                                launchSingleTop = true
+                                            },
+                                        )
+                                    } else {
+                                        hide()
+                                        publishSettingsNavigation("category", label)
+                                    }
+                                },
+                            )
+                        },
+                        storage = {
+                            ReiAnixStorageRoute(
+                                viewModel = libraryViewModel,
+                                onBack = {
+                                    if (!navController.popBackStack()) {
+                                        hide()
+                                    }
+                                },
+                                onRequestMediaAccess = {
+                                    activity.requestNativeStorageAction("request_media_access")
+                                },
+                                onOpenBroadSettings = {
+                                    activity.requestNativeStorageAction("open_broad_storage_settings")
+                                },
+                                onCheckAccess = {
+                                    activity.requestNativeStorageAction("check_storage_access")
+                                },
+                            )
+                        },
+                        startDestination = startDestination,
+                        showBottomNavigation = true,
                     )
                 }
             }
-            view.tag = CONTENT_TAG
+        } else {
+            navigateToRequestedDestination(startDestination)
         }
+
+        view.visibility = View.VISIBLE
     }
 
     fun hide() {
@@ -70,14 +143,23 @@ class ReiAnixComposeLibraryHost(
     }
 
     /**
-     * Handles Back inside the embedded Compose navigation stack.
-     *
-     * Returns true only when a nested Compose destination was popped. The
-     * caller keeps ownership of the root Library -> Flet back transition.
+     * Back is consumed by the Compose stack first. At a root destination the
+     * transitional shell is dismissed and the existing Flet navigation receives
+     * the legacy back contract.
      */
     fun handleBack(): Boolean {
         val controller = composeNavController ?: return false
-        return controller.previousBackStackEntry != null && controller.popBackStack()
+        if (controller.previousBackStackEntry != null) {
+            return controller.popBackStack()
+        }
+
+        val route = controller.currentBackStackEntry?.destination?.route
+        when (route) {
+            ReiAnixRoutes.SETTINGS -> hideAndPublishSettingsBack()
+            ReiAnixRoutes.STORAGE -> hide()
+            else -> hideAndPublishLegacyBack()
+        }
+        return true
     }
 
     fun dispose() {
@@ -85,7 +167,65 @@ class ReiAnixComposeLibraryHost(
             (view.parent as? ViewGroup)?.removeView(view)
             view.disposeComposition()
         }
+        composeNavController = null
         composeView = null
+    }
+
+    private fun navigateToRequestedDestination(route: String) {
+        val controller = composeNavController ?: return
+        when (route) {
+            ReiAnixRoutes.HOME,
+            ReiAnixRoutes.LIBRARY,
+            ReiAnixRoutes.MY_LIST,
+            ReiAnixRoutes.SEARCH,
+            -> controller.navigateToTopLevel(route)
+
+            ReiAnixRoutes.SETTINGS,
+            ReiAnixRoutes.STORAGE,
+            -> controller.navigate(
+                route,
+                navOptions {
+                    launchSingleTop = true
+                },
+            )
+
+            else -> {
+                android.util.Log.w(
+                    TAG,
+                    "Ignoring unsupported Compose shell destination=" + route,
+                )
+            }
+        }
+    }
+
+    private fun hideAndPublishLegacyBack() {
+        hide()
+        NativeMailbox.writeBestEffort(
+            activity,
+            JSONObject()
+                .put("type", "compose_library_navigation")
+                .put("payload", JSONObject().put("destination", "back")),
+        )
+    }
+
+    private fun hideAndPublishSettingsBack() {
+        hide()
+        publishSettingsNavigation("back", null)
+    }
+
+    private fun publishSettingsNavigation(
+        destination: String,
+        category: String? = null,
+    ) {
+        val payload = JSONObject()
+            .put("destination", destination)
+            .put("category", category ?: "")
+        NativeMailbox.writeBestEffort(
+            activity,
+            JSONObject()
+                .put("type", "compose_settings_navigation")
+                .put("payload", payload),
+        )
     }
 
     private fun ensureAttached(): ComposeView {
@@ -114,6 +254,7 @@ class ReiAnixComposeLibraryHost(
     }
 
     private companion object {
-        const val CONTENT_TAG = "reianix_compose_library_content"
+        const val CONTENT_TAG = "reianix_compose_app_shell_content"
+        const val TAG = "[REIANIX][COMPOSE_SHELL]"
     }
 }
