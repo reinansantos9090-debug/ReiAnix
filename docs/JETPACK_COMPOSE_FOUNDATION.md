@@ -47,9 +47,11 @@ rather than embedding scan, persistence, playback, or storage business rules ins
 
 ## Navigation boundary
 
-Prompt 03 establishes the first shared Navigation Compose shell. The canonical top-level destinations are
-Home, Biblioteca, Minha Lista and Buscar. Settings, Storage, Details and Player are secondary routes and
-are intentionally excluded from the bottom navigation. Details/Player use stable encoded IDs plus origin
+Prompt 03 establishes the first shared Navigation Compose shell. The canonical bottom-navigation
+destinations are Home, Biblioteca, Buscar and Ajustes, matching the visual reference screens. Minha Lista
+remains a secondary route and is not a bottom-navigation item. Details keeps the bottom navigation visible
+and selects the originating primary tab when applicable; Player is a full-screen secondary surface without
+the bottom navigation. Details/Player use stable encoded IDs plus origin
 metadata, while Navigation Compose owns tab save/restore semantics.
 
 The existing Flet/Android bridges remain authoritative for capabilities not yet migrated. The native Compose
