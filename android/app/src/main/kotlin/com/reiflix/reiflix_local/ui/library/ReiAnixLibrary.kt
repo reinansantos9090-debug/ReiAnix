@@ -540,6 +540,7 @@ private fun LibraryStateBadge(
             ),
         )
     }
+}
 
 @Composable
 private fun LibraryScanBanner(
