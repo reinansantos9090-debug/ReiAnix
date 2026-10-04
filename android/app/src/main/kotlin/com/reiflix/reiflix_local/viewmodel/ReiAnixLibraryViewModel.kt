@@ -40,11 +40,12 @@ class ReiAnixLibraryViewModel(context: Context) :
         .map { state ->
             ReiAnixHomeLibraryUiState.from(state)
         }
+        .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
             SharingStarted.Eagerly,
-            ReiAnixHomeLibraryUiState.from(uiState.value),
+            ReiAnixHomeLibraryUiState(),
         )
 
     private val _libraryFilters = MutableStateFlow(ReiAnixLibraryFilters())
@@ -58,14 +59,12 @@ class ReiAnixLibraryViewModel(context: Context) :
                 .distinctBy(ReiAnixGenreUiModel::stableKey)
                 .sortedBy { it.name.lowercase() }
         }
+        .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
             SharingStarted.Eagerly,
-            uiState.value.animes
-                .flatMap { anime -> anime.genres }
-                .distinctBy(ReiAnixGenreUiModel::stableKey)
-                .sortedBy { it.name.lowercase() },
+            emptyList(),
         )
 
     val filteredLibraryAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
@@ -74,25 +73,23 @@ class ReiAnixLibraryViewModel(context: Context) :
             libraryFilters,
         ) { animes, filters ->
             ReiAnixLibraryFilterEngine.filter(animes, filters)
-        }.stateIn(
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
             viewModelScope,
             SharingStarted.Eagerly,
-            ReiAnixLibraryFilterEngine.filter(uiState.value.animes, libraryFilters.value),
+            emptyList(),
         )
 
     /**
      * Canonical Details projection. Episode state is included so progress and
      * watched changes are reflected by the same real-library snapshot.
      */
-    fun detailsState(animeId: Long): StateFlow<ReiAnixDetailsUiState> =
+    fun detailsState(animeId: Long): kotlinx.coroutines.flow.Flow<ReiAnixDetailsUiState> =
         uiState
             .map { state -> ReiAnixDetailsUiStateProjection.from(state, animeId) }
+            .flowOn(Dispatchers.Default)
             .distinctUntilChanged()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5_000),
-                ReiAnixDetailsUiStateProjection.from(uiState.value, animeId),
-            )
 
     /** The canonical Continue Watching projection; this is the only Home subtree that observes it. */
     val continueWatching: StateFlow<List<ReiAnixContinueWatchingUiModel>> = uiState
