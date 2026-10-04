@@ -38,6 +38,10 @@ class Prompt27ComposeInsetsContractTests(unittest.TestCase):
         self.assertIn(".weight(1f)", library)
         self.assertIn("private fun ColumnScope.ReiAnixDetailsReady(", details)
         self.assertIn(".weight(1f)", details)
+        storage = self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixStorageScreen.kt"
+        )
+        self.assertIn(".weight(1f)", storage)
 
     def test_library_and_search_do_not_guess_a_56dp_system_navigation_height(self):
         library = self.read(
