@@ -53,6 +53,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val safPickerWatchdogHandler = Handler(Looper.getMainLooper())
     private var activityResumed = false
     private var googleSignInJob: Job? = null
+    private var googleSignOutJob: Job? = null
     private var pendingMediaRequestId: String? = null
     private var pendingBroadRequestId: String? = null
     private var pendingSafRequestId: String? = null
@@ -974,6 +975,8 @@ class MainActivity : FlutterFragmentActivity() {
         if (::composeLibraryHost.isInitialized) composeLibraryHost.dispose()
         googleSignInJob?.cancel()
         googleSignInJob = null
+        googleSignOutJob?.cancel()
+        googleSignOutJob = null
         logLifecycle("onDestroy")
         if (isFinishing) NativeScanController.cancelAll()
         unregisterStorageReceiver()
@@ -1423,6 +1426,11 @@ class MainActivity : FlutterFragmentActivity() {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
                     signInWithGoogle(intent.data?.getQueryParameter("server_client_id"), requestId)
+                }
+                "google_sign_out" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    signOutWithGoogle(requestId)
                 }
                 "cancel_player_transition" -> {
                     val originRequestId = data.getQueryParameter("origin_request_id")?.trim().orEmpty()
@@ -2798,12 +2806,57 @@ class MainActivity : FlutterFragmentActivity() {
         applyApplicationSystemUi()
         ViewCompat.requestApplyInsets(window.decorView)
     }
+    private fun signOutWithGoogle(requestId: String? = null) {
+        googleSignInJob?.cancel()
+        googleSignInJob = null
+        googleSignOutJob?.cancel()
+        val job = CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val cleared = GoogleIdentity.signOut(this@MainActivity, requestId)
+                if (cleared) {
+                    nativeRequestState.markOperationState(
+                        requestId,
+                        "google_sign_out",
+                        NativeRequestState.OperationState.COMPLETED,
+                    )
+                    publishNativeDiagnostic(
+                        "GOOGLE_SIGN_OUT_COMPLETED",
+                        requestId,
+                        "google_sign_out",
+                        NativeRequestState.OperationState.COMPLETED.name,
+                    )
+                } else {
+                    nativeRequestState.markOperationState(
+                        requestId,
+                        "google_sign_out",
+                        NativeRequestState.OperationState.FAILED,
+                    )
+                    publishNativeDiagnostic(
+                        "GOOGLE_SIGN_OUT_FAILED",
+                        requestId,
+                        "google_sign_out",
+                        NativeRequestState.OperationState.FAILED.name,
+                        error = "CREDENTIAL_STATE_CLEAR_FAILED",
+                    )
+                }
+            } finally {
+                if (googleSignOutJob === coroutineContext[Job]) {
+                    googleSignOutJob = null
+                }
+            }
+        }
+        googleSignOutJob = job
+    }
+
     private fun signInWithGoogle(serverClientId: String?, requestId: String? = null) {
         if (serverClientId.isNullOrBlank()) {
             NativeMailbox.write(this, JSONObject().put("type", "google_error").put("requestId", requestId ?: "").put("message", "Configure o Web Client ID do Google."))
             return
         }
         googleSignInJob?.cancel()
+        googleSignInJob = null
+        googleSignOutJob?.cancel()
+        googleSignOutJob = null
         val job = CoroutineScope(Dispatchers.Main).launch {
             try {
                 GoogleIdentity.signIn(this@MainActivity, serverClientId, requestId)
