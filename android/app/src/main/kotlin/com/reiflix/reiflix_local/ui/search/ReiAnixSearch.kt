@@ -1,13 +1,11 @@
 package com.reiflix.reiflix_local.ui.search
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,35 +17,28 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
@@ -122,11 +113,8 @@ fun ReiAnixSearchScreen(
                 }
             }
 
-            Text(
-                text = "Buscar",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
+            com.reiflix.reiflix_local.ui.ReiAnixScreenTitle(
+                title = "Buscar",
                 modifier = Modifier.weight(1f),
             )
 
@@ -143,14 +131,12 @@ fun ReiAnixSearchScreen(
             }
         }
 
-        OutlinedTextField(
+        com.reiflix.reiflix_local.ui.ReiAnixSearchField(
             value = query,
             onValueChange = onQueryChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
-            singleLine = true,
-            label = { Text("Pesquisar na biblioteca") },
+            modifier = Modifier.padding(
+                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            ),
             placeholder = { Text("Título, gênero, ano ou episódio") },
             leadingIcon = {
                 Icon(
@@ -173,7 +159,6 @@ fun ReiAnixSearchScreen(
                     }
                 }
             },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         )
 
         Box(
