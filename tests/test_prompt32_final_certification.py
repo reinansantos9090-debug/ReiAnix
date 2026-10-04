@@ -7,10 +7,12 @@ def read(path: str) -> str:
 
 def test_prompt32_native_compose_surface_contract_is_present():
     navigation = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
+    shell = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/shell/ReiAnixAppShell.kt")
     theme = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt")
     assert "NavHost(" in navigation
-    assert "Scaffold(" in navigation
-    assert "NavigationBar(" in navigation
+    assert "ReiAnixAppShell" in navigation
+    assert "Scaffold(" in shell
+    assert "NavigationBar(" in shell
     for route in ("HOME", "LIBRARY", "SEARCH", "SETTINGS", "DETAILS", "PLAYER"):
         assert f"ReiAnixRoutes.{route}" in navigation
     assert "ReiAnixComposeTheme" in theme
