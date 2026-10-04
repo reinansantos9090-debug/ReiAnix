@@ -122,14 +122,12 @@ class Prompt23NextTransitionTests(unittest.TestCase):
         )
 
     def test_handoff_diagnostic_preserves_transition_direction(self):
-        handoff_start = self.main.index('elif diagnostic_event == "PLAYER_HANDOFF_DISPATCHED"')
-        handoff_end = self.main.index('elif diagnostic_event == "PLAYER_ACTIVITY_RESULT"', handoff_start)
-        # MainActivity must forward the actual request direction so stale diagnostics
-        # cannot misclassify Previous as Next.
-        for direction in ('activity_direct', 'activity_result'):
-            block_start = self.main.rfind('publishNativeDiagnostic(', handoff_start, handoff_end)
-        self.assertIn('transitionDirection = playerRequest.transitionDirection', self.main[handoff_start:handoff_end])
-        self.assertIn('payload.put("transitionDirection", transitionDirection.uppercase())', self.main)
+        open_player = self.main_activity[
+            self.main_activity.index("private fun openPlayer"):
+            self.main_activity.index("private fun clearPendingPlay")
+        ]
+        self.assertIn("transitionDirection = playerRequest.transitionDirection", open_player)
+        self.assertIn('payload.put("transitionDirection", transitionDirection.uppercase())', self.main_activity)
 
     def test_stale_handoff_cannot_mutate_player_session_state(self):
         handoff = self.main[
@@ -187,7 +185,8 @@ class Prompt23NextTransitionTests(unittest.TestCase):
             self.player.index("override fun onCreate(savedInstanceState"):
             self.player.index("val traceEpisodeId")
         ]
-        stale = create[create.index("if (originRequestId.isNotBlank() && !isEpisodeSuccessor)"):]
+        stale = create[
+            create.index("if (originRequestId.isNotBlank() && !isEpisodeSuccessor && !recreatedPlayer)"):]
         self.assertIn('NEXT_REQUEST_STALE', stale)
         self.assertIn('PLAYER_NEXT_STALE_REJECTED', stale)
         self.assertIn('origin_on_new_activity', stale)
