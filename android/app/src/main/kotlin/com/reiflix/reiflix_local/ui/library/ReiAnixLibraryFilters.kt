@@ -137,8 +137,18 @@ internal object ReiAnixLibraryFilterEngine {
             ReiAnixLibrarySort.TITLE_DESC -> compareByDescending<SortMetrics> { it.anime.title.trim().lowercase() }
         }
 
-        return decorated
-            .sortedWith(comparator.thenBy { it.anime.title.trim().lowercase() }.thenByDescending { it.anime.id })
-            .map(SortMetrics::anime)
+        val ordered = when (ReiAnixLibrarySort.fromLabel(sortLabel)) {
+            ReiAnixLibrarySort.TITLE_ASC ->
+                decorated.sortedWith(comparator.thenBy { it.anime.id })
+            ReiAnixLibrarySort.TITLE_DESC ->
+                decorated.sortedWith(comparator.thenByDescending { it.anime.id })
+            else ->
+                decorated.sortedWith(
+                    comparator
+                        .thenBy { it.anime.title.trim().lowercase() }
+                        .thenByDescending { it.anime.id },
+                )
+        }
+        return ordered.map(SortMetrics::anime)
     }
 }
