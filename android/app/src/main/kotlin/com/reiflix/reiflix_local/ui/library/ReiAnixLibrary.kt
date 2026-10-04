@@ -247,7 +247,8 @@ private fun LibraryHeader(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                 top = ReiAnixTokens.Dimensions.screenTopPadding,
                 bottom = ReiAnixTokens.Spacing.md,
             ),
