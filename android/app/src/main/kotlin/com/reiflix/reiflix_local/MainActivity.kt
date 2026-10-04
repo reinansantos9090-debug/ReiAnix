@@ -1156,6 +1156,7 @@ class MainActivity : FlutterFragmentActivity() {
         commandCreatedAt: Long? = null,
         parameterNames: String? = null,
         playerSessionId: String? = null,
+        transitionDirection: String? = null,
     ) {
         val payload = JSONObject()
             .put("event", event)
@@ -1169,6 +1170,7 @@ class MainActivity : FlutterFragmentActivity() {
         if (commandCreatedAt != null) payload.put("commandCreatedAt", commandCreatedAt)
         if (parameterNames != null) payload.put("parameterNames", parameterNames)
         if (!playerSessionId.isNullOrBlank()) payload.put("playerSessionId", playerSessionId)
+        if (!transitionDirection.isNullOrBlank()) payload.put("transitionDirection", transitionDirection.uppercase())
         NativeMailbox.write(
             this,
             JSONObject().put("type", "diagnostic").put("requestId", requestId ?: "").put("payload", payload),
@@ -2645,6 +2647,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "play",
                     NativeRequestState.OperationState.COMPLETED.name,
                     result = "activity_direct",
+                    transitionDirection = playerRequest.transitionDirection,
                 )
                 Log.i(
                     tag,
@@ -2662,6 +2665,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "play",
                     NativeRequestState.OperationState.COMPLETED.name,
                     result = "activity_result",
+                    transitionDirection = playerRequest.transitionDirection,
                 )
                 publishPlayerSessionDiagnostic(requestId, "PLAYER_SESSION_CREATED")
                 Log.i(
