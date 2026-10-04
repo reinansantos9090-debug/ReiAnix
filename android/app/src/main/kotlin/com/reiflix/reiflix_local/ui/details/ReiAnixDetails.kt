@@ -360,7 +360,6 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     text = season.title,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(
                         start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                         end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
@@ -389,7 +388,6 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     text = "Especiais",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(
                         start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                         end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
