@@ -47,9 +47,9 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 fun ReiAnixStorageRoute(
     viewModel: ReiAnixLibraryViewModel,
     onBack: () -> Unit,
-    onRequestMediaAccess: () -> Boolean,
-    onOpenBroadSettings: () -> Boolean,
-    onCheckAccess: () -> Boolean,
+    onRequestMediaAccess: () -> Unit,
+    onOpenBroadSettings: () -> Unit,
+    onCheckAccess: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ReiAnixStorageScreen(
