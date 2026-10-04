@@ -29,8 +29,27 @@ class ReiAnixLibraryViewModelContractTest {
         val home = ReiAnixLibraryViewModel.projectHomeState(state)
         val details = ReiAnixLibraryViewModel.projectDetailsState(state, 7L)
 
-        assertTrue(home.animes.single().seasons.single().episodes.isEmpty())
+        assertEquals(1, home.animes.single().availableContentCount)
         assertEquals(72L, details.anime?.seasons?.single()?.episodes?.single()?.id)
         assertEquals(18.0, details.anime?.seasons?.single()?.episodes?.single()?.progressSeconds ?: -1.0, 0.0)
+
+        val advanced = state.copy(
+            animes = state.animes.map { anime ->
+                anime.copy(
+                    seasons = anime.seasons.map { season ->
+                        season.copy(
+                            episodes = season.episodes.map { episode ->
+                                episode.copy(progressSeconds = 42.0)
+                            },
+                        )
+                    },
+                )
+            },
+            continueWatching = state.continueWatching.map { it.copy(progressSeconds = 42.0) },
+        )
+        assertEquals(
+            home,
+            ReiAnixLibraryViewModel.projectHomeState(advanced),
+        )
     }
 }
