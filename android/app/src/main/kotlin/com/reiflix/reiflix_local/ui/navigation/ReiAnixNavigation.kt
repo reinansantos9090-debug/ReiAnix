@@ -6,13 +6,13 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import Icons.Filled.Home
-import Icons.Filled.List
-import Icons.Filled.Search
-import Icons.Filled.Settings
-import Icons.Outlined.OutlinedHome as OutlinedHome
-import Icons.Outlined.OutlinedList as OutlinedList
-import Icons.Outlined.OutlinedSearch as OutlinedSearch
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Home as OutlinedHome
+import androidx.compose.material.icons.outlined.List as OutlinedList
+import androidx.compose.material.icons.outlined.Search as OutlinedSearch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavGraph.Companion.findStartDestination
