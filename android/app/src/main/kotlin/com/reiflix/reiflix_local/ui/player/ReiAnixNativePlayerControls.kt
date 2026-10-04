@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -441,7 +442,7 @@ fun ReiAnixNativePlayerBottomControls(
 }
 
 @Composable
-private fun PlayerBottomAction(
+private fun RowScope.PlayerBottomAction(
     glyph: String? = null,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     label: String,
