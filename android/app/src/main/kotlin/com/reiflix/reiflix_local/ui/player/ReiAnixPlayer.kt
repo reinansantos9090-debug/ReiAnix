@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -178,7 +177,7 @@ private fun PlayerHandoffMessage(
                 .semantics {
                     contentDescription = "ReiAnixPlayerHandoff"
                 }
-                .padding(24.dp),
+                .padding(ReiAnixTokens.Spacing.xxl),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -191,7 +190,7 @@ private fun PlayerHandoffMessage(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
+                .padding(top = ReiAnixTokens.Spacing.sm),
             )
         }
     }
