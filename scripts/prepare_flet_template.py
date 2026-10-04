@@ -469,6 +469,7 @@ def main() -> int:
         source / "src/main/kotlin/com/reiflix/reiflix_local/player/PlayerLocalMetadataStore.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/player/PlayerMediaPolicy.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt",
+        source / "src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixNativePlayerControls.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt",
