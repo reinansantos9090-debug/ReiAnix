@@ -797,7 +797,7 @@ fun ReiAnixEpisodeCard(
                 ReiAnixBadge(
                     text = episode.playbackActionLabel,
                     tone = when {
-                        !playable -> ReiAnixBadgeTone.Error
+                        !episode.isPlayable -> ReiAnixBadgeTone.Error
                         episode.isCompleted -> ReiAnixBadgeTone.Success
                         episode.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS -> ReiAnixBadgeTone.Primary
                         else -> ReiAnixBadgeTone.Neutral
