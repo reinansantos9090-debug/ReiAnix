@@ -40,7 +40,8 @@ class Prompt26ComposePerformanceTests(unittest.TestCase):
         self.assertNotIn(".stateIn(", block)
         self.assertIn("collectAsStateWithLifecycle(", details)
         self.assertIn("initialValue = initialState", details)
-        self.assertIn("ReiAnixDetailsUiStateProjection.from(viewModel.uiState.value, canonicalId)", details)
+        self.assertIn("initialValue = ReiAnixDetailsUiState()", details)
+        self.assertNotIn("initialValue = initialState", details)
 
     def test_home_lazy_rows_use_stable_identity_and_content_types(self):
         home = self.read(HOME)
