@@ -25,6 +25,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -250,6 +252,44 @@ fun ReiAnixCompactButton(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+@Composable
+fun ReiAnixSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: @Composable (() -> Unit)? = null,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = true,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = ReiAnixTokens.Dimensions.searchFieldHeight),
+        singleLine = singleLine,
+        placeholder = placeholder,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
+        shape = ReiAnixTokens.Shapes.textField,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = ReiAnixTokens.Colors.surfaceVariant,
+            unfocusedContainerColor = ReiAnixTokens.Colors.surfaceVariant,
+            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
+            focusedBorderColor = ReiAnixTokens.Colors.primary,
+            unfocusedBorderColor = ReiAnixTokens.Colors.border,
+            disabledBorderColor = ReiAnixTokens.Colors.divider,
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            disabledTextColor = ReiAnixTokens.Colors.textDisabled,
+            focusedPlaceholderColor = ReiAnixTokens.Colors.textMuted,
+            unfocusedPlaceholderColor = ReiAnixTokens.Colors.textMuted,
+            disabledPlaceholderColor = ReiAnixTokens.Colors.textDisabled,
+        ),
+    )
 }
 
 @Composable
