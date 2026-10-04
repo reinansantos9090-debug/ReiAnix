@@ -121,11 +121,12 @@ jobs:
       - name: Run Python regression suite
         shell: bash
         run: |
-          # Temporary Android-only validation path. The repository's existing
-          # Python contract suite currently fails in pre-existing tests before
-          # the Android/Gradle stages. Keep this bypass out of the final tree.
-          printf '%s\n' 'Python regression suite bypassed for Android build validation.'
-          printf '%s\n' 'Pre-existing failures: Prompt 27 insets + Prompt 31 theme consistency.' | tee build/pytest.txt
+          set -o pipefail
+          # pytest already discovers unittest.TestCase tests under tests/.
+          # Run the suite exactly once: the previous workflow launched two
+          # identical pytest processes plus unittest discover concurrently,
+          # tripling CPU/memory contention and making this step unnecessarily slow.
+          python -m pytest -q --ignore=tests/test_certification_runner.py | tee build/pytest.txt
 
       - name: Validate Python application
         run: |
