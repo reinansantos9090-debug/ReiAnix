@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -161,7 +162,7 @@ private fun ReiAnixHomeObservedScreen(
 }
 
 @Composable
-private fun HomeObservedContent(
+private fun ColumnScope.HomeObservedContent(
     state: ReiAnixHomeLibraryUiState,
     showContinueWatching: Boolean,
     viewModel: ReiAnixLibraryViewModel,
@@ -328,7 +329,7 @@ private fun HomeHeader(
 }
 
 @Composable
-private fun HomeContent(
+private fun ColumnScope.HomeContent(
     state: ReiAnixLibraryUiState,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
