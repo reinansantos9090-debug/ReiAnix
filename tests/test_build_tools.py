@@ -563,7 +563,7 @@ E: manifest
 
     def test_main_activity_delegates_system_ui_to_controller_and_reapplies_on_resume(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SystemUiController.kt").read_text(encoding="utf-8")
+        controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "player" / "SystemUiController.kt").read_text(encoding="utf-8")
         styles = (ROOT / "android" / "app" / "src" / "main" / "res" / "values" / "styles.xml").read_text(encoding="utf-8")
         self.assertIn("private lateinit var systemUiController: SystemUiController", main)
         self.assertIn("systemUiController = SystemUiController(window)", main)
@@ -616,7 +616,7 @@ E: manifest
 
     def test_native_host_and_player_use_immersive_system_bars(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SystemUiController.kt").read_text(encoding="utf-8")
+        controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "player" / "SystemUiController.kt").read_text(encoding="utf-8")
         player = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt").read_text(encoding="utf-8")
         self.assertIn("systemUiController = SystemUiController(window)", main)
         self.assertIn("applyApplicationSystemUi()", main)
@@ -645,7 +645,7 @@ E: manifest
         self.assertIn("immersive system-bar host policy", source)
 
     def test_native_mailbox_uses_the_flet_application_data_subdirectory(self):
-        mailbox = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativeMailbox.kt").read_text(encoding="utf-8")
+        mailbox = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "bridge" / "NativeMailbox.kt").read_text(encoding="utf-8")
         self.assertIn('File(context.filesDir, "data")', mailbox)
         self.assertIn('val queue = File(dataDirectory, QUEUE)', mailbox)
 
@@ -705,13 +705,13 @@ E: manifest
 
     def test_native_player_entry_requires_a_persisted_saf_document(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("SafScanner.isAuthorizedDocument(this, localUri)", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8"))
         self.assertIn("DocumentsContract.getDocumentId(documentUri)", scanner)
         self.assertIn("treeIdentity(p.uri)", scanner)
 
     def test_saf_scanner_uses_iterative_traversal_and_partial_results(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("ArrayDeque<Pair<String,String>>()", scanner)
         self.assertIn("pending.removeLast()", scanner)
         self.assertIn('.put("partial",partial)', scanner)
@@ -799,7 +799,7 @@ E: manifest
 
     def test_saf_regrant_path_persists_before_scanning_and_reports_revocation(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("val flags = resultIntent.flags", main)
         self.assertIn("SafScanner.persistPermission(this, uri, flags)", main)
         self.assertIn('publishScanRequest("PERMISSION_CHANGE"', main)
@@ -869,7 +869,7 @@ E: manifest
         self.assertIn("player_previous_request", player)
 
     def test_saf_scanner_contains_provider_error_recovery_for_inaccessible_documents(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("runCatching", scanner)
         self.assertIn("catch(e:Exception)", scanner)
         self.assertIn('errors.put("Não foi possível ler:', scanner)
@@ -877,7 +877,7 @@ E: manifest
         self.assertIn('.put("partial",partial)', scanner)
 
     def test_google_identity_emits_only_token_free_validated_profile_fields(self):
-        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "GoogleIdentity.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "bridge" / "GoogleIdentity.kt").read_text(encoding="utf-8")
         self.assertIn('"google_sign_in_started"', source)
         self.assertIn("validatedClaims(credential.idToken, serverClientId, nonce)", source)
         self.assertIn('.put("id", credential.uniqueId)', source)
@@ -902,7 +902,7 @@ class TestSafSelectionRegistration(unittest.TestCase):
         self.assertIn("authorization='granted'", source)
 
     def test_saf_scanner_has_safe_display_name_fallback(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("fun displayName(context:Context,treeUri:Uri):String", scanner)
         self.assertIn("DocumentFile.fromTreeUri(context,treeUri)?.name", scanner)
 
@@ -915,7 +915,7 @@ class TestSafSelectionRegistration(unittest.TestCase):
 
 class TestSafScannerHardening(unittest.TestCase):
     def test_scanner_has_revisit_guard_and_progress_callback(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("onProgress:((JSONObject)->Unit)?=null", scanner)
         self.assertIn("visited=HashSet<String>()", scanner)
         self.assertIn("if(!visited.add(parentId))", scanner)

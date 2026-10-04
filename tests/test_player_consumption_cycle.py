@@ -236,7 +236,7 @@ class PlaybackConsumptionCycleTests(unittest.TestCase):
         self.assertIn("val shouldReportExit = isFinishing && !suppressExitEvent && !exitReported && !isChangingConfigurations", player)
         self.assertIn("if (shouldReportExit)", player)
         self.assertIn('reportPlayerExit("activity_finish")', player)
-        self.assertIn('val temp = File(queue, "$PREFIX$id.json.tmp")', (root / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativeMailbox.kt").read_text(encoding="utf-8"))
+        self.assertIn('val temp = File(queue, "$PREFIX$id.json.tmp")', (root / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "bridge" / "NativeMailbox.kt").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
