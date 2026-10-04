@@ -369,7 +369,7 @@ private fun ColumnScope.LibraryReadyContent(
             )
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 140.dp),
+                columns = GridCells.Adaptive(minSize = ReiAnixTokens.Dimensions.libraryGridMinWidth),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
