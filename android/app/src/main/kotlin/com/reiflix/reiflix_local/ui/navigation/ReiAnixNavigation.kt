@@ -34,6 +34,7 @@ import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.details.ReiAnixDetailsRoute
 import com.reiflix.reiflix_local.ui.home.ReiAnixHomeRoute
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryRoute
+import com.reiflix.reiflix_local.ui.player.ReiAnixPlayerRoute
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchRoute
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -169,7 +170,13 @@ fun ReiAnixNavigationHost(
     search: @Composable () -> Unit = {},
     settings: @Composable () -> Unit = {},
     details: @Composable (ReiAnixDetailsArgs) -> Unit = {},
-    player: @Composable (ReiAnixPlayerArgs) -> Unit = {},
+    player: @Composable (ReiAnixPlayerArgs) -> Unit = { args ->
+        ReiAnixPlayerRoute(
+            navController = navController,
+            viewModel = homeViewModel,
+            args = args,
+        )
+    },
     modifier: Modifier = Modifier,
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,

@@ -91,7 +91,13 @@ fun ReiAnixDetailsRoute(
         state = state,
         onBack = { navController.popBackStack() },
         onRetry = viewModel::refresh,
-        onWatch = viewModel::openEpisode,
+        onWatch = { episodeId ->
+            navController.navigateToPlayer(
+                episodeId = episodeId.toString(),
+                animeId = canonicalId.toString(),
+                origin = origin,
+            )
+        },
         onToggleFavorite = viewModel::toggleFavorite,
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
     )

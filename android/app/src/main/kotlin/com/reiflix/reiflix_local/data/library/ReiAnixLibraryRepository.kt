@@ -78,16 +78,15 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         )
     }
 
-    fun openEpisode(episodeId: Long) {
+    fun openEpisode(episodeId: Long): String =
         send(ReiAnixLibraryCommandCodec.Action.OPEN_MEDIA, episodeId = episodeId)
-    }
 
     private fun send(
         action: ReiAnixLibraryCommandCodec.Action,
         animeId: Long? = null,
         episodeId: Long? = null,
         watched: Boolean? = null,
-    ) {
+    ): String {
         val requestId = UUID.randomUUID().toString()
         val command = ReiAnixLibraryCommandCodec.create(
             requestId = requestId,
@@ -108,6 +107,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 )
             }
         }
+        return requestId
     }
 
     private suspend fun loadSnapshot() {

@@ -193,7 +193,7 @@ class ReiAnixLibraryViewModel(context: Context) :
     fun setEpisodeWatched(episodeId: Long, watched: Boolean) =
         repository.setEpisodeWatched(episodeId, watched)
 
-    fun openEpisode(episodeId: Long) = repository.openEpisode(episodeId)
+    fun openEpisode(episodeId: Long): String = repository.openEpisode(episodeId)
 
     override fun onCleared() {
         repository.close()

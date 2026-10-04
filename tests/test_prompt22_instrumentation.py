@@ -27,6 +27,38 @@ class Prompt22InstrumentationTests(unittest.TestCase):
         for token in ("sequence","transitionGeneration","playerSessionId","PLAYER_COMMAND_OUT_OF_ORDER","PLAYER_LIFECYCLE"):
             self.assertIn(token, player)
 
+    def test_compose_player_route_is_real_and_uses_existing_player_boundary(self):
+        navigation = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
+        details = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
+        player = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixPlayer.kt")
+        repository = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt")
+        view_model = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
+
+        self.assertIn("ReiAnixPlayerRoute(", navigation)
+        self.assertIn("onWatch = { episodeId ->", details)
+        self.assertIn("navController.navigateToPlayer(", details)
+        self.assertNotIn("onWatch = viewModel::openEpisode", details)
+        self.assertIn("viewModel.openEpisode(canonicalEpisodeId)", player)
+        self.assertIn("LifecycleEventObserver", player)
+        self.assertIn("BackHandler", player)
+        self.assertNotIn("ExoPlayer", player)
+        self.assertNotIn("androidx.media3", player)
+        self.assertNotIn("import com.reiflix.reiflix_local.NativePlayerActivity", player)
+        self.assertIn("fun openEpisode(episodeId: Long): String", repository)
+        self.assertIn("fun openEpisode(episodeId: Long): String", view_model)
+        self.assertIn("Action.OPEN_MEDIA", repository)
+
+    def test_compose_player_passes_stable_route_identity_to_existing_native_request(self):
+        navigation = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
+        request = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerRequest.kt")
+        self.assertIn('const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"', navigation)
+        self.assertIn('putExtra("uri", normalizedUri.toString())', request)
+        self.assertIn('putExtra("episodeId", episodeId)', request)
+        self.assertIn('putExtra("animeId", animeId)', request)
+        self.assertIn('putExtra("positionMs", positionMs)', request)
+        self.assertIn('putExtra("canNext", canNext)', request)
+        self.assertIn('putExtra("canPrevious", canPrevious)', request)
+
     def test_mailbox_home_scan_and_thumbnail_markers_exist(self):
         mailbox=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt")
         home=self.read("views/home_view.py")
