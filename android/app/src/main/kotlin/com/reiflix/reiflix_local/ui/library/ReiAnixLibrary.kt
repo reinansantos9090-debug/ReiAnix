@@ -290,7 +290,7 @@ private fun LibraryHeader(
                     CircularProgressIndicator(
                         modifier = Modifier.size(ReiAnixTokens.Dimensions.loadingIndicatorSize),
                         strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
-                        color = ReiAnixTokens.Colors.primary,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 } else {
                     Icon(
@@ -345,7 +345,7 @@ private fun LibraryReadyContent(
                 state = refreshState,
                 isRefreshing = isRefreshing,
                 containerColor = ReiAnixTokens.Colors.surfaceRaised,
-                color = ReiAnixTokens.Colors.primary,
+                color = MaterialTheme.colorScheme.primary,
             )
         },
     ) {
@@ -482,7 +482,7 @@ private fun LibraryReadyContent(
                                         {
                                             Text(
                                                 text = "✓",
-                                                color = ReiAnixTokens.Colors.primary,
+                                                color = MaterialTheme.colorScheme.primary,
                                                 style = MaterialTheme.typography.labelLarge,
                                             )
                                         }
