@@ -105,7 +105,7 @@ class Prompt91ComposeHostTests(unittest.TestCase):
         self.assertIn("val detailsStateFlow = remember(viewModel, canonicalId)", details)
         self.assertIn("viewModel.detailsState(canonicalId)", details)
         self.assertIn("detailsState(", details)
-        self.assertIn("viewModel::openEpisode", details)
+        self.assertIn("navController.navigateToPlayer(", details)
         self.assertIn("viewModel::toggleFavorite", details)
 
     def test_main_activity_back_can_pop_nested_compose_destination(self):
