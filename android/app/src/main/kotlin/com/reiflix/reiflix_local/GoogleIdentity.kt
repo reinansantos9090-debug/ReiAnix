@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
@@ -84,6 +85,36 @@ object GoogleIdentity {
         } catch (exception: Exception) {
             Log.e(TAG, "Google identity failed", exception)
             writeError(context, requestId, "internal_error", "Não foi possível concluir o login Google. Tente novamente.")
+        }
+    }
+
+    /** Clears Credential Manager state so future account selection is not pinned to the previous user. */
+    suspend fun signOut(context: Context, requestId: String? = null): Boolean {
+        return try {
+            Log.i(TAG, "Google Credential Manager sign-out requested")
+            val clearRequest = ClearCredentialStateRequest(
+                ClearCredentialStateRequest.TYPE_CLEAR_CREDENTIAL_STATE,
+            )
+            CredentialManager.create(context).clearCredentialState(clearRequest)
+            NativeMailbox.write(
+                context,
+                JSONObject()
+                    .put("type", "google_signed_out")
+                    .put("requestId", requestId ?: ""),
+            )
+            Log.i(TAG, "Google Credential Manager credential state cleared")
+            true
+        } catch (exception: kotlinx.coroutines.CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            Log.e(TAG, "Google Credential Manager sign-out failed", exception)
+            writeError(
+                context,
+                requestId,
+                "credential_state_clear_failed",
+                "Não foi possível encerrar a sessão Google com segurança.",
+            )
+            false
         }
     }
 
