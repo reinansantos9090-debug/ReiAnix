@@ -1,5 +1,7 @@
-package com.reiflix.reiflix_local
+package com.reiflix.reiflix_local.player
 
+import com.reiflix.reiflix_local.MainActivity
+import com.reiflix.reiflix_local.NativePlayerActivity
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build

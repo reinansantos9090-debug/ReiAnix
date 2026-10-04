@@ -1,5 +1,4 @@
-package com.reiflix.reiflix_local
-
+package com.reiflix.reiflix_local.player
 import android.app.UiModeManager
 import android.content.Context
 import android.content.pm.PackageManager

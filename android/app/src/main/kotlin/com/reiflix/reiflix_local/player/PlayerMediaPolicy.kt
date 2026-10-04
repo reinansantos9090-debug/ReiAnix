@@ -1,5 +1,4 @@
-package com.reiflix.reiflix_local
-
+package com.reiflix.reiflix_local.player
 import java.util.Locale
 
 /** Pure playback policy helpers; no I/O, Android state, network, or player ownership. */

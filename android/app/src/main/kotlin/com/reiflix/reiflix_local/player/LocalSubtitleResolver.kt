@@ -1,5 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reiflix.reiflix_local.player
 
+import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
