@@ -70,8 +70,9 @@ fun ReiAnixSurface(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            content = content,
-        )
+        ) {
+            content()
+        }
     }
 }
 
@@ -148,7 +149,7 @@ fun ReiAnixCard(
             .semantics { },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceCard,
+            containerColor = ReiAnixTokens.Colors.surfaceCard,
             contentColor = MaterialTheme.colorScheme.onSurface,
             disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
             disabledContentColor = ReiAnixTokens.Colors.textDisabled,
@@ -566,7 +567,7 @@ fun ReiAnixAnimeCard(
             ),
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceCard,
+            containerColor = ReiAnixTokens.Colors.surfaceCard,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
@@ -695,7 +696,7 @@ fun ReiAnixEpisodeCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceCard,
+            containerColor = ReiAnixTokens.Colors.surfaceCard,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
@@ -809,7 +810,7 @@ fun ReiAnixSettingCard(
         enabled = onClick != null && enabled,
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceCard,
+            containerColor = ReiAnixTokens.Colors.surfaceCard,
             disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
         ),
         modifier = Modifier
