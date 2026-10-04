@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -270,7 +271,11 @@ private fun LibraryReadyContent(
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding(),
+    ) {
         OutlinedTextField(
             value = filters.query,
             onValueChange = onQueryChange,
@@ -363,12 +368,14 @@ private fun LibraryReadyContent(
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 140.dp),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 contentPadding = PaddingValues(
                     start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                     end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                     top = ReiAnixTokens.Spacing.sm,
-                    bottom = ReiAnixTokens.Spacing.huge + 56.dp,
+                    bottom = ReiAnixTokens.Spacing.huge,
                 ),
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
