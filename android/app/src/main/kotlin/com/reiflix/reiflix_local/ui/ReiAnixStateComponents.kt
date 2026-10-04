@@ -1,0 +1,268 @@
+package com.reiflix.reiflix_local.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+
+/**
+ * Presentation-only state components for the existing local-library flows.
+ *
+ * Operations stay owned by their existing repositories/ViewModels. Callbacks
+ * are supplied by the owner so these components never invent retry behavior.
+ */
+
+@Composable
+fun ReiAnixLoadingState(
+    title: String = "Carregando",
+    message: String = "Carregando…",
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .padding(ReiAnixTokens.Spacing.xxl)
+            .semantics { contentDescription = "ReiAnixLoadingState" },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+    ) {
+        CircularProgressIndicator(color = ReiAnixTokens.Colors.primary)
+        Text(
+            text = title,
+            style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+            color = ReiAnixTokens.Colors.text,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = message,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+            color = ReiAnixTokens.Colors.textMuted,
+        )
+    }
+}
+
+@Composable
+fun ReiAnixEmptyState(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    Column(
+        modifier = modifier
+            .padding(ReiAnixTokens.Spacing.xxl)
+            .semantics { contentDescription = "ReiAnixEmptyState" },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+    ) {
+        Text(
+            text = title,
+            style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
+            color = ReiAnixTokens.Colors.text,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = message,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+            color = ReiAnixTokens.Colors.textMuted,
+        )
+        if (actionLabel != null && onAction != null) {
+            OutlinedButton(onClick = onAction) {
+                Text(actionLabel)
+            }
+        }
+    }
+}
+
+@Composable
+fun ReiAnixEmptyLibraryState(
+    title: String = "Biblioteca vazia",
+    message: String = "Nenhum conteúdo local disponível.",
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    ReiAnixEmptyState(
+        title = title,
+        message = message,
+        modifier = modifier,
+        actionLabel = actionLabel,
+        onAction = onAction,
+    )
+}
+
+@Composable
+fun ReiAnixScannerInProgressState(
+    scanState: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    val normalizedState = scanState.trim().ifBlank { "SCANNING" }
+    if (compact) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(ReiAnixTokens.Spacing.md)
+                .semantics { contentDescription = "ReiAnixScannerInProgressState" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = ReiAnixTokens.Colors.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Varredura em andamento",
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    color = ReiAnixTokens.Colors.text,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = normalizedState,
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = ReiAnixTokens.Colors.textMuted,
+                )
+            }
+        }
+    } else {
+        ReiAnixLoadingState(
+            title = "Varredura em andamento",
+            message = normalizedState,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+fun ReiAnixSourceUnavailableState(
+    title: String = "Fonte local indisponível",
+    message: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = "Verificar acesso",
+    onAction: (() -> Unit)? = null,
+) {
+    ReiAnixEmptyState(
+        title = title,
+        message = message,
+        modifier = modifier.semantics {
+            contentDescription = "ReiAnixSourceUnavailableState"
+        },
+        actionLabel = actionLabel,
+        onAction = onAction,
+    )
+}
+
+@Composable
+fun ReiAnixFileUnavailableState(
+    title: String = "Arquivo indisponível",
+    message: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    compact: Boolean = false,
+) {
+    if (compact) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = ReiAnixTokens.Spacing.xs)
+                .semantics { contentDescription = "ReiAnixFileUnavailableState" },
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+        ) {
+            Text(
+                text = title,
+                style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+                color = ReiAnixTokens.Colors.warning,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = message,
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = ReiAnixTokens.Colors.textMuted,
+            )
+            if (actionLabel != null && onAction != null) {
+                OutlinedButton(onClick = onAction) {
+                    Text(actionLabel)
+                }
+            }
+        }
+    } else {
+        ReiAnixEmptyState(
+            title = title,
+            message = message,
+            modifier = modifier.semantics {
+                contentDescription = "ReiAnixFileUnavailableState"
+            },
+            actionLabel = actionLabel,
+            onAction = onAction,
+        )
+    }
+}
+
+@Composable
+fun ReiAnixArtworkMissingState(
+    label: String = "Sem arte",
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.semantics {
+            contentDescription = "ReiAnixArtworkMissingState"
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+            color = ReiAnixTokens.Colors.textMuted,
+        )
+    }
+}
+
+@Composable
+fun ReiAnixRecoverableErrorState(
+    title: String,
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+    retryLabel: String = "Tentar novamente",
+) {
+    Column(
+        modifier = modifier
+            .padding(ReiAnixTokens.Spacing.xxl)
+            .semantics { contentDescription = "ReiAnixRecoverableErrorState" },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+    ) {
+        Text(
+            text = title,
+            style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
+            color = ReiAnixTokens.Colors.text,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = message,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+            color = ReiAnixTokens.Colors.textMuted,
+        )
+        Button(onClick = onRetry) {
+            Text(retryLabel)
+        }
+    }
+}
