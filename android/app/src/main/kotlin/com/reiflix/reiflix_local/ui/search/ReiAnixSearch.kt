@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
@@ -530,9 +529,9 @@ private fun SearchNoResultsState(
     ReiAnixEmptyState(
         title = "Nenhum resultado encontrado",
         message = if (filtersActive) {
-            "Nenhum conteúdo local corresponde a "" +
+            "Nenhum conteúdo local corresponde a \\"" +
                 query.trim() +
-                "" com os filtros atuais."
+                "\\" com os filtros atuais."
         } else {
             "Tente pesquisar por outro nome, ano, gênero ou episódio."
         },
