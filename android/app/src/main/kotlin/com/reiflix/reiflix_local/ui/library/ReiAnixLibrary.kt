@@ -278,7 +278,8 @@ private fun LibraryHeader(
 
             IconButton(
                 onClick = onRefresh,
-                        modifier = Modifier.semantics {
+                enabled = !isRefreshing,
+                modifier = Modifier.semantics {
                     contentDescription = if (isRefreshing) {
                         "Atualizando biblioteca"
                     } else {
@@ -335,7 +336,6 @@ private fun ColumnScope.LibraryReadyContent(
         modifier = modifier.fillMaxWidth(),
         state = refreshState,
         isRefreshing = isRefreshing,
-        enabled = !isRefreshing,
         onRefresh = {
             if (!isRefreshing) onRefresh()
         },
