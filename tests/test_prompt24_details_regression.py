@@ -57,34 +57,31 @@ class Prompt24DetailsRegressionTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(10, len(episodes))
             self.assertEqual(list(range(1, 11)), [item["id"] for item in episodes])
-            self.assertEqual(7, anime["playback_target_episode_id"])
+            self.assertEqual(episode_ids[6], anime["playback_target_episode_id"])
             self.assertEqual(18, episodes[6]["progress"])
             self.assertEqual("in_progress", episodes[6]["consumption_state"])
             self.assertEqual([], [item for item in episodes if item["id"] not in range(1, 11)])
 
             reopened = LibraryStore(directory)
-            try:
-                reopened_bridge = ComposeLibraryBridge(directory, reopened, reopened)
-                reopened_bridge.request_publish("prompt24_reopen")
-                await reopened_bridge.wait_for_idle()
+            reopened_bridge = ComposeLibraryBridge(directory, reopened, reopened)
+            reopened_bridge.request_publish("prompt24_reopen")
+            await reopened_bridge.wait_for_idle()
 
-                reopened_snapshot = json.loads(
-                    (Path(directory) / "reianix-compose/library.json").read_text(
-                        encoding="utf-8"
-                    )
+            reopened_snapshot = json.loads(
+                (Path(directory) / "reianix-compose/library.json").read_text(
+                    encoding="utf-8"
                 )
-                reopened_anime = reopened_snapshot["animes"][0]
-                reopened_episodes = reopened_anime["seasons"][0]["episodes"]
+            )
+            reopened_anime = reopened_snapshot["animes"][0]
+            reopened_episodes = reopened_anime["seasons"][0]["episodes"]
 
-                self.assertEqual(
-                    [6, 7, 8],
-                    [item["id"] for item in reopened_episodes if item["id"] in (6, 7, 8)],
-                )
-                self.assertEqual(7, reopened_anime["playback_target_episode_id"])
-                self.assertEqual(18, reopened_episodes[6]["progress"])
-                self.assertEqual("in_progress", reopened_episodes[6]["consumption_state"])
-            finally:
-                reopened.close()
+            self.assertEqual(
+                [episode_ids[5], episode_ids[6], episode_ids[7]],
+                [item["id"] for item in reopened_episodes if item["id"] in episode_ids[5:8]],
+            )
+            self.assertEqual(episode_ids[6], reopened_anime["playback_target_episode_id"])
+            self.assertEqual(18, reopened_episodes[6]["progress"])
+            self.assertEqual("in_progress", reopened_episodes[6]["consumption_state"])
 
 
 if __name__ == "__main__":
