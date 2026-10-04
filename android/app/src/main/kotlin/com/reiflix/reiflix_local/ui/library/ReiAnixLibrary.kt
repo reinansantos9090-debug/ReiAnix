@@ -674,4 +674,3 @@ private fun LibraryFilteredEmptyState(
         }
     }
 }
-}
