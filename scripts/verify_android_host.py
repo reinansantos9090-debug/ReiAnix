@@ -15,6 +15,8 @@ from pathlib import Path
 REQUIRED_CLASSES = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
     b"Lcom/reiflix/reiflix_local/ReiAnixComposeLibraryHost;",
+    b"Lcom/reiflix/reiflix_local/ReiAnixComposeSettingsHost;",
+    b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
     b"Lcom/reiflix/reiflix_local/NativeMailbox;",
     b"Lcom/reiflix/reiflix_local/NativeRequestState;",
     b"Lcom/reiflix/reiflix_local/SafScanner;",
