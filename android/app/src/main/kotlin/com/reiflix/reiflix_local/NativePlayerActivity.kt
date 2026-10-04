@@ -2705,6 +2705,66 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (::composeBottomView.isInitialized) composeBottomView.visibility = if (overlaysVisible) View.VISIBLE else View.INVISIBLE
     }
 
+    private fun toggleMorePanel() {
+        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        moreVisible = !moreVisible
+        val panel = findViewByTag<View>("reiflix_more_panel")
+        panel?.visibility = if (moreVisible) View.VISIBLE else View.GONE
+        if (moreVisible) {
+            panel?.bringToFront()
+        }
+        controls.bringToFront()
+        touchControls()
+    }
+
+    private fun hideLegacyPrimaryControls() {
+        if (::topBar.isInitialized) topBar.visibility = View.GONE
+        if (::centerControls.isInitialized) centerControls.visibility = View.GONE
+        if (::bottomBar.isInitialized) bottomBar.visibility = View.GONE
+    }
+
+    private fun buildPlayerTechnicalLine(): String {
+        if (!::player.isInitialized) return ""
+
+        fun selectedFormat(type: Int): Format? =
+            player.currentTracks.groups
+                .filter { it.type == type && it.isSupported }
+                .flatMap { group ->
+                    (0 until group.length)
+                        .filter { group.isTrackSupported(it) && group.isTrackSelected(it) }
+                        .map { group.getTrackFormat(it) }
+                }
+                .firstOrNull()
+
+        fun codecLabel(mime: String?): String? = when (mime?.lowercase(Locale.ROOT)) {
+            "video/avc" -> "AVC"
+            "video/hevc", "video/h265" -> "HEVC"
+            "video/x-vnd.on2.vp9" -> "VP9"
+            "video/av01" -> "AV1"
+            "audio/mp4a-latm" -> "AAC"
+            "audio/opus" -> "Opus"
+            "audio/vorbis" -> "Vorbis"
+            "audio/ac3" -> "AC-3"
+            "audio/eac3" -> "E-AC-3"
+            "audio/flac" -> "FLAC"
+            else -> null
+        }
+
+        val video = selectedFormat(C.TRACK_TYPE_VIDEO)
+        val audio = selectedFormat(C.TRACK_TYPE_AUDIO)
+        val audioLayout = when (audio?.channelCount ?: 0) {
+            1 -> "Mono"
+            2 -> "Stereo"
+            in 3..9 -> (audio?.channelCount ?: 0).toString() + "ch"
+            else -> null
+        }
+        return listOfNotNull(
+            codecLabel(video?.sampleMimeType),
+            audioLayout,
+            codecLabel(audio?.sampleMimeType),
+        ).joinToString(" • ")
+    }
+
     private fun installBackHandler() {
         onBackPressedDispatcher.addCallback(
             this,
