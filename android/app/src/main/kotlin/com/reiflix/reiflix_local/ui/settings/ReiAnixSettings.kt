@@ -937,20 +937,20 @@ private fun ReiAnixSettingsAccountCard(
         state.state == "connecting" -> "Conectando…"
         else -> "Não conectado"
     }
-    Card(
+    ReiAnixSettingCard(
+        title = primary,
+        description = secondary,
+        icon = Icons.Filled.AccountCircle,
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = "Abrir configurações da conta" },
-    ) {
-        SettingsCardRow(
-            title = primary,
-            description = secondary,
-            icon = Icons.Filled.AccountCircle,
-            trailingArrow = true,
-        )
-    }
+        enabled = true,
+        trailingContent = {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+    )
 }
 
 @Composable
@@ -959,51 +959,23 @@ private fun ReiAnixSettingsCategoryCard(
     valueSummary: String,
     onClick: () -> Unit,
 ) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = "Abrir " + category.label },
-    ) {
-        SettingsCardRow(
-            title = category.label,
-            description = if (valueSummary.isBlank()) category.description else {
-                category.description + " • " + valueSummary
-            },
-            icon = category.icon,
-            trailingArrow = true,
-        )
-    }
-}
-
-@Composable
-private fun SettingsCardRow(
-    title: String,
-    description: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    trailingArrow: Boolean,
-) {
     ReiAnixSettingCard(
-        title = title,
-        description = description,
-        icon = icon,
-        onClick = {},
-        enabled = false,
-        trailingContent = if (trailingArrow) {
-            {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
-            null
+        title = category.label,
+        description = if (valueSummary.isBlank()) category.description else {
+            category.description + " • " + valueSummary
+        },
+        icon = category.icon,
+        onClick = onClick,
+        enabled = true,
+        trailingContent = {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         },
     )
 }
-
 
 private fun categorySummary(label: String, settings: Map<String, String>): String =
     when (label) {
