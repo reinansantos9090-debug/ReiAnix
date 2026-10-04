@@ -43,7 +43,7 @@ def test_prompt25_screen_flows_use_shared_states_and_real_recovery():
     assert "ReiAnixSourceUnavailableState(" in library
     assert "ReiAnixEmptyLibraryState(" in library
 
-    assert "ReiAnixFileUnavailableState(" in details
+    assert "ReiAnixEpisodeCard(" in details
     assert "ReiAnixRecoverableErrorState(" in details
     assert "ReiAnixSourceUnavailableState(" in details
     assert "ReiAnixEmptyLibraryState(" in details
