@@ -7,6 +7,8 @@ from core.library_service import LibraryService
 
 ROOT = Path(__file__).resolve().parents[1]
 NATIVE_DIR = ROOT / 'android/app/src/main/kotlin/com/reiflix/reiflix_local'
+SCANNER_DIR = NATIVE_DIR / 'scanner'
+STORAGE_DIR = NATIVE_DIR / 'storage'
 BATCH_SIZE = 250
 
 class ProbeStore:
@@ -206,9 +208,9 @@ class TestScalability(unittest.TestCase):
         self.run_load(100_000)
 
     def test_android_scanners_do_not_retain_global_document_arrays(self):
-        broad = (NATIVE_DIR / 'BroadStorageScanner.kt').read_text(encoding='utf-8')
-        saf = (NATIVE_DIR / 'SafScanner.kt').read_text(encoding='utf-8')
-        media = (NATIVE_DIR / 'MediaStoreScanner.kt').read_text(encoding='utf-8')
+        broad = (SCANNER_DIR / 'BroadStorageScanner.kt').read_text(encoding='utf-8')
+        saf = (SCANNER_DIR / 'SafScanner.kt').read_text(encoding='utf-8')
+        media = (SCANNER_DIR / 'MediaStoreScanner.kt').read_text(encoding='utf-8')
         main = (NATIVE_DIR / 'MainActivity.kt').read_text(encoding='utf-8')
         for source in (broad, saf, media):
             self.assertIn('NativeBatch.Accumulator', source)
@@ -221,7 +223,7 @@ class TestScalability(unittest.TestCase):
         self.assertIn('mediastore_scan_batch', main)
 
     def test_batch_size_is_documented_and_bounded(self):
-        native_batch = (NATIVE_DIR / 'NativeBatch.kt').read_text(encoding='utf-8')
+        native_batch = (STORAGE_DIR / 'NativeBatch.kt').read_text(encoding='utf-8')
         self.assertRegex(native_batch, r'DEFAULT_SIZE = 250')
         self.assertIn('value.coerceIn(MIN_SIZE, MAX_SIZE)', native_batch)
 

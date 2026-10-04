@@ -15,8 +15,8 @@ VERIFY = ROOT / "scripts" / "verify_android_host.py"
 PREPARE_TEMPLATE = ROOT / "scripts" / "prepare_flet_template.py"
 DESCRIPTORS = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
-    b"Lcom/reiflix/reiflix_local/ReiAnixComposeLibraryHost;",
-    b"Lcom/reiflix/reiflix_local/ReiAnixComposeSettingsHost;",
+    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;",
+    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost;",
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeMailbox;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeRequestState;",
@@ -27,7 +27,7 @@ DESCRIPTORS = (
     b"Lcom/reiflix/reiflix_local/scanner/NativeScanController;",
     b"Lcom/reiflix/reiflix_local/NativePlayerActivity;",
     b"Lcom/reiflix/reiflix_local/player/NativePlayerRequest;",
-    b"Lcom/reiflix/reiflix_local/VideoThumbnailExtractor;",
+    b"Lcom/reiflix/reiflix_local/storage/VideoThumbnailExtractor;",
     b"Lcom/reiflix/reiflix_local/bridge/GoogleIdentity;",
     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
@@ -65,7 +65,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/ReiAnixComposeRootKt.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/viewmodel/ReiAnixViewModel.class",
-                "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ReiAnixComposeSettingsHost.class",
+                "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.class",
             ):
                 path = classes / relative
@@ -78,7 +78,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
                     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
                     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
                     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixViewModel;",
-                    b"Lcom/reiflix/reiflix_local/ReiAnixComposeSettingsHost;",
+                    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost;",
                     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
                 )))
             result = subprocess.run(
