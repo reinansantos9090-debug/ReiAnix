@@ -380,6 +380,242 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                 }
+
+                "Player" -> {
+                    item(key = "setting:player.autoplay_next") {
+                        BooleanSettingCard(
+                            keyName = "player.autoplay_next",
+                            title = "Autoplay do próximo episódio",
+                            description = "Permite o avanço automático no player local.",
+                            checked = state.settings["player.autoplay_next"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.autoplay_next", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.resume") {
+                        BooleanSettingCard(
+                            keyName = "player.resume",
+                            title = "Continuar reprodução",
+                            description = "Usa a posição de progresso já salva; desligar não apaga o progresso.",
+                            checked = state.settings["player.resume"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.resume", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.default_speed") {
+                        ChoiceSettingCard(
+                            keyName = "player.default_speed",
+                            title = "Velocidade padrão",
+                            description = "Aplicada quando um episódio é aberto.",
+                            selectedValue = state.settings["player.default_speed"],
+                            choices = defaultSpeedChoices,
+                            onSelected = { onUpdateSetting("player.default_speed", it) },
+                        )
+                    }
+                    item(key = "setting:player.aspect_ratio") {
+                        ChoiceSettingCard(
+                            keyName = "player.aspect_ratio",
+                            title = "Modo de vídeo",
+                            description = "Ajustar preserva toda a imagem; Preencher ocupa a tela cortando somente o excedente.",
+                            selectedValue = state.settings["player.aspect_ratio"],
+                            choices = aspectRatioChoices,
+                            onSelected = { onUpdateSetting("player.aspect_ratio", it) },
+                        )
+                    }
+                    item(key = "setting:player.zoom_enabled") {
+                        BooleanSettingCard(
+                            keyName = "player.zoom_enabled",
+                            title = "Zoom por gesto",
+                            description = "Permite ampliar e mover o vídeo com gesto de pinça.",
+                            checked = state.settings["player.zoom_enabled"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.zoom_enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.double_tap_seek_seconds") {
+                        ChoiceSettingCard(
+                            keyName = "player.double_tap_seek_seconds",
+                            title = "Salto no double tap",
+                            description = "Define quantos segundos são avançados ou retrocedidos pelo double tap.",
+                            selectedValue = state.settings["player.double_tap_seek_seconds"],
+                            choices = doubleTapSeekChoices,
+                            onSelected = { onUpdateSetting("player.double_tap_seek_seconds", it) },
+                        )
+                    }
+                    item(key = "setting:player.long_press_speed") {
+                        ChoiceSettingCard(
+                            keyName = "player.long_press_speed",
+                            title = "Velocidade da pressão longa",
+                            description = "Velocidade temporária aplicada enquanto a pressão longa estiver ativa.",
+                            selectedValue = state.settings["player.long_press_speed"],
+                            choices = longPressSpeedChoices,
+                            onSelected = { onUpdateSetting("player.long_press_speed", it) },
+                        )
+                    }
+                    item(key = "setting:player.max_video_resolution") {
+                        ChoiceSettingCard(
+                            keyName = "player.max_video_resolution",
+                            title = "Resolução máxima",
+                            description = "Limita a faixa de vídeo selecionada pelo Media3 quando o arquivo oferece múltiplas tracks.",
+                            selectedValue = state.settings["player.max_video_resolution"],
+                            choices = maxVideoResolutionChoices,
+                            onSelected = { onUpdateSetting("player.max_video_resolution", it) },
+                        )
+                    }
+                    item(key = "setting:player.max_video_frame_rate") {
+                        ChoiceSettingCard(
+                            keyName = "player.max_video_frame_rate",
+                            title = "FPS máximo",
+                            description = "Limita a taxa de frames da track de vídeo selecionada.",
+                            selectedValue = state.settings["player.max_video_frame_rate"],
+                            choices = maxVideoFrameRateChoices,
+                            onSelected = { onUpdateSetting("player.max_video_frame_rate", it) },
+                        )
+                    }
+                    item(key = "setting:player.max_audio_channels") {
+                        ChoiceSettingCard(
+                            keyName = "player.max_audio_channels",
+                            title = "Canais de áudio máximos",
+                            description = "Limita a seleção de áudio sem criar um mixer ou decoder alternativo.",
+                            selectedValue = state.settings["player.max_audio_channels"],
+                            choices = maxAudioChannelsChoices,
+                            onSelected = { onUpdateSetting("player.max_audio_channels", it) },
+                        )
+                    }
+                    item(key = "setting:player.immersive") {
+                        ChoiceSettingCard(
+                            keyName = "player.immersive",
+                            title = "Modo imersivo",
+                            description = "Controla as barras do sistema somente no player.",
+                            selectedValue = state.settings["player.immersive"],
+                            choices = immersiveChoices,
+                            onSelected = { onUpdateSetting("player.immersive", it) },
+                        )
+                    }
+                    item(key = "setting:player.rotation") {
+                        ChoiceSettingCard(
+                            keyName = "player.rotation",
+                            title = "Rotação",
+                            description = "Define a orientação do player sem forçar o aplicativo inteiro.",
+                            selectedValue = state.settings["player.rotation"],
+                            choices = rotationChoices,
+                            onSelected = { onUpdateSetting("player.rotation", it) },
+                        )
+                    }
+                    item(key = "setting:player.pip") {
+                        BooleanSettingCard(
+                            keyName = "player.pip",
+                            title = "Picture-in-Picture",
+                            description = "Permite PiP quando suportado pelo Android.",
+                            checked = state.settings["player.pip"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.pip", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.auto_hide_seconds") {
+                        ChoiceSettingCard(
+                            keyName = "player.auto_hide_seconds",
+                            title = "Auto-hide dos controles",
+                            description = "0 significa nunca.",
+                            selectedValue = state.settings["player.auto_hide_seconds"],
+                            choices = autoHideChoices,
+                            onSelected = { onUpdateSetting("player.auto_hide_seconds", it) },
+                        )
+                    }
+                }
+                "Gestos" -> {
+                    item(key = "setting:gestures.volume") {
+                        BooleanSettingCard(
+                            keyName = "gestures.volume",
+                            title = "Gestos de volume",
+                            description = "Swipe vertical no lado direito ajusta o volume quando ativado.",
+                            checked = state.settings["gestures.volume"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.volume", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:gestures.brightness") {
+                        BooleanSettingCard(
+                            keyName = "gestures.brightness",
+                            title = "Gestos de brilho",
+                            description = "Swipe vertical no lado esquerdo ajusta o brilho quando ativado.",
+                            checked = state.settings["gestures.brightness"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.brightness", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:gestures.double_tap") {
+                        BooleanSettingCard(
+                            keyName = "gestures.double_tap",
+                            title = "Double tap para seek",
+                            description = "Controla o double tap existente.",
+                            checked = state.settings["gestures.double_tap"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.double_tap", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:gestures.long_press") {
+                        BooleanSettingCard(
+                            keyName = "gestures.long_press",
+                            title = "Pressão longa",
+                            description = "Controla a ação de long press existente.",
+                            checked = state.settings["gestures.long_press"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.long_press", it.toString()) },
+                        )
+                    }
+                }
+                "Áudio e Legendas" -> {
+                    item(key = "setting:audio.subtitle_scale") {
+                        ChoiceSettingCard(
+                            keyName = "audio.subtitle_scale",
+                            title = "Escala da legenda",
+                            description = "Aplica o tamanho relativo usando o SubtitleView do Media3.",
+                            selectedValue = state.settings["audio.subtitle_scale"],
+                            choices = subtitleScaleChoices,
+                            onSelected = { onUpdateSetting("audio.subtitle_scale", it) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitle_bottom_padding") {
+                        ChoiceSettingCard(
+                            keyName = "audio.subtitle_bottom_padding",
+                            title = "Margem inferior da legenda",
+                            description = "Controla a margem inferior quando a cue não especifica uma linha fixa.",
+                            selectedValue = state.settings["audio.subtitle_bottom_padding"],
+                            choices = subtitlePaddingChoices,
+                            onSelected = { onUpdateSetting("audio.subtitle_bottom_padding", it) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitle_embedded_style") {
+                        BooleanSettingCard(
+                            keyName = "audio.subtitle_embedded_style",
+                            title = "Estilo embutido da legenda",
+                            description = "Permite que o estilo declarado pela própria faixa seja aplicado.",
+                            checked = state.settings["audio.subtitle_embedded_style"] == "true",
+                            onCheckedChange = { onUpdateSetting("audio.subtitle_embedded_style", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:audio.preferred_language") {
+                        LanguageSettingCard(
+                            keyName = "audio.preferred_language",
+                            title = "Idioma de áudio",
+                            description = "Use uma tag BCP-47 como pt-BR, en ou ja. O Media3 usa fallback seguro se não existir.",
+                            selectedValue = state.settings["audio.preferred_language"].orEmpty(),
+                            onSave = { onUpdateSetting("audio.preferred_language", it) },
+                        )
+                    }
+                    item(key = "setting:audio.preferred_subtitle_language") {
+                        LanguageSettingCard(
+                            keyName = "audio.preferred_subtitle_language",
+                            title = "Idioma da legenda",
+                            description = "Use uma tag BCP-47. A seleção ocorre somente entre tracks existentes no arquivo.",
+                            selectedValue = state.settings["audio.preferred_subtitle_language"].orEmpty(),
+                            onSave = { onUpdateSetting("audio.preferred_subtitle_language", it) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitles") {
+                        ChoiceSettingCard(
+                            keyName = "audio.subtitles",
+                            title = "Legendas",
+                            description = "Automático respeita as preferências do arquivo; Sempre tenta selecionar uma legenda; Nunca desativa a track de texto.",
+                            selectedValue = state.settings["audio.subtitles"],
+                            choices = subtitleModeChoices,
+                            onSelected = { onUpdateSetting("audio.subtitles", it) },
+                        )
+                    }
+                }
             }
         }
     }
@@ -462,6 +698,59 @@ private fun BooleanSettingCard(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
             )
+        }
+    }
+}
+
+
+@Composable
+private fun LanguageSettingCard(
+    keyName: String,
+    title: String,
+    description: String,
+    selectedValue: String,
+    onSave: (String) -> Unit,
+) {
+    var draftValue by androidx.compose.runtime.saveable.rememberSaveable(selectedValue) {
+        androidx.compose.runtime.mutableStateOf(selectedValue)
+    }
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Configuração " + keyName },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(ReiAnixTokens.Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = draftValue,
+                onValueChange = { draftValue = it },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = { onSave(draftValue.trim()) },
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text("Salvar")
+            }
         }
     }
 }
