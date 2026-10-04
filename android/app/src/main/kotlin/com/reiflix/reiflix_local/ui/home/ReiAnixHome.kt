@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,7 +43,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
+import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
+import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
+import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
+import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSectionTitle
@@ -123,20 +127,28 @@ private fun ReiAnixHomeObservedScreen(
         )
 
         when (state.status) {
-            ReiAnixLibraryLoadStatus.LOADING -> HomeLoading()
-            ReiAnixLibraryLoadStatus.ERROR -> HomeError(
-                message = state.error ?: "Não foi possível carregar a biblioteca local.",
-                onRefresh = onRefresh,
+            ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
+                title = "Carregando biblioteca",
+                message = "Lendo o catálogo local…",
+                modifier = Modifier.fillMaxSize(),
             )
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> HomeMessage(
+            ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
+                title = "Não foi possível carregar a biblioteca",
+                message = state.error ?: "A biblioteca local retornou um erro.",
+                onRetry = onRefresh,
+                modifier = Modifier.fillMaxSize(),
+            )
+            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = "Biblioteca local indisponível",
                 message = "A fonte local configurada não está disponível agora.",
-                onRefresh = onRefresh,
+                onAction = onRefresh,
+                modifier = Modifier.fillMaxSize(),
             )
-            ReiAnixLibraryLoadStatus.EMPTY -> HomeMessage(
-                title = "Biblioteca vazia",
+            ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                 message = "Nenhum conteúdo local disponível.",
-                onRefresh = onRefresh,
+                actionLabel = "Atualizar",
+                onAction = onRefresh,
+                modifier = Modifier.fillMaxSize(),
             )
             ReiAnixLibraryLoadStatus.READY -> HomeObservedContent(
                 state = state,
@@ -663,12 +675,11 @@ private fun HomeAnimeCard(
 
 @Composable
 private fun HomeLoading() {
-    Box(
+    ReiAnixLoadingState(
+        title = "Carregando biblioteca",
+        message = "Lendo o catálogo local…",
         modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator(color = ReiAnixTokens.Colors.primary)
-    }
+    )
 }
 
 @Composable
@@ -676,34 +687,12 @@ private fun HomeError(
     message: String,
     onRefresh: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(ReiAnixTokens.Spacing.xxl),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Info,
-                contentDescription = null,
-                tint = ReiAnixTokens.Colors.error,
-            )
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyLarge,
-                color = ReiAnixTokens.Colors.text,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-            )
-            ReiAnixSecondaryButton(
-                text = "Tentar novamente",
-                onClick = onRefresh,
-            )
-        }
-    }
+    ReiAnixRecoverableErrorState(
+        title = "Não foi possível carregar a biblioteca",
+        message = message,
+        onRetry = onRefresh,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable
@@ -712,34 +701,13 @@ private fun HomeMessage(
     message: String,
     onRefresh: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(ReiAnixTokens.Spacing.xxl),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall,
-                color = ReiAnixTokens.Colors.text,
-            )
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyLarge,
-                color = ReiAnixTokens.Colors.textMuted,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-            ReiAnixSecondaryButton(
-                text = "Atualizar",
-                onClick = onRefresh,
-            )
-        }
-    }
+    ReiAnixEmptyState(
+        title = title,
+        message = message,
+        actionLabel = "Atualizar",
+        onAction = onRefresh,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 private fun progressFraction(progress: Double?, duration: Double?): Float? {
