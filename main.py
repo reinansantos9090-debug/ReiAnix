@@ -115,10 +115,10 @@ async def main(page: ft.Page):
     )
     if compose_library_bridge.enabled:
         compose_library_bridge.request_publish("startup")
-    if compose_settings_bridge.enabled:
-        compose_settings_bridge.request_publish("startup")
     current=[None]
     account_state=["connected" if store.account().get("email") else "disconnected"]
+    if compose_settings_bridge.enabled:
+        compose_settings_bridge.request_publish("startup")
     diagnostics = DiagnosticTimeline()
     backup_service = BackupService(store, settings=settings, app_version="0.2.1")
     diagnostic_service = DiagnosticsService(store, timeline=diagnostics, app_version="0.2.1")
@@ -1033,6 +1033,31 @@ async def main(page: ft.Page):
             await bridge.hide_library()
         except Exception:
             logger.exception("[COMPOSE_LIBRARY] host hide failed", exc_info=True)
+
+    async def _show_compose_settings():
+        if (
+            not bridge.available
+            or navigation.current != "settings"
+            or navigation.settings_path
+            or not ui_alive[0]
+        ):
+            return
+        try:
+            await bridge.open_settings()
+        except Exception as exc:
+            logger.exception("[COMPOSE_SETTINGS] host open failed", exc_info=True)
+            if navigation.current == "settings" and not navigation.settings_path and ui_alive[0]:
+                page.snack_bar = ft.SnackBar(ft.Text("Não foi possível abrir as Configurações Compose agora."))
+                page.snack_bar.open = True
+                safe_update()
+
+    async def _hide_compose_settings():
+        if not bridge.available:
+            return
+        try:
+            await bridge.hide_settings()
+        except Exception:
+            logger.exception("[COMPOSE_SETTINGS] host hide failed", exc_info=True)
 
     def handle_flet_view_pop(_event):
         back_state["flet_pop_count"] += 1
@@ -2119,6 +2144,7 @@ async def main(page: ft.Page):
 
     def apply_settings_runtime(key, _value):
         setting_key = str(key)
+        compose_settings_bridge.request_publish("setting_changed")
         if setting_key == "appearance.theme":
             # Theme changes invalidate only Python/Flet control trees. Navigation,
             # query/filter state, scroll snapshots and all domain/storage/player
@@ -2291,6 +2317,8 @@ async def main(page: ft.Page):
             if bridge.available:
                 diagnostics.record("PERMISSION_CHECK", source="android")
                 page.run_task(bridge.check_storage_access)
+                if not navigation.settings_path:
+                    page.run_task(_show_compose_settings)
     def navigate_settings_category(label):
         if str(label or "").strip() == "Armazenamento" and bridge.available:
             logger.info("[COMPOSE_STORAGE] opening native storage settings")
@@ -2402,6 +2430,12 @@ async def main(page: ft.Page):
             render_current(reason="back")
             if navigation.current == "library" and route_before != "library":
                 page.run_task(_show_compose_library)
+            elif (
+                navigation.current == "settings"
+                and not navigation.settings_path
+                and route_before == "settings"
+            ):
+                page.run_task(_show_compose_settings)
             persist_navigation_state()
         elif action == "prompt_exit":
             persist_navigation_state()
@@ -2949,6 +2983,7 @@ async def main(page: ft.Page):
         try:
             store.clear_account(); page.logout()
             account_state[0] = 'disconnected'
+            compose_settings_bridge.request_publish("logout_completed")
         except Exception:
             account_state[0] = 'error'
             raise
@@ -2961,6 +2996,7 @@ async def main(page: ft.Page):
         if user:
             store.save_account({'id':str(user.id),'name':str(user.get('name','')),'email':str(user.get('email','')),'picture':str(user.get('picture',''))})
             account_state[0] = 'connected'
+            compose_settings_bridge.request_publish("login_completed")
         navigate_settings()
     async def poll_native_bridge():
         async def ingest_native_batch(event_type, payload, event_request_id):
@@ -3072,6 +3108,31 @@ async def main(page: ft.Page):
                             native_operation_states[str(event_request_id)] = operation_state
                             if len(native_operation_states) > 128:
                                 native_operation_states.pop(next(iter(native_operation_states)))
+                        if event_type == 'compose_settings_navigation':
+                            destination = str(payload.get('destination') or '').strip().lower()
+                            category = str(payload.get('category') or '').strip()
+                            if destination == 'back':
+                                navigate_back('compose_settings_back')
+                            elif destination == 'category':
+                                valid_categories = {
+                                    'Conta', 'Geral', 'Aparência', 'Biblioteca', 'Player',
+                                    'Gestos', 'Áudio e Legendas', 'Metadata', 'Artwork',
+                                    'Armazenamento', 'Dados e Cache', 'Backup e Restauração',
+                                    'Privacidade', 'Varredura', 'Diagnóstico', 'Sobre',
+                                }
+                                if category in valid_categories:
+                                    navigate_settings_category(category)
+                                else:
+                                    logger.warning(
+                                        "[COMPOSE_SETTINGS] navigation rejected category=%s",
+                                        category or '-',
+                                    )
+                            else:
+                                logger.warning(
+                                    "[COMPOSE_SETTINGS] navigation ignored destination=%s",
+                                    destination or '-',
+                                )
+
                         if event_type == 'compose_library_navigation':
                             destination = str(payload.get('destination') or '').strip().lower()
                             if destination == 'back':
@@ -5151,7 +5212,7 @@ async def main(page: ft.Page):
                                 account_state[0] = 'error'
                                 page.snack_bar=ft.SnackBar(ft.Text('A resposta da conta Google é inválida. Tente novamente.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
                             else:
-                                store.save_account(profile); account_state[0] = 'connected'; page.snack_bar=ft.SnackBar(ft.Text('Conta Google conectada.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
+                                store.save_account(profile); account_state[0] = 'connected'; compose_settings_bridge.request_publish("google_account_connected"); page.snack_bar=ft.SnackBar(ft.Text('Conta Google conectada.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
                         elif event_type == 'volume_changed':
                             set_scan_state(
                                 ScanUiState.SCANNING if any(
