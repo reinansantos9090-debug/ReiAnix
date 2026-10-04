@@ -125,6 +125,8 @@ object ReiAnixTokens {
         val touchTarget = 48.dp
         val iconSmall = 18.dp
         val iconMedium = 24.dp
+        val loadingIndicatorSize = 20.dp
+        val loadingIndicatorStroke = 2.dp
         val topBarMinHeight = 56.dp
         val bottomNavigationMinHeight = 64.dp
         val bottomNavigationIndicatorHeight = 32.dp
