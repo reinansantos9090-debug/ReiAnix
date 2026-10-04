@@ -37,9 +37,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -101,6 +103,16 @@ fun ReiAnixNativePlayerControls(
             },
         )
     }
+    var userDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(state.positionMs, state.durationMs, userDragging) {
+        if (!userDragging) {
+            sliderFraction = if (duration > 0L) {
+                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        }
+    }
     val displayedPosition = if (duration > 0L) {
         (sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration)
     } else {
@@ -146,11 +158,15 @@ fun ReiAnixNativePlayerControls(
                 sliderFraction = sliderFraction,
                 safeBottom = safeBottom,
                 canNext = state.canNext,
-                onSliderChanged = { sliderFraction = it.coerceIn(0f, 1f) },
+                onSliderChanged = {
+                    userDragging = true
+                    sliderFraction = it.coerceIn(0f, 1f)
+                },
                 onSliderFinished = {
                     if (duration > 0L) {
                         onSeekTo((sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration))
                     }
+                    userDragging = false
                 },
                 onToggleLock = onToggleLock,
                 onResize = onResize,
@@ -158,6 +174,100 @@ fun ReiAnixNativePlayerControls(
                 onNext = onNext,
             )
         }
+    }
+}
+
+@Composable
+fun ReiAnixNativePlayerTopControls(
+    state: ReiAnixNativePlayerUiState,
+    onBack: () -> Unit,
+) {
+    PlayerTopOverlay(
+        title = state.title,
+        episodeLabel = state.episodeLabel,
+        technicalLine = state.technicalLine,
+        safeTop = with(LocalDensity.current) { state.safeTopPx.toDp() },
+        onBack = onBack,
+    )
+}
+
+@Composable
+fun ReiAnixNativePlayerCenterControls(
+    state: ReiAnixNativePlayerUiState,
+    onPlayPause: () -> Unit,
+    onSeekRelative: (Long) -> Unit,
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        PlayerCenterControls(
+            isPlaying = state.isPlaying,
+            isBuffering = state.isBuffering,
+            ended = state.ended,
+            playScale = 1f,
+            onPlayPause = onPlayPause,
+            onSeekRelative = onSeekRelative,
+        )
+    }
+}
+
+@Composable
+fun ReiAnixNativePlayerBottomControls(
+    state: ReiAnixNativePlayerUiState,
+    onSeekTo: (Long) -> Unit,
+    onToggleLock: () -> Unit,
+    onResize: () -> Unit,
+    onSource: () -> Unit,
+    onNext: () -> Unit,
+) {
+    val duration = state.durationMs.takeIf { it > 0L } ?: 0L
+    var sliderFraction by remember(duration) {
+        mutableFloatStateOf(
+            if (duration > 0L) {
+                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            },
+        )
+    }
+    var userDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(state.positionMs, state.durationMs, userDragging) {
+        if (!userDragging) {
+            sliderFraction = if (duration > 0L) {
+                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        PlayerBottomOverlay(
+            positionMs = if (duration > 0L) {
+                (sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration)
+            } else {
+                state.positionMs.coerceAtLeast(0L)
+            },
+            durationMs = duration,
+            sliderFraction = sliderFraction,
+            safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() },
+            canNext = state.canNext,
+            onSliderChanged = {
+                userDragging = true
+                sliderFraction = it.coerceIn(0f, 1f)
+            },
+            onSliderFinished = {
+                if (duration > 0L) {
+                    onSeekTo((sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration))
+                }
+                userDragging = false
+            },
+            onToggleLock = onToggleLock,
+            onResize = onResize,
+            onSource = onSource,
+            onNext = onNext,
+        )
     }
 }
 
