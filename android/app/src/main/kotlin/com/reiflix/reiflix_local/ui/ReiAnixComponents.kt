@@ -94,9 +94,10 @@ fun ReiAnixBadge(
 ) {
     val container = when (tone) {
         ReiAnixBadgeTone.Primary -> ReiAnixTokens.Colors.primaryContainer
-        ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success.copy(alpha = 0.16f)
-        ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning.copy(alpha = 0.16f)
+        ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success.copy(alpha = ReiAnixTokens.Colors.statusContainerAlpha)
+        ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning.copy(alpha = ReiAnixTokens.Colors.statusContainerAlpha)
         ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.errorContainer
+        ReiAnixBadgeTone.Info -> ReiAnixTokens.Colors.secondaryContainer
         ReiAnixBadgeTone.Neutral -> ReiAnixTokens.Colors.surfaceRaised
     }
     val content = when (tone) {
@@ -104,6 +105,7 @@ fun ReiAnixBadge(
         ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success
         ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning
         ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.onErrorContainer
+        ReiAnixBadgeTone.Info -> ReiAnixTokens.Colors.onSecondaryContainer
         ReiAnixBadgeTone.Neutral -> MaterialTheme.colorScheme.onSurface
     }
     Surface(
@@ -132,6 +134,7 @@ enum class ReiAnixBadgeTone {
     Success,
     Warning,
     Error,
+    Info,
 }
 
 @Composable
@@ -152,7 +155,7 @@ fun ReiAnixCard(
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
-            color = ReiAnixTokens.Colors.border.copy(alpha = 0.55f),
+            color = ReiAnixTokens.Colors.border.copy(alpha = ReiAnixTokens.Colors.subtleBorderAlpha),
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = ReiAnixTokens.Elevation.card,
@@ -632,14 +635,13 @@ fun ReiAnixAnimeCard(
                         )
                     }
                 }
-                progress?.let {
-                    ReiAnixProgressIndicator(
-                        progress = it,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = ReiAnixTokens.Spacing.sm),
-                    )
-                }
+                ReiAnixProgressIndicator(
+                    progress = progress ?: 0f,
+                    visible = progress != null && progress > 0f,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = ReiAnixTokens.Spacing.sm),
+                )
             }
             Column(
                 modifier = Modifier
@@ -808,7 +810,7 @@ fun ReiAnixSettingCard(
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
             containerColor = ReiAnixTokens.Colors.surfaceCard,
-            disabledContainerColor = ReiAnixTokens.Colors.surface.copy(alpha = 0.55f),
+            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
         ),
         modifier = Modifier
             .fillMaxWidth()
