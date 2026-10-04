@@ -181,6 +181,17 @@ data class ReiAnixAnimeUiModel(
     val addedAt: Double? = null,
     val lastPlayedAt: Double? = null,
     val pinned: Boolean = false,
+    // Editorial metadata comes from the existing SQLite/AniList-derived projection.
+    // Defaults keep older library screens source-compatible.
+    val description: String? = null,
+    val romajiTitle: String? = null,
+    val englishTitle: String? = null,
+    val nativeTitle: String? = null,
+    val status: String? = null,
+    val format: String? = null,
+    val durationMinutes: Int? = null,
+    val studio: String? = null,
+    val seasonLabel: String? = null,
 ) {
     val stableKey: String
         get() = "anime:" + id
