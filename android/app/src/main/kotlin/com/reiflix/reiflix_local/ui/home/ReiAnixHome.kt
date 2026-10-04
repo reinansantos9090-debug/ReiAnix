@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +45,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
+import com.reiflix.reiflix_local.ui.ReiAnixSurface
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
@@ -537,12 +537,13 @@ private fun HomeContinueCard(
     onWatch: (Long, Long) -> Unit,
 ) {
     val progress = progressFraction(item.progressSeconds, item.durationSeconds)
-    Card(
+    ReiAnixSurface(
         modifier = Modifier
             .width(ReiAnixTokens.Dimensions.continueCardWidth)
             .clickable { onWatch(item.episodeId, item.animeId) },
         shape = ReiAnixTokens.Shapes.card,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        color = ReiAnixTokens.Colors.surfaceCard,
+        borderColor = ReiAnixTokens.Colors.border.copy(alpha = 0.55f),
     ) {
         Row(
             modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
