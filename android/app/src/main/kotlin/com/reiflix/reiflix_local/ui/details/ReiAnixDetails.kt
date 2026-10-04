@@ -408,7 +408,6 @@ private fun ReiAnixDetailsReady(
                     episode = episode,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
-                    onRefresh = onRefresh,
                 )
             }
         }
