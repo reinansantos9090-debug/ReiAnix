@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +40,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
+import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
+import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
+import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
@@ -175,30 +179,36 @@ fun ReiAnixSearchScreen(
                 .weight(1f),
         ) {
             when (libraryState.status) {
-            ReiAnixLibraryLoadStatus.LOADING -> SearchLoading(
-                scanInProgress = libraryState.scanInProgress,
+            ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
+                title = "Carregando pesquisa",
+                message = if (libraryState.scanInProgress) {
+                    "Carregando enquanto a varredura continua…"
+                } else {
+                    "Lendo a biblioteca local…"
+                },
+                modifier = Modifier.fillMaxSize(),
             )
 
-            ReiAnixLibraryLoadStatus.ERROR -> SearchMessageState(
+            ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
                 title = "Não foi possível pesquisar",
-                message = libraryState.error
-                    ?: "A biblioteca local retornou um erro.",
-                actionLabel = "Atualizar",
-                onAction = onRefresh,
+                message = libraryState.error ?: "A biblioteca local retornou um erro.",
+                onRetry = onRefresh,
+                modifier = Modifier.fillMaxSize(),
+                retryLabel = "Atualizar",
             )
 
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> SearchMessageState(
+            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = "Biblioteca local indisponível",
                 message = "A fonte local configurada não está disponível agora.",
-                actionLabel = "Atualizar",
                 onAction = onRefresh,
+                modifier = Modifier.fillMaxSize(),
             )
 
-            ReiAnixLibraryLoadStatus.EMPTY -> SearchMessageState(
-                title = "Biblioteca vazia",
+            ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                 message = "Nenhum conteúdo local disponível para pesquisa.",
                 actionLabel = "Atualizar",
                 onAction = onRefresh,
+                modifier = Modifier.fillMaxSize(),
             )
 
             ReiAnixLibraryLoadStatus.READY -> {
@@ -333,15 +343,13 @@ private fun SearchResultCard(
 private fun SearchEmptyQueryState(
     librarySize: Int,
 ) {
-    SearchMessageState(
+    ReiAnixEmptyState(
         title = "Pesquise na biblioteca",
         message = if (librarySize == 1) {
             "1 título local disponível."
         } else {
             "$librarySize títulos locais disponíveis."
         },
-        actionLabel = null,
-        onAction = {},
     )
 }
 
@@ -349,11 +357,9 @@ private fun SearchEmptyQueryState(
 private fun SearchNoResultsState(
     query: String,
 ) {
-    SearchMessageState(
+    ReiAnixEmptyState(
         title = "Nenhum resultado",
         message = "Nenhum conteúdo local corresponde a \"" + query.trim() + "\".",
-        actionLabel = null,
-        onAction = {},
     )
 }
 
