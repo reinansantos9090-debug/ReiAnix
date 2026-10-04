@@ -124,7 +124,7 @@ fun ReiAnixDetailsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         ReiAnixDetailsTopBar(
             favorite = state.anime?.favorite ?: false,
@@ -215,13 +215,13 @@ private fun ReiAnixDetailsTopBar(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = null,
-                tint = ReiAnixTokens.Colors.text,
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
         Text(
             text = "Detalhes",
             style = MaterialTheme.typography.titleLarge,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
         IconButton(
@@ -241,7 +241,7 @@ private fun ReiAnixDetailsTopBar(
                 tint = if (favorite) {
                     ReiAnixTokens.Colors.warning
                 } else {
-                    ReiAnixTokens.Colors.text
+                    MaterialTheme.colorScheme.onSurface
                 },
             )
         }
@@ -290,7 +290,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     Text(
                         text = anime.title,
                         style = MaterialTheme.typography.headlineSmall,
-                        color = ReiAnixTokens.Colors.text,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
@@ -338,7 +338,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                         Text(
                             text = "Nenhuma mídia local disponível para reprodução.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = ReiAnixTokens.Colors.textMuted,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -364,7 +364,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 Text(
                     text = season.title,
                     style = MaterialTheme.typography.titleLarge,
-                    color = ReiAnixTokens.Colors.text,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(
                         start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
@@ -393,7 +393,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 Text(
                     text = "Especiais",
                     style = MaterialTheme.typography.titleLarge,
-                    color = ReiAnixTokens.Colors.text,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(
                         start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
@@ -446,11 +446,11 @@ private fun DetailsSeasonSelector(
                 label = { Text(season.title) },
                 colors = AssistChipDefaults.assistChipColors(
                     containerColor = if (selected) {
-                        ReiAnixTokens.Colors.primaryContainer
+                        MaterialTheme.colorScheme.primaryContainer
                     } else {
-                        ReiAnixTokens.Colors.surfaceVariant
+                        MaterialTheme.colorScheme.surfaceVariant
                     },
-                    labelColor = ReiAnixTokens.Colors.text,
+                    labelColor = MaterialTheme.colorScheme.onSurface,
                 ),
                 modifier = Modifier.semantics {
                     contentDescription = "Selecionar " + season.title
@@ -476,7 +476,7 @@ private fun DetailsEpisodeItem(
                 vertical = ReiAnixTokens.Spacing.xs,
             ),
         shape = ReiAnixTokens.Shapes.card,
-        color = ReiAnixTokens.Colors.surface,
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Row(
             modifier = Modifier
@@ -514,7 +514,7 @@ private fun DetailsEpisodeItem(
                 Text(
                     text = formatEpisodeNumber(episode.number) + " • " + episode.displayTitle,
                     style = MaterialTheme.typography.titleMedium,
-                    color = ReiAnixTokens.Colors.text,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -531,7 +531,7 @@ private fun DetailsEpisodeItem(
                         if (isEmpty()) append("Duração indisponível")
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -560,7 +560,7 @@ private fun DetailsEpisodeItem(
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
                         contentDescription = null,
-                        tint = ReiAnixTokens.Colors.textMuted,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 DropdownMenu(
@@ -615,12 +615,12 @@ private fun DetailsFactChip(
 ) {
     Surface(
         shape = ReiAnixTokens.Shapes.chip,
-        color = ReiAnixTokens.Colors.surfaceVariant,
+        color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(
                 horizontal = ReiAnixTokens.Spacing.sm,
                 vertical = ReiAnixTokens.Spacing.xs,
