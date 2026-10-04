@@ -25,8 +25,12 @@ object ReiAnixTokens {
         val surfaceVariant = Color(0xFF151C27)
         val surfaceRaised = Color(0xFF1C2532)
         val surfaceCard = surfaceVariant
+        val surfaceDialog = Color(0xFF182331)
+        val surfaceSheet = Color(0xFF111822)
+        val surfacePlayer = Color(0xFF020408)
         val surfaceSelected = Color(0xFF173B6D)
         val surfaceNavigation = Color(0xFF0B1017)
+        val overlayStrong = Color(0xCC000000)
 
         val primary = Color(0xFF3D8BFF)
         val primaryContainer = Color(0xFF173D78)
@@ -59,9 +63,11 @@ object ReiAnixTokens {
         val onError = Color(0xFF240608)
         val errorContainer = Color(0xFF5A1A1F)
         val onErrorContainer = Color(0xFFFFDADD)
+        val info = secondary
 
         val success = Color(0xFF4ADE80)
         val warning = Color(0xFFF6C85F)
+        val disabledSurface = Color(0xFF121821)
         val overlay = Color(0xB3000000)
 
         val inverseSurface = Color(0xFFE9EEF7)
@@ -86,6 +92,7 @@ object ReiAnixTokens {
         val lightBackground = Color(0xFFF7F9FC)
         val lightSurface = Color(0xFFFFFFFF)
         val lightSurfaceVariant = Color(0xFFE9EEF6)
+        val lightSurfaceDialog = Color(0xFFF1F5FB)
         val lightText = Color(0xFF171A20)
         val lightTextMuted = Color(0xFF5E6572)
         val lightBorder = Color(0xFF727A88)
@@ -102,6 +109,8 @@ object ReiAnixTokens {
         val xxl = 24.dp
         val xxxl = 32.dp
         val huge = 40.dp
+        val section = 28.dp
+        val screen = 20.dp
     }
 
     object Dimensions {
@@ -114,6 +123,8 @@ object ReiAnixTokens {
         val buttonMinHeight = 52.dp
         val chipMinHeight = 36.dp
         val touchTarget = 48.dp
+        val iconSmall = 18.dp
+        val iconMedium = 24.dp
         val topBarMinHeight = 56.dp
         val bottomNavigationMinHeight = 64.dp
         val bottomNavigationIndicatorHeight = 32.dp
@@ -127,6 +138,8 @@ object ReiAnixTokens {
         val episodeThumbnailHeight = 68.dp
         val detailsEpisodeThumbnailFraction = 0.27f
         val detailsHeroHeight = 250.dp
+        val searchFieldHeight = 56.dp
+        val detailsHeroMaxHeight = 320.dp
         val progressHeight = 4.dp
         val dividerHeight = 1.dp
         val borderWidth = 1.dp
@@ -142,6 +155,7 @@ object ReiAnixTokens {
         val hero = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
         val dialog = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
         val sheet = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
+        val textField = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
     }
 
     object Elevation {
@@ -157,7 +171,7 @@ object ReiAnixTokens {
         const val contentExitMillis = 160
     }
 
-    private object TypeScale {
+    object TypographyTokens {
         val display = TextStyle(
             fontSize = 36.sp,
             lineHeight = 44.sp,
