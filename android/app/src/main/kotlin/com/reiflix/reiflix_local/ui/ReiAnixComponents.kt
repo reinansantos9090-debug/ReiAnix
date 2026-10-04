@@ -25,6 +25,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,6 +47,92 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 @Composable
+fun ReiAnixSurface(
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = ReiAnixTokens.Shapes.card,
+    color: androidx.compose.ui.graphics.Color = ReiAnixTokens.Colors.surface,
+    borderColor: androidx.compose.ui.graphics.Color? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = shape,
+        color = color,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = borderColor?.let {
+            androidx.compose.foundation.BorderStroke(
+                width = ReiAnixTokens.Dimensions.borderWidth,
+                color = it,
+            )
+        },
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            content = content,
+        )
+    }
+}
+
+@Composable
+fun ReiAnixDivider(
+    modifier: Modifier = Modifier,
+) {
+    HorizontalDivider(
+        modifier = modifier,
+        thickness = ReiAnixTokens.Dimensions.dividerHeight,
+        color = ReiAnixTokens.Colors.divider,
+    )
+}
+
+@Composable
+fun ReiAnixBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    tone: ReiAnixBadgeTone = ReiAnixBadgeTone.Neutral,
+) {
+    val container = when (tone) {
+        ReiAnixBadgeTone.Primary -> ReiAnixTokens.Colors.primaryContainer
+        ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success.copy(alpha = 0.16f)
+        ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning.copy(alpha = 0.16f)
+        ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.errorContainer
+        ReiAnixBadgeTone.Neutral -> ReiAnixTokens.Colors.surfaceRaised
+    }
+    val content = when (tone) {
+        ReiAnixBadgeTone.Primary -> ReiAnixTokens.Colors.onPrimaryContainer
+        ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success
+        ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning
+        ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.onErrorContainer
+        ReiAnixBadgeTone.Neutral -> MaterialTheme.colorScheme.onSurface
+    }
+    Surface(
+        modifier = modifier,
+        shape = ReiAnixTokens.Shapes.chip,
+        color = container,
+        contentColor = content,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = content,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(
+                horizontal = ReiAnixTokens.Spacing.sm,
+                vertical = ReiAnixTokens.Spacing.xs,
+            ),
+        )
+    }
+}
+
+enum class ReiAnixBadgeTone {
+    Neutral,
+    Primary,
+    Success,
+    Warning,
+    Error,
+}
+
+@Composable
 fun ReiAnixCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
@@ -57,8 +145,12 @@ fun ReiAnixCard(
         colors = CardDefaults.cardColors(
             containerColor = ReiAnixTokens.Colors.surfaceCard,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            disabledContainerColor = ReiAnixTokens.Colors.surface.copy(alpha = 0.55f),
+            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
             disabledContentColor = ReiAnixTokens.Colors.textDisabled,
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            width = ReiAnixTokens.Dimensions.borderWidth,
+            color = ReiAnixTokens.Colors.border.copy(alpha = 0.55f),
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = ReiAnixTokens.Elevation.card,
@@ -90,6 +182,8 @@ fun ReiAnixPrimaryButton(
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
+            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
+            disabledContentColor = ReiAnixTokens.Colors.textDisabled,
         ),
     ) {
         Text(
@@ -116,11 +210,13 @@ fun ReiAnixSecondaryButton(
             .semantics { role = Role.Button },
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
+            disabledContentColor = ReiAnixTokens.Colors.textDisabled,
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
-            color = MaterialTheme.colorScheme.outline,
+            color = if (enabled) ReiAnixTokens.Colors.border else ReiAnixTokens.Colors.divider,
         ),
     ) {
         Text(
@@ -397,7 +493,7 @@ fun ReiAnixAnimeCard(
                     contentDescription = title,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(0.7f)
+                        .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
                         .clip(ReiAnixTokens.Shapes.artwork),
                     contentScale = ContentScale.Crop,
                     placeholder = "Sem arte",
@@ -715,16 +811,17 @@ fun ReiAnixProgressIndicator(
     modifier: Modifier = Modifier,
     visible: Boolean = true,
 ) {
-    if (!visible) {
-        return
+    val clampedProgress = if (progress.isFinite()) {
+        progress.coerceIn(0f, 1f)
+    } else {
+        0f
     }
-    val clampedProgress = progress.coerceIn(0f, 1f)
     LinearProgressIndicator(
         progress = { clampedProgress },
         modifier = modifier
             .fillMaxWidth()
             .height(ReiAnixTokens.Dimensions.progressHeight),
-        color = MaterialTheme.colorScheme.primary,
+        color = if (visible) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
         trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
 }
