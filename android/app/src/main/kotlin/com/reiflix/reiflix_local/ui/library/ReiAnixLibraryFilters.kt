@@ -1,6 +1,8 @@
 package com.reiflix.reiflix_local.ui.library
 
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 
 data class ReiAnixLibraryFilters(
     val query: String = "",
@@ -46,7 +48,7 @@ internal object ReiAnixLibraryFilterEngine {
         filters: ReiAnixLibraryFilters,
     ): List<ReiAnixAnimeUiModel> {
         val query = filters.query.trim()
-        return animes.filter { anime ->
+        val filtered = animes.filter { anime ->
             val matchesQuery = query.isBlank() ||
                 anime.title.contains(query, ignoreCase = true) ||
                 anime.genres.any { it.name.contains(query, ignoreCase = true) }
@@ -82,10 +84,10 @@ internal object ReiAnixLibraryFilterEngine {
         val decorated = animes.map { anime ->
             val episodes = anime.contentEpisodes
             val available = episodes.filter {
-                it.media.availability == com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE
+                it.media.availability == ReiAnixMediaAvailability.AVAILABLE
             }
             val episodeForOrdering = available.sortedWith(
-                compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel>(
+                compareBy<ReiAnixEpisodeUiModel>(
                     { it.seasonNumber ?: Int.MAX_VALUE },
                     { it.number ?: Double.MAX_VALUE },
                 ).thenBy { it.id },
