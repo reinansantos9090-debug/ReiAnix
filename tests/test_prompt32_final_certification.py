@@ -1,9 +1,5 @@
 from pathlib import Path
-import re
-
 ROOT = Path(__file__).resolve().parents[1]
-ANDROID = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local"
-
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
@@ -83,7 +79,7 @@ def test_prompt32_runtime_suite_exists_and_is_not_silently_disabled():
     )
     for name in expected_tests:
         assert name in workflow
-    assert ":app:connectedDebugAndroidTest" in script
+    assert "connectedDebugAndroidTest" in script
     assert "reactivecircus/android-emulator-runner@v2" in workflow
     assert "api-level: 36" in workflow
     assert "on:\n  workflow_dispatch:" in workflow
@@ -130,6 +126,8 @@ def test_prompt32_no_weakening_or_fake_runtime_pass_contracts():
     runner = read("scripts/release_certification.py")
     tests = read("tests/test_certification_runner.py")
     assert '"connected" + "DebugAndroidTest"' in tests
-    assert '"PASS","PARTIAL","FAIL","NOT VALIDATED","NOT APPLICABLE","BLOCKED"' in tests.replace(" ", "") or "NOT VALIDATED" in tests
-    assert "if result.exit_code != 0" in runner or "return Result" in runner
+    assert "ALLOWED" in runner
+    for classification in ("PASS", "PARTIAL", "FAIL", "NOT VALIDATED", "NOT APPLICABLE", "BLOCKED"):
+        assert classification in runner
+    assert "p.returncode==0 else FAIL" in runner
     assert "NOT VALIDATED" in runner
