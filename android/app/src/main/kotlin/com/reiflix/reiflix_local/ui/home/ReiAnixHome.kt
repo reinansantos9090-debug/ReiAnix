@@ -536,7 +536,7 @@ private fun buildHomeCategoryNames(
         .flatMap { anime -> anime.genres.asSequence().map { it.name } }
         .map(String::trim)
         .filter(String::isNotEmpty)
-        .distinctBy(String::lowercase)
+        .distinctBy { it.lowercase() }
         .take(5)
         .toList()
 
@@ -553,17 +553,18 @@ private fun buildHomeGenreSections(
     items.forEach { anime ->
         anime.genres.forEach { genre ->
             val title = genre.name.trim()
-            if (title.isEmpty()) return@forEach
-            val key = genre.stableKey
-            val section = sections.getOrPut(key) {
-                MutableSection(
-                    key = key,
-                    title = title,
-                    items = mutableListOf(),
-                )
-            }
-            if (section.items.none { it.id == anime.id }) {
-                section.items += anime
+            if (title.isNotEmpty()) {
+                val key = genre.stableKey
+                val section = sections.getOrPut(key) {
+                    MutableSection(
+                        key = key,
+                        title = title,
+                        items = mutableListOf(),
+                    )
+                }
+                if (section.items.none { it.id == anime.id }) {
+                    section.items += anime
+                }
             }
         }
     }
