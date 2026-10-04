@@ -76,6 +76,7 @@ data class ReiAnixSettingsCategoryUiModel(
 private val NativeManagedSettingsCategories = setOf(
     "Geral",
     "Aparência",
+    "Conta",
     "Player",
     "Gestos",
     "Áudio e Legendas",
@@ -213,6 +214,7 @@ fun ReiAnixSettingsRoute(
                 state = state,
                 onBack = { selectedCategory = null },
                 onUpdateSetting = viewModel::setSetting,
+                onAccountAction = viewModel::requestAccountAction,
             )
         } else {
             ReiAnixSettingsScreen(
@@ -313,6 +315,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     state: ReiAnixSettingsUiState,
     onBack: () -> Unit,
     onUpdateSetting: (String, String) -> Unit,
+    onAccountAction: (String) -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -338,6 +341,15 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 )
             }
             when (category) {
+                "Conta" -> {
+                    item(key = "account:profile") {
+                        ReiAnixSettingsAccountContent(
+                            state = state.account,
+                            onAction = onAccountAction,
+                        )
+                    }
+                }
+
                 "Geral" -> {
                     item(key = "setting:app.confirm_destructive") {
                         BooleanSettingCard(
@@ -813,6 +825,82 @@ private fun ChoiceSettingCard(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReiAnixSettingsAccountContent(
+    state: com.reiflix.reiflix_local.ui.model.ReiAnixSettingsAccountUiState,
+    onAction: (String) -> Unit,
+) {
+    val busy = state.state in setOf("connecting", "awaiting_google", "disconnecting")
+    val status = when (state.state) {
+        "connected" -> "Conta conectada"
+        "connecting" -> "Conectando com o Google…"
+        "awaiting_google" -> "Aguardando a escolha da conta Google…"
+        "disconnecting" -> "Encerrando a sessão…"
+        "configuration_required" -> "Configuração necessária"
+        "error" -> "Não foi possível concluir a operação Google."
+        else -> "Não conectado"
+    }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(ReiAnixTokens.Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+        ) {
+            Text(
+                text = state.name.ifBlank { state.email.ifBlank { "Conta Google" } },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (state.connected && state.email.isNotBlank()) {
+                Text(
+                    text = state.email,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (state.state == "error") {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Text(
+                text = "A biblioteca local, o scanner e o player continuam disponíveis sem login e sem conectividade.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (busy) {
+                    CircularProgressIndicator()
+                } else if (state.connected) {
+                    Button(onClick = { onAction("switch") }) {
+                        Text("Trocar conta")
+                    }
+                    OutlinedButton(onClick = { onAction("logout") }) {
+                        Text("Sair")
+                    }
+                } else {
+                    Button(onClick = { onAction("login") }) {
+                        Text("Entrar com Google")
+                    }
                 }
             }
         }
