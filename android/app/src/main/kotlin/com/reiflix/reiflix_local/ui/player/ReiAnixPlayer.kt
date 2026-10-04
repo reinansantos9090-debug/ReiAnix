@@ -190,7 +190,7 @@ private fun PlayerHandoffMessage(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                .padding(top = ReiAnixTokens.Spacing.sm),
+                modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
             )
         }
     }
