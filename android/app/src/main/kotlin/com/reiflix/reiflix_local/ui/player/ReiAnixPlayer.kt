@@ -153,7 +153,7 @@ private fun PlayerHandoffMessage(
             message = message,
             modifier = Modifier
                 .fillMaxSize()
-                .background(ReiAnixTokens.Colors.background)
+                .background(MaterialTheme.colorScheme.background)
                 .semantics {
                     contentDescription = "ReiAnixPlayerHandoff"
                 },
@@ -165,7 +165,7 @@ private fun PlayerHandoffMessage(
             onRetry = onRetry,
             modifier = Modifier
                 .fillMaxSize()
-                .background(ReiAnixTokens.Colors.background)
+                .background(MaterialTheme.colorScheme.background)
                 .semantics {
                     contentDescription = "ReiAnixPlayerHandoff"
                 },
@@ -174,7 +174,7 @@ private fun PlayerHandoffMessage(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(ReiAnixTokens.Colors.background)
+                .background(MaterialTheme.colorScheme.background)
                 .semantics {
                     contentDescription = "ReiAnixPlayerHandoff"
                 }
@@ -185,12 +185,12 @@ private fun PlayerHandoffMessage(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
-                color = ReiAnixTokens.Colors.text,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
