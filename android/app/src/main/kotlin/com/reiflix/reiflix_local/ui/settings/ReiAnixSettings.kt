@@ -13,19 +13,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -59,14 +55,14 @@ data class ReiAnixSettingsCategoryUiModel(
             ReiAnixSettingsCategoryUiModel("Aparência", "Tema e apresentação", Icons.Filled.DarkMode),
             ReiAnixSettingsCategoryUiModel("Biblioteca", "Catálogo, grade e Continue Watching", Icons.Filled.VideoLibrary),
             ReiAnixSettingsCategoryUiModel("Player", "Reprodução, vídeo, controles e tela", Icons.Filled.PlayCircle),
-            ReiAnixSettingsCategoryUiModel("Gestos", "Interações de toque do player", Icons.Filled.TouchApp),
+            ReiAnixSettingsCategoryUiModel("Gestos", "Interações de toque do player", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Áudio e Legendas", "Idiomas, legendas e áudio", Icons.Filled.Headphones),
-            ReiAnixSettingsCategoryUiModel("Metadata", "AniList e matching", Icons.Filled.ManageSearch),
-            ReiAnixSettingsCategoryUiModel("Artwork", "Capas, thumbnails e cache", Icons.Filled.AutoAwesome),
+            ReiAnixSettingsCategoryUiModel("Metadata", "AniList e matching", Icons.Filled.Search),
+            ReiAnixSettingsCategoryUiModel("Artwork", "Capas, thumbnails e cache", Icons.Filled.Info),
             ReiAnixSettingsCategoryUiModel("Armazenamento", "Permissões, SAF, MediaStore e volumes", Icons.Filled.Storage),
             ReiAnixSettingsCategoryUiModel("Dados e Cache", "Configurações, importação, exportação e cache", Icons.Filled.Cached),
             ReiAnixSettingsCategoryUiModel("Backup e Restauração", "Backup, restauração, integridade e reconciliação", Icons.Filled.Security),
-            ReiAnixSettingsCategoryUiModel("Privacidade", "Dados locais e conectividade", Icons.Filled.PrivacyTip),
+            ReiAnixSettingsCategoryUiModel("Privacidade", "Dados locais e conectividade", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Varredura", "Estado e histórico das varreduras", Icons.Filled.Refresh),
             ReiAnixSettingsCategoryUiModel("Diagnóstico", "Informações técnicas e diagnóstico", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Sobre", "Versão e componentes do ReiAnix", Icons.Filled.Info),
