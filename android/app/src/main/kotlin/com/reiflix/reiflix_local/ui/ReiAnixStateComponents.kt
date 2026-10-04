@@ -141,7 +141,6 @@ fun ReiAnixScannerInProgressState(
                     text = "Varredura em andamento",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = normalizedState,
@@ -199,7 +198,6 @@ fun ReiAnixFileUnavailableState(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
                 color = ReiAnixTokens.Colors.warning,
-                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = message,
@@ -273,7 +271,6 @@ fun ReiAnixRecoverableErrorState(
             text = title,
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Bold,
         )
         Text(
             text = message,
