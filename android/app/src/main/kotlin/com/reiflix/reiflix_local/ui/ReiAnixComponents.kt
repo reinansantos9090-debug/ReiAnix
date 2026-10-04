@@ -26,6 +26,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -121,6 +122,30 @@ fun ReiAnixSecondaryButton(
             width = ReiAnixTokens.Dimensions.borderWidth,
             color = MaterialTheme.colorScheme.outline,
         ),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+fun ReiAnixCompactButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .heightIn(min = ReiAnixTokens.Dimensions.touchTarget)
+            .semantics { role = Role.Button },
+        shape = ReiAnixTokens.Shapes.button,
     ) {
         Text(
             text = text,
