@@ -78,7 +78,7 @@ fun ReiAnixStorageScreen(
     val storage = state.storage
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = ReiAnixTokens.Colors.background,
+        color = MaterialTheme.colorScheme.background,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
@@ -185,7 +185,7 @@ private fun StorageSummaryCard(
     onRefreshLibrary: () -> Unit,
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -240,7 +240,7 @@ private fun StoragePermissionCard(
     onAction: () -> Unit,
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -268,7 +268,7 @@ private fun ConfiguredSourcesCard(
     onOpenBroadSettings: () -> Unit,
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
