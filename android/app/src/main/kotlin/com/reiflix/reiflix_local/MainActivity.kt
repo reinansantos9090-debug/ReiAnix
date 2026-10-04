@@ -789,8 +789,8 @@ class MainActivity : FlutterFragmentActivity() {
         composeLibraryHost = ReiAnixComposeLibraryHost(this)
         composeStorageHost = ReiAnixComposeStorageHost(this)
         composeSettingsHost = ReiAnixComposeSettingsHost(this)
-        // Flet owns the visual theme/system-overlay appearance; the native host
-        // owns edge-to-edge + normal system-bar visibility.
+        // The existing SystemUiController remains the single Android system-bar
+        // authority while the Compose shell and legacy Flet surfaces coexist.
         systemUiController.applyApplicationPolicy(useContextAppearance = false)
         // Permission-sensitive actions are queued until the Activity is resumed.
         handleNativeIntent(intent)
@@ -1041,11 +1041,10 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /**
-     * Android owns the physical Back dispatch, while Flutter/Flet remains the
-     * single logical navigation owner. One platform Back dispatch becomes one
-     * Flutter popRoute call; no mailbox event or native finish path is allowed
-     * here. NavigationController then decides settings nesting, Home double-back
-     * exit, dialogs and the final close operation.
+     * Android owns the physical Back dispatch. The active Compose App Shell gets
+     * first refusal while its Navigation Compose stack contains a previous
+     * destination. At the shell root, the existing Flet/navigation bridge keeps
+     * ownership of the legacy transition and exit semantics.
      */
     private fun installSystemBackHandler() {
         onBackPressedDispatcher.addCallback(
