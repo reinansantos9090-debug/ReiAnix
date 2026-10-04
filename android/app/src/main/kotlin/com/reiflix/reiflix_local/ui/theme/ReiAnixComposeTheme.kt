@@ -1,9 +1,42 @@
 package com.reiflix.reiflix_local.ui.theme
 
 import androidx.annotation.Keep
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+
+private val ReiAnixLightColorScheme = lightColorScheme(
+    primary = ReiAnixTokens.Colors.lightPrimary,
+    onPrimary = ReiAnixTokens.Colors.lightOnPrimary,
+    primaryContainer = ReiAnixTokens.Colors.lightPrimaryContainer,
+    onPrimaryContainer = ReiAnixTokens.Colors.lightOnPrimaryContainer,
+    secondary = ReiAnixTokens.Colors.lightSecondary,
+    onSecondary = ReiAnixTokens.Colors.lightOnSecondary,
+    secondaryContainer = ReiAnixTokens.Colors.lightSecondaryContainer,
+    onSecondaryContainer = ReiAnixTokens.Colors.lightOnSecondaryContainer,
+    tertiary = ReiAnixTokens.Colors.lightTertiary,
+    onTertiary = ReiAnixTokens.Colors.lightOnTertiary,
+    tertiaryContainer = ReiAnixTokens.Colors.lightTertiaryContainer,
+    onTertiaryContainer = ReiAnixTokens.Colors.lightOnTertiaryContainer,
+    error = ReiAnixTokens.Colors.lightError,
+    onError = ReiAnixTokens.Colors.lightOnError,
+    errorContainer = ReiAnixTokens.Colors.lightErrorContainer,
+    onErrorContainer = ReiAnixTokens.Colors.lightOnErrorContainer,
+    background = ReiAnixTokens.Colors.lightBackground,
+    onBackground = ReiAnixTokens.Colors.lightText,
+    surface = ReiAnixTokens.Colors.lightSurface,
+    onSurface = ReiAnixTokens.Colors.lightText,
+    surfaceVariant = ReiAnixTokens.Colors.lightSurfaceVariant,
+    onSurfaceVariant = ReiAnixTokens.Colors.lightTextMuted,
+    outline = ReiAnixTokens.Colors.lightBorder,
+    outlineVariant = ReiAnixTokens.Colors.lightDivider,
+    inverseSurface = ReiAnixTokens.Colors.inverseSurface,
+    inverseOnSurface = ReiAnixTokens.Colors.inverseOnSurface,
+    inversePrimary = ReiAnixTokens.Colors.inversePrimary,
+    scrim = ReiAnixTokens.Colors.overlay,
+)
 
 private val ReiAnixDarkColorScheme = darkColorScheme(
     primary = ReiAnixTokens.Colors.primary,
@@ -45,10 +78,17 @@ private val ReiAnixDarkColorScheme = darkColorScheme(
 @Keep
 @Composable
 fun ReiAnixComposeTheme(
+    themeMode: String? = null,
     content: @Composable () -> Unit,
 ) {
+    val normalizedMode = themeMode?.trim()?.lowercase().orEmpty()
+    val darkTheme = when (normalizedMode) {
+        "light" -> false
+        "system" -> isSystemInDarkTheme()
+        else -> true
+    }
     MaterialTheme(
-        colorScheme = ReiAnixDarkColorScheme,
+        colorScheme = if (darkTheme) ReiAnixDarkColorScheme else ReiAnixLightColorScheme,
         typography = ReiAnixTokens.typography,
         shapes = ReiAnixTokens.shapes,
         content = content,
