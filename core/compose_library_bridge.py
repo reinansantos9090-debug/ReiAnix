@@ -118,8 +118,12 @@ class ComposeLibraryBridge:
                         item.get("id")
                         for item in catalog
                         if item.get("id") is not None
-                        and str(item.get("media_kind") or item.get("meta", {}).get("media_kind") or "").strip().lower()
-                        == ("movie" if entity_type == "movie" else "series")
+                        and (
+                            entity_type == "movie"
+                            and str(item.get("media_kind") or item.get("meta", {}).get("media_kind") or "").strip().lower() == "movie"
+                            or entity_type == "anime"
+                            and str(item.get("media_kind") or item.get("meta", {}).get("media_kind") or "").strip().lower() != "movie"
+                        )
                     ]
                     entity_ids = list(dict.fromkeys(entity_ids))
                     if entity_ids:
