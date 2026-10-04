@@ -11,13 +11,19 @@ class Prompt27ComposeInsetsContractTests(unittest.TestCase):
         return (ROOT / relative_path).read_text(encoding="utf-8")
 
     def test_navigation_shell_uses_safe_drawing_and_consumes_scaffold_insets(self):
-        source = self.read(
+        shell = self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/shell/ReiAnixAppShell.kt"
+        )
+        navigation = self.read(
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
         )
-        self.assertIn("import androidx.compose.foundation.layout.safeDrawing", source)
-        self.assertIn("contentWindowInsets = WindowInsets.safeDrawing", source)
-        self.assertIn(".padding(innerPadding)", source)
-        self.assertIn(".consumeWindowInsets(innerPadding)", source)
+        # Scaffold and safe-drawing ownership live in the shared App Shell.
+        self.assertIn("Scaffold(", shell)
+        self.assertIn("import androidx.compose.foundation.layout.safeDrawing", shell)
+        self.assertIn("contentWindowInsets = WindowInsets.safeDrawing", shell)
+        # Navigation consumes the shell-provided scaffold insets.
+        self.assertIn(".padding(innerPadding)", navigation)
+        self.assertIn(".consumeWindowInsets(innerPadding)", navigation)
 
     def test_scrollable_top_level_screens_use_remaining_column_height(self):
         home = self.read(
