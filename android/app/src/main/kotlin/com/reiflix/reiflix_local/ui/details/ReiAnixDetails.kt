@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -50,7 +49,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
+import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
+import com.reiflix.reiflix_local.ui.ReiAnixFileUnavailableState
+import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
+import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
+import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsAnimeUiModel
@@ -128,7 +133,11 @@ fun ReiAnixDetailsScreen(
         )
 
         when (state.status) {
-            ReiAnixDetailsLoadStatus.LOADING -> DetailsLoading()
+            ReiAnixDetailsLoadStatus.LOADING -> ReiAnixLoadingState(
+                title = "Carregando detalhes",
+                message = "Lendo os dados da biblioteca local…",
+                modifier = Modifier.fillMaxSize(),
+            )
 
             ReiAnixDetailsLoadStatus.READY -> {
                 val anime = state.anime
@@ -137,38 +146,43 @@ fun ReiAnixDetailsScreen(
                         anime = anime,
                         onWatch = onWatch,
                         onSetEpisodeWatched = onSetEpisodeWatched,
+                        onRefresh = onRetry,
                     )
                 } else {
-                    DetailsMessage(
+                    ReiAnixRecoverableErrorState(
                         title = "Detalhes indisponíveis",
                         message = "Os dados do anime não estão disponíveis.",
                         onRetry = onRetry,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
 
-            ReiAnixDetailsLoadStatus.EMPTY -> DetailsMessage(
-                title = "Biblioteca vazia",
+            ReiAnixDetailsLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                 message = "Nenhum anime local está disponível.",
-                onRetry = onRetry,
+                actionLabel = "Atualizar",
+                onAction = onRetry,
+                modifier = Modifier.fillMaxSize(),
             )
 
-            ReiAnixDetailsLoadStatus.SOURCE_UNAVAILABLE -> DetailsMessage(
+            ReiAnixDetailsLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = "Biblioteca local indisponível",
                 message = state.error ?: "A fonte local não está disponível agora.",
-                onRetry = onRetry,
+                onAction = onRetry,
+                modifier = Modifier.fillMaxSize(),
             )
 
-            ReiAnixDetailsLoadStatus.NOT_FOUND -> DetailsMessage(
+            ReiAnixDetailsLoadStatus.NOT_FOUND -> ReiAnixEmptyState(
                 title = "Anime não encontrado",
                 message = state.error ?: "O anime não está presente na biblioteca local.",
-                onRetry = onRetry,
+                modifier = Modifier.fillMaxSize(),
             )
 
-            ReiAnixDetailsLoadStatus.ERROR -> DetailsMessage(
+            ReiAnixDetailsLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
                 title = "Erro nos detalhes",
                 message = state.error ?: "Não foi possível carregar os detalhes.",
                 onRetry = onRetry,
+                modifier = Modifier.fillMaxSize(),
             )
         }
     }
@@ -237,6 +251,7 @@ private fun ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
     onWatch: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
+    onRefresh: () -> Unit,
 ) {
     var selectedSeasonKey by rememberSaveable(anime.id) {
         mutableStateOf(anime.seasons.firstOrNull()?.stableKey)
@@ -367,6 +382,7 @@ private fun ReiAnixDetailsReady(
                     episode = episode,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
+                    onRefresh = onRefresh,
                 )
             }
         }
@@ -395,6 +411,7 @@ private fun ReiAnixDetailsReady(
                     episode = episode,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
+                    onRefresh = onRefresh,
                 )
             }
         }
@@ -448,6 +465,7 @@ private fun DetailsEpisodeItem(
     episode: ReiAnixEpisodeUiModel,
     onWatch: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
+    onRefresh: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -525,10 +543,10 @@ private fun DetailsEpisodeItem(
                         .height(4.dp),
                 )
                 if (!episode.isPlayable) {
-                    Text(
-                        text = "Arquivo indisponível",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = ReiAnixTokens.Colors.warning,
+                    ReiAnixFileUnavailableState(
+                        message = "Restaure o arquivo na fonte autorizada e atualize a biblioteca.",
+                        modifier = Modifier.fillMaxWidth(),
+                        compact = true,
                     )
                 }
             }
@@ -614,49 +632,6 @@ private fun DetailsFactChip(
     }
 }
 
-@Composable
-private fun DetailsLoading() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator(color = ReiAnixTokens.Colors.primary)
-    }
-}
-
-@Composable
-private fun DetailsMessage(
-    title: String,
-    message: String,
-    onRetry: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(ReiAnixTokens.Spacing.xxl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineSmall,
-            color = ReiAnixTokens.Colors.text,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyLarge,
-            color = ReiAnixTokens.Colors.textMuted,
-            modifier = Modifier.padding(horizontal = ReiAnixTokens.Spacing.md),
-        )
-        Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.lg))
-        ReiAnixSecondaryButton(
-            text = "Atualizar",
-            onClick = onRetry,
-        )
-    }
-}
 
 private fun formatScore(value: Double): String =
     String.format(java.util.Locale.ROOT, "%.1f", (value / 10.0).coerceIn(0.0, 10.0))
