@@ -235,6 +235,7 @@ fun ReiAnixNavigationHost(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.safeDrawing,
         bottomBar = {
             if (showBottomNavigation && topLevelDestinations.any { it.route == currentRoute }) {
                 NavigationBar(
