@@ -13,8 +13,7 @@ import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
  */
 @Composable
 fun ReiAnixComposeRoot(
-    themeMode: String? = null,
     content: @Composable () -> Unit,
 ) {
-    ReiAnixComposeTheme(themeMode = themeMode, content = content)
+    ReiAnixComposeTheme(content = content)
 }
