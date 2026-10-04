@@ -150,7 +150,12 @@ fun ReiAnixNavigationHost(
     homeViewModel: ReiAnixLibraryViewModel =
         com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel(),
     library: @Composable () -> Unit = {},
-    myList: @Composable () -> Unit = {},
+    myList: @Composable () -> Unit = {
+        ReiAnixMyListRoute(
+            navController = navController,
+            viewModel = homeViewModel,
+        )
+    },
     search: @Composable () -> Unit = {},
     settings: @Composable () -> Unit = {},
     storage: @Composable () -> Unit = {},
@@ -179,16 +184,7 @@ fun ReiAnixNavigationHost(
                 viewModel = homeViewModel,
             )
         },
-        myList = {
-            if (myList === {}) {
-                ReiAnixMyListRoute(
-                    navController = navController,
-                    viewModel = homeViewModel,
-                )
-            } else {
-                myList()
-            }
-        },
+        myList = myList,
         search = {
             ReiAnixSearchRoute(
                 navController = navController,
