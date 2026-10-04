@@ -96,7 +96,7 @@ def test_prompt32_no_forbidden_remote_media_pipeline_was_added():
     # but production playback must reject remote media references before launch.
     start = bridge.index("@staticmethod\n    def normalize_local_media_reference")
     normalized = bridge[start:]
-    assert "return None" in normalized
+    assert "return none" in normalized
     assert 'scheme not in {"content", "file"}' in normalized
 
 
