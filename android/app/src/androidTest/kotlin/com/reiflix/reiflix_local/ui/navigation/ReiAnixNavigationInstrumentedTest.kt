@@ -296,7 +296,9 @@ class ReiAnixNavigationInstrumentedTest {
         composeRule.onNodeWithText("animeId=42").assertExists()
         composeRule.onNodeWithText("origin=" + ReiAnixRoutes.SEARCH).assertExists()
         assertTrue(navController.currentBackStackEntry?.destination?.route == ReiAnixRoutes.DETAILS)
-        composeRule.onNodeWithText("Biblioteca").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Buscar").assertIsSelected()
 
         composeRule.activity.onBackPressedDispatcher.onBackPressed()
         composeRule.waitForIdle()
@@ -316,7 +318,8 @@ class ReiAnixNavigationInstrumentedTest {
         composeRule.onNodeWithText("animeId=anime-library-42").assertExists()
         composeRule.onNodeWithText("origin=" + ReiAnixRoutes.LIBRARY).assertExists()
         composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertDoesNotExist()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Biblioteca").assertIsSelected()
 
         composeRule.activity.onBackPressedDispatcher.onBackPressed()
         composeRule.waitForIdle()
