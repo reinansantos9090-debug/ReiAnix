@@ -6,9 +6,9 @@ from core.library_service import LibraryService
 from core.library_store import LibraryStore
 
 ROOT = Path(__file__).resolve().parents[1]
-SAF = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SafScanner.kt"
+SAF = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-MAILBOX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt"
+MAILBOX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt"
 MAIN = ROOT / "main.py"
 
 

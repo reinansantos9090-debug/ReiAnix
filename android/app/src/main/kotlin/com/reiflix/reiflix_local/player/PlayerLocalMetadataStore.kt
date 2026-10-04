@@ -1,5 +1,4 @@
-package com.reiflix.reiflix_local
-
+package com.reiflix.reiflix_local.player
 import android.content.Context
 import android.util.Log
 import org.json.JSONArray

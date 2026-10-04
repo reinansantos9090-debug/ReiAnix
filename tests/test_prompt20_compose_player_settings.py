@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = ROOT / "core/settings.py"
 MAIN = ROOT / "main.py"
 COMPOSE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
-REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerRequest.kt"
+REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
 REPOSITORY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
 

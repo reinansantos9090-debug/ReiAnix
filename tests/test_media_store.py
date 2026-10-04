@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class TestMediaStoreAndroidHost(unittest.TestCase):
     def test_media_store_scanner_uses_content_uris_and_media_store_video(self):
-        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
         self.assertIn("MediaStore.Video.Media.getContentUri(volumeName)", source)
         self.assertIn("MediaStore.Video.Media.EXTERNAL_CONTENT_URI", source)
         self.assertIn("ContentUris.withAppendedId", source)
@@ -21,7 +21,7 @@ class TestMediaStoreAndroidHost(unittest.TestCase):
 
     def test_media_store_permissions_are_version_aware(self):
         manifest = (ROOT / "android" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
         self.assertIn('android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"', manifest)
         self.assertIn('android.permission.READ_MEDIA_VIDEO', manifest)
         self.assertIn('android.permission.READ_MEDIA_VISUAL_USER_SELECTED', manifest)
@@ -33,20 +33,20 @@ class TestMediaStoreAndroidHost(unittest.TestCase):
         self.assertIn("READ_MEDIA_VIDEO", scanner)
 
     def test_media_store_access_level_is_scoped_for_scan_result(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
         self.assertIn("val access=accessLevel(context)", scanner)
         self.assertNotIn('val access=accessLevel(context);val scopeKey', scanner)
         self.assertIn('.put("access",access)', scanner)
 
     def test_partial_media_store_access_never_marks_volume_complete(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
         self.assertIn("val complete=StorageAuthorization.canReconcileMediaStore(accessState)", scanner)
         self.assertIn("accessState", scanner)
         self.assertIn('access!="full"', scanner)
         self.assertIn("videos++;volumeVideos++", scanner)
 
     def test_storage_authorization_explicitly_separates_scan_from_reconciliation(self):
-        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "StorageAuthorization.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "storage" / "StorageAuthorization.kt").read_text(encoding="utf-8")
         self.assertIn("fun canScanMediaStore(access: MediaAccessLevel): Boolean", source)
         self.assertIn("fun canReconcileMediaStore(access: MediaAccessLevel): Boolean", source)
         self.assertIn("access == MediaAccessLevel.FULL || access == MediaAccessLevel.PARTIAL", source)
@@ -146,7 +146,7 @@ class TestMediaStorePersistence(unittest.TestCase):
         self.assertNotIn("source_kind='mediastore'", block)
 
     def test_android_35_36_states(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/StorageAuthorization.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/StorageAuthorization.kt").read_text(encoding="utf-8")
         self.assertIn("enum class StorageLifecycleState", source)
         self.assertIn("MediaAccessLevel.PARTIAL", source)
         self.assertIn("fun capabilities(", source)
@@ -157,8 +157,8 @@ if __name__ == "__main__":
 
 class TestFinalStorageHardening(unittest.TestCase):
     def test_media_store_has_stability_observer_and_waiting_state(self):
-        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
-        index = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativeIndex.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
+        index = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "storage" / "NativeIndex.kt").read_text(encoding="utf-8")
         self.assertIn("ContentObserver", source)
         self.assertIn("WAITING_FOR_MEDIASTORE", source)
         self.assertIn("postVersion!=version", source)
@@ -170,13 +170,13 @@ class TestFinalStorageHardening(unittest.TestCase):
         self.assertIn("STATUS_WAITING_FOR_MEDIASTORE", index)
 
     def test_native_request_state_persists_across_process_death(self):
-        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativeRequestState.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "bridge" / "NativeRequestState.kt").read_text(encoding="utf-8")
         self.assertIn("getSharedPreferences", source)
         self.assertIn("seen_request_ids", source)
         self.assertIn("persist()", source)
 
     def test_broad_batch_reads_generation_after_start(self):
-        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "BroadStorageScanner.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "BroadStorageScanner.kt").read_text(encoding="utf-8")
         self.assertIn("currentGeneration()", source)
         self.assertNotIn('val generation = generationByVolume[root.volumeId] ?: 0L', source)
 
@@ -188,8 +188,8 @@ class TestFinalStorageHardening(unittest.TestCase):
 
 class TestNovaFormatCompatibility(unittest.TestCase):
     def test_media_store_and_saf_use_extended_video_extension_fallback(self):
-        media = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreScanner.kt").read_text(encoding="utf-8")
-        saf = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SafScanner.kt").read_text(encoding="utf-8")
+        media = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt").read_text(encoding="utf-8")
+        saf = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt").read_text(encoding="utf-8")
         for source in (media, saf):
             for extension in ("3g2","3gp","asf","divx","f4v","mpeg","mpg","ogm","ogv","ogx","vob","wtv","webm"):
                 self.assertIn('"' + extension + '"', source)

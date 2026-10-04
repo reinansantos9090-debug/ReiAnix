@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class TestBroadStorageArchitecture(unittest.TestCase):
     def test_manifest_and_scanner(self):
         manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
-        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         self.assertIn("MANAGE_EXTERNAL_STORAGE", manifest)
         self.assertIn("Environment.isExternalStorageManager()", scanner)
         self.assertIn("fun accessSnapshot(context: Context): JSONObject", scanner)
@@ -18,7 +18,7 @@ class TestBroadStorageArchitecture(unittest.TestCase):
         self.assertIn('"VOLUME_UNMOUNTED"', scanner)
 
     def test_inaccessible_nested_directory_is_a_partial_scan(self):
-        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         self.assertIn('.put("type", "ACCESS_DENIED")', scanner)
         self.assertIn('.put("type", "DIRECTORY_NOT_FOUND")', scanner)
         self.assertIn('.put("partial", errors.length() > 0 || cancelled)', scanner)
@@ -67,7 +67,7 @@ class TestBroadStorageArchitecture(unittest.TestCase):
 
     def test_broad_access_uses_only_android_authoritative_special_permission(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         self.assertIn("Environment.isExternalStorageManager()", scanner)
         self.assertIn("permissionAuthority", scanner)
         self.assertNotIn("legacyBroadPermissionRequester", source)
@@ -75,8 +75,8 @@ class TestBroadStorageArchitecture(unittest.TestCase):
         self.assertIn("NativeIndex.failActiveGenerations", source)
 
     def test_nomedia_directory_filtering_supported(self):
-        broad_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
-        saf_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SafScanner.kt").read_text(encoding="utf-8")
+        broad_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        saf_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn('.equals(".nomedia", ignoreCase = true)', broad_scanner)
         self.assertIn('nomediaDirectories', broad_scanner)
         self.assertIn('name.equals(".nomedia",ignoreCase=true)', saf_scanner)
@@ -101,7 +101,7 @@ class TestBroadStorageArchitecture(unittest.TestCase):
         self.assertIn("android.software.picture_in_picture", template)
 
     def test_volume_identity(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         self.assertIn('"volumeId"', source)
         self.assertIn("volume.mediaStoreVolumeName", source)
         self.assertIn("volume.isRemovable", source)
@@ -112,13 +112,13 @@ if __name__ == "__main__":
 
 class TestBroadStorageVolumeHardening(unittest.TestCase):
     def test_broad_scanner_checks_per_volume_all_files_access(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         self.assertIn("Environment.isExternalStorageManager(root.file)", source)
         self.assertIn("allFilesAccessForPath", source)
         self.assertIn("val volumeStillAuthorized", source)
         self.assertIn("volumeStillAuthorized", source)
 
     def test_broad_scanner_matches_nova_local_extension_surface(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         for extension in ("3g2","3gp","asf","divx","f4v","mpeg","mpg","ogm","ogv","ogx","vob","wtv","webm"):
             self.assertIn('"' + extension + '"', source)

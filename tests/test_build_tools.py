@@ -15,20 +15,20 @@ VERIFY = ROOT / "scripts" / "verify_android_host.py"
 PREPARE_TEMPLATE = ROOT / "scripts" / "prepare_flet_template.py"
 DESCRIPTORS = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
-    b"Lcom/reiflix/reiflix_local/ReiAnixComposeLibraryHost;",
-    b"Lcom/reiflix/reiflix_local/ReiAnixComposeSettingsHost;",
+    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;",
+    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost;",
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
-    b"Lcom/reiflix/reiflix_local/NativeMailbox;",
-    b"Lcom/reiflix/reiflix_local/NativeRequestState;",
-    b"Lcom/reiflix/reiflix_local/SafScanner;",
-    b"Lcom/reiflix/reiflix_local/MediaStoreScanner;",
-    b"Lcom/reiflix/reiflix_local/BroadStorageScanner;",
-    b"Lcom/reiflix/reiflix_local/NativeIndex;",
-    b"Lcom/reiflix/reiflix_local/NativeScanController;",
+    b"Lcom/reiflix/reiflix_local/bridge/NativeMailbox;",
+    b"Lcom/reiflix/reiflix_local/bridge/NativeRequestState;",
+    b"Lcom/reiflix/reiflix_local/scanner/SafScanner;",
+    b"Lcom/reiflix/reiflix_local/scanner/MediaStoreScanner;",
+    b"Lcom/reiflix/reiflix_local/scanner/BroadStorageScanner;",
+    b"Lcom/reiflix/reiflix_local/storage/NativeIndex;",
+    b"Lcom/reiflix/reiflix_local/scanner/NativeScanController;",
     b"Lcom/reiflix/reiflix_local/NativePlayerActivity;",
-    b"Lcom/reiflix/reiflix_local/NativePlayerRequest;",
-    b"Lcom/reiflix/reiflix_local/VideoThumbnailExtractor;",
-    b"Lcom/reiflix/reiflix_local/GoogleIdentity;",
+    b"Lcom/reiflix/reiflix_local/player/NativePlayerRequest;",
+    b"Lcom/reiflix/reiflix_local/storage/VideoThumbnailExtractor;",
+    b"Lcom/reiflix/reiflix_local/bridge/GoogleIdentity;",
     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixViewModel;",
@@ -65,7 +65,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/ReiAnixComposeRootKt.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/viewmodel/ReiAnixViewModel.class",
-                "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ReiAnixComposeSettingsHost.class",
+                "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.class",
             ):
                 path = classes / relative
@@ -78,7 +78,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
                     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
                     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
                     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixViewModel;",
-                    b"Lcom/reiflix/reiflix_local/ReiAnixComposeSettingsHost;",
+                    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost;",
                     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
                 )))
             result = subprocess.run(
@@ -96,7 +96,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("Native ReiAnix host was not packaged", result.stderr)
 
     def test_video_thumbnail_extractor_is_local_bounded_and_deduplicated(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
         for token in (
             "MediaMetadataRetriever",
             "setDataSource(context, uri)",
@@ -298,7 +298,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             copied = template / "reiflix_android_overlay" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local"
-            self.assertTrue((copied / "NativeMailbox.kt").is_file())
+            self.assertTrue((copied / "bridge" / "NativeMailbox.kt").is_file())
             hook_path = template / "hooks" / "post_gen_project.py"
             hook = hook_path.read_text(encoding="utf-8")
             self.assertIn("NativePlayerActivity", hook)
@@ -345,7 +345,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
             self.assertIn("compileSdk 36", (rendered / "build.gradle").read_text(encoding="utf-8"))
 
     def test_native_thumbnail_pipeline_uses_metadata_retriever_and_mailbox_reference(self):
-        extractor = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
+        extractor = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         bridge = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
         self.assertIn("MediaMetadataRetriever", extractor)
@@ -462,7 +462,7 @@ E: manifest
         self.assertIn("showAspectSelection", player)
         self.assertIn('arrayOf("Ajustar", "Preencher")', player)
         self.assertIn('screen_attr: "fullSensor"', template)
-        self.assertTrue((ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/VideoThumbnailExtractor.kt").is_file())
+        self.assertTrue((ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").is_file())
 
     def test_source_manifest_and_template_contract_cannot_revert_to_single_top(self):
         manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
@@ -563,7 +563,7 @@ E: manifest
 
     def test_main_activity_delegates_system_ui_to_controller_and_reapplies_on_resume(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SystemUiController.kt").read_text(encoding="utf-8")
+        controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "player" / "SystemUiController.kt").read_text(encoding="utf-8")
         styles = (ROOT / "android" / "app" / "src" / "main" / "res" / "values" / "styles.xml").read_text(encoding="utf-8")
         self.assertIn("private lateinit var systemUiController: SystemUiController", main)
         self.assertIn("systemUiController = SystemUiController(window)", main)
@@ -616,7 +616,7 @@ E: manifest
 
     def test_native_host_and_player_use_immersive_system_bars(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SystemUiController.kt").read_text(encoding="utf-8")
+        controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "player" / "SystemUiController.kt").read_text(encoding="utf-8")
         player = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt").read_text(encoding="utf-8")
         self.assertIn("systemUiController = SystemUiController(window)", main)
         self.assertIn("applyApplicationSystemUi()", main)
@@ -645,7 +645,7 @@ E: manifest
         self.assertIn("immersive system-bar host policy", source)
 
     def test_native_mailbox_uses_the_flet_application_data_subdirectory(self):
-        mailbox = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativeMailbox.kt").read_text(encoding="utf-8")
+        mailbox = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "bridge" / "NativeMailbox.kt").read_text(encoding="utf-8")
         self.assertIn('File(context.filesDir, "data")', mailbox)
         self.assertIn('val queue = File(dataDirectory, QUEUE)', mailbox)
 
@@ -705,13 +705,13 @@ E: manifest
 
     def test_native_player_entry_requires_a_persisted_saf_document(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("SafScanner.isAuthorizedDocument(this, localUri)", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8"))
         self.assertIn("DocumentsContract.getDocumentId(documentUri)", scanner)
         self.assertIn("treeIdentity(p.uri)", scanner)
 
     def test_saf_scanner_uses_iterative_traversal_and_partial_results(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("ArrayDeque<Pair<String,String>>()", scanner)
         self.assertIn("pending.removeLast()", scanner)
         self.assertIn('.put("partial",partial)', scanner)
@@ -799,7 +799,7 @@ E: manifest
 
     def test_saf_regrant_path_persists_before_scanning_and_reports_revocation(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("val flags = resultIntent.flags", main)
         self.assertIn("SafScanner.persistPermission(this, uri, flags)", main)
         self.assertIn('publishScanRequest("PERMISSION_CHANGE"', main)
@@ -828,7 +828,7 @@ E: manifest
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
         player = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt").read_text(encoding="utf-8")
         bridge = (ROOT / "core" / "android_bridge.py").read_text(encoding="utf-8")
-        request = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerRequest.kt").read_text(encoding="utf-8")
+        request = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8")
         handoff = main[main.index("    private fun openPlayer"):main.index("    private fun clearPendingPlay", main.index("    private fun openPlayer"))]
         self.assertIn('localUri.scheme?.lowercase() !in setOf("content", "file")', handoff)
         self.assertNotIn("SafScanner.isAuthorizedDocument(this, localUri)", handoff)
@@ -869,7 +869,7 @@ E: manifest
         self.assertIn("player_previous_request", player)
 
     def test_saf_scanner_contains_provider_error_recovery_for_inaccessible_documents(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("runCatching", scanner)
         self.assertIn("catch(e:Exception)", scanner)
         self.assertIn('errors.put("Não foi possível ler:', scanner)
@@ -877,7 +877,7 @@ E: manifest
         self.assertIn('.put("partial",partial)', scanner)
 
     def test_google_identity_emits_only_token_free_validated_profile_fields(self):
-        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "GoogleIdentity.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "bridge" / "GoogleIdentity.kt").read_text(encoding="utf-8")
         self.assertIn('"google_sign_in_started"', source)
         self.assertIn("validatedClaims(credential.idToken, serverClientId, nonce)", source)
         self.assertIn('.put("id", credential.uniqueId)', source)
@@ -902,7 +902,7 @@ class TestSafSelectionRegistration(unittest.TestCase):
         self.assertIn("authorization='granted'", source)
 
     def test_saf_scanner_has_safe_display_name_fallback(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("fun displayName(context:Context,treeUri:Uri):String", scanner)
         self.assertIn("DocumentFile.fromTreeUri(context,treeUri)?.name", scanner)
 
@@ -915,7 +915,7 @@ class TestSafSelectionRegistration(unittest.TestCase):
 
 class TestSafScannerHardening(unittest.TestCase):
     def test_scanner_has_revisit_guard_and_progress_callback(self):
-        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("onProgress:((JSONObject)->Unit)?=null", scanner)
         self.assertIn("visited=HashSet<String>()", scanner)
         self.assertIn("if(!visited.add(parentId))", scanner)
@@ -937,13 +937,13 @@ class TestSafScannerHardening(unittest.TestCase):
 
 class TestMediaStoreScannerOptimization(unittest.TestCase):
     def test_media_store_caches_volume_uuid_lookup_per_volume(self):
-        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt").read_text(encoding="utf-8")
         self.assertIn("val volumeUuidCache = HashMap<String, String>()", scanner)
         self.assertIn("val baseVolumeUuid = volumeUuidCache.getOrPut(volumeName)", scanner)
         self.assertIn("volumeUuidCache.getOrPut(actualVol)", scanner)
 
     def test_saf_filters_directory_entries_before_building_document_uris(self):
-        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SafScanner.kt").read_text(encoding="utf-8")
+        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt").read_text(encoding="utf-8")
         cursor_block_start = scanner.index("val directoriesToVisit=mutableListOf<Pair<String,String>>()")
         cursor_block_end = scanner.index("batches.flush()", cursor_block_start)
         block = scanner[cursor_block_start:cursor_block_end]
@@ -1020,7 +1020,7 @@ class Prompt1BuildIdentityContractTests(unittest.TestCase):
 class NativeMainActivityDecompositionTests(unittest.TestCase):
     def test_main_activity_delegates_scan_batch_publication(self):
         main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeScanPublisher.kt").read_text(encoding="utf-8")
+        publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun publishNativeScanBatch(", main)
         self.assertNotIn("NativeIndex.prepareBatch(", main)
         self.assertIn("NativeScanPublisher.publish(", main)
@@ -1029,7 +1029,7 @@ class NativeMainActivityDecompositionTests(unittest.TestCase):
 
     def test_main_activity_delegates_media_store_retry_scheduling(self):
         main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        scheduler = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreRetryScheduler.kt").read_text(encoding="utf-8")
+        scheduler = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreRetryScheduler.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun scheduleMediaStoreScanRequest(", main)
         self.assertNotIn("mediaStoreRetryScheduled", main)
         self.assertIn("MediaStoreRetryScheduler.schedule(", main)

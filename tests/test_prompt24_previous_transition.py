@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
 BRIDGE = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
-REQUEST = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerRequest.kt").read_text(encoding="utf-8")
+REQUEST = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8")
 ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
 

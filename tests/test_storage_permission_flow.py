@@ -13,7 +13,7 @@ from core.library_service import LibraryService
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-MEDIA_STORE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreScanner.kt"
+MEDIA_STORE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt"
 MANIFEST = ROOT / "android/app/src/main/AndroidManifest.xml"
 BRIDGE = ROOT / "core/android_bridge.py"
 

@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local
 
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject

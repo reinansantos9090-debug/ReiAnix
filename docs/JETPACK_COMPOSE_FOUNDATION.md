@@ -76,3 +76,11 @@ Compose BOM/toolchain instead of upgrading unrelated Android build tooling.
 The official APK workflow runs `scripts/verify_compose_packaging.py` after the real Flet/Gradle APK build.
 It verifies the Compose foundation classes in the rendered Android project and final APK DEX. The existing
 `scripts/verify_android_host.py` then verifies the complete native host contract.
+
+## Prompt 29 — organização arquitetural
+
+A reorganização do Prompt 29 é deliberadamente incremental. O código existente foi agrupado por responsabilidade em `ui`, `viewmodel`, `data`, `player`, `storage`, `bridge` e `scanner`, sem introduzir uma nova camada de domínio sem necessidade e sem criar outro banco de dados.
+
+`MainActivity` e `NativePlayerActivity` permanecem no pacote raiz porque são entrypoints Android referenciados diretamente pelo manifesto e por contratos de integração. O player continua sendo Media3; o pipeline local continua usando SQLite + SAF/MediaStore/Broad Storage e o mailbox existente. Os hosts Compose foram colocados em `ui/host`, enquanto as telas e a navegação continuam em `ui/`.
+
+A verificação arquitetural também exige que caminhos antigos não voltem a ser usados por testes/empacotadores e que o pacote declarado de cada classe movida corresponda ao diretório. Nenhuma dependência Gradle nova foi necessária para a organização.

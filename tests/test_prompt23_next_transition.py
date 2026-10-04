@@ -7,7 +7,7 @@ MAIN = ROOT / "main.py"
 BRIDGE = ROOT / "core/android_bridge.py"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerRequest.kt"
+REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
 
 
 class Prompt23NextTransitionTests(unittest.TestCase):
@@ -18,7 +18,7 @@ class Prompt23NextTransitionTests(unittest.TestCase):
         cls.main_activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
         cls.player = PLAYER.read_text(encoding="utf-8")
         cls.request = REQUEST.read_text(encoding="utf-8")
-        cls.native_request_state = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeRequestState.kt").read_text(encoding="utf-8")
+        cls.native_request_state = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt").read_text(encoding="utf-8")
 
     def test_native_transition_machine_has_explicit_runtime_phases(self):
         for token in (

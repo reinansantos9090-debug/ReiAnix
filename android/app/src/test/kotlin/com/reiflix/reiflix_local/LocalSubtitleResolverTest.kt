@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local
 
+import com.reiflix.reiflix_local.player.LocalSubtitleResolver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

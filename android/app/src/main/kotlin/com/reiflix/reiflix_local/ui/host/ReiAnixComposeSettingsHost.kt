@@ -1,5 +1,7 @@
-package com.reiflix.reiflix_local
+package com.reiflix.reiflix_local.ui.host
 
+import com.reiflix.reiflix_local.MainActivity
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout

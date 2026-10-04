@@ -16,6 +16,7 @@ GOOGLE_IDENTITY = (
     / "com"
     / "reiflix"
     / "reiflix_local"
+    / "bridge"
     / "GoogleIdentity.kt"
 )
 GRADLE = ROOT / "android" / "app" / "build.gradle.kts"

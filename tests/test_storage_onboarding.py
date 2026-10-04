@@ -158,7 +158,7 @@ class StorageOnboardingTests(unittest.TestCase):
 
     def test_native_scan_publication_uses_failing_mailbox_contract(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeScanPublisher.kt").read_text(encoding="utf-8")
+        publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun publishNativeScanBatch", source)
         self.assertIn("NativeScanPublisher.publish(", source)
         self.assertIn("NativeMailbox.writeOrThrow(", publisher)
@@ -166,7 +166,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('eventType.replace("_batch", "_error")', publisher)
     def test_native_mailbox_uses_atomic_move_with_non_atomic_fallback(self):
         source = (ROOT / "core" / "android_bridge.py").read_text(encoding="utf-8")
-        native = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt").read_text(encoding="utf-8")
+        native = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
         self.assertIn("ATOMIC_MOVE", native)
         self.assertIn("StandardCopyOption.REPLACE_EXISTING", native)
         self.assertIn("event-*.json", source)
@@ -322,7 +322,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertNotIn("await bridge.scan_all_storage()", refresh)
 
     def test_native_scan_controller_is_process_wide_and_source_scoped(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeScanController.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
         main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         self.assertIn("private val sourceOwners", source)
         self.assertIn("sourceOwners.containsKey(sourceKey)", source)
@@ -338,7 +338,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("applicationContext", source)
 
     def test_mediastore_scan_isolates_volume_failures(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreScanner.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt").read_text(encoding="utf-8")
         self.assertIn("MediaStore query failed for volume $volumeName", source)
         self.assertIn("for(volumeName in volumeNames)", source)
         self.assertIn("catch(exception:Exception)", source)
@@ -348,7 +348,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('os.getenv("FLET_APP_STORAGE_DATA")', source)
 
     def test_legacy_external_volume_discovery_contract(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         self.assertIn("getExternalFilesDirs(null)", source)
         self.assertIn("inferVolumeRoot", source)
         self.assertIn("Environment.isExternalStorageRemovable(volumeRoot)", source)
@@ -415,7 +415,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertNotIn("Capability", activity + main + bridge)
 
     def test_native_mailbox_contract_is_versioned_and_atomic(self):
-        mailbox = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt").read_text(encoding="utf-8")
+        mailbox = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
         self.assertIn("EVENT_VERSION = 2", mailbox)
         self.assertIn('put("eventType", eventType(event))', mailbox)
         self.assertIn("stream.fd.sync()", mailbox)
@@ -438,7 +438,7 @@ class StorageOnboardingTests(unittest.TestCase):
 
     def test_request_ids_cross_lifecycle(self):
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        state = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeRequestState.kt").read_text(encoding="utf-8")
+        state = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt").read_text(encoding="utf-8")
         self.assertIn("pendingMediaRequestId", activity)
         self.assertIn("pendingBroadRequestId", activity)
         self.assertIn("pendingSafRequestId", activity)

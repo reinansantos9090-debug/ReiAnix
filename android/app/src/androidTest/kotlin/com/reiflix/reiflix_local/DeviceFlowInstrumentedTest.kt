@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local
 
+import com.reiflix.reiflix_local.storage.NativeBatch
+import com.reiflix.reiflix_local.storage.NativeIndex
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry

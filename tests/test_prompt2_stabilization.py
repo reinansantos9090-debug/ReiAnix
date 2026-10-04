@@ -14,7 +14,7 @@ ANILIST = (ROOT / "core" / "anilist.py").read_text(encoding="utf-8")
 STORE = (ROOT / "core" / "library_store.py").read_text(encoding="utf-8")
 MAIN_ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
-SYSTEM_UI = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SystemUiController.kt").read_text(encoding="utf-8")
+SYSTEM_UI = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt").read_text(encoding="utf-8")
 
 
 class Prompt2StabilizationTests(unittest.TestCase):

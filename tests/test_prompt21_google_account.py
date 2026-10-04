@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GOOGLE_IDENTITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/GoogleIdentity.kt"
+GOOGLE_IDENTITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/GoogleIdentity.kt"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-MAILBOX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt"
-REQUEST_STATE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeRequestState.kt"
+MAILBOX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt"
+REQUEST_STATE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt"
 BRIDGE = ROOT / "core/android_bridge.py"
 MAIN = ROOT / "main.py"
 SETTINGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"

@@ -1,5 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reiflix.reiflix_local.storage
 
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

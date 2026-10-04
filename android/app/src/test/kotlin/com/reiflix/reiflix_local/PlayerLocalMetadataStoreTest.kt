@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local
 
+import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

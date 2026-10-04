@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local
 
+import com.reiflix.reiflix_local.scanner.NativeScanController
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

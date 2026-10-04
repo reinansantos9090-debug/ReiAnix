@@ -1,5 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reiflix.reiflix_local.storage
 
+import com.reiflix.reiflix_local.storage.NativeBatch
 import android.content.Context
 import android.os.Build
 import android.os.storage.StorageManager

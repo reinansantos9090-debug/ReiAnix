@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local
 
+import com.reiflix.reiflix_local.bridge.NativeMailbox
+
 import android.app.Activity
 import android.os.Debug
 import android.os.Handler

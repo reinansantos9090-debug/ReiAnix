@@ -9,7 +9,7 @@ PLAYER = (
 ).read_text(encoding="utf-8")
 POLICY = (
     ROOT
-    / "android/app/src/main/kotlin/com/reiflix/reiflix_local/PlayerMediaPolicy.kt"
+    / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/PlayerMediaPolicy.kt"
 ).read_text(encoding="utf-8")
 POLICY_TEST = (
     ROOT
