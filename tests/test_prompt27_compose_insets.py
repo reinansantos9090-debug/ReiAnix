@@ -63,10 +63,10 @@ class Prompt27ComposeInsetsContractTests(unittest.TestCase):
 
     def test_standalone_compose_hosts_apply_safe_drawing_and_settings_ime_padding(self):
         storage = self.read(
-            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixComposeStorageHost.kt"
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeStorageHost.kt"
         )
         settings = self.read(
-            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixComposeSettingsHost.kt"
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost.kt"
         )
         self.assertIn(".safeDrawingPadding()", storage)
         self.assertIn(".safeDrawingPadding()", settings)
@@ -81,7 +81,7 @@ class Prompt27ComposeInsetsContractTests(unittest.TestCase):
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
         )
         system_ui = self.read(
-            "android/app/src/main/kotlin/com/reiflix/reiflix_local/SystemUiController.kt"
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt"
         )
         self.assertIn("private fun applyRootInsets(insets: WindowInsetsCompat)", player)
         self.assertIn("WindowInsetsCompat.Type.systemBars()", player)

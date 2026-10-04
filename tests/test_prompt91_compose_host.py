@@ -8,7 +8,7 @@ MAIN_ACTIVITY = (
 )
 HOST = (
     ROOT
-    / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixComposeLibraryHost.kt"
+    / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
 )
 NAVIGATION = ROOT / "core/navigation.py"
 HOME = ROOT / "views/home_view.py"

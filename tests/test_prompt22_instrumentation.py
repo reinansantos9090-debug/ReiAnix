@@ -51,7 +51,7 @@ class Prompt22InstrumentationTests(unittest.TestCase):
 
     def test_compose_player_passes_stable_route_identity_to_existing_native_request(self):
         navigation = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
-        request = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerRequest.kt")
+        request = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativePlayerRequest.kt")
         self.assertIn('const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"', navigation)
         self.assertIn('putExtra("uri", normalizedUri.toString())', request)
         self.assertIn('putExtra("episodeId", episodeId)', request)
@@ -61,10 +61,10 @@ class Prompt22InstrumentationTests(unittest.TestCase):
         self.assertIn('putExtra("canPrevious", canPrevious)', request)
 
     def test_mailbox_home_scan_and_thumbnail_markers_exist(self):
-        mailbox=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt")
+        mailbox=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt")
         home=self.read("views/home_view.py")
         scan=self.read("core/scan_coordinator.py")
-        thumb=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/VideoThumbnailExtractor.kt")
+        thumb=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt")
         for token in ("mailboxWriteStartedElapsedNs","writeDurationMs","EVENT_WRITTEN"):
             self.assertIn(token, mailbox)
         for token in ("HOME_BROWSE_START","HOME_BROWSE_END","HOME_HYDRATION_START","HOME_HYDRATION_END","HOME_SECTION_RENDER_START","HOME_SECTION_RENDER_END"):

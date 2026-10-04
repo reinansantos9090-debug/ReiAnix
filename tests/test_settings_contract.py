@@ -8,7 +8,7 @@ MAIN = ROOT / "main.py"
 BRIDGE = ROOT / "core/android_bridge.py"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-PLAYER_REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerRequest.kt"
+PLAYER_REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativePlayerRequest.kt"
 HOME = ROOT / "views/home_view.py"
 
 
