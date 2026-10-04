@@ -632,49 +632,17 @@ private fun HomeAnimeCard(
     episodeCount: Int,
     onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .width(ReiAnixTokens.Dimensions.animeCardWidth)
-            .clickable(onClick = onClick),
-        shape = ReiAnixTokens.Shapes.card,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column {
-            ReiAnixLocalArtwork(
-                localPath = artworkPath,
-                contentDescription = title,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(ReiAnixTokens.Dimensions.animeCardWidth / ReiAnixTokens.Dimensions.posterAspectRatio),
-                placeholder = "Sem capa",
-            )
-            Column(
-                modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val metadata = listOfNotNull(
-                    year?.toString(),
-                    episodeCount.takeIf { it > 0 }?.let { "$it episódios" },
-                )
-                if (metadata.isNotEmpty()) {
-                    Text(
-                        text = metadata.joinToString(" • "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-    }
+    ReiAnixAnimeCard(
+        title = title,
+        artworkPath = artworkPath,
+        metadata = listOfNotNull(
+            year?.toString(),
+            episodeCount.takeIf { it > 0 }?.let { "$it episódios" },
+        ),
+        modifier = Modifier.width(ReiAnixTokens.Dimensions.animeCardWidth),
+        onClick = onClick,
+        maxDimensionPx = 512,
+    )
 }
 
 @Composable
