@@ -16,6 +16,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -23,11 +27,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
+import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 @Composable
@@ -36,10 +48,15 @@ fun ReiAnixCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
-        modifier = modifier.heightIn(min = ReiAnixTokens.Dimensions.cardMinHeight),
-        shape = MaterialTheme.shapes.medium,
+        modifier = modifier
+            .heightIn(min = ReiAnixTokens.Dimensions.cardMinHeight)
+            .semantics { },
+        shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            disabledContainerColor = ReiAnixTokens.Colors.surface.copy(alpha = 0.55f),
+            disabledContentColor = ReiAnixTokens.Colors.textDisabled,
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = ReiAnixTokens.Elevation.card,
@@ -64,8 +81,10 @@ fun ReiAnixPrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = ReiAnixTokens.Dimensions.buttonMinHeight),
-        shape = MaterialTheme.shapes.small,
+        modifier = modifier
+            .heightIn(min = ReiAnixTokens.Dimensions.buttonMinHeight)
+            .semantics { role = Role.Button },
+        shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -115,30 +134,43 @@ fun ReiAnixChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    selected: Boolean = false,
 ) {
-    AssistChip(
+    FilterChip(
+        selected = selected,
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = ReiAnixTokens.Dimensions.chipMinHeight),
+        modifier = modifier
+            .heightIn(min = ReiAnixTokens.Dimensions.chipMinHeight)
+            .semantics { role = Role.Button },
         label = {
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelMedium,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         },
         shape = ReiAnixTokens.Shapes.chip,
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = ReiAnixTokens.Colors.surfaceVariant,
             labelColor = MaterialTheme.colorScheme.onSurface,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            selectedContainerColor = ReiAnixTokens.Colors.primaryContainer,
+            selectedLabelColor = ReiAnixTokens.Colors.onPrimaryContainer,
+            disabledContainerColor = ReiAnixTokens.Colors.surfaceVariant.copy(alpha = 0.45f),
+            disabledLabelColor = ReiAnixTokens.Colors.textDisabled,
         ),
-        border = AssistChipDefaults.assistChipBorder(
+        border = FilterChipDefaults.filterChipBorder(
             enabled = enabled,
-            borderColor = MaterialTheme.colorScheme.outline,
-            disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            selected = selected,
+            borderColor = ReiAnixTokens.Colors.border,
+            selectedBorderColor = ReiAnixTokens.Colors.primary,
+            disabledBorderColor = ReiAnixTokens.Colors.divider,
         ),
     )
 }
@@ -173,13 +205,420 @@ fun ReiAnixSectionTitle(
 }
 
 @Composable
+fun ReiAnixScreenTitle(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
+            ReiAnixTokens.Dimensions.sectionTitleGap,
+        ),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!subtitle.isNullOrBlank()) {
+            ReiAnixSecondaryText(
+                text = subtitle,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+fun ReiAnixMetadata(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 1,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
+fun ReiAnixSecondaryText(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 2,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = ReiAnixTokens.Colors.textMuted,
+        modifier = modifier,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
+fun ReiAnixIconActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .size(ReiAnixTokens.Dimensions.touchTarget)
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                ReiAnixTokens.Colors.textDisabled
+            },
+        )
+    }
+}
+
+@Composable
+fun ReiAnixAnimeCard(
+    anime: ReiAnixAnimeUiModel,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    maxDimensionPx: Int = 512,
+) {
+    ReiAnixAnimeCard(
+        title = anime.title,
+        artworkPath = anime.artwork?.localPath,
+        metadata = buildList {
+            anime.year?.let { add(it.toString()) }
+            anime.episodeCountLabel.takeIf { anime.availableContentCount > 0 }?.let(::add)
+        },
+        progress = anime.contentEpisodes
+            .firstOrNull { it.progressFraction > 0f && !it.isCompleted }
+            ?.progressFraction,
+        favorite = anime.favorite,
+        watched = anime.contentEpisodes.any { it.isWatched },
+        completed = anime.isCompleted,
+        modifier = modifier,
+        onClick = onClick,
+        maxDimensionPx = maxDimensionPx,
+    )
+}
+
+@Composable
+fun ReiAnixAnimeCard(
+    title: String,
+    artworkPath: String?,
+    metadata: List<String> = emptyList(),
+    progress: Float? = null,
+    favorite: Boolean = false,
+    watched: Boolean = false,
+    completed: Boolean = false,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    maxDimensionPx: Int = 512,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .clickable(
+                            enabled = true,
+                            onClick = onClick,
+                        )
+                        .semantics {
+                            role = Role.Button
+                            this.contentDescription = "Abrir $title"
+                        }
+                } else {
+                    Modifier.semantics {
+                        this.contentDescription = title
+                    }
+                },
+            ),
+        shape = ReiAnixTokens.Shapes.card,
+        colors = CardDefaults.cardColors(
+            containerColor = ReiAnixTokens.Colors.surfaceCard,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
+    ) {
+        Column {
+            Box {
+                ReiAnixLocalArtwork(
+                    localPath = artworkPath,
+                    contentDescription = title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.7f)
+                        .clip(ReiAnixTokens.Shapes.artwork),
+                    contentScale = ContentScale.Crop,
+                    placeholder = "Sem arte",
+                    maxDimensionPx = maxDimensionPx,
+                )
+                if (favorite || watched || completed) {
+                    Text(
+                        text = when {
+                            completed -> "Concluído"
+                            watched -> "Assistido"
+                            else -> "Minha lista"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(ReiAnixTokens.Spacing.sm)
+                            .background(
+                                color = ReiAnixTokens.Colors.overlay,
+                                shape = ReiAnixTokens.Shapes.chip,
+                            )
+                            .padding(
+                                horizontal = ReiAnixTokens.Spacing.sm,
+                                vertical = ReiAnixTokens.Spacing.xs,
+                            ),
+                    )
+                }
+                progress?.let {
+                    ReiAnixProgressIndicator(
+                        progress = it,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = ReiAnixTokens.Spacing.sm),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = ReiAnixTokens.Spacing.sm,
+                        vertical = ReiAnixTokens.Spacing.md,
+                    ),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
+                    ReiAnixTokens.Spacing.xs,
+                ),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (metadata.isNotEmpty()) {
+                    ReiAnixMetadata(text = metadata.joinToString(" • "))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReiAnixEpisodeCard(
+    episode: ReiAnixEpisodeUiModel,
+    modifier: Modifier = Modifier,
+    onPlay: (() -> Unit)? = null,
+) {
+    val playable = episode.isPlayable && onPlay != null
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (playable) {
+                    Modifier.clickable(
+                        onClick = { onPlay?.invoke() },
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .semantics {
+                this.contentDescription = episode.displayTitle
+                if (playable) role = Role.Button
+            },
+        shape = ReiAnixTokens.Shapes.card,
+        colors = CardDefaults.cardColors(
+            containerColor = ReiAnixTokens.Colors.surfaceCard,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(ReiAnixTokens.Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ReiAnixLocalArtwork(
+                localPath = episode.artwork?.localPath,
+                contentDescription = episode.displayTitle,
+                modifier = Modifier
+                    .size(width = 88.dp, height = 68.dp)
+                    .clip(ReiAnixTokens.Shapes.small),
+                contentScale = ContentScale.Crop,
+                placeholder = "Sem thumbnail",
+                maxDimensionPx = 320,
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = ReiAnixTokens.Spacing.md),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
+                    ReiAnixTokens.Spacing.xs,
+                ),
+            ) {
+                Text(
+                    text = episode.displayTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                ReiAnixMetadata(
+                    text = buildString {
+                        episode.number?.let {
+                            append(
+                                if (it % 1.0 == 0.0) {
+                                    "E" + it.toInt().toString().padStart(2, '0')
+                                } else {
+                                    "E" + it.toString()
+                                },
+                            )
+                        }
+                        episode.durationSeconds?.takeIf { it >= 0 }?.let {
+                            if (isNotEmpty()) append(" • ")
+                            append(formatDurationLabel(it))
+                        }
+                        episode.progressPercent?.let {
+                            if (isNotEmpty()) append(" • ")
+                            append("$it%")
+                        }
+                    }.ifBlank { "Episódio" },
+                )
+                ReiAnixProgressIndicator(
+                    progress = episode.progressFraction,
+                    visible = episode.progressFraction > 0f,
+                )
+                if (!episode.isPlayable) {
+                    Text(
+                        text = "Arquivo indisponível",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+            if (playable) {
+                Text(
+                    text = "▶",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = ReiAnixTokens.Spacing.sm),
+                )
+            }
+        }
+    }
+}
+
+private fun formatDurationLabel(seconds: Double): String {
+    val total = seconds.toLong().coerceAtLeast(0L)
+    val hours = total / 3600L
+    val minutes = (total % 3600L) / 60L
+    val rest = total % 60L
+    return if (hours > 0L) {
+        "%d:%02d:%02d".format(java.util.Locale.ROOT, hours, minutes, rest)
+    } else {
+        "%d:%02d".format(java.util.Locale.ROOT, minutes, rest)
+    }
+}
+
+@Composable
+fun ReiAnixSettingCard(
+    title: String,
+    description: String? = null,
+    icon: ImageVector? = null,
+    value: String? = null,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    trailingContent: (@Composable () -> Unit)? = null,
+) {
+    Card(
+        onClick = onClick ?: {},
+        enabled = onClick != null && enabled,
+        shape = ReiAnixTokens.Shapes.card,
+        colors = CardDefaults.cardColors(
+            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            disabledContainerColor = ReiAnixTokens.Colors.surface.copy(alpha = 0.55f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                this.contentDescription = if (description.isNullOrBlank()) title else "$title. $description"
+                if (onClick != null) role = Role.Button
+            },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = ReiAnixTokens.Spacing.lg,
+                    vertical = ReiAnixTokens.Spacing.md,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
+                ReiAnixTokens.Spacing.md,
+            ),
+        ) {
+            icon?.let {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    tint = if (enabled) MaterialTheme.colorScheme.onSurface else ReiAnixTokens.Colors.textDisabled,
+                    modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else ReiAnixTokens.Colors.textDisabled,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                description?.takeIf { it.isNotBlank() }?.let {
+                    ReiAnixSecondaryText(text = it, maxLines = 2)
+                }
+                value?.takeIf { it.isNotBlank() }?.let {
+                    ReiAnixMetadata(text = it)
+                }
+            }
+            trailingContent?.invoke()
+        }
+    }
+}
+
+@Composable
 fun ReiAnixArtwork(
     painter: Painter?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    shape: androidx.compose.ui.graphics.Shape = ReiAnixTokens.Shapes.artwork,
 ) {
-    val shape = MaterialTheme.shapes.small
     Box(
         modifier = modifier
             .aspectRatio(0.7f)
@@ -220,7 +659,7 @@ fun ReiAnixProgressIndicator(
         progress = { clampedProgress },
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = ReiAnixTokens.Dimensions.progressHeight),
+            .height(ReiAnixTokens.Dimensions.progressHeight),
         color = MaterialTheme.colorScheme.primary,
         trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
@@ -234,8 +673,10 @@ fun ReiAnixScreen(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .safeDrawingPadding()
-            .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
+            .padding(
+                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                vertical = ReiAnixTokens.Dimensions.screenTopPadding,
+            ),
         content = content,
     )
 }
