@@ -15,6 +15,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
 import com.reiflix.reiflix_local.ui.ReiAnixCard
 import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
@@ -129,6 +130,21 @@ class ReiAnixDesignSystemInstrumentedTest {
 
         assertEquals(1, actionCount)
         assertEquals(1, retryCount)
+    }
+
+
+    @Test
+    fun localArtworkWithMissingReferenceUsesExplicitMissingState() {
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixLocalArtwork(
+                    localPath = null,
+                    contentDescription = "Artwork",
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Sem arte").assertIsDisplayed()
     }
 
 }
