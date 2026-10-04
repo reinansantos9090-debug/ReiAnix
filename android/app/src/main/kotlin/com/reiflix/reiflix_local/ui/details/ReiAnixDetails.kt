@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -343,7 +342,7 @@ private fun DetailsSkeletonButton(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ColumnScope.ReiAnixDetailsReady(
+private fun ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
@@ -547,7 +546,7 @@ private fun DetailsHero(
             ReiAnixLocalArtwork(
                 localPath = backdropPath,
                 contentDescription = null,
-                modifier = Modifier.matchParentSize(),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
                 placeholder = "Sem backdrop",
                 maxDimensionPx = 1024,
