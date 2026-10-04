@@ -854,40 +854,49 @@ async def main(page: ft.Page):
                 if settings_path_override is not None
                 else None
             )
-            control = SettingsView.build(
-                page, store, library,
-                lambda: navigate_back("visual:settings"),
-                on_catalog_changed, add_folder, remove_folder, refresh_library,
-                request_video_access, open_broad_storage_access, login, logout,
-                account(), account_state[0],
-                folder_selection_pending=lambda: saf_selection.pending,
-                on_resolve_match=resolve_match,
-                storage_snapshot=storage_capabilities[0], scan_snapshot=scan_state[0],
-                settings=settings,
-                view_state=settings_state,
-                on_check_video_access=check_video_access,
-                on_create_backup=create_backup,
-                on_inspect_backup=inspect_backup,
-                on_restore_backup=restore_backup,
-                on_export_diagnostics=export_diagnostics,
-                on_integrity_check=integrity_check,
-                on_reconcile_after_restore=request_restore_reconciliation,
-                on_settings_changed=apply_settings_runtime,
-                on_open_settings_category=navigate_settings_category,
-                settings_path_provider=(
-                    (lambda path=fixed_settings_path: path)
-                    if fixed_settings_path is not None
-                    else (lambda: navigation.settings_path)
-                ),
-                settings_is_active=(
-                    lambda path=fixed_settings_path: (
-                        navigation.current == "settings"
-                        and tuple(navigation.settings_path) == tuple(path or ())
-                    )
-                ),
-                settings_generation_provider=lambda: settings_tasks.generation,
-                register_settings_task=settings_tasks.register,
-            )
+            if fixed_settings_path == () and bridge.available:
+                # The root Settings surface is fully replaced by Compose on
+                # Android. Keep only the empty Flet shell required by the
+                # existing Python NavigationController/page.views projection.
+                control = ft.Container(expand=True)
+            else:
+                # Nested Settings pages still belong to the existing Python/Flet
+                # flow, and this also remains the fallback when the native Compose
+                # host is unavailable.
+                control = SettingsView.build(
+                    page, store, library,
+                    lambda: navigate_back("visual:settings"),
+                    on_catalog_changed, add_folder, remove_folder, refresh_library,
+                    request_video_access, open_broad_storage_access, login, logout,
+                    account(), account_state[0],
+                    folder_selection_pending=lambda: saf_selection.pending,
+                    on_resolve_match=resolve_match,
+                    storage_snapshot=storage_capabilities[0], scan_snapshot=scan_state[0],
+                    settings=settings,
+                    view_state=settings_state,
+                    on_check_video_access=check_video_access,
+                    on_create_backup=create_backup,
+                    on_inspect_backup=inspect_backup,
+                    on_restore_backup=restore_backup,
+                    on_export_diagnostics=export_diagnostics,
+                    on_integrity_check=integrity_check,
+                    on_reconcile_after_restore=request_restore_reconciliation,
+                    on_settings_changed=apply_settings_runtime,
+                    on_open_settings_category=navigate_settings_category,
+                    settings_path_provider=(
+                        (lambda path=fixed_settings_path: path)
+                        if fixed_settings_path is not None
+                        else (lambda: navigation.settings_path)
+                    ),
+                    settings_is_active=(
+                        lambda path=fixed_settings_path: (
+                            navigation.current == "settings"
+                            and tuple(navigation.settings_path) == tuple(path or ())
+                        )
+                    ),
+                    settings_generation_provider=lambda: settings_tasks.generation,
+                    register_settings_task=settings_tasks.register,
+                )
         else:
             raise RuntimeError(f"Unknown navigation route: {route}")
         if cache_key is not None:
