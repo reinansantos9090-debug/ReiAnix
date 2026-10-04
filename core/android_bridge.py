@@ -125,6 +125,7 @@ class AndroidBridge:
             "PLAYER_HANDOFF_FAILED",
             "PLAYER_HANDOFF_REJECTED",
             "PLAYER_HANDOFF_DUPLICATE",
+            "GOOGLE_SIGN_OUT_FAILED",
         }:
             reason = str(
                 payload.get("error")
@@ -173,7 +174,7 @@ class AndroidBridge:
         loop = asyncio.get_running_loop()
         delivery_waiter = loop.create_future()
         self._command_delivery_waiters[request_id] = delivery_waiter
-        expected_event = "PLAYER_HANDOFF_DISPATCHED" if action == "play" else "COMMAND_RECEIVED"
+        expected_event = ("PLAYER_HANDOFF_DISPATCHED" if action == "play" else "GOOGLE_SIGN_OUT_COMPLETED" if action == "google_sign_out" else "COMMAND_RECEIVED")
         self._command_delivery_expected_events[request_id] = expected_event
         logger.info(
             "[ANDROID_BRIDGE] COMMAND_CREATED request_id=%s action=%s created_at=%s protocol=%s",
@@ -418,6 +419,7 @@ class AndroidBridge:
     async def verify_tree(self, tree_uri: str): return await self._launch("verify_tree", tree_uri=tree_uri)
     async def release_tree(self, tree_uri: str): return await self._launch("release_tree", tree_uri=tree_uri)
     async def sign_in(self, server_client_id: str): return await self._launch("google_sign_in", server_client_id=server_client_id)
+    async def sign_out(self): return await self._launch("google_sign_out")
 
     async def play(self, uri: str, title: str, position_ms: int = 0, *, can_next=False,
                    can_previous=False, autoplay=False, player_settings=None,
