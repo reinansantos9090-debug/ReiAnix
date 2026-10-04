@@ -9,7 +9,7 @@ MAIN = ROOT / "main.py"
 BRIDGE = ROOT / "core/android_bridge.py"
 STORE = ROOT / "core/library_store.py"
 SERVICE = ROOT / "core/library_service.py"
-REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativePlayerRequest.kt"
+REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
 
 
 class Prompt18TransitionHardeningTests(unittest.TestCase):

@@ -828,7 +828,7 @@ E: manifest
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
         player = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt").read_text(encoding="utf-8")
         bridge = (ROOT / "core" / "android_bridge.py").read_text(encoding="utf-8")
-        request = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativePlayerRequest.kt").read_text(encoding="utf-8")
+        request = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8")
         handoff = main[main.index("    private fun openPlayer"):main.index("    private fun clearPendingPlay", main.index("    private fun openPlayer"))]
         self.assertIn('localUri.scheme?.lowercase() !in setOf("content", "file")', handoff)
         self.assertNotIn("SafScanner.isAuthorizedDocument(this, localUri)", handoff)

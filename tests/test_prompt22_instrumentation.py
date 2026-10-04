@@ -51,7 +51,7 @@ class Prompt22InstrumentationTests(unittest.TestCase):
 
     def test_compose_player_passes_stable_route_identity_to_existing_native_request(self):
         navigation = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
-        request = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativePlayerRequest.kt")
+        request = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt")
         self.assertIn('const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"', navigation)
         self.assertIn('putExtra("uri", normalizedUri.toString())', request)
         self.assertIn('putExtra("episodeId", episodeId)', request)

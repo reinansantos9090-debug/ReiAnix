@@ -7,7 +7,7 @@ DETAILS = (ROOT / "views/details_view.py").read_text(encoding="utf-8")
 HOME = (ROOT / "views/home_view.py").read_text(encoding="utf-8")
 BRIDGE = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
 MAIN_ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-REQUEST = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativePlayerRequest.kt").read_text(encoding="utf-8")
+REQUEST = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8")
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
 
 

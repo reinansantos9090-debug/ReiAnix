@@ -7,7 +7,7 @@ MAIN = ROOT / "main.py"
 BRIDGE = ROOT / "core/android_bridge.py"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativePlayerRequest.kt"
+REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
 
 
 class Prompt23NextTransitionTests(unittest.TestCase):
