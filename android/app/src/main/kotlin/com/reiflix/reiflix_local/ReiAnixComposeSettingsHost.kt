@@ -78,7 +78,9 @@ class ReiAnixComposeSettingsHost(
                     viewModel = settingsViewModel,
                     onBack = ::handleBack,
                     onOpenCategory = { label ->
-                        hide()
+                        if (label != "Armazenamento") {
+                            hide()
+                        }
                         publishNavigation("category", label)
                     },
                 )
