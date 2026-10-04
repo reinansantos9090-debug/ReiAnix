@@ -23,6 +23,10 @@ class ReiAnixSettingsViewModel(context: Context) :
         repository.setSetting(key, value)
     }
 
+    fun requestAccountAction(action: String) {
+        repository.requestAccountAction(action)
+    }
+
     override fun onCleared() {
         repository.close()
         super.onCleared()
