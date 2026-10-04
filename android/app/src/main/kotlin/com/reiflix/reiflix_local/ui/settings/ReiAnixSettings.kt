@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -42,6 +41,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
@@ -216,6 +217,7 @@ fun ReiAnixSettingsRoute(
                 onBack = { selectedCategory = null },
                 onUpdateSetting = viewModel::setSetting,
                 onAccountAction = viewModel::requestAccountAction,
+                onRetry = viewModel::refresh,
             )
         } else {
             ReiAnixSettingsScreen(
@@ -228,6 +230,7 @@ fun ReiAnixSettingsRoute(
                         onOpenCategory(label)
                     }
                 },
+                onRetry = viewModel::refresh,
             )
         }
     }
@@ -238,6 +241,7 @@ fun ReiAnixSettingsScreen(
     state: ReiAnixSettingsUiState,
     onBack: () -> Unit,
     onOpenCategory: (String) -> Unit,
+    onRetry: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -260,51 +264,42 @@ fun ReiAnixSettingsScreen(
             }
             if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING) {
                 item(key = "loading") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = ReiAnixTokens.Spacing.xxxl),
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    ReiAnixLoadingState(
+                        title = "Carregando configurações",
+                        message = "Lendo as preferências locais…",
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
             if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR) {
                 item(key = "error") {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                        ),
+                    ReiAnixRecoverableErrorState(
+                        title = "Não foi possível carregar as configurações",
+                        message = state.error ?: "As configurações locais retornaram um erro.",
+                        onRetry = onRetry,
                         modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text = "Não foi possível carregar as configurações." +
-                                state.error?.let { "\n$it" }.orEmpty(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(ReiAnixTokens.Spacing.lg),
-                        )
-                    }
-                }
-            }
-            if (state.account.integrationAvailable) {
-                item(key = "account") {
-                    ReiAnixSettingsAccountCard(
-                        state = state.account,
-                        onClick = { onOpenCategory("Conta") },
                     )
                 }
             }
-            items(
-                items = state.categories,
-                key = { "category:" + it.label },
-            ) { category ->
-                ReiAnixSettingsCategoryCard(
-                    category = category,
-                    valueSummary = categorySummary(category.label, state.settings),
-                    onClick = { onOpenCategory(category.label) },
-                )
+            if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.READY) {
+                if (state.account.integrationAvailable) {
+                    item(key = "account") {
+                        ReiAnixSettingsAccountCard(
+                            state = state.account,
+                            onClick = { onOpenCategory("Conta") },
+                        )
+                    }
+                }
+                items(
+                    items = state.categories,
+                    key = { "category:" + it.label },
+                ) { category ->
+                    ReiAnixSettingsCategoryCard(
+                        category = category,
+                        valueSummary = categorySummary(category.label, state.settings),
+                        onClick = { onOpenCategory(category.label) },
+                    )
+                }
             }
         }
     }
@@ -317,6 +312,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onBack: () -> Unit,
     onUpdateSetting: (String, String) -> Unit,
     onAccountAction: (String) -> Unit,
+    onRetry: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -341,7 +337,25 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     onBack = onBack,
                 )
             }
-            when (category) {
+            if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING) {
+                item(key = "category-loading") {
+                    ReiAnixLoadingState(
+                        title = "Carregando configurações",
+                        message = "Lendo as preferências locais…",
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR) {
+                item(key = "category-error") {
+                    ReiAnixRecoverableErrorState(
+                        title = "Não foi possível carregar as configurações",
+                        message = state.error ?: "As configurações locais retornaram um erro.",
+                        onRetry = onRetry,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
+                when (category) {
                 "Conta" -> {
                     item(key = "account:profile") {
                         ReiAnixSettingsAccountContent(
@@ -629,6 +643,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                 }
+            }
             }
         }
     }
