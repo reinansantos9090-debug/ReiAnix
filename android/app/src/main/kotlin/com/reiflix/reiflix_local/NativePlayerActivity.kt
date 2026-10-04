@@ -2527,7 +2527,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
             rightMargin = dp(8)
         })
 
-        // Compose owns the primary p
+        // Compose owns the primary playback controls. Keep the existing View tree
+        // for secondary menus and compatibility, but do not show duplicate primary controls.
+        topBar.visibility = View.GONE
+        centerControls.visibility = View.GONE
+        bottomBar.visibility = View.GONE
+        findViewByTag<View>("reiflix_marker_row")?.visibility = View.GONE
+        installComposePlayerControls()
+        controls.bringToFront()
+    }
+
     private fun installComposePlayerControls() {
         composeControlsEnabled = true
 
