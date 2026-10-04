@@ -107,8 +107,8 @@ class ReiAnixNavigationInstrumentedTest {
         listOf(
             "Início" to ReiAnixRoutes.HOME,
             "Biblioteca" to ReiAnixRoutes.LIBRARY,
-            "Minha Lista" to ReiAnixRoutes.MY_LIST,
             "Buscar" to ReiAnixRoutes.SEARCH,
+            "Ajustes" to ReiAnixRoutes.SETTINGS,
         ).forEach { (label, route) ->
             clickTopLevel(label)
             clickTopLevel(label)
@@ -128,7 +128,7 @@ class ReiAnixNavigationInstrumentedTest {
 
     @Test
     fun selectedStateIsExposedForEachTopLevelDestination() {
-        listOf("Início", "Biblioteca", "Minha Lista", "Buscar").forEach { label ->
+        listOf("Início", "Biblioteca", "Buscar", "Ajustes").forEach { label ->
             clickTopLevel(label)
             composeRule.onNodeWithText(label).assertIsSelected()
         }
@@ -176,7 +176,7 @@ class ReiAnixNavigationInstrumentedTest {
         composeRule.onNodeWithText("Increment Buscar").performClick()
         composeRule.onNodeWithText("Buscar counter=1").assertExists()
 
-        clickTopLevel("Minha Lista")
+        clickTopLevel("Ajustes")
         clickTopLevel("Buscar")
 
         composeRule.onNodeWithText("Buscar counter=1").assertExists()
@@ -220,7 +220,7 @@ class ReiAnixNavigationInstrumentedTest {
             ReiAnixRoutes.HOME,
             ReiAnixRoutes.LIBRARY,
             ReiAnixRoutes.SEARCH,
-            ReiAnixRoutes.MY_LIST,
+            ReiAnixRoutes.SETTINGS,
         ).forEach { origin ->
             navController.navigateToTopLevel(origin)
             navController.navigateToDetails("anime-$origin", origin)
@@ -242,7 +242,7 @@ class ReiAnixNavigationInstrumentedTest {
                 when (origin) {
                     ReiAnixRoutes.HOME -> "Início"
                     ReiAnixRoutes.LIBRARY -> "Biblioteca"
-                    ReiAnixRoutes.MY_LIST -> "Minha Lista"
+                    ReiAnixRoutes.SETTINGS -> "Ajustes"
                     else -> "Buscar"
                 },
             ).assertIsSelected()
@@ -253,8 +253,8 @@ class ReiAnixNavigationInstrumentedTest {
     fun allTopLevelRoutesAreReachable() {
         val destinations = listOf(
             "Biblioteca" to ReiAnixRoutes.LIBRARY,
-            "Minha Lista" to ReiAnixRoutes.MY_LIST,
             "Buscar" to ReiAnixRoutes.SEARCH,
+            "Ajustes" to ReiAnixRoutes.SETTINGS,
             "Início" to ReiAnixRoutes.HOME,
         )
 
