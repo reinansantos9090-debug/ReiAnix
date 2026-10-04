@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-POLICY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/PlayerMediaPolicy.kt"
+POLICY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/PlayerMediaPolicy.kt"
 GRADLE = ROOT / "android/app/build.gradle.kts"
 
 

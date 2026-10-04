@@ -8,7 +8,7 @@ def read(path):
 
 
 def test_android_interaction_profile_uses_real_input_sources():
-    source = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/DeviceInteractionProfile.kt")
+    source = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/player/DeviceInteractionProfile.kt")
     for token in (
         "Configuration.UI_MODE_TYPE_TELEVISION",
         "PackageManager.FEATURE_LEANBACK",

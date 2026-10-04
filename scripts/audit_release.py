@@ -168,12 +168,12 @@ def audit_architecture(root: Path, failures: list[str]) -> None:
         "core/consumption.py",
         "core/search_engine.py",
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt",
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt",
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeRequestState.kt",
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeIndex.kt",
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/SafScanner.kt",
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreScanner.kt",
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt",
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt",
     )
     for relative in required_files:
@@ -203,7 +203,7 @@ def audit_architecture(root: Path, failures: list[str]) -> None:
         if token not in bridge:
             failures.append(f"AndroidBridge contract missing: {token}")
 
-    mailbox = read(root, "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt")
+    mailbox = read(root, "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt")
     for token in ("eventId", "requestId", "AtomicMoveNotSupportedException"):
         if token not in mailbox:
             failures.append(f"NativeMailbox durability contract missing: {token}")

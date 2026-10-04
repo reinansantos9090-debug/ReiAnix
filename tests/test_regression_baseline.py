@@ -16,7 +16,7 @@ class RegressionBaselineTests(unittest.TestCase):
             "main.py","core/android_bridge.py","core/library_store.py",
             "core/library_service.py","core/artwork.py","core/genre_classifier.py",
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt",
-            "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeMailbox.kt",
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt",
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt",
             "views/home_view.py","views/organize_view.py","views/details_view.py","views/settings_view.py",
         ):
