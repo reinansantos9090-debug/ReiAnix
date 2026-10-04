@@ -10,10 +10,9 @@ import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 
 @Keep
 /**
- * Reversible Compose host boundary.
- *
- * It is not attached to MainActivity in Prompt 01, so the current Flet UI and
- * navigation continue to run unchanged while Compose is introduced.
+ * Root Compose presentation boundary used by the native App Shell during the
+ * incremental Flet -> Compose cutover. Domain state, navigation and Android
+ * services remain outside this theme/background wrapper.
  */
 @Composable
 fun ReiAnixComposeRoot(
