@@ -20,13 +20,13 @@ class Prompt91ComposeHostTests(unittest.TestCase):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         host = HOST.read_text(encoding="utf-8")
         self.assertIn("ReiAnixComposeLibraryHost", source)
-        self.assertIn("composeLibraryHost.show()", source)
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.LIBRARY)", source)
         self.assertIn("composeLibraryHost.hide()", source)
         self.assertIn("ComposeView", host)
         self.assertIn("ReiAnixComposeRoot", host)
         self.assertIn("ReiAnixNavigationHost", host)
         self.assertIn("startDestination = ReiAnixRoutes.LIBRARY", host)
-        self.assertIn("showBottomNavigation = false", host)
+        self.assertIn("showBottomNavigation = true", host)
 
     def test_library_is_a_single_existing_navigation_route(self):
         navigation = NAVIGATION.read_text(encoding="utf-8")
@@ -114,7 +114,7 @@ class Prompt91ComposeHostTests(unittest.TestCase):
         self.assertIn("composeLibraryHost.handleBack()", source)
         self.assertIn("fun handleBack(): Boolean", host)
         self.assertIn("controller.previousBackStackEntry != null", host)
-        self.assertIn("controller.popBackStack(ReiAnixRoutes.LIBRARY, false)", host)
+        self.assertIn("navigateToRequestedDestination", host)
 
     def test_main_activity_does_not_replace_flutter_host(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
