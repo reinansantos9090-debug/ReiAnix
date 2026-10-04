@@ -42,7 +42,7 @@ enum class ReiAnixLibrarySort(val label: String) {
     }
 }
 
-internal object ReiAnixLibraryFilterEngine {
+object ReiAnixLibraryFilterEngine {
     fun filter(
         animes: List<ReiAnixAnimeUiModel>,
         filters: ReiAnixLibraryFilters,
@@ -79,7 +79,7 @@ internal object ReiAnixLibraryFilterEngine {
         animes: List<ReiAnixAnimeUiModel>,
         sortLabel: String,
     ): List<ReiAnixAnimeUiModel> {
-        if (animes.size < 2) return animes
+        if (animes.size < 2 || sortLabel.isBlank()) return animes
 
         val decorated = animes.map { anime ->
             val episodes = anime.contentEpisodes

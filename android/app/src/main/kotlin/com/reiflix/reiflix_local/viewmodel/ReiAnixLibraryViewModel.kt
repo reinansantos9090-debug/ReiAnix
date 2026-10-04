@@ -20,6 +20,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjection
+import com.reiflix.reiflix_local.ui.model.ReiAnixSearchFilters
 import com.reiflix.reiflix_local.ui.model.ReiAnixSearchUiState
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilterEngine
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
@@ -194,14 +195,43 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     private val _searchQuery = MutableStateFlow("")
 
+    private val _searchFilters = MutableStateFlow(ReiAnixSearchFilters())
+
     val searchState: StateFlow<ReiAnixSearchUiState> = combine(
         searchIndex,
         _searchQuery,
-    ) { index, query ->
-        ReiAnixSearchUiState(
-            query = query,
-            results = index.search(query),
-        )
+        _searchFilters,
+    ) { index, query, filters ->
+        runCatching {
+            val indexedResults = index.search(query)
+            val filteredResults = if (query.isBlank()) {
+                emptyList()
+            } else {
+                ReiAnixLibraryFilterEngine.filter(
+                    animes = indexedResults,
+                    filters = ReiAnixLibraryFilters(
+                        selectedGenreKey = filters.selectedGenreKey,
+                        favoritesOnly = filters.favoritesOnly,
+                        watchingOnly = filters.watchingOnly,
+                        completedOnly = filters.completedOnly,
+                        sort = filters.sort ?: "",
+                    ),
+                )
+            }
+            ReiAnixSearchUiState(
+                query = query,
+                results = filteredResults,
+                filters = filters,
+            )
+        }.getOrElse { error ->
+            ReiAnixSearchUiState(
+                query = query,
+                results = emptyList(),
+                filters = filters,
+                error = error.message?.takeIf { it.isNotBlank() }
+                    ?: "Não foi possível pesquisar na biblioteca local.",
+            )
+        }
     }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
@@ -216,6 +246,41 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     fun setSearchQuery(value: String) {
         _searchQuery.value = value
+    }
+
+    fun setSearchGenreFilter(key: String?) {
+        _searchFilters.value = _searchFilters.value.copy(
+            selectedGenreKey = key?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    fun toggleSearchFavoritesFilter() {
+        _searchFilters.value = _searchFilters.value.copy(
+            favoritesOnly = !_searchFilters.value.favoritesOnly,
+        )
+    }
+
+    fun toggleSearchWatchingFilter() {
+        _searchFilters.value = _searchFilters.value.copy(
+            watchingOnly = !_searchFilters.value.watchingOnly,
+        )
+    }
+
+    fun toggleSearchCompletedFilter() {
+        _searchFilters.value = _searchFilters.value.copy(
+            completedOnly = !_searchFilters.value.completedOnly,
+        )
+    }
+
+    fun setSearchSort(label: String?) {
+        val normalized = label?.trim().orEmpty()
+        _searchFilters.value = _searchFilters.value.copy(
+            sort = normalized.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    fun clearSearchFilters() {
+        _searchFilters.value = ReiAnixSearchFilters()
     }
 
     fun refresh() = repository.refresh()
