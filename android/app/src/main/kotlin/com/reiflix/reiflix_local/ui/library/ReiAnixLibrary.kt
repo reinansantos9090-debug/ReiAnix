@@ -23,8 +23,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -404,30 +402,16 @@ private fun LibraryFilterChip(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    AssistChip(
+    ReiAnixChip(
+        text = text,
         onClick = onClick,
-        label = { Text(text) },
-        leadingIcon = if (selected) {
-            {
-                Icon(
-                    imageVector = Icons.Filled.Favorite,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        } else {
-            null
+        selected = selected,
+        modifier = Modifier.semantics {
+            contentDescription = "Filtro $text"
         },
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-            labelColor = MaterialTheme.colorScheme.onSurface,
-        ),
     )
 }
+
 
 @Composable
 private fun LibraryAnimeCard(
@@ -442,26 +426,6 @@ private fun LibraryAnimeCard(
         onFavoriteClick = onToggleFavorite,
         maxDimensionPx = 512,
     )
-}
-
-@Composable
-private fun LibraryStateBadge(
-    text: String,
-) {
-    Surface(
-        shape = ReiAnixTokens.Shapes.chip,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(
-                horizontal = ReiAnixTokens.Spacing.sm,
-                vertical = ReiAnixTokens.Spacing.xs,
-            ),
-        )
-    }
 }
 
 @Composable
