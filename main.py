@@ -113,8 +113,6 @@ async def main(page: ft.Page):
         storage_available=bridge.available,
         enabled=bridge.available,
     )
-    if compose_library_bridge.enabled:
-        compose_library_bridge.request_publish("startup")
     current=[None]
     account_state=["connected" if store.account().get("email") else "disconnected"]
 
@@ -123,6 +121,8 @@ async def main(page: ft.Page):
         account_state[0] = normalized
         if compose_settings_bridge.enabled:
             compose_settings_bridge.request_publish(reason)
+    if compose_library_bridge.enabled:
+        compose_library_bridge.request_publish("startup")
     if compose_settings_bridge.enabled:
         compose_settings_bridge.request_publish("startup")
     diagnostics = DiagnosticTimeline()
