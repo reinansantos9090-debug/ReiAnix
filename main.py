@@ -5353,9 +5353,26 @@ async def main(page: ft.Page):
                                 source="native_player",
                                 result=(payload.get('reason') or "exit") + (":progress_saved" if exit_updated else ":progress_not_updated"),
                             )
-                            # The native player sits over the current Flet screen;
-                            # there is no synthetic player route to pop.
-                            on_catalog_changed()
+                            # The player-exit boundary is the deterministic Compose
+                            # synchronization point: latest persisted SQLite state is
+                            # projected once, then the returning Details/Home surface
+                            # consumes that canonical snapshot. No scanner or global
+                            # app reload is involved.
+                            compose_library_bridge.request_publish("player_exited")
+                            await compose_library_bridge.wait_for_idle()
+
+                            # Preserve the legacy Flet surface without using its generic
+                            # catalog invalidation path for a playback-only update.
+                            if navigation.current == "details":
+                                await refresh_current_details()
+                            elif navigation.current == "home":
+                                refresh = home_state.get("_refresh_from_catalog")
+                                if callable(refresh):
+                                    refresh()
+                            elif navigation.current == "organize":
+                                refresh = organize_state.get("_refresh_from_catalog")
+                                if callable(refresh):
+                                    refresh()
                         elif event_type == 'google_sign_in_started':
                             set_account_state("awaiting_google", "google_sign_in_started")
                             refresh_settings_if_active()
