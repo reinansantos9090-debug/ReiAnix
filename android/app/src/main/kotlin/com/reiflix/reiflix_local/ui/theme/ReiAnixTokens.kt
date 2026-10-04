@@ -16,15 +16,25 @@ import androidx.compose.ui.unit.sp
  */
 object ReiAnixTokens {
     object Colors {
-        val background = Color(0xFF050913)
-        val surface = Color(0xFF0A101C)
-        val surfaceVariant = Color(0xFF111A29)
-        val surfaceRaised = Color(0xFF162238)
+        // ReiAnix visual language: near-black canvas, cool dark surfaces and one
+        // consistent electric-blue interaction accent. Keep semantic aliases here
+        // so Compose screens never need ad-hoc hex/RGB values.
+        val background = Color(0xFF05070C)
+        val backgroundSecondary = Color(0xFF090D14)
+        val surface = Color(0xFF0D121B)
+        val surfaceVariant = Color(0xFF151C27)
+        val surfaceRaised = Color(0xFF1C2532)
+        val surfaceCard = surfaceVariant
+        val surfaceSelected = Color(0xFF173B6D)
+        val surfaceNavigation = Color(0xFF0B1017)
 
         val primary = Color(0xFF3D8BFF)
         val primaryContainer = Color(0xFF173D78)
         val onPrimary = Color(0xFFFFFFFF)
         val onPrimaryContainer = Color(0xFFE3EEFF)
+        val active = primary
+        val focus = Color(0xFF7FB3FF)
+        val pressed = Color(0xFF2D6FD0)
 
         val secondary = Color(0xFF8BAFFF)
         val secondaryContainer = Color(0xFF203A66)
@@ -38,8 +48,12 @@ object ReiAnixTokens {
 
         val text = Color(0xFFF5F7FB)
         val textMuted = Color(0xFFA7B0C0)
-        val border = Color(0xFF46556D)
-        val divider = Color(0xFF273449)
+        val textTertiary = Color(0xFF778398)
+        val textDisabled = Color(0xFF525B6A)
+        val textOnPrimary = onPrimary
+        val border = Color(0xFF334255)
+        val borderStrong = Color(0xFF4D6484)
+        val divider = Color(0xFF202B3A)
 
         val error = Color(0xFFFF6B6B)
         val onError = Color(0xFF240608)
@@ -48,7 +62,7 @@ object ReiAnixTokens {
 
         val success = Color(0xFF4ADE80)
         val warning = Color(0xFFF6C85F)
-        val overlay = Color(0x99000000)
+        val overlay = Color(0xB3000000)
 
         val inverseSurface = Color(0xFFE9EEF7)
         val inverseOnSurface = Color(0xFF1A1E27)
@@ -92,80 +106,122 @@ object ReiAnixTokens {
 
     object Dimensions {
         val screenHorizontalPadding = 20.dp
+        val screenTopPadding = 8.dp
+        val screenBottomPadding = 24.dp
         val sectionGap = 24.dp
+        val sectionTitleGap = 8.dp
         val cardMinHeight = 88.dp
         val buttonMinHeight = 52.dp
         val chipMinHeight = 36.dp
+        val touchTarget = 48.dp
+        val topBarMinHeight = 56.dp
+        val bottomNavigationMinHeight = 64.dp
+        val bottomNavigationIndicatorHeight = 32.dp
         val artworkMinSize = 96.dp
         val progressHeight = 4.dp
+        val dividerHeight = 1.dp
+        val borderWidth = 1.dp
     }
 
     object Shapes {
         val chip = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
-        val small = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+        val small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        val button = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
         val card = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
         val large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
         val artwork = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+        val hero = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+        val dialog = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+        val sheet = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
     }
 
     object Elevation {
         val none = 0.dp
-        val card = 2.dp
-        val raised = 6.dp
-        val prominent = 10.dp
+        val card = 0.dp
+        val raised = 2.dp
+        val prominent = 4.dp
     }
 
-    val typography = Typography(
-        displayLarge = TextStyle(
+    object Motion {
+        const val stateChangeMillis = 180
+        const val contentEnterMillis = 240
+        const val contentExitMillis = 160
+    }
+
+    private object TypeScale {
+        val display = TextStyle(
             fontSize = 36.sp,
             lineHeight = 44.sp,
             fontWeight = FontWeight.Bold,
-        ),
-        headlineLarge = TextStyle(
-            fontSize = 30.sp,
-            lineHeight = 38.sp,
+        )
+        val screenTitle = TextStyle(
+            fontSize = 28.sp,
+            lineHeight = 34.sp,
             fontWeight = FontWeight.Bold,
-        ),
-        headlineSmall = TextStyle(
-            fontSize = 24.sp,
-            lineHeight = 32.sp,
-            fontWeight = FontWeight.Bold,
-        ),
-        titleLarge = TextStyle(
-            fontSize = 21.sp,
-            lineHeight = 28.sp,
+        )
+        val sectionTitle = TextStyle(
+            fontSize = 20.sp,
+            lineHeight = 26.sp,
             fontWeight = FontWeight.SemiBold,
-        ),
-        titleMedium = TextStyle(
+        )
+        val cardTitle = TextStyle(
             fontSize = 16.sp,
-            lineHeight = 24.sp,
+            lineHeight = 22.sp,
             fontWeight = FontWeight.SemiBold,
-        ),
-        bodyLarge = TextStyle(
-            fontSize = 16.sp,
-            lineHeight = 24.sp,
+        )
+        val subtitle = TextStyle(
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
             fontWeight = FontWeight.Normal,
-        ),
-        bodyMedium = TextStyle(
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
+        )
+        val body = TextStyle(
+            fontSize = 15.sp,
+            lineHeight = 22.sp,
             fontWeight = FontWeight.Normal,
-        ),
-        bodySmall = TextStyle(
+        )
+        val bodySecondary = TextStyle(
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            fontWeight = FontWeight.Normal,
+        )
+        val metadata = TextStyle(
             fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.Normal,
-        ),
-        labelLarge = TextStyle(
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
+        )
+        val episode = TextStyle(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        val label = TextStyle(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold,
-        ),
-        labelMedium = TextStyle(
+        )
+        val chip = TextStyle(
             fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.SemiBold,
-        ),
+        )
+        val button = TextStyle(
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+
+    val typography = Typography(
+        displayLarge = TypeScale.display,
+        headlineLarge = TypeScale.screenTitle,
+        headlineSmall = TypeScale.screenTitle,
+        titleLarge = TypeScale.sectionTitle,
+        titleMedium = TypeScale.cardTitle,
+        bodyLarge = TypeScale.body,
+        bodyMedium = TypeScale.bodySecondary,
+        bodySmall = TypeScale.metadata,
+        labelLarge = TypeScale.button,
+        labelMedium = TypeScale.chip,
     )
 
     val shapes = androidx.compose.material3.Shapes(
