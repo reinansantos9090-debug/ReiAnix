@@ -631,6 +631,7 @@ fun ReiAnixEpisodeCard(
     episode: ReiAnixEpisodeUiModel,
     modifier: Modifier = Modifier,
     onPlay: (() -> Unit)? = null,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val playable = episode.isPlayable && onPlay != null
     Card(
@@ -722,12 +723,16 @@ fun ReiAnixEpisodeCard(
                     )
                 }
             }
-            if (playable) {
-                Text(
-                    text = "▶",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(end = ReiAnixTokens.Spacing.sm),
+            if (trailingContent != null) {
+                trailingContent()
+            } else if (playable) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(end = ReiAnixTokens.Spacing.sm)
+                        .size(ReiAnixTokens.Dimensions.iconMedium),
                 )
             }
         }
