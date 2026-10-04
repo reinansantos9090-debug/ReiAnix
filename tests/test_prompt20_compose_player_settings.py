@@ -79,8 +79,11 @@ def test_prompt20_player_handoff_contains_every_migrated_preference():
     request = read(REQUEST)
     player = read(PLAYER)
 
-    for key in PLAYER_KEYS + GESTURE_KEYS + AUDIO_KEYS:
-        assert f'"{key}": settings.get("{key}")' in main or key.replace(".", "_") in request
+    for key in PLAYER_KEYS[2:] + GESTURE_KEYS + AUDIO_KEYS:
+        assert f'"{key}": settings.get("{key}")' in main
+
+    assert 'autoplay=settings.get("player.autoplay_next")' in main
+    assert 'settings.get("player.resume")' in main
 
     request_extras = (
         "setting_player_default_speed",
