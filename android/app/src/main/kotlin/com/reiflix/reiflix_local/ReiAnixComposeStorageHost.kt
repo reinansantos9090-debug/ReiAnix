@@ -3,6 +3,10 @@ package com.reiflix.reiflix_local
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.ViewModelProvider
@@ -72,13 +76,19 @@ class ReiAnixComposeStorageHost(
         val viewModel = ViewModelProvider(activity, factory).get(ReiAnixLibraryViewModel::class.java)
         view.setContent {
             ReiAnixComposeRoot {
-                ReiAnixStorageRoute(
-                    viewModel = viewModel,
-                    onBack = ::hide,
-                    onRequestMediaAccess = { activity.requestNativeStorageAction("request_media_access") },
-                    onOpenBroadSettings = { activity.requestNativeStorageAction("open_broad_storage_settings") },
-                    onCheckAccess = { activity.requestNativeStorageAction("check_storage_access") },
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .safeDrawingPadding(),
+                ) {
+                    ReiAnixStorageRoute(
+                        viewModel = viewModel,
+                        onBack = ::hide,
+                        onRequestMediaAccess = { activity.requestNativeStorageAction("request_media_access") },
+                        onOpenBroadSettings = { activity.requestNativeStorageAction("open_broad_storage_settings") },
+                        onCheckAccess = { activity.requestNativeStorageAction("check_storage_access") },
+                    )
+                }
             }
         }
 
