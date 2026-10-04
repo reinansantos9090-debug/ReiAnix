@@ -24,6 +24,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixSearchUiState
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilterEngine
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
+import com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListFilter
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 @Keep
 class ReiAnixLibraryViewModel(context: Context) :
@@ -107,6 +108,45 @@ class ReiAnixLibraryViewModel(context: Context) :
             SharingStarted.Eagerly,
             emptyList(),
         )
+
+    private val _myListFilter = MutableStateFlow(ReiAnixMyListFilter.ALL)
+
+    val myListFilter: StateFlow<ReiAnixMyListFilter> = _myListFilter.asStateFlow()
+
+    /**
+     * Minha Lista is a presentation projection over the canonical library.
+     * Membership remains the existing favorite flag; the remaining filters
+     * only derive subsets from that same immutable snapshot.
+     */
+    val myListAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
+        combine(
+            uiState.map { it.animes },
+            myListFilter,
+        ) { animes, selectedFilter ->
+            val saved = animes.asSequence().filter { it.favorite }
+            when (selectedFilter) {
+                ReiAnixMyListFilter.ALL,
+                ReiAnixMyListFilter.FAVORITES,
+                -> saved
+                ReiAnixMyListFilter.WATCHING ->
+                    saved.filter { it.isWatching }
+                ReiAnixMyListFilter.COMPLETED ->
+                    saved.filter { it.isCompleted }
+            }
+                .sortedBy { it.title.trim().lowercase() }
+                .toList()
+        }
+            .flowOn(Dispatchers.Default)
+            .distinctUntilChanged()
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                emptyList(),
+            )
+
+    fun setMyListFilter(filter: ReiAnixMyListFilter) {
+        _myListFilter.value = filter
+    }
 
     /**
      * Canonical Details projection. Episode state is included so progress and

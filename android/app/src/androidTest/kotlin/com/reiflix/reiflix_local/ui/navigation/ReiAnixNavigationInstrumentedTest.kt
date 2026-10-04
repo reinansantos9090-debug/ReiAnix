@@ -215,8 +215,8 @@ class ReiAnixNavigationInstrumentedTest {
     }
 
     @Test
-    fun myListRemainsASecondaryRouteAndIsNotABottomNavigationDestination() {
-        navController.navigate(ReiAnixRoutes.MY_LIST)
+    fun myListRemainsASecondaryRouteAndUsesLibraryShellContext() {
+        navController.navigateToMyList()
         composeRule.waitForIdle()
 
         assertEquals(
@@ -225,7 +225,8 @@ class ReiAnixNavigationInstrumentedTest {
         )
         composeRule.onNodeWithText("Minha Lista").assertIsDisplayed()
         composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertDoesNotExist()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Biblioteca").assertIsSelected()
     }
 
     @Test

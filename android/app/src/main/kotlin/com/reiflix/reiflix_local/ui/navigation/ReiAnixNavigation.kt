@@ -126,6 +126,15 @@ fun NavHostController.navigateToTopLevel(route: String) {
     )
 }
 
+fun NavHostController.navigateToMyList() {
+    navigate(
+        ReiAnixRoutes.MY_LIST,
+        navOptions {
+            launchSingleTop = true
+        },
+    )
+}
+
 fun NavHostController.navigateToDetails(
     animeId: String,
     origin: String,
@@ -239,6 +248,9 @@ fun ReiAnixNavigationHost(
         ?.trim()
         .orEmpty()
     val selectedBottomRoute = when {
+        currentRoute == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
+        currentRoute == ReiAnixRoutes.DETAILS &&
+            detailOrigin == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
         currentRoute == ReiAnixRoutes.DETAILS &&
             topLevelDestinations.any { it.route == detailOrigin } -> detailOrigin
         topLevelDestinations.any { it.route == currentRoute } -> currentRoute

@@ -71,6 +71,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
+import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -106,7 +107,7 @@ fun ReiAnixHomeRoute(
         },
         onToggleFavorite = viewModel::toggleFavorite,
         onOpenMyList = {
-            navController.navigateToTopLevel(ReiAnixRoutes.MY_LIST)
+            navController.navigateToMyList()
         },
         onRefresh = viewModel::refresh,
     )

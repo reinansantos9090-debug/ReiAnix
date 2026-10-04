@@ -139,6 +139,9 @@ object ReiAnixTokens {
         val continueCardWidth = 250.dp
         val continuePosterWidth = 76.dp
         val continuePosterHeight = 108.dp
+        val myListPosterWidth = 56.dp
+        val myListPosterHeight = 78.dp
+        val myListRowMinHeight = 86.dp
         val posterAspectRatio = 0.7f
         val libraryGridMinWidth = 140.dp
         val searchGridMinWidth = 150.dp

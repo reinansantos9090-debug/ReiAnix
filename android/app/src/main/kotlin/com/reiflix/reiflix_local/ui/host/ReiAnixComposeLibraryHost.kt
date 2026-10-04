@@ -16,6 +16,7 @@ import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
@@ -200,9 +201,10 @@ class ReiAnixComposeLibraryHost(
         when (route) {
             ReiAnixRoutes.HOME,
             ReiAnixRoutes.LIBRARY,
-            ReiAnixRoutes.MY_LIST,
             ReiAnixRoutes.SEARCH,
             -> controller.navigateToTopLevel(route)
+
+            ReiAnixRoutes.MY_LIST -> controller.navigateToMyList()
 
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.STORAGE,
