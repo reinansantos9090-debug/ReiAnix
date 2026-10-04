@@ -69,6 +69,10 @@ object ReiAnixTokens {
         val warning = Color(0xFFF6C85F)
         val disabledSurface = Color(0xFF121821)
         val overlay = Color(0xB3000000)
+        val overlayStrong = Color(0xCC000000)
+        val statusContainerAlpha = 0.16f
+        val disabledContentAlpha = 0.55f
+        val subtleBorderAlpha = 0.55f
 
         val inverseSurface = Color(0xFFE9EEF7)
         val inverseOnSurface = Color(0xFF1A1E27)
