@@ -40,17 +40,17 @@ fun ReiAnixLoadingState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
-        CircularProgressIndicator(color = ReiAnixTokens.Colors.primary)
+        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         Text(
             text = title,
             style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
             text = message,
             style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-            color = ReiAnixTokens.Colors.textMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -73,13 +73,13 @@ fun ReiAnixEmptyState(
         Text(
             text = title,
             style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = message,
             style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-            color = ReiAnixTokens.Colors.textMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (actionLabel != null && onAction != null) {
             OutlinedButton(onClick = onAction) {
@@ -125,19 +125,19 @@ fun ReiAnixScannerInProgressState(
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
                 strokeWidth = 2.dp,
-                color = ReiAnixTokens.Colors.primary,
+                color = MaterialTheme.colorScheme.primary,
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Varredura em andamento",
                     style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                    color = ReiAnixTokens.Colors.text,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = normalizedState,
                     style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -195,7 +195,7 @@ fun ReiAnixFileUnavailableState(
             Text(
                 text = message,
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (actionLabel != null && onAction != null) {
                 OutlinedButton(onClick = onAction) {
@@ -230,7 +230,7 @@ fun ReiAnixArtworkMissingState(
         Text(
             text = label,
             style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
-            color = ReiAnixTokens.Colors.textMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -253,13 +253,13 @@ fun ReiAnixRecoverableErrorState(
         Text(
             text = title,
             style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = message,
             style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-            color = ReiAnixTokens.Colors.textMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Button(onClick = onRetry) {
             Text(retryLabel)
