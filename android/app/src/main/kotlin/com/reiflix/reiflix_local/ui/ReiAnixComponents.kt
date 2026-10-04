@@ -255,6 +255,47 @@ fun ReiAnixCompactButton(
 }
 
 @Composable
+fun ReiAnixTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    placeholder: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = true,
+    enabled: Boolean = true,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = ReiAnixTokens.Dimensions.searchFieldHeight),
+        label = label,
+        placeholder = placeholder,
+        singleLine = singleLine,
+        enabled = enabled,
+        shape = ReiAnixTokens.Shapes.textField,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = ReiAnixTokens.Colors.surfaceVariant,
+            unfocusedContainerColor = ReiAnixTokens.Colors.surfaceVariant,
+            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
+            focusedBorderColor = ReiAnixTokens.Colors.primary,
+            unfocusedBorderColor = ReiAnixTokens.Colors.border,
+            disabledBorderColor = ReiAnixTokens.Colors.divider,
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            disabledTextColor = ReiAnixTokens.Colors.textDisabled,
+            focusedLabelColor = ReiAnixTokens.Colors.primary,
+            unfocusedLabelColor = ReiAnixTokens.Colors.textMuted,
+            disabledLabelColor = ReiAnixTokens.Colors.textDisabled,
+            focusedPlaceholderColor = ReiAnixTokens.Colors.textMuted,
+            unfocusedPlaceholderColor = ReiAnixTokens.Colors.textMuted,
+            disabledPlaceholderColor = ReiAnixTokens.Colors.textDisabled,
+        ),
+    )
+}
+
+@Composable
 fun ReiAnixSearchField(
     value: String,
     onValueChange: (String) -> Unit,
