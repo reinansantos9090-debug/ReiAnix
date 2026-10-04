@@ -83,7 +83,7 @@ def test_prompt18_native_settings_integration_contract():
     main = (root / "main.py").read_text(encoding="utf-8")
     request_state = (
         root
-        / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeRequestState.kt"
+        / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt"
     ).read_text(encoding="utf-8")
     activity = (
         root
@@ -95,7 +95,7 @@ def test_prompt18_native_settings_integration_contract():
     ).read_text(encoding="utf-8")
     settings_host = (
         root
-        / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixComposeSettingsHost.kt"
+        / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost.kt"
     ).read_text(encoding="utf-8")
 
     assert "ComposeSettingsBridge" in main

@@ -9,7 +9,7 @@ from core.android_bridge import AndroidBridge
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / "core/android_bridge.py"
-DISPATCHER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativeCommandDispatcher.kt"
+DISPATCHER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeCommandDispatcher.kt"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 
 
