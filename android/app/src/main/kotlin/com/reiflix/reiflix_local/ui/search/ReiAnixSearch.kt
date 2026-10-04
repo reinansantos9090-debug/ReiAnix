@@ -270,76 +270,32 @@ private fun SearchResultCard(
     anime: ReiAnixAnimeUiModel,
     onClick: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(ReiAnixTokens.Shapes.card)
-            .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onClick)
-            .padding(ReiAnixTokens.Spacing.sm)
-            .semantics {
-                contentDescription = "Abrir " + anime.title
-            },
-    ) {
-        ReiAnixLocalArtwork(
-            localPath = anime.artwork?.localPath,
-            contentDescription = anime.title + " artwork",
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.7f)
-                .clip(ReiAnixTokens.Shapes.artwork),
-            contentScale = ContentScale.Crop,
-            placeholder = "Sem arte",
-            maxDimensionPx = 512,
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = ReiAnixTokens.Spacing.xs,
-                    vertical = ReiAnixTokens.Spacing.sm,
-                ),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-        ) {
-            Text(
-                text = anime.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            val metadata = buildList {
-                anime.year?.let { add(it.toString()) }
-                when (anime.mediaKind) {
-                    ReiAnixMediaKind.SERIES -> add("Série")
-                    ReiAnixMediaKind.MOVIE -> add("Filme")
-                    ReiAnixMediaKind.UNKNOWN -> Unit
-                }
-            }
-
-            if (metadata.isNotEmpty()) {
-                Text(
-                    text = metadata.joinToString(" • "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            if (anime.genres.isNotEmpty()) {
-                Text(
-                    text = anime.genres.joinToString(" • ") { it.name },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+    val metadata = buildList {
+        anime.year?.let { add(it.toString()) }
+        when (anime.mediaKind) {
+            ReiAnixMediaKind.SERIES -> add("Série")
+            ReiAnixMediaKind.MOVIE -> add("Filme")
+            ReiAnixMediaKind.UNKNOWN -> Unit
+        }
+        if (anime.genres.isNotEmpty()) {
+            add(anime.genres.joinToString(" • ") { it.name })
         }
     }
+
+    ReiAnixAnimeCard(
+        title = anime.title,
+        artworkPath = anime.artwork?.localPath,
+        metadata = metadata,
+        progress = anime.contentEpisodes
+            .firstOrNull { it.progressFraction > 0f && !it.isCompleted }
+            ?.progressFraction,
+        favorite = anime.favorite,
+        watched = anime.contentEpisodes.any { it.isWatched },
+        completed = anime.isCompleted,
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        maxDimensionPx = 512,
+    )
 }
 
 @Composable
