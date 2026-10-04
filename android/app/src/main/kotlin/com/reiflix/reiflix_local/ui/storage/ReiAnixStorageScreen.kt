@@ -118,7 +118,9 @@ fun ReiAnixStorageScreen(
                 )
             }
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 contentPadding = PaddingValues(
                     horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                     vertical = ReiAnixTokens.Spacing.md,
