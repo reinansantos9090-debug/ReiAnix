@@ -76,7 +76,7 @@ class ReiAnixComposeSettingsHost(
             ReiAnixComposeRoot {
                 ReiAnixSettingsRoute(
                     viewModel = settingsViewModel,
-                    onBack = ::handleBack,
+                    onBack = { handleBack() },
                     onOpenCategory = { label ->
                         if (label != "Armazenamento") {
                             hide()
