@@ -30,7 +30,7 @@ data class ReiAnixSettingsUiState(
     val error: String? = null,
 ) {
     companion object {
-        fun fromSnapshot(snapshot: ReiAnixSettingsSnapshot): ReiAnixSettingsUiState {
+        internal fun fromSnapshot(snapshot: ReiAnixSettingsSnapshot): ReiAnixSettingsUiState {
             val account = ReiAnixSettingsAccountUiState(
                 integrationAvailable = snapshot.account.integrationAvailable,
                 connected = snapshot.account.connected,
