@@ -12,10 +12,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -137,7 +137,7 @@ fun ReiAnixStorageScreen(
                     StoragePermissionCard(
                         title = "Pasta da biblioteca (SAF)",
                         description = "As pastas autorizadas continuam usando a permissão persistente do Android.",
-                        icon = Icons.Filled.Folder,
+                        icon = Icons.Filled.Home,
                         actionLabel = "Escolher pasta",
                         onAction = onSelectSaf,
                     )
@@ -146,7 +146,7 @@ fun ReiAnixStorageScreen(
                     StoragePermissionCard(
                         title = "Vídeos do dispositivo",
                         description = "MediaStore é uma capacidade do dispositivo; uma permissão de mídia não cria uma fonte da biblioteca.",
-                        icon = Icons.Filled.Security,
+                        icon = Icons.Filled.Info,
                         actionLabel = "Solicitar acesso",
                         onAction = onRequestMediaAccess,
                     )
@@ -155,7 +155,7 @@ fun ReiAnixStorageScreen(
                     StoragePermissionCard(
                         title = "Armazenamento amplo",
                         description = "Somente a permissão especial realmente concedida pelo Android é considerada.",
-                        icon = Icons.Filled.Storage,
+                        icon = Icons.Filled.Settings,
                         actionLabel = "Abrir configurações",
                         onAction = onOpenBroadSettings,
                     )
