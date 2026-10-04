@@ -3113,9 +3113,15 @@ async def main(page: ft.Page):
                             setting_value = payload.get('value')
                             request_id = str(event_request_id or payload.get('requestId') or '').strip()
                             supported_compose_settings = {
-                                key
-                                for key in settings.EXPORT_KEYS
-                                if key.startswith(("player.", "gestures.", "audio."))
+                                'app.confirm_destructive',
+                                'appearance.theme',
+                                'appearance.card_size',
+                                'appearance.show_thumbnails',
+                                *(
+                                    key
+                                    for key in settings.EXPORT_KEYS
+                                    if key.startswith(("player.", "gestures.", "audio."))
+                                ),
                             }
                             if setting_key not in supported_compose_settings:
                                 logger.warning(
