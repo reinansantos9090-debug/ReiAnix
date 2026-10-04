@@ -704,7 +704,7 @@ fun ReiAnixEpisodeCard(
                 },
             )
             .semantics {
-                this.contentDescription = episode.displayTitle
+                this.contentDescription = episode.displayTitle + " • " + episode.playbackActionLabel
                 if (playable) role = Role.Button
             },
         shape = ReiAnixTokens.Shapes.card,
@@ -793,6 +793,18 @@ fun ReiAnixEpisodeCard(
                             append("$it%")
                         }
                     }.ifBlank { "Episódio" },
+                )
+                ReiAnixBadge(
+                    text = episode.playbackActionLabel,
+                    tone = when {
+                        !playable -> ReiAnixBadgeTone.Error
+                        episode.isCompleted -> ReiAnixBadgeTone.Success
+                        episode.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS -> ReiAnixBadgeTone.Primary
+                        else -> ReiAnixBadgeTone.Neutral
+                    },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Ação: " + episode.playbackActionLabel
+                    },
                 )
                 ReiAnixProgressIndicator(
                     progress = episode.progressFraction,
