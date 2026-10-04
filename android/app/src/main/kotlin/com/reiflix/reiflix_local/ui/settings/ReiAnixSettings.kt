@@ -707,7 +707,6 @@ private fun BooleanSettingCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
@@ -750,7 +749,6 @@ private fun LanguageSettingCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
@@ -796,7 +794,6 @@ private fun ChoiceSettingCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
@@ -861,7 +858,6 @@ private fun ReiAnixSettingsAccountContent(
             Text(
                 text = state.name.ifBlank { state.email.ifBlank { "Conta Google" } },
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             if (state.connected && state.email.isNotBlank()) {
