@@ -261,7 +261,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
         ?: anime.seasons.firstOrNull()
 
     LazyColumn(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .weight(1f)
             .testTag("details-episode-list"),
