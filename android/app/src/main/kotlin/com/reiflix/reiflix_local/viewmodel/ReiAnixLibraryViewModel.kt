@@ -27,6 +27,17 @@ import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 @Keep
 class ReiAnixLibraryViewModel(context: Context) :
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
+    
+    companion object {
+        internal fun projectHomeState(state: ReiAnixLibraryUiState): ReiAnixHomeLibraryUiState =
+            projectHomeState(state)
+
+        internal fun projectDetailsState(
+            state: ReiAnixLibraryUiState,
+            animeId: Long,
+        ): ReiAnixDetailsUiState =
+            projectDetailsState(state, animeId)
+    }
 
     private val repository = ReiAnixLibraryRepository(context)
     override val uiState: StateFlow<ReiAnixLibraryUiState> = repository.state
