@@ -174,7 +174,10 @@ class AndroidBridge:
         loop = asyncio.get_running_loop()
         delivery_waiter = loop.create_future()
         self._command_delivery_waiters[request_id] = delivery_waiter
-        expected_event = ("PLAYER_HANDOFF_DISPATCHED" if action == "play" else "GOOGLE_SIGN_OUT_COMPLETED" if action == "google_sign_out" else "COMMAND_RECEIVED")
+        if action == "google_sign_out":
+            expected_event = "GOOGLE_SIGN_OUT_COMPLETED"
+        else:
+            expected_event = "PLAYER_HANDOFF_DISPATCHED" if action == "play" else "COMMAND_RECEIVED"
         self._command_delivery_expected_events[request_id] = expected_event
         logger.info(
             "[ANDROID_BRIDGE] COMMAND_CREATED request_id=%s action=%s created_at=%s protocol=%s",
