@@ -17,13 +17,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,11 +28,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.reiflix.reiflix_local.ui.ReiAnixBadge
+import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
+import com.reiflix.reiflix_local.ui.ReiAnixCard
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
+import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
@@ -96,7 +95,7 @@ fun ReiAnixStorageScreen(
                 Text(
                     text = "Armazenamento",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
             }
             if (storage.lifecycleState == "unknown" || storage.api == null) {
@@ -184,49 +183,47 @@ private fun StorageSummaryCard(
     onCheckAccess: () -> Unit,
     onRefreshLibrary: () -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                "Estado real do armazenamento",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+    ReiAnixCard {
+        Text(
+            text = "Estado real do armazenamento",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.padding(top = ReiAnixTokens.Spacing.xs))
+        StorageStateLine("MediaStore", storage.mediaReadState, storage.mediaReadState in setOf("full", "partial"))
+        StorageStateLine("SAF", if (storage.safRoots.isNotEmpty()) "available" else "revoked", storage.safRoots.isNotEmpty())
+        StorageStateLine("Armazenamento amplo", storage.broadStorageState, storage.broadStorageState == "available")
+        Text(
+            text = "Ciclo: " + storage.lifecycleState.ifBlank { "unknown" } + " • Android " + (storage.api ?: "?"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (scanInProgress) {
+            ReiAnixScannerInProgressState(
+                scanState = scanState,
+                compact = true,
             )
-            StorageStateLine("MediaStore", storage.mediaReadState, storage.mediaReadState in setOf("full", "partial"))
-            StorageStateLine("SAF", if (storage.safRoots.isNotEmpty()) "available" else "revoked", storage.safRoots.isNotEmpty())
-            StorageStateLine("Armazenamento amplo", storage.broadStorageState, storage.broadStorageState == "available")
+        } else {
             Text(
-                text = "Ciclo: " + storage.lifecycleState.ifBlank { "unknown" } + " • Android " + (storage.api ?: "?"),
+                text = "Varredura: " + scanState.lowercase(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (scanInProgress) {
-                ReiAnixScannerInProgressState(
-                    scanState = scanState,
-                    compact = true,
-                )
-            } else {
-                Text(
-                    text = "Varredura: " + scanState.lowercase(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onCheckAccess) {
-                    Icon(Icons.Filled.Refresh, contentDescription = null)
-                    Spacer(modifier = Modifier.padding(start = 4.dp))
-                    Text("Verificar")
-                }
-                FilledTonalButton(onClick = onRefreshLibrary) {
-                    Text("Atualizar biblioteca")
-                }
-            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ReiAnixSecondaryButton(
+                text = "Verificar",
+                onClick = onCheckAccess,
+                modifier = Modifier.weight(1f),
+            )
+            ReiAnixPrimaryButton(
+                text = "Atualizar biblioteca",
+                onClick = onRefreshLibrary,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -239,24 +236,33 @@ private fun StoragePermissionCard(
     actionLabel: String,
     onAction: () -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    ReiAnixCard {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Icon(icon, contentDescription = null)
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onAction) { Text(actionLabel) }
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
+        Text(
+            description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
+        )
+        ReiAnixSecondaryButton(
+            text = actionLabel,
+            onClick = onAction,
+            modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
+        )
     }
 }
 
@@ -267,22 +273,24 @@ private fun ConfiguredSourcesCard(
     onRequestMediaAccess: () -> Unit,
     onOpenBroadSettings: () -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("Fontes configuradas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (storage.configuredSources.isEmpty()) {
-                Text(
-                    "Nenhuma fonte foi configurada na biblioteca.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
+    ReiAnixCard {
+        Text(
+            text = "Fontes configuradas",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (storage.configuredSources.isEmpty()) {
+            Text(
+                "Nenhuma fonte foi configurada na biblioteca.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
+            )
+        } else {
+            Column(
+                modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            ) {
                 storage.configuredSources.forEach { source ->
                     val sourceState = storage.sourceState(source)
                     ConfiguredSourceRow(
@@ -344,7 +352,7 @@ private fun ConfiguredSourceRow(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
             ) {
                 Icon(
                     if (available) Icons.Filled.CheckCircle else Icons.Filled.Warning,
@@ -357,7 +365,14 @@ private fun ConfiguredSourceRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                Text(label, style = MaterialTheme.typography.labelMedium)
+                ReiAnixBadge(
+                    text = label,
+                    tone = when {
+                        available -> ReiAnixBadgeTone.Success
+                        state.lowercase() in setOf("denied", "revoked", "unavailable") -> ReiAnixBadgeTone.Warning
+                        else -> ReiAnixBadgeTone.Neutral
+                    },
+                )
             }
             Text(
                 text = source.reference,
@@ -374,10 +389,13 @@ private fun StorageStateLine(label: String, state: String, ok: Boolean) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         Icon(if (ok) Icons.Filled.CheckCircle else Icons.Filled.Warning, contentDescription = null)
         Text(label, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        Text(state.ifBlank { "unknown" }.replace('_', ' '))
+        ReiAnixBadge(
+            text = state.ifBlank { "unknown" }.replace('_', ' '),
+            tone = if (ok) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
+        )
     }
 }
