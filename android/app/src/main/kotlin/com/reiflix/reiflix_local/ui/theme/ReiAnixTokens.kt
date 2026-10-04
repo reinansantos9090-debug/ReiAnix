@@ -73,6 +73,7 @@ object ReiAnixTokens {
         val statusContainerAlpha = 0.16f
         val disabledContentAlpha = 0.55f
         val subtleBorderAlpha = 0.55f
+        val disabledContainerAlpha = 0.45f
 
         val inverseSurface = Color(0xFFE9EEF7)
         val inverseOnSurface = Color(0xFF1A1E27)
