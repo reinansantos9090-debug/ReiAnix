@@ -117,6 +117,12 @@ async def main(page: ft.Page):
         compose_library_bridge.request_publish("startup")
     current=[None]
     account_state=["connected" if store.account().get("email") else "disconnected"]
+
+    def set_account_state(state, reason="account_state_changed"):
+        normalized = str(state or "disconnected").strip().lower()
+        account_state[0] = normalized
+        if compose_settings_bridge.enabled:
+            compose_settings_bridge.request_publish(reason)
     if compose_settings_bridge.enabled:
         compose_settings_bridge.request_publish("startup")
     diagnostics = DiagnosticTimeline()
@@ -140,6 +146,7 @@ async def main(page: ft.Page):
     compose_library_bridge.request_publish("startup_scan_state")
     ui_alive = [True]
     native_poll_task = [None]
+    account_action_task = [None]
     player_transition_task = {"task": None}
     settings_tasks = SettingsTaskRegistry()
     home_refresh_context = {
@@ -193,6 +200,13 @@ async def main(page: ft.Page):
                 task.cancel()
             except Exception as exc:
                 logger.debug("[FLET] mailbox poll task cancellation failed: %s", exc)
+        account_task = account_action_task[0]
+        if account_task is not None and not account_task.done():
+            try:
+                account_task.cancel()
+            except Exception as exc:
+                logger.debug("[ACCOUNT] account action task cancellation failed: %s", exc)
+        account_action_task[0] = None
         transition_task = player_transition_task.get("task")
         if transition_task is not None and not transition_task.done():
             try:
@@ -2965,39 +2979,96 @@ async def main(page: ft.Page):
         return await request_home_refresh(source=source)
 
     async def login(_=None):
+        if account_state[0] in {"connecting", "awaiting_google", "disconnecting"}:
+            return
         if bridge.available:
             if not GOOGLE_WEB_CLIENT_ID:
-                account_state[0] = 'configuration_required'; navigate_settings()
-                page.snack_bar=ft.SnackBar(ft.Text('Login Google não configurado neste APK. Configure um Web Client ID público antes de tentar novamente.')); page.snack_bar.open=True; safe_update(); return
-            account_state[0] = 'connecting'; navigate_settings()
-            await bridge.sign_in(GOOGLE_WEB_CLIENT_ID); return
-        account_state[0] = 'connecting'; navigate_settings()
-        if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URL:
-            account_state[0] = 'error'; navigate_settings()
-            page.snack_bar=ft.SnackBar(ft.Text('Configure REIFLIX_GOOGLE_CLIENT_ID e REIFLIX_GOOGLE_REDIRECT_URL para entrar com Google.'))
-            page.snack_bar.open=True; safe_update(); return
-        provider=OAuthProvider(client_id=GOOGLE_CLIENT_ID,client_secret='',authorization_endpoint='https://accounts.google.com/o/oauth2/v2/auth',token_endpoint='https://oauth2.googleapis.com/token',redirect_url=GOOGLE_REDIRECT_URL,scopes=['openid','email','profile'],user_endpoint='https://openidconnect.googleapis.com/v1/userinfo',user_id_fn=lambda u:u.get('sub'),authorization_params={'access_type':'offline','prompt':'select_account'})
-        await page.login(provider,fetch_user=True)
-    def logout(_=None):
-        account_state[0] = 'disconnecting'; navigate_settings()
-        try:
-            store.clear_account(); page.logout()
-            account_state[0] = 'disconnected'
-            compose_settings_bridge.request_publish("logout_completed")
-        except Exception:
-            account_state[0] = 'error'
-            raise
+                set_account_state("configuration_required", "google_login_configuration_required")
+                navigate_settings()
+                page.snack_bar = ft.SnackBar(
+                    ft.Text("Login Google não configurado neste APK. Configure um Web Client ID público antes de tentar novamente.")
+                )
+                page.snack_bar.open = True
+                safe_update()
+                return
+            set_account_state("connecting", "google_login_requested")
+            navigate_settings()
+            try:
+                await bridge.sign_in(GOOGLE_WEB_CLIENT_ID)
+            except Exception as exc:
+                set_account_state("error", "google_login_command_failed")
+                logger.exception("[ACCOUNT] Google sign-in command failed: %s", exc)
+                page.snack_bar = ft.SnackBar(ft.Text("Não foi possível iniciar o login Google."))
+                page.snack_bar.open = True
+                safe_update()
+            return
+        set_account_state("connecting", "google_login_requested")
         navigate_settings()
+        if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URL:
+            set_account_state("error", "google_login_configuration_required")
+            navigate_settings()
+            page.snack_bar=ft.SnackBar(ft.Text("Configure REIFLIX_GOOGLE_CLIENT_ID e REIFLIX_GOOGLE_REDIRECT_URL para entrar com Google."))
+            page.snack_bar.open=True; safe_update(); return
+        provider=OAuthProvider(
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret='',
+            authorization_endpoint='https://accounts.google.com/o/oauth2/v2/auth',
+            token_endpoint='https://oauth2.googleapis.com/token',
+            redirect_url=GOOGLE_REDIRECT_URL,
+            scopes=['openid','email','profile'],
+            user_endpoint='https://openidconnect.googleapis.com/v1/userinfo',
+            user_id_fn=lambda u:u.get('sub'),
+            authorization_params={'access_type':'offline','prompt':'select_account'},
+        )
+        await page.login(provider,fetch_user=True)
+
+    async def logout(_=None):
+        if account_state[0] == "disconnecting":
+            return
+        set_account_state("disconnecting", "google_logout_requested")
+        navigate_settings()
+        try:
+            if bridge.available:
+                await bridge.sign_out()
+            else:
+                page.logout()
+            store.clear_account()
+            set_account_state("disconnected", "logout_completed")
+            navigate_settings()
+        except Exception as exc:
+            set_account_state("error", "logout_failed")
+            logger.exception("[ACCOUNT] Google sign-out failed: %s", exc)
+            page.snack_bar = ft.SnackBar(ft.Text("Não foi possível encerrar a sessão Google com segurança."))
+            page.snack_bar.open = True
+            safe_update()
+
+    async def switch_account(_=None):
+        if account_state[0] in {"connecting", "awaiting_google", "disconnecting"}:
+            return
+        if store.account().get("email"):
+            await logout()
+            if account_state[0] != "disconnected":
+                return
+        await login()
+
+    async def execute_account_action(action):
+        if action == "login":
+            await login()
+        elif action == "logout":
+            await logout()
+        elif action == "switch":
+            await switch_account()
+
     async def login_done(e):
         if e.error:
-            account_state[0] = 'error'
+            set_account_state("error", "flet_login_error")
             page.snack_bar=ft.SnackBar(ft.Text(f'Não foi possível entrar: {e.error_description or e.error}')); page.snack_bar.open=True; safe_update(); return
         user=page.auth.user
         if user:
             store.save_account({'id':str(user.id),'name':str(user.get('name','')),'email':str(user.get('email','')),'picture':str(user.get('picture',''))})
-            account_state[0] = 'connected'
-            compose_settings_bridge.request_publish("login_completed")
+            set_account_state("connected", "login_completed")
         navigate_settings()
+
     async def poll_native_bridge():
         async def ingest_native_batch(event_type, payload, event_request_id):
             source_map = {
@@ -3144,6 +3215,15 @@ async def main(page: ft.Page):
                                         setting_key or '-',
                                         request_id or '-',
                                     )
+
+                        if event_type == 'compose_account_action':
+                            action = str(payload.get('action') or '').strip().lower()
+                            if action in {'login', 'logout', 'switch'}:
+                                current_task = account_action_task[0]
+                                if current_task is None or current_task.done():
+                                    account_action_task[0] = page.run_task(execute_account_action, action)
+                            else:
+                                logger.warning("[COMPOSE_ACCOUNT] action rejected action=%s", action or "-")
 
                         if event_type == 'compose_settings_navigation':
                             destination = str(payload.get('destination') or '').strip().lower()
@@ -5242,14 +5322,17 @@ async def main(page: ft.Page):
                             # there is no synthetic player route to pop.
                             on_catalog_changed()
                         elif event_type == 'google_sign_in_started':
-                            account_state[0] = 'awaiting_google'; refresh_settings_if_active()
+                            set_account_state("awaiting_google", "google_sign_in_started")
+                            refresh_settings_if_active()
                         elif event_type == 'google_account':
                             profile = normalize_google_profile(payload)
                             if profile is None:
-                                account_state[0] = 'error'
+                                set_account_state("error", "google_profile_invalid")
                                 page.snack_bar=ft.SnackBar(ft.Text('A resposta da conta Google é inválida. Tente novamente.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
                             else:
-                                store.save_account(profile); account_state[0] = 'connected'; compose_settings_bridge.request_publish("google_account_connected"); page.snack_bar=ft.SnackBar(ft.Text('Conta Google conectada.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
+                                store.save_account(profile)
+                                set_account_state("connected", "google_account_connected")
+                                page.snack_bar=ft.SnackBar(ft.Text('Conta Google conectada.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
                         elif event_type == 'volume_changed':
                             set_scan_state(
                                 ScanUiState.SCANNING if any(
@@ -5414,7 +5497,7 @@ async def main(page: ft.Page):
                                     compose_library_bridge.request_publish("storage_event")
                                 page.snack_bar=ft.SnackBar(ft.Text('Pasta removida da biblioteca.')); page.snack_bar.open=True; safe_update()
                         elif event_type == 'google_cancelled':
-                            account_state[0] = 'disconnected'
+                            set_account_state("disconnected", "google_sign_in_cancelled")
                             page.snack_bar=ft.SnackBar(ft.Text('Entrada com Google cancelada.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
                         elif event_type in {'saf_error','google_error'}:
                             if event_type == 'saf_error':
@@ -5464,7 +5547,10 @@ async def main(page: ft.Page):
                                         store.mark_source_unavailable(tree_uri, 'saf_scan_error')
                             if event_type == 'google_error':
                                 code = str(event.get('code') or 'credential_error')
-                                account_state[0] = 'configuration_required' if code == 'configuration_required' else 'error'
+                                set_account_state(
+                                    "configuration_required" if code == "configuration_required" else "error",
+                                    "google_error",
+                                )
                                 if code == 'no_credential':
                                     message = 'Nenhuma conta/credencial Google disponível. Verifique se uma conta Google está configurada no dispositivo.'
                                 elif code == 'unsupported':
