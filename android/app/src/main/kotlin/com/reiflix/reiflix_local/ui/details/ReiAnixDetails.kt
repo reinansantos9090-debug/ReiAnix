@@ -721,7 +721,7 @@ private fun DetailsHero(
                     val target = anime.playbackTargetEpisode
                     if (target != null && target.isPlayable) {
                         ReiAnixPrimaryButton(
-                            text = if (anime.shouldContinue) "Continuar" else "Assistir",
+                            text = target.playbackActionLabel,
                             onClick = { onWatch(target.id) },
                             modifier = Modifier.weight(1f),
                         )
