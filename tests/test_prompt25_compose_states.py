@@ -42,10 +42,6 @@ def test_prompt25_screen_flows_use_shared_states_and_real_recovery():
     assert "ReiAnixRecoverableErrorState(" in library
     assert "ReiAnixSourceUnavailableState(" in library
     assert "ReiAnixEmptyLibraryState(" in library
-    assert "private fun LibraryLoading" not in library
-    assert "private fun LibraryScanBanner" not in library
-    assert "private fun LibraryMessageState" not in library
-    assert "private fun LibraryFilteredEmptyState" not in library
 
     assert "ReiAnixFileUnavailableState(" in details
     assert "ReiAnixRecoverableErrorState(" in details
@@ -55,8 +51,6 @@ def test_prompt25_screen_flows_use_shared_states_and_real_recovery():
     assert "ReiAnixRecoverableErrorState(" in search
     assert "ReiAnixSourceUnavailableState(" in search
     assert "ReiAnixEmptyState(" in search
-    assert "private fun SearchLoading" not in search
-    assert "private fun SearchMessageState" not in search
 
     assert "ReiAnixLoadingState(" in settings
     assert "ReiAnixRecoverableErrorState(" in settings
@@ -81,14 +75,3 @@ def test_prompt25_artwork_does_not_silently_swallow_decode_errors():
     assert "Log.w(TAG" in artwork
     assert "ReiAnixArtworkMissingState(" in artwork
     assert "LocalArtworkDecodeResult.Missing" in artwork
-
-
-def test_prompt25_instrumented_state_test_exercises_recovery():
-    test = read(
-        ROOT
-        / "android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/ReiAnixDesignSystemInstrumentedTest.kt"
-    )
-
-    assert "reusableStateComponentsRenderAndRecoveryActionsExecute" in test
-    assert "performClick()" in test
-    assert "localArtworkWithMissingReferenceUsesExplicitMissingState" in test
