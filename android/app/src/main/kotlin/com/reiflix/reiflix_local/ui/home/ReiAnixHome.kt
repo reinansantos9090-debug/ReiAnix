@@ -118,7 +118,7 @@ private fun ReiAnixHomeObservedScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         HomeHeader(
             onSearch = onSearch,
@@ -245,7 +245,7 @@ fun ReiAnixHomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         HomeHeader(
             onSearch = onSearch,
@@ -296,7 +296,7 @@ private fun HomeHeader(
         Text(
             text = "ReiAnix",
             style = MaterialTheme.typography.headlineSmall,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -309,7 +309,7 @@ private fun HomeHeader(
                 Icon(
                     imageVector = Icons.Filled.Search,
                     contentDescription = null,
-                    tint = ReiAnixTokens.Colors.text,
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
             IconButton(
@@ -321,7 +321,7 @@ private fun HomeHeader(
                 Icon(
                     imageVector = Icons.Filled.Refresh,
                     contentDescription = null,
-                    tint = ReiAnixTokens.Colors.text,
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -451,7 +451,7 @@ private fun HomeHero(
                     Brush.verticalGradient(
                         0f to androidx.compose.ui.graphics.Color.Transparent,
                         0.45f to ReiAnixTokens.Colors.overlay.copy(alpha = 0.14f),
-                        1f to ReiAnixTokens.Colors.background.copy(alpha = 0.98f),
+                        1f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
                     ),
                 ),
         )
@@ -465,7 +465,7 @@ private fun HomeHero(
             Text(
                 text = anime.title,
                 style = MaterialTheme.typography.headlineSmall,
-                color = ReiAnixTokens.Colors.text,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -478,7 +478,7 @@ private fun HomeHero(
                 Text(
                     text = heroMeta.joinToString(" • "),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -544,7 +544,7 @@ private fun HomeContinueCard(
             .width(250.dp)
             .clickable { onWatch(item.episodeId, item.animeId) },
         shape = ReiAnixTokens.Shapes.card,
-        colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Row(
             modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
@@ -564,19 +564,19 @@ private fun HomeContinueCard(
                 Text(
                     text = item.animeTitle,
                     style = MaterialTheme.typography.titleMedium,
-                    color = ReiAnixTokens.Colors.text,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = episodeLabel(item.seasonNumber, item.number),
                     style = MaterialTheme.typography.bodySmall,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = item.displayTitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -586,7 +586,7 @@ private fun HomeContinueCard(
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = null,
-                    tint = ReiAnixTokens.Colors.primary,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -637,7 +637,7 @@ private fun HomeAnimeCard(
             .width(154.dp)
             .clickable(onClick = onClick),
         shape = ReiAnixTokens.Shapes.card,
-        colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column {
             ReiAnixLocalArtwork(
@@ -655,7 +655,7 @@ private fun HomeAnimeCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = ReiAnixTokens.Colors.text,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -667,7 +667,7 @@ private fun HomeAnimeCard(
                     Text(
                         text = metadata.joinToString(" • "),
                         style = MaterialTheme.typography.bodySmall,
-                        color = ReiAnixTokens.Colors.textMuted,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
