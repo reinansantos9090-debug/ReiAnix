@@ -352,17 +352,25 @@ private fun ReiAnixDetailsReady(
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
 ) {
-    var selectedSeasonKey by rememberSaveable(anime.id) {
-        mutableStateOf(anime.seasons.firstOrNull()?.stableKey)
+    val firstSeasonKey = anime.seasons.firstOrNull()?.stableKey
+    var savedSeasonKey by rememberSaveable(anime.id) {
+        mutableStateOf(firstSeasonKey)
     }
+    // The saved logical identity survives canonical snapshot replacement. When a
+    // season disappears, fall back to the first real season instead of leaving
+    // the selector visually unselected.
+    val selectedSeasonKey = savedSeasonKey
+        ?.takeIf { key -> anime.seasons.any { it.stableKey == key } }
+        ?: firstSeasonKey
     val selectedSeason = anime.seasons.firstOrNull {
         it.stableKey == selectedSeasonKey
     } ?: anime.seasons.firstOrNull()
 
+    val showSeasonSelector = anime.seasons.size > 1
     val listState = rememberLazyListState()
-    // Hero=0, About=1, Seasons=2, Episode heading=3. Keep this anchor stable
-    // so a season change never scrolls into a different structural item.
-    val episodeAnchor = 3
+    // Hero=0, About=1, optional Seasons=2, Episode heading follows.
+    // Keep the anchor stable so season changes never target a different item.
+    val episodeAnchor = if (showSeasonSelector) 3 else 2
 
     LazyColumn(
         state = listState,
@@ -391,7 +399,7 @@ private fun ReiAnixDetailsReady(
             DetailsAboutSection(anime = anime)
         }
 
-        if (anime.seasons.isNotEmpty()) {
+        if (showSeasonSelector) {
             item(
                 key = "details-seasons:" + anime.stableKey,
                 contentType = "details-seasons",
@@ -400,11 +408,9 @@ private fun ReiAnixDetailsReady(
                     anime = anime,
                     selectedSeason = selectedSeason,
                     selectedSeasonKey = selectedSeasonKey,
-                    onSeasonSelected = { selectedSeasonKey = it },
+                    onSeasonSelected = { savedSeasonKey = it },
                     onViewEpisodes = {
                         if (listState.layoutInfo.totalItemsCount > episodeAnchor) {
-                            // The anchor is deliberately stable: hero + about + season section
-                            // are one item each, so changing season never reconstructs the list.
                             listState.requestScrollToItem(episodeAnchor)
                         }
                     },
@@ -423,16 +429,32 @@ private fun ReiAnixDetailsReady(
                 )
             }
 
-            items(
-                items = season.episodes,
-                key = { episode -> episode.stableKey },
-                contentType = { "details-episode" },
-            ) { episode ->
-                DetailsEpisodeItem(
-                    episode = episode,
-                    onWatch = onWatch,
-                    onSetEpisodeWatched = onSetEpisodeWatched,
-                )
+            if (season.episodes.isEmpty()) {
+                item(
+                    key = "details-empty-season:" + season.stableKey,
+                    contentType = "details-empty-season",
+                ) {
+                    ReiAnixEmptyState(
+                        title = "Nenhum episódio nesta temporada",
+                        message = "Esta temporada não possui episódios locais disponíveis.",
+                        modifier = Modifier.padding(
+                            horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                            vertical = ReiAnixTokens.Spacing.lg,
+                        ),
+                    )
+                }
+            } else {
+                items(
+                    items = season.episodes,
+                    key = { episode -> episode.stableKey },
+                    contentType = { "details-episode" },
+                ) { episode ->
+                    DetailsEpisodeItem(
+                        episode = episode,
+                        onWatch = onWatch,
+                        onSetEpisodeWatched = onSetEpisodeWatched,
+                    )
+                }
             }
         }
 
@@ -921,82 +943,15 @@ private fun DetailsSeasonsSection(
                 key = { season -> season.stableKey },
                 contentType = { "details-season" },
             ) { season ->
-                DetailsSeasonCard(
-                    season = season,
+                ReiAnixChip(
+                    text = season.title,
                     selected = season.stableKey == selectedSeasonKey,
                     onClick = { onSeasonSelected(season.stableKey) },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Selecionar " + season.title
+                    },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun DetailsSeasonCard(
-    season: ReiAnixSeasonUiModel,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .width(190.dp)
-            .clickable(onClick = onClick)
-            .semantics {
-                role = Role.Button
-                contentDescription = "Selecionar " + season.title
-            },
-        shape = ReiAnixTokens.Shapes.card,
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface,
-        },
-        tonalElevation = ReiAnixTokens.Elevation.none,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(ReiAnixTokens.Spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 64.dp, height = 88.dp)
-                    .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
-                    .clip(ReiAnixTokens.Shapes.small)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = (season.number?.toString() ?: "•"),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = season.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = (season.number?.toString() ?: "Especial") +
-                        " • " + episodeCountLabel(season.episodes.size),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                imageVector = Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
         }
     }
 }

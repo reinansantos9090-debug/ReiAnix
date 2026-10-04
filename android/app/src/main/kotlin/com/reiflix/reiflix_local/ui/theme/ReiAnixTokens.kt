@@ -145,7 +145,7 @@ object ReiAnixTokens {
         val posterAspectRatio = 0.7f
         val libraryGridMinWidth = 140.dp
         val searchGridMinWidth = 150.dp
-        val episodeThumbnailWidth = 88.dp
+        val episodeThumbnailWidth = 120.dp
         val episodeThumbnailHeight = 68.dp
         val detailsEpisodeThumbnailFraction = 0.27f
         val detailsHeroHeight = 250.dp

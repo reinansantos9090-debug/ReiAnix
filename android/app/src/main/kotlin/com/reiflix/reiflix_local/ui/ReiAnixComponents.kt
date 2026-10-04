@@ -717,19 +717,45 @@ fun ReiAnixEpisodeCard(
                 .padding(ReiAnixTokens.Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ReiAnixLocalArtwork(
-                localPath = episode.artwork?.localPath,
-                contentDescription = episode.displayTitle,
+            Box(
                 modifier = Modifier
-                    .size(
-                        width = ReiAnixTokens.Dimensions.episodeThumbnailWidth,
-                        height = ReiAnixTokens.Dimensions.episodeThumbnailHeight,
-                    )
+                    .width(ReiAnixTokens.Dimensions.episodeThumbnailWidth)
+                    .height(ReiAnixTokens.Dimensions.episodeThumbnailHeight)
                     .clip(ReiAnixTokens.Shapes.small),
-                contentScale = ContentScale.Crop,
-                placeholder = "Sem thumbnail",
-                maxDimensionPx = 320,
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                ReiAnixLocalArtwork(
+                    localPath = episode.artwork?.localPath,
+                    contentDescription = episode.displayTitle,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    placeholder = "Sem thumbnail",
+                    maxDimensionPx = 320,
+                    shape = ReiAnixTokens.Shapes.small,
+                )
+                episode.durationSeconds
+                    ?.takeIf { it.isFinite() && it >= 0.0 }
+                    ?.let { duration ->
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(ReiAnixTokens.Spacing.xs),
+                            shape = ReiAnixTokens.Shapes.chip,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ) {
+                            Text(
+                                text = formatDurationLabel(duration),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                modifier = Modifier.padding(
+                                    horizontal = ReiAnixTokens.Spacing.xs,
+                                    vertical = 2.dp,
+                                ),
+                            )
+                        }
+                    }
+            }
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -770,25 +796,32 @@ fun ReiAnixEpisodeCard(
                     progress = episode.progressFraction,
                     visible = episode.progressFraction > 0f,
                 )
-                if (!episode.isPlayable) {
-                    Text(
-                        text = "Arquivo indisponível",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                Text(
+                    text = if (episode.isPlayable) "Episódio local" else "Arquivo indisponível",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (episode.isPlayable) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Box(
+                modifier = Modifier.width(ReiAnixTokens.Dimensions.touchTarget),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (trailingContent != null) {
+                    trailingContent()
+                } else if (playable) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
                     )
                 }
-            }
-            if (trailingContent != null) {
-                trailingContent()
-            } else if (playable) {
-                Icon(
-                    imageVector = Icons.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(end = ReiAnixTokens.Spacing.sm)
-                        .size(ReiAnixTokens.Dimensions.iconMedium),
-                )
             }
         }
     }
