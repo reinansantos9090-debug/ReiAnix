@@ -392,7 +392,11 @@ private fun StorageStateLine(label: String, state: String, ok: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         Icon(if (ok) Icons.Filled.CheckCircle else Icons.Filled.Warning, contentDescription = null)
-        Text(label, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+        )
         ReiAnixBadge(
             text = state.ifBlank { "unknown" }.replace('_', ' '),
             tone = if (ok) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
