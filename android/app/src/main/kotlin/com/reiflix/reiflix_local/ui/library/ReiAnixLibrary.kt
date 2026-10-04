@@ -435,100 +435,13 @@ private fun LibraryAnimeCard(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(ReiAnixTokens.Shapes.card)
-            .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onClick)
-            .padding(ReiAnixTokens.Spacing.sm)
-            .semantics {
-                contentDescription = "Abrir " + anime.title
-            },
-    ) {
-        ReiAnixLocalArtwork(
-            localPath = anime.artwork?.localPath,
-            contentDescription = anime.title + " artwork",
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.7f)
-                .clip(ReiAnixTokens.Shapes.artwork),
-            placeholder = "Sem arte",
-            maxDimensionPx = 512,
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = ReiAnixTokens.Spacing.xs,
-                    top = ReiAnixTokens.Spacing.sm,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = anime.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = anime.episodeCountLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            IconButton(
-                onClick = onToggleFavorite,
-                modifier = Modifier.semantics {
-                    contentDescription = if (anime.favorite) {
-                        "Remover da Minha Lista"
-                    } else {
-                        "Adicionar à Minha Lista"
-                    }
-                },
-            ) {
-                Icon(
-                    imageVector = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = null,
-                    tint = if (anime.favorite) {
-                        ReiAnixTokens.Colors.warning
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = ReiAnixTokens.Spacing.xs,
-                    top = ReiAnixTokens.Spacing.xs,
-                    end = ReiAnixTokens.Spacing.xs,
-                ),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-        ) {
-            if (anime.isWatching) {
-                LibraryStateBadge("Assistindo")
-            }
-            if (anime.isCompleted) {
-                LibraryStateBadge("Concluído")
-            }
-            if (anime.favorite) {
-                LibraryStateBadge("Na lista")
-            }
-        }
-    }
+    ReiAnixAnimeCard(
+        anime = anime,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        onFavoriteClick = onToggleFavorite,
+        maxDimensionPx = 512,
+    )
 }
 
 @Composable
