@@ -543,7 +543,9 @@ private fun HomeContinueCard(
             .clickable { onWatch(item.episodeId, item.animeId) },
         shape = ReiAnixTokens.Shapes.card,
         color = ReiAnixTokens.Colors.surfaceCard,
-        borderColor = ReiAnixTokens.Colors.border.copy(alpha = 0.55f),
+        borderColor = MaterialTheme.colorScheme.outline.copy(
+            alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+        ),
     ) {
         Row(
             modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
