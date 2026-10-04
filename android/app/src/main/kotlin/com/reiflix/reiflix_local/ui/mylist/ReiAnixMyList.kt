@@ -171,7 +171,7 @@ private fun ReiAnixMyListReadyContent(
                 state = refreshState,
                 isRefreshing = isRefreshing,
                 containerColor = ReiAnixTokens.Colors.surfaceRaised,
-                color = ReiAnixTokens.Colors.primary,
+                color = MaterialTheme.colorScheme.primary,
             )
         },
     ) {
