@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -71,13 +72,14 @@ fun ReiAnixLocalArtwork(
     contentScale: ContentScale = ContentScale.Crop,
     placeholder: String = "Sem arte",
     maxDimensionPx: Int = 1024,
+    shape: Shape = ReiAnixTokens.Shapes.artwork,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
 
     BoxWithConstraints(
         modifier = modifier
-            .clip(MaterialTheme.shapes.medium)
+            .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
