@@ -19,6 +19,10 @@ class ReiAnixSettingsViewModel(context: Context) :
         viewModelScope.launch { repository.refresh() }
     }
 
+    fun setSetting(key: String, value: String) {
+        repository.setSetting(key, value)
+    }
+
     override fun onCleared() {
         repository.close()
         super.onCleared()
