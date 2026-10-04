@@ -77,7 +77,8 @@ fun ReiAnixMyListRoute(
             title = "Minha Lista",
             subtitle = myListCountLabel(totalSaved),
             modifier = Modifier.padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                 top = ReiAnixTokens.Dimensions.screenTopPadding,
             ),
         )
