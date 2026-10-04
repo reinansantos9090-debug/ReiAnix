@@ -8,9 +8,9 @@ from core.library_store import LibraryStore
 from core.storage_access import saf_source_identity
 
 ROOT = Path(__file__).resolve().parents[1]
-SAF = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SafScanner.kt"
-MEDIA = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreScanner.kt"
-BROAD = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt"
+SAF = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt"
+MEDIA = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt"
+BROAD = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt"
 
 class Prompt34ScopePolicyTests(unittest.TestCase):
     ROOT_URI = "content://com.android.externalstorage.documents/tree/primary%3AAnime"

@@ -146,7 +146,7 @@ class TestMediaStorePersistence(unittest.TestCase):
         self.assertNotIn("source_kind='mediastore'", block)
 
     def test_android_35_36_states(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/StorageAuthorization.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/StorageAuthorization.kt").read_text(encoding="utf-8")
         self.assertIn("enum class StorageLifecycleState", source)
         self.assertIn("MediaAccessLevel.PARTIAL", source)
         self.assertIn("fun capabilities(", source)
@@ -188,8 +188,8 @@ class TestFinalStorageHardening(unittest.TestCase):
 
 class TestNovaFormatCompatibility(unittest.TestCase):
     def test_media_store_and_saf_use_extended_video_extension_fallback(self):
-        media = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MediaStoreScanner.kt").read_text(encoding="utf-8")
-        saf = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SafScanner.kt").read_text(encoding="utf-8")
+        media = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt").read_text(encoding="utf-8")
+        saf = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt").read_text(encoding="utf-8")
         for source in (media, saf):
             for extension in ("3g2","3gp","asf","divx","f4v","mpeg","mpg","ogm","ogv","ogx","vob","wtv","webm"):
                 self.assertIn('"' + extension + '"', source)
