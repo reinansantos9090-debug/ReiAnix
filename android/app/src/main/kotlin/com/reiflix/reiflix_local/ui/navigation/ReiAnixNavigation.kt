@@ -89,16 +89,16 @@ private val topLevelDestinations = listOf(
         unselectedIcon = androidx.compose.material.icons.Icons.Outlined.List,
     ),
     ReiAnixBottomNavDestination(
-        route = ReiAnixRoutes.MY_LIST,
-        label = "Minha Lista",
-        selectedIcon = androidx.compose.material.icons.Icons.Filled.Favorite,
-        unselectedIcon = androidx.compose.material.icons.Icons.Filled.FavoriteBorder,
-    ),
-    ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.SEARCH,
         label = "Buscar",
         selectedIcon = androidx.compose.material.icons.Icons.Filled.Search,
         unselectedIcon = androidx.compose.material.icons.Icons.Outlined.Search,
+    ),
+    ReiAnixBottomNavDestination(
+        route = ReiAnixRoutes.SETTINGS,
+        label = "Ajustes",
+        selectedIcon = androidx.compose.material.icons.Icons.Filled.Settings,
+        unselectedIcon = androidx.compose.material.icons.Icons.Outlined.Settings,
     ),
 )
 
