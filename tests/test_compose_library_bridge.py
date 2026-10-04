@@ -34,6 +34,7 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             "main_title": "Score Anime",
             "meta": {
                 "score": 86,
+                "added_at": 1729000000.5,
                 "cover_cache": None,
                 "cover_url": None,
                 "banner_url": None,
@@ -46,6 +47,7 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
         projected = ComposeLibraryBridge._project_anime(source)
 
         self.assertEqual(86, projected["meta"]["score"])
+        self.assertEqual(1729000000.5, projected["meta"]["added_at"])
 
     def anime_fixture(self):
         return {
