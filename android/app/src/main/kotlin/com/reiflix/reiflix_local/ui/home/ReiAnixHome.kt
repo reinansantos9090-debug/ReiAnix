@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -86,14 +85,6 @@ fun ReiAnixHomeRoute(
         viewModel = viewModel,
         onSearch = {
             navController.navigateToTopLevel(ReiAnixRoutes.SEARCH)
-        },
-        onSettings = {
-            navController.navigate(
-                ReiAnixRoutes.SETTINGS,
-                androidx.navigation.navOptions {
-                    launchSingleTop = true
-                },
-            )
         },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
@@ -291,7 +282,6 @@ fun ReiAnixHomeScreen(
 private fun HomeHeader(
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
-    onSettings: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -329,18 +319,6 @@ private fun HomeHeader(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Refresh,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            IconButton(
-                onClick = onSettings,
-                modifier = Modifier.semantics {
-                    contentDescription = "Abrir configurações"
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
