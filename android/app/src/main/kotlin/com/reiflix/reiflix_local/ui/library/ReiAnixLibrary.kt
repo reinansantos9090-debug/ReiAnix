@@ -274,7 +274,8 @@ private fun ColumnScope.LibraryReadyContent(
 ) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
+            .weight(1f)
             .imePadding(),
     ) {
         OutlinedTextField(
