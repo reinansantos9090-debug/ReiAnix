@@ -64,7 +64,7 @@ def test_prompt32_scanner_and_native_index_contracts_are_present():
     assert "MediaStore" in media
     assert "hasAccess" in broad
     assert "generation" in index.lower()
-    assert "media_identity" in index
+    assert "stableIdentity(" in index
 
 
 def test_prompt32_runtime_suite_exists_and_is_not_silently_disabled():
@@ -94,8 +94,10 @@ def test_prompt32_no_forbidden_remote_media_pipeline_was_added():
     assert "https://" not in player
     # The local bridge may contain remote URL examples in validation tests/docs,
     # but production playback must reject remote media references before launch.
-    assert "return None" in bridge
-    assert "somente arquivos locais" in bridge
+    start = bridge.index("@staticmethod\n    def normalize_local_media_reference")
+    normalized = bridge[start:]
+    assert "return None" in normalized
+    assert "scheme not in {"content", "file"}" in normalized
 
 
 def test_prompt32_episode_reconciliation_path_is_canonical_after_player_exit():
@@ -104,13 +106,13 @@ def test_prompt32_episode_reconciliation_path_is_canonical_after_player_exit():
     end = main.index("elif event_type == 'google_sign_in_started':", start)
     block = main[start:end]
     for token in (
-        "player_callback_is_current",
+        "exit_is_current",
         "invalidate_player_session",
         "on_catalog_changed()",
         "exit_activity_instance_id",
     ):
         assert token in block
-    assert "fresh_episode" in block or "canonical_sqlite_row" in block
+    assert "store.save_progress" in block
 
 
 def test_prompt32_no_known_ui_tree_mutation_regression_was_reintroduced():
@@ -125,8 +127,8 @@ def test_prompt32_no_known_ui_tree_mutation_regression_was_reintroduced():
 def test_prompt32_no_weakening_or_fake_runtime_pass_contracts():
     runner = read("scripts/release_certification.py")
     tests = read("tests/test_certification_runner.py")
-    assert '"connected" + "DebugAndroidTest"' in tests
     assert "ALLOWED" in runner
+    assert "DEVICE_ONLY" in runner
     for classification in ("PASS", "PARTIAL", "FAIL", "NOT VALIDATED", "NOT APPLICABLE", "BLOCKED"):
         assert classification in runner
     assert "p.returncode==0 else FAIL" in runner
