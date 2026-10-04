@@ -541,7 +541,7 @@ private fun HomeContinueCard(
     val progress = progressFraction(item.progressSeconds, item.durationSeconds)
     Card(
         modifier = Modifier
-            .width(250.dp)
+            .width(ReiAnixTokens.Dimensions.continueCardWidth)
             .clickable { onWatch(item.episodeId, item.animeId) },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -634,7 +634,7 @@ private fun HomeAnimeCard(
 ) {
     Card(
         modifier = Modifier
-            .width(154.dp)
+            .width(ReiAnixTokens.Dimensions.animeCardWidth)
             .clickable(onClick = onClick),
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -645,7 +645,7 @@ private fun HomeAnimeCard(
                 contentDescription = title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp),
+                    .height(ReiAnixTokens.Dimensions.animeCardWidth / ReiAnixTokens.Dimensions.posterAspectRatio),
                 placeholder = "Sem capa",
             )
             Column(
