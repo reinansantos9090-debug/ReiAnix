@@ -116,6 +116,18 @@ data class ReiAnixEpisodeUiModel(
             ?.let { (progressFraction * 100.0).toInt() }
 
     /**
+     * Single Compose presentation label derived only from the canonical
+     * persisted consumption state/availability. It never becomes state of its own.
+     */
+    val playbackActionLabel: String
+        get() = when {
+            !isPlayable -> "Indisponível"
+            isCompleted -> "Reassistir"
+            consumptionState == ReiAnixConsumptionState.IN_PROGRESS -> "Continuar"
+            else -> "Assistir"
+        }
+
+    /**
      * Playback remains owned by the existing Python/Android bridge. This is
      * only a presentation guard for obviously unavailable local media.
      */
