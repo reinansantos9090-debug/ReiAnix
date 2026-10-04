@@ -23,6 +23,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjection
 import com.reiflix.reiflix_local.ui.model.ReiAnixSearchUiState
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilterEngine
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
+import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 @Keep
 class ReiAnixLibraryViewModel(context: Context) :
@@ -76,6 +77,21 @@ class ReiAnixLibraryViewModel(context: Context) :
             viewModelScope,
             SharingStarted.Eagerly,
             emptyList(),
+        )
+
+    /** True while an existing refresh command is queued or the canonical scanner reports activity. */
+    val isRefreshing: StateFlow<Boolean> = uiState
+        .map { state ->
+            state.scanInProgress || (
+                state.lastCommandAction.equals("refresh", ignoreCase = true) &&
+                    state.lastCommandStatus?.uppercase() in setOf("QUEUED", "RUNNING")
+                )
+        }
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            false,
         )
 
     val filteredLibraryAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
@@ -168,6 +184,11 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     fun setLibrarySearchQuery(value: String) {
         _libraryFilters.value = _libraryFilters.value.copy(query = value)
+    }
+
+    fun setLibrarySort(label: String) {
+        val normalized = ReiAnixLibrarySort.fromLabel(label).label
+        _libraryFilters.value = _libraryFilters.value.copy(sort = normalized)
     }
 
     fun setLibraryGenreFilter(key: String?) {
