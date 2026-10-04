@@ -19,12 +19,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
-import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,10 +34,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
+import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
+import com.reiflix.reiflix_local.ui.ReiAnixTextField
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
@@ -672,7 +669,6 @@ private fun SettingsHeader(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Text(
@@ -692,10 +688,7 @@ private fun BooleanSettingCard(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+    ReiAnixCard(
         modifier = Modifier
             .fillMaxWidth()
             .semantics { contentDescription = "Configuração " + keyName },
@@ -743,10 +736,7 @@ private fun LanguageSettingCard(
     var draftValue by androidx.compose.runtime.saveable.rememberSaveable(selectedValue) {
         androidx.compose.runtime.mutableStateOf(selectedValue)
     }
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+    ReiAnixCard(
         modifier = Modifier
             .fillMaxWidth()
             .semantics { contentDescription = "Configuração " + keyName },
@@ -768,18 +758,17 @@ private fun LanguageSettingCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedTextField(
+            ReiAnixTextField(
                 value = draftValue,
                 onValueChange = { draftValue = it },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(
+            ReiAnixPrimaryButton(
+                text = "Salvar",
                 onClick = { onSave(draftValue.trim()) },
                 modifier = Modifier.align(Alignment.End),
-            ) {
-                Text("Salvar")
-            }
+            )
         }
     }
 }
@@ -793,10 +782,7 @@ private fun ChoiceSettingCard(
     choices: List<SettingChoice>,
     onSelected: (String) -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+    ReiAnixCard(
         modifier = Modifier
             .fillMaxWidth()
             .semantics { contentDescription = "Configuração " + keyName },
@@ -863,8 +849,7 @@ private fun ReiAnixSettingsAccountContent(
         "error" -> "Não foi possível concluir a operação Google."
         else -> "Não conectado"
     }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ReiAnixCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -908,16 +893,22 @@ private fun ReiAnixSettingsAccountContent(
                 if (busy) {
                     CircularProgressIndicator()
                 } else if (state.connected) {
-                    Button(onClick = { onAction("switch") }) {
-                        Text("Trocar conta")
-                    }
-                    OutlinedButton(onClick = { onAction("logout") }) {
-                        Text("Sair")
-                    }
+                    ReiAnixPrimaryButton(
+                        text = "Trocar conta",
+                        onClick = { onAction("switch") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    ReiAnixSecondaryButton(
+                        text = "Sair",
+                        onClick = { onAction("logout") },
+                        modifier = Modifier.weight(1f),
+                    )
                 } else {
-                    Button(onClick = { onAction("login") }) {
-                        Text("Entrar com Google")
-                    }
+                    ReiAnixPrimaryButton(
+                        text = "Entrar com Google",
+                        onClick = { onAction("login") },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
