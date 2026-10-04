@@ -412,7 +412,19 @@ private fun LibraryAnimeCard(
     onToggleFavorite: () -> Unit,
 ) {
     ReiAnixAnimeCard(
-        anime = anime,
+        title = anime.title,
+        artworkPath = anime.artwork?.localPath,
+        metadata = buildList {
+            anime.year?.let { add(it.toString()) }
+            anime.episodeCountLabel.takeIf { anime.availableContentCount > 0 }?.let(::add)
+        },
+        progress = anime.contentEpisodes
+            .firstOrNull { it.progressFraction > 0f && !it.isCompleted }
+            ?.progressFraction,
+        favorite = anime.favorite,
+        watching = anime.isWatching,
+        watched = anime.contentEpisodes.any { it.isWatched },
+        completed = anime.isCompleted,
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
         onFavoriteClick = onToggleFavorite,
