@@ -64,6 +64,26 @@ data class ReiAnixSettingsCategoryUiModel(
     }
 }
 
+
+private val NativeManagedSettingsCategories = setOf("Geral", "Aparência")
+
+private data class SettingChoice(
+    val value: String,
+    val label: String,
+)
+
+private val themeChoices = listOf(
+    SettingChoice("system", "Sistema"),
+    SettingChoice("light", "Claro"),
+    SettingChoice("dark", "Escuro"),
+)
+
+private val cardSizeChoices = listOf(
+    SettingChoice("small", "Pequeno"),
+    SettingChoice("medium", "Médio"),
+    SettingChoice("large", "Grande"),
+)
+
 @Composable
 fun ReiAnixSettingsRoute(
     viewModel: ReiAnixSettingsViewModel,
@@ -71,11 +91,30 @@ fun ReiAnixSettingsRoute(
     onOpenCategory: (String) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    ReiAnixSettingsScreen(
-        state = state,
-        onBack = onBack,
-        onOpenCategory = onOpenCategory,
-    )
+    var selectedCategory by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+
+    if (selectedCategory != null) {
+        ReiAnixComposeSettingsCategoryScreen(
+            category = selectedCategory!!,
+            state = state,
+            onBack = { selectedCategory = null },
+            onUpdateSetting = viewModel::setSetting,
+        )
+    } else {
+        ReiAnixSettingsScreen(
+            state = state,
+            onBack = onBack,
+            onOpenCategory = { label ->
+                if (label in NativeManagedSettingsCategories) {
+                    selectedCategory = label
+                } else {
+                    onOpenCategory(label)
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -86,7 +125,7 @@ fun ReiAnixSettingsScreen(
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = ReiAnixTokens.Colors.background,
+        color = MaterialTheme.colorScheme.background,
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -97,62 +136,43 @@ fun ReiAnixSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
             item(key = "header") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics {
-                            contentDescription = "Voltar das configurações"
-                        },
-                    ) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = null)
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Configurações",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = ReiAnixTokens.Colors.text,
-                        )
-                        Text(
-                            text = "Preferências do ReiAnix",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ReiAnixTokens.Colors.textMuted,
-                        )
-                    }
-                }
+                SettingsHeader(
+                    title = "Configurações",
+                    subtitle = "Preferências do ReiAnix",
+                    onBack = onBack,
+                )
             }
-
             if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING) {
                 item(key = "loading") {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = ReiAnixTokens.Spacing.xxxl),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = ReiAnixTokens.Spacing.xxxl),
                         horizontalArrangement = Arrangement.Center,
                     ) {
                         CircularProgressIndicator()
                     }
                 }
             }
-
             if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR) {
                 item(key = "error") {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
                             text = "Não foi possível carregar as configurações." +
-                                state.error?.let { "\n$it" }.orEmpty(),
+                                state.error?.let { "
+$it" }.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = ReiAnixTokens.Colors.textMuted,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(ReiAnixTokens.Spacing.lg),
                         )
                     }
                 }
             }
-
             if (state.account.integrationAvailable) {
                 item(key = "account") {
                     ReiAnixSettingsAccountCard(
@@ -161,16 +181,238 @@ fun ReiAnixSettingsScreen(
                     )
                 }
             }
-
             items(
                 items = state.categories,
-                key = { it.label },
+                key = { "category:" + it.label },
             ) { category ->
                 ReiAnixSettingsCategoryCard(
                     category = category,
                     valueSummary = categorySummary(category.label, state.settings),
                     onClick = { onOpenCategory(category.label) },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReiAnixComposeSettingsCategoryScreen(
+    category: String,
+    state: ReiAnixSettingsUiState,
+    onBack: () -> Unit,
+    onUpdateSetting: (String, String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                vertical = ReiAnixTokens.Spacing.sm,
+            ),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+        ) {
+            item(key = "header:" + category) {
+                SettingsHeader(
+                    title = category,
+                    subtitle = when (category) {
+                        "Geral" -> "Comportamento geral do aplicativo"
+                        "Aparência" -> "Tema e apresentação"
+                        else -> "Preferências"
+                    },
+                    onBack = onBack,
+                )
+            }
+            when (category) {
+                "Geral" -> {
+                    item(key = "setting:app.confirm_destructive") {
+                        BooleanSettingCard(
+                            keyName = "app.confirm_destructive",
+                            title = "Confirmar ações destrutivas",
+                            description = "Pede confirmação antes de ações como limpar cache e restaurar configurações.",
+                            checked = state.settings["app.confirm_destructive"] == "true",
+                            onCheckedChange = { onUpdateSetting("app.confirm_destructive", it.toString()) },
+                        )
+                    }
+                }
+                "Aparência" -> {
+                    item(key = "setting:appearance.theme") {
+                        ChoiceSettingCard(
+                            keyName = "appearance.theme",
+                            title = "Tema",
+                            description = "Aplica o tema da interface Compose imediatamente, sem reiniciar a Activity.",
+                            selectedValue = state.settings["appearance.theme"],
+                            choices = themeChoices,
+                            onSelected = { onUpdateSetting("appearance.theme", it) },
+                        )
+                    }
+                    item(key = "setting:appearance.card_size") {
+                        ChoiceSettingCard(
+                            keyName = "appearance.card_size",
+                            title = "Tamanho dos cards",
+                            description = "Controla o tamanho visual dos cards da biblioteca/Home.",
+                            selectedValue = state.settings["appearance.card_size"],
+                            choices = cardSizeChoices,
+                            onSelected = { onUpdateSetting("appearance.card_size", it) },
+                        )
+                    }
+                    item(key = "setting:appearance.show_thumbnails") {
+                        BooleanSettingCard(
+                            keyName = "appearance.show_thumbnails",
+                            title = "Mostrar miniaturas",
+                            description = "Quando desativado, a Home mantém o espaço do card, mas não carrega imagens.",
+                            checked = state.settings["appearance.show_thumbnails"] == "true",
+                            onCheckedChange = { onUpdateSetting("appearance.show_thumbnails", it.toString()) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsHeader(
+    title: String,
+    subtitle: String,
+    onBack: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier.semantics {
+                contentDescription = "Voltar das configurações"
+            },
+        ) {
+            Icon(Icons.Filled.ArrowBack, contentDescription = null)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BooleanSettingCard(
+    keyName: String,
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Configuração " + keyName },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = ReiAnixTokens.Spacing.lg,
+                    vertical = ReiAnixTokens.Spacing.md,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChoiceSettingCard(
+    keyName: String,
+    title: String,
+    description: String,
+    selectedValue: String?,
+    choices: List<SettingChoice>,
+    onSelected: (String) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Configuração " + keyName },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(ReiAnixTokens.Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            choices.forEach { choice ->
+                val selected = selectedValue == choice.value
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            contentDescription = title + ": " + choice.label
+                        }
+                        .clickable(
+                            onClick = { onSelected(choice.value) },
+                        )
+                        .padding(vertical = ReiAnixTokens.Spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                ) {
+                    RadioButton(
+                        selected = selected,
+                        onClick = { onSelected(choice.value) },
+                    )
+                    Text(
+                        text = choice.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
     }
@@ -191,15 +433,16 @@ private fun ReiAnixSettingsAccountCard(
     }
     Card(
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier
             .fillMaxWidth()
             .semantics { contentDescription = "Abrir configurações da conta" },
     ) {
         SettingsCardRow(
-            icon = Icons.Filled.AccountCircle,
             title = primary,
             description = secondary,
+            icon = Icons.Filled.AccountCircle,
+            trailingArrow = true,
         )
     }
 }
@@ -212,26 +455,28 @@ private fun ReiAnixSettingsCategoryCard(
 ) {
     Card(
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier
             .fillMaxWidth()
             .semantics { contentDescription = "Abrir " + category.label },
     ) {
         SettingsCardRow(
-            icon = category.icon,
             title = category.label,
             description = if (valueSummary.isBlank()) category.description else {
                 category.description + " • " + valueSummary
             },
+            icon = category.icon,
+            trailingArrow = true,
         )
     }
 }
 
 @Composable
 private fun SettingsCardRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    trailingArrow: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -243,33 +488,35 @@ private fun SettingsCardRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
-        Icon(icon, contentDescription = null, tint = ReiAnixTokens.Colors.text)
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = ReiAnixTokens.Colors.text,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Icon(
-            Icons.AutoMirrored.Filled.ArrowForward,
-            contentDescription = null,
-            tint = ReiAnixTokens.Colors.textMuted,
-        )
+        if (trailingArrow) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
 private fun categorySummary(label: String, settings: Map<String, String>): String =
     when (label) {
-        "Geral" -> if (settings["app.confirm_destructive"].toBoolean()) {
+        "Geral" -> if (settings["app.confirm_destructive"] == "true") {
             "Confirmações ativadas"
         } else {
             "Confirmações desativadas"
@@ -284,21 +531,21 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
             "$it itens/página"
         }.orEmpty()
         "Player" -> listOfNotNull(
-            if (settings["player.autoplay_next"].toBoolean()) "Autoplay" else null,
-            if (settings["player.resume"].toBoolean()) "Retomar" else null,
+            if (settings["player.autoplay_next"] == "true") "Autoplay" else null,
+            if (settings["player.resume"] == "true") "Retomar" else null,
             settings["player.default_speed"]?.takeIf { it.isNotBlank() }?.let { "$it×" },
         ).joinToString(" • ")
         "Gestos" -> if (
-            settings["gestures.volume"].toBoolean() ||
-            settings["gestures.brightness"].toBoolean() ||
-            settings["gestures.double_tap"].toBoolean() ||
-            settings["gestures.long_press"].toBoolean()
+            settings["gestures.volume"] == "true" ||
+            settings["gestures.brightness"] == "true" ||
+            settings["gestures.double_tap"] == "true" ||
+            settings["gestures.long_press"] == "true"
         ) "Ativados" else "Desativados"
         "Áudio e Legendas" -> settings["audio.preferred_language"]
             ?.takeIf { it.isNotBlank() }
             ?: "Padrão"
-        "Metadata" -> if (settings["metadata.anilist_enabled"].toBoolean()) "AniList ativo" else "AniList desativado"
-        "Artwork" -> if (settings["artwork.enabled"].toBoolean()) {
+        "Metadata" -> if (settings["metadata.anilist_enabled"] == "true") "AniList ativo" else "AniList desativado"
+        "Artwork" -> if (settings["artwork.enabled"] == "true") {
             "Artwork remoto ativo"
         } else {
             "Artwork remoto desativado"
