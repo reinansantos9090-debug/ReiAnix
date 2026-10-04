@@ -98,7 +98,7 @@ fun ReiAnixBadge(
         ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning.copy(alpha = ReiAnixTokens.Colors.statusContainerAlpha)
         ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.errorContainer
         ReiAnixBadgeTone.Info -> ReiAnixTokens.Colors.secondaryContainer
-        ReiAnixBadgeTone.Neutral -> MaterialTheme.colorScheme.surfaceRaised
+        ReiAnixBadgeTone.Neutral -> ReiAnixTokens.Colors.surfaceRaised
     }
     val content = when (tone) {
         ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.onPrimaryContainer
