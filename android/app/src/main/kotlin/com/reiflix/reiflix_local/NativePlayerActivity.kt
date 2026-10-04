@@ -53,6 +53,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerControls
+import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerTopControls
+import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerCenterControls
+import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerBottomControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerUiState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import android.widget.Button
