@@ -3509,9 +3509,13 @@ async def main(page: ft.Page):
                                         },
                                     )
                             elif diagnostic_event == "PLAYER_HANDOFF_DISPATCHED" and event_request_id:
-                                player_active_request_id["value"] = event_request_id
                                 session_id = str(payload.get("playerSessionId") or "").strip()
-                                if session_id and player_session_active["value"] and player_active_session_id["value"] not in (None, session_id):
+                                current_session_id = player_active_session_id["value"]
+                                if (
+                                    not session_id
+                                    or not player_session_active["value"]
+                                    or current_session_id != session_id
+                                ):
                                     performance.event(
                                         "PLAYER_CALLBACK_STALE",
                                         screen=navigation.current,
@@ -3519,18 +3523,41 @@ async def main(page: ft.Page):
                                         metadata={
                                             "request_id": event_request_id,
                                             "player_session_id": session_id,
-                                            "current_player_session_id": player_active_session_id["value"],
+                                            "current_player_session_id": current_session_id,
+                                            "reason": "stale_handoff_dispatch",
+                                        },
+                                    )
+                                    direction = str(payload.get("transitionDirection") or "").strip().upper()
+                                    stale_event = "PREVIOUS_REQUEST_STALE" if direction == "PREVIOUS" else "NEXT_REQUEST_STALE"
+                                    stale_rejected_event = "PLAYER_PREVIOUS_STALE_REJECTED" if direction == "PREVIOUS" else "PLAYER_NEXT_STALE_REJECTED"
+                                    performance.event(
+                                        stale_event,
+                                        screen=navigation.current,
+                                        status="rejected",
+                                        metadata={
+                                            "request_id": event_request_id,
+                                            "player_session_id": session_id,
+                                            "current_player_session_id": current_session_id,
+                                            "reason": "stale_handoff_dispatch",
+                                        },
+                                    )
+                                    performance.event(
+                                        stale_rejected_event,
+                                        screen=navigation.current,
+                                        status="rejected",
+                                        metadata={
+                                            "request_id": event_request_id,
+                                            "player_session_id": session_id,
+                                            "current_player_session_id": current_session_id,
                                             "reason": "stale_handoff_dispatch",
                                         },
                                     )
                                     continue
-                                if session_id:
-                                    player_active_session_id["value"] = session_id
-                                player_session_active["value"] = True
+                                player_active_request_id["value"] = event_request_id
                                 performance.event(
                                     "PLAYER_COMMAND_ACCEPTED",
                                     screen=navigation.current,
-                                    metadata={"request_id": event_request_id, "player_session_id": player_active_session_id["value"], "reason": "handoff_dispatched"},
+                                    metadata={"request_id": event_request_id, "player_session_id": current_session_id, "reason": "handoff_dispatched"},
                                 )
                             elif diagnostic_event == "PLAYER_ACTIVITY_RESULT":
                                 controlled_result = bool(payload.get("controlled"))
@@ -4579,19 +4606,18 @@ async def main(page: ft.Page):
                                     status="duplicate",
                                     metadata={"request_id": event_request_id, "direction": direction_name, "sequence": command_sequence},
                                 )
-                                if is_next:
-                                    performance.event(
-                                        "NEXT_REQUEST_DUPLICATE" if is_next else "PREVIOUS_REQUEST_DUPLICATE",
-                                        screen=navigation.current,
-                                        status="rejected",
-                                        metadata={
-                                            "request_id": event_request_id,
-                                            "age_ms": mailbox_latency_ms,
-                                            "reason": "same_request_id",
-                                            "player_session_id": source_player_session_id,
-                                        },
-                                    )
-                                    continue
+                                performance.event(
+                                    "NEXT_REQUEST_DUPLICATE" if is_next else "PREVIOUS_REQUEST_DUPLICATE",
+                                    screen=navigation.current,
+                                    status="rejected",
+                                    metadata={
+                                        "request_id": event_request_id,
+                                        "age_ms": mailbox_latency_ms,
+                                        "reason": "same_request_id",
+                                        "player_session_id": source_player_session_id,
+                                    },
+                                )
+                                continue
                             elif event_request_id:
                                 player_command_seen.add(event_request_id)
                                 if len(player_command_seen) > 128:
