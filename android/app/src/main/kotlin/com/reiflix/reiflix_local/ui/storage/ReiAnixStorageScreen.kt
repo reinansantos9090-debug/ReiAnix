@@ -22,7 +22,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -37,6 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
+import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState
@@ -98,23 +100,22 @@ fun ReiAnixStorageScreen(
                 )
             }
             if (storage.lifecycleState == "unknown" || storage.api == null) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                ReiAnixLoadingState(
+                    title = "Verificando armazenamento",
+                    message = "Lendo o estado real das fontes locais…",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
+                )
             }
             if (storage.safSelectionPending) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surfaceVariant),
-                    modifier = Modifier.fillMaxWidth().padding(
-                        horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-                        vertical = ReiAnixTokens.Spacing.xs,
-                    ),
-                ) {
-                    Text(
-                        text = "Seleção de pasta em andamento…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
+                ReiAnixLoadingState(
+                    title = "Seleção de pasta em andamento",
+                    message = "Aguardando o seletor de pastas do Android…",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
+                )
             }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -161,7 +162,12 @@ fun ReiAnixStorageScreen(
                     )
                 }
                 item(key = "configured") {
-                    ConfiguredSourcesCard(storage)
+                    ConfiguredSourcesCard(
+                        storage = storage,
+                        onSelectSaf = onSelectSaf,
+                        onRequestMediaAccess = onRequestMediaAccess,
+                        onOpenBroadSettings = onOpenBroadSettings,
+                    )
                 }
             }
         }
@@ -197,11 +203,18 @@ private fun StorageSummaryCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = "Varredura: " + scanState.lowercase() + if (scanInProgress) " • em andamento" else "",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (scanInProgress) {
+                ReiAnixScannerInProgressState(
+                    scanState = scanState,
+                    compact = true,
+                )
+            } else {
+                Text(
+                    text = "Varredura: " + scanState.lowercase(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onCheckAccess) {
                     Icon(Icons.Filled.Refresh, contentDescription = null)
@@ -246,7 +259,12 @@ private fun StoragePermissionCard(
 }
 
 @Composable
-private fun ConfiguredSourcesCard(storage: ReiAnixStorageUiState) {
+private fun ConfiguredSourcesCard(
+    storage: ReiAnixStorageUiState,
+    onSelectSaf: () -> Unit,
+    onRequestMediaAccess: () -> Unit,
+    onOpenBroadSettings: () -> Unit,
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = ReiAnixTokens.Colors.surface),
         modifier = Modifier.fillMaxWidth(),
@@ -264,7 +282,17 @@ private fun ConfiguredSourcesCard(storage: ReiAnixStorageUiState) {
                 )
             } else {
                 storage.configuredSources.forEach { source ->
-                    ConfiguredSourceRow(source, storage.sourceState(source))
+                    val sourceState = storage.sourceState(source)
+                    ConfiguredSourceRow(
+                        source = source,
+                        state = sourceState,
+                        onAction = when (source.kind.lowercase()) {
+                            "saf" -> onSelectSaf
+                            "mediastore", "media" -> onRequestMediaAccess
+                            "broad-storage", "broad" -> onOpenBroadSettings
+                            else -> null
+                        },
+                    )
                 }
             }
         }
@@ -275,47 +303,70 @@ private fun ConfiguredSourcesCard(storage: ReiAnixStorageUiState) {
 private fun ConfiguredSourceRow(
     source: ReiAnixStorageSourceUiModel,
     state: String,
+    onAction: (() -> Unit)?,
 ) {
     val available = state in setOf("available", "full", "partial", "granted")
-    val icon = if (available) Icons.Filled.CheckCircle else Icons.Filled.Warning
     val label = when (state.lowercase()) {
         "available", "full", "granted" -> "Disponível"
         "partial" -> "Parcial"
         "revoked" -> "Revogada"
+        "denied" -> "Sem permissão"
         "unavailable" -> "Indisponível"
         else -> state.replace('_', ' ').ifBlank { "Desconhecida" }
     }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics {
-                contentDescription = source.name.ifBlank { source.reference } + ": " + label
+
+    if (!available && onAction != null) {
+        ReiAnixSourceUnavailableState(
+            title = source.name.ifBlank { "Fonte local" },
+            message = when (state.lowercase()) {
+                "denied" -> "A permissão desta fonte não está concedida."
+                "revoked" -> "A autorização desta fonte foi revogada."
+                else -> "A fonte local não está disponível agora."
             },
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(icon, contentDescription = null)
-            Text(
-                text = source.name.ifBlank { source.reference },
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Text(label, style = MaterialTheme.typography.labelMedium)
-        }
-        Text(
-            text = source.reference,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            actionLabel = when (source.kind.lowercase()) {
+                "saf" -> "Escolher pasta"
+                "mediastore", "media" -> "Solicitar acesso"
+                "broad-storage", "broad" -> "Abrir configurações"
+                else -> "Verificar acesso"
+            },
+            onAction = onAction,
+            modifier = Modifier.fillMaxWidth(),
         )
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    contentDescription = source.name.ifBlank { source.reference } + ": " + label
+                },
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    if (available) Icons.Filled.CheckCircle else Icons.Filled.Warning,
+                    contentDescription = null,
+                )
+                Text(
+                    text = source.name.ifBlank { source.reference },
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(label, style = MaterialTheme.typography.labelMedium)
+            }
+            Text(
+                text = source.reference,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
-
 @Composable
 private fun StorageStateLine(label: String, state: String, ok: Boolean) {
     Row(
