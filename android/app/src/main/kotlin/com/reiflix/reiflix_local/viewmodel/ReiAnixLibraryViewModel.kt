@@ -49,7 +49,7 @@ class ReiAnixLibraryViewModel(context: Context) :
      */
     val homeState: StateFlow<ReiAnixHomeLibraryUiState> = uiState
         .map { state ->
-            ReiAnixHomeLibraryUiState.from(state)
+            projectHomeState(state)
         }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
@@ -98,7 +98,7 @@ class ReiAnixLibraryViewModel(context: Context) :
      */
     fun detailsState(animeId: Long): kotlinx.coroutines.flow.Flow<ReiAnixDetailsUiState> =
         uiState
-            .map { state -> ReiAnixDetailsUiStateProjection.from(state, animeId) }
+            .map { state -> projectDetailsState(state, animeId) }
             .flowOn(Dispatchers.Default)
             .distinctUntilChanged()
 
