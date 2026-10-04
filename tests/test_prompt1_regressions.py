@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DETAILS = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")
 MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
-SYSTEM_UI = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/SystemUiController.kt").read_text(encoding="utf-8")
+SYSTEM_UI = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt").read_text(encoding="utf-8")
 
 
 class Prompt1RegressionTests(unittest.TestCase):
