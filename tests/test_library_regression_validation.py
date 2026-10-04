@@ -164,7 +164,7 @@ class FinalRegressionTests(unittest.TestCase):
 
     def test_settings_and_android_compile_regressions_are_closed_in_source(self):
         settings = Path("views/settings_view.py").read_text(encoding="utf-8")
-        broad = Path("android/app/src/main/kotlin/com/reiflix/reiflix_local/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        broad = Path("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         main = Path("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         player = Path("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
         self.assertNotIn("media_is_partial", settings)
