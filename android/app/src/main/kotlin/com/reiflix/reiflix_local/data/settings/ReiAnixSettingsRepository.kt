@@ -19,7 +19,9 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
-    companion object {\n        private const val TAG = "ReiAnixSettingsRepo"\n    }
+    companion object {
+        private const val TAG = "ReiAnixSettingsRepo"
+    }
     private val appContext = context.applicationContext
     private val dataDirectory = File(appContext.filesDir, "data")
     private val bridgeDirectory = File(dataDirectory, "reianix-compose")
