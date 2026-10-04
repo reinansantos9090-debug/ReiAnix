@@ -220,6 +220,51 @@ fun ReiAnixNavigationHost(
 }
 
 @Composable
+private fun ReiAnixBottomNavigation(
+    currentRoute: String?,
+    navController: NavHostController,
+) {
+    androidx.compose.material3.NavigationBar(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                contentDescription = ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION
+            },
+        containerColor = ReiAnixTokens.Colors.surfaceNavigation,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = ReiAnixTokens.Elevation.none,
+        windowInsets = WindowInsets(0, 0, 0, 0),
+    ) {
+        topLevelDestinations.forEach { destination ->
+            val selected = currentRoute == destination.route
+            androidx.compose.material3.NavigationBarItem(
+                selected = selected,
+                onClick = { navController.navigateToTopLevel(destination.route) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    indicatorColor = ReiAnixTokens.Colors.surfaceSelected,
+                ),
+                icon = {
+                    Icon(
+                        imageVector = destination.icon,
+                        contentDescription = null,
+                    )
+                },
+                label = {
+                    Text(
+                        text = destination.label,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
 fun ReiAnixNavigationHost(
     home: @Composable () -> Unit,
     library: @Composable () -> Unit,
@@ -240,32 +285,10 @@ fun ReiAnixNavigationHost(
         contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = {
             if (showBottomNavigation && topLevelDestinations.any { it.route == currentRoute }) {
-                NavigationBar(
-                    modifier = Modifier.semantics {
-                        contentDescription = ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION
-                    },
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ) {
-                    topLevelDestinations.forEach { destination ->
-                        NavigationBarItem(
-                            selected = currentRoute == destination.route,
-                            onClick = { navController.navigateToTopLevel(destination.route) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                            icon = {
-                                Icon(
-                                    imageVector = destination.icon,
-                                    contentDescription = null,
-                                )
-                            },
-                            label = { Text(destination.label) },
-                        )
-                    }
-                }
+                ReiAnixBottomNavigation(
+                    currentRoute = currentRoute,
+                    navController = navController,
+                )
             }
         },
     ) { innerPadding ->
