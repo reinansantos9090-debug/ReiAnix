@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -919,11 +918,10 @@ private fun DetailsSeasonsSection(
                         }
                         .padding(ReiAnixTokens.Spacing.xs),
                 )
-                Icon(
-                    imageVector = Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
+                Text(
+                    text = "›",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleLarge,
                 )
             }
         }
@@ -1103,4 +1101,5 @@ private fun seasonLabel(raw: String): String = when (raw.trim().uppercase(Locale
     "SUMMER" -> "Verão"
     "FALL" -> "Outono"
     else -> raw.trim()
+}
 }
