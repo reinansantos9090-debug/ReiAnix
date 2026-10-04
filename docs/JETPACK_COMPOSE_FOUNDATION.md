@@ -46,9 +46,14 @@ rather than embedding scan, persistence, playback, or storage business rules ins
 
 ## Navigation boundary
 
-Navigation Compose 2.9.8 is available in the module, but these foundation prompts create no route graph
-and no artificial destinations. Destination IDs and arguments will be defined only when the corresponding
-screen migration is implemented.
+Prompt 03 establishes the first shared Navigation Compose shell. The canonical top-level destinations are
+Home, Biblioteca, Minha Lista and Buscar. Settings, Storage, Details and Player are secondary routes and
+are intentionally excluded from the bottom navigation. Details/Player use stable encoded IDs plus origin
+metadata, while Navigation Compose owns tab save/restore semantics.
+
+The existing Flet/Android bridges remain authoritative for capabilities not yet migrated. The native Compose
+shell is attached through the existing library-host boundary during the incremental cutover rather than
+creating a second Android entry Activity.
 
 ## Coroutine/lifecycle boundary
 
