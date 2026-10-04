@@ -1,7 +1,6 @@
 package com.reiflix.reiflix_local.ui.library
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,13 +22,11 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,20 +34,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
+import com.reiflix.reiflix_local.ui.ReiAnixSearchField
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
@@ -214,11 +208,8 @@ private fun LibraryHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Biblioteca",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
+            com.reiflix.reiflix_local.ui.ReiAnixScreenTitle(
+                title = "Biblioteca",
             )
             Text(
                 text = "Seu conteúdo local",
@@ -276,14 +267,12 @@ private fun ColumnScope.LibraryReadyContent(
             .weight(1f)
             .imePadding(),
     ) {
-        OutlinedTextField(
+        ReiAnixSearchField(
             value = filters.query,
             onValueChange = onQueryChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
-            singleLine = true,
-            label = { Text("Pesquisar na biblioteca") },
+            modifier = Modifier.padding(
+                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            ),
             placeholder = { Text("Título ou gênero") },
             leadingIcon = {
                 Icon(
@@ -293,10 +282,15 @@ private fun ColumnScope.LibraryReadyContent(
             },
             trailingIcon = {
                 if (filters.query.isNotBlank()) {
-                    IconButton(onClick = { onQueryChange("") }) {
+                    IconButton(
+                        onClick = { onQueryChange("") },
+                        modifier = Modifier.semantics {
+                            contentDescription = "Limpar pesquisa"
+                        },
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.Clear,
-                            contentDescription = "Limpar pesquisa",
+                            contentDescription = null,
                         )
                     }
                 }
