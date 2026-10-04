@@ -275,6 +275,7 @@ class ComposeLibraryBridge:
             "genres": list(source.get("genres") or []),
             "genre_ids": list(source.get("genre_ids") or []),
             "meta": {
+                "added_at": meta.get("added_at", source.get("added_at")),
                 "year": meta.get("year", source.get("year")),
                 "metadata_status": meta.get("metadata_status") or source.get("metadata_status"),
                 "score": meta.get("score", source.get("score")),
