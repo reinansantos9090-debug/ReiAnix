@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
+import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixSearchField
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
