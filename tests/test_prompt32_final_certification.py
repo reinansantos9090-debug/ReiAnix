@@ -97,7 +97,7 @@ def test_prompt32_no_forbidden_remote_media_pipeline_was_added():
     start = bridge.index("@staticmethod\n    def normalize_local_media_reference")
     normalized = bridge[start:]
     assert "return None" in normalized
-    assert "scheme not in {"content", "file"}" in normalized
+    assert 'scheme not in {"content", "file"}' in normalized
 
 
 def test_prompt32_episode_reconciliation_path_is_canonical_after_player_exit():
