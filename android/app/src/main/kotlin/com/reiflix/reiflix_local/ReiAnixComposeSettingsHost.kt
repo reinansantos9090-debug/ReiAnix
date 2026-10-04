@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
 import org.json.JSONObject
 
 class ReiAnixComposeSettingsHost(
