@@ -30,7 +30,6 @@ object ReiAnixTokens {
         val surfacePlayer = Color(0xFF020408)
         val surfaceSelected = Color(0xFF173B6D)
         val surfaceNavigation = Color(0xFF0B1017)
-        val overlayStrong = Color(0xCC000000)
 
         val primary = Color(0xFF3D8BFF)
         val primaryContainer = Color(0xFF173D78)
