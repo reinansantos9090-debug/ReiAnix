@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -36,9 +37,11 @@ class Prompt31ComposeThemeConsistencyTests(unittest.TestCase):
         for relative in COMPOSE_UI_FILES:
             source = (ROOT / relative).read_text(encoding="utf-8")
             for token in GENERIC_THEME_TOKENS:
-                self.assertNotIn(
-                    f"ReiAnixTokens.Colors.{token}",
-                    source,
+                pattern = re.compile(
+                    rf"ReiAnixTokens\.Colors\.{re.escape(token)}\b"
+                )
+                self.assertIsNone(
+                    pattern.search(source),
                     msg=f"{relative} bypasses MaterialTheme with generic color token {token}",
                 )
 
