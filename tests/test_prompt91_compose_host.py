@@ -25,7 +25,8 @@ class Prompt91ComposeHostTests(unittest.TestCase):
         self.assertIn("ComposeView", host)
         self.assertIn("ReiAnixComposeRoot", host)
         self.assertIn("ReiAnixNavigationHost", host)
-        self.assertIn("startDestination = ReiAnixRoutes.LIBRARY", host)
+        self.assertIn("startDestination: String = ReiAnixRoutes.LIBRARY", host)
+        self.assertIn("startDestination = startDestination", host)
         self.assertIn("showBottomNavigation = true", host)
 
     def test_library_is_a_single_existing_navigation_route(self):
@@ -70,7 +71,8 @@ class Prompt91ComposeHostTests(unittest.TestCase):
         # The host delegates to Navigation Compose; it does not own the Library
         # route directly.
         self.assertIn("ReiAnixNavigationHost", host)
-        self.assertIn("startDestination = ReiAnixRoutes.LIBRARY", host)
+        self.assertIn("startDestination: String = ReiAnixRoutes.LIBRARY", host)
+        self.assertIn("startDestination = startDestination", host)
 
         # Navigation Compose owns the LIBRARY route and mounts the real Library.
         self.assertIn("composable(ReiAnixRoutes.LIBRARY)", navigation)
