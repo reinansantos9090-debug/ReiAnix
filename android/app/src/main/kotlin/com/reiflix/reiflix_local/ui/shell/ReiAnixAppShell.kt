@@ -39,7 +39,7 @@ data class ReiAnixBottomNavDestination(
 
 @Composable
 fun ReiAnixAppShell(
-    currentRoute: String?,
+    selectedRoute: String?,
     bottomDestinations: List<ReiAnixBottomNavDestination>,
     onBottomDestinationClick: (String) -> Unit,
     navigationContent: @Composable (PaddingValues) -> Unit,
@@ -53,12 +53,9 @@ fun ReiAnixAppShell(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
         bottomBar = {
-            if (
-                showBottomNavigation &&
-                bottomDestinations.any { it.route == currentRoute }
-            ) {
+            if (showBottomNavigation) {
                 ReiAnixBottomNavigation(
-                    currentRoute = currentRoute,
+                    selectedRoute = selectedRoute,
                     destinations = bottomDestinations,
                     onDestinationClick = onBottomDestinationClick,
                 )
@@ -71,7 +68,7 @@ fun ReiAnixAppShell(
 
 @Composable
 private fun ReiAnixBottomNavigation(
-    currentRoute: String?,
+    selectedRoute: String?,
     destinations: List<ReiAnixBottomNavDestination>,
     onDestinationClick: (String) -> Unit,
 ) {
@@ -87,7 +84,7 @@ private fun ReiAnixBottomNavigation(
         windowInsets = NavigationBarDefaults.windowInsets,
     ) {
         destinations.forEach { destination ->
-            val selected = currentRoute == destination.route
+            val selected = selectedRoute == destination.route
             val contentColor by animateColorAsState(
                 targetValue = if (selected) {
                     ReiAnixTokens.Colors.primary
