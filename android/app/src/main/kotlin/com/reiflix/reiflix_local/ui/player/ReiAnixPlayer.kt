@@ -6,7 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularProgressIndicator
+import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,6 +112,7 @@ fun ReiAnixPlayerRoute(
                 title = "Não foi possível abrir o player",
                 message = "A identificação do episódio local é inválida.",
                 showProgress = false,
+                onRetry = null,
             )
         }
 
@@ -120,6 +122,10 @@ fun ReiAnixPlayerRoute(
                 message = libraryState.lastCommandError
                     ?: "A mídia local não pôde ser enviada ao player.",
                 showProgress = false,
+                onRetry = {
+                    val canonicalEpisodeId = episodeId
+                    launchRequestId = viewModel.openEpisode(canonicalEpisodeId!!)
+                },
             )
         }
 
@@ -128,6 +134,7 @@ fun ReiAnixPlayerRoute(
                 title = "Abrindo player",
                 message = "Preparando a reprodução local…",
                 showProgress = true,
+                onRetry = null,
             )
         }
     }
@@ -138,32 +145,54 @@ private fun PlayerHandoffMessage(
     title: String,
     message: String,
     showProgress: Boolean,
+    onRetry: (() -> Unit)?,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background)
-            .semantics {
-                contentDescription = "ReiAnixPlayerHandoff"
-            }
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        if (showProgress) {
-            CircularProgressIndicator()
+    if (showProgress) {
+        ReiAnixLoadingState(
+            title = title,
+            message = message,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ReiAnixTokens.Colors.background)
+                .semantics {
+                    contentDescription = "ReiAnixPlayerHandoff"
+                },
+        )
+    } else if (onRetry != null) {
+        ReiAnixRecoverableErrorState(
+            title = title,
+            message = message,
+            onRetry = onRetry,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ReiAnixTokens.Colors.background)
+                .semantics {
+                    contentDescription = "ReiAnixPlayerHandoff"
+                },
+        )
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ReiAnixTokens.Colors.background)
+                .semantics {
+                    contentDescription = "ReiAnixPlayerHandoff"
+                }
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = ReiAnixTokens.Colors.text,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = ReiAnixTokens.Colors.textMuted,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = ReiAnixTokens.Colors.text,
-            modifier = Modifier.padding(top = if (showProgress) 16.dp else 0.dp),
-        )
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = ReiAnixTokens.Colors.textMuted,
-            modifier = Modifier.padding(top = 8.dp),
-        )
     }
 }
