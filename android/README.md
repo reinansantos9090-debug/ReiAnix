@@ -94,3 +94,21 @@ org.jetbrains.kotlin.plugin.compose at the same version.
 Navigation Compose 2.9.8 and Lifecycle ViewModel Compose 2.10.0 are prepared as dependencies;
 Prompt 01 creates no navigation graph or migrated screen. Existing SQLite, scanner, SAF, MediaStore,
 artwork, progress, mailbox and Media3 remain the source of truth.
+
+## Arquitetura Android após o Prompt 29
+
+O módulo Android mantém o host Flet existente e separa apenas responsabilidades que já estavam presentes no código. As atividades de entrada continuam no pacote raiz: `MainActivity` é o host Android/Flet e `NativePlayerActivity` é a Activity de reprodução Media3. `PerformanceDiagnostics` permanece no raiz por ser infraestrutura transversal do host.
+
+A árvore de responsabilidades é:
+
+- `ui/`: apresentação Compose, navegação e modelos de UI; `ui/host/` contém as três pontes que conectam Compose ao host existente.
+- `viewmodel/`: estado e operações de tela usando as fontes reais da aplicação.
+- `data/`: repositórios/codecs da projeção Kotlin, sem criar um segundo banco.
+- `player/`: serviços e políticas de reprodução local (preferências/metadata, legendas, perfil de interação e system UI), além de `NativePlayerRequest` como contrato de entrada do player.
+- `scanner/`: descoberta MediaStore/SAF/broad-storage e publicação/ciclo de scan.
+- `storage/`: indexação nativa, autorização de armazenamento, batching e extração de thumbnails.
+- `bridge/`: transporte Python/native, estado de requests, dispatcher de comandos e identidade Google.
+
+Nenhum pacote `domain/` artificial foi criado: não havia um modelo de domínio independente justificando outra camada. SQLite, scanner, SAF, MediaStore, permissões, artwork/cache, progresso e Media3 continuam sendo as fontes existentes. Também não foram adicionadas dependências Gradle para concluir a reorganização; o Prompt 29 usa as dependências Compose/Navigation/Lifecycle/Media3 já presentes no módulo.
+
+As dependências seguem o sentido operacional host → bridge/ui → scanner/player → storage quando aplicável. As atividades continuam no raiz para preservar o manifesto, o host Flet e a integração Media3. Adapters Compose existentes não foram removidos porque ainda possuem consumidores reais em `MainActivity`.

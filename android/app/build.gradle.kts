@@ -39,6 +39,8 @@ android {
 
 kotlin { jvmToolchain(17) }
 
+    // Prompt 29: dependencies remain unchanged; the cleanup is structural and reuses
+    // the existing Compose/Navigation/Lifecycle/Media3 stack without new abstractions.
 dependencies {
     // These are merged into the Flet Flutter host by the custom Android template.
     implementation("androidx.activity:activity-ktx:1.13.0")
