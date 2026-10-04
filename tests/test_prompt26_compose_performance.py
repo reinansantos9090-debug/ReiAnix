@@ -39,7 +39,6 @@ class Prompt26ComposePerformanceTests(unittest.TestCase):
         self.assertIn(".distinctUntilChanged()", block)
         self.assertNotIn(".stateIn(", block)
         self.assertIn("collectAsStateWithLifecycle(", details)
-        self.assertIn("initialValue = initialState", details)
         self.assertIn("initialValue = ReiAnixDetailsUiState()", details)
         self.assertNotIn("initialValue = initialState", details)
 
