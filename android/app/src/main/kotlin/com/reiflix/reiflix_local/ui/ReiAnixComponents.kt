@@ -507,7 +507,10 @@ fun ReiAnixEpisodeCard(
                 localPath = episode.artwork?.localPath,
                 contentDescription = episode.displayTitle,
                 modifier = Modifier
-                    .size(width = 88.dp, height = 68.dp)
+                    .size(
+                        width = ReiAnixTokens.Dimensions.episodeThumbnailWidth,
+                        height = ReiAnixTokens.Dimensions.episodeThumbnailHeight,
+                    )
                     .clip(ReiAnixTokens.Shapes.small),
                 contentScale = ContentScale.Crop,
                 placeholder = "Sem thumbnail",
