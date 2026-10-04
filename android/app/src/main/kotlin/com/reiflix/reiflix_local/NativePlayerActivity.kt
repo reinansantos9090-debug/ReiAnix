@@ -497,6 +497,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ?: intent.getStringExtra("playerSessionId")?.trim()?.takeIf { it.isNotEmpty() }
             ?: playerSessionId
         playerGeneration = savedInstanceState?.getLong("player_generation", playerGeneration) ?: playerGeneration
+        transitionGeneration = savedInstanceState?.getLong("transition_generation", transitionGeneration) ?: transitionGeneration
         requestId = savedInstanceState?.getString("session_request_id")?.trim()
             ?: intent.getStringExtra("requestId")?.trim().orEmpty()
         originRequestId = intent.getStringExtra("originRequestId")?.trim().orEmpty()
@@ -505,16 +506,41 @@ override fun onCreate(savedInstanceState: Bundle?) {
         originPlayerSessionId = intent.getStringExtra("originPlayerSessionId")?.trim().orEmpty()
         originTransitionGeneration = intent.getLongExtra("originTransitionGeneration", 0L)
         val originTransitionDirection = intent.getStringExtra("transitionDirection")?.trim()?.uppercase().orEmpty()
-        val isEpisodeSuccessor = originRequestId.isNotBlank() && MainActivity.isCurrentPlayerHandoff(
-            requestId = requestId,
-            originRequestId = originRequestId,
-            originCreatedAtMs = originCreatedAtMs,
-            playerSessionId = playerSessionId,
-            originPlayerSessionId = originPlayerSessionId,
-            originTransitionGeneration = originTransitionGeneration,
-        )
+        val recreatedPlayer = savedInstanceState?.getString("session_request_id")?.trim()
+            ?.takeIf { it.isNotEmpty() } == requestId &&
+            savedInstanceState.getString("player_session_id")?.trim() == playerSessionId
 
-        if (originRequestId.isNotBlank() && !isEpisodeSuccessor) {
+        if (recreatedPlayer) {
+            episodeChangePending = savedInstanceState.getBoolean("episode_change_pending", false)
+            transitionPhase = runCatching {
+                TransitionPhase.valueOf(savedInstanceState.getString("transition_phase").orEmpty())
+            }.getOrElse { TransitionPhase.IDLE }
+            transitionSourceRequestId = savedInstanceState.getString("transition_source_request_id").orEmpty()
+            transitionSourceUri = savedInstanceState.getString("transition_source_uri").orEmpty()
+            transitionSourceCreatedAtMs = savedInstanceState.getLong("transition_source_created_at_ms", 0L)
+            transitionSourceGeneration = savedInstanceState.getLong("transition_source_generation", 0L)
+            transitionSourceDirection = savedInstanceState.getString("transition_source_direction").orEmpty()
+            transitionSourceMonotonicNs = savedInstanceState.getLong("transition_source_monotonic_ns", 0L)
+            transitionStartedAtMs = savedInstanceState.getLong("transition_started_at_ms", 0L)
+            transitionReadyGeneration = savedInstanceState.getLong("transition_ready_generation", -1L)
+            nextTransitionActive = savedInstanceState.getBoolean("next_transition_active", false)
+            previousTransitionActive = savedInstanceState.getBoolean("previous_transition_active", false)
+        }
+
+        val isEpisodeSuccessor = if (recreatedPlayer) {
+            false
+        } else {
+            originRequestId.isNotBlank() && MainActivity.isCurrentPlayerHandoff(
+                requestId = requestId,
+                originRequestId = originRequestId,
+                originCreatedAtMs = originCreatedAtMs,
+                playerSessionId = playerSessionId,
+                originPlayerSessionId = originPlayerSessionId,
+                originTransitionGeneration = originTransitionGeneration,
+            )
+        }
+
+        if (originRequestId.isNotBlank() && !isEpisodeSuccessor && !recreatedPlayer) {
             val staleEvent = if (originTransitionDirection == "PREVIOUS") "PREVIOUS_REQUEST_STALE" else "NEXT_REQUEST_STALE"
             val staleRejectedEvent = if (originTransitionDirection == "PREVIOUS") "PLAYER_PREVIOUS_STALE_REJECTED" else "PLAYER_NEXT_STALE_REJECTED"
             publishNavigationTransitionDiagnostic(
@@ -4046,6 +4072,18 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
         outState.putString("player_session_id", playerSessionId)
         outState.putLong("transition_generation", transitionGeneration)
         outState.putString("session_request_id", requestId)
+        outState.putBoolean("episode_change_pending", episodeChangePending)
+        outState.putString("transition_phase", transitionPhase.name)
+        outState.putString("transition_source_request_id", transitionSourceRequestId)
+        outState.putString("transition_source_uri", transitionSourceUri)
+        outState.putLong("transition_source_created_at_ms", transitionSourceCreatedAtMs)
+        outState.putLong("transition_source_generation", transitionSourceGeneration)
+        outState.putString("transition_source_direction", transitionSourceDirection)
+        outState.putLong("transition_source_monotonic_ns", transitionSourceMonotonicNs)
+        outState.putLong("transition_started_at_ms", transitionStartedAtMs)
+        outState.putLong("transition_ready_generation", transitionReadyGeneration)
+        outState.putBoolean("next_transition_active", nextTransitionActive)
+        outState.putBoolean("previous_transition_active", previousTransitionActive)
         if (::uri.isInitialized) outState.putString("session_uri", uri.toString())
         if (::player.isInitialized) {
             outState.putString("session_request_id", requestId)
