@@ -42,7 +42,7 @@ object NativeMailbox {
         }
         return when (type) {
             "saf_permission_request", "mediastore_permission_request", "broad_storage_permission_request" -> "REQUESTED"
-            "saf_permission", "saf_released", "mediastore_permission", "broad_storage_permission", "google_account" -> "COMPLETED"
+            "saf_permission", "saf_released", "mediastore_permission", "broad_storage_permission", "google_account", "google_signed_out" -> "COMPLETED"
             "saf_cancelled", "google_cancelled" -> "CANCELLED"
             "saf_error", "mediastore_error", "broad_storage_error", "google_error", "native_error" -> "FAILED"
             "saf_scan_progress", "mediastore_scan_progress", "broad_storage_scan_progress" -> "RUNNING"
