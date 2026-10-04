@@ -16,6 +16,8 @@ PREPARE_TEMPLATE = ROOT / "scripts" / "prepare_flet_template.py"
 DESCRIPTORS = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
     b"Lcom/reiflix/reiflix_local/ReiAnixComposeLibraryHost;",
+    b"Lcom/reiflix/reiflix_local/ReiAnixComposeSettingsHost;",
+    b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
     b"Lcom/reiflix/reiflix_local/NativeMailbox;",
     b"Lcom/reiflix/reiflix_local/NativeRequestState;",
     b"Lcom/reiflix/reiflix_local/SafScanner;",
@@ -63,6 +65,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/ReiAnixComposeRootKt.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/viewmodel/ReiAnixViewModel.class",
+                "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ReiAnixComposeSettingsHost.class",
+                "tmp/kotlin-classes/release/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.class",
             ):
                 path = classes / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +78,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
                     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
                     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
                     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixViewModel;",
+                    b"Lcom/reiflix/reiflix_local/ReiAnixComposeSettingsHost;",
+                    b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
                 )))
             result = subprocess.run(
                 [sys.executable, str(script), str(apk), "--classes-root", str(classes)],
