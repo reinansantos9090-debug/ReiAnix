@@ -105,7 +105,31 @@ class ComposeLibraryBridge:
             # policy. Normal catalog rows already expose current_episode, so
             # only the special-only fallback needs the extra canonical lookup.
             playback_target_method = getattr(self.library, "playback_target", None)
+            artwork_batch_method = getattr(self.library, "resolve_artwork_batch", None)
             projected_animes = []
+
+            # Details needs both poster and backdrop from the existing ArtworkEngine.
+            # Resolution is batched here; Compose still consumes only the resulting
+            # local/cache references and never performs network work in composition.
+            artwork_by_entity = {"anime": {}, "movie": {}}
+            if callable(artwork_batch_method):
+                for entity_type in ("anime", "movie"):
+                    entity_ids = [
+                        item.get("id")
+                        for item in catalog
+                        if item.get("id") is not None
+                        and str(item.get("media_kind") or item.get("meta", {}).get("media_kind") or "").strip().lower()
+                        == ("movie" if entity_type == "movie" else "series")
+                    ]
+                    entity_ids = list(dict.fromkeys(entity_ids))
+                    if entity_ids:
+                        poster_rows = artwork_batch_method(entity_type, entity_ids, ("poster",))
+                        backdrop_rows = artwork_batch_method(entity_type, entity_ids, ("backdrop",))
+                        for entity_id, row in (poster_rows or {}).items():
+                            artwork_by_entity[entity_type].setdefault(str(entity_id), {})["poster"] = row
+                        for entity_id, row in (backdrop_rows or {}).items():
+                            artwork_by_entity[entity_type].setdefault(str(entity_id), {})["backdrop"] = row
+
             for item in catalog:
                 projected = item
                 if callable(playback_target_method) and not isinstance(
@@ -117,7 +141,17 @@ class ComposeLibraryBridge:
                         if isinstance(target, dict):
                             projected = dict(item)
                             projected["playback_target_episode"] = target
-                projected_animes.append(self._project_anime(projected))
+
+                media_kind = str(projected.get("media_kind") or "").strip().lower()
+                entity_type = "movie" if media_kind == "movie" else "anime"
+                artwork_rows = artwork_by_entity[entity_type].get(str(projected.get("id")), {})
+                projected_animes.append(
+                    self._project_anime(
+                        projected,
+                        poster_artwork=artwork_rows.get("poster"),
+                        backdrop_artwork=artwork_rows.get("backdrop"),
+                    )
+                )
 
             payload = {
                 "schemaVersion": self.SCHEMA_VERSION,
@@ -252,7 +286,13 @@ class ComposeLibraryBridge:
         return "UNKNOWN"
 
     @classmethod
-    def _project_anime(cls, source: dict[str, Any]) -> dict[str, Any]:
+    def _project_anime(
+        cls,
+        source: dict[str, Any],
+        *,
+        poster_artwork: dict[str, Any] | None = None,
+        backdrop_artwork: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         meta = source.get("meta") if isinstance(source.get("meta"), dict) else {}
         return {
             "id": source.get("id"),
@@ -274,11 +314,34 @@ class ComposeLibraryBridge:
             ),
             "genres": list(source.get("genres") or []),
             "genre_ids": list(source.get("genre_ids") or []),
+            "artwork_local_path": (
+                (poster_artwork or {}).get("local_path")
+                or meta.get("cover_cache")
+            ),
+            "artwork_external_url": (
+                (poster_artwork or {}).get("external_url")
+                or meta.get("cover_url")
+            ),
+            "backdrop_local_path": (backdrop_artwork or {}).get("local_path"),
+            "backdrop_external_url": (
+                (backdrop_artwork or {}).get("external_url")
+                or meta.get("banner_url")
+            ),
             "meta": {
                 "added_at": meta.get("added_at", source.get("added_at")),
                 "year": meta.get("year", source.get("year")),
                 "metadata_status": meta.get("metadata_status") or source.get("metadata_status"),
                 "score": meta.get("score", source.get("score")),
+                "title": meta.get("title") or source.get("main_title") or source.get("title"),
+                "romaji": meta.get("romaji"),
+                "english": meta.get("english"),
+                "native": meta.get("native"),
+                "description": meta.get("description"),
+                "status": meta.get("status"),
+                "format": meta.get("format"),
+                "duration": meta.get("duration"),
+                "studio": meta.get("studio"),
+                "season": meta.get("season"),
                 "cover_cache": meta.get("cover_cache"),
                 "cover_url": meta.get("cover_url"),
                 "banner_url": meta.get("banner_url"),

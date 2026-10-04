@@ -50,6 +50,8 @@ data class ReiAnixGenreUiModel(
 data class ReiAnixArtworkUiModel(
     val localPath: String?,
     val externalUrl: String?,
+    val backdropLocalPath: String? = null,
+    val backdropExternalUrl: String? = null,
 ) {
     val isAvailable: Boolean
         get() = !localPath.isNullOrBlank() || !externalUrl.isNullOrBlank()

@@ -50,6 +50,15 @@ object LibraryUiMappers {
             addedAt = metadata.doubleOrNull("added_at") ?: source.doubleOrNull("added_at"),
             lastPlayedAt = source.doubleOrNull("last_played_at"),
             pinned = source.booleanOrNull("is_pinned") ?: metadata.booleanOrNull("is_pinned") ?: false,
+            description = metadata.stringOrNull("description"),
+            romajiTitle = metadata.stringOrNull("romaji"),
+            englishTitle = metadata.stringOrNull("english"),
+            nativeTitle = metadata.stringOrNull("native"),
+            status = metadata.stringOrNull("status"),
+            format = metadata.stringOrNull("format"),
+            durationMinutes = metadata.intOrNull("duration"),
+            studio = metadata.stringOrNull("studio"),
+            seasonLabel = metadata.stringOrNull("season"),
         )
     }
 
@@ -130,6 +139,12 @@ object LibraryUiMappers {
             ReiAnixArtworkUiModel(
                 localPath = localPath,
                 externalUrl = externalUrl,
+                backdropLocalPath = firstNonBlank(
+                    listOf("backdrop_local_path", "artwork_backdrop_local_path"),
+                ),
+                backdropExternalUrl = firstNonBlank(
+                    listOf("backdrop_external_url", "banner_url"),
+                ),
             )
         }
     }

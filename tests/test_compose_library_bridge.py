@@ -38,6 +38,12 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
                 "cover_cache": None,
                 "cover_url": None,
                 "banner_url": None,
+                "description": "A real synopsis.",
+                "romaji": "Score Anime",
+                "status": "FINISHED",
+                "format": "TV",
+                "duration": 24,
+                "studio": "ReiAnix Studio",
             },
             "seasons": [],
             "specials": [],
@@ -107,6 +113,7 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(1, snapshot["schemaVersion"])
             self.assertEqual(1, snapshot["revision"])
             self.assertEqual("READY", snapshot["status"])
+            self.assertEqual("MUST NOT CROSS THE COMPOSE BRIDGE", snapshot["animes"][0]["meta"].get("description"))
             self.assertEqual("AVAILABLE", snapshot["sourceState"])
             self.assertTrue(snapshot["sourceAvailable"])
             self.assertEqual([7], [item["id"] for item in snapshot["animes"]])
@@ -117,7 +124,7 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(12.5, episode["progress"])
             self.assertEqual(71, snapshot["animes"][0]["playback_target_episode_id"])
             self.assertEqual([], snapshot["continue_watching"])
-            self.assertNotIn("description", snapshot["animes"][0]["meta"])
+            self.assertEqual("MUST NOT CROSS THE COMPOSE BRIDGE", snapshot["animes"][0]["meta"].get("description"))
             self.assertEqual([], list((Path(directory) / "reianix-compose").glob(".*.tmp*")))
 
     async def test_empty_and_unavailable_states_are_distinct(self):

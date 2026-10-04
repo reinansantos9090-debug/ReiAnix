@@ -150,7 +150,7 @@ object ReiAnixTokens {
         val detailsEpisodeThumbnailFraction = 0.27f
         val detailsHeroHeight = 250.dp
         val searchFieldHeight = 56.dp
-        val detailsHeroMaxHeight = 320.dp
+        val detailsHeroMaxHeight = 420.dp
         val homeHeroHeight = 282.dp
         val homeCardWidth = 122.dp
         val homeContinueCardWidth = 132.dp

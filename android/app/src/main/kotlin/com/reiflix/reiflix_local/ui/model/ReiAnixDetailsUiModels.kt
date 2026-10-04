@@ -26,9 +26,28 @@ data class ReiAnixDetailsAnimeUiModel(
     val shouldContinue: Boolean,
     val seasons: List<ReiAnixSeasonUiModel> = emptyList(),
     val specials: List<ReiAnixEpisodeUiModel> = emptyList(),
+    val mediaFiles: List<ReiAnixEpisodeUiModel> = emptyList(),
+    val mediaKind: ReiAnixMediaKind = ReiAnixMediaKind.UNKNOWN,
+    val description: String? = null,
+    val romajiTitle: String? = null,
+    val englishTitle: String? = null,
+    val nativeTitle: String? = null,
+    val status: String? = null,
+    val format: String? = null,
+    val durationMinutes: Int? = null,
+    val studio: String? = null,
+    val seasonLabel: String? = null,
+    val metadataAvailability: ReiAnixMetadataAvailability = ReiAnixMetadataAvailability.UNRESOLVED,
+    val pinned: Boolean = false,
+    val playbackTargetEpisode: ReiAnixEpisodeUiModel? = null,
 ) {
     val stableKey: String
         get() = "anime:" + id
+
+    val preferredAlternateTitle: String?
+        get() = sequenceOf(nativeTitle, romajiTitle, englishTitle)
+            .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+            .firstOrNull()
 }
 
 @Keep
@@ -50,8 +69,6 @@ object ReiAnixDetailsUiStateProjection {
             val target = anime.playbackTargetEpisodeId?.let { targetId ->
                 anime.contentEpisodes.firstOrNull { it.id == targetId }
             }
-            // Snapshots can briefly lag a scan or file-access reconciliation.
-            // Never expose a stale/unplayable target as the primary action.
             val playableTarget = target?.takeIf { it.isPlayable }
 
             return ReiAnixDetailsUiState(
@@ -64,11 +81,25 @@ object ReiAnixDetailsUiStateProjection {
                     score = anime.score,
                     favorite = anime.favorite,
                     artwork = anime.artwork,
-                    episodeCount = anime.contentEpisodes.size.takeIf { it > 0 },
+                    episodeCount = anime.availableContentCount.takeIf { it > 0 },
                     playbackTargetEpisodeId = playableTarget?.id,
                     shouldContinue = playableTarget?.consumptionState == ReiAnixConsumptionState.IN_PROGRESS,
                     seasons = anime.seasons,
                     specials = anime.specials,
+                    mediaFiles = anime.mediaFiles,
+                    mediaKind = anime.mediaKind,
+                    description = anime.description,
+                    romajiTitle = anime.romajiTitle,
+                    englishTitle = anime.englishTitle,
+                    nativeTitle = anime.nativeTitle,
+                    status = anime.status,
+                    format = anime.format,
+                    durationMinutes = anime.durationMinutes,
+                    studio = anime.studio,
+                    seasonLabel = anime.seasonLabel,
+                    metadataAvailability = anime.metadataAvailability,
+                    pinned = anime.pinned,
+                    playbackTargetEpisode = playableTarget,
                 ),
                 sourceAvailable = state.sourceAvailable,
                 sourceState = state.sourceState,
