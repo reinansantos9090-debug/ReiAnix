@@ -25,7 +25,7 @@ REQUIRED_CLASSES = (
     b"Lcom/reiflix/reiflix_local/storage/NativeIndex;",
     b"Lcom/reiflix/reiflix_local/scanner/NativeScanController;",
     b"Lcom/reiflix/reiflix_local/NativePlayerActivity;",
-    b"Lcom/reiflix/reiflix_local/bridge/NativePlayerRequest;",
+    b"Lcom/reiflix/reiflix_local/player/NativePlayerRequest;",
     b"Lcom/reiflix/reiflix_local/bridge/GoogleIdentity;",
     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
