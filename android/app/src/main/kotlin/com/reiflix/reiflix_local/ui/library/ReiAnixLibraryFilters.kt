@@ -79,7 +79,7 @@ object ReiAnixLibraryFilterEngine {
         animes: List<ReiAnixAnimeUiModel>,
         sortLabel: String,
     ): List<ReiAnixAnimeUiModel> {
-        if (animes.size < 2) return animes
+        if (animes.size < 2 || sortLabel.isBlank()) return animes
 
         val decorated = animes.map { anime ->
             val episodes = anime.contentEpisodes
