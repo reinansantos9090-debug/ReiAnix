@@ -78,7 +78,7 @@ fun ReiAnixLocalArtwork(
     BoxWithConstraints(
         modifier = modifier
             .clip(MaterialTheme.shapes.medium)
-            .background(ReiAnixTokens.Colors.surfaceVariant),
+            .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         val measuredWidthPx = if (maxWidth != Dp.Infinity) {
@@ -134,7 +134,7 @@ fun ReiAnixLocalArtwork(
                 Text(
                     text = placeholder,
                     style = MaterialTheme.typography.labelMedium,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.semantics {
