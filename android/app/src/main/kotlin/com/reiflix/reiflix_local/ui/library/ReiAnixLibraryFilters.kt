@@ -66,6 +66,7 @@ internal object ReiAnixLibraryFilterEngine {
         val lastPlayedAt: Double,
         val progress: Double,
         val firstEpisode: Double,
+        val minEpisode: Double,
         val firstSeason: Int,
         val maxModifiedAt: Double,
         val totalDuration: Double,
@@ -110,6 +111,7 @@ internal object ReiAnixLibraryFilterEngine {
                 lastPlayedAt = anime.lastPlayedAt ?: 0.0,
                 progress = progress,
                 firstEpisode = episodeForOrdering?.number ?: Double.MAX_VALUE,
+                minEpisode = available.minOfOrNull { it.number ?: Double.MAX_VALUE } ?: Double.MAX_VALUE,
                 firstSeason = firstSeason,
                 maxModifiedAt = episodes.maxOfOrNull { it.modifiedAt ?: 0.0 } ?: 0.0,
                 totalDuration = episodes.sumOf { it.durationSeconds?.takeIf(Double::isFinite)?.coerceAtLeast(0.0) ?: 0.0 },
@@ -119,14 +121,14 @@ internal object ReiAnixLibraryFilterEngine {
 
         val comparator = when (ReiAnixLibrarySort.fromLabel(sortLabel)) {
             ReiAnixLibrarySort.RECENT -> compareByDescending<SortMetrics> { it.addedAt }
-            ReiAnixLibrarySort.RECENTLY_WATCHED -> compareByDescending { it.lastPlayedAt }
-            ReiAnixLibrarySort.PROGRESS -> compareByDescending { it.progress }
+            ReiAnixLibrarySort.RECENTLY_WATCHED -> compareByDescending<SortMetrics> { it.lastPlayedAt }
+            ReiAnixLibrarySort.PROGRESS -> compareByDescending<SortMetrics> { it.progress }
             ReiAnixLibrarySort.EPISODE -> compareBy<SortMetrics> { it.firstEpisode }
             ReiAnixLibrarySort.SEASON_EPISODE -> compareBy<SortMetrics> { it.firstSeason }
-                .thenBy { it.firstEpisode }
-            ReiAnixLibrarySort.MODIFICATION -> compareByDescending { it.maxModifiedAt }
-            ReiAnixLibrarySort.DURATION -> compareByDescending { it.totalDuration }
-            ReiAnixLibrarySort.SIZE -> compareByDescending { it.totalSize }
+                .thenBy { it.minEpisode }
+            ReiAnixLibrarySort.MODIFICATION -> compareByDescending<SortMetrics> { it.maxModifiedAt }
+            ReiAnixLibrarySort.DURATION -> compareByDescending<SortMetrics> { it.totalDuration }
+            ReiAnixLibrarySort.SIZE -> compareByDescending<SortMetrics> { it.totalSize }
             ReiAnixLibrarySort.FAVORITES_FIRST -> compareByDescending<SortMetrics> { it.anime.favorite }
             ReiAnixLibrarySort.PINNED_FIRST -> compareByDescending<SortMetrics> { it.anime.pinned }
             ReiAnixLibrarySort.TITLE_ASC -> compareBy<SortMetrics> { it.anime.title.trim().lowercase() }
