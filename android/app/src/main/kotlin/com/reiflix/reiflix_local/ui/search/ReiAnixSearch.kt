@@ -362,6 +362,7 @@ private fun SearchNoResultsState(
         title = "Nenhum resultado",
         message = "Nenhum conteúdo local corresponde a \"" + query.trim() + "\".",
     )
+}
 
 @Composable
 private fun SearchLoading(
