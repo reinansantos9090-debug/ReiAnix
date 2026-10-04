@@ -11,6 +11,7 @@ from flet.auth import OAuthProvider
 from app_config import GOOGLE_CLIENT_ID as CONFIG_GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URL as CONFIG_GOOGLE_REDIRECT_URL, GOOGLE_WEB_CLIENT_ID as CONFIG_GOOGLE_WEB_CLIENT_ID
 from core.android_bridge import AndroidBridge
 from core.compose_library_bridge import ComposeLibraryBridge
+from core.compose_settings_bridge import ComposeSettingsBridge
 from core.navigation import NavigationController, SafSelectionState
 from core.scan_coordinator import ScanCoordinator, ScanOrigin, ScanState, ScanTarget
 from core.storage_access import (
@@ -104,8 +105,18 @@ async def main(page: ft.Page):
         store,
         enabled=bridge.available,
     )
+    compose_settings_bridge = ComposeSettingsBridge(
+        data_dir,
+        settings,
+        account_provider=lambda: store.account(),
+        account_state_provider=lambda: account_state[0],
+        storage_available=bridge.available,
+        enabled=bridge.available,
+    )
     if compose_library_bridge.enabled:
         compose_library_bridge.request_publish("startup")
+    if compose_settings_bridge.enabled:
+        compose_settings_bridge.request_publish("startup")
     current=[None]
     account_state=["connected" if store.account().get("email") else "disconnected"]
     diagnostics = DiagnosticTimeline()
