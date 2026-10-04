@@ -551,7 +551,10 @@ private fun HomeContinueCard(
             ReiAnixLocalArtwork(
                 localPath = item.artwork?.localPath,
                 contentDescription = item.animeTitle,
-                modifier = Modifier.size(width = ReiAnixTokens.Dimensions.episodeThumbnailWidth, height = ReiAnixTokens.Dimensions.episodeThumbnailHeight),
+                modifier = Modifier.size(
+                    width = ReiAnixTokens.Dimensions.continuePosterWidth,
+                    height = ReiAnixTokens.Dimensions.continuePosterHeight,
+                ),
                 placeholder = "Sem arte",
             )
             Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
