@@ -41,11 +41,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -468,88 +466,15 @@ private fun DetailsEpisodeItem(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Surface(
+    ReiAnixEpisodeCard(
+        episode = episode,
         modifier = Modifier
-            .fillMaxWidth()
             .padding(
                 horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                 vertical = ReiAnixTokens.Spacing.xs,
             ),
-        shape = ReiAnixTokens.Shapes.card,
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(ReiAnixTokens.Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ReiAnixLocalArtwork(
-                localPath = episode.artwork?.localPath,
-                contentDescription = episode.displayTitle,
-                modifier = Modifier
-                    .height(64.dp)
-                     .fillMaxWidth(ReiAnixTokens.Dimensions.detailsEpisodeThumbnailFraction),
-                contentScale = ContentScale.Crop,
-                placeholder = "Sem thumbnail",
-                maxDimensionPx = 320,
-            )
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = ReiAnixTokens.Spacing.sm)
-                    .semantics {
-                        contentDescription = "Abrir " + episode.displayTitle
-                    }
-                    .then(
-                        if (episode.isPlayable) {
-                            Modifier.clickable { onWatch(episode.id) }
-                        } else {
-                            Modifier
-                        },
-                    ),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = formatEpisodeNumber(episode.number) + " • " + episode.displayTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = buildString {
-                        formatDuration(episode.durationSeconds)?.let {
-                            append(it)
-                        }
-                        episode.progressPercent?.let {
-                            if (isNotEmpty()) append(" • ")
-                            append(it)
-                            append("% assistido")
-                        }
-                        if (isEmpty()) append("Duração indisponível")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                LinearProgressIndicator(
-                    progress = { episode.progressFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                         .height(ReiAnixTokens.Dimensions.progressHeight),
-                )
-                if (!episode.isPlayable) {
-                    ReiAnixFileUnavailableState(
-                        message = "Restaure o arquivo na fonte autorizada e atualize a biblioteca.",
-                        modifier = Modifier.fillMaxWidth(),
-                        compact = true,
-                    )
-                }
-            }
-
+        onPlay = { onWatch(episode.id) },
+        trailingContent = {
             Box {
                 IconButton(
                     onClick = { menuExpanded = true },
@@ -584,9 +509,10 @@ private fun DetailsEpisodeItem(
                     )
                 }
             }
-        }
-    }
+        },
+    )
 }
+
 
 private fun formatEpisodeNumber(number: Double?): String {
     val value = number?.takeIf { it.isFinite() } ?: return "Episódio"
