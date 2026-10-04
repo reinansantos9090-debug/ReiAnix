@@ -523,6 +523,7 @@ private fun HomeContinueSection(
             items(
                 items = items,
                 key = { it.stableKey },
+                contentType = { "home-continue-episode" },
             ) { item ->
                 HomeContinueCard(item = item, onWatch = onWatch)
             }
@@ -607,6 +608,7 @@ private fun HomeAnimeSection(
             items(
                 items = items,
                 key = { it.stableKey },
+                contentType = { "home-my-list-anime" },
             ) { anime ->
                 HomeAnimeCard(
                     title = anime.title,
