@@ -251,10 +251,10 @@ fun ReiAnixNavigationHost(
                             selected = currentRoute == destination.route,
                             onClick = { navController.navigateToTopLevel(destination.route) },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = ReiAnixTokens.Colors.primary,
-                                selectedTextColor = ReiAnixTokens.Colors.primary,
-                                unselectedIconColor = ReiAnixTokens.Colors.textMuted,
-                                unselectedTextColor = ReiAnixTokens.Colors.textMuted,
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             ),
                             icon = {
                                 Icon(
