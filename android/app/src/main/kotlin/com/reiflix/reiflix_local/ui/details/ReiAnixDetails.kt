@@ -783,6 +783,7 @@ private fun DetailsHero(
 }
 
 @Composable
+}
 private fun DetailsHeroIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
@@ -1102,5 +1103,4 @@ private fun seasonLabel(raw: String): String = when (raw.trim().uppercase(Locale
     "SUMMER" -> "Verão"
     "FALL" -> "Outono"
     else -> raw.trim()
-}
 }
