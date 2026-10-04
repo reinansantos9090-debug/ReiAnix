@@ -4,7 +4,6 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReiAnixLibraryViewModelContractTest {
