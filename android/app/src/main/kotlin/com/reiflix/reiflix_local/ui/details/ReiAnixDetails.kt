@@ -91,11 +91,8 @@ fun ReiAnixDetailsRoute(
     val detailsStateFlow = remember(viewModel, canonicalId) {
         viewModel.detailsState(canonicalId)
     }
-    val initialState = remember(viewModel, canonicalId) {
-        ReiAnixDetailsUiStateProjection.from(viewModel.uiState.value, canonicalId)
-    }
     val state by detailsStateFlow.collectAsStateWithLifecycle(
-        initialValue = initialState,
+        initialValue = ReiAnixDetailsUiState(),
     )
 
     ReiAnixDetailsScreen(
