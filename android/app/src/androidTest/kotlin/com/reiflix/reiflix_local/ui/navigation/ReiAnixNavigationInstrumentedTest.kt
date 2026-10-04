@@ -135,14 +135,14 @@ class ReiAnixNavigationInstrumentedTest {
     }
 
     @Test
-    fun bottomNavigationOnlyExistsOnTopLevelDestinations() {
+    fun bottomNavigationIsShownOnDetailsButHiddenInPlayer() {
         composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
             .assertIsDisplayed()
 
         navController.navigateToDetails("42", ReiAnixRoutes.HOME)
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertDoesNotExist()
+            .assertIsDisplayed()
 
         composeRule.activity.onBackPressedDispatcher.onBackPressed()
         composeRule.waitForIdle()
@@ -243,7 +243,16 @@ class ReiAnixNavigationInstrumentedTest {
             composeRule.onNodeWithText("animeId=anime-$origin").assertExists()
             composeRule.onNodeWithText("origin=$origin").assertExists()
             composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-                .assertDoesNotExist()
+                .assertIsDisplayed()
+            composeRule.onNodeWithText(
+                when (origin) {
+                    ReiAnixRoutes.HOME -> "Início"
+                    ReiAnixRoutes.LIBRARY -> "Biblioteca"
+                    ReiAnixRoutes.SEARCH -> "Buscar"
+                    ReiAnixRoutes.SETTINGS -> "Ajustes"
+                    else -> "Buscar"
+                },
+            ).assertIsSelected()
 
             composeRule.activity.onBackPressedDispatcher.onBackPressed()
             composeRule.waitForIdle()
