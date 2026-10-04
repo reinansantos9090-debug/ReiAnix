@@ -1,5 +1,7 @@
-package com.reiflix.reiflix_local
+package com.reiflix.reiflix_local.scanner
 
+import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.storage.NativeIndex
 import android.content.Context
 import android.util.Log
 import org.json.JSONArray

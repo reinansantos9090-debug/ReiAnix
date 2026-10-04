@@ -1,5 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reiflix.reiflix_local.scanner
 
+import com.reiflix.reiflix_local.MainActivity
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
