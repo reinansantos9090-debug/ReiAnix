@@ -42,7 +42,7 @@ enum class ReiAnixLibrarySort(val label: String) {
     }
 }
 
-internal object ReiAnixLibraryFilterEngine {
+object ReiAnixLibraryFilterEngine {
     fun filter(
         animes: List<ReiAnixAnimeUiModel>,
         filters: ReiAnixLibraryFilters,
