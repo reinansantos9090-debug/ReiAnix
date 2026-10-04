@@ -259,6 +259,8 @@ class ComposeLibraryBridge:
             "main_title": source.get("main_title") or source.get("title"),
             "lookup_title": source.get("lookup_title"),
             "favorite": source.get("favorite"),
+            "is_pinned": source.get("is_pinned"),
+            "last_played_at": source.get("last_played_at"),
             "media_kind": source.get("media_kind") or meta.get("media_kind"),
             "year": source.get("year"),
             "playback_target_episode_id": (
@@ -318,6 +320,9 @@ class ComposeLibraryBridge:
             "missing": source.get("missing"),
             "progress": source.get("progress"),
             "duration": source.get("duration"),
+            "last_played_at": source.get("last_played_at"),
+            "modified_at": source.get("modified_at"),
+            "file_size": source.get("file_size"),
             "watched": source.get("watched"),
             "consumption_state": source.get("consumption_state"),
             "artwork_local_path": (
