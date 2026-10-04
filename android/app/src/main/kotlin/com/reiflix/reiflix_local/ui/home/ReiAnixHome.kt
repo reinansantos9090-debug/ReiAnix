@@ -38,7 +38,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -297,8 +296,7 @@ private fun HomeHeader(
             text = "ReiAnix",
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Bold,
-        )
+                    )
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = onSearch,
@@ -434,7 +432,7 @@ private fun HomeHero(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(320.dp)
+            .height(ReiAnixTokens.Dimensions.detailsHeroMaxHeight)
             .clip(ReiAnixTokens.Shapes.large),
     ) {
         ReiAnixLocalArtwork(
@@ -553,7 +551,7 @@ private fun HomeContinueCard(
             ReiAnixLocalArtwork(
                 localPath = item.artwork?.localPath,
                 contentDescription = item.animeTitle,
-                modifier = Modifier.size(width = 76.dp, height = 108.dp),
+                modifier = Modifier.size(width = ReiAnixTokens.Dimensions.episodeThumbnailWidth, height = ReiAnixTokens.Dimensions.episodeThumbnailHeight),
                 placeholder = "Sem arte",
             )
             Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
@@ -587,7 +585,7 @@ private fun HomeContinueCard(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
                 )
             }
         }
