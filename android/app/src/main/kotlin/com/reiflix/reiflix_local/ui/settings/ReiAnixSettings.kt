@@ -98,25 +98,29 @@ fun ReiAnixSettingsRoute(
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
 
-    if (selectedCategory != null) {
-        ReiAnixComposeSettingsCategoryScreen(
-            category = selectedCategory!!,
-            state = state,
-            onBack = { selectedCategory = null },
-            onUpdateSetting = viewModel::setSetting,
-        )
-    } else {
-        ReiAnixSettingsScreen(
-            state = state,
-            onBack = onBack,
-            onOpenCategory = { label ->
-                if (label in NativeManagedSettingsCategories) {
-                    selectedCategory = label
-                } else {
-                    onOpenCategory(label)
-                }
-            },
-        )
+    com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme(
+        themeMode = state.settings["appearance.theme"],
+    ) {
+        if (selectedCategory != null) {
+            ReiAnixComposeSettingsCategoryScreen(
+                category = selectedCategory!!,
+                state = state,
+                onBack = { selectedCategory = null },
+                onUpdateSetting = viewModel::setSetting,
+            )
+        } else {
+            ReiAnixSettingsScreen(
+                state = state,
+                onBack = onBack,
+                onOpenCategory = { label ->
+                    if (label in NativeManagedSettingsCategories) {
+                        selectedCategory = label
+                    } else {
+                        onOpenCategory(label)
+                    }
+                },
+            )
+        }
     }
 }
 
