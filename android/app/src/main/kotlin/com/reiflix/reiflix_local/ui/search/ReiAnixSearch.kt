@@ -96,7 +96,7 @@ fun ReiAnixSearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background)
+            .background(MaterialTheme.colorScheme.background)
             .imePadding(),
     ) {
         Row(
@@ -125,7 +125,7 @@ fun ReiAnixSearchScreen(
             Text(
                 text = "Buscar",
                 style = MaterialTheme.typography.headlineSmall,
-                color = ReiAnixTokens.Colors.text,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
@@ -274,7 +274,7 @@ private fun SearchResultCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(ReiAnixTokens.Shapes.card)
-            .background(ReiAnixTokens.Colors.surface)
+            .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)
             .padding(ReiAnixTokens.Spacing.sm)
             .semantics {
@@ -305,7 +305,7 @@ private fun SearchResultCard(
             Text(
                 text = anime.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = ReiAnixTokens.Colors.text,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -323,7 +323,7 @@ private fun SearchResultCard(
                 Text(
                     text = metadata.joinToString(" • "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -333,7 +333,7 @@ private fun SearchResultCard(
                 Text(
                     text = anime.genres.joinToString(" • ") { it.name },
                     style = MaterialTheme.typography.bodySmall,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -386,7 +386,7 @@ private fun SearchLoading(
                 } else {
                     "Carregando biblioteca…"
                 },
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -409,13 +409,13 @@ private fun SearchMessageState(
         Text(
             text = title,
             style = MaterialTheme.typography.headlineSmall,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = message,
             style = MaterialTheme.typography.bodyLarge,
-            color = ReiAnixTokens.Colors.textMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
         )
         if (actionLabel != null) {
