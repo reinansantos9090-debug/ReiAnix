@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
@@ -95,7 +96,8 @@ fun ReiAnixSearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background),
+            .background(ReiAnixTokens.Colors.background)
+            .imePadding(),
     ) {
         Row(
             modifier = Modifier
@@ -245,7 +247,7 @@ private fun SearchResults(
             start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
             end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
             top = ReiAnixTokens.Spacing.sm,
-            bottom = ReiAnixTokens.Spacing.huge + 56.dp,
+            bottom = ReiAnixTokens.Spacing.huge,
         ),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
