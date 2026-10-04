@@ -857,7 +857,7 @@ class SettingsView:
             account_control = (
                 ft.FilledButton("Entrar com Google", on_click=lambda _: start_task(on_login))
                 if not connected else
-                ft.OutlinedButton("Sair", on_click=lambda _: on_logout())
+                ft.OutlinedButton("Sair", on_click=lambda _: start_task(on_logout))
             )
             if should_materialize_section("Conta"):
                 items.append(section("Conta", ft.Icons.PERSON_OUTLINE, [
