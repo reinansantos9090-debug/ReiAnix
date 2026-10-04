@@ -1,14 +1,8 @@
 package com.reiflix.reiflix_local.ui.player
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,14 +15,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistPlay
-import androidx.compose.material.icons.filled.Replay10
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,12 +28,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -54,9 +41,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 data class ReiAnixNativePlayerUiState(
     val title: String = "Episódio",
@@ -78,6 +65,11 @@ data class ReiAnixNativePlayerUiState(
     val safeBottomPx: Int = 0,
 )
 
+/**
+ * Full-size convenience composable. NativePlayerActivity currently mounts the
+ * top/center/bottom variants separately so GestureLayer keeps the video touch
+ * surface whenever the controls are hidden.
+ */
 @Composable
 fun ReiAnixNativePlayerControls(
     state: ReiAnixNativePlayerUiState,
@@ -90,179 +82,21 @@ fun ReiAnixNativePlayerControls(
     onSource: () -> Unit,
     onNext: () -> Unit,
 ) {
-    val density = LocalDensity.current
-    val safeTop = with(density) { state.safeTopPx.toDp() }
-    val safeBottom = with(density) { state.safeBottomPx.toDp() }
-    val duration = state.durationMs.takeIf { it > 0L } ?: 0L
-    var sliderFraction by remember(duration) {
-        mutableFloatStateOf(
-            if (duration > 0L) {
-                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            } else {
-                0f
-            },
+    if (!state.controlsVisible || state.locked || state.errorVisible) return
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        ReiAnixNativePlayerTopControls(
+            state = state,
+            onBack = onBack,
         )
-    }
-    var userDragging by remember { mutableStateOf(false) }
-    LaunchedEffect(state.positionMs, state.durationMs, userDragging) {
-        if (!userDragging) {
-            sliderFraction = if (duration > 0L) {
-                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
-        }
-    }
-    val displayedPosition = if (duration > 0L) {
-        (sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration)
-    } else {
-        state.positionMs.coerceAtLeast(0L)
-    }
-    val playScale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (state.isPlaying) 1.04f else 1f,
-        animationSpec = androidx.compose.animation.core.tween(ReiAnixTokens.Motion.stateChangeMillis),
-        label = "player-play-scale",
-    )
-
-    if (state.locked || state.errorVisible) {
-        return
-    }
-
-    AnimatedVisibility(
-        visible = state.controlsVisible,
-        enter = fadeIn(androidx.compose.animation.core.tween(ReiAnixTokens.Motion.contentEnterMillis)),
-        exit = fadeOut(androidx.compose.animation.core.tween(ReiAnixTokens.Motion.contentExitMillis)),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            PlayerTopOverlay(
-                title = state.title,
-                episodeLabel = state.episodeLabel,
-                technicalLine = state.technicalLine,
-                safeTop = safeTop,
-                onBack = onBack,
-            )
-
-            PlayerCenterControls(
-                isPlaying = state.isPlaying,
-                isBuffering = state.isBuffering,
-                ended = state.ended,
-                playScale = playScale,
-                onPlayPause = onPlayPause,
-                onSeekRelative = onSeekRelative,
-            )
-
-            PlayerBottomOverlay(
-                positionMs = displayedPosition,
-                durationMs = duration,
-                sliderFraction = sliderFraction,
-                safeBottom = safeBottom,
-                canNext = state.canNext,
-                onSliderChanged = {
-                    userDragging = true
-                    sliderFraction = it.coerceIn(0f, 1f)
-                },
-                onSliderFinished = {
-                    if (duration > 0L) {
-                        onSeekTo((sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration))
-                    }
-                    userDragging = false
-                },
-                onToggleLock = onToggleLock,
-                onResize = onResize,
-                onSource = onSource,
-                onNext = onNext,
-            )
-        }
-    }
-}
-
-@Composable
-fun ReiAnixNativePlayerTopControls(
-    state: ReiAnixNativePlayerUiState,
-    onBack: () -> Unit,
-) {
-    PlayerTopOverlay(
-        title = state.title,
-        episodeLabel = state.episodeLabel,
-        technicalLine = state.technicalLine,
-        safeTop = with(LocalDensity.current) { state.safeTopPx.toDp() },
-        onBack = onBack,
-    )
-}
-
-@Composable
-fun ReiAnixNativePlayerCenterControls(
-    state: ReiAnixNativePlayerUiState,
-    onPlayPause: () -> Unit,
-    onSeekRelative: (Long) -> Unit,
-) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        PlayerCenterControls(
-            isPlaying = state.isPlaying,
-            isBuffering = state.isBuffering,
-            ended = state.ended,
-            playScale = 1f,
+        ReiAnixNativePlayerCenterControls(
+            state = state,
             onPlayPause = onPlayPause,
             onSeekRelative = onSeekRelative,
         )
-    }
-}
-
-@Composable
-fun ReiAnixNativePlayerBottomControls(
-    state: ReiAnixNativePlayerUiState,
-    onSeekTo: (Long) -> Unit,
-    onToggleLock: () -> Unit,
-    onResize: () -> Unit,
-    onSource: () -> Unit,
-    onNext: () -> Unit,
-) {
-    val duration = state.durationMs.takeIf { it > 0L } ?: 0L
-    var sliderFraction by remember(duration) {
-        mutableFloatStateOf(
-            if (duration > 0L) {
-                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            } else {
-                0f
-            },
-        )
-    }
-    var userDragging by remember { mutableStateOf(false) }
-    LaunchedEffect(state.positionMs, state.durationMs, userDragging) {
-        if (!userDragging) {
-            sliderFraction = if (duration > 0L) {
-                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        PlayerBottomOverlay(
-            positionMs = if (duration > 0L) {
-                (sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration)
-            } else {
-                state.positionMs.coerceAtLeast(0L)
-            },
-            durationMs = duration,
-            sliderFraction = sliderFraction,
-            safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() },
-            canNext = state.canNext,
-            onSliderChanged = {
-                userDragging = true
-                sliderFraction = it.coerceIn(0f, 1f)
-            },
-            onSliderFinished = {
-                if (duration > 0L) {
-                    onSeekTo((sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration))
-                }
-                userDragging = false
-            },
+        ReiAnixNativePlayerBottomControls(
+            state = state,
+            onSeekTo = onSeekTo,
             onToggleLock = onToggleLock,
             onResize = onResize,
             onSource = onSource,
@@ -272,29 +106,28 @@ fun ReiAnixNativePlayerBottomControls(
 }
 
 @Composable
-private fun PlayerTopOverlay(
-    title: String,
-    episodeLabel: String,
-    technicalLine: String,
-    safeTop: androidx.compose.ui.unit.Dp,
+fun ReiAnixNativePlayerTopControls(
+    state: ReiAnixNativePlayerUiState,
     onBack: () -> Unit,
 ) {
+    val safeTop = with(LocalDensity.current) { state.safeTopPx.toDp() }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color.Black.copy(alpha = 0.86f),
-                        Color.Black.copy(alpha = 0.52f),
+                        Color.Black.copy(alpha = 0.88f),
+                        Color.Black.copy(alpha = 0.50f),
                         Color.Transparent,
                     ),
                 ),
             )
             .padding(
-                start = 6.dp,
+                start = 4.dp,
                 end = 10.dp,
-                top = safeTop + 4.dp,
+                top = safeTop + 2.dp,
                 bottom = 24.dp,
             ),
     ) {
@@ -318,30 +151,30 @@ private fun PlayerTopOverlay(
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .fillMaxWidth(0.82f)
-                .padding(top = 4.dp),
+                .fillMaxWidth(0.86f)
+                .padding(top = 3.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = episodeLabel,
-                color = Color.White.copy(alpha = 0.96f),
+                text = state.episodeLabel.ifBlank { "Episódio" },
+                color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
             )
-            if (technicalLine.isNotBlank()) {
+            if (state.technicalLine.isNotBlank()) {
                 Text(
-                    text = technicalLine,
+                    text = state.technicalLine,
                     color = Color.White.copy(alpha = 0.78f),
                     fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                 )
             }
             Text(
-                text = title,
-                color = Color.White,
+                text = state.title.ifBlank { "Episódio" },
+                color = Color.White.copy(alpha = 0.98f),
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
                 maxLines = 2,
             )
         }
@@ -349,85 +182,86 @@ private fun PlayerTopOverlay(
 }
 
 @Composable
-private fun BoxScope.PlayerCenterControls(
-    isPlaying: Boolean,
-    isBuffering: Boolean,
-    ended: Boolean,
-    playScale: Float,
+fun ReiAnixNativePlayerCenterControls(
+    state: ReiAnixNativePlayerUiState,
     onPlayPause: () -> Unit,
     onSeekRelative: (Long) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.align(Alignment.Center),
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
     ) {
-        CirclePlayerButton(
-            icon = Icons.Filled.Replay10,
-            description = "Voltar 10 segundos",
-            onClick = { onSeekRelative(-10_000L) },
-        )
-
-        Box(
-            modifier = Modifier
-                .size(76.dp)
-                .graphicsLayer {
-                    scaleX = playScale
-                    scaleY = playScale
-                },
-            contentAlignment = Alignment.Center,
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(22.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(
-                onClick = onPlayPause,
+            PlayerSeekGlyphButton(
+                glyph = "↶",
+                seconds = "10",
+                description = "Voltar 10 segundos",
+                onClick = { onSeekRelative(-10_000L) },
+            )
+
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .size(76.dp)
                     .background(
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.94f),
                         shape = CircleShape,
-                    )
-                    .semantics {
-                        contentDescription = if (ended) {
-                            "Reproduzir novamente"
-                        } else if (isPlaying) {
-                            "Pausar"
-                        } else {
-                            "Reproduzir"
-                        }
-                        role = Role.Button
-                    },
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                if (isBuffering) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(30.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 3.dp,
-                    )
-                } else {
-                    Icon(
-                        imageVector = when {
-                            ended -> Icons.Filled.PlayArrow
-                            isPlaying -> Icons.Filled.Pause
-                            else -> Icons.Filled.PlayArrow
+                IconButton(
+                    onClick = onPlayPause,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics {
+                            contentDescription = when {
+                                state.ended -> "Reproduzir novamente"
+                                state.isPlaying -> "Pausar"
+                                else -> "Reproduzir"
+                            }
+                            role = Role.Button
                         },
-                        contentDescription = null,
-                        modifier = Modifier.size(34.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                    )
+                ) {
+                    if (state.isBuffering) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(30.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 3.dp,
+                        )
+                    } else if (state.isPlaying && !state.ended) {
+                        Text(
+                            text = "Ⅱ",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(34.dp),
+                        )
+                    }
                 }
             }
-        }
 
-        CirclePlayerButton(
-            icon = Icons.Filled.Forward10,
-            description = "Avançar 10 segundos",
-            onClick = { onSeekRelative(10_000L) },
-        )
+            PlayerSeekGlyphButton(
+                glyph = "↷",
+                seconds = "10",
+                description = "Avançar 10 segundos",
+                onClick = { onSeekRelative(10_000L) },
+            )
+        }
     }
 }
 
 @Composable
-private fun CirclePlayerButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun PlayerSeekGlyphButton(
+    glyph: String,
+    seconds: String,
     description: String,
     onClick: () -> Unit,
 ) {
@@ -435,39 +269,68 @@ private fun CirclePlayerButton(
         onClick = onClick,
         modifier = Modifier
             .size(58.dp)
-            .background(
-                color = Color.Black.copy(alpha = 0.55f),
-                shape = CircleShape,
-            )
+            .background(Color.Black.copy(alpha = 0.55f), CircleShape)
             .semantics {
                 contentDescription = description
                 role = Role.Button
             },
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(30.dp),
-        )
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = seconds,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = glyph,
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
     }
 }
 
 @Composable
-private fun PlayerBottomOverlay(
-    positionMs: Long,
-    durationMs: Long,
-    sliderFraction: Float,
-    safeBottom: androidx.compose.ui.unit.Dp,
-    canNext: Boolean,
-    onSliderChanged: (Float) -> Unit,
-    onSliderFinished: () -> Unit,
+fun ReiAnixNativePlayerBottomControls(
+    state: ReiAnixNativePlayerUiState,
+    onSeekTo: (Long) -> Unit,
     onToggleLock: () -> Unit,
     onResize: () -> Unit,
     onSource: () -> Unit,
     onNext: () -> Unit,
 ) {
-    val durationKnown = durationMs > 0L
+    val duration = state.durationMs.takeIf { it > 0L } ?: 0L
+    var sliderFraction by remember(duration) {
+        mutableFloatStateOf(
+            if (duration > 0L) {
+                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            },
+        )
+    }
+    var userDragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.positionMs, state.durationMs, userDragging) {
+        if (!userDragging) {
+            sliderFraction = if (duration > 0L) {
+                (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        }
+    }
+
+    val displayPosition = if (duration > 0L) {
+        (sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration)
+    } else {
+        state.positionMs.coerceAtLeast(0L)
+    }
+    val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -475,26 +338,24 @@ private fun PlayerBottomOverlay(
                 Brush.verticalGradient(
                     listOf(
                         Color.Transparent,
-                        Color.Black.copy(alpha = 0.46f),
-                        Color.Black.copy(alpha = 0.90f),
+                        Color.Black.copy(alpha = 0.50f),
+                        Color.Black.copy(alpha = 0.92f),
                     ),
                 ),
             )
             .padding(
                 start = 10.dp,
                 end = 10.dp,
-                top = 30.dp,
+                top = 26.dp,
                 bottom = safeBottom + 4.dp,
             ),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = formatPlayerTime(positionMs),
+                text = formatPlayerTime(displayPosition),
                 color = Color.White,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
@@ -502,14 +363,27 @@ private fun PlayerBottomOverlay(
             )
             Slider(
                 value = sliderFraction,
-                onValueChange = onSliderChanged,
-                onValueChangeFinished = onSliderFinished,
-                enabled = durationKnown,
+                onValueChange = {
+                    userDragging = true
+                    sliderFraction = it.coerceIn(0f, 1f)
+                },
+                onValueChangeFinished = {
+                    if (duration > 0L) {
+                        onSeekTo(
+                            (sliderFraction * duration.toFloat())
+                                .toLong()
+                                .coerceIn(0L, duration),
+                        )
+                    }
+                    userDragging = false
+                },
+                enabled = duration > 0L,
                 modifier = Modifier
                     .weight(1f)
-                    .height(36.dp)
+                    .height(38.dp)
                     .semantics {
                         contentDescription = "Barra de progresso"
+                        role = Role.Button
                     },
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
@@ -519,7 +393,7 @@ private fun PlayerBottomOverlay(
                 steps = 0,
             )
             Text(
-                text = if (durationKnown) formatPlayerTime(durationMs) else "--:--",
+                text = if (duration > 0L) formatPlayerTime(duration) else "--:--",
                 color = Color.White,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
@@ -532,59 +406,56 @@ private fun PlayerBottomOverlay(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 620.dp)
-                .align(Alignment.CenterHorizontally),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                .padding(horizontal = 1.dp),
+            horizontalArrangement = Arrangement.spacedBy(1.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PlayerAction(
+            PlayerBottomAction(
+                glyph = null,
                 icon = Icons.Filled.Lock,
                 label = "Bloquear toques",
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
-                modifier = Modifier.weight(1f),
             )
-            PlayerAction(
-                icon = Icons.Filled.Fullscreen,
+            PlayerBottomAction(
+                glyph = "⛶",
                 label = "Redimensionar",
                 contentDescription = "Redimensionar vídeo",
                 onClick = onResize,
-                modifier = Modifier.weight(1f),
             )
-            PlayerAction(
-                icon = Icons.Filled.PlaylistPlay,
+            PlayerBottomAction(
+                glyph = "☷",
                 label = "Fonte",
                 contentDescription = "Fonte e opções do player",
                 onClick = onSource,
-                modifier = Modifier.weight(1f),
             )
-            PlayerAction(
-                icon = Icons.Filled.SkipNext,
+            PlayerBottomAction(
+                glyph = "»",
                 label = "Próximo episódio",
                 contentDescription = "Próximo episódio",
                 onClick = onNext,
-                enabled = canNext,
-                modifier = Modifier.weight(1f),
+                enabled = state.canNext,
             )
         }
     }
 }
 
 @Composable
-private fun PlayerAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun PlayerBottomAction(
+    glyph: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     label: String,
     contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier,
     enabled: Boolean = true,
-    selectedIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     Column(
-        modifier = modifier.semantics {
-            this.contentDescription = contentDescription
-            role = Role.Button
-        },
+        modifier = Modifier
+            .weight(1f)
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         IconButton(
@@ -592,12 +463,21 @@ private fun PlayerAction(
             enabled = enabled,
             modifier = Modifier.size(42.dp),
         ) {
-            Icon(
-                imageVector = selectedIcon ?: icon,
-                contentDescription = null,
-                tint = if (enabled) Color.White else Color.White.copy(alpha = 0.36f),
-                modifier = Modifier.size(22.dp),
-            )
+            if (glyph != null) {
+                Text(
+                    text = glyph,
+                    color = if (enabled) Color.White else Color.White.copy(alpha = 0.36f),
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (enabled) Color.White else Color.White.copy(alpha = 0.36f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
         Text(
             text = label,
