@@ -2,9 +2,11 @@ package com.reiflix.reiflix_local.ui.navigation
 
 import android.net.Uri
 import androidx.annotation.Keep
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
@@ -235,7 +237,7 @@ fun ReiAnixNavigationHost(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.safeDrawing,
+        contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = {
             if (showBottomNavigation && topLevelDestinations.any { it.route == currentRoute }) {
                 NavigationBar(

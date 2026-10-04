@@ -14,10 +14,8 @@ class Prompt27ComposeInsetsContractTests(unittest.TestCase):
         source = self.read(
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
         )
-        self.assertIn(
-            "contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.safeDrawing",
-            source,
-        )
+        self.assertIn("import androidx.compose.foundation.layout.safeDrawing", source)
+        self.assertIn("contentWindowInsets = WindowInsets.safeDrawing", source)
         self.assertIn(".padding(innerPadding)", source)
         self.assertIn(".consumeWindowInsets(innerPadding)", source)
 
