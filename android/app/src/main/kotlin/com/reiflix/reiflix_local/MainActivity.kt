@@ -20,6 +20,7 @@ import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeSettingsHost
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeStorageHost
+import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -1051,32 +1052,26 @@ class MainActivity : FlutterFragmentActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    // The promoted Compose host now owns the complete secondary
+                    // navigation stack. Legacy settings/storage hosts remain only
+                    // as compatibility fallbacks for older transitional callers.
+                    if (::composeLibraryHost.isInitialized && composeLibraryHost.isVisible) {
+                        if (composeLibraryHost.handleBack()) {
+                            Log.i(tag, "BACK_COMPOSE_SHELL_HANDLED")
+                            return
+                        }
+                    }
                     if (::composeSettingsHost.isInitialized && composeSettingsHost.isVisible) {
                         if (composeSettingsHost.handleBack()) {
-                            Log.i(tag, "BACK_COMPOSE_SETTINGS_DISMISSED")
+                            Log.i(tag, "BACK_LEGACY_COMPOSE_SETTINGS_HANDLED")
                             return
                         }
                     }
                     if (::composeStorageHost.isInitialized && composeStorageHost.isVisible) {
                         if (composeStorageHost.handleBack()) {
-                            Log.i(tag, "BACK_COMPOSE_STORAGE_DISMISSED")
+                            Log.i(tag, "BACK_LEGACY_COMPOSE_STORAGE_HANDLED")
                             return
                         }
-                    }
-                    if (::composeLibraryHost.isInitialized && composeLibraryHost.isVisible) {
-                        if (composeLibraryHost.handleBack()) {
-                            Log.i(tag, "BACK_COMPOSE_DETAILS_POPPED")
-                            return
-                        }
-                        composeLibraryHost.hide()
-                        NativeMailbox.writeBestEffort(
-                            this@MainActivity,
-                            JSONObject()
-                                .put("type", "compose_library_navigation")
-                                .put("payload", JSONObject().put("destination", "back")),
-                        )
-                        Log.i(tag, "BACK_COMPOSE_LIBRARY_DISMISSED")
-                        return
                     }
                     systemBackEventCount += 1
                     val backId = systemBackEventCount
@@ -1319,7 +1314,9 @@ class MainActivity : FlutterFragmentActivity() {
             when (action) {
                 "open_library" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    composeLibraryHost.show()
+                    composeSettingsHost.hide()
+                    composeStorageHost.hide()
+                    composeLibraryHost.show(ReiAnixRoutes.LIBRARY)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
@@ -1331,19 +1328,25 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 "open_storage_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    composeStorageHost.show()
+                    composeSettingsHost.hide()
+                    composeStorageHost.hide()
+                    composeLibraryHost.show(ReiAnixRoutes.STORAGE)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
                 "open_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    composeSettingsHost.show()
+                    composeSettingsHost.hide()
+                    composeStorageHost.hide()
+                    composeLibraryHost.show(ReiAnixRoutes.SETTINGS)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
                 "hide_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeLibraryHost.hide()
                     composeSettingsHost.hide()
+                    composeStorageHost.hide()
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
