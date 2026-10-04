@@ -215,6 +215,20 @@ class ReiAnixNavigationInstrumentedTest {
     }
 
     @Test
+    fun myListRemainsASecondaryRouteAndIsNotABottomNavigationDestination() {
+        navController.navigate(ReiAnixRoutes.MY_LIST)
+        composeRule.waitForIdle()
+
+        assertEquals(
+            ReiAnixRoutes.MY_LIST,
+            navController.currentBackStackEntry?.destination?.route,
+        )
+        composeRule.onNodeWithText("Minha Lista").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
+            .assertDoesNotExist()
+    }
+
+    @Test
     fun detailsFromEveryTopLevelDestinationPreservesOriginAndBackReturnsToSource() {
         listOf(
             ReiAnixRoutes.HOME,
