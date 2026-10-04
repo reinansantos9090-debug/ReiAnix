@@ -233,7 +233,6 @@ private fun ReiAnixBottomNavigation(
         containerColor = ReiAnixTokens.Colors.surfaceNavigation,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = ReiAnixTokens.Elevation.none,
-        windowInsets = WindowInsets(0, 0, 0, 0),
     ) {
         topLevelDestinations.forEach { destination ->
             val selected = currentRoute == destination.route
