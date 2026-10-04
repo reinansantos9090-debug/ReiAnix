@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.bridge
 
+import com.reiflix.reiflix_local.MainActivity
+
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.SafScanner

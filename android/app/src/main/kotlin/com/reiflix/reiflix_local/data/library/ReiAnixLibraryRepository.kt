@@ -2,7 +2,7 @@ package com.reiflix.reiflix_local.data.library
 
 import android.content.Context
 import android.os.FileObserver
-import com.reiflix.reiflix_local.NativeMailbox
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

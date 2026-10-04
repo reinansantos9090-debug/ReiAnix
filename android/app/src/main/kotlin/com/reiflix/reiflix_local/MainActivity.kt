@@ -15,6 +15,7 @@ import com.reiflix.reiflix_local.scanner.NativeScanPublisher
 import com.reiflix.reiflix_local.scanner.SafScanner
 import com.reiflix.reiflix_local.storage.NativeIndex
 import com.reiflix.reiflix_local.storage.StorageAuthorization
+import com.reiflix.reiflix_local.storage.StorageLifecycleState
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeSettingsHost

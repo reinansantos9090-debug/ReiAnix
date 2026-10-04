@@ -3,7 +3,7 @@ package com.reiflix.reiflix_local.data.settings
 import android.content.Context
 import android.os.FileObserver
 import android.util.Log
-import com.reiflix.reiflix_local.NativeMailbox
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import org.json.JSONObject
 import java.util.UUID
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus

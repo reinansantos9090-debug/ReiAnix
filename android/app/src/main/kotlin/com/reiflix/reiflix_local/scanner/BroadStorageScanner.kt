@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.scanner
 import com.reiflix.reiflix_local.storage.NativeBatch
 import com.reiflix.reiflix_local.storage.NativeIndex
 import com.reiflix.reiflix_local.storage.StorageAuthorization
+import com.reiflix.reiflix_local.storage.BroadStorageAccessLevel
 import android.Manifest
 import android.content.Context
 import android.net.Uri
