@@ -109,6 +109,35 @@ class Prompt23NextTransitionTests(unittest.TestCase):
         self.assertIn("PREVIOUS_TRANSITION_FIRST_FRAME", first)
         self.assertIn("PREVIOUS_TRANSITION_COMMITTED", first)
 
+    def test_duplicate_command_rejects_both_next_and_previous_before_transition(self):
+        transition = self.main[
+            self.main.index("duplicate_request = bool("):
+            self.main.index("elif event_request_id:", self.main.index("duplicate_request = bool("))
+        ]
+        self.assertIn('"NEXT_REQUEST_DUPLICATE" if is_next else "PREVIOUS_REQUEST_DUPLICATE"', transition)
+        self.assertEqual(
+            transition.count("continue"),
+            1,
+            "duplicate player commands must exit before transition acceptance",
+        )
+
+    def test_stale_handoff_cannot_mutate_player_session_state(self):
+        handoff = self.main[
+            self.main.index('elif diagnostic_event == "PLAYER_HANDOFF_DISPATCHED"'):
+            self.main.index('elif diagnostic_event == "PLAYER_ACTIVITY_RESULT"', self.main.index('elif diagnostic_event == "PLAYER_HANDOFF_DISPATCHED"'))
+        ]
+        self.assertIn('current_session_id = player_active_session_id["value"]', handoff)
+        self.assertIn("not session_id", handoff)
+        self.assertIn('not player_session_active["value"]', handoff)
+        self.assertIn('current_session_id != session_id', handoff)
+        self.assertIn('continue', handoff)
+        self.assertLess(
+            handoff.index('current_session_id = player_active_session_id["value"]'),
+            handoff.index('player_active_request_id["value"] = event_request_id'),
+        )
+        self.assertIn('"PLAYER_NEXT_STALE_REJECTED"', handoff)
+        self.assertIn('"PLAYER_PREVIOUS_STALE_REJECTED"', handoff)
+
     def test_python_next_has_pre_sqlite_post_sqlite_and_pre_bridge_guards(self):
         transition = self.main[
             self.main.index("elif event_type in {'player_next_request', 'player_previous_request'}:"):
