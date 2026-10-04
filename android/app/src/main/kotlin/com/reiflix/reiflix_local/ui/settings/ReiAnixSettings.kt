@@ -984,41 +984,26 @@ private fun SettingsCardRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     trailingArrow: Boolean,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = ReiAnixTokens.Spacing.lg,
-                vertical = ReiAnixTokens.Spacing.md,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-    ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (trailingArrow) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    ReiAnixSettingCard(
+        title = title,
+        description = description,
+        icon = icon,
+        onClick = {},
+        enabled = false,
+        trailingContent = if (trailingArrow) {
+            {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            null
+        },
+    )
 }
+
 
 private fun categorySummary(label: String, settings: Map<String, String>): String =
     when (label) {
