@@ -701,11 +701,15 @@ fun ReiAnixProgressIndicator(
 @Composable
 fun ReiAnixScreen(
     modifier: Modifier = Modifier,
+    applySafeDrawing: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .then(
+                if (applySafeDrawing) Modifier.safeDrawingPadding() else Modifier,
+            )
             .padding(
                 horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                 vertical = ReiAnixTokens.Dimensions.screenTopPadding,
