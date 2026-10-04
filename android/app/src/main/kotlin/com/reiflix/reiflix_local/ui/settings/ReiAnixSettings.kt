@@ -1,6 +1,5 @@
 package com.reiflix.reiflix_local.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountCircle
@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ManageSearch
@@ -174,10 +173,9 @@ fun ReiAnixSettingsScreen(
             }
 
             items(
-                count = state.categories.size,
-                key = { index -> state.categories[index].label },
-            ) { index ->
-                val category = state.categories[index]
+                items = state.categories,
+                key = { it.label },
+            ) { category ->
                 ReiAnixSettingsCategoryCard(
                     category = category,
                     valueSummary = categorySummary(category.label, state.settings),
