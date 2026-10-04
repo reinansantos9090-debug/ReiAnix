@@ -344,7 +344,7 @@ private fun DetailsSkeletonButton(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ReiAnixDetailsReady(
+private fun ColumnScope.ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
