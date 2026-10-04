@@ -54,7 +54,7 @@ fun ReiAnixSurface(
     shape: androidx.compose.ui.graphics.Shape = ReiAnixTokens.Shapes.card,
     color: androidx.compose.ui.graphics.Color = ReiAnixTokens.Colors.surface,
     borderColor: androidx.compose.ui.graphics.Color? = null,
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable () -> Unit,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
