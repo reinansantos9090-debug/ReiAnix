@@ -5,6 +5,14 @@ import androidx.annotation.Keep
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import Icons.Filled.Home
+import Icons.Filled.List
+import Icons.Filled.Search
+import Icons.Filled.Settings
+import Icons.Outlined.OutlinedHome as OutlinedHome
+import Icons.Outlined.OutlinedList as OutlinedList
+import Icons.Outlined.OutlinedSearch as OutlinedSearch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -79,26 +87,26 @@ private val topLevelDestinations = listOf(
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.HOME,
         label = "Início",
-        selectedIcon = androidx.compose.material.icons.filled.Home,
-        unselectedIcon = androidx.compose.material.icons.outlined.Home,
+        selectedIcon = Icons.Filled.Home,
+        unselectedIcon = Icons.Outlined.OutlinedHome,
     ),
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.LIBRARY,
         label = "Biblioteca",
-        selectedIcon = androidx.compose.material.icons.filled.List,
-        unselectedIcon = androidx.compose.material.icons.outlined.List,
+        selectedIcon = Icons.Filled.List,
+        unselectedIcon = Icons.Outlined.OutlinedList,
     ),
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.SEARCH,
         label = "Buscar",
-        selectedIcon = androidx.compose.material.icons.filled.Search,
-        unselectedIcon = androidx.compose.material.icons.outlined.Search,
+        selectedIcon = Icons.Filled.Search,
+        unselectedIcon = Icons.Outlined.OutlinedSearch,
     ),
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.SETTINGS,
         label = "Ajustes",
-        selectedIcon = androidx.compose.material.icons.filled.Settings,
-        unselectedIcon = androidx.compose.material.icons.filled.Settings,
+        selectedIcon = Icons.Filled.Settings,
+        unselectedIcon = Icons.Filled.Settings,
     ),
 )
 
