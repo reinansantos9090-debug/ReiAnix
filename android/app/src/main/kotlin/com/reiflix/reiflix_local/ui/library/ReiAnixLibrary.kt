@@ -145,7 +145,7 @@ fun ReiAnixLibraryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ReiAnixTokens.Colors.background),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         LibraryHeader(
             onRefresh = onRefresh,
@@ -219,13 +219,13 @@ private fun LibraryHeader(
             Text(
                 text = "Biblioteca",
                 style = MaterialTheme.typography.headlineSmall,
-                color = ReiAnixTokens.Colors.text,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
             )
             Text(
                 text = "Seu conteúdo local",
                 style = MaterialTheme.typography.bodyMedium,
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (onSearch != null) {
@@ -251,7 +251,7 @@ private fun LibraryHeader(
             Icon(
                 imageVector = Icons.Filled.Refresh,
                 contentDescription = null,
-                tint = ReiAnixTokens.Colors.text,
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -420,11 +420,11 @@ private fun LibraryFilterChip(
         },
         colors = AssistChipDefaults.assistChipColors(
             containerColor = if (selected) {
-                ReiAnixTokens.Colors.primaryContainer
+                MaterialTheme.colorScheme.primaryContainer
             } else {
-                ReiAnixTokens.Colors.surfaceVariant
+                MaterialTheme.colorScheme.surfaceVariant
             },
-            labelColor = ReiAnixTokens.Colors.text,
+            labelColor = MaterialTheme.colorScheme.onSurface,
         ),
     )
 }
@@ -439,7 +439,7 @@ private fun LibraryAnimeCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(ReiAnixTokens.Shapes.card)
-            .background(ReiAnixTokens.Colors.surface)
+            .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)
             .padding(ReiAnixTokens.Spacing.sm)
             .semantics {
@@ -473,14 +473,14 @@ private fun LibraryAnimeCard(
                 Text(
                     text = anime.title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = ReiAnixTokens.Colors.text,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = anime.episodeCountLabel,
                     style = MaterialTheme.typography.bodySmall,
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -502,7 +502,7 @@ private fun LibraryAnimeCard(
                     tint = if (anime.favorite) {
                         ReiAnixTokens.Colors.warning
                     } else {
-                        ReiAnixTokens.Colors.textMuted
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
             }
@@ -537,12 +537,12 @@ private fun LibraryStateBadge(
 ) {
     Surface(
         shape = ReiAnixTokens.Shapes.chip,
-        color = ReiAnixTokens.Colors.surfaceVariant,
+        color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(
                 horizontal = ReiAnixTokens.Spacing.sm,
                 vertical = ReiAnixTokens.Spacing.xs,
@@ -560,7 +560,7 @@ private fun LibraryScanBanner(
         modifier = modifier
             .fillMaxWidth()
             .clip(ReiAnixTokens.Shapes.small)
-            .background(ReiAnixTokens.Colors.surfaceVariant)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(ReiAnixTokens.Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -573,12 +573,12 @@ private fun LibraryScanBanner(
             Text(
                 text = "Varredura em andamento",
                 style = MaterialTheme.typography.titleMedium,
-                color = ReiAnixTokens.Colors.text,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = scanState.ifBlank { "SCANNING" },
                 style = MaterialTheme.typography.bodySmall,
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -605,12 +605,12 @@ private fun LibraryLoading(
                 } else {
                     "Carregando biblioteca…"
                 },
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (scanInProgress) {
                 Text(
                     text = "Varredura em andamento" + scanState.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty(),
-                    color = ReiAnixTokens.Colors.textMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -635,13 +635,13 @@ private fun LibraryMessageState(
         Text(
             text = title,
             style = MaterialTheme.typography.headlineSmall,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = message,
             style = MaterialTheme.typography.bodyLarge,
-            color = ReiAnixTokens.Colors.textMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
         )
         Button(
@@ -671,12 +671,12 @@ private fun LibraryFilteredEmptyState(
         Text(
             text = if (filters.hasAnyFilter) "Nenhum resultado" else "Nenhum conteúdo",
             style = MaterialTheme.typography.titleLarge,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         if (filters.hasAnyFilter) {
             Text(
                 text = "Nenhum título corresponde aos filtros atuais.",
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onClearFilters) {
                 Text("Limpar filtros")
