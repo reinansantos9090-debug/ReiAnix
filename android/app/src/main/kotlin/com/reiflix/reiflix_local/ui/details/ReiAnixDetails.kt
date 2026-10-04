@@ -59,6 +59,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjection
 import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
+import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
