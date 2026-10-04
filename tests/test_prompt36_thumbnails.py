@@ -202,7 +202,7 @@ class Prompt36ThumbnailTests(unittest.TestCase):
         details = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")
         extractor = (
             ROOT
-            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/VideoThumbnailExtractor.kt"
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt"
         ).read_text(encoding="utf-8")
         activity = (
             ROOT
