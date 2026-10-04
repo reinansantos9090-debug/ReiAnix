@@ -3,7 +3,7 @@ package com.reiflix.reiflix_local
 import com.reiflix.reiflix_local.bridge.GoogleIdentity
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.bridge.NativePlayerRequest
+import com.reiflix.reiflix_local.player.NativePlayerRequest
 import com.reiflix.reiflix_local.bridge.NativeRequestState
 import com.reiflix.reiflix_local.player.DeviceInteractionProfile
 import com.reiflix.reiflix_local.player.SystemUiController
