@@ -39,7 +39,7 @@ fun ReiAnixCard(
         modifier = modifier.heightIn(min = ReiAnixTokens.Dimensions.cardMinHeight),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surface,
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = ReiAnixTokens.Elevation.card,
@@ -67,8 +67,8 @@ fun ReiAnixPrimaryButton(
         modifier = modifier.heightIn(min = ReiAnixTokens.Dimensions.buttonMinHeight),
         shape = MaterialTheme.shapes.small,
         colors = ButtonDefaults.buttonColors(
-            containerColor = ReiAnixTokens.Colors.primary,
-            contentColor = ReiAnixTokens.Colors.onPrimary,
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
         ),
     ) {
         Text(
@@ -93,11 +93,11 @@ fun ReiAnixSecondaryButton(
         modifier = modifier.heightIn(min = ReiAnixTokens.Dimensions.buttonMinHeight),
         shape = MaterialTheme.shapes.small,
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = ReiAnixTokens.Colors.text,
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            color = ReiAnixTokens.Colors.border,
+            color = MaterialTheme.colorScheme.outline,
         ),
     ) {
         Text(
@@ -130,15 +130,15 @@ fun ReiAnixChip(
         },
         shape = ReiAnixTokens.Shapes.chip,
         colors = AssistChipDefaults.assistChipColors(
-            containerColor = ReiAnixTokens.Colors.surfaceVariant,
-            labelColor = ReiAnixTokens.Colors.text,
-            disabledContainerColor = ReiAnixTokens.Colors.surfaceVariant.copy(alpha = 0.45f),
-            disabledLabelColor = ReiAnixTokens.Colors.textMuted,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            labelColor = MaterialTheme.colorScheme.onSurface,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
         border = AssistChipDefaults.assistChipBorder(
             enabled = enabled,
-            borderColor = ReiAnixTokens.Colors.border,
-            disabledBorderColor = ReiAnixTokens.Colors.divider,
+            borderColor = MaterialTheme.colorScheme.outline,
+            disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
         ),
     )
 }
@@ -155,7 +155,7 @@ fun ReiAnixSectionTitle(
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
-            color = ReiAnixTokens.Colors.text,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -163,7 +163,7 @@ fun ReiAnixSectionTitle(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = ReiAnixTokens.Spacing.xs),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -184,7 +184,7 @@ fun ReiAnixArtwork(
         modifier = modifier
             .aspectRatio(0.7f)
             .clip(shape)
-            .background(ReiAnixTokens.Colors.surfaceVariant),
+            .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         if (painter != null) {
@@ -200,7 +200,7 @@ fun ReiAnixArtwork(
             Text(
                 text = "Sem arte",
                 style = MaterialTheme.typography.labelMedium,
-                color = ReiAnixTokens.Colors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -221,8 +221,8 @@ fun ReiAnixProgressIndicator(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = ReiAnixTokens.Dimensions.progressHeight),
-        color = ReiAnixTokens.Colors.primary,
-        trackColor = ReiAnixTokens.Colors.surfaceVariant,
+        color = MaterialTheme.colorScheme.primary,
+        trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
 }
 
