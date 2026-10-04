@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 data class ReiAnixSettingsCategoryUiModel(
@@ -103,7 +104,7 @@ fun ReiAnixSettingsRoute(
         selectedCategory = null
     }
 
-    com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme(
+    ReiAnixComposeTheme(
         themeMode = state.settings["appearance.theme"],
     ) {
         if (selectedCategory != null) {
