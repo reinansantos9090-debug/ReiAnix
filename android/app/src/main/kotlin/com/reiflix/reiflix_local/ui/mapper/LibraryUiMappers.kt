@@ -47,6 +47,9 @@ object LibraryUiMappers {
             mediaFiles = source.listOfMaps("media_files").map { episode(it, id) },
             playbackTargetEpisodeId = source.longOrNull("playback_target_episode_id"),
             score = metadata.doubleOrNull("score") ?: source.doubleOrNull("score"),
+            addedAt = metadata.doubleOrNull("added_at") ?: source.doubleOrNull("added_at"),
+            lastPlayedAt = source.doubleOrNull("last_played_at"),
+            pinned = source.booleanOrNull("is_pinned") ?: metadata.booleanOrNull("is_pinned") ?: false,
         )
     }
 
@@ -92,6 +95,9 @@ object LibraryUiMappers {
             watched = source.booleanOrNull("watched"),
             consumptionState = consumptionState(source.stringOrNull("consumption_state")),
             artwork = artwork(source),
+            lastPlayedAt = source.doubleOrNull("last_played_at"),
+            modifiedAt = source.doubleOrNull("modified_at"),
+            fileSizeBytes = source.longOrNull("file_size"),
         )
     }
 
