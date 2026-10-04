@@ -3108,6 +3108,38 @@ async def main(page: ft.Page):
                             native_operation_states[str(event_request_id)] = operation_state
                             if len(native_operation_states) > 128:
                                 native_operation_states.pop(next(iter(native_operation_states)))
+                        if event_type == 'compose_settings_set':
+                            setting_key = str(payload.get('key') or '').strip()
+                            setting_value = payload.get('value')
+                            request_id = str(event_request_id or payload.get('requestId') or '').strip()
+                            supported_compose_settings = {
+                                'app.confirm_destructive',
+                                'appearance.theme',
+                                'appearance.card_size',
+                                'appearance.show_thumbnails',
+                            }
+                            if setting_key not in supported_compose_settings:
+                                logger.warning(
+                                    "[COMPOSE_SETTINGS] write rejected key=%s requestId=%s",
+                                    setting_key or '-',
+                                    request_id or '-',
+                                )
+                            else:
+                                try:
+                                    normalized = await asyncio.to_thread(settings.set, setting_key, setting_value)
+                                    apply_settings_runtime(setting_key, normalized)
+                                    logger.info(
+                                        "[COMPOSE_SETTINGS] setting persisted key=%s requestId=%s",
+                                        setting_key,
+                                        request_id or '-',
+                                    )
+                                except Exception as exc:
+                                    logger.exception(
+                                        "[COMPOSE_SETTINGS] setting write failed key=%s requestId=%s",
+                                        setting_key or '-',
+                                        request_id or '-',
+                                    )
+
                         if event_type == 'compose_settings_navigation':
                             destination = str(payload.get('destination') or '').strip().lower()
                             category = str(payload.get('category') or '').strip()
