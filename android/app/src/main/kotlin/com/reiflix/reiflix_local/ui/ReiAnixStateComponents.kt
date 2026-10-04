@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -19,6 +22,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 /**
@@ -44,13 +48,13 @@ fun ReiAnixLoadingState(
         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         Text(
             text = title,
-            style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
             text = message,
-            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -63,6 +67,7 @@ fun ReiAnixEmptyState(
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    icon: ImageVector? = null,
 ) {
     Column(
         modifier = modifier
@@ -71,15 +76,23 @@ fun ReiAnixEmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
+        icon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget),
+            )
+        }
         Text(
             text = title,
-            style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = message,
-            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (actionLabel != null && onAction != null) {
@@ -131,13 +144,13 @@ fun ReiAnixScannerInProgressState(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Varredura em andamento",
-                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = normalizedState,
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -189,7 +202,7 @@ fun ReiAnixFileUnavailableState(
         ) {
             Text(
                 text = title,
-                style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelMedium,
                 color = ReiAnixTokens.Colors.warning,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -243,6 +256,7 @@ fun ReiAnixRecoverableErrorState(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     retryLabel: String = "Tentar novamente",
+    icon: ImageVector? = Icons.Filled.ErrorOutline,
 ) {
     Column(
         modifier = modifier
@@ -251,6 +265,14 @@ fun ReiAnixRecoverableErrorState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
+        icon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget),
+            )
+        }
         Text(
             text = title,
             style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
@@ -262,8 +284,9 @@ fun ReiAnixRecoverableErrorState(
             style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(onClick = onRetry) {
-            Text(retryLabel)
-        }
+        ReiAnixPrimaryButton(
+            text = retryLabel,
+            onClick = onRetry,
+        )
     }
 }
