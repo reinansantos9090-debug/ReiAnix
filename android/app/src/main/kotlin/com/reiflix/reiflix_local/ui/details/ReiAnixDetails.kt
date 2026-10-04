@@ -23,8 +23,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -289,8 +287,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                         text = anime.title,
                         style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 3,
+                                                maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
 
@@ -439,17 +436,10 @@ private fun DetailsSeasonSelector(
             contentType = { "details-season" },
         ) { season ->
             val selected = season.stableKey == selectedSeasonKey
-            AssistChip(
+            com.reiflix.reiflix_local.ui.ReiAnixChip(
+                text = season.title,
                 onClick = { onSeasonSelected(season.stableKey) },
-                label = { Text(season.title) },
-                colors = AssistChipDefaults.assistChipColors(
-                    containerColor = if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    },
-                    labelColor = MaterialTheme.colorScheme.onSurface,
-                ),
+                selected = selected,
                 modifier = Modifier.semantics {
                     contentDescription = "Selecionar " + season.title
                 },
@@ -539,22 +529,10 @@ private fun formatDuration(seconds: Double?): String? {
 private fun DetailsFactChip(
     text: String,
 ) {
-    Surface(
-        shape = ReiAnixTokens.Shapes.chip,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(
-                horizontal = ReiAnixTokens.Spacing.sm,
-                vertical = ReiAnixTokens.Spacing.xs,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+    com.reiflix.reiflix_local.ui.ReiAnixBadge(
+        text = text,
+        tone = com.reiflix.reiflix_local.ui.ReiAnixBadgeTone.Neutral,
+    )
 }
 
 
