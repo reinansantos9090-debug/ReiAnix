@@ -307,10 +307,9 @@ private fun ColumnScope.LibraryReadyContent(
             contentPadding = PaddingValues(end = ReiAnixTokens.Dimensions.screenHorizontalPadding),
         ) {
             item(key = "filter-title") {
-                AssistChip(
-                    onClick = {},
-                    enabled = false,
-                    label = { Text("Filtros") },
+                com.reiflix.reiflix_local.ui.ReiAnixBadge(
+                    text = "Filtros",
+                    tone = com.reiflix.reiflix_local.ui.ReiAnixBadgeTone.Neutral,
                 )
             }
             item(key = "filter-favorite") {
