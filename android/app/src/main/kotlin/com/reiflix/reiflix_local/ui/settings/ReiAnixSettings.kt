@@ -20,8 +20,10 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,7 +73,13 @@ data class ReiAnixSettingsCategoryUiModel(
 }
 
 
-private val NativeManagedSettingsCategories = setOf("Geral", "Aparência")
+private val NativeManagedSettingsCategories = setOf(
+    "Geral",
+    "Aparência",
+    "Player",
+    "Gestos",
+    "Áudio e Legendas",
+)
 
 private data class SettingChoice(
     val value: String,
@@ -88,6 +96,97 @@ private val cardSizeChoices = listOf(
     SettingChoice("small", "Pequeno"),
     SettingChoice("medium", "Médio"),
     SettingChoice("large", "Grande"),
+)
+
+private val defaultSpeedChoices = listOf(
+    SettingChoice("0.5", "0,50x"),
+    SettingChoice("0.75", "0,75x"),
+    SettingChoice("1.0", "1,00x"),
+    SettingChoice("1.25", "1,25x"),
+    SettingChoice("1.5", "1,50x"),
+    SettingChoice("1.75", "1,75x"),
+    SettingChoice("2.0", "2,00x"),
+)
+
+private val aspectRatioChoices = listOf(
+    SettingChoice("fit", "Ajustar"),
+    SettingChoice("fill", "Preencher"),
+)
+
+private val immersiveChoices = listOf(
+    SettingChoice("always", "Sempre"),
+    SettingChoice("landscape", "Somente landscape"),
+    SettingChoice("never", "Nunca"),
+)
+
+private val rotationChoices = listOf(
+    SettingChoice("auto", "Automática"),
+    SettingChoice("portrait", "Portrait"),
+    SettingChoice("landscape", "Landscape"),
+)
+
+private val autoHideChoices = listOf(
+    SettingChoice("5", "5s"),
+    SettingChoice("10", "10s"),
+    SettingChoice("15", "15s"),
+    SettingChoice("30", "30s"),
+    SettingChoice("0", "Nunca"),
+)
+
+private val doubleTapSeekChoices = listOf(
+    SettingChoice("5", "5s"),
+    SettingChoice("10", "10s"),
+    SettingChoice("15", "15s"),
+    SettingChoice("30", "30s"),
+)
+
+private val longPressSpeedChoices = listOf(
+    SettingChoice("1.5", "1,50x"),
+    SettingChoice("1.75", "1,75x"),
+    SettingChoice("2.0", "2,00x"),
+)
+
+private val maxVideoResolutionChoices = listOf(
+    SettingChoice("auto", "Automática"),
+    SettingChoice("480p", "480p"),
+    SettingChoice("720p", "720p"),
+    SettingChoice("1080p", "1080p"),
+    SettingChoice("1440p", "1440p"),
+    SettingChoice("2160p", "2160p"),
+)
+
+private val maxVideoFrameRateChoices = listOf(
+    SettingChoice("0", "Automático"),
+    SettingChoice("24", "24 fps"),
+    SettingChoice("30", "30 fps"),
+    SettingChoice("60", "60 fps"),
+)
+
+private val maxAudioChannelsChoices = listOf(
+    SettingChoice("0", "Automático"),
+    SettingChoice("2", "2 canais"),
+    SettingChoice("6", "5.1 / 6"),
+    SettingChoice("8", "7.1 / 8"),
+)
+
+private val subtitleScaleChoices = listOf(
+    SettingChoice("0.75", "75%"),
+    SettingChoice("1.0", "100%"),
+    SettingChoice("1.25", "125%"),
+    SettingChoice("1.5", "150%"),
+)
+
+private val subtitlePaddingChoices = listOf(
+    SettingChoice("4", "4%"),
+    SettingChoice("8", "8% (padrão)"),
+    SettingChoice("12", "12%"),
+    SettingChoice("16", "16%"),
+)
+
+private val subtitleModeChoices = listOf(
+    SettingChoice("auto", "Automático"),
+    SettingChoice("always", "Sempre"),
+    SettingChoice("never", "Nunca"),
 )
 
 @Composable
