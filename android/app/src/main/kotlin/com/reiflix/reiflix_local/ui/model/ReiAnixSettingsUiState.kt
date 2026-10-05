@@ -28,6 +28,7 @@ data class ReiAnixSettingsAccountUiState(
     val connected: Boolean = false,
     val name: String = "",
     val email: String = "",
+    val picture: String = "",
     val state: String = "disconnected",
 )
 
@@ -48,6 +49,7 @@ data class ReiAnixSettingsUiState(
                 connected = snapshot.account.connected,
                 name = snapshot.account.name,
                 email = snapshot.account.email,
+                picture = snapshot.account.picture,
                 state = snapshot.account.state,
             )
             return ReiAnixSettingsUiState(
