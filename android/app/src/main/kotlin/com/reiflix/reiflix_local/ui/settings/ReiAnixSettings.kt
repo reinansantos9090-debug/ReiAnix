@@ -45,6 +45,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixSettingCard
 import com.reiflix.reiflix_local.ui.ReiAnixCard
+import com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixTextField
@@ -339,15 +340,22 @@ fun ReiAnixSettingsScreen(
                             items = categories,
                             key = { "category:" + it.label },
                         ) { category ->
-                            ReiAnixSettingsCategoryCard(
-                                category = category,
-                                valueSummary = if (category.label == "Armazenamento") {
-                                    storageSummary(state)
-                                } else {
-                                    categorySummary(category.label, state.settings)
-                                },
-                                onClick = { onOpenCategory(category.label) },
-                            )
+                            if (category.label == "Conta") {
+                                ReiAnixSettingsAccountCard(
+                                    state = state.account,
+                                    onClick = { onOpenCategory(category.label) },
+                                )
+                            } else {
+                                ReiAnixSettingsCategoryCard(
+                                    category = category,
+                                    valueSummary = if (category.label == "Armazenamento") {
+                                        storageSummary(state)
+                                    } else {
+                                        categorySummary(category.label, state.settings)
+                                    },
+                                    onClick = { onOpenCategory(category.label) },
+                                )
+                            }
                         }
                     }
                 }
@@ -1159,6 +1167,9 @@ private fun ReiAnixSettingsAccountContent(
     onAction: (String) -> Unit,
 ) {
     val busy = state.state in setOf("connecting", "awaiting_google", "disconnecting")
+    val name = state.name.trim()
+    val email = state.email.trim()
+    val title = name.ifBlank { email.ifBlank { "Conta Google" } }
     val status = when (state.state) {
         "connected" -> "Conta conectada"
         "connecting" -> "Conectando com o Google…"
@@ -1168,66 +1179,139 @@ private fun ReiAnixSettingsAccountContent(
         "error" -> "Não foi possível concluir a operação Google."
         else -> "Não conectado"
     }
+    val statusTone = when {
+        state.state == "connected" -> ReiAnixBadgeTone.Success
+        state.state == "error" -> ReiAnixBadgeTone.Error
+        state.state in setOf("connecting", "awaiting_google", "disconnecting") -> ReiAnixBadgeTone.Info
+        state.state == "configuration_required" -> ReiAnixBadgeTone.Warning
+        else -> ReiAnixBadgeTone.Neutral
+    }
+    val retryAction = if (state.connected) "logout" else "login"
+
     ReiAnixCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(ReiAnixTokens.Spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = state.name.ifBlank { state.email.ifBlank { "Conta Google" } },
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+            ReiAnixAccountAvatar(
+                pictureUrl = state.picture,
             )
-            if (state.connected && state.email.isNotBlank()) {
-                Text(
-                    text = state.email,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                text = status,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (state.state == "error") {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-            Text(
-                text = "A biblioteca local, o scanner e o player continuam disponíveis sem login e sem conectividade.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
-                if (busy) {
-                    CircularProgressIndicator()
-                } else if (state.connected) {
-                    ReiAnixPrimaryButton(
-                        text = "Trocar conta",
-                        onClick = { onAction("switch") },
-                        modifier = Modifier.weight(1f),
-                    )
-                    ReiAnixSecondaryButton(
-                        text = "Sair",
-                        onClick = { onAction("logout") },
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
-                    ReiAnixPrimaryButton(
-                        text = "Entrar com Google",
-                        onClick = { onAction("login") },
-                        modifier = Modifier.weight(1f),
+                Text(
+                    text = "Conta Google",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (state.connected && email.isNotBlank()) {
+                    Text(
+                        text = email,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+        }
+
+        ReiAnixBadge(
+            text = status,
+            tone = statusTone,
+            modifier = Modifier.padding(top = ReiAnixTokens.Spacing.md),
+        )
+
+        if (state.state == "error") {
+            Text(
+                text = if (state.connected) {
+                    "A conta continua conectada. Você pode tentar encerrar a sessão novamente."
+                } else {
+                    "A conta não foi conectada. Você pode tentar entrar novamente."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = ReiAnixTokens.Spacing.sm),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else if (state.state == "configuration_required") {
+            Text(
+                text = "Este APK precisa de um Web Client ID Google público configurado para iniciar a autenticação.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = ReiAnixTokens.Spacing.sm),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Text(
+            text = "A biblioteca local, o scanner e o player continuam disponíveis sem login e sem conectividade.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = ReiAnixTokens.Spacing.md),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = ReiAnixTokens.Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(ReiAnixTokens.Dimensions.loadingIndicatorSize)
+                        .semantics { contentDescription = "Operação da conta Google em andamento" },
+                    strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
+                )
+            } else if (state.state == "error") {
+                ReiAnixPrimaryButton(
+                    text = "Tentar novamente",
+                    onClick = { onAction(retryAction) },
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = Icons.Filled.Refresh,
+                )
+            } else if (state.connected) {
+                ReiAnixPrimaryButton(
+                    text = "Trocar conta",
+                    onClick = { onAction("switch") },
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = Icons.Filled.AccountCircle,
+                )
+                ReiAnixSecondaryButton(
+                    text = "Sair",
+                    onClick = { onAction("logout") },
+                    modifier = Modifier.weight(1f),
+                )
+            } else if (state.integrationAvailable) {
+                ReiAnixPrimaryButton(
+                    text = "Entrar com Google",
+                    onClick = { onAction("login") },
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = Icons.Filled.AccountCircle,
+                )
             }
         }
     }
