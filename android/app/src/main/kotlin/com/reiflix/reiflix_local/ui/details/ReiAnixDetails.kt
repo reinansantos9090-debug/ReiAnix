@@ -343,9 +343,17 @@ private fun ColumnScope.ReiAnixDetailsReady(
     }
     val coroutineScope = rememberCoroutineScope()
     val hasSeasons = anime.seasons.isNotEmpty()
-    val seasonIndex = 3
     val aboutIndex = 2
     val episodeHeadingIndex = if (hasSeasons) 4 else 3
+
+    fun selectSeason(seasonKey: String) {
+        if (anime.seasons.none { it.stableKey == seasonKey }) return
+        if (seasonKey == selectedSeasonKey) return
+        savedSeasonKey = seasonKey
+        coroutineScope.launch {
+            listState.animateScrollToItem(episodeHeadingIndex)
+        }
+    }
 
     LazyColumn(
         state = listState,
@@ -404,7 +412,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     anime = anime,
                     selectedSeason = selectedSeason,
                     selectedSeasonKey = selectedSeasonKey,
-                    onSeasonSelected = { savedSeasonKey = it },
+                    onSeasonSelected = ::selectSeason,
                     onViewEpisodes = {
                         selectedSection = DetailsSection.EPISODES
                         coroutineScope.launch {
@@ -1075,13 +1083,15 @@ private fun DetailsSeasonCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (selected) {
-                    Text(
-                        text = "Selecionada",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                Text(
+                    text = if (selected) "Selecionada" else " ",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        Color.Transparent
+                    },
+                )
             }
         }
     }
