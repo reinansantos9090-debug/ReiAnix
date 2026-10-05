@@ -5616,24 +5616,6 @@ async def main(page: ft.Page):
                                         'A autorização SAF desta pasta não está mais presente no Android.',
                                     )
                                     store.mark_source_unavailable(reference, 'saf_permission_revoked')
-                                elif status == 'REVOKED':
-                                    store.update_folder_status(reference, 'revoked', item.get('error') or 'A autorização SAF desta pasta foi removida.')
-                                    store.mark_source_unavailable(reference, 'saf_permission_revoked')
-                                elif status in {'UNAVAILABLE', 'PARTIAL', 'FAILED'}:
-                                    store.update_folder_status(reference, 'unavailable', item.get('error') or 'O provedor SAF está indisponível.')
-                                    store.mark_source_unavailable(reference, 'saf_provider_unavailable')
-                            if inventory_complete:
-                                known_saf = {
-                                    str(f.get('path') or '') for f in store.folders()
-                                    if f.get('kind') == 'saf' and f.get('path')
-                                }
-                                for reference in known_saf - set(status_by_uri):
-                                    store.update_folder_status(
-                                        reference,
-                                        'revoked',
-                                        'A autorização SAF desta pasta não está mais presente no Android.',
-                                    )
-                                    store.mark_source_unavailable(reference, 'saf_permission_revoked')
                             refresh_settings_if_active()
                             maybe_show_storage_onboarding()
                         elif event_type == 'saf_cancelled':
