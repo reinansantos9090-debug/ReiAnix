@@ -77,6 +77,8 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 fun ReiAnixLibraryRoute(
     navController: NavHostController,
     viewModel: ReiAnixLibraryViewModel,
+    cardSize: String = "medium",
+    gridDensity: String = "medium",
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
@@ -89,6 +91,8 @@ fun ReiAnixLibraryRoute(
         filters = filters,
         visibleAnimes = visibleAnimes,
         genres = genres,
+        cardSize = cardSize,
+        gridDensity = gridDensity,
         isRefreshing = isRefreshing,
         onQueryChange = viewModel::setLibrarySearchQuery,
         onGenreSelected = viewModel::setLibraryGenreFilter,
@@ -145,6 +149,8 @@ fun ReiAnixLibraryRoute(
 fun ReiAnixLibraryScreen(
     state: ReiAnixLibraryUiState,
     filters: ReiAnixLibraryFilters,
+    cardSize: String = "medium",
+    gridDensity: String = "medium",
     visibleAnimes: List<ReiAnixAnimeUiModel>,
     genres: List<ReiAnixGenreUiModel>,
     isRefreshing: Boolean = false,
@@ -364,6 +370,8 @@ private fun LibraryHeader(
 @Composable
 private fun ColumnScope.LibraryReadyContent(
     state: ReiAnixLibraryUiState,
+    cardSize: String = "medium",
+    gridDensity: String = "medium",
     filters: ReiAnixLibraryFilters,
     visibleAnimes: List<ReiAnixAnimeUiModel>,
     genres: List<ReiAnixGenreUiModel>,
@@ -412,7 +420,7 @@ private fun ColumnScope.LibraryReadyContent(
     ) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(
-                minSize = ReiAnixTokens.Dimensions.libraryGridMinWidth,
+                minSize = libraryGridMinWidth(cardSize),
             ),
             state = gridState,
             modifier = Modifier
@@ -424,8 +432,8 @@ private fun ColumnScope.LibraryReadyContent(
                 top = ReiAnixTokens.Spacing.xs,
                 bottom = ReiAnixTokens.Spacing.huge,
             ),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(libraryGridSpacing(gridDensity)),
+            horizontalArrangement = Arrangement.spacedBy(libraryGridSpacing(gridDensity)),
         ) {
             item(
                 key = "library-source-summary",
@@ -715,6 +723,20 @@ private fun ColumnScope.LibraryReadyContent(
 }
 
 @Composable
+private fun libraryGridMinWidth(preference: String): androidx.compose.ui.unit.Dp =
+    when (preference.trim().lowercase()) {
+        "small" -> 120.dp
+        "large" -> 172.dp
+        else -> 146.dp
+    }
+
+private fun libraryGridSpacing(preference: String): androidx.compose.ui.unit.Dp =
+    when (preference.trim().lowercase()) {
+        "small" -> 14.dp
+        "large" -> 6.dp
+        else -> 10.dp
+    }
+
 private fun LibrarySourceSummaryCard(
     animeCount: Int,
     episodeCount: Int,
