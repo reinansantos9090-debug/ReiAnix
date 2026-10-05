@@ -660,7 +660,7 @@ fun ReiAnixAnimeCard(
                             .align(Alignment.BottomCenter)
                             .padding(bottom = ReiAnixTokens.Spacing.md),
                         shape = ReiAnixTokens.Shapes.chip,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = ReiAnixTokens.Colors.surfaceOverlayAlpha),
                         contentColor = MaterialTheme.colorScheme.onSurface,
                     ) {
                         Text(
