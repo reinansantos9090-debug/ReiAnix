@@ -227,6 +227,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("status_by_uri", block)
         self.assertIn("inventory_complete", block)
         self.assertIn("A autorização SAF desta pasta não está mais presente no Android.", block)
+        self.assertNotIn("store.add_folder(", block)
         self.assertIn("store.update_folder_status", block)
 
     def test_broad_permission_event_does_not_reopen_onboarding_after_settings_launch(self):
