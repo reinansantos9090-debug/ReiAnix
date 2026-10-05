@@ -43,9 +43,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
@@ -57,6 +62,7 @@ import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import kotlin.math.roundToInt
 
 @Composable
 fun ReiAnixSurface(
@@ -155,8 +161,7 @@ fun ReiAnixCard(
 ) {
     Card(
         modifier = modifier
-            .heightIn(min = ReiAnixTokens.Dimensions.cardMinHeight)
-            .semantics { },
+            .heightIn(min = ReiAnixTokens.Dimensions.cardMinHeight),
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -216,8 +221,8 @@ fun ReiAnixPrimaryButton(
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
+            overflow = TextOverflow.Clip,
         )
     }
 }
@@ -260,8 +265,8 @@ fun ReiAnixSecondaryButton(
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
+            overflow = TextOverflow.Clip,
         )
     }
 }
@@ -284,8 +289,8 @@ fun ReiAnixCompactButton(
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
+            overflow = TextOverflow.Clip,
         )
     }
 }
@@ -336,6 +341,7 @@ fun ReiAnixSearchField(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    accessibilityLabel: String? = null,
     placeholder: @Composable (() -> Unit)? = null,
     leadingIcon: @Composable (() -> Unit)? = null,
     trailingIcon: @Composable (() -> Unit)? = null,
@@ -348,7 +354,12 @@ fun ReiAnixSearchField(
         onValueChange = onValueChange,
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = ReiAnixTokens.Dimensions.searchFieldHeight),
+            .heightIn(min = ReiAnixTokens.Dimensions.searchFieldHeight)
+            .semantics {
+                accessibilityLabel?.takeIf { it.isNotBlank() }?.let { label ->
+                    contentDescription = label
+                }
+            },
         singleLine = singleLine,
         placeholder = placeholder,
         leadingIcon = leadingIcon,
@@ -387,7 +398,9 @@ fun ReiAnixChip(
         enabled = enabled,
         modifier = modifier
             .heightIn(min = ReiAnixTokens.Dimensions.chipMinHeight)
-            .semantics { role = Role.Button },
+            .semantics {
+                stateDescription = if (selected) "Selecionado" else "Não selecionado"
+            },
         label = {
             Text(
                 text = text,
@@ -427,7 +440,9 @@ fun ReiAnixSectionTitle(
     subtitle: String? = null,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { heading() },
     ) {
         Text(
             text = title,
@@ -456,7 +471,9 @@ fun ReiAnixScreenTitle(
     subtitle: String? = null,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { heading() },
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
             ReiAnixTokens.Dimensions.sectionTitleGap,
         ),
@@ -586,6 +603,20 @@ fun ReiAnixAnimeCard(
     artworkIdentity: String? = null,
     bottomBadgeText: String? = null,
 ) {
+    val animeAccessibilityLabel = buildList {
+        add(title)
+        metadata.filter { it.isNotBlank() }.joinToString(" • ").takeIf { it.isNotBlank() }?.let(::add)
+        when {
+            completed -> add("Concluído")
+            watching -> add("Assistindo")
+            watched -> add("Assistido")
+            favorite -> add("Na Minha Lista")
+        }
+        progress
+            ?.takeIf { it.isFinite() && it > 0f }
+            ?.let { add(((it.coerceIn(0f, 1f) * 100f).roundToInt()).toString() + "% assistido") }
+    }.joinToString(", ")
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -598,11 +629,11 @@ fun ReiAnixAnimeCard(
                         )
                         .semantics {
                             role = Role.Button
-                            this.contentDescription = "Abrir $title"
+                            this.contentDescription = "Abrir " + animeAccessibilityLabel
                         }
                 } else {
                     Modifier.semantics {
-                        this.contentDescription = title
+                        this.contentDescription = animeAccessibilityLabel
                     }
                 },
             ),
@@ -711,7 +742,8 @@ fun ReiAnixAnimeCard(
                     .padding(
                         horizontal = ReiAnixTokens.Spacing.sm,
                         vertical = ReiAnixTokens.Spacing.md,
-                    ),
+                    )
+                    .then(if (onClick != null) Modifier.clearAndSetSemantics {} else Modifier),
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
                     ReiAnixTokens.Spacing.xs,
                 ),
@@ -739,6 +771,32 @@ fun ReiAnixEpisodeCard(
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val playable = episode.isPlayable && onPlay != null
+    val episodeAccessibilityLabel = buildList {
+        episode.number?.let { number ->
+            add(
+                if (number % 1.0 == 0.0) {
+                    "E" + number.toInt().toString().padStart(2, '0')
+                } else {
+                    "E" + number.toString()
+                },
+            )
+        }
+        add(episode.displayTitle)
+        episode.durationSeconds?.takeIf { it >= 0.0 }?.let {
+            add(formatDurationLabel(it))
+        }
+        episode.progressPercent?.let { add(it.toString() + "% assistido") }
+        if (episode.isCompleted) {
+            add("Concluído")
+        } else if (episode.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS) {
+            add("Em andamento")
+        }
+        if (!episode.isPlayable) {
+            add("Mídia indisponível")
+        }
+        add(episode.playbackActionLabel)
+    }.distinct().joinToString(", ")
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -752,7 +810,7 @@ fun ReiAnixEpisodeCard(
                 },
             )
             .semantics {
-                this.contentDescription = episode.displayTitle + " • " + episode.playbackActionLabel
+                this.contentDescription = episodeAccessibilityLabel
                 if (playable) role = Role.Button
             },
         shape = ReiAnixTokens.Shapes.card,
@@ -776,7 +834,7 @@ fun ReiAnixEpisodeCard(
             ) {
                 ReiAnixEpisodeThumbnail(
                     localPath = episode.artwork?.localPath,
-                    contentDescription = episode.displayTitle,
+                    contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = episode.stableKey,
                 )
@@ -806,7 +864,8 @@ fun ReiAnixEpisodeCard(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = ReiAnixTokens.Spacing.md),
+                    .padding(horizontal = ReiAnixTokens.Spacing.md)
+                    .clearAndSetSemantics {},
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
                     ReiAnixTokens.Spacing.xs,
                 ),
@@ -918,10 +977,17 @@ fun ReiAnixSettingCard(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .semantics {
-                this.contentDescription = if (description.isNullOrBlank()) title else "$title. $description"
-                if (onClick != null) role = Role.Button
-            },
+            .then(
+                if (onClick != null) {
+                    Modifier.semantics(mergeDescendants = true) {
+                        this.contentDescription =
+                            if (description.isNullOrBlank()) title else "$title. $description"
+                        role = Role.Button
+                    }
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         Row(
             modifier = Modifier
@@ -1012,7 +1078,16 @@ fun ReiAnixProgressIndicator(
         progress = { clampedProgress },
         modifier = modifier
             .fillMaxWidth()
-            .height(ReiAnixTokens.Dimensions.progressHeight),
+            .height(ReiAnixTokens.Dimensions.progressHeight)
+            .semantics {
+                contentDescription = "Progresso"
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    current = clampedProgress,
+                    range = 0f..1f,
+                    steps = 0,
+                )
+                stateDescription = ((clampedProgress * 100f).roundToInt()).toString() + "% assistido"
+            },
         color = if (visible) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
         trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
