@@ -40,6 +40,9 @@ class ReiAnixLibraryViewModel(context: Context) :
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
     
     companion object {
+        const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
+        const val SEARCH_DEBOUNCE_MS = 180L
+
         internal fun projectHomeState(state: ReiAnixLibraryUiState): ReiAnixHomeLibraryUiState =
             ReiAnixHomeLibraryUiState.from(state)
 
@@ -48,11 +51,6 @@ class ReiAnixLibraryViewModel(context: Context) :
             animeId: Long,
         ): ReiAnixDetailsUiState =
             ReiAnixDetailsUiStateProjection.from(state, animeId)
-    }
-
-    private companion object {
-        const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
-        const val SEARCH_DEBOUNCE_MS = 180L
     }
 
     private val repository = ReiAnixLibraryRepository(context)
