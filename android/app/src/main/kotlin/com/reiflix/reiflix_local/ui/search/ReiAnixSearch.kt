@@ -511,6 +511,7 @@ private fun SearchResultRow(
                     ReiAnixProgressIndicator(
                         progress = progress ?: 0f,
                         visible = progress != null,
+                        announceProgress = false,
                     )
                 }
             }
