@@ -51,7 +51,7 @@ class Prompt22ProgressContinuityTests(unittest.TestCase):
         self.assertIn('.put("uri", mediaUri)', builder)
         self.assertIn('.put("mediaId", mediaId)', builder)
         self.assertIn('.put("episodeId", episodeId)', builder)
-        self.assertIn('.put("playerSessionId", sessionId)', builder)
+        self.assertIn('.put("playerSessionId", playerSessionId)', builder)
 
 
 if __name__ == "__main__":
