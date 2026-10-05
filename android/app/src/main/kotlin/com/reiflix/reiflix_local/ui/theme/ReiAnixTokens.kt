@@ -143,7 +143,11 @@ object ReiAnixTokens {
         val myListPosterHeight = 78.dp
         val myListRowMinHeight = 86.dp
         val posterAspectRatio = 0.7f
-        val libraryGridMinWidth = 140.dp
+        // Three-column phone layouts stay viable while Adaptive still scales the grid
+        // on wider/landscape surfaces. A separate cap prevents tablet posters from
+        // growing indefinitely.
+        val libraryGridMinWidth = 108.dp
+        val libraryGridMaxItemWidth = 184.dp
         val searchGridMinWidth = 150.dp
         val episodeThumbnailWidth = 120.dp
         val episodeThumbnailHeight = 68.dp
