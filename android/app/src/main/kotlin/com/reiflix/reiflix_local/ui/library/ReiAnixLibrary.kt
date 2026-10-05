@@ -727,6 +727,7 @@ private fun ColumnScope.LibraryReadyContent(
     }
 }
 
+@Composable
 private fun libraryGridMinWidth(preference: String): androidx.compose.ui.unit.Dp =
     LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth(preference)
 
