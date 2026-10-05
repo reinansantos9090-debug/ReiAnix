@@ -291,7 +291,7 @@ fun ReiAnixStorageScreen(
     }
 
     pendingRemoval?.let { source ->
-        val sourceName = source.name.trim().ifBlank { "esta pasta" }
+        val sourceName = friendlySourceName(source.name).ifBlank { "esta pasta" }
         AlertDialog(
             onDismissRequest = { pendingRemoval = null },
             title = { Text("Remover pasta da biblioteca?") },
@@ -359,7 +359,7 @@ private fun SafSourceCard(
     onReauthorize: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    val name = source.name.trim().ifBlank { "Pasta da biblioteca" }
+    val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
     val available = state == "available"
     val stateLabel = safStateLabel(state)
     val actionLabel = if (available) "Alterar pasta" else "Reautorizar"
@@ -494,7 +494,7 @@ private fun ConfiguredSourceCard(
     state: String,
     onAction: (() -> Unit)?,
 ) {
-    val name = source.name.trim().ifBlank { "Fonte local" }
+    val name = friendlySourceName(source.name).ifBlank { "Fonte local" }
     val stateLabel = genericSourceStateLabel(state)
     val available = state in setOf("available", "full", "partial", "granted")
 
@@ -594,6 +594,19 @@ private fun StorageScanCard(
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+}
+
+private fun friendlySourceName(raw: String): String {
+    val value = raw.trim()
+    return if (
+        value.isBlank() ||
+        value.startsWith("content://", ignoreCase = true) ||
+        value.startsWith("file://", ignoreCase = true)
+    ) {
+        "Pasta da biblioteca"
+    } else {
+        value
     }
 }
 
