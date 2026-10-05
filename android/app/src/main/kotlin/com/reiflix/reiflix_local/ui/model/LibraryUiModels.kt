@@ -249,6 +249,16 @@ data class ReiAnixHomeAnimeUiModel(
     val artwork: ReiAnixArtworkUiModel?,
     val playbackTargetEpisodeId: Long?,
     val availableContentCount: Int,
+    val playbackActionLabel: String = "Assistir",
+    val isWatching: Boolean = false,
+    val score: Double? = null,
+    val addedAt: Double? = null,
+    val lastPlayedAt: Double? = null,
+    val pinned: Boolean = false,
+    val description: String? = null,
+    val status: String? = null,
+    val format: String? = null,
+    val studio: String? = null,
 ) {
     val stableKey: String
         get() = "anime:" + id
