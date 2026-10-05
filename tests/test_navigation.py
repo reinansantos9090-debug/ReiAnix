@@ -82,7 +82,7 @@ class NavigationControllerTests(unittest.TestCase):
 
     def test_invalid_top_level_route_cannot_enter_navigation_stack(self):
         with self.assertRaises(ValueError):
-            self.navigation.push("search")
+            self.navigation.push("not-a-route")
 
     def test_navigation_snapshot_restores_top_level_and_nested_settings_state(self):
         self.navigation.push("details")
