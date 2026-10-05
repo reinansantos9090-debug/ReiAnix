@@ -54,6 +54,9 @@ import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import androidx.compose.foundation.layout.widthIn
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 
 data class ReiAnixSettingsCategoryUiModel(
     val label: String,
@@ -215,7 +218,7 @@ fun ReiAnixSettingsRoute(
     var selectedCategory by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
-    val rootListState = rememberLazyListState()
+    val rootListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
 
     BackHandler(enabled = selectedCategory != null) {
         selectedCategory = null
@@ -256,15 +259,18 @@ fun ReiAnixSettingsScreen(
     onOpenCategory: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
+    ReiAnixResponsiveRoot {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth),
             state = listState,
             contentPadding = PaddingValues(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -362,6 +368,8 @@ fun ReiAnixSettingsScreen(
                 }
             }
         }
+    }
+
     }
 }
 
