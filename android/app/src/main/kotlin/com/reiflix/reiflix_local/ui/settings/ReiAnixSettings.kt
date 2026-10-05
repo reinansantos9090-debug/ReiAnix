@@ -1133,9 +1133,7 @@ private fun ChoiceSettingCard(
     onSelected: (String) -> Unit,
 ) {
     ReiAnixCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = "Configuração " + keyName },
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier
