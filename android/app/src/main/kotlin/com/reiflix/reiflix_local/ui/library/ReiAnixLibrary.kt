@@ -303,7 +303,7 @@ private fun LibraryHeader(
             ) {
                 if (!sourceAvailable) {
                     Icon(
-                        imageVector = Icons.Filled.Cloud,
+                        imageVector = Icons.Filled.Info,
                         contentDescription = null,
                         modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
                     )
