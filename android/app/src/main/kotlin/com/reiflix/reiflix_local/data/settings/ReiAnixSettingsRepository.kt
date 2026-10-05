@@ -78,6 +78,36 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         }
     }
 
+    /**
+     * Dispatch an existing settings action through the same Python bridge used
+     * by the legacy Settings UI. This is a command, not a second preference store.
+     */
+    fun requestAction(action: String) {
+        val normalizedAction = action.trim().lowercase()
+        if (normalizedAction !in setOf("reset_player")) return
+        scope.launch {
+            val requestId = UUID.randomUUID().toString()
+            val event = JSONObject()
+                .put("type", "compose_settings_action")
+                .put("requestId", requestId)
+                .put(
+                    "payload",
+                    JSONObject()
+                        .put("action", normalizedAction)
+                        .put("requestId", requestId),
+                )
+            val published = runCatching {
+                NativeMailbox.write(appContext, event)
+            }.getOrElse { false }
+            if (!published) {
+                Log.e(
+                    TAG,
+                    "Failed to publish Compose settings action requestId=$requestId action=$normalizedAction",
+                )
+            }
+        }
+    }
+
     fun requestAccountAction(action: String) {
         val normalizedAction = action.trim().lowercase()
         if (normalizedAction !in setOf("login", "logout", "switch")) return
