@@ -961,7 +961,8 @@ private fun DetailsSectionHeader(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                 top = ReiAnixTokens.Spacing.lg,
                 bottom = ReiAnixTokens.Spacing.sm,
             ),
