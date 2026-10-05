@@ -72,6 +72,8 @@ import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
 @Composable
@@ -160,7 +162,10 @@ fun ReiAnixLibraryScreen(
     onToggleFavorites: () -> Unit,
     onToggleWatching: () -> Unit,
     onToggleCompleted: () -> Unit,
-    onSortSelected: (String) -> Unit = {},
+    onSortSelected: (String) -> Unit = {
+    ReiAnixResponsiveRoot {
+    }
+},
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
     onOpenDetails: (Long) -> Unit,
@@ -282,7 +287,7 @@ private fun LibraryHeader(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
         verticalAlignment = Alignment.CenterVertically,
@@ -421,12 +426,11 @@ private fun ColumnScope.LibraryReadyContent(
     ) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(
-                minSize = libraryGridMinWidth(cardSize),
+                minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth(cardSize),
             ),
             state = gridState,
             modifier = Modifier
-                .fillMaxSize()
-                .imePadding(),
+                .fillMaxSize(),
             contentPadding = PaddingValues(
                 start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
                 end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
@@ -724,11 +728,7 @@ private fun ColumnScope.LibraryReadyContent(
 }
 
 private fun libraryGridMinWidth(preference: String): androidx.compose.ui.unit.Dp =
-    when (preference.trim().lowercase()) {
-        "small" -> 120.dp
-        "large" -> 172.dp
-        else -> 146.dp
-    }
+    LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth(preference)
 
 private fun libraryGridSpacing(preference: String): androidx.compose.ui.unit.Dp =
     when (preference.trim().lowercase()) {
@@ -814,7 +814,7 @@ private fun LibraryLoadingGrid(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(
-            minSize = ReiAnixTokens.Dimensions.libraryGridMinWidth,
+            minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium"),
         ),
         modifier = modifier,
         userScrollEnabled = false,
