@@ -457,7 +457,11 @@ private fun SearchResultRow(
             .clickable(onClick = onClick)
             .semantics {
                 role = Role.Button
-                contentDescription = "Abrir " + anime.title
+                contentDescription = buildList {
+                    add(anime.title)
+                    metadata.joinToString(" • ").takeIf { it.isNotBlank() }?.let(::add)
+                    progress?.let { add(((it.coerceIn(0f, 1f) * 100f).toInt()).toString() + "% assistido") }
+                }.joinToString(", ").let { "Abrir " + it }
             },
         shape = ReiAnixTokens.Shapes.card,
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -470,7 +474,7 @@ private fun SearchResultRow(
         ) {
             ReiAnixPoster(
                 localPath = anime.artwork?.localPath,
-                contentDescription = anime.title,
+                contentDescription = null,
                 identity = anime.stableKey,
                 modifier = Modifier
                     .size(
@@ -486,7 +490,8 @@ private fun SearchResultRow(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(vertical = ReiAnixTokens.Spacing.xs),
+                    .padding(vertical = ReiAnixTokens.Spacing.xs)
+                    .clearAndSetSemantics {},
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 Text(
