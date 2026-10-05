@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import android.util.Log
 import android.util.LruCache
 import androidx.compose.foundation.Image
@@ -252,10 +254,49 @@ private fun artworkMemoryCacheKb(): Int {
 private fun buildDecodeCacheKey(
     identity: String,
     rawPath: String,
+    sourceVersion: String,
     maxDimensionPx: Int,
     config: String,
 ): String =
-    identity.trim() + "|" + rawPath.trim() + "|" + maxDimensionPx + "|" + config
+    identity.trim() + "|" +
+        rawPath.trim() + "|" +
+        sourceVersion + "|" +
+        maxDimensionPx + "|" +
+        config
+
+private fun localArtworkSourceVersion(
+    context: Context,
+    rawPath: String,
+): String {
+    if (rawPath.startsWith("content://")) {
+        return runCatching {
+            context.contentResolver.query(
+                Uri.parse(rawPath),
+                arrayOf(OpenableColumns.SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    val modifiedIndex = cursor.getColumnIndex(
+                        DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                    )
+                    val size = if (sizeIndex >= 0) cursor.getLong(sizeIndex) else -1L
+                    val modified = if (modifiedIndex >= 0) cursor.getLong(modifiedIndex) else -1L
+                    "$size:$modified"
+                } else {
+                    "unresolved"
+                }
+            } ?: "unresolved"
+        }.getOrElse { "unresolved" }
+    }
+
+    return runCatching {
+        val file = File(rawPath)
+        file.length().toString() + ":" + file.lastModified()
+    }.getOrElse { "unresolved" }
+}
 
 private fun preferredBitmapConfig(context: Context, rawPath: String): Bitmap.Config {
     val lower = rawPath.lowercase()
@@ -380,6 +421,7 @@ private fun decodeLocalArtwork(
     val cacheKey = buildDecodeCacheKey(
         identity = identity,
         rawPath = path,
+        sourceVersion = localArtworkSourceVersion(context, path),
         maxDimensionPx = maxDimensionPx,
         config = preferredConfig.name,
     )
