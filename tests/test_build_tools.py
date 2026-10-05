@@ -76,8 +76,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
                     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
                     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
                     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixViewModel;",
-                    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost;",
-                    b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
+                                    b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
                 )))
             result = subprocess.run(
                 [sys.executable, str(script), str(apk), "--classes-root", str(classes)],
