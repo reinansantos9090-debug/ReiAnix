@@ -982,6 +982,7 @@ private fun SettingsHeader(
     title: String,
     subtitle: String,
     onBack: () -> Unit,
+    backContentDescription: String = "Voltar das configurações",
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
