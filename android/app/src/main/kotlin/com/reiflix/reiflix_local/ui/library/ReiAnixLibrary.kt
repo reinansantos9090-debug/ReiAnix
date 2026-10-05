@@ -723,7 +723,6 @@ private fun ColumnScope.LibraryReadyContent(
     }
 }
 
-@Composable
 private fun libraryGridMinWidth(preference: String): androidx.compose.ui.unit.Dp =
     when (preference.trim().lowercase()) {
         "small" -> 120.dp
@@ -738,6 +737,7 @@ private fun libraryGridSpacing(preference: String): androidx.compose.ui.unit.Dp 
         else -> 10.dp
     }
 
+@Composable
 private fun LibrarySourceSummaryCard(
     animeCount: Int,
     episodeCount: Int,
