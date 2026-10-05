@@ -51,7 +51,6 @@ import com.reiflix.reiflix_local.ui.ReiAnixTextField
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
-import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 data class ReiAnixSettingsCategoryUiModel(
@@ -220,10 +219,7 @@ fun ReiAnixSettingsRoute(
         selectedCategory = null
     }
 
-    ReiAnixComposeTheme(
-        themeMode = state.settings["appearance.theme"],
-    ) {
-        if (selectedCategory != null) {
+    if (selectedCategory != null) {
             ReiAnixComposeSettingsCategoryScreen(
                 category = selectedCategory!!,
                 state = state,
