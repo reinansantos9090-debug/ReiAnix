@@ -23,6 +23,29 @@ import java.io.File
 class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     companion object {
         private const val TAG = "ReiAnixSettingsRepo"
+
+        /**
+         * A projection/IPC error must not erase the last known settings/account
+         * state. The error remains observable, while persisted values stay visible
+         * until a valid newer snapshot arrives.
+         */
+        internal fun mergeSnapshotState(
+            decoded: ReiAnixSettingsUiState,
+            previous: ReiAnixSettingsUiState,
+        ): ReiAnixSettingsUiState {
+            val preserveKnownState =
+                decoded.status == ReiAnixSettingsLoadStatus.ERROR &&
+                    previous.status == ReiAnixSettingsLoadStatus.READY
+            return if (!preserveKnownState) {
+                decoded
+            } else {
+                previous.copy(
+                    status = ReiAnixSettingsLoadStatus.ERROR,
+                    revision = decoded.revision,
+                    error = decoded.error,
+                )
+            }
+        }
     }
     private val appContext = context.applicationContext
     private val dataDirectory = File(appContext.filesDir, "data")
@@ -143,10 +166,12 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
             if (!snapshotFile.isFile) return
             snapshotFile.readText(Charsets.UTF_8)
         }.getOrElse { error ->
-            _state.value = _state.value.copy(
-                status = ReiAnixSettingsLoadStatus.ERROR,
-                error = error.message ?: error::class.java.simpleName,
-            )
+            stateMutex.withLock {
+                _state.value = _state.value.copy(
+                    status = ReiAnixSettingsLoadStatus.ERROR,
+                    error = error.message ?: error::class.java.simpleName,
+                )
+            }
             return
         }
 
@@ -154,7 +179,10 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
             runCatching {
                 ReiAnixSettingsSnapshotCodec.decode(raw, _state.value.revision)
             }.onSuccess { decoded ->
-                _state.value = ReiAnixSettingsUiState.fromSnapshot(decoded)
+                _state.value = mergeSnapshotState(
+                    ReiAnixSettingsUiState.fromSnapshot(decoded),
+                    _state.value,
+                )
             }.onFailure { error ->
                 val message = error.message.orEmpty()
                 if (message.startsWith("Stale Compose settings snapshot")) return@onFailure
