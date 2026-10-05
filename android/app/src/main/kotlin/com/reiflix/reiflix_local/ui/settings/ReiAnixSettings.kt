@@ -266,8 +266,8 @@ fun ReiAnixSettingsScreen(
     ) {
         LazyColumn(
             modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth),
+                .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
+                .fillMaxWidth(),
             state = listState,
             contentPadding = PaddingValues(
                 horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
@@ -391,8 +391,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
         LazyColumn(
             state = rememberSaveable(saver = LazyListState.Saver) { LazyListState() },
             modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth),
+                .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
+                .fillMaxWidth(),
             contentPadding = PaddingValues(
                 horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
