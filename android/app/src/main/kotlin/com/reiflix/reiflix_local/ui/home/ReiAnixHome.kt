@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -742,9 +743,8 @@ private fun HomeContinueSection(
         )
 
         LazyRow(
-            modifier = Modifier.semantics {
-                contentDescription = "Home Continuar Assistindo"
-            },
+            modifier = Modifier,
+
             contentPadding = PaddingValues(
                 end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             ),
@@ -805,7 +805,7 @@ private fun HomeContinueCard(
             ) {
                 ReiAnixEpisodeThumbnail(
                     localPath = item.artwork?.localPath.takeIf { showThumbnails },
-                    contentDescription = item.animeTitle,
+                    contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = item.stableKey,
                 )
@@ -825,7 +825,8 @@ private fun HomeContinueCard(
                     .padding(
                         horizontal = ReiAnixTokens.Spacing.sm,
                         vertical = ReiAnixTokens.Spacing.sm,
-                    ),
+                    )
+                    .clearAndSetSemantics {},
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 Text(
@@ -960,7 +961,7 @@ private fun HomeMediaCard(
                 ReiAnixBackdrop(
                     localPath = anime.backdropLocalPath,
                     fallbackLocalPath = anime.artworkPath,
-                    contentDescription = anime.title,
+                    contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = anime.stableKey,
                     maxDimensionPx = 512,
@@ -1013,14 +1014,15 @@ private fun HomeMediaCard(
                     .padding(
                         horizontal = ReiAnixTokens.Spacing.sm,
                         vertical = ReiAnixTokens.Spacing.sm,
-                    ),
+                    )
+                    .clearAndSetSemantics {},
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 Text(
                     text = anime.title,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
 
