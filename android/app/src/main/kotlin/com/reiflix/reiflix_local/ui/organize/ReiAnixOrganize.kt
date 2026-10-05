@@ -383,7 +383,7 @@ private fun OrganizeOverview(
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(
-            horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             vertical = ReiAnixTokens.Spacing.md,
         ),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
@@ -579,7 +579,7 @@ private fun OrganizeCollectionContent(
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
             .imePadding(),
         contentPadding = PaddingValues(
-            horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             vertical = ReiAnixTokens.Spacing.sm,
         ),
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -845,7 +845,7 @@ private fun EmptyOrganizeContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(ReiAnixTokens.Dimensions.screenHorizontalPadding),
+            .padding(LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
         ReiAnixEmptyLibraryState(
