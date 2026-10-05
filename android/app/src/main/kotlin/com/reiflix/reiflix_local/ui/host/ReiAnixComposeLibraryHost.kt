@@ -65,6 +65,16 @@ class ReiAnixComposeLibraryHost(
             }
             val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
 
+            val appearanceCardSize = settingsState.settings["appearance.card_size"]
+                ?.takeIf { it in setOf("small", "medium", "large") }
+                ?: "medium"
+            val appearanceShowThumbnails = settingsState.settings["appearance.show_thumbnails"]
+                ?.let { it == "true" }
+                ?: true
+            val libraryGridDensity = settingsState.settings["library.grid_density"]
+                ?.takeIf { it in setOf("small", "medium", "large") }
+                ?: "medium"
+
             ReiAnixComposeRoot(
                 themeMode = settingsState.settings["appearance.theme"],
             ) {
@@ -93,6 +103,9 @@ class ReiAnixComposeLibraryHost(
                                 viewModel = libraryViewModel,
                             )
                         },
+                        appearanceCardSize = appearanceCardSize,
+                        appearanceShowThumbnails = appearanceShowThumbnails,
+                        libraryGridDensity = libraryGridDensity,
                         settings = {
                             ReiAnixSettingsRoute(
                                 viewModel = settingsViewModel,
