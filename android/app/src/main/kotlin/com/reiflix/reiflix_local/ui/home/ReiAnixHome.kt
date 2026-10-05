@@ -62,7 +62,6 @@ import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
@@ -492,7 +491,7 @@ private fun ColumnScope.HomeReadyContent(
                     title = "MINHA LISTA",
                     items = favorites,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Minha Lista",
+                    contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
                     onSeeAll = onOpenMyList,
                 )
             }
@@ -796,6 +795,8 @@ private fun HomeContinueCard(
 }
 
 @Composable
+private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
+
 private fun HomeMediaSection(
     title: String,
     items: List<HomeAnimeRenderData>,
@@ -889,8 +890,9 @@ private fun HomeMediaCard(
                     .aspectRatio(ReiAnixTokens.Dimensions.homeLandscapeArtworkAspectRatio)
                     .clip(ReiAnixTokens.Shapes.artwork),
             ) {
-                ReiAnixPoster(
-                    localPath = anime.artworkPath,
+                ReiAnixBackdrop(
+                    localPath = anime.backdropLocalPath,
+                    fallbackLocalPath = anime.artworkPath,
                     contentDescription = anime.title,
                     modifier = Modifier.fillMaxSize(),
                     identity = anime.stableKey,
