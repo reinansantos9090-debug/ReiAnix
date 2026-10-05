@@ -366,7 +366,7 @@ fun ReiAnixSearchScreen(
 @Composable
 private fun SearchResults(
     results: List<ReiAnixAnimeUiModel>,
-    listState: androidx.compose.foundation.lazy.LazyListState,
+    listState: androidx.compose.foundation.lazy.grid.LazyGridState,
     onOpenDetails: (Long) -> Unit,
 ) {
     LazyVerticalGrid(
