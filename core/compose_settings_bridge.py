@@ -193,14 +193,16 @@ class ComposeSettingsBridge:
         name = str(profile.get("name") or "").strip()
         connected = bool(email)
         picture = str(profile.get("picture") or "").strip()
-        return {
+        snapshot = {
             "integrationAvailable": True,
             "connected": connected,
             "name": name,
             "email": email,
-            "picture": picture,
             "state": state,
         }
+        if picture:
+            snapshot["picture"] = picture
+        return snapshot
 
     @staticmethod
     def _json_safe(value: Any) -> Any:
