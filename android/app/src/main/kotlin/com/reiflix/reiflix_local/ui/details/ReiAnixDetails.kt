@@ -74,7 +74,8 @@ import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsLoadStatus
@@ -546,14 +547,14 @@ private fun DetailsHero(
                 .fillMaxWidth()
                 .height(heroHeight),
         ) {
-            ReiAnixLocalArtwork(
+            ReiAnixBackdrop(
                 localPath = backdropPath,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                placeholder = "Sem backdrop",
+                identity = anime.stableKey + ":backdrop",
+                fallbackLocalPath = anime.artwork?.localPath
+                    ?.takeIf { it != backdropPath },
                 maxDimensionPx = 1024,
-                shape = ReiAnixTokens.Shapes.hero,
             )
 
             Box(
@@ -627,17 +628,15 @@ private fun DetailsHero(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
             ) {
-                if (availableWidth >= 500.dp && !anime.artwork?.localPath.isNullOrBlank()) {
-                    ReiAnixLocalArtwork(
+                if (availableWidth >= 500.dp) {
+                    ReiAnixPoster(
                         localPath = anime.artwork?.localPath,
                         contentDescription = "Poster de " + anime.title,
                         modifier = Modifier
                             .width(112.dp)
                             .height(160.dp),
-                        contentScale = ContentScale.Crop,
-                        placeholder = "Poster",
+                        identity = anime.stableKey + ":poster",
                         maxDimensionPx = 512,
-                        shape = ReiAnixTokens.Shapes.artwork,
                     )
                 }
                 Column(
