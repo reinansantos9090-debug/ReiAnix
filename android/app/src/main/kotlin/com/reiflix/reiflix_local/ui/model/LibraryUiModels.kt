@@ -169,7 +169,18 @@ data class ReiAnixSeasonUiModel(
     val title: String,
     val episodes: List<ReiAnixEpisodeUiModel>,
 ) {
-    /** Stable UI key derived from existing identity without persisting a new ID. */
+    /**
+     * Stable UI identity derived only from canonical season data.
+     *
+     * The season number is the strongest existing identity. When it is not
+     * available, the normalized title is retained as the semantic identity
+     * while the canonical episode-ID signature disambiguates duplicate titles.
+     * If both number and title are missing, the episode-ID signature is the
+     * only available deterministic discriminator.
+     *
+     * Episode IDs are sorted before signing so the identity never depends on
+     * the current season/episode ordering in the Compose tree.
+     */
     val stableKey: String
         get() {
             val normalizedTitle = title
@@ -177,10 +188,38 @@ data class ReiAnixSeasonUiModel(
                 .lowercase()
                 .replace(Regex("\\s+"), " ")
                 .takeIf { it.isNotEmpty() }
-            val identity = number?.toString()
-                ?: normalizedTitle?.let { "title:$it" }
-                ?: "special"
-            return "anime:" + animeId + ":season:" + identity
+
+            val episodeSignature = episodes
+                .asSequence()
+                .map { it.id }
+                .sorted()
+                .joinToString(separator = "-")
+                .ifBlank { "empty" }
+
+            return buildString {
+                append("anime:")
+                append(animeId)
+                append(":season:")
+
+                when {
+                    number != null -> {
+                        append("number:")
+                        append(number)
+                    }
+
+                    normalizedTitle != null -> {
+                        append("title:")
+                        append(normalizedTitle)
+                        append(":episodes:")
+                        append(episodeSignature)
+                    }
+
+                    else -> {
+                        append("episodes:")
+                        append(episodeSignature)
+                    }
+                }
+            }
         }
 }
 
