@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -168,7 +167,7 @@ fun ReiAnixStorageScreen(
                             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Folder,
+                                imageVector = Icons.Filled.Info,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                             )
