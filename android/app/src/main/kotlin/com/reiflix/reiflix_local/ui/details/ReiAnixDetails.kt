@@ -345,9 +345,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onEpisodes = {
                     selectedSection = DetailsSection.EPISODES
                     coroutineScope.launch {
-                        listState.animateScrollToItem(
-                            if (hasSeasons) seasonIndex else episodeHeadingIndex,
-                        )
+                        listState.animateScrollToItem(episodeHeadingIndex)
                     }
                 },
             )
@@ -1023,7 +1021,7 @@ private fun DetailsSeasonCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (selected && animeSelectedLabelAllowed()) {
+                if (selected) {
                     Text(
                         text = "Selecionada",
                         style = MaterialTheme.typography.labelMedium,
@@ -1034,8 +1032,6 @@ private fun DetailsSeasonCard(
         }
     }
 }
-
-private fun animeSelectedLabelAllowed(): Boolean = true
 
 @Composable
 private fun DetailsSectionHeader(
