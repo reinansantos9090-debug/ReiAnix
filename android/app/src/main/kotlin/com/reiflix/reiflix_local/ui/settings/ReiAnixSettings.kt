@@ -991,7 +991,7 @@ private fun SettingsHeader(
         IconButton(
             onClick = onBack,
             modifier = Modifier.semantics {
-                contentDescription = "Voltar das configurações"
+                contentDescription = backContentDescription
             },
         ) {
             Icon(Icons.Filled.ArrowBack, contentDescription = null)
