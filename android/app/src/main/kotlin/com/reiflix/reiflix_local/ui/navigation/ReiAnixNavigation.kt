@@ -182,6 +182,9 @@ fun ReiAnixNavigationHost(
     settings: @Composable () -> Unit = {},
     storage: @Composable () -> Unit = {},
     details: @Composable (ReiAnixDetailsArgs) -> Unit = {},
+    appearanceCardSize: String = "medium",
+    appearanceShowThumbnails: Boolean = true,
+    libraryGridDensity: String = "medium",
     player: @Composable (ReiAnixPlayerArgs) -> Unit = { args ->
         ReiAnixPlayerRoute(
             navController = navController,
@@ -198,12 +201,16 @@ fun ReiAnixNavigationHost(
             ReiAnixHomeRoute(
                 navController = navController,
                 viewModel = homeViewModel,
+                cardSize = appearanceCardSize,
+                showThumbnails = appearanceShowThumbnails,
             )
         },
         library = {
             ReiAnixLibraryRoute(
                 navController = navController,
                 viewModel = homeViewModel,
+                cardSize = appearanceCardSize,
+                gridDensity = libraryGridDensity,
             )
         },
         myList = myList,
@@ -213,6 +220,9 @@ fun ReiAnixNavigationHost(
                 viewModel = homeViewModel,
             )
         },
+        appearanceCardSize = appearanceCardSize,
+        appearanceShowThumbnails = appearanceShowThumbnails,
+        libraryGridDensity = libraryGridDensity,
         settings = settings,
         storage = storage,
         details = { args ->
@@ -241,6 +251,9 @@ fun ReiAnixNavigationHost(
     storage: @Composable () -> Unit = {},
     details: @Composable (ReiAnixDetailsArgs) -> Unit,
     player: @Composable (ReiAnixPlayerArgs) -> Unit,
+    appearanceCardSize: String = "medium",
+    appearanceShowThumbnails: Boolean = true,
+    libraryGridDensity: String = "medium",
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
     navController: NavHostController = rememberNavController(),
     startDestination: String = ReiAnixRoutes.HOME,
