@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -729,9 +730,10 @@ private fun DetailsHero(
                         }
 
                         ReiAnixSecondaryButton(
-                            text = if (anime.favorite) "Remover da Lista" else "+ Minha Lista",
+                            text = if (anime.favorite) "Remover da Lista" else "Minha Lista",
                             onClick = { onToggleFavorite(anime.id) },
                             modifier = Modifier.weight(1f),
+                            leadingIcon = if (anime.favorite) null else Icons.Filled.Add,
                         )
                     }
 
