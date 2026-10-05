@@ -17,7 +17,8 @@ class Prompt14NativeSearchTests(unittest.TestCase):
 
     def test_search_uses_canonical_viewmodel_projection(self):
         source = VM.read_text(encoding="utf-8")
-        self.assertIn("ReiAnixSearchEngine.buildIndex(state.animes)", source)
+        self.assertIn("canonicalCatalog", source)
+        self.assertIn("ReiAnixSearchEngine.buildIndex(animes)", source)
         self.assertIn("combine(", source)
         self.assertIn("fun setSearchQuery", source)
         self.assertNotIn("LibraryStore(", source)
