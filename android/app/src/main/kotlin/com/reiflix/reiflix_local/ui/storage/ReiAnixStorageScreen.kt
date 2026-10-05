@@ -152,7 +152,7 @@ fun ReiAnixStorageScreen(
             item(key = "library-section") {
                 StorageSectionTitle(
                     title = "Pasta da biblioteca",
-                    description = "A escolha de uma pasta usa o Storage Access Framework e permanece vinculada à autorização real do Android.",
+                    description = "Escolha uma pasta local que o ReiAnix poderá ler e manter autorizada no Android.",
                 )
             }
 
@@ -183,6 +183,13 @@ fun ReiAnixStorageScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                                if (storage.safRoots.isNotEmpty()) {
+                                    Text(
+                                        text = persistedGrantMessage(storage.safRoots.size),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                         Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
@@ -224,14 +231,14 @@ fun ReiAnixStorageScreen(
             item(key = "device-access-section") {
                 StorageSectionTitle(
                     title = "Acessos do dispositivo",
-                    description = "Esses acessos são capacidades do Android e não substituem a configuração da pasta da biblioteca.",
+                    description = "Esses acessos são capacidades do Android e não substituem a pasta configurada para a biblioteca.",
                 )
             }
 
             item(key = "media-access") {
                 DeviceAccessCard(
                     title = "Vídeos do dispositivo",
-                    description = "Permissão de leitura usada pela descoberta MediaStore.",
+                    description = "Permissão de leitura usada para descobrir vídeos que o Android já indexou.",
                     stateLabel = mediaAccessLabel(mediaState),
                     stateTone = accessBadgeTone(mediaState, "full"),
                     icon = Icons.Filled.Info,
@@ -242,8 +249,8 @@ fun ReiAnixStorageScreen(
 
             item(key = "broad-access") {
                 DeviceAccessCard(
-                    title = "Armazenamento amplo",
-                    description = "Acesso especial somente quando já concedido nas configurações do Android.",
+                    title = "Acesso amplo ao dispositivo",
+                    description = "Permissão especial do Android, usada somente quando já foi concedida nas configurações.",
                     stateLabel = if (broadState == "available") "Acesso concedido" else "Acesso necessário",
                     stateTone = if (broadState == "available") ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
                     icon = Icons.Filled.Settings,
@@ -256,7 +263,7 @@ fun ReiAnixStorageScreen(
                 item(key = "other-sources-section") {
                     StorageSectionTitle(
                         title = "Outras fontes configuradas",
-                        description = "Fontes adicionais existentes na configuração atual; nenhuma nova fonte é criada por esta tela.",
+                        description = "Fontes adicionais já existentes na configuração atual; esta tela não cria uma segunda fonte de dados.",
                     )
                 }
 
@@ -592,6 +599,13 @@ private fun StorageScanCard(
         }
     }
 }
+
+private fun persistedGrantMessage(count: Int): String =
+    if (count == 1) {
+        "Existe uma permissão de pasta já salva no Android, mas ela ainda não foi configurada na biblioteca."
+    } else {
+        "Existem $count permissões de pasta já salvas no Android, mas nenhuma foi configurada na biblioteca."
+    }
 
 private fun friendlySourceName(raw: String): String {
     val value = raw.trim()
