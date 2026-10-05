@@ -1352,8 +1352,6 @@ class MainActivity : FlutterFragmentActivity() {
                 "hide_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeLibraryHost.hide()
-                    composeSettingsHost.hide()
-                    composeStorageHost.hide()
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
