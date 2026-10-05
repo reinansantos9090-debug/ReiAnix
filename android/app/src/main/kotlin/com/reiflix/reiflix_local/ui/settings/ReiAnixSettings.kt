@@ -61,6 +61,7 @@ data class ReiAnixSettingsCategoryUiModel(
 ) {
     companion object {
         fun defaultCategories(): List<ReiAnixSettingsCategoryUiModel> = listOf(
+            ReiAnixSettingsCategoryUiModel("Conta", "Conta Google e sessão", Icons.Filled.AccountCircle),
             ReiAnixSettingsCategoryUiModel("Geral", "Comportamento geral do aplicativo", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Aparência", "Tema e apresentação", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Biblioteca", "Catálogo, grade e Continue Watching", Icons.Filled.Info),
