@@ -817,6 +817,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("audio.subtitles", it) },
                         )
                     }
+                }
+
                 "Sobre" -> {
                     item(key = "about:app") {
                         ReiAnixCard(
