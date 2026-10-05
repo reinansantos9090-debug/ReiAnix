@@ -161,8 +161,8 @@ fun ReiAnixCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
-            disabledContentColor = ReiAnixTokens.Colors.textDisabled,
+            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
@@ -199,8 +199,8 @@ fun ReiAnixPrimaryButton(
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
-            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
-            disabledContentColor = ReiAnixTokens.Colors.textDisabled,
+            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
     ) {
         leadingIcon?.let {
@@ -237,7 +237,7 @@ fun ReiAnixSecondaryButton(
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            disabledContentColor = ReiAnixTokens.Colors.textDisabled,
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
@@ -308,19 +308,19 @@ fun ReiAnixTextField(
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
+            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
             focusedBorderColor = MaterialTheme.colorScheme.primary,
             unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-            disabledTextColor = ReiAnixTokens.Colors.textDisabled,
+            disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
             focusedLabelColor = MaterialTheme.colorScheme.primary,
             unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            disabledLabelColor = ReiAnixTokens.Colors.textDisabled,
+            disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
             focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
             unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            disabledPlaceholderColor = ReiAnixTokens.Colors.textDisabled,
+            disabledPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
     )
 }
@@ -353,16 +353,16 @@ fun ReiAnixSearchField(
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
+            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
             focusedBorderColor = MaterialTheme.colorScheme.primary,
             unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-            disabledTextColor = ReiAnixTokens.Colors.textDisabled,
+            disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
             focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
             unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            disabledPlaceholderColor = ReiAnixTokens.Colors.textDisabled,
+            disabledPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
     )
 }
@@ -387,7 +387,7 @@ fun ReiAnixChip(
                 text = text,
                 style = MaterialTheme.typography.labelMedium,
                 color = when {
-                    !enabled -> ReiAnixTokens.Colors.textDisabled
+                    !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f)
                     selected -> MaterialTheme.colorScheme.onPrimaryContainer
                     else -> MaterialTheme.colorScheme.onSurface
                 },
@@ -402,7 +402,7 @@ fun ReiAnixChip(
             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
             selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
-            disabledLabelColor = ReiAnixTokens.Colors.textDisabled,
+            disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
         border = FilterChipDefaults.filterChipBorder(
             enabled = enabled,
@@ -527,7 +527,7 @@ fun ReiAnixIconActionButton(
             tint = if (enabled) {
                 MaterialTheme.colorScheme.onSurface
             } else {
-                ReiAnixTokens.Colors.textDisabled
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f)
             },
         )
     }
@@ -751,7 +751,7 @@ fun ReiAnixEpisodeCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
@@ -907,8 +907,8 @@ fun ReiAnixSettingCard(
         enabled = onClick != null && enabled,
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surfaceCard,
-            disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -933,7 +933,7 @@ fun ReiAnixSettingCard(
                 Icon(
                     imageVector = it,
                     contentDescription = null,
-                    tint = if (enabled) MaterialTheme.colorScheme.onSurface else ReiAnixTokens.Colors.textDisabled,
+                    tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
                     modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget),
                 )
             }
@@ -941,7 +941,7 @@ fun ReiAnixSettingCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (enabled) MaterialTheme.colorScheme.onSurface else ReiAnixTokens.Colors.textDisabled,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
