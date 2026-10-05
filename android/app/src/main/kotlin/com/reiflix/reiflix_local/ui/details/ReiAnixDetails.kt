@@ -91,6 +91,9 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import androidx.compose.foundation.layout.widthIn
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -185,7 +188,10 @@ fun ReiAnixDetailsScreen(
     onRetry: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
-    onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
+    onSetEpisodeWatched: (Long, Boolean) -> Unit = {
+    ReiAnixResponsiveRoot { _, _ -> 
+    }
+},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         when (state.status) {
@@ -256,7 +262,7 @@ private fun ReiAnixDetailsLoadingContent() {
                 )
                 Column(
                     modifier = Modifier.padding(
-                        horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                        horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                         vertical = ReiAnixTokens.Spacing.lg,
                     ),
                     verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
@@ -596,13 +602,8 @@ private fun DetailsHero(
             .fillMaxWidth()
             .clip(ReiAnixTokens.Shapes.hero),
     ) {
-        val wide = maxWidth >= ReiAnixTokens.Dimensions.detailsHeroWideBreakpoint
-        val heroHeight = (
-            maxWidth * if (wide) 0.56f else 0.94f
-        ).coerceIn(
-            ReiAnixTokens.Dimensions.detailsHeroHeight,
-            ReiAnixTokens.Dimensions.detailsHeroMaxHeight,
-        )
+        val wide = LocalReiAnixResponsiveMetrics.current.widthClass != com.reiflix.reiflix_local.ui.theme.ReiAnixWindowWidthClass.COMPACT
+        val heroHeight = LocalReiAnixResponsiveMetrics.current.detailsHeroHeight()
         val backdropPath = anime.artwork?.backdropLocalPath?.takeIf { it.isNotBlank() }
         val posterPath = anime.artwork?.localPath?.takeIf { it.isNotBlank() }
 
