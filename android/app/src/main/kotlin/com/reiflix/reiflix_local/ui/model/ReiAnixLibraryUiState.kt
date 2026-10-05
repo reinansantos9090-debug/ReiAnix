@@ -49,6 +49,9 @@ data class ReiAnixHomeLibraryUiState(
             ReiAnixHomeLibraryUiState(
                 status = state.status,
                 animes = state.animes.map { anime ->
+                    val targetEpisode = anime.playbackTargetEpisodeId?.let { targetId ->
+                        anime.contentEpisodes.firstOrNull { it.id == targetId }
+                    }
                     ReiAnixHomeAnimeUiModel(
                         id = anime.id,
                         title = anime.title,
@@ -58,17 +61,19 @@ data class ReiAnixHomeLibraryUiState(
                         mediaKind = anime.mediaKind,
                         artwork = anime.artwork,
                         playbackTargetEpisodeId = anime.playbackTargetEpisodeId,
-                        availableContentCount = anime.seasons.sumOf { season ->
-                            season.episodes.count { episode ->
-                                episode.media.availability != ReiAnixMediaAvailability.MISSING
-                            }
-                        } +
-                            anime.specials.count { episode ->
-                                episode.media.availability != ReiAnixMediaAvailability.MISSING
-                            } +
-                            anime.mediaFiles.count { episode ->
-                                episode.media.availability != ReiAnixMediaAvailability.MISSING
-                            },
+                        availableContentCount = anime.contentEpisodes.count { episode ->
+                            episode.media.availability == ReiAnixMediaAvailability.AVAILABLE
+                        },
+                        playbackActionLabel = targetEpisode?.playbackActionLabel ?: "Assistir",
+                        isWatching = anime.isWatching,
+                        score = anime.score,
+                        addedAt = anime.addedAt,
+                        lastPlayedAt = anime.lastPlayedAt,
+                        pinned = anime.pinned,
+                        description = anime.description,
+                        status = anime.status,
+                        format = anime.format,
+                        studio = anime.studio,
                     )
                 },
                 sourceAvailable = state.sourceAvailable,
