@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
@@ -68,6 +70,9 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(ReiAnixLibraryUiState())
     val state: StateFlow<ReiAnixLibraryUiState> = _state.asStateFlow()
+    /** Serializes snapshot/result application so an older observer callback cannot
+     * replace a newer canonical revision in the UI state. */
+    private val stateMutex = Mutex()
 
     private val snapshotObserver = object : FileObserver(bridgeDirectory.path, FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.CREATE) {
         override fun onEvent(event: Int, path: String?) {
@@ -145,12 +150,14 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             val written = runCatching { NativeMailbox.write(appContext, command) }
                 .getOrElse { false }
             if (!written) {
-                _state.value = _state.value.copy(
-                    lastCommandId = requestId,
-                    lastCommandAction = action.value,
-                    lastCommandStatus = "FAILED",
-                    lastCommandError = "Não foi possível enviar o comando ao serviço local.",
-                )
+                stateMutex.withLock {
+                    _state.value = _state.value.copy(
+                        lastCommandId = requestId,
+                        lastCommandAction = action.value,
+                        lastCommandStatus = "FAILED",
+                        lastCommandError = "Não foi possível enviar o comando ao serviço local.",
+                    )
+                }
             }
         }
         return requestId
@@ -168,18 +175,19 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             return
         }
 
-        runCatching {
-            val currentRevision = _state.value.revision
-            ReiAnixLibrarySnapshotCodec.decode(raw, currentRevision)
-        }.onSuccess { decoded ->
-            _state.value = mergeSnapshotState(decoded, _state.value)
-        }.onFailure { error ->
-            val message = error.message.orEmpty()
-            if (message.startsWith("Stale Compose library snapshot")) return@onFailure
-            _state.value = _state.value.copy(
-                status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
-                error = message.ifBlank { error::class.java.simpleName },
-            )
+        stateMutex.withLock {
+            runCatching {
+                ReiAnixLibrarySnapshotCodec.decode(raw, _state.value.revision)
+            }.onSuccess { decoded ->
+                _state.value = mergeSnapshotState(decoded, _state.value)
+            }.onFailure { error ->
+                val message = error.message.orEmpty()
+                if (message.startsWith("Stale Compose library snapshot")) return@onFailure
+                _state.value = _state.value.copy(
+                    status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
+                    error = message.ifBlank { error::class.java.simpleName },
+                )
+            }
         }
     }
 
@@ -190,12 +198,14 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             file.delete()
             return
         }
-        _state.value = _state.value.copy(
-            lastCommandId = result.requestId,
-            lastCommandAction = result.action,
-            lastCommandStatus = result.status,
-            lastCommandError = result.error,
-        )
+        stateMutex.withLock {
+            _state.value = _state.value.copy(
+                lastCommandId = result.requestId,
+                lastCommandAction = result.action,
+                lastCommandStatus = result.status,
+                lastCommandError = result.error,
+            )
+        }
         if (result.status in setOf("COMPLETED", "QUEUED")) {
             loadSnapshot()
         }
