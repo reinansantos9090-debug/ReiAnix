@@ -135,6 +135,33 @@ class ComposeSettingsBridge:
             }
         self._atomic_write_json(self.snapshot_path, payload)
 
+    def _storage_snapshot(self) -> dict[str, Any]:
+        provider = self.storage_state_provider
+        if not callable(provider):
+            return {}
+        try:
+            snapshot = provider()
+            if hasattr(snapshot, "as_mapping"):
+                snapshot = snapshot.as_mapping()
+            if not isinstance(snapshot, dict):
+                return {}
+            raw = snapshot.get("capabilities")
+            if hasattr(raw, "as_mapping"):
+                raw = raw.as_mapping()
+            if isinstance(raw, dict):
+                return {
+                    "mediaReadState": str(raw.get("mediaReadState") or "unknown").strip().lower(),
+                    "broadStorageState": str(raw.get("broadStorageState") or "unknown").strip().lower(),
+                    "safRootCount": len(raw.get("safRoots") or ()),
+                    "removableVolumeCount": len(raw.get("removableVolumes") or ()),
+                    "lifecycleState": str(raw.get("lifecycleState") or "unknown").strip().lower(),
+                    "api": raw.get("api"),
+                    "safSelectionPending": bool(snapshot.get("safSelectionPending")),
+                }
+            return dict(snapshot)
+        except Exception:
+            return {}
+
     def _category_presence(self, values: dict[str, Any]) -> dict[str, bool]:
         keys = tuple(str(key) for key in values)
         return {
