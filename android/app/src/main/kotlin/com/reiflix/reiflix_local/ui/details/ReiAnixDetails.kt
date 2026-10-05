@@ -1043,7 +1043,7 @@ private fun DetailsSeasonCard(
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
-            ReiAnixTokens.Colors.surfaceCard
+            MaterialTheme.colorScheme.surfaceContainerHigh
         },
     ) {
         Row(
