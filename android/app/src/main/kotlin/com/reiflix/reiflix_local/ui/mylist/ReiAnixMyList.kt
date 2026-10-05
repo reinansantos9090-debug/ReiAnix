@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -213,7 +214,14 @@ private fun ReiAnixMyListReadyContent(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
+    // The My List destination remains on the NavController back stack when
+    // Details/Player are opened. Save the actual LazyColumn position so returning
+    // to the source list does not jump to the first row.
+    val listState = rememberSaveable(
+        saver = LazyListState.Saver,
+    ) {
+        LazyListState()
+    }
     val refreshState = rememberPullToRefreshState()
 
     PullToRefreshBox(
