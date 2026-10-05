@@ -23,6 +23,10 @@ class ReiAnixSettingsViewModel(context: Context) :
         repository.setSetting(key, value)
     }
 
+    fun requestAction(action: String) {
+        repository.requestAction(action)
+    }
+
     fun requestAccountAction(action: String) {
         repository.requestAccountAction(action)
     }
