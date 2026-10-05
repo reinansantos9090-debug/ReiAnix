@@ -369,7 +369,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
     LazyColumn(
         state = listState,
         modifier = Modifier
-            .fillMaxSize()
+            .weight(1f)
+            .fillMaxWidth()
             .testTag("details-episode-list"),
         contentPadding = PaddingValues(bottom = ReiAnixTokens.Spacing.xxxl),
     ) {
