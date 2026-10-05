@@ -141,12 +141,12 @@ class AndroidHostVerificationTests(unittest.TestCase):
 
     def test_workflow_android_build_is_fast_and_emulator_free(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
-        # Independent builds are intentionally allowed to run concurrently.
-        # The workflow must not serialize or cancel runs through a global
-        # concurrency group.
-        self.assertNotIn("concurrency:", workflow)
-        self.assertNotIn("group: ${{ github.workflow }}-${{ github.ref }}", workflow)
-        self.assertNotIn("cancel-in-progress:", workflow)
+        # Builds for the same ref are intentionally deduplicated so a
+        # rapid sequence of focused correction commits does not accumulate
+        # obsolete APK jobs.
+        self.assertIn("concurrency:", workflow)
+        self.assertIn("group: ${{ github.workflow }}-${{ github.ref }}", workflow)
+        self.assertIn("cancel-in-progress: true", workflow)
         self.assertIn("timeout-minutes: 15", workflow)
         self.assertIn("Run Python regression suite", workflow)
         self.assertIn("python -m pytest -q --ignore=tests/test_certification_runner.py | tee build/pytest.txt", workflow)
