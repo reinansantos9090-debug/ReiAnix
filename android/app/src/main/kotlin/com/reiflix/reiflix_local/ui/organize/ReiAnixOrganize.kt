@@ -104,6 +104,7 @@ fun ReiAnixOrganizeRoute(
         onRequestMediaAccess = onRequestMediaAccess,
         onAddFolder = onAddFolder,
         onOpenSettings = onOpenSettings,
+        onOpenOverview = viewModel::openOrganizeOverview,
         onQueryChange = viewModel::setOrganizeQuery,
         onStateSelected = viewModel::setOrganizeState,
         onGenreSelected = viewModel::setOrganizeGenre,
@@ -133,6 +134,7 @@ fun ReiAnixOrganizeScreen(
     onRequestMediaAccess: () -> Unit,
     onAddFolder: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenOverview: () -> Unit,
     onQueryChange: (String) -> Unit,
     onStateSelected: (String) -> Unit,
     onGenreSelected: (String?) -> Unit,
@@ -203,6 +205,7 @@ fun ReiAnixOrganizeScreen(
                         onGenreSelected = onGenreSelected,
                         onSortSelected = onSortSelected,
                         onClearFilters = onClearFilters,
+                        onOpenOverview = onOpenOverview,
                         onOpenDetails = onOpenDetails,
                         onRefresh = onRefresh,
                         modifier = Modifier.weight(1f),
@@ -247,6 +250,7 @@ fun ReiAnixOrganizeScreen(
                         onGenreSelected = onGenreSelected,
                         onSortSelected = onSortSelected,
                         onClearFilters = onClearFilters,
+                        onOpenOverview = onOpenOverview,
                         onOpenDetails = onOpenDetails,
                         onRefresh = onRefresh,
                         modifier = Modifier.weight(1f),
@@ -554,6 +558,7 @@ private fun OrganizeCollectionContent(
     onGenreSelected: (String?) -> Unit,
     onSortSelected: (String) -> Unit,
     onClearFilters: () -> Unit,
+    onOpenOverview: () -> Unit,
     onOpenDetails: (Long) -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
@@ -636,6 +641,13 @@ private fun OrganizeCollectionContent(
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ReiAnixChip(
+                    text = "Visão geral",
+                    onClick = onOpenOverview,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Voltar para visão geral"
+                    },
+                )
                 Box {
                     ReiAnixChip(
                         text = filters.genreKey?.let { key ->
@@ -946,10 +958,6 @@ private fun OrganizeCategoryCard(
                 text = if (category.count == 1) "1 anime" else category.count.toString() + " animes",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            ReiAnixBadge(
-                text = if (category.count > 0) "Disponível" else "Vazio",
-                tone = if (category.count > 0) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Neutral,
             )
         }
     }
