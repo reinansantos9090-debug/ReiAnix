@@ -22,8 +22,9 @@ class DiagnosticTimelineTests(unittest.TestCase):
         self.assertEqual("scan-1", event.request_id)
         self.assertEqual("scan_started", event.source)
         self.assertEqual("RUNNING", event.result)
-        self.assertEqual("refresh-1", event.extra["refresh_id"])
+        self.assertEqual("refresh-1", event.refresh_id)
         self.assertEqual("REQUESTED", event.extra["previous_phase"])
+        self.assertNotIn("refresh_id", event.extra)
         self.assertEqual("RUNNING", event.extra["phase"])
         self.assertEqual("scan_started", event.extra["transition_reason"])
 
