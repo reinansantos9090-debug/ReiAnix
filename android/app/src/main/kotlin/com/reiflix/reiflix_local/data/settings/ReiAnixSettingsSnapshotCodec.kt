@@ -35,6 +35,22 @@ internal object ReiAnixSettingsSnapshotCodec {
             }
         }
 
+        val storageObject = root.optJSONObject("storage")
+        val storage = ReiAnixSettingsStorage(
+            known = storageObject?.has("mediaReadState") == true || storageObject?.has("lifecycleState") == true,
+            mediaReadState = storageObject?.optString("mediaReadState").orEmpty().trim().lowercase().ifEmpty { "unknown" },
+            broadStorageState = storageObject?.optString("broadStorageState").orEmpty().trim().lowercase().ifEmpty { "unknown" },
+            safRootCount = storageObject?.optInt("safRootCount", 0) ?: 0,
+            removableVolumeCount = storageObject?.optInt("removableVolumeCount", 0) ?: 0,
+            lifecycleState = storageObject?.optString("lifecycleState").orEmpty().trim().lowercase().ifEmpty { "unknown" },
+            api = if (storageObject?.has("api") == true && !storageObject.isNull("api")) {
+                storageObject.optInt("api")
+            } else {
+                null
+            },
+            safSelectionPending = storageObject?.optBoolean("safSelectionPending", false) ?: false,
+        )
+
         val settingsObject = root.optJSONObject("settings") ?: JSONObject()
         val settings = buildMap {
             for (key in settingsObject.keys()) {
@@ -56,6 +72,7 @@ internal object ReiAnixSettingsSnapshotCodec {
             account = account,
             categories = categories,
             settings = settings,
+            storage = storage,
             error = error,
         )
     }
@@ -67,7 +84,19 @@ internal data class ReiAnixSettingsSnapshot(
     val account: ReiAnixSettingsAccount,
     val categories: Map<String, Boolean>,
     val settings: Map<String, String>,
+    val storage: ReiAnixSettingsStorage,
     val error: String?,
+)
+
+internal data class ReiAnixSettingsStorage(
+    val known: Boolean,
+    val mediaReadState: String,
+    val broadStorageState: String,
+    val safRootCount: Int,
+    val removableVolumeCount: Int,
+    val lifecycleState: String,
+    val api: Int?,
+    val safSelectionPending: Boolean,
 )
 
 internal data class ReiAnixSettingsAccount(
