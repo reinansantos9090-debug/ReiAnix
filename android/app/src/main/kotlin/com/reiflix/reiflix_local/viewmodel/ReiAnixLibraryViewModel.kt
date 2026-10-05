@@ -51,29 +51,78 @@ class ReiAnixLibraryViewModel(context: Context) :
     override val uiState: StateFlow<ReiAnixLibraryUiState> = repository.state
 
     /**
-     * Home observes only the fields that can affect its persistent catalog sections.
-     * Episode-level progress is deliberately excluded so a playback tick cannot
-     * invalidate the whole Home tree.
+     * Canonical immutable catalog projection.
+     *
+     * All catalog-derived screens consume this flow instead of re-running
+     * against the full UiState for unrelated scan/command/error emissions.
+     * The underlying entities still come exclusively from the repository's
+     * single canonical snapshot.
      */
-    val homeState: StateFlow<ReiAnixHomeLibraryUiState> = uiState
+    private val canonicalCatalog: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
+        uiState
+            .map { it.animes }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                uiState.value.animes,
+            )
+
+    private val homeAvailabilityState: StateFlow<ReiAnixLibraryUiState> = uiState
         .map { state ->
-            projectHomeState(state)
+            state.copy(
+                animes = emptyList(),
+                continueWatching = emptyList(),
+                storage = com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState(),
+                lastCommandId = null,
+                lastCommandAction = null,
+                lastCommandStatus = null,
+                lastCommandError = null,
+            )
         }
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            uiState.value.copy(
+                animes = emptyList(),
+                continueWatching = emptyList(),
+                storage = com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState(),
+                lastCommandId = null,
+                lastCommandAction = null,
+                lastCommandStatus = null,
+                lastCommandError = null,
+            ),
+        )
+
+    /**
+     * Home catalog content is driven only by canonicalCatalog, while source
+     * availability/error metadata remains reactive through a narrow state flow.
+     */
+    val homeState: StateFlow<ReiAnixHomeLibraryUiState> = combine(
+        canonicalCatalog,
+        homeAvailabilityState,
+    ) { animes, availability ->
+        projectHomeState(
+            availability.copy(animes = animes),
+        )
+    }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
             SharingStarted.Eagerly,
-            ReiAnixHomeLibraryUiState(),
+            projectHomeState(uiState.value),
         )
 
     private val _libraryFilters = MutableStateFlow(ReiAnixLibraryFilters())
 
     val libraryFilters: StateFlow<ReiAnixLibraryFilters> = _libraryFilters.asStateFlow()
 
-    val libraryGenres: StateFlow<List<ReiAnixGenreUiModel>> = uiState
+    val libraryGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
         .map { state ->
-            state.animes
+            animes
                 .flatMap { anime -> anime.genres }
                 .distinctBy(ReiAnixGenreUiModel::stableKey)
                 .sortedBy { it.name.lowercase() }
@@ -103,7 +152,7 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     val filteredLibraryAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
         combine(
-            uiState.map { it.animes },
+            canonicalCatalog,
             libraryFilters,
         ) { animes, filters ->
             ReiAnixLibraryFilterEngine.filter(animes, filters)
@@ -126,7 +175,7 @@ class ReiAnixLibraryViewModel(context: Context) :
      */
     val myListAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
         combine(
-            uiState.map { it.animes },
+            canonicalCatalog,
             myListFilter,
         ) { animes, selectedFilter ->
             val saved = animes.asSequence().filter { it.favorite }
@@ -189,8 +238,8 @@ class ReiAnixLibraryViewModel(context: Context) :
      * Query changes operate against the in-memory index and never touch SQLite
      * or remote services from the UI layer.
      */
-    private val searchIndex: StateFlow<com.reiflix.reiflix_local.ui.search.ReiAnixSearchIndex> = uiState
-        .map { state -> ReiAnixSearchEngine.buildIndex(state.animes) }
+    private val searchIndex: StateFlow<com.reiflix.reiflix_local.ui.search.ReiAnixSearchIndex> = canonicalCatalog
+        .map { animes -> ReiAnixSearchEngine.buildIndex(animes) }
         .flowOn(Dispatchers.Default)
         .stateIn(
             viewModelScope,
@@ -202,9 +251,9 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     val organizeFilters: StateFlow<ReiAnixOrganizeFilters> = _organizeFilters.asStateFlow()
 
-    val organizeGenres: StateFlow<List<ReiAnixGenreUiModel>> = uiState
+    val organizeGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
         .map { state ->
-            state.animes
+            animes
                 .flatMap { anime -> anime.genres }
                 .distinctBy(ReiAnixGenreUiModel::stableKey)
                 .sortedBy { it.name.lowercase() }
@@ -217,8 +266,8 @@ class ReiAnixLibraryViewModel(context: Context) :
             emptyList(),
         )
 
-    val organizeCategories: StateFlow<List<ReiAnixOrganizeCategory>> = uiState
-        .map { state -> buildOrganizeCategories(state.animes) }
+    val organizeCategories: StateFlow<List<ReiAnixOrganizeCategory>> = canonicalCatalog
+        .map { animes -> buildOrganizeCategories(animes) }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
         .stateIn(
@@ -229,7 +278,7 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     val organizeVisibleAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
         combine(
-            uiState.map { it.animes },
+            canonicalCatalog,
             searchIndex,
             organizeFilters,
         ) { animes, index, filters ->
