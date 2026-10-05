@@ -410,7 +410,7 @@ private fun ColumnScope.LibraryReadyContent(
     PullToRefreshBox(
         modifier = modifier
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
-            .fillMaxWidth()
+            .fillMaxWidth(),
         state = refreshState,
         isRefreshing = isRefreshing,
         onRefresh = {
