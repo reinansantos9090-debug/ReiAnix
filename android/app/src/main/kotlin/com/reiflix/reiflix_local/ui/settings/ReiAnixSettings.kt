@@ -383,14 +383,18 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onResetPlayer: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
+    ReiAnixResponsiveRoot {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            state = rememberSaveable(saver = LazyListState.Saver) { LazyListState() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth),
             contentPadding = PaddingValues(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -983,7 +987,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             }
             }
         }
+    
     }
+}
 
 @Composable
 fun SettingsHeader(
