@@ -1082,7 +1082,7 @@ fun ReiAnixProgressIndicator(
             .fillMaxWidth()
             .height(ReiAnixTokens.Dimensions.progressHeight)
             .then(
-                if (announceProgress) {
+                if (announceProgress && visible) {
                     Modifier.semantics {
                         contentDescription = "Progresso"
                         progressBarRangeInfo = ProgressBarRangeInfo(
