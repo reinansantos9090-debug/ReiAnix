@@ -246,7 +246,7 @@ private fun ReiAnixSettingsScreen(
                             ReiAnixSettingCard(
                                 title = category.label,
                                 description = category.description,
-                                valueSummary = categorySummary(category.label, state),
+                                value = categorySummary(category.label, state),
                                 icon = category.icon,
                                 onClick = { onOpenCategory(category.label) },
                                 enabled = true,
