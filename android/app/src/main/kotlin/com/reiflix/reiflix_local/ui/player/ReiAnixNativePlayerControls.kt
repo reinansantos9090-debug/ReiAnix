@@ -427,7 +427,18 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 glyph = "☷",
                 label = "Fonte",
-                contentDescription = "Fonte e opções do player",
+                contentDescription = buildString {
+                    append("Fonte e opções do player")
+                    val speed = state.playbackSpeed.takeIf { it.isFinite() && it > 0f }
+                    speed?.let {
+                        append(". Velocidade ")
+                        append(String.format(java.util.Locale.ROOT, "%.2gx", it))
+                    }
+                    if (state.aspectLabel.isNotBlank()) {
+                        append(". Proporção ")
+                        append(state.aspectLabel)
+                    }
+                },
                 onClick = onSource,
             )
             PlayerBottomAction(
