@@ -56,3 +56,27 @@ def test_prompt34_keeps_diagnostics_and_refresh_correlation_explicit():
     assert "refresh_id=str(refresh_id).strip()" in diagnostics
     assert "refreshId=" not in main
     assert "diagnostics.record(" in main
+
+
+def test_prompt34_has_zero_removed_host_references_in_runtime_sources():
+    runtime_roots = [
+        ROOT / "main.py",
+        ROOT / "core",
+        ROOT / "views",
+        ROOT / "scripts",
+        ROOT / "android/app/src/main",
+    ]
+    forbidden = (
+        "ReiAnixComposeSettingsHost",
+        "ReiAnixComposeStorageHost",
+        "composeSettingsHost",
+        "composeStorageHost",
+    )
+    for root in runtime_roots:
+        paths = [root] if root.is_file() else root.rglob("*")
+        for path in paths:
+            if not path.is_file() or path.suffix not in {".py", ".kt", ".kts", ".java", ".xml", ".gradle"}:
+                continue
+            source = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                assert token not in source, f"{token} remains in runtime source: {path}"
