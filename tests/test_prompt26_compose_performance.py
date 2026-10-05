@@ -22,7 +22,7 @@ class Prompt26ComposePerformanceTests(unittest.TestCase):
         genres = source[source.index("val libraryGenres"):source.index("val filteredLibraryAnimes")]
         filtered = source[source.index("val filteredLibraryAnimes"):source.index("/**\n     * Canonical Details projection")]
         self.assertIn(".flowOn(Dispatchers.Default)", home)
-        self.assertIn("ReiAnixHomeLibraryUiState()", home)
+        self.assertIn("projectHomeState(uiState.value)", home)
         self.assertIn(".flowOn(Dispatchers.Default)", genres)
         self.assertIn("emptyList()", genres)
         self.assertIn(".flowOn(Dispatchers.Default)", filtered)
@@ -44,9 +44,9 @@ class Prompt26ComposePerformanceTests(unittest.TestCase):
 
     def test_home_lazy_rows_use_stable_identity_and_content_types(self):
         home = self.read(HOME)
-        for marker in ("Home Continuar Assistindo", "Home Minha Lista"):
+        for marker in ('item(key = "home-section-continue")', 'item(key = "home-section-my-list")'):
             start = home.index(marker)
-            block = home[start:start + 1400]
+            block = home[start:start + 1900]
             self.assertIn("key = { it.stableKey }", block)
             self.assertIn("contentType =", block)
 
