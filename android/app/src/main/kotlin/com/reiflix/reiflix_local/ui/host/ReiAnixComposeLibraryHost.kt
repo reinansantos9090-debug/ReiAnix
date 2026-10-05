@@ -57,8 +57,18 @@ class ReiAnixComposeLibraryHost(
         if (view.tag != CONTENT_TAG) {
             view.tag = CONTENT_TAG
             view.setContent {
-                ReiAnixComposeRoot {
-                    val navController = rememberNavController()
+            val settingsViewModel = androidx.compose.runtime.remember {
+                ViewModelProvider(
+                    activity,
+                    ReiAnixSettingsViewModelFactory(activity.applicationContext),
+                ).get(ReiAnixSettingsViewModel::class.java)
+            }
+            val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+
+            ReiAnixComposeRoot(
+                themeMode = settingsState.settings["appearance.theme"],
+            ) {
+                val navController = rememberNavController()
                     DisposableEffect(navController) {
                         composeNavController = navController
                         onDispose {
