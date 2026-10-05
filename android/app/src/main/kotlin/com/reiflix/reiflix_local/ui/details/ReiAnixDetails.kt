@@ -191,7 +191,10 @@ fun ReiAnixDetailsScreen(
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
 ) {
     ReiAnixResponsiveRoot {
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         when (state.status) {
             ReiAnixDetailsLoadStatus.LOADING -> ReiAnixDetailsLoadingContent()
             ReiAnixDetailsLoadStatus.READY -> {
@@ -364,7 +367,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
     LazyColumn(
         state = listState,
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
             .testTag("details-episode-list"),
         contentPadding = PaddingValues(bottom = ReiAnixTokens.Spacing.xxxl),
     ) {
