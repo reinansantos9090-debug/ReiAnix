@@ -14,6 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
@@ -81,7 +82,10 @@ class ReiAnixComposeSettingsHost(
         val settingsViewModel = viewModel!!
 
         view.setContent {
-            ReiAnixComposeRoot {
+            val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+            ReiAnixComposeRoot(
+                themeMode = settingsState.settings["appearance.theme"],
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
