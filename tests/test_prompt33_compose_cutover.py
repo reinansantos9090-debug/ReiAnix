@@ -54,8 +54,8 @@ class Prompt33ComposeCutoverTests(unittest.TestCase):
         self.assertIn("compose_primary_ui = bool(bridge.available)", main)
         self.assertIn("event_type == 'compose_navigation_changed'", main)
         self.assertIn("navigation.sync_top_level(destination)", main)
-        self.assertIn("navigation.sync_top_level("settings")", main)
-        self.assertIn("navigation.push("details")", main)
+        self.assertIn('navigation.sync_top_level("settings")', main)
+        self.assertIn('navigation.push("details")', main)
 
         self.assertIn('"my_list"', navigation)
         self.assertIn('"search"', navigation)
