@@ -59,12 +59,6 @@ def test_prompt19_theme_follows_flow_without_activity_restart():
     library_host = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
     )
-    settings_host = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost.kt"
-    )
-    storage_host = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeStorageHost.kt"
-    )
     theme = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt"
     )
@@ -74,8 +68,9 @@ def test_prompt19_theme_follows_flow_without_activity_restart():
 
     assert "collectAsStateWithLifecycle" in library_host
     assert 'settingsState.settings["appearance.theme"]' in library_host
-    assert 'themeMode = settingsState.settings["appearance.theme"]' in settings_host
-    assert 'themeMode = settingsState.settings["appearance.theme"]' in storage_host
+    assert 'themeMode = settingsState.settings["appearance.theme"]' in library_host
+    assert "ReiAnixSettingsRoute" in library_host
+    assert "ReiAnixStorageRoute" in library_host
     assert "ReiAnixComposeTheme(themeMode = themeMode)" in root
     assert "ReiAnixComposeTheme(" not in compose
     assert "lightColorScheme" in theme
