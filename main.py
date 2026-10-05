@@ -88,6 +88,11 @@ async def main(page: ft.Page):
                 padding=0,
             )
         )
+        try:
+            recovery_bridge = AndroidBridge(data_dir, page)
+            await recovery_bridge.hide_library()
+        except Exception:
+            logger.exception("[RECOVERY] failed to hide native Compose shell")
         page.update()
         return
     settings_started = performance.now()
@@ -99,6 +104,10 @@ async def main(page: ft.Page):
     bridge_started = performance.now()
     bridge=AndroidBridge(data_dir, page)
     performance.event("startup.android_bridge", duration_ms=(performance.now()-bridge_started)*1000.0)
+    # Android uses one persistent Compose shell as the visual owner. Python/Flet
+    # remains available for legacy/domain surfaces that still have no native
+    # equivalent and for non-Android fallback execution.
+    compose_primary_ui = bool(bridge.available)
     compose_library_bridge = ComposeLibraryBridge(
         data_dir,
         library,
@@ -128,7 +137,7 @@ async def main(page: ft.Page):
     diagnostics = DiagnosticTimeline()
     backup_service = BackupService(store, settings=settings, app_version="0.2.1")
     diagnostic_service = DiagnosticsService(store, timeline=diagnostics, app_version="0.2.1")
-    diagnostics.record("APP_START", result="python_ui_initialized")
+    diagnostics.record("APP_START", result="python_backend_initialized")
     logger.info("[BUILD] identity=%s", build_identity())
     diagnostics.record("BUILD_IDENTITY", result=json.dumps(build_identity(), sort_keys=True))
     scan_state = [{
@@ -795,17 +804,20 @@ async def main(page: ft.Page):
                                         controls=performance.control_count(control), cached=True)
             return control
         if route == "home":
-            control = HomeView.build(
-                page, library, navigate_details, navigate_settings, play_episode,
-                navigate_organize, view_state=home_state,
-                on_request_thumbnail=request_missing_thumbnail,
-                on_open_library=navigate_library,
-                on_open_collector=navigate_collector,
-                on_refresh_library=request_home_refresh,
-                on_refresh_ui_updated=_home_refresh_ui_updated,
-                on_refresh_ui_failed=lambda: _fail_home_refresh("home_ui_refresh_failed"),
-                is_active=lambda: ui_alive[0] and navigation.current == "home",
-            )
+            if compose_primary_ui:
+                control = ft.Container(expand=True)
+            else:
+                control = HomeView.build(
+                    page, library, navigate_details, navigate_settings, play_episode,
+                    navigate_organize, view_state=home_state,
+                    on_request_thumbnail=request_missing_thumbnail,
+                    on_open_library=navigate_library,
+                    on_open_collector=navigate_collector,
+                    on_refresh_library=request_home_refresh,
+                    on_refresh_ui_updated=_home_refresh_ui_updated,
+                    on_refresh_ui_failed=lambda: _fail_home_refresh("home_ui_refresh_failed"),
+                    is_active=lambda: ui_alive[0] and navigation.current == "home",
+                )
         elif route == "library":
             # The existing Python NavigationController owns the logical route;
             # Compose is mounted by MainActivity as its reversible visual host.
@@ -828,27 +840,30 @@ async def main(page: ft.Page):
                     is_active=lambda: ui_alive[0] and navigation.current == "organize",
                 )
         elif route == "details":
-            details_instance_generation[0] += 1
-            detail_instance_token = details_instance_generation[0]
-            detail_anime_id = (current[0] or {}).get("id")
-            control = DetailView.build(
-                page, current[0], play_episode,
-                lambda: navigate_back("visual:details"),
-                _toggle_favorite_from_details, library.playback_target,
-                _set_tags_from_details, _toggle_pin_from_details, _set_note_from_details,
-                _set_episode_identification_from_details, refresh_current_details,
-                refresh_current_metadata, library.resolve_artwork, library.resolve_artwork_batch,
-                on_open_marathon=open_marathon,
-                resolve_artwork_palette=library.resolve_artwork_palette,
-                on_request_thumbnail=request_missing_thumbnail,
-                is_active=lambda token=detail_instance_token, anime_id=detail_anime_id: (
-                    ui_alive[0]
-                    and navigation.current == "details"
-                    and details_instance_generation[0] == token
-                    and (current[0] or {}).get("id") == anime_id
-                ),
-                view_state=details_state,
-            )
+            if compose_primary_ui:
+                control = ft.Container(expand=True)
+            else:
+                details_instance_generation[0] += 1
+                detail_instance_token = details_instance_generation[0]
+                detail_anime_id = (current[0] or {}).get("id")
+                control = DetailView.build(
+                    page, current[0], play_episode,
+                    lambda: navigate_back("visual:details"),
+                    _toggle_favorite_from_details, library.playback_target,
+                    _set_tags_from_details, _toggle_pin_from_details, _set_note_from_details,
+                    _set_episode_identification_from_details, refresh_current_details,
+                    refresh_current_metadata, library.resolve_artwork, library.resolve_artwork_batch,
+                    on_open_marathon=open_marathon,
+                    resolve_artwork_palette=library.resolve_artwork_palette,
+                    on_request_thumbnail=request_missing_thumbnail,
+                    is_active=lambda token=detail_instance_token, anime_id=detail_anime_id: (
+                        ui_alive[0]
+                        and navigation.current == "details"
+                        and details_instance_generation[0] == token
+                        and (current[0] or {}).get("id") == anime_id
+                    ),
+                    view_state=details_state,
+                )
         elif route == "collector":
             collector_instance_generation[0] += 1
             collector_instance_token = collector_instance_generation[0]
@@ -1064,7 +1079,7 @@ async def main(page: ft.Page):
                 safe_update()
 
     async def _hide_compose_library():
-        if not bridge.available:
+        if not bridge.available or compose_primary_ui:
             return
         try:
             await bridge.hide_library()
@@ -1104,7 +1119,7 @@ async def main(page: ft.Page):
                 safe_update()
 
     async def _hide_compose_settings():
-        if not bridge.available:
+        if not bridge.available or compose_primary_ui:
             return
         try:
             await bridge.hide_settings()
@@ -3319,6 +3334,59 @@ async def main(page: ft.Page):
                                     account_action_task[0] = page.run_task(execute_account_action, action)
                             else:
                                 logger.warning("[COMPOSE_ACCOUNT] action rejected action=%s", action or "-")
+
+                        if event_type == 'compose_navigation_changed':
+                            destination = str(payload.get('route') or '').strip().lower()
+                            anime_id_raw = str(payload.get('animeId') or '').strip()
+                            if destination in {'home', 'library', 'my_list', 'search', 'organize', 'settings'}:
+                                current[0] = None
+                                try:
+                                    navigation.sync_top_level(destination)
+                                except ValueError:
+                                    logger.warning(
+                                        "[COMPOSE_NAV] invalid top-level route=%s",
+                                        destination or '-',
+                                    )
+                            elif destination == 'storage':
+                                current[0] = None
+                                navigation.sync_top_level("settings")
+                                if not navigation.settings_path:
+                                    navigation.push_settings("Armazenamento")
+                            elif destination == 'details':
+                                try:
+                                    anime_id = int(anime_id_raw or 0)
+                                except (TypeError, ValueError):
+                                    anime_id = 0
+                                if anime_id <= 0:
+                                    logger.warning(
+                                        "[COMPOSE_NAV] details route rejected; invalid animeId=%s",
+                                        anime_id_raw or '-',
+                                    )
+                                else:
+                                    catalog = await asyncio.to_thread(library.catalog)
+                                    anime = next(
+                                        (item for item in (catalog or []) if int(item.get("id") or 0) == anime_id),
+                                        None,
+                                    )
+                                    if anime is None:
+                                        logger.warning(
+                                            "[COMPOSE_NAV] details route rejected; anime not found id=%s",
+                                            anime_id,
+                                        )
+                                    else:
+                                        current[0] = anime
+                                        if navigation.current != "details":
+                                            navigation.push("details")
+                            elif destination == 'player':
+                                # Media3 owns the actual playback Activity. Keep the
+                                # existing Python Details context; do not create a
+                                # second navigation or playback authority.
+                                pass
+                            else:
+                                logger.warning(
+                                    "[COMPOSE_NAV] route ignored destination=%s",
+                                    destination or '-',
+                                )
 
                         if event_type == 'compose_settings_navigation':
                             destination = str(payload.get('destination') or '').strip().lower()
