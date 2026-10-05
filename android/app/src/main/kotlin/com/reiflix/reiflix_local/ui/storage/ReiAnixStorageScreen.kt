@@ -196,7 +196,7 @@ fun ReiAnixStorageScreen(
                             text = "Selecionar pasta",
                             onClick = onSelectSaf,
                             enabled = !selectionBusy,
-                            leadingIcon = Icons.Filled.Folder,
+                            leadingIcon = Icons.Filled.Info,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -221,7 +221,7 @@ fun ReiAnixStorageScreen(
                         text = "Adicionar ou alterar pasta",
                         onClick = onSelectSaf,
                         enabled = !selectionBusy,
-                        leadingIcon = Icons.Filled.Folder,
+                        leadingIcon = Icons.Filled.Info,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -404,7 +404,7 @@ private fun SafSourceCard(
                         message = when (state) {
                             "revoked" -> "A autorização desta pasta não está mais disponível no Android."
                             "unavailable" -> "O provedor desta pasta está indisponível no momento."
-                            else -> "Não foi possível confirmar o acesso desta pasta.",
+                            else -> "Não foi possível confirmar o acesso desta pasta."
                         },
                         actionLabel = null,
                         onAction = null,
