@@ -13,7 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -45,7 +45,6 @@ import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState
 import com.reiflix.reiflix_local.ui.settings.SettingsHeader
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
@@ -428,7 +427,7 @@ private fun SafSourceCard(
                 text = "Remover",
                 onClick = onRemove,
                 enabled = !removeBusy && !selectionBusy,
-                leadingIcon = Icons.Filled.DeleteOutline,
+                leadingIcon = Icons.Filled.Delete,
                 modifier = Modifier.weight(0.78f),
             )
         }
@@ -569,7 +568,7 @@ private fun StorageScanCard(
         if (state.scanInProgress) {
             Spacer(Modifier.height(ReiAnixTokens.Spacing.sm))
             ReiAnixScannerInProgressState(
-                scanState = state.scanState,
+                scanState = scanLabel,
                 compact = true,
             )
         }
