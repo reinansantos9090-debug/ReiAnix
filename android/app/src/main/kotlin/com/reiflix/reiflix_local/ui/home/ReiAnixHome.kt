@@ -799,6 +799,7 @@ private fun HomeContinueCard(
 
 private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
 
+@Composable
 private fun HomeMediaSection(
     title: String,
     items: List<HomeAnimeRenderData>,
@@ -1045,6 +1046,7 @@ private fun formatScore(score: Double?): String? {
     return String.format(Locale.getDefault(), "%.1f/10", normalized.coerceIn(0.0, 10.0))
 }
 
+@Composable
 private fun HomeLoading() {
     ReiAnixLoadingState(
         title = "Carregando biblioteca",
@@ -1053,6 +1055,7 @@ private fun HomeLoading() {
     )
 }
 
+@Composable
 private fun HomeError(
     message: String,
     onRefresh: () -> Unit,
@@ -1065,6 +1068,7 @@ private fun HomeError(
     )
 }
 
+@Composable
 private fun HomeMessage(
     title: String,
     message: String,
