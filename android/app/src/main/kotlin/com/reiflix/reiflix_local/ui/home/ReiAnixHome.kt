@@ -481,7 +481,8 @@ private fun ColumnScope.HomeReadyContent(
     LazyColumn(
         modifier = Modifier
             .weight(1f)
-            .widthIn(max = responsive.contentMaxWidth),
+            .widthIn(max = responsive.contentMaxWidth)
+            .fillMaxWidth(),
         state = listState,
         contentPadding = PaddingValues(
             bottom = ReiAnixTokens.Spacing.huge,
