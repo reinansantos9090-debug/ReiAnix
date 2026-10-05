@@ -72,7 +72,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixScreenTitle
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryText
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.ReiAnixSurface
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -458,9 +458,10 @@ private fun SearchResultRow(
                 .padding(ReiAnixTokens.Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ReiAnixLocalArtwork(
+            ReiAnixPoster(
                 localPath = anime.artwork?.localPath,
                 contentDescription = anime.title,
+                identity = anime.stableKey,
                 modifier = Modifier
                     .size(
                         width = ReiAnixTokens.Dimensions.myListPosterWidth,
