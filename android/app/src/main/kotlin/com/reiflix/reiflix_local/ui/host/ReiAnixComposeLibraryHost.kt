@@ -213,6 +213,19 @@ class ReiAnixComposeLibraryHost(
 
         val route = controller.currentBackStackEntry?.destination?.route
         when (route) {
+            ReiAnixRoutes.HOME -> {
+                Toast.makeText(
+                    activity,
+                    "Pressione voltar novamente para sair",
+                    Toast.LENGTH_SHORT,
+                ).show()
+                NativeMailbox.writeBestEffort(
+                    activity,
+                    JSONObject()
+                        .put("type", "compose_library_navigation")
+                        .put("payload", JSONObject().put("destination", "back")),
+                )
+            }
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.STORAGE,
             -> hideAndPublishSettingsBack()
