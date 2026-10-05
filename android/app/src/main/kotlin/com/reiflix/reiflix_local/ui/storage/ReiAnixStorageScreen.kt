@@ -356,8 +356,8 @@ private fun StorageSectionTitle(
             text = title,
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
+            overflow = TextOverflow.Clip,
         )
         Text(
             text = description,
