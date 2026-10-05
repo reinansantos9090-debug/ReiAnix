@@ -5,6 +5,7 @@ import com.reiflix.reiflix_local.player.DeviceInteractionProfile
 import com.reiflix.reiflix_local.player.LocalSubtitleResolver
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import com.reiflix.reiflix_local.player.PlayerMediaPolicy
+import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import com.reiflix.reiflix_local.player.SystemUiController
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
@@ -338,13 +339,22 @@ class NativePlayerActivity : ComponentActivity() {
 
     private val controlsHider = object : Runnable {
         override fun run() {
-            if (controlsVisible && !errorVisible) {
-                val elapsed = System.currentTimeMillis() - lastControlsInteraction
-                if (autoHideTimeoutMs > 0L && elapsed >= autoHideTimeoutMs) {
-                    setControlsVisible(false)
-                } else {
-                    handler.postDelayed(this, CONTROL_TIMEOUT_MS - elapsed)
-                }
+            if (!controlsVisible ||
+                errorVisible ||
+                locked ||
+                !::player.isInitialized ||
+                !player.isPlaying ||
+                autoHideTimeoutMs <= 0L
+            ) {
+                return
+            }
+
+            val elapsed = System.currentTimeMillis() - lastControlsInteraction
+            val remaining = autoHideTimeoutMs - elapsed
+            if (remaining <= 0L) {
+                setControlsVisible(false)
+            } else {
+                handler.postDelayed(this, remaining)
             }
         }
     }
@@ -1712,7 +1722,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
             updatePlayPauseButton()
             updatePictureInPictureParams()
             if (!errorVisible) {
-                scheduleControlsHide()
+                if (isPlaying) {
+                    scheduleControlsHide()
+                } else {
+                    // Pause keeps the controls usable instead of letting a stale
+                    // playback timer hide them after the user pauses.
+                    handler.removeCallbacks(controlsHider)
+                    touchControls()
+                }
             }
         }
 
@@ -2887,16 +2904,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun updateTrackButtons() {
-        val audioCount = if (::player.isInitialized) {
-            player.currentTracks.groups.count { it.type == C.TRACK_TYPE_AUDIO && it.isSupported }
-        } else 0
-        val subtitleCount = if (::player.isInitialized) {
-            player.currentTracks.groups.count { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
-        } else 0
-        val audioAvailable = audioCount > 0
-        val subtitleAvailable = subtitleCount > 0
-        findViewByTag<View>("reiflix_audio_button")?.isEnabled = audioAvailable
-        findViewByTag<View>("reiflix_subtitle_button")?.isEnabled = subtitleAvailable
+        if (!::player.isInitialized) return
+
+        fun supportedTrackCount(type: Int): Int =
+            player.currentTracks.groups
+                .filter { it.type == type && it.isSupported }
+                .sumOf { group ->
+                    (0 until group.length).count { group.isTrackSupported(it) }
+                }
+
+        val audioCount = supportedTrackCount(C.TRACK_TYPE_AUDIO)
+        val subtitleCount = supportedTrackCount(C.TRACK_TYPE_TEXT)
+
+        // A single audio track has no useful selection UI. Subtitles retain the
+        // button even with one track because the existing selector can turn the
+        // subtitle track off explicitly.
+        findViewByTag<View>("reiflix_audio_button")?.isEnabled = audioCount > 1
+        findViewByTag<View>("reiflix_subtitle_button")?.isEnabled = subtitleCount > 0
     }
 
     private fun updateProgressUi() {
@@ -3182,7 +3206,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             val trackIndex: Int,
         )
 
-        val options = mutableListOf(TrackOption("Automático", null, -1))
+        val realTracks = mutableListOf<TrackOption>()
         player.currentTracks.groups
             .filter { it.type == trackType && it.isSupported }
             .forEachIndexed { groupIndex, group ->
@@ -3191,48 +3215,93 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val format = group.getTrackFormat(trackIndex)
                     val language = format.language?.takeIf { it.isNotBlank() }
                     val labelText = format.label?.takeIf { it.isNotBlank() }
-                    val channels = format.channelCount.takeIf { it > 0 }?.let { " ${it}ch" } ?: ""
-val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
-                    val suffix = listOfNotNull(language, channels.takeIf { it.isNotBlank() }, codec.takeIf { it.isNotBlank() })
-                        .joinToString(" • ")
-                    val base = labelText ?: language ?: "Faixa ${groupIndex + 1}.${trackIndex + 1}"
-                    options += TrackOption(
-                        title = if (suffix.isBlank() || base.contains(suffix, ignoreCase = true)) base else "$base • $suffix",
+                    val channels = format.channelCount
+                        .takeIf { it > 0 }
+                        ?.let { " " + it + "ch" }
+                        .orEmpty()
+                    val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
+                    val suffix = listOfNotNull(
+                        language,
+                        channels.takeIf { it.isNotBlank() },
+                        codec.takeIf { it.isNotBlank() },
+                    ).joinToString(" • ")
+                    val base = labelText ?: language ?: "Faixa " + (groupIndex + 1) + "." + (trackIndex + 1)
+                    realTracks += TrackOption(
+                        title = if (suffix.isBlank() || base.contains(suffix, ignoreCase = true)) {
+                            base
+                        } else {
+                            base + " • " + suffix
+                        },
                         group = group,
                         trackIndex = trackIndex,
                     )
                 }
             }
 
-        if (options.size == 1) {
+        if (trackType == C.TRACK_TYPE_AUDIO && realTracks.size <= 1) {
+            showFeedback(
+                if (realTracks.isEmpty()) "Nenhuma faixa de áudio disponível"
+                else "Apenas uma faixa de áudio",
+            )
+            return
+        }
+        if (realTracks.isEmpty()) {
             showFeedback("Nenhuma faixa disponível")
             return
         }
 
+        val options = buildList {
+            add(TrackOption("Automático", null, -1))
+            if (trackType == C.TRACK_TYPE_TEXT) {
+                add(TrackOption("Desativadas", null, -2))
+            }
+            addAll(realTracks)
+        }
+
+        val parameters = player.trackSelectionParameters
+        val disabled = parameters.disabledTrackTypes.contains(trackType)
+        val overriddenGroups = parameters.overrides.keys
+        val selectedIndex = when {
+            trackType == C.TRACK_TYPE_TEXT && disabled -> options.indexOfFirst { it.trackIndex == -2 }
+            overriddenGroups.isNotEmpty() -> options.indexOfFirst { option ->
+                option.group != null && option.group.mediaTrackGroup in overriddenGroups
+            }
+            else -> 0
+        }.let { if (it >= 0) it else 0 }
+
         val labels = options.map { it.title }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle(label)
-            .setSingleChoiceItems(labels, 0) { dialog, which ->
+            .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
                 val option = options.getOrNull(which) ?: return@setSingleChoiceItems
                 runCatching {
                     val builder = player.trackSelectionParameters.buildUpon()
                         .clearOverridesOfType(trackType)
-                    if (option.group != null && option.trackIndex >= 0) {
-                        builder.setOverrideForType(
-                            TrackSelectionOverride(
-                                option.group.mediaTrackGroup,
-                                option.trackIndex,
-                            ),
-                        )
+                    when {
+                        trackType == C.TRACK_TYPE_TEXT && option.trackIndex == -2 -> {
+                            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                        }
+                        else -> {
+                            builder.setTrackTypeDisabled(trackType, false)
+                            if (option.group != null && option.trackIndex >= 0) {
+                                builder.setOverrideForType(
+                                    TrackSelectionOverride(
+                                        option.group.mediaTrackGroup,
+                                        option.trackIndex,
+                                    ),
+                                )
+                            }
+                        }
                     }
                     player.trackSelectionParameters = builder.build()
                     updateTrackButtons()
+                    captureTrackFormatSummaries()
                     logPlayer(
-                        "TRACK_SELECTION_APPLIED type=$trackType index=" +
+                        "TRACK_SELECTION_APPLIED type=" + trackType + " index=" +
                             option.trackIndex + " label=" + option.title,
                     )
                 }.onFailure { error ->
-                    logPlayer("TRACK_SELECTION_FAILED type=$trackType", error)
+                    logPlayer("TRACK_SELECTION_FAILED type=" + trackType, error)
                     showFeedback("Não foi possível trocar a faixa")
                 }
                 dialog.dismiss()
@@ -3268,6 +3337,9 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
 
     private fun setControlsVisible(visible: Boolean) {
         controlsVisible = visible
+        if (!visible) {
+            handler.removeCallbacks(controlsHider)
+        }
         if (inPictureInPicture) {
             handler.removeCallbacks(controlsHider)
             moreVisible = false
@@ -4661,17 +4733,8 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
         }
     }
 
-    private fun formatTime(valueMs: Long): String {
-        val totalSeconds = (valueMs / 1000L).coerceAtLeast(0L)
-        val seconds = totalSeconds % 60L
-        val minutes = (totalSeconds / 60L) % 60L
-        val hours = totalSeconds / 3600L
-        return if (hours > 0L) {
-            String.format(java.util.Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
-        }
-    }
+    private fun formatTime(valueMs: Long): String =
+        PlayerTimeFormatter.format(valueMs)
 
     private fun actionButton(label: String, widthDp: Int, action: (TextView) -> Unit): TextView {
         return TextView(this).apply {
@@ -5437,7 +5500,11 @@ val codec = formatCodecLabel(format.sampleMimeType, format.codecs)
 
         private fun handleTap() {
             logPlayer("PLAYER_SINGLE_TAP requestId=" + requestId.ifEmpty { "-" })
-            setControlsVisible(!controlsVisible)
+            if (controlsVisible) {
+                setControlsVisible(false)
+            } else {
+                touchControls()
+            }
         }
 
         private fun pointerCenterX(event: MotionEvent): Float =
