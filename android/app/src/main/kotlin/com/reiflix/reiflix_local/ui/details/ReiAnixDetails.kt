@@ -141,17 +141,6 @@ fun ReiAnixDetailsScreen(
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
 ) {
     val anime = state.anime
-    if (state.status == ReiAnixDetailsLoadStatus.READY && anime != null) {
-        ReiAnixDetailsReady(
-            anime = anime,
-            onBack = onBack,
-            onRefresh = onRetry,
-            onWatch = onWatch,
-            onToggleFavorite = onToggleFavorite,
-            onSetEpisodeWatched = onSetEpisodeWatched,
-        )
-        return
-    }
 
     Column(
         modifier = Modifier
@@ -174,12 +163,23 @@ fun ReiAnixDetailsScreen(
             }
 
             ReiAnixDetailsLoadStatus.READY -> {
-                ReiAnixRecoverableErrorState(
-                    title = "Detalhes indisponíveis",
-                    message = "Os dados do conteúdo não estão disponíveis.",
-                    onRetry = onRetry,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                if (anime != null) {
+                    ReiAnixDetailsReady(
+                        anime = anime,
+                        onBack = onBack,
+                        onRefresh = onRetry,
+                        onWatch = onWatch,
+                        onToggleFavorite = onToggleFavorite,
+                        onSetEpisodeWatched = onSetEpisodeWatched,
+                    )
+                } else {
+                    ReiAnixRecoverableErrorState(
+                        title = "Detalhes indisponíveis",
+                        message = "Os dados do conteúdo não estão disponíveis.",
+                        onRetry = onRetry,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
 
             ReiAnixDetailsLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
