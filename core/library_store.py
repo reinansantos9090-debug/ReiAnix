@@ -3113,7 +3113,9 @@ class LibraryStore:
                 }
             rows = c.execute(
                 "SELECT e.*, a.title AS anime_title FROM episodes e JOIN anime a ON a.id=e.anime_id "
-                "WHERE e.anime_id=? AND e.missing=0 AND e.episode_type NOT IN "
+                "WHERE e.anime_id=? AND e.missing=0 "
+                "AND COALESCE(e.availability_state,'available')='available' "
+                "AND e.episode_type NOT IN "
                 "('movie','special','ova','oad','ona','extra')",
                 (current["anime_id"],),
             ).fetchall()
