@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -399,6 +400,25 @@ private fun ReiAnixMyListItem(
         mutableStateOf(false)
     }
 
+    val accessibilityLabel = buildList {
+        add(anime.title)
+        if (renderData.availableCount == 0) {
+            add("Sem episódios disponíveis")
+        } else {
+            add(
+                if (renderData.availableCount == 1) {
+                    "1 episódio"
+                } else {
+                    renderData.availableCount.toString() + " episódios"
+                },
+            )
+        }
+        renderData.progress?.let {
+            add(((it.coerceIn(0f, 1f) * 100f).toInt()).toString() + "% assistido")
+        }
+        add(renderData.status.label)
+    }.joinToString(", ")
+
     ReiAnixSurface(
         modifier = Modifier
             .fillMaxWidth()
@@ -406,7 +426,7 @@ private fun ReiAnixMyListItem(
             .clickable(onClick = onOpenDetails)
             .semantics {
                 role = Role.Button
-                contentDescription = "Abrir " + anime.title
+                contentDescription = "Abrir " + accessibilityLabel
             },
         shape = ReiAnixTokens.Shapes.card,
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -419,7 +439,7 @@ private fun ReiAnixMyListItem(
         ) {
             ReiAnixPoster(
                 localPath = anime.artwork?.localPath,
-                contentDescription = anime.title,
+                contentDescription = null,
                 identity = anime.stableKey,
                 modifier = Modifier
                     .size(
@@ -433,7 +453,9 @@ private fun ReiAnixMyListItem(
             Spacer(Modifier.size(ReiAnixTokens.Spacing.md))
 
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clearAndSetSemantics {},
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 androidx.compose.material3.Text(
