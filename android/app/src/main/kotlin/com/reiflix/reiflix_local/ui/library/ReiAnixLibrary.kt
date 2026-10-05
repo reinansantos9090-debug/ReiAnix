@@ -477,6 +477,7 @@ private fun ColumnScope.LibraryReadyContent(
                 ReiAnixSearchField(
                     value = filters.query,
                     onValueChange = onQueryChange,
+                    accessibilityLabel = "Pesquisar na biblioteca",
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Título ou gênero") },
                     leadingIcon = {
@@ -606,7 +607,7 @@ private fun ColumnScope.LibraryReadyContent(
                             selected = filters.sort != ReiAnixLibrarySort.DEFAULT.label,
                             onClick = { sortMenuExpanded = true },
                             modifier = Modifier.semantics {
-                                contentDescription = "Ordenar: " + filters.sort
+                                contentDescription = "Ordenar. Opção atual: " + filters.sort
                             },
                         )
                         DropdownMenu(
