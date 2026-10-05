@@ -53,6 +53,13 @@ private sealed interface LocalArtworkDecodeResult {
     data object Error : LocalArtworkDecodeResult
 }
 
+private data class LocalArtworkRequestKey(
+    val identity: String,
+    val localPath: String?,
+    val fallbackLocalPath: String?,
+    val targetMaxDimensionPx: Int,
+)
+
 private const val TAG = "ReiAnixLocalArtwork"
 
 /**
@@ -114,10 +121,12 @@ fun ReiAnixLocalArtwork(
             } else {
                 LocalArtworkLoadState.Loading
             },
-            key1 = stableIdentity,
-            key2 = localPath,
-            key3 = fallbackLocalPath,
-            key4 = targetMaxDimensionPx,
+            key1 = LocalArtworkRequestKey(
+                identity = stableIdentity,
+                localPath = localPath,
+                fallbackLocalPath = fallbackLocalPath,
+                targetMaxDimensionPx = targetMaxDimensionPx,
+            ),
         ) {
             val candidates = listOf(localPath, fallbackLocalPath)
                 .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
