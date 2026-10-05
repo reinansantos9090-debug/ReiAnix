@@ -617,7 +617,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar",
-                                    onClick = { onResetPlayer("reset_player") }
+                                    onClick = { onResetPlayer("reset_player") },
                                     modifier = Modifier.align(Alignment.End),
                                 )
                             }
