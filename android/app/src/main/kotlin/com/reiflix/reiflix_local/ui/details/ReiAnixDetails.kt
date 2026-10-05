@@ -781,6 +781,7 @@ private fun DetailsHero(
         }
     }
 }
+}
 
 @Composable
 private fun DetailsHeroIcon(
