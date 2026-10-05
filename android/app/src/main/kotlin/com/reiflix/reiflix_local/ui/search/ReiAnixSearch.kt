@@ -373,8 +373,7 @@ private fun SearchResults(
         ),
         state = listState,
         modifier = Modifier
-            .fillMaxWidth()
-            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
         contentPadding = PaddingValues(
             start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
