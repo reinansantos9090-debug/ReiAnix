@@ -90,6 +90,7 @@ fun ReiAnixMyListRoute(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ReiAnixScreenTitle(
             title = "Minha Lista",
@@ -230,7 +231,9 @@ private fun ReiAnixMyListReadyContent(
     val refreshState = rememberPullToRefreshState()
 
     PullToRefreshBox(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
         state = refreshState,
         isRefreshing = isRefreshing,
         onRefresh = {
