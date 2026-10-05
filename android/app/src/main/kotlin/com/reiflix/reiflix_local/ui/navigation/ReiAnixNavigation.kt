@@ -205,6 +205,7 @@ fun ReiAnixNavigationHost(
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,
+    onRouteChanged: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> },
 ) {
     ReiAnixNavigationHost(
         home = {
