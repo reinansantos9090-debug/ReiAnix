@@ -109,7 +109,7 @@ fun ReiAnixBadge(
         ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning.copy(alpha = ReiAnixTokens.Colors.statusContainerAlpha)
         ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.errorContainer
         ReiAnixBadgeTone.Info -> ReiAnixTokens.Colors.secondaryContainer
-        ReiAnixBadgeTone.Neutral -> ReiAnixTokens.Colors.surfaceRaised
+        ReiAnixBadgeTone.Neutral -> MaterialTheme.colorScheme.surfaceContainer
     }
     val content = when (tone) {
         ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.onPrimaryContainer
@@ -159,7 +159,7 @@ fun ReiAnixCard(
             .semantics { },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
             disabledContainerColor = ReiAnixTokens.Colors.disabledSurface,
             disabledContentColor = ReiAnixTokens.Colors.textDisabled,
@@ -602,7 +602,7 @@ fun ReiAnixAnimeCard(
             ),
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = ReiAnixTokens.Colors.surfaceCard,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
