@@ -46,6 +46,10 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
 import com.reiflix.reiflix_local.ui.settings.SettingsHeader
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
 @Composable
@@ -81,6 +85,7 @@ fun ReiAnixStorageScreen(
     onCheckAccess: () -> Unit,
     onRefreshLibrary: () -> Unit,
 ) {
+    ReiAnixResponsiveRoot {
     val storage = state.storage
     var pendingRemoval by remember { mutableStateOf<ReiAnixStorageSourceUiModel?>(null) }
 
@@ -111,10 +116,16 @@ fun ReiAnixStorageScreen(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
-        LazyColumn(
+        Box(
             modifier = Modifier.fillMaxSize(),
+            contentAlignment = androidx.compose.ui.Alignment.TopCenter,
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
             contentPadding = PaddingValues(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -323,6 +334,8 @@ fun ReiAnixStorageScreen(
                 }
             },
         )
+    }
+
     }
 }
 
