@@ -811,16 +811,22 @@ async def main(page: ft.Page):
             # Compose is mounted by MainActivity as its reversible visual host.
             control = ft.Container(expand=True)
         elif route == "organize":
-            control = OrganizeView.build(
-                page, library, navigate_details,
-                lambda: navigate_back("visual:organize"), navigate_settings,
-                on_request_storage_access=open_broad_storage_access,
-                on_scan_storage=refresh_library,
-                on_request_video_access=request_video_access,
-                on_add_folder=add_folder,
-                view_state=organize_state,
-                is_active=lambda: ui_alive[0] and navigation.current == "organize",
-            )
+            if bridge.available:
+                # Compose owns the visible Organize UI on Android; keep the
+                # logical Flet route as an empty shell for backward-compatible
+                # NavigationController/page.views bookkeeping.
+                control = ft.Container(expand=True)
+            else:
+                control = OrganizeView.build(
+                    page, library, navigate_details,
+                    lambda: navigate_back("visual:organize"), navigate_settings,
+                    on_request_storage_access=open_broad_storage_access,
+                    on_scan_storage=refresh_library,
+                    on_request_video_access=request_video_access,
+                    on_add_folder=add_folder,
+                    view_state=organize_state,
+                    is_active=lambda: ui_alive[0] and navigation.current == "organize",
+                )
         elif route == "details":
             details_instance_generation[0] += 1
             detail_instance_token = details_instance_generation[0]
@@ -1065,6 +1071,21 @@ async def main(page: ft.Page):
         except Exception:
             logger.exception("[COMPOSE_LIBRARY] host hide failed", exc_info=True)
 
+    async def _show_compose_organize():
+        if not bridge.available or navigation.current != "organize" or not ui_alive[0]:
+            return
+        try:
+            await bridge.open_organize()
+        except Exception as exc:
+            logger.exception("[COMPOSE_ORGANIZE] host open failed", exc_info=True)
+            if navigation.current == "organize" and ui_alive[0]:
+                navigation.back()
+                render_current(reason="compose_organize_open_failed")
+                persist_navigation_state()
+                page.snack_bar = ft.SnackBar(ft.Text("Não foi possível abrir Organizar Compose agora."))
+                page.snack_bar.open = True
+                safe_update()
+
     async def _show_compose_settings():
         if (
             not bridge.available
@@ -1105,7 +1126,7 @@ async def main(page: ft.Page):
     def navigate_home():
         previous = navigation.current
         with performance.interaction("return_home", source=previous, target="home"):
-            if previous == "library":
+            if previous in {"library", "organize"}:
                 page.run_task(_hide_compose_library)
             navigation.reset_to_root()
             render_current(reason="return_home")
@@ -1132,6 +1153,8 @@ async def main(page: ft.Page):
             navigation.push("organize")
             render_current(reason="open_organize")
             persist_navigation_state()
+            if bridge.available:
+                page.run_task(_show_compose_organize)
     def navigate_collector():
         previous = navigation.current
         with performance.interaction("open_collector", source=previous, target="collector"):
@@ -2177,6 +2200,11 @@ async def main(page: ft.Page):
             refresh = organize_state.get("_refresh_from_catalog")
             if callable(refresh):
                 refresh()
+                return
+            if bridge.available:
+                # Compose observes the same atomic canonical snapshot through
+                # ReiAnixLibraryRepository/FileObserver; avoid rebuilding the
+                # legacy Flet shell for every catalog change.
                 return
         if navigation.current == "details":
             if not refresh_details:
