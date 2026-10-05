@@ -75,6 +75,8 @@ class ReiAnixLibraryViewModel(context: Context) :
                 animes = emptyList(),
                 continueWatching = emptyList(),
                 storage = com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState(),
+                scanInProgress = false,
+                scanState = "IDLE",
                 lastCommandId = null,
                 lastCommandAction = null,
                 lastCommandStatus = null,
@@ -89,6 +91,8 @@ class ReiAnixLibraryViewModel(context: Context) :
                 animes = emptyList(),
                 continueWatching = emptyList(),
                 storage = com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState(),
+                scanInProgress = false,
+                scanState = "IDLE",
                 lastCommandId = null,
                 lastCommandAction = null,
                 lastCommandStatus = null,
@@ -121,7 +125,7 @@ class ReiAnixLibraryViewModel(context: Context) :
     val libraryFilters: StateFlow<ReiAnixLibraryFilters> = _libraryFilters.asStateFlow()
 
     val libraryGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
-        .map { state ->
+        .map { animes ->
             animes
                 .flatMap { anime -> anime.genres }
                 .distinctBy(ReiAnixGenreUiModel::stableKey)
@@ -252,7 +256,7 @@ class ReiAnixLibraryViewModel(context: Context) :
     val organizeFilters: StateFlow<ReiAnixOrganizeFilters> = _organizeFilters.asStateFlow()
 
     val organizeGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
-        .map { state ->
+        .map { animes ->
             animes
                 .flatMap { anime -> anime.genres }
                 .distinctBy(ReiAnixGenreUiModel::stableKey)
