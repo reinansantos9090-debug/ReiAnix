@@ -61,7 +61,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
@@ -1003,15 +1003,12 @@ private fun HomeMediaCard(
                     .aspectRatio(ReiAnixTokens.Dimensions.homeLandscapeArtworkAspectRatio)
                     .clip(ReiAnixTokens.Shapes.artwork),
             ) {
-                ReiAnixLocalArtwork(
+                ReiAnixPoster(
                     localPath = anime.artworkPath,
                     contentDescription = anime.title,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    placeholder = "Sem arte",
-                    maxDimensionPx = 512,
-                    shape = ReiAnixTokens.Shapes.artwork,
                     identity = anime.stableKey,
+                    maxDimensionPx = 512,
                 )
                 if (anime.favorite) {
                     Surface(
