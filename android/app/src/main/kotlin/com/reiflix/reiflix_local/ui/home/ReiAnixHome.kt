@@ -389,7 +389,9 @@ private fun ReiAnixAnimeUiModel.toHomeRenderData(): HomeAnimeRenderData =
         artworkPath = artwork?.localPath,
         backdropLocalPath = artwork?.backdropLocalPath,
         playbackEpisodeId = playbackTargetEpisodeId,
-        playbackActionLabel = playbackActionLabel,
+        playbackActionLabel = playbackTargetEpisodeId
+            ?.let { targetId -> contentEpisodes.firstOrNull { it.id == targetId }?.playbackActionLabel }
+            ?: "Assistir",
         isWatching = isWatching,
         availableContentCount = availableContentCount,
         score = score,
