@@ -1,3 +1,6 @@
+import json
+import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -378,8 +381,37 @@ class StorageOnboardingTests(unittest.TestCase):
     def test_native_bridge_orders_events_by_creation_time(self):
         source = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
         self.assertIn("def _event_time(event: dict)", source)
-        self.assertIn("events.sort(key=self._event_time)", source)
+        self.assertIn("claimed_events.sort(key=lambda item: (item[0], item[1], item[2]))", source)
         self.assertIn('"createdAt"', source)
+
+    def test_native_bridge_uses_publication_order_when_timestamps_tie(self):
+        with tempfile.TemporaryDirectory() as directory:
+            from core.android_bridge import AndroidBridge
+
+            bridge = AndroidBridge(directory)
+            queue = Path(directory) / "reiflix-native-events"
+            queue.mkdir(parents=True, exist_ok=True)
+
+            # Make the lexicographically smaller filename the later publication.
+            # Filename order must not move the terminal scan ahead of its batch.
+            batch = queue / "event-z-batch.json"
+            terminal = queue / "event-a-terminal.json"
+            batch.write_text(
+                json.dumps({"eventId": "batch-1", "type": "saf_scan_batch", "createdAt": 1000}),
+                encoding="utf-8",
+            )
+            terminal.write_text(
+                json.dumps({"eventId": "terminal-1", "type": "saf_scan", "createdAt": 1000}),
+                encoding="utf-8",
+            )
+            os.utime(batch, ns=(1_000_000_100, 2_000_000_100))
+            os.utime(terminal, ns=(1_000_000_200, 2_000_000_200))
+
+            events = bridge.drain(max_events=10)
+            try:
+                self.assertEqual(["saf_scan_batch", "saf_scan"], [event["type"] for event in events])
+            finally:
+                bridge.acknowledge()
 
     def test_native_bridge_retains_failed_requeue_events(self):
         source = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
