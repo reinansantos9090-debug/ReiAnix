@@ -18,8 +18,6 @@ import com.reiflix.reiflix_local.storage.StorageAuthorization
 import com.reiflix.reiflix_local.storage.StorageLifecycleState
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
-import com.reiflix.reiflix_local.ui.host.ReiAnixComposeSettingsHost
-import com.reiflix.reiflix_local.ui.host.ReiAnixComposeStorageHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 
 import android.content.ActivityNotFoundException
@@ -100,8 +98,6 @@ class MainActivity : FlutterFragmentActivity() {
     private var interactionProfileFingerprint: String? = null
     private val nativeRequestState = NativeRequestState()
     private lateinit var composeLibraryHost: ReiAnixComposeLibraryHost
-    private lateinit var composeStorageHost: ReiAnixComposeStorageHost
-    private lateinit var composeSettingsHost: ReiAnixComposeSettingsHost
 
     private val playerActivityLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
@@ -786,13 +782,10 @@ class MainActivity : FlutterFragmentActivity() {
         logLifecycle("onCreate", intent)
         NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "APP_START").put("lifecycle", "onCreate")))
         systemUiController = SystemUiController(window)
-        // The Library host owns the single runtime Compose visual shell. The
-        // historical Settings/Storage host classes remain constructed for
-        // compatibility with existing lifecycle/tooling contracts, but native
-        // commands never mount them as competing visual surfaces.
+        // The legacy-named Library host is now the single runtime Compose
+        // visual shell. Settings and Storage are routes inside the same shell;
+        // no competing Compose host is mounted for either screen.
         composeLibraryHost = ReiAnixComposeLibraryHost(this)
-        composeStorageHost = ReiAnixComposeStorageHost(this)
-        composeSettingsHost = ReiAnixComposeSettingsHost(this)
         composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
         // The existing SystemUiController remains the single Android system-bar
         // authority while the Compose shell and legacy Flet surfaces coexist.
@@ -997,8 +990,6 @@ class MainActivity : FlutterFragmentActivity() {
         PerformanceDiagnostics.sampleMemory(this, "main_on_destroy")
         PerformanceDiagnostics.detach()
         cancelSafPickerWatchdog()
-        if (::composeStorageHost.isInitialized) composeStorageHost.dispose()
-        if (::composeSettingsHost.isInitialized) composeSettingsHost.dispose()
         if (::composeLibraryHost.isInitialized) composeLibraryHost.dispose()
         googleSignInJob?.cancel()
         googleSignInJob = null
