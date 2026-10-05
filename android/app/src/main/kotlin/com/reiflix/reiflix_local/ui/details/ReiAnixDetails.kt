@@ -188,10 +188,7 @@ fun ReiAnixDetailsScreen(
     onRetry: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
-    onSetEpisodeWatched: (Long, Boolean) -> Unit = {
-    ReiAnixResponsiveRoot { _, _ -> 
-    }
-},
+    onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
 ) {
     ReiAnixResponsiveRoot {
     Column(modifier = Modifier.fillMaxSize()) {
