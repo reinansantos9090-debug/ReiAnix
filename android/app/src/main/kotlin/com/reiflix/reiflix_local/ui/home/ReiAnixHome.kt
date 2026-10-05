@@ -531,7 +531,7 @@ private fun HomeHero(
     BoxWithConstraints(
         modifier = Modifier.fillMaxWidth(),
     ) {
-        val heroHeight = (maxWidth / 1.48f).coerceIn(260.dp, 380.dp)
+        val heroHeight = (maxWidth / 1.48f).coerceIn(300.dp, 400.dp)
 
         Box(
             modifier = Modifier
