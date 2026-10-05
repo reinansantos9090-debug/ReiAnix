@@ -93,18 +93,14 @@ def test_prompt18_native_settings_integration_contract():
         root
         / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
     ).read_text(encoding="utf-8")
-    settings_host = (
-        root
-        / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost.kt"
-    ).read_text(encoding="utf-8")
-
     assert "ComposeSettingsBridge" in main
     assert "compose_settings_navigation" in main
     assert "_show_compose_settings" in main
     assert "open_settings" in request_state
     assert "hide_settings" in request_state
-    assert "composeSettingsHost" in activity
-    assert "ReiAnixSettingsRoute" in settings_host
+    assert "composeSettingsHost" not in activity
+    assert "composeLibraryHost" in activity
+    assert "ReiAnixRoutes.SETTINGS" in activity
     assert "collectAsStateWithLifecycle" in settings_screen
     assert 'ReiAnixSettingsCategoryUiModel("Player"' in settings_screen
     assert 'ReiAnixSettingsCategoryUiModel("Armazenamento"' in settings_screen
