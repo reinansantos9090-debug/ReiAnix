@@ -275,6 +275,7 @@ fun ReiAnixNavigationHost(
         else -> null
     }
     val shouldShowBottomNavigation = showBottomNavigation &&
+        currentRoute != ReiAnixRoutes.STORAGE &&
         (selectedBottomRoute != null || currentRoute == ReiAnixRoutes.DETAILS)
 
     ReiAnixAppShell(
