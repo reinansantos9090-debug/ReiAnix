@@ -51,6 +51,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
+import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
@@ -448,20 +449,14 @@ private fun ReiAnixMyListItem(
             )
 
             Box {
-                IconButton(
+                ReiAnixIconActionButton(
+                    icon = Icons.Filled.MoreVert,
+                    contentDescription = "Mais opções para " + anime.title,
                     onClick = { menuExpanded = true },
-                    modifier = Modifier
-                        .size(ReiAnixTokens.Dimensions.touchTarget)
-                        .semantics {
-                            contentDescription = "Mais opções para " + anime.title
-                        },
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                    modifier = Modifier.semantics {
+                        contentDescription = "Mais opções para " + anime.title
+                    },
+                )
 
                 DropdownMenu(
                     expanded = menuExpanded,
