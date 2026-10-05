@@ -235,7 +235,7 @@ private fun ReiAnixMyListReadyContent(
                 modifier = Modifier.align(Alignment.TopCenter),
                 state = refreshState,
                 isRefreshing = isRefreshing,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 color = MaterialTheme.colorScheme.primary,
             )
         },
@@ -392,7 +392,7 @@ private fun ReiAnixMyListItem(
                 contentDescription = "Abrir " + anime.title
             },
         shape = ReiAnixTokens.Shapes.card,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Row(
             modifier = Modifier
