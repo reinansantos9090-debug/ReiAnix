@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -364,7 +365,14 @@ private fun ColumnScope.ReiAnixDetailsReady(
     } ?: anime.seasons.firstOrNull()
 
     val showSeasonSelector = anime.seasons.size > 1
-    val listState = rememberLazyListState()
+    // Details stays below the transient native Player route. Persist its scroll
+    // anchor so Player -> Details restores the episode/season context instead
+    // of reconstructing the screen at episode one.
+    val listState = rememberSaveable(
+        saver = LazyListState.Saver,
+    ) {
+        LazyListState()
+    }
     val episodeAnchor = if (showSeasonSelector) 3 else 2
 
     LazyColumn(
