@@ -513,7 +513,7 @@ class NativePlayerActivity : ComponentActivity() {
                     .put("transitionGeneration", transitionGeneration)
                     .put("sessionState", sessionState.name)
                     .put("activityElapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
-                    .put("playerSessionId", sessionId)
+                    .put("playerSessionId", playerSessionId)
                     .put("activityInstanceId", activityInstanceId)
                     .put("originRequestId", originRequestId)
                     .put("originCreatedAtMs", originCreatedAtMs)
