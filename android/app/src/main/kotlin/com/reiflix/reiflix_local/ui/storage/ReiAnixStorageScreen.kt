@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -171,7 +172,7 @@ fun ReiAnixStorageScreen(
                     ReiAnixCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentDescription = "Nenhuma pasta da biblioteca foi configurada" },
+            
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -346,7 +347,9 @@ private fun StorageSectionTitle(
     description: String,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { heading() },
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
     ) {
         Text(
