@@ -1318,7 +1318,19 @@ class MainActivity : FlutterFragmentActivity() {
             when (action) {
                 "open_library" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    composeLibraryHost.show(ReiAnixRoutes.LIBRARY, resetBackStack = true)
+                    val requestedDestination = data.getQueryParameter("start_destination")?.trim()
+                    val destination = when (requestedDestination) {
+                        ReiAnixRoutes.HOME,
+                        ReiAnixRoutes.LIBRARY,
+                        ReiAnixRoutes.SEARCH,
+                        ReiAnixRoutes.MY_LIST,
+                        ReiAnixRoutes.ORGANIZE,
+                        ReiAnixRoutes.SETTINGS,
+                        ReiAnixRoutes.STORAGE,
+                        -> requestedDestination
+                        else -> ReiAnixRoutes.LIBRARY
+                    }
+                    composeLibraryHost.show(destination, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
