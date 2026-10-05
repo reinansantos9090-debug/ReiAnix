@@ -57,15 +57,17 @@ class Prompt27ComposeInsetsContractTests(unittest.TestCase):
         self.assertNotIn("Spacing.huge + 56.dp", library)
         self.assertNotIn("Spacing.huge + 56.dp", search)
 
-    def test_search_and_library_keep_content_above_ime(self):
+    def test_search_uses_ime_padding_while_library_does_not(self):
         library = self.read(
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt"
         )
         search = self.read(
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt"
         )
-        self.assertIn(".imePadding()", library)
+        # Search keeps IME protection; Library deliberately relies on the
+        # surrounding layout/insets contract and must not reintroduce it.
         self.assertIn(".imePadding()", search)
+        self.assertNotIn(".imePadding()", library)
 
     def test_standalone_compose_hosts_apply_safe_drawing_and_settings_ime_padding(self):
         storage = self.read(
