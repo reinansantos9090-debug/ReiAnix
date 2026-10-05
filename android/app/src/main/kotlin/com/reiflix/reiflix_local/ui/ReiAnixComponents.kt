@@ -523,6 +523,7 @@ fun ReiAnixAnimeCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     maxDimensionPx: Int = 512,
+    bottomBadgeText: String? = null,
 ) {
     ReiAnixAnimeCard(
         title = anime.title,
@@ -542,6 +543,7 @@ fun ReiAnixAnimeCard(
         onClick = onClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
+        bottomBadgeText = bottomBadgeText,
     )
 }
 
@@ -560,6 +562,7 @@ fun ReiAnixAnimeCard(
     onFavoriteClick: (() -> Unit)? = null,
     maxDimensionPx: Int = 512,
     artworkIdentity: String? = null,
+    bottomBadgeText: String? = null,
 ) {
     Card(
         modifier = modifier
@@ -648,6 +651,27 @@ fun ReiAnixAnimeCard(
                             } else {
                                 MaterialTheme.colorScheme.onSurface
                             },
+                        )
+                    }
+                }
+                if (!bottomBadgeText.isNullOrBlank()) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = ReiAnixTokens.Spacing.md),
+                        shape = ReiAnixTokens.Shapes.chip,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ) {
+                        Text(
+                            text = bottomBadgeText,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(
+                                horizontal = ReiAnixTokens.Spacing.md,
+                                vertical = ReiAnixTokens.Spacing.xs,
+                            ),
                         )
                     }
                 }
