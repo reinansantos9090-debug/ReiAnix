@@ -384,6 +384,9 @@ private fun ColumnScope.LibraryReadyContent(
     var sortMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var genreMenuExpanded by rememberSaveable { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState()
+    val availableEpisodeCount = remember(state.animes) {
+        state.animes.sumOf { it.availableContentCount }
+    }
     val gridState = rememberSaveable(
         saver = LazyGridState.Saver,
     ) {
@@ -431,7 +434,7 @@ private fun ColumnScope.LibraryReadyContent(
             ) {
                 LibrarySourceSummaryCard(
                     animeCount = state.animes.size,
-                    episodeCount = state.animes.sumOf { it.availableContentCount },
+                    episodeCount = availableEpisodeCount,
                     sourceAvailable = state.sourceAvailable,
                 )
             }
