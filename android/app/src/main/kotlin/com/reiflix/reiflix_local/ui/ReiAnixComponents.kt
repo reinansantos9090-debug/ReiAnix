@@ -386,10 +386,10 @@ fun ReiAnixChip(
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
+                color = when {
+                    !enabled -> ReiAnixTokens.Colors.textDisabled
+                    selected -> MaterialTheme.colorScheme.onPrimaryContainer
+                    else -> MaterialTheme.colorScheme.onSurface
                 },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
