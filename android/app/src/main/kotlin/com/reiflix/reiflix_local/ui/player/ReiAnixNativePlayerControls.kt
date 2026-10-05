@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward10
@@ -31,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -340,7 +340,7 @@ fun ReiAnixNativePlayerBottomControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = formatPlayerTime(displayPosition),
+                text = PlayerTimeFormatter.format(displayPosition),
                 color = Color.White,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
@@ -377,7 +377,7 @@ fun ReiAnixNativePlayerBottomControls(
                 steps = 0,
             )
             Text(
-                text = if (duration > 0L) formatPlayerTime(duration) else "--:--",
+                text = if (duration > 0L) PlayerTimeFormatter.format(duration) else "--:--",
                 color = Color.White,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
@@ -471,15 +471,3 @@ private fun RowScope.PlayerBottomAction(
     }
 }
 
-private fun formatPlayerTime(valueMs: Long): String {
-    val safe = valueMs.coerceAtLeast(0L)
-    val totalSeconds = safe / 1000L
-    val seconds = totalSeconds % 60L
-    val minutes = (totalSeconds / 60L) % 60L
-    val hours = totalSeconds / 3600L
-    return if (hours > 0L) {
-        "%d:%02d:%02d".format(java.util.Locale.US, hours, minutes, seconds)
-    } else {
-        "%02d:%02d".format(java.util.Locale.US, minutes, seconds)
-    }
-}
