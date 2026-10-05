@@ -29,21 +29,20 @@ class Prompt33ComposeCutoverTests(unittest.TestCase):
         self.assertNotIn("composeSettingsHost.show(", source)
         self.assertNotIn("composeStorageHost.show(", source)
         self.assertIn(
-            "composeLibraryHost.show(ReiAnixRoutes.LIBRARY, resetBackStack = true)",
+            "val requestedDestination = data.getQueryParameter(\"start_destination\")?.trim()",
             source,
         )
         self.assertIn(
-            "composeLibraryHost.show(ReiAnixRoutes.ORGANIZE, resetBackStack = true)",
+            "composeLibraryHost.show(destination, resetBackStack = true)",
             source,
         )
-        self.assertIn(
-            "composeLibraryHost.show(ReiAnixRoutes.SETTINGS, resetBackStack = true)",
-            source,
-        )
-        self.assertIn(
-            "composeLibraryHost.show(ReiAnixRoutes.STORAGE, resetBackStack = true)",
-            source,
-        )
+        for destination in (
+            "ReiAnixRoutes.LIBRARY",
+            "ReiAnixRoutes.ORGANIZE",
+            "ReiAnixRoutes.SETTINGS",
+            "ReiAnixRoutes.STORAGE",
+        ):
+            self.assertIn(destination, source)
 
     def test_compose_routes_project_back_to_the_existing_python_navigation(self):
         main = MAIN.read_text(encoding="utf-8")
@@ -76,11 +75,13 @@ class Prompt33ComposeCutoverTests(unittest.TestCase):
 
         self.assertIn("if compose_primary_ui:", home)
         self.assertIn("control = ft.Container(expand=True)", home)
-        self.assertNotIn("HomeView.build(", home)
+        self.assertIn("else:", home)
+        self.assertIn("HomeView.build(", home)
 
         self.assertIn("if compose_primary_ui:", details)
         self.assertIn("control = ft.Container(expand=True)", details)
-        self.assertNotIn("DetailView.build(", details)
+        self.assertIn("else:", details)
+        self.assertIn("DetailView.build(", details)
 
         # Collector remains a real Flet surface because no Compose equivalent
         # exists yet.
