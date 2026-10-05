@@ -12,6 +12,17 @@ enum class ReiAnixSettingsLoadStatus {
 }
 
 @Keep
+data class ReiAnixSettingsStorageUiState(
+    val known: Boolean = false,
+    val mediaReadState: String = "unknown",
+    val broadStorageState: String = "unknown",
+    val safRootCount: Int = 0,
+    val removableVolumeCount: Int = 0,
+    val lifecycleState: String = "unknown",
+    val api: Int? = null,
+    val safSelectionPending: Boolean = false,
+)
+
 data class ReiAnixSettingsAccountUiState(
     val integrationAvailable: Boolean = false,
     val connected: Boolean = false,
@@ -27,6 +38,7 @@ data class ReiAnixSettingsUiState(
     val account: ReiAnixSettingsAccountUiState = ReiAnixSettingsAccountUiState(),
     val categories: List<ReiAnixSettingsCategoryUiModel> = emptyList(),
     val settings: Map<String, String> = emptyMap(),
+    val storage: ReiAnixSettingsStorageUiState = ReiAnixSettingsStorageUiState(),
     val error: String? = null,
 ) {
     companion object {
@@ -49,6 +61,16 @@ data class ReiAnixSettingsUiState(
                     snapshot.categories[it.label] == true
                 },
                 settings = snapshot.settings,
+                storage = ReiAnixSettingsStorageUiState(
+                    known = snapshot.storage.known,
+                    mediaReadState = snapshot.storage.mediaReadState,
+                    broadStorageState = snapshot.storage.broadStorageState,
+                    safRootCount = snapshot.storage.safRootCount,
+                    removableVolumeCount = snapshot.storage.removableVolumeCount,
+                    lifecycleState = snapshot.storage.lifecycleState,
+                    api = snapshot.storage.api,
+                    safSelectionPending = snapshot.storage.safSelectionPending,
+                ),
                 error = snapshot.error,
             )
         }
