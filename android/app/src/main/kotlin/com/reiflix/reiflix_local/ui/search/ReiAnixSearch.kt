@@ -188,6 +188,7 @@ fun ReiAnixSearchScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .imePadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(
             modifier = Modifier
