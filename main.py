@@ -2539,7 +2539,7 @@ async def main(page: ft.Page):
             if navigation.current == "organize":
                 _drop_screen_cache("organize")
             render_current(reason="back")
-            if navigation.current == "home" and route_before == "collector":
+            if navigation.current == "home" and route_before != "home":
                 page.run_task(_show_compose_home)
             elif navigation.current == "library" and route_before != "library":
                 page.run_task(_show_compose_library)
