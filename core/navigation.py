@@ -8,7 +8,7 @@ class NavigationController:
     """Single logical navigation policy for top-level screens and nested Settings."""
 
     ROOT = "home"
-    TOP_LEVEL_SCREENS = frozenset({"home", "library", "organize", "details", "collector", "settings"})
+    TOP_LEVEL_SCREENS = frozenset({"home", "library", "my_list", "organize", "details", "collector", "search", "settings"})
 
     def __init__(self, clock=time.monotonic, exit_window_seconds: float = 2.0):
         self._stack = [self.ROOT]
