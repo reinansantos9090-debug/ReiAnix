@@ -405,7 +405,7 @@ private fun ColumnScope.LibraryReadyContent(
                 modifier = Modifier.align(Alignment.TopCenter),
                 state = refreshState,
                 isRefreshing = isRefreshing,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 color = MaterialTheme.colorScheme.primary,
             )
         },
@@ -723,7 +723,7 @@ private fun LibrarySourceSummaryCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = ReiAnixTokens.Shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Row(
             modifier = Modifier
