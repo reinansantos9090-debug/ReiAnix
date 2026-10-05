@@ -468,10 +468,7 @@ private fun SearchResultRow(
                         height = ReiAnixTokens.Dimensions.myListPosterHeight,
                     )
                     .clip(ReiAnixTokens.Shapes.small),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                placeholder = "Sem arte",
                 maxDimensionPx = 320,
-                shape = ReiAnixTokens.Shapes.small,
             )
 
             Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
