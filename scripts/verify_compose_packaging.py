@@ -15,8 +15,6 @@ REQUIRED = {
         b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
     "ReiAnixViewModel.class":
         b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixViewModel;",
-    "ReiAnixComposeSettingsHost.class":
-        b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost;",
     "ReiAnixSettingsViewModel.class":
         b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
 }
