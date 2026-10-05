@@ -158,6 +158,12 @@ object ReiAnixTokens {
         val detailsHeroHeight = 250.dp
         val searchFieldHeight = 56.dp
         val detailsHeroMaxHeight = 420.dp
+        val detailsHeroWideBreakpoint = 600.dp
+        val detailsHeroPosterWidth = 112.dp
+        val detailsSeasonCardWidth = 340.dp
+        val detailsSeasonPreviewWidth = 108.dp
+        val detailsSeasonPreviewHeight = 72.dp
+        val detailsInfoLabelWidth = 96.dp
         val homeHeroHeight = 282.dp
         val homeCardWidth = 122.dp
         val homeContinueCardWidth = 132.dp
