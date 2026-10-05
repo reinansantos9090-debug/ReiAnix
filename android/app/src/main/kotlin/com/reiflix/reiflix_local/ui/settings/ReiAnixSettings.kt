@@ -220,30 +220,29 @@ fun ReiAnixSettingsRoute(
     }
 
     if (selectedCategory != null) {
-            ReiAnixComposeSettingsCategoryScreen(
-                category = selectedCategory!!,
-                state = state,
-                onBack = { selectedCategory = null },
-                onUpdateSetting = viewModel::setSetting,
-                onAccountAction = viewModel::requestAccountAction,
-                onResetPlayer = viewModel::requestAction,
-                onRetry = viewModel::refresh,
-            )
-        } else {
-            ReiAnixSettingsScreen(
-                state = state,
-                listState = rootListState,
-                onBack = onBack,
-                onOpenCategory = { label ->
-                    if (label in NativeManagedSettingsCategories) {
-                        selectedCategory = label
-                    } else {
-                        onOpenCategory(label)
-                    }
-                },
-                onRetry = viewModel::refresh,
-            )
-        }
+        ReiAnixComposeSettingsCategoryScreen(
+            category = selectedCategory!!,
+            state = state,
+            onBack = { selectedCategory = null },
+            onUpdateSetting = viewModel::setSetting,
+            onAccountAction = viewModel::requestAccountAction,
+            onResetPlayer = viewModel::requestAction,
+            onRetry = viewModel::refresh,
+        )
+    } else {
+        ReiAnixSettingsScreen(
+            state = state,
+            listState = rootListState,
+            onBack = onBack,
+            onOpenCategory = { label ->
+                if (label in NativeManagedSettingsCategories) {
+                    selectedCategory = label
+                } else {
+                    onOpenCategory(label)
+                }
+            },
+            onRetry = viewModel::refresh,
+        )
     }
 }
 
