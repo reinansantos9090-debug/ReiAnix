@@ -112,8 +112,9 @@ object NativeCommandDispatcher {
     private fun processFile(fileName: String) {
         val file = File(queueDir, fileName)
         if (!file.isFile) return
+        var command: Command? = null
         try {
-            val command = parse(file.readText(StandardCharsets.UTF_8))
+            command = parse(file.readText(StandardCharsets.UTF_8))
             if (command == null) {
                 Log.e(TAG, "COMMAND_REJECTED file=${file.name} reason=invalid_envelope")
                 return
@@ -170,6 +171,23 @@ object NativeCommandDispatcher {
                 }
             }
         } catch (error: Exception) {
+            val currentCommand = command
+            if (currentCommand != null) {
+                try {
+                    publishFailure(
+                        currentCommand,
+                        "COMMAND_PROCESSING_FAILED",
+                        "O processamento do comando nativo falhou.",
+                        error.message,
+                    )
+                } catch (publishError: Exception) {
+                    Log.e(
+                        TAG,
+                        "COMMAND_FAILURE_PUBLICATION_FAILED requestId=${currentCommand.requestId}",
+                        publishError,
+                    )
+                }
+            }
             Log.e(TAG, "COMMAND_PROCESSING_FAILED file=${file.name}", error)
         } finally {
             file.delete()
