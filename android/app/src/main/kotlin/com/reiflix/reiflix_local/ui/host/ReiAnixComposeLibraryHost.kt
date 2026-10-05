@@ -19,6 +19,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
+import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeRoute
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
@@ -102,6 +103,32 @@ class ReiAnixComposeLibraryHost(
                             com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListRoute(
                                 navController = navController,
                                 viewModel = libraryViewModel,
+                            )
+                        },
+                        organize = {
+                            ReiAnixOrganizeRoute(
+                                navController = navController,
+                                viewModel = libraryViewModel,
+                                onBack = {
+                                    if (!navController.popBackStack()) {
+                                        hideAndPublishLegacyBack()
+                                    }
+                                },
+                                onOpenStorageAccess = {
+                                    activity.requestNativeStorageAction("open_broad_storage_settings")
+                                },
+                                onRequestMediaAccess = {
+                                    activity.requestNativeStorageAction("request_media_access")
+                                },
+                                onAddFolder = libraryViewModel::selectSafTree,
+                                onOpenSettings = {
+                                    navController.navigate(
+                                        ReiAnixRoutes.SETTINGS,
+                                        navOptions {
+                                            launchSingleTop = true
+                                        },
+                                    )
+                                },
                             )
                         },
                         appearanceCardSize = appearanceCardSize,
@@ -225,6 +252,7 @@ class ReiAnixComposeLibraryHost(
 
             ReiAnixRoutes.MY_LIST -> controller.navigateToMyList()
 
+            ReiAnixRoutes.ORGANIZE,
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.STORAGE,
             -> controller.navigate(
