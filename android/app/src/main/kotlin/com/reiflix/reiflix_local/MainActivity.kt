@@ -1319,6 +1319,14 @@ class MainActivity : FlutterFragmentActivity() {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
+                "open_organize" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeSettingsHost.hide()
+                    composeStorageHost.hide()
+                    composeLibraryHost.show(ReiAnixRoutes.ORGANIZE, resetBackStack = true)
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
                 "hide_library" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeLibraryHost.hide()
