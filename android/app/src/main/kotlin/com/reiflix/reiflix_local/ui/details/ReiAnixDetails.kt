@@ -130,12 +130,27 @@ fun ReiAnixDetailsRoute(
     }
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // The guard covers only the navigation hand-off. Details owns the lifecycle
-    // boundary, so returning from Player releases it on the actual RESUMED event.
+    // The guard covers only the navigation hand-off. A resume releases it only
+    // after this Details destination has first left the RESUMED state.
+    var detailsWasPaused by remember(canonicalId) {
+        mutableStateOf(false)
+    }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                playerLaunchInFlight = false
+            when (event) {
+                Lifecycle.Event.ON_PAUSE,
+                Lifecycle.Event.ON_STOP -> {
+                    detailsWasPaused = true
+                }
+
+                Lifecycle.Event.ON_RESUME -> {
+                    if (detailsWasPaused) {
+                        playerLaunchInFlight = false
+                        detailsWasPaused = false
+                    }
+                }
+
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
