@@ -821,6 +821,7 @@ private fun LibraryLoadingGrid(
         ),
         modifier = modifier
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
+            .fillMaxWidth(),
         userScrollEnabled = false,
         contentPadding = PaddingValues(
             start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
