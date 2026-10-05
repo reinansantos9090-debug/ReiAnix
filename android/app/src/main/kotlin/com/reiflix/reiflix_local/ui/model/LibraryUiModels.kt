@@ -171,7 +171,17 @@ data class ReiAnixSeasonUiModel(
 ) {
     /** Stable UI key derived from existing identity without persisting a new ID. */
     val stableKey: String
-        get() = "anime:" + animeId + ":season:" + (number ?: "special")
+        get() {
+            val normalizedTitle = title
+                .trim()
+                .lowercase()
+                .replace(Regex("\\s+"), " ")
+                .takeIf { it.isNotEmpty() }
+            val identity = number?.toString()
+                ?: normalizedTitle?.let { "title:$it" }
+                ?: "special"
+            return "anime:" + animeId + ":season:" + identity
+        }
 }
 
 data class ReiAnixAnimeUiModel(
