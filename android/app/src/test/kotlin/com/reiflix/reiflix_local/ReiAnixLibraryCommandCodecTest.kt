@@ -31,7 +31,7 @@ class ReiAnixLibraryCommandCodecTest {
     @Test
     fun actionsAreExactlyTheExistingLibraryOperations() {
         assertEquals(
-            setOf("toggle_favorite", "set_watched", "refresh", "open_media", "select_saf"),
+            setOf("toggle_favorite", "set_watched", "refresh", "open_media", "select_saf", "remove_saf"),
             ReiAnixLibraryCommandCodec.Action.entries.map { it.value }.toSet(),
         )
     }
