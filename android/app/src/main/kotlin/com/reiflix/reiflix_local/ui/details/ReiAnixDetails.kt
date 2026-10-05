@@ -1048,7 +1048,7 @@ private fun DetailsSeasonCard(
             .clickable(onClick = onClick)
             .semantics {
                 role = Role.RadioButton
-                selected = selected
+                this.selected = selected
                 contentDescription = title + ", " + episodeCountLabel(season.episodes.size)
                 stateDescription = if (selected) "Selecionada" else "Não selecionada"
             },
