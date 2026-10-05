@@ -409,8 +409,8 @@ private fun ColumnScope.LibraryReadyContent(
 
     PullToRefreshBox(
         modifier = modifier
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
             .fillMaxWidth()
-            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
         state = refreshState,
         isRefreshing = isRefreshing,
         onRefresh = {
@@ -820,8 +820,7 @@ private fun LibraryLoadingGrid(
             minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium"),
         ),
         modifier = modifier
-            .fillMaxWidth()
-            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
         userScrollEnabled = false,
         contentPadding = PaddingValues(
             start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
