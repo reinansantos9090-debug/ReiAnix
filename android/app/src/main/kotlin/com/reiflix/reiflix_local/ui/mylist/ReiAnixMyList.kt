@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -65,6 +64,14 @@ import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
 @Composable
@@ -72,6 +79,7 @@ fun ReiAnixMyListRoute(
     navController: NavHostController,
     viewModel: ReiAnixLibraryViewModel,
 ) {
+    ReiAnixResponsiveRoot {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val filter by viewModel.myListFilter.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.myListAnimes.collectAsStateWithLifecycle()
@@ -197,6 +205,8 @@ fun ReiAnixMyListRoute(
             )
         }
     }
+
+    }
 }
 
 @Composable
@@ -216,11 +226,7 @@ private fun ReiAnixMyListReadyContent(
     // The My List destination remains on the NavController back stack when
     // Details/Player are opened. Save the actual LazyColumn position so returning
     // to the source list does not jump to the first row.
-    val listState = rememberSaveable(
-        saver = LazyListState.Saver,
-    ) {
-        LazyListState()
-    }
+    val listState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     val refreshState = rememberPullToRefreshState()
 
     PullToRefreshBox(
@@ -240,21 +246,28 @@ private fun ReiAnixMyListReadyContent(
             )
         },
     ) {
-        LazyColumn(
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(
+                minSize = LocalReiAnixResponsiveMetrics.current.myListGridMinWidth,
+            ),
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
             contentPadding = PaddingValues(
-                start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 top = ReiAnixTokens.Spacing.sm,
                 bottom = ReiAnixTokens.Spacing.huge,
             ),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
                 item(
                     key = "my-list-error",
                     contentType = "my-list-error",
+                    span = { GridItemSpan(maxLineSpan) },
                 ) {
                     MyListInlineError(
                         message = message,
@@ -266,6 +279,7 @@ private fun ReiAnixMyListReadyContent(
             item(
                 key = "my-list-filters",
                 contentType = "my-list-filters",
+                span = { GridItemSpan(maxLineSpan) },
             ) {
                 MyListFilters(
                     selected = filter,
@@ -277,6 +291,7 @@ private fun ReiAnixMyListReadyContent(
                 item(
                     key = "my-list-filter-empty",
                     contentType = "my-list-empty",
+                    span = { GridItemSpan(maxLineSpan) },
                 ) {
                     Box(
                         modifier = Modifier
