@@ -813,6 +813,7 @@ private fun HomeContinueCard(
                 ReiAnixProgressIndicator(
                     progress = progress ?: 0f,
                     visible = progress != null,
+                    announceProgress = false,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = ReiAnixTokens.Spacing.sm),
