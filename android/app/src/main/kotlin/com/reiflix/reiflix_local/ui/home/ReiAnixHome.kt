@@ -76,6 +76,7 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -344,7 +345,7 @@ private fun ColumnScope.HomeContent(
         continueWatching = state.continueWatching,
         onOpenDetails = onOpenDetails,
         onWatch = onWatch,
-        onHeroSecondaryAction = onOpenDetails,
+        onHeroSecondaryAction = { featured -> onOpenDetails(featured.id) },
         heroSecondaryLabel = { "Detalhes" },
         onOpenMyList = onOpenMyList,
         onOpenLibrary = onOpenLibrary,
@@ -436,7 +437,7 @@ private fun ColumnScope.HomeReadyContent(
     onOpenMyList: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
-    val listState = rememberSaveable(saver = LazyListState.Saver)
+    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val trending = remember(animes) { buildTrendingItems(animes) }
     val favorites = remember(animes) { animes.filter { it.favorite } }
     val genreSections = remember(animes) { buildHomeGenreSections(animes) }
@@ -794,7 +795,6 @@ private fun HomeContinueCard(
     }
 }
 
-@Composable
 private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
 
 private fun HomeMediaSection(
