@@ -783,7 +783,6 @@ private fun DetailsHero(
 }
 
 @Composable
-}
 private fun DetailsHeroIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
