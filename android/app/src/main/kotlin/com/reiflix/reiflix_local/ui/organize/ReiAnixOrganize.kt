@@ -596,6 +596,7 @@ private fun OrganizeCollectionContent(
                 ReiAnixSearchField(
                     value = filters.query,
                     onValueChange = onQueryChange,
+                    accessibilityLabel = "Pesquisar na organização",
                     placeholder = {
                         Text("Buscar título, gênero, alias ou episódio")
                     },
@@ -698,7 +699,7 @@ private fun OrganizeCollectionContent(
                         text = filters.sort,
                         onClick = { sortMenuExpanded = true },
                         modifier = Modifier.semantics {
-                            contentDescription = "Ordenar por " + filters.sort
+                            contentDescription = "Ordenar. Opção atual: " + filters.sort
                         },
                     )
                     DropdownMenu(
