@@ -1132,7 +1132,9 @@ private fun DetailsSectionHeader(
             text = title,
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .semantics { heading() },
         )
         Text(
             text = subtitle,
