@@ -78,12 +78,17 @@ data class ReiAnixSettingsCategoryUiModel(
 
 
 private val NativeManagedSettingsCategories = setOf(
+    "Conta",
     "Geral",
     "Aparência",
-    "Conta",
+    "Biblioteca",
     "Player",
     "Gestos",
     "Áudio e Legendas",
+    "Metadata",
+    "Privacidade",
+    "Varredura",
+    "Sobre",
 )
 
 private data class SettingChoice(
@@ -455,6 +460,77 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
 
+                "Biblioteca" -> {
+                    item(key = "setting:library.sort_default") {
+                        ChoiceSettingCard(
+                            keyName = "library.sort_default",
+                            title = "Ordenação padrão",
+                            description = "Define a ordenação inicial quando outra ordenação não foi salva.",
+                            selectedValue = state.settings["library.sort_default"],
+                            choices = listOf(
+                                SettingChoice("added_desc", "Mais recentes"),
+                                SettingChoice("title_asc", "Nome A–Z"),
+                                SettingChoice("title_desc", "Nome Z–A"),
+                                SettingChoice("recently_watched", "Assistidos recentemente"),
+                            ),
+                            onSelected = { onUpdateSetting("library.sort_default", it) },
+                        )
+                    }
+                    item(key = "setting:library.grid_density") {
+                        ChoiceSettingCard(
+                            keyName = "library.grid_density",
+                            title = "Densidade da grade",
+                            description = "Controla a largura efetiva dos cards.",
+                            selectedValue = state.settings["library.grid_density"],
+                            choices = listOf(
+                                SettingChoice("small", "Menos cards"),
+                                SettingChoice("medium", "Equilibrada"),
+                                SettingChoice("large", "Mais cards"),
+                            ),
+                            onSelected = { onUpdateSetting("library.grid_density", it) },
+                        )
+                    }
+                    item(key = "setting:library.page_size") {
+                        ChoiceSettingCard(
+                            keyName = "library.page_size",
+                            title = "Itens por página",
+                            description = "Quantidade persistida de itens da paginação.",
+                            selectedValue = state.settings["library.page_size"],
+                            choices = listOf(
+                                SettingChoice("24", "24"),
+                                SettingChoice("36", "36"),
+                                SettingChoice("48", "48"),
+                                SettingChoice("72", "72"),
+                            ),
+                            onSelected = { onUpdateSetting("library.page_size", it) },
+                        )
+                    }
+                    item(key = "setting:library.continue_watching") {
+                        BooleanSettingCard(
+                            keyName = "library.continue_watching",
+                            title = "Continue Watching",
+                            description = "Controla a preferência global dessa seção.",
+                            checked = state.settings["library.continue_watching"] == "true",
+                            onCheckedChange = { onUpdateSetting("library.continue_watching", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:library.continue_watching_limit") {
+                        ChoiceSettingCard(
+                            keyName = "library.continue_watching_limit",
+                            title = "Limite de Continue Watching",
+                            description = "Quantidade persistida de itens na seção.",
+                            selectedValue = state.settings["library.continue_watching_limit"],
+                            choices = listOf(
+                                SettingChoice("5", "5"),
+                                SettingChoice("10", "10"),
+                                SettingChoice("15", "15"),
+                                SettingChoice("20", "20"),
+                            ),
+                            onSelected = { onUpdateSetting("library.continue_watching_limit", it) },
+                        )
+                    }
+                }
+
                 "Player" -> {
                     item(key = "setting:player.autoplay_next") {
                         BooleanSettingCard(
@@ -662,6 +738,27 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                 }
+                "Metadata" -> {
+                    item(key = "setting:metadata.anilist_enabled") {
+                        BooleanSettingCard(
+                            keyName = "metadata.anilist_enabled",
+                            title = "Usar AniList",
+                            description = "Permite ou bloqueia chamadas remotas do cliente AniList.",
+                            checked = state.settings["metadata.anilist_enabled"] == "true",
+                            onCheckedChange = { onUpdateSetting("metadata.anilist_enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:metadata.auto_match") {
+                        BooleanSettingCard(
+                            keyName = "metadata.auto_match",
+                            title = "Auto-match AniList",
+                            description = "Controla a associação automática de novos itens.",
+                            checked = state.settings["metadata.auto_match"] == "true",
+                            onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
+                        )
+                    }
+                }
+
                 "Áudio e Legendas" -> {
                     item(key = "setting:audio.subtitle_scale") {
                         ChoiceSettingCard(
@@ -720,6 +817,149 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("audio.subtitles", it) },
                         )
                     }
+                "Sobre" -> {
+                    item(key = "about:app") {
+                        ReiAnixCard(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "ReiAnix",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Aplicativo local para organização e reprodução de mídia.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(
+                                    text = BuildConfig.VERSION_NAME,
+                                    tone = ReiAnixBadgeTone.Neutral,
+                                )
+                                Text(
+                                    text = "Player: Media3 / NativePlayer existente.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "Armazenamento: MediaStore / SAF / scanners nativos existentes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                "Varredura" -> {
+                    item(key = "scan:existing") {
+                        ReiAnixCard(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Scanner",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "MediaStore, SAF e broad storage continuam sob o ScanCoordinator e scanners existentes.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(text = "Existente", tone = ReiAnixBadgeTone.Neutral)
+                            }
+                        }
+                    }
+                    item(key = "scan:refresh") {
+                        ReiAnixCard(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Atualização",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Settings não inicia uma varredura automaticamente; o refresh continua no fluxo existente da Biblioteca.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(text = "Sem scan", tone = ReiAnixBadgeTone.Neutral)
+                            }
+                        }
+                    }
+                }
+
+                "Privacidade" -> {
+                    item(key = "privacy:local") {
+                        ReiAnixCard(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Biblioteca local",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Biblioteca, histórico e caminhos locais permanecem no dispositivo.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(text = "Local", tone = ReiAnixBadgeTone.Neutral)
+                            }
+                        }
+                    }
+                    item(key = "privacy:connectivity") {
+                        ReiAnixCard(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Conectividade",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Google Login é opcional; a biblioteca local e o player não dependem de conectividade.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(text = "Offline-first", tone = ReiAnixBadgeTone.Neutral)
+                            }
+                        }
+                    }
+                }
+
+
                 }
             }
             }
@@ -1057,9 +1297,10 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
             "dark" -> "Escuro"
             else -> ""
         }
-        "Biblioteca" -> settings["library.page_size"]?.takeIf { it.isNotBlank() }?.let {
-            "$it itens/página"
-        }.orEmpty()
+        "Biblioteca" -> listOfNotNull(
+            settings["library.page_size"]?.takeIf { it.isNotBlank() }?.let { "$it itens/página" },
+            if (settings["library.continue_watching"] == "true") "Continue Watching" else null,
+        ).joinToString(" • ")
         "Player" -> listOfNotNull(
             if (settings["player.autoplay_next"] == "true") "Autoplay" else null,
             if (settings["player.resume"] == "true") "Retomar" else null,
@@ -1075,6 +1316,9 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
             ?.takeIf { it.isNotBlank() }
             ?: "Padrão"
         "Metadata" -> if (settings["metadata.anilist_enabled"] == "true") "AniList ativo" else "AniList desativado"
+        "Privacidade" -> "Dados locais"
+        "Varredura" -> "ScanCoordinator existente"
+        "Sobre" -> "ReiAnix"
         "Artwork" -> if (settings["artwork.enabled"] == "true") {
             "Artwork remoto ativo"
         } else {
