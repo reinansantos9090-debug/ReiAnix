@@ -125,6 +125,7 @@ fun ReiAnixStorageScreen(
                     title = "Armazenamento",
                     subtitle = "Pastas da biblioteca e acessos locais",
                     onBack = onBack,
+                    backContentDescription = "Voltar do armazenamento",
                 )
             }
 
