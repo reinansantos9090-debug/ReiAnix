@@ -840,6 +840,7 @@ private fun DetailsHero(
                                     ReiAnixProgressIndicator(
                                         progress = progressTarget.progressFraction,
                                         visible = true,
+                                        announceProgress = false,
                                     )
                                 }
                             }
