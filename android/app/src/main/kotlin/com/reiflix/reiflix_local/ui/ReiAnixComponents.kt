@@ -913,6 +913,7 @@ fun ReiAnixEpisodeCard(
                 ReiAnixProgressIndicator(
                     progress = episode.progressFraction,
                     visible = episode.progressFraction > 0f,
+                    announceProgress = false,
                 )
                 Text(
                     text = if (episode.isPlayable) "Episódio local" else "Arquivo indisponível",
