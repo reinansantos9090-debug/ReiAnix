@@ -168,10 +168,12 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             if (!snapshotFile.isFile) return
             snapshotFile.readText(Charsets.UTF_8)
         }.getOrElse { error ->
-            _state.value = _state.value.copy(
-                status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
-                error = error.message ?: error::class.java.simpleName,
-            )
+            stateMutex.withLock {
+                _state.value = _state.value.copy(
+                    status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
+                    error = error.message ?: error::class.java.simpleName,
+                )
+            }
             return
         }
 
