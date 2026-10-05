@@ -216,7 +216,7 @@ private fun ArtworkLoadingPlaceholder(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .semantics {
+            .semantics(mergeDescendants = true) {
                 contentDescription = "Carregando " + label
             },
         contentAlignment = Alignment.Center,
