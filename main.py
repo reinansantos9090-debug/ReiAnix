@@ -1188,8 +1188,6 @@ async def main(page: ft.Page):
             navigation.push("collector")
             render_current(reason="open_collector")
             persist_navigation_state()
-            if bridge.available:
-                page.run_task(bridge.hide_library)
     player_transition_inflight = {"value": False}
     player_launch_inflight = {"value": False}
     player_transition_generation = {"value": 0}
