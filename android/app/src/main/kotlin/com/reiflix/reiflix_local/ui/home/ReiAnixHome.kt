@@ -740,7 +740,7 @@ private fun HomeContinueSection(
                 contentDescription = "Home Continuar Assistindo"
             },
             contentPadding = PaddingValues(
-                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             ),
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
@@ -861,7 +861,7 @@ private fun HomeMediaSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         HomeSectionHeader(title = title, onSeeAll = onSeeAll)
@@ -871,7 +871,7 @@ private fun HomeMediaSection(
                 this.contentDescription = contentDescription
             },
             contentPadding = PaddingValues(
-                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             ),
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
