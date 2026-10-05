@@ -1047,24 +1047,12 @@ class MainActivity : FlutterFragmentActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    // The promoted Compose host now owns the complete secondary
-                    // navigation stack. Legacy settings/storage hosts remain only
-                    // as compatibility fallbacks for older transitional callers.
+                    // The unified Compose host owns the complete secondary
+                    // navigation stack. Settings and Storage are regular shell
+                    // destinations, so Back is handled uniformly by this host.
                     if (::composeLibraryHost.isInitialized && composeLibraryHost.isVisible) {
                         if (composeLibraryHost.handleBack()) {
                             Log.i(tag, "BACK_COMPOSE_SHELL_HANDLED")
-                            return
-                        }
-                    }
-                    if (::composeSettingsHost.isInitialized && composeSettingsHost.isVisible) {
-                        if (composeSettingsHost.handleBack()) {
-                            Log.i(tag, "BACK_LEGACY_COMPOSE_SETTINGS_HANDLED")
-                            return
-                        }
-                    }
-                    if (::composeStorageHost.isInitialized && composeStorageHost.isVisible) {
-                        if (composeStorageHost.handleBack()) {
-                            Log.i(tag, "BACK_LEGACY_COMPOSE_STORAGE_HANDLED")
                             return
                         }
                     }
