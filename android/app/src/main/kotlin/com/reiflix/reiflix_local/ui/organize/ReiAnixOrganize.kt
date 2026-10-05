@@ -576,7 +576,6 @@ private fun OrganizeCollectionContent(
         columns = GridCells.Adaptive(minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium")),
         state = gridState,
         modifier = modifier
-            .fillMaxWidth()
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
             .imePadding(),
         contentPadding = PaddingValues(
