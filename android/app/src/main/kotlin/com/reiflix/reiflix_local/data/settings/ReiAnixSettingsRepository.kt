@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
@@ -29,6 +31,8 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(ReiAnixSettingsUiState())
     val state: StateFlow<ReiAnixSettingsUiState> = _state.asStateFlow()
+    /** Prevents overlapping FileObserver callbacks from applying snapshots out of order. */
+    private val stateMutex = Mutex()
 
     private val snapshotObserver = object : FileObserver(
         bridgeDirectory.path,
@@ -146,17 +150,19 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
             return
         }
 
-        runCatching {
-            ReiAnixSettingsSnapshotCodec.decode(raw, _state.value.revision)
-        }.onSuccess { decoded ->
-            _state.value = ReiAnixSettingsUiState.fromSnapshot(decoded)
-        }.onFailure { error ->
-            val message = error.message.orEmpty()
-            if (message.startsWith("Stale Compose settings snapshot")) return@onFailure
-            _state.value = _state.value.copy(
-                status = ReiAnixSettingsLoadStatus.ERROR,
-                error = message.ifBlank { error::class.java.simpleName },
-            )
+        stateMutex.withLock {
+            runCatching {
+                ReiAnixSettingsSnapshotCodec.decode(raw, _state.value.revision)
+            }.onSuccess { decoded ->
+                _state.value = ReiAnixSettingsUiState.fromSnapshot(decoded)
+            }.onFailure { error ->
+                val message = error.message.orEmpty()
+                if (message.startsWith("Stale Compose settings snapshot")) return@onFailure
+                _state.value = _state.value.copy(
+                    status = ReiAnixSettingsLoadStatus.ERROR,
+                    error = message.ifBlank { error::class.java.simpleName },
+                )
+            }
         }
     }
 
