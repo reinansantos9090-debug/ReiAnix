@@ -24,12 +24,11 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -304,7 +303,7 @@ private fun LibraryHeader(
             ) {
                 if (!sourceAvailable) {
                     Icon(
-                        imageVector = Icons.Filled.CloudOff,
+                        imageVector = Icons.Filled.Cloud,
                         contentDescription = null,
                         modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
                     )
@@ -737,7 +736,7 @@ private fun LibrarySourceSummaryCard(
                 color = MaterialTheme.colorScheme.primaryContainer,
             ) {
                 Icon(
-                    imageVector = Icons.Filled.VideoLibrary,
+                    imageVector = Icons.Filled.List,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier
@@ -771,7 +770,7 @@ private fun LibrarySourceSummaryCard(
             }
 
             Icon(
-                imageVector = Icons.Filled.ChevronRight,
+                imageVector = Icons.Filled.ArrowForward,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
