@@ -48,7 +48,6 @@ import androidx.navigation.NavHostController
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
@@ -104,23 +103,69 @@ fun ReiAnixMyListRoute(
                     .weight(1f),
             )
 
-            ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
-                title = "Não foi possível carregar Minha Lista",
-                message = state.error ?: "A biblioteca local retornou um erro.",
-                onRetry = viewModel::refresh,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            )
+            ReiAnixLibraryLoadStatus.ERROR -> if (state.animes.isNotEmpty()) {
+                ReiAnixMyListReadyContent(
+                    visibleAnimes = visibleAnimes,
+                    totalSaved = totalSaved,
+                    filter = filter,
+                    isRefreshing = isRefreshing,
+                    errorMessage = state.error ?: "A biblioteca local retornou um erro.",
+                    onFilterChange = viewModel::setMyListFilter,
+                    onOpenDetails = { animeId ->
+                        navController.navigateToDetails(
+                            animeId = animeId.toString(),
+                            origin = ReiAnixRoutes.MY_LIST,
+                        )
+                    },
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onOpenLibrary = {
+                        navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY)
+                    },
+                    onRefresh = viewModel::refresh,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                ReiAnixRecoverableErrorState(
+                    title = "Não foi possível carregar Minha Lista",
+                    message = state.error ?: "A biblioteca local retornou um erro.",
+                    onRetry = viewModel::refresh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
+            }
 
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
-                title = "Minha Lista indisponível",
-                message = "A fonte local configurada não está disponível agora.",
-                onAction = viewModel::refresh,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            )
+            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> if (state.animes.isNotEmpty()) {
+                ReiAnixMyListReadyContent(
+                    visibleAnimes = visibleAnimes,
+                    totalSaved = totalSaved,
+                    filter = filter,
+                    isRefreshing = isRefreshing,
+                    errorMessage = "A fonte local configurada não está disponível agora.",
+                    onFilterChange = viewModel::setMyListFilter,
+                    onOpenDetails = { animeId ->
+                        navController.navigateToDetails(
+                            animeId = animeId.toString(),
+                            origin = ReiAnixRoutes.MY_LIST,
+                        )
+                    },
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onOpenLibrary = {
+                        navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY)
+                    },
+                    onRefresh = viewModel::refresh,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                ReiAnixSourceUnavailableState(
+                    title = "Minha Lista indisponível",
+                    message = "A fonte local configurada não está disponível agora.",
+                    onAction = viewModel::refresh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
+            }
 
             ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyState(
                 title = "Minha Lista está vazia",
@@ -161,6 +206,7 @@ private fun ReiAnixMyListReadyContent(
     totalSaved: Int,
     filter: ReiAnixMyListFilter,
     isRefreshing: Boolean,
+    errorMessage: String? = null,
     onFilterChange: (ReiAnixMyListFilter) -> Unit,
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
@@ -199,6 +245,18 @@ private fun ReiAnixMyListReadyContent(
             ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
+            errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                item(
+                    key = "my-list-error",
+                    contentType = "my-list-error",
+                ) {
+                    MyListInlineError(
+                        message = message,
+                        onRetry = onRefresh,
+                    )
+                }
+            }
+
             item(
                 key = "my-list-filters",
                 contentType = "my-list-filters",
@@ -442,6 +500,56 @@ private data class MyListStatus(
     val icon: ImageVector,
 )
 
+@Composable
+private fun MyListInlineError(
+    message: String,
+    onRetry: () -> Unit,
+) {
+    ReiAnixSurface(
+        color = ReiAnixTokens.Colors.errorContainer.copy(alpha = 0.55f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                contentDescription = "Erro ao atualizar Minha Lista: " + message
+            },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(ReiAnixTokens.Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+            ) {
+                androidx.compose.material3.Text(
+                    text = "Dados anteriores mantidos",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = ReiAnixTokens.Colors.onErrorContainer,
+                )
+                androidx.compose.material3.Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ReiAnixTokens.Colors.onErrorContainer,
+                    maxLines = 3,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            androidx.compose.material3.TextButton(
+                onClick = onRetry,
+            ) {
+                androidx.compose.material3.Text(
+                    text = "Tentar novamente",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
 private fun myListStatus(
     anime: ReiAnixAnimeUiModel,
     isWatching: Boolean,
@@ -463,9 +571,9 @@ private fun myListStatus(
         icon = Icons.Filled.Favorite,
     )
     else -> MyListStatus(
-        label = "Na lista",
-        tone = ReiAnixBadgeTone.Info,
-        icon = Icons.Filled.FavoriteBorder,
+        label = "Favorito",
+        tone = ReiAnixBadgeTone.Error,
+        icon = Icons.Filled.Favorite,
     )
 }
 
