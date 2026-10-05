@@ -50,6 +50,22 @@ class NavigationController:
         self._settings_path.clear()
         self._exit_requested_at = None
 
+    def sync_top_level(self, screen: str) -> None:
+        """Project a native Compose top-level route into the existing logical stack.
+
+        Compose owns the visible navigation on Android, while this controller remains
+        the legacy/domain lifecycle authority. The projection is deliberately reduced
+        to [Home, screen] so the two layers cannot accumulate divergent stacks.
+        """
+        if screen not in self.TOP_LEVEL_SCREENS:
+            raise ValueError(f"invalid top-level navigation screen: {screen!r}")
+        if screen == self.ROOT:
+            self.reset_to_root()
+            return
+        self._stack = [self.ROOT, screen]
+        self._settings_path.clear()
+        self._exit_requested_at = None
+
     def reset_to_root(self) -> None:
         self._stack = [self.ROOT]
         self._settings_path.clear()
