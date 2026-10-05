@@ -15,14 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistPlay
-import androidx.compose.material.icons.filled.Replay10
-import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -202,8 +196,9 @@ fun ReiAnixNativePlayerCenterControls(
             horizontalArrangement = Arrangement.spacedBy(22.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PlayerSeekIconButton(
-                icon = Icons.Filled.Replay10,
+            PlayerSeekGlyphButton(
+                glyph = "↶",
+                seconds = "10",
                 description = "Voltar 10 segundos",
                 onClick = { onSeekRelative(-10_000L) },
             )
@@ -231,12 +226,16 @@ fun ReiAnixNativePlayerCenterControls(
                             color = Color.White,
                             strokeWidth = 3.dp,
                         )
+                    } else if (state.isPlaying && !state.ended) {
+                        Text(
+                            text = "Ⅱ",
+                            color = Color.White,
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
                     } else {
                         Icon(
-                            imageVector = when {
-                                state.isPlaying && !state.ended -> Icons.Filled.Pause
-                                else -> Icons.Filled.PlayArrow
-                            },
+                            imageVector = Icons.Filled.PlayArrow,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(48.dp),
@@ -245,8 +244,9 @@ fun ReiAnixNativePlayerCenterControls(
                 }
             }
 
-            PlayerSeekIconButton(
-                icon = Icons.Filled.Forward10,
+            PlayerSeekGlyphButton(
+                glyph = "↷",
+                seconds = "10",
                 description = "Avançar 10 segundos",
                 onClick = { onSeekRelative(10_000L) },
             )
@@ -255,8 +255,9 @@ fun ReiAnixNativePlayerCenterControls(
 }
 
 @Composable
-private fun PlayerSeekIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun PlayerSeekGlyphButton(
+    glyph: String,
+    seconds: String,
     description: String,
     onClick: () -> Unit,
 ) {
@@ -269,12 +270,21 @@ private fun PlayerSeekIconButton(
                 role = Role.Button
             },
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(52.dp),
-        )
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = seconds,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = glyph,
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
     }
 }
 
@@ -401,19 +411,19 @@ fun ReiAnixNativePlayerBottomControls(
                 onClick = onToggleLock,
             )
             PlayerBottomAction(
-                icon = Icons.Filled.Fullscreen,
+                glyph = "⛶",
                 label = "Redimensionar",
                 contentDescription = "Redimensionar vídeo",
                 onClick = onResize,
             )
             PlayerBottomAction(
-                icon = Icons.Filled.PlaylistPlay,
+                glyph = "☷",
                 label = "Fonte",
                 contentDescription = "Fonte e opções do player",
                 onClick = onSource,
             )
             PlayerBottomAction(
-                icon = Icons.Filled.SkipNext,
+                glyph = "»",
                 label = "Próximo episódio",
                 contentDescription = "Próximo episódio",
                 onClick = onNext,
