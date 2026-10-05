@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,12 +18,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
@@ -32,23 +32,24 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
@@ -69,7 +70,6 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixHomeAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
@@ -77,7 +77,8 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun ReiAnixHomeRoute(
@@ -85,15 +86,12 @@ fun ReiAnixHomeRoute(
     viewModel: ReiAnixLibraryViewModel = rememberReiAnixLibraryViewModel(),
 ) {
     val state by viewModel.homeState.collectAsStateWithLifecycle()
-    val hasContinueWatching by viewModel.hasContinueWatching.collectAsStateWithLifecycle()
+    val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
 
     ReiAnixHomeObservedScreen(
         state = state,
-        showContinueWatching = hasContinueWatching,
-        viewModel = viewModel,
-        onSearch = {
-            navController.navigateToTopLevel(ReiAnixRoutes.SEARCH)
-        },
+        continueWatching = continueWatching,
+        onSearch = { navController.navigateToTopLevel(ReiAnixRoutes.SEARCH) },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
                 animeId = animeId.toString(),
@@ -108,24 +106,25 @@ fun ReiAnixHomeRoute(
             )
         },
         onToggleFavorite = viewModel::toggleFavorite,
-        onOpenMyList = {
-            navController.navigateToMyList()
-        },
+        onOpenMyList = { navController.navigateToMyList() },
+        onOpenLibrary = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) },
         onRefresh = viewModel::refresh,
+        onSelectSource = viewModel::selectSafTree,
     )
 }
 
 @Composable
 private fun ReiAnixHomeObservedScreen(
     state: ReiAnixHomeLibraryUiState,
-    showContinueWatching: Boolean,
-    viewModel: ReiAnixLibraryViewModel,
+    continueWatching: List<ReiAnixContinueWatchingUiModel>,
     onSearch: () -> Unit,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onOpenMyList: () -> Unit,
+    onOpenLibrary: () -> Unit,
     onRefresh: () -> Unit,
+    onSelectSource: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -153,23 +152,24 @@ private fun ReiAnixHomeObservedScreen(
             ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = "Biblioteca local indisponível",
                 message = "A fonte local configurada não está disponível agora.",
-                onAction = onRefresh,
+                actionLabel = "Selecionar pasta",
+                onAction = onSelectSource,
                 modifier = Modifier.fillMaxSize(),
             )
             ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                 message = "Nenhum conteúdo local disponível.",
-                actionLabel = "Atualizar",
-                onAction = onRefresh,
+                actionLabel = "Selecionar pasta",
+                onAction = onSelectSource,
                 modifier = Modifier.fillMaxSize(),
             )
             ReiAnixLibraryLoadStatus.READY -> HomeObservedContent(
                 state = state,
-                showContinueWatching = showContinueWatching,
-                viewModel = viewModel,
+                continueWatching = continueWatching,
                 onOpenDetails = onOpenDetails,
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
                 onOpenMyList = onOpenMyList,
+                onOpenLibrary = onOpenLibrary,
             )
         }
     }
@@ -178,99 +178,29 @@ private fun ReiAnixHomeObservedScreen(
 @Composable
 private fun ColumnScope.HomeObservedContent(
     state: ReiAnixHomeLibraryUiState,
-    showContinueWatching: Boolean,
-    viewModel: ReiAnixLibraryViewModel,
+    continueWatching: List<ReiAnixContinueWatchingUiModel>,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onOpenMyList: () -> Unit,
+    onOpenLibrary: () -> Unit,
 ) {
-    val listState = rememberLazyListState()
     val renderAnimes = remember(state.animes) {
         state.animes.map(ReiAnixHomeAnimeUiModel::toHomeRenderData)
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxWidth(),
-        state = listState,
-        contentPadding = PaddingValues(
-            bottom = ReiAnixTokens.Spacing.huge,
-        ),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xxl),
-    ) {
-        if (renderAnimes.isNotEmpty()) {
-            item(key = "home-hero") {
-                HomeHero(
-                    anime = selectFeaturedAnime(renderAnimes),
-                    onWatch = onWatch,
-                    onOpenDetails = onOpenDetails,
-                    onToggleFavorite = onToggleFavorite,
-                )
-            }
-            item(key = "home-categories") {
-                HomeCategoryRow(animes = renderAnimes)
-            }
-        }
-
-        if (showContinueWatching) {
-            item(key = "home-section-continue") {
-                HomeContinueWatchingObserved(
-                    viewModel = viewModel,
-                    onWatch = onWatch,
-                )
-            }
-        }
-
-        val favorites = renderAnimes.filter(HomeAnimeRenderData::favorite)
-        if (favorites.isNotEmpty()) {
-            item(key = "home-section-my-list") {
-                HomeAnimeSection(
-                    items = favorites,
-                    onOpenDetails = onOpenDetails,
-                    onSeeAll = onOpenMyList,
-                )
-            }
-        }
-
-        buildHomeGenreSections(renderAnimes).forEach { section ->
-            item(key = "home-section-genre:" + section.key) {
-                HomeMediaSection(
-                    title = section.title,
-                    items = section.items,
-                    onOpenDetails = onOpenDetails,
-                    contentDescription = "Home " + section.title,
-                )
-            }
-        }
-
-        val movies = renderAnimes.filter { it.mediaKind == ReiAnixMediaKind.MOVIE }
-        if (movies.isNotEmpty()) {
-            item(key = "home-section-movies") {
-                HomeMediaSection(
-                    title = "Filmes",
-                    items = movies,
-                    onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Filmes",
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeContinueWatchingObserved(
-    viewModel: ReiAnixLibraryViewModel,
-    onWatch: (Long, Long) -> Unit,
-) {
-    val items by viewModel.continueWatching.collectAsStateWithLifecycle()
-    if (items.isNotEmpty()) {
-        HomeContinueSection(
-            items = items,
-            onWatch = onWatch,
-        )
-    }
+    HomeReadyContent(
+        animes = renderAnimes,
+        continueWatching = continueWatching,
+        onOpenDetails = onOpenDetails,
+        onWatch = onWatch,
+        onHeroSecondaryAction = { featured -> onToggleFavorite(featured.id) },
+        heroSecondaryLabel = { anime ->
+            if (anime.favorite) "✓ Na Minha Lista" else "+ Minha Lista"
+        },
+        onOpenMyList = onOpenMyList,
+        onOpenLibrary = onOpenLibrary,
+    )
 }
 
 @Composable
@@ -282,6 +212,7 @@ fun ReiAnixHomeScreen(
     onToggleFavorite: (Long) -> Unit,
     onRefresh: () -> Unit,
     onOpenMyList: () -> Unit = {},
+    onOpenLibrary: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -303,12 +234,14 @@ fun ReiAnixHomeScreen(
             ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> HomeMessage(
                 title = "Biblioteca local indisponível",
                 message = "A fonte local configurada não está disponível agora.",
-                onRefresh = onRefresh,
+                actionLabel = "Atualizar",
+                onAction = onRefresh,
             )
             ReiAnixLibraryLoadStatus.EMPTY -> HomeMessage(
                 title = "Biblioteca vazia",
                 message = "Nenhum conteúdo local disponível.",
-                onRefresh = onRefresh,
+                actionLabel = "Atualizar",
+                onAction = onRefresh,
             )
             ReiAnixLibraryLoadStatus.READY -> HomeContent(
                 state = state,
@@ -316,6 +249,7 @@ fun ReiAnixHomeScreen(
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
                 onOpenMyList = onOpenMyList,
+                onOpenLibrary = onOpenLibrary,
             )
         }
     }
@@ -339,7 +273,7 @@ private fun HomeHeader(
         Text(
             text = "ReiAnix",
             style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.primary,
             maxLines = 1,
         )
 
@@ -363,35 +297,32 @@ private fun HomeHeader(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        IconButton(
+            onClick = onRefresh,
+            modifier = Modifier.semantics {
+                contentDescription = "Atualizar biblioteca local"
+                role = Role.Button
+            },
         ) {
-            IconButton(
-                onClick = onRefresh,
-                modifier = Modifier.semantics {
-                    contentDescription = "Atualizar biblioteca local"
-                    role = Role.Button
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            IconButton(
-                onClick = onSearch,
-                modifier = Modifier.semantics {
-                    contentDescription = "Pesquisar na biblioteca"
-                    role = Role.Button
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            Icon(
+                imageVector = Icons.Filled.Refresh,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+
+        IconButton(
+            onClick = onSearch,
+            modifier = Modifier.semantics {
+                contentDescription = "Pesquisar na biblioteca"
+                role = Role.Button
+            },
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }
@@ -403,80 +334,22 @@ private fun ColumnScope.HomeContent(
     onWatch: (Long, Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onOpenMyList: () -> Unit,
+    onOpenLibrary: () -> Unit,
 ) {
-    val listState = rememberLazyListState()
     val renderAnimes = remember(state.animes) {
         state.animes.map(ReiAnixAnimeUiModel::toHomeRenderData)
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxWidth(),
-        state = listState,
-        contentPadding = PaddingValues(
-            bottom = ReiAnixTokens.Spacing.huge,
-        ),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xxl),
-    ) {
-        if (renderAnimes.isNotEmpty()) {
-            item(key = "home-hero") {
-                HomeHero(
-                    anime = selectFeaturedAnime(renderAnimes),
-                    onWatch = onWatch,
-                    onOpenDetails = onOpenDetails,
-                    onToggleFavorite = onToggleFavorite,
-                )
-            }
-            item(key = "home-categories") {
-                HomeCategoryRow(animes = renderAnimes)
-            }
-        }
-
-        val continueWatching = state.continueWatching
-        if (continueWatching.isNotEmpty()) {
-            item(key = "home-section-continue") {
-                HomeContinueSection(
-                    items = continueWatching,
-                    onWatch = onWatch,
-                )
-            }
-        }
-
-        val favorites = renderAnimes.filter(HomeAnimeRenderData::favorite)
-        if (favorites.isNotEmpty()) {
-            item(key = "home-section-my-list") {
-                HomeAnimeSection(
-                    items = favorites,
-                    onOpenDetails = onOpenDetails,
-                    onSeeAll = onOpenMyList,
-                )
-            }
-        }
-
-        buildHomeGenreSections(renderAnimes).forEach { section ->
-            item(key = "home-section-genre:" + section.key) {
-                HomeMediaSection(
-                    title = section.title,
-                    items = section.items,
-                    onOpenDetails = onOpenDetails,
-                    contentDescription = "Home " + section.title,
-                )
-            }
-        }
-
-        val movies = renderAnimes.filter { it.mediaKind == ReiAnixMediaKind.MOVIE }
-        if (movies.isNotEmpty()) {
-            item(key = "home-section-movies") {
-                HomeMediaSection(
-                    title = "Filmes",
-                    items = movies,
-                    onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Filmes",
-                )
-            }
-        }
-    }
+    HomeReadyContent(
+        animes = renderAnimes,
+        continueWatching = state.continueWatching,
+        onOpenDetails = onOpenDetails,
+        onWatch = onWatch,
+        onHeroSecondaryAction = onOpenDetails,
+        heroSecondaryLabel = { "Detalhes" },
+        onOpenMyList = onOpenMyList,
+        onOpenLibrary = onOpenLibrary,
+    )
 }
 
 private data class HomeAnimeRenderData(
@@ -487,18 +360,23 @@ private data class HomeAnimeRenderData(
     val favorite: Boolean,
     val mediaKind: ReiAnixMediaKind,
     val artworkPath: String?,
+    val backdropLocalPath: String?,
     val playbackEpisodeId: Long?,
+    val playbackActionLabel: String,
+    val isWatching: Boolean,
     val availableContentCount: Int,
+    val score: Double?,
+    val addedAt: Double?,
+    val lastPlayedAt: Double?,
+    val pinned: Boolean,
+    val description: String?,
+    val status: String?,
+    val format: String?,
+    val studio: String?,
 ) {
     val stableKey: String
         get() = "anime:" + id
 }
-
-private data class HomeGenreSection(
-    val key: String,
-    val title: String,
-    val items: List<HomeAnimeRenderData>,
-)
 
 private fun ReiAnixAnimeUiModel.toHomeRenderData(): HomeAnimeRenderData =
     HomeAnimeRenderData(
@@ -509,8 +387,19 @@ private fun ReiAnixAnimeUiModel.toHomeRenderData(): HomeAnimeRenderData =
         favorite = favorite,
         mediaKind = mediaKind,
         artworkPath = artwork?.localPath,
+        backdropLocalPath = artwork?.backdropLocalPath,
         playbackEpisodeId = playbackTargetEpisodeId,
-        availableContentCount = availableContentCount(this),
+        playbackActionLabel = playbackActionLabel,
+        isWatching = isWatching,
+        availableContentCount = availableContentCount,
+        score = score,
+        addedAt = addedAt,
+        lastPlayedAt = lastPlayedAt,
+        pinned = pinned,
+        description = description,
+        status = status,
+        format = format,
+        studio = studio,
     )
 
 private fun ReiAnixHomeAnimeUiModel.toHomeRenderData(): HomeAnimeRenderData =
@@ -522,259 +411,265 @@ private fun ReiAnixHomeAnimeUiModel.toHomeRenderData(): HomeAnimeRenderData =
         favorite = favorite,
         mediaKind = mediaKind,
         artworkPath = artwork?.localPath,
+        backdropLocalPath = artwork?.backdropLocalPath,
         playbackEpisodeId = playbackTargetEpisodeId,
+        playbackActionLabel = playbackActionLabel,
+        isWatching = isWatching,
         availableContentCount = availableContentCount,
+        score = score,
+        addedAt = addedAt,
+        lastPlayedAt = lastPlayedAt,
+        pinned = pinned,
+        description = description,
+        status = status,
+        format = format,
+        studio = studio,
     )
 
-private fun selectFeaturedAnime(items: List<HomeAnimeRenderData>): HomeAnimeRenderData =
-    items.firstOrNull { it.playbackEpisodeId != null }
-        ?: items.firstOrNull { it.favorite }
-        ?: items.firstOrNull()
-        ?: error("Home hero requested without library data")
+@Composable
+private fun ColumnScope.HomeReadyContent(
+    animes: List<HomeAnimeRenderData>,
+    continueWatching: List<ReiAnixContinueWatchingUiModel>,
+    onOpenDetails: (Long) -> Unit,
+    onWatch: (Long, Long) -> Unit,
+    onHeroSecondaryAction: (HomeAnimeRenderData) -> Unit,
+    heroSecondaryLabel: (HomeAnimeRenderData) -> String,
+    onOpenMyList: () -> Unit,
+    onOpenLibrary: () -> Unit,
+) {
+    val listState = rememberSaveable(saver = LazyListState.Saver)
+    val trending = remember(animes) { buildTrendingItems(animes) }
+    val favorites = remember(animes) { animes.filter { it.favorite } }
+    val genreSections = remember(animes) { buildHomeGenreSections(animes) }
+    val movies = remember(animes) { animes.filter { it.mediaKind == ReiAnixMediaKind.MOVIE } }
 
-private fun buildHomeCategoryNames(
-    items: List<HomeAnimeRenderData>,
-): List<String> =
-    items.asSequence()
-        .flatMap { anime -> anime.genres.asSequence().map { it.name } }
-        .map(String::trim)
-        .filter(String::isNotEmpty)
-        .distinctBy { it.lowercase() }
-        .take(5)
-        .toList()
+    LazyColumn(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth(),
+        state = listState,
+        contentPadding = PaddingValues(
+            bottom = ReiAnixTokens.Spacing.huge,
+        ),
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.section),
+    ) {
+        if (animes.isNotEmpty()) {
+            item(key = "home-hero") {
+                HomeHero(
+                    anime = selectFeaturedAnime(animes),
+                    onWatch = onWatch,
+                    onSecondaryAction = onHeroSecondaryAction,
+                    secondaryLabel = heroSecondaryLabel,
+                )
+            }
+        }
 
-private fun buildHomeGenreSections(
-    items: List<HomeAnimeRenderData>,
-): List<HomeGenreSection> {
-    data class MutableSection(
-        val key: String,
-        val title: String,
-        val items: MutableList<HomeAnimeRenderData>,
-    )
+        if (continueWatching.isNotEmpty()) {
+            item(key = "home-section-continue") {
+                HomeContinueSection(
+                    items = continueWatching,
+                    onWatch = onWatch,
+                    onSeeAll = onOpenLibrary,
+                )
+            }
+        }
 
-    val sections = linkedMapOf<String, MutableSection>()
-    items.forEach { anime ->
-        anime.genres.forEach { genre ->
-            val title = genre.name.trim()
-            if (title.isNotEmpty()) {
-                val key = genre.stableKey
-                val section = sections.getOrPut(key) {
-                    MutableSection(
-                        key = key,
-                        title = title,
-                        items = mutableListOf(),
-                    )
-                }
-                if (section.items.none { it.id == anime.id }) {
-                    section.items += anime
-                }
+        if (trending.isNotEmpty()) {
+            item(key = "home-section-trending") {
+                HomeMediaSection(
+                    title = "EM ALTA",
+                    items = trending,
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Em Alta",
+                    onSeeAll = onOpenLibrary,
+                )
+            }
+        }
+
+        if (favorites.isNotEmpty()) {
+            item(key = "home-section-my-list") {
+                HomeMediaSection(
+                    title = "MINHA LISTA",
+                    items = favorites,
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Minha Lista",
+                    onSeeAll = onOpenMyList,
+                )
+            }
+        }
+
+        genreSections.forEach { section ->
+            item(key = "home-section-genre:" + section.key) {
+                HomeMediaSection(
+                    title = section.title,
+                    items = section.items,
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home " + section.title,
+                )
+            }
+        }
+
+        if (movies.isNotEmpty()) {
+            item(key = "home-section-movies") {
+                HomeMediaSection(
+                    title = "FILMES",
+                    items = movies,
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Filmes",
+                )
             }
         }
     }
-
-    return sections.values
-        .filter { it.items.size >= 2 }
-        .sortedBy { it.title.lowercase() }
-        .take(4)
-        .map { HomeGenreSection(it.key, it.title, it.items.toList()) }
 }
 
 @Composable
 private fun HomeHero(
     anime: HomeAnimeRenderData,
     onWatch: (Long, Long) -> Unit,
-    onOpenDetails: (Long) -> Unit,
-    onToggleFavorite: (Long) -> Unit,
+    onSecondaryAction: (HomeAnimeRenderData) -> Unit,
+    secondaryLabel: (HomeAnimeRenderData) -> String,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(ReiAnixTokens.Dimensions.homeHeroHeight)
-            .clip(ReiAnixTokens.Shapes.hero),
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        ReiAnixBackdrop(
-            localPath = anime.artworkPath,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            identity = anime.stableKey,
-            maxDimensionPx = 768,
-        )
+        val heroHeight = (maxWidth / 1.48f).coerceIn(260.dp, 380.dp)
 
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.38f to Color.Transparent,
-                        0.72f to MaterialTheme.colorScheme.background.copy(alpha = 0.18f),
-                        1f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
-                    ),
-                ),
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to MaterialTheme.colorScheme.background.copy(alpha = 0.26f),
-                        0.55f to Color.Transparent,
-                        1f to Color.Transparent,
-                    ),
-                ),
-        )
-
-        IconButton(
-            onClick = { onToggleFavorite(anime.id) },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(ReiAnixTokens.Spacing.sm)
-                .size(ReiAnixTokens.Dimensions.touchTarget)
-                .background(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.56f),
-                    shape = ReiAnixTokens.Shapes.chip,
-                )
-                .semantics {
-                    contentDescription = if (anime.favorite) {
-                        "Remover " + anime.title + " da Minha Lista"
-                    } else {
-                        "Adicionar " + anime.title + " à Minha Lista"
-                    }
-                    role = Role.Button
-                },
-        ) {
-            Icon(
-                imageVector = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                contentDescription = null,
-                tint = if (anime.favorite) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(
-                    start = ReiAnixTokens.Spacing.xxl,
-                    end = ReiAnixTokens.Spacing.xxl,
-                    bottom = ReiAnixTokens.Spacing.xxl,
-                ),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                .height(heroHeight)
+                .clip(ReiAnixTokens.Shapes.hero),
         ) {
-            Text(
-                text = anime.title,
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            ReiAnixBackdrop(
+                localPath = anime.backdropLocalPath,
+                fallbackLocalPath = anime.artworkPath,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                identity = anime.stableKey,
+                maxDimensionPx = 768,
             )
 
-            val genres = anime.genres
-                .map { it.name.trim() }
-                .filter(String::isNotEmpty)
-                .take(2)
-            if (genres.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.34f to Color.Transparent,
+                            0.62f to MaterialTheme.colorScheme.background.copy(alpha = 0.16f),
+                            0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.76f),
+                            1f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
+                        ),
+                    ),
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            0f to MaterialTheme.colorScheme.background.copy(alpha = 0.68f),
+                            0.44f to MaterialTheme.colorScheme.background.copy(alpha = 0.20f),
+                            0.70f to Color.Transparent,
+                            1f to Color.Transparent,
+                        ),
+                    ),
+            )
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(
+                        start = ReiAnixTokens.Spacing.xxl,
+                        end = ReiAnixTokens.Spacing.xxl,
+                        bottom = ReiAnixTokens.Spacing.xxl,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            ) {
+                Surface(
+                    shape = ReiAnixTokens.Shapes.chip,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ) {
+                    Text(
+                        text = "Em destaque",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(
+                            horizontal = ReiAnixTokens.Spacing.md,
+                            vertical = ReiAnixTokens.Spacing.xs,
+                        ),
+                    )
+                }
+
                 Text(
-                    text = genres.joinToString(" • "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    text = anime.title,
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
 
-            val meta = listOfNotNull(
-                anime.year?.toString(),
-                anime.availableContentCount.takeIf { it > 0 }?.let {
-                    if (it == 1) "1 episódio" else "$it episódios"
-                },
-            )
-            if (meta.isNotEmpty()) {
-                ReiAnixMetadata(text = meta.joinToString(" • "))
-            }
+                val genres = anime.genres
+                    .map { it.name.trim() }
+                    .filter(String::isNotEmpty)
+                    .take(3)
+                if (genres.isNotEmpty()) {
+                    Text(
+                        text = genres.joinToString(" • "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-            ) {
-                anime.playbackEpisodeId?.let { episodeId ->
-                    ReiAnixPrimaryButton(
-                        text = "Assistir",
-                        onClick = { onWatch(episodeId, anime.id) },
+                anime.description?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { description ->
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+
+                val metadata = listOfNotNull(
+                    anime.year?.toString(),
+                    anime.format?.trim()?.takeIf(String::isNotEmpty),
+                    anime.studio?.trim()?.takeIf(String::isNotEmpty),
+                    anime.score?.let(::formatScore),
+                    anime.availableContentCount.takeIf { it > 0 }?.let {
+                        if (it == 1) "1 episódio" else it.toString() + " episódios"
+                    },
+                )
+                if (metadata.isNotEmpty()) {
+                    ReiAnixMetadata(text = metadata.joinToString(" • "))
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                ) {
+                    anime.playbackEpisodeId?.let { episodeId ->
+                        ReiAnixPrimaryButton(
+                            text = anime.playbackActionLabel,
+                            enabled = anime.playbackActionLabel != "Indisponível",
+                            onClick = { onWatch(episodeId, anime.id) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+
+                    ReiAnixSecondaryButton(
+                        text = secondaryLabel(anime),
+                        onClick = { onSecondaryAction(anime) },
                         modifier = Modifier.weight(1f),
                     )
                 }
-                ReiAnixSecondaryButton(
-                    text = "Detalhes",
-                    onClick = { onOpenDetails(anime.id) },
-                    modifier = Modifier.weight(1f),
-                )
             }
         }
-    }
-}
-
-@Composable
-private fun HomeCategoryRow(
-    animes: List<HomeAnimeRenderData>,
-) {
-    val categories = buildHomeCategoryNames(animes)
-
-    LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics {
-                contentDescription = "Home categorias"
-            },
-        contentPadding = PaddingValues(
-            horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-        ),
-        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-    ) {
-        item(key = "home-category-all") {
-            HomeCategoryChip(label = "Todos", selected = true)
-        }
-        categories.forEach { category ->
-            item(key = "home-category:" + category) {
-                HomeCategoryChip(label = category, selected = false)
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeCategoryChip(
-    label: String,
-    selected: Boolean,
-) {
-    Surface(
-        shape = ReiAnixTokens.Shapes.chip,
-        color = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        },
-        contentColor = if (selected) {
-            MaterialTheme.colorScheme.onPrimary
-        } else {
-            MaterialTheme.colorScheme.onSurface
-        },
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(
-                horizontal = ReiAnixTokens.Spacing.lg,
-                vertical = ReiAnixTokens.Spacing.sm,
-            ),
-        )
     }
 }
 
@@ -782,6 +677,7 @@ private fun HomeCategoryChip(
 private fun HomeContinueSection(
     items: List<ReiAnixContinueWatchingUiModel>,
     onWatch: (Long, Long) -> Unit,
+    onSeeAll: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -789,7 +685,11 @@ private fun HomeContinueSection(
             .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
-        HomeSectionHeader(title = "CONTINUAR ASSISTINDO")
+        HomeSectionHeader(
+            title = "CONTINUAR ASSISTINDO",
+            onSeeAll = onSeeAll,
+        )
+
         LazyRow(
             modifier = Modifier.semantics {
                 contentDescription = "Home Continuar Assistindo"
@@ -804,10 +704,7 @@ private fun HomeContinueSection(
                 key = { it.stableKey },
                 contentType = { "home-continue-episode" },
             ) { item ->
-                HomeContinueCard(
-                    item = item,
-                    onWatch = onWatch,
-                )
+                HomeContinueCard(item = item, onWatch = onWatch)
             }
         }
     }
@@ -819,19 +716,27 @@ private fun HomeContinueCard(
     onWatch: (Long, Long) -> Unit,
 ) {
     val progress = progressFraction(item.progressSeconds, item.durationSeconds)
+    val progressText = progress?.let(::formatProgressPercent)
+    val episodeText = episodeLabel(item.seasonNumber, item.number)
+    val detailText = listOfNotNull(
+        episodeText.takeIf { it.isNotBlank() },
+        item.displayTitle.takeIf { it.isNotBlank() },
+        progressText,
+    ).joinToString(" • ")
 
     Card(
         modifier = Modifier
             .width(ReiAnixTokens.Dimensions.homeContinueCardWidth)
-            .clickable(
-                onClick = { onWatch(item.episodeId, item.animeId) },
-            )
+            .clickable(onClick = { onWatch(item.episodeId, item.animeId) })
             .semantics {
                 role = Role.Button
                 contentDescription =
-                    item.animeTitle + " — " +
-                        episodeLabel(item.seasonNumber, item.number) + " — " +
-                        item.displayTitle
+                    listOfNotNull(
+                        item.animeTitle,
+                        episodeText.takeIf { it.isNotBlank() },
+                        item.displayTitle.takeIf { it.isNotBlank() },
+                        progressText,
+                    ).joinToString(" — ")
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
@@ -852,6 +757,7 @@ private fun HomeContinueCard(
                     modifier = Modifier.fillMaxSize(),
                     identity = item.stableKey,
                 )
+
                 ReiAnixProgressIndicator(
                     progress = progress ?: 0f,
                     visible = progress != null,
@@ -878,30 +784,15 @@ private fun HomeContinueCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = episodeLabel(item.seasonNumber, item.number),
+                    text = detailText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
     }
-}
-
-@Composable
-private fun HomeAnimeSection(
-    items: List<HomeAnimeRenderData>,
-    onOpenDetails: (Long) -> Unit,
-    onSeeAll: (() -> Unit)? = null,
-) {
-    HomeMediaSection(
-        title = "Minha Lista",
-        items = items,
-        onOpenDetails = onOpenDetails,
-        contentDescription = "Home Minha Lista",
-        onSeeAll = onSeeAll,
-    )
 }
 
 @Composable
@@ -918,10 +809,7 @@ private fun HomeMediaSection(
             .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
-        HomeSectionHeader(
-            title = title,
-            onSeeAll = onSeeAll,
-        )
+        HomeSectionHeader(title = title, onSeeAll = onSeeAll)
 
         LazyRow(
             modifier = Modifier.semantics {
@@ -937,10 +825,7 @@ private fun HomeMediaSection(
                 key = { it.stableKey },
                 contentType = { "home-media-anime" },
             ) { anime ->
-                HomeMediaCard(
-                    anime = anime,
-                    onClick = { onOpenDetails(anime.id) },
-                )
+                HomeMediaCard(anime = anime, onClick = { onOpenDetails(anime.id) })
             }
         }
     }
@@ -959,8 +844,9 @@ private fun HomeSectionHeader(
             title = title,
             modifier = Modifier.weight(1f),
         )
+
         if (onSeeAll != null) {
-            androidx.compose.material3.TextButton(
+            TextButton(
                 onClick = onSeeAll,
                 modifier = Modifier.semantics {
                     role = Role.Button
@@ -968,7 +854,7 @@ private fun HomeSectionHeader(
                 },
             ) {
                 Text(
-                    text = "Ver tudo",
+                    text = "Ver tudo  ›",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -1010,20 +896,44 @@ private fun HomeMediaCard(
                     identity = anime.stableKey,
                     maxDimensionPx = 512,
                 )
-                if (anime.favorite) {
-                    Surface(
+
+                if (anime.favorite || anime.pinned) {
+                    Row(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(ReiAnixTokens.Spacing.xs),
-                        shape = ReiAnixTokens.Shapes.chip,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+                        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Favorite,
-                            contentDescription = "Na Minha Lista",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(ReiAnixTokens.Spacing.xs),
-                        )
+                        if (anime.pinned) {
+                            Surface(
+                                shape = ReiAnixTokens.Shapes.chip,
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                            ) {
+                                Text(
+                                    text = "FIXADO",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(
+                                        horizontal = ReiAnixTokens.Spacing.xs,
+                                        vertical = 2.dp,
+                                    ),
+                                )
+                            }
+                        }
+
+                        if (anime.favorite) {
+                            Surface(
+                                shape = ReiAnixTokens.Shapes.chip,
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Favorite,
+                                    contentDescription = "Na Minha Lista",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(ReiAnixTokens.Spacing.xs),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1044,10 +954,11 @@ private fun HomeMediaCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+
                 val metadata = listOfNotNull(
                     anime.year?.toString(),
                     anime.availableContentCount.takeIf { it > 0 }?.let {
-                        if (it == 1) "1 episódio" else "$it episódios"
+                        if (it == 1) "1 episódio" else it.toString() + " episódios"
                     },
                 )
                 if (metadata.isNotEmpty()) {
@@ -1058,7 +969,78 @@ private fun HomeMediaCard(
     }
 }
 
-@Composable
+private fun selectFeaturedAnime(items: List<HomeAnimeRenderData>): HomeAnimeRenderData =
+    items.firstOrNull {
+        it.playbackEpisodeId != null && it.playbackActionLabel != "Indisponível"
+    }
+        ?: items.firstOrNull { it.isWatching }
+        ?: items.firstOrNull { it.favorite }
+        ?: items.firstOrNull { it.pinned }
+        ?: items.firstOrNull()
+        ?: error("Home hero requested without library data")
+
+private fun buildTrendingItems(
+    items: List<HomeAnimeRenderData>,
+): List<HomeAnimeRenderData> =
+    items.sortedWith(
+        compareByDescending<HomeAnimeRenderData> { it.isWatching }
+            .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
+            .thenByDescending { it.favorite }
+            .thenByDescending { it.pinned }
+            .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
+            .thenBy { it.title.trim().lowercase() },
+    ).take(12)
+
+private fun buildHomeGenreSections(
+    items: List<HomeAnimeRenderData>,
+): List<HomeGenreSection> {
+    data class MutableSection(
+        val key: String,
+        val title: String,
+        val items: MutableList<HomeAnimeRenderData>,
+    )
+
+    val sections = linkedMapOf<String, MutableSection>()
+
+    items.forEach { anime ->
+        anime.genres.forEach { genre ->
+            val title = genre.name.trim()
+            if (title.isNotEmpty()) {
+                val key = genre.stableKey
+                val section = sections.getOrPut(key) {
+                    MutableSection(
+                        key = key,
+                        title = title,
+                        items = mutableListOf(),
+                    )
+                }
+                if (section.items.none { it.id == anime.id }) {
+                    section.items += anime
+                }
+            }
+        }
+    }
+
+    return sections.values
+        .filter { it.items.size >= 2 }
+        .sortedBy { it.title.lowercase() }
+        .take(4)
+        .map { HomeGenreSection(it.key, it.title, it.items.toList()) }
+}
+
+private data class HomeGenreSection(
+    val key: String,
+    val title: String,
+    val items: List<HomeAnimeRenderData>,
+)
+
+private fun formatScore(score: Double?): String? {
+    val value = score ?: return null
+    if (!value.isFinite()) return null
+    val normalized = if (value > 10.0) value / 10.0 else value
+    return String.format(Locale.getDefault(), "%.1f/10", normalized.coerceIn(0.0, 10.0))
+}
+
 private fun HomeLoading() {
     ReiAnixLoadingState(
         title = "Carregando biblioteca",
@@ -1067,7 +1049,6 @@ private fun HomeLoading() {
     )
 }
 
-@Composable
 private fun HomeError(
     message: String,
     onRefresh: () -> Unit,
@@ -1080,17 +1061,17 @@ private fun HomeError(
     )
 }
 
-@Composable
 private fun HomeMessage(
     title: String,
     message: String,
-    onRefresh: () -> Unit,
+    actionLabel: String,
+    onAction: () -> Unit,
 ) {
     ReiAnixEmptyState(
         title = title,
         message = message,
-        actionLabel = "Atualizar",
-        onAction = onRefresh,
+        actionLabel = actionLabel,
+        onAction = onAction,
         modifier = Modifier.fillMaxSize(),
     )
 }
@@ -1102,7 +1083,17 @@ private fun progressFraction(
     val value = progress ?: return null
     val total = duration ?: return null
     if (!value.isFinite() || !total.isFinite() || total <= 0.0) return null
-    return (value / total).toFloat().coerceIn(0f, 1f)
+    return (value.coerceAtLeast(0.0) / total).coerceIn(0.0, 1.0).toFloat()
+}
+
+private fun formatProgressPercent(progress: Float): String {
+    val percentage = (progress.coerceIn(0f, 1f) * 100f)
+    val roundedTenths = (percentage * 10f).roundToInt() / 10f
+    return if (roundedTenths % 1f == 0f) {
+        roundedTenths.toInt().toString() + "%"
+    } else {
+        String.format(Locale.getDefault(), "%.1f%%", roundedTenths)
+    }
 }
 
 private fun episodeLabel(
@@ -1111,29 +1102,12 @@ private fun episodeLabel(
 ): String {
     val season = seasonNumber?.let { "T" + it }
     val episode = number?.let { formatEpisode(it) }?.let { "EP " + it }
-    return listOfNotNull(season, episode)
-        .joinToString(" • ")
-        .ifBlank { "Episódio" }
+    return listOfNotNull(season, episode).joinToString(" • ")
 }
 
 private fun formatEpisode(value: Double): String =
     if (value % 1.0 == 0.0) {
         value.toInt().toString()
     } else {
-        value.toString()
+        value.toString().trimEnd('0').trimEnd('.')
     }
-
-private fun availableContentCount(
-    anime: ReiAnixAnimeUiModel,
-): Int =
-    anime.seasons.sumOf { season ->
-        season.episodes.count {
-            it.media.availability != ReiAnixMediaAvailability.MISSING
-        }
-    } +
-        anime.specials.count {
-            it.media.availability != ReiAnixMediaAvailability.MISSING
-        } +
-        anime.mediaFiles.count {
-            it.media.availability != ReiAnixMediaAvailability.MISSING
-        }
