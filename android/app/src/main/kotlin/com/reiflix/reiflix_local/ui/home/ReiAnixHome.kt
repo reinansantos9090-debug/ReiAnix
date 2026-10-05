@@ -90,6 +90,7 @@ fun ReiAnixHomeRoute(
     viewModel: ReiAnixLibraryViewModel = rememberReiAnixLibraryViewModel(),
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
+    onOpenCollector: () -> Unit = {},
 ) {
     val state by viewModel.homeState.collectAsStateWithLifecycle()
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
@@ -99,6 +100,7 @@ fun ReiAnixHomeRoute(
         continueWatching = continueWatching,
         cardSize = cardSize,
         showThumbnails = showThumbnails,
+        onOpenCollector = onOpenCollector,
         onSearch = { navController.navigateToTopLevel(ReiAnixRoutes.SEARCH) },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
@@ -127,6 +129,7 @@ private fun ReiAnixHomeObservedScreen(
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
+    onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
@@ -145,6 +148,7 @@ private fun ReiAnixHomeObservedScreen(
     ) {
         HomeHeader(
             sourceAvailable = state.sourceAvailable,
+            onOpenCollector = onOpenCollector,
             onSearch = onSearch,
             onRefresh = onRefresh,
         )
@@ -285,6 +289,7 @@ fun ReiAnixHomeScreen(
 @Composable
 private fun HomeHeader(
     sourceAvailable: Boolean,
+    onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -320,6 +325,16 @@ private fun HomeHeader(
                 ),
                 maxLines = 1,
             )
+        }
+
+        TextButton(
+            onClick = onOpenCollector,
+            modifier = Modifier.semantics {
+                contentDescription = "Abrir Collector"
+                role = Role.Button
+            },
+        ) {
+            Text("🏆 Collector")
         }
 
         Spacer(modifier = Modifier.weight(1f))
