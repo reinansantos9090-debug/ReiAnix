@@ -231,8 +231,8 @@ private fun ReiAnixMyListReadyContent(
 
     PullToRefreshBox(
         modifier = modifier
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
             .fillMaxWidth()
-            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
         state = refreshState,
         isRefreshing = isRefreshing,
         onRefresh = {
@@ -255,7 +255,7 @@ private fun ReiAnixMyListReadyContent(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
+                .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
             contentPadding = PaddingValues(
                 start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
