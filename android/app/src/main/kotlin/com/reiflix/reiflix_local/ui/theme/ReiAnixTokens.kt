@@ -146,7 +146,7 @@ object ReiAnixTokens {
         // Three-column phone layouts stay viable while Adaptive still scales the grid
         // on wider/landscape surfaces. A separate cap prevents tablet posters from
         // growing indefinitely.
-        val libraryGridMinWidth = 108.dp
+        val libraryGridMinWidth = 96.dp
         val libraryGridMaxItemWidth = 184.dp
         val searchGridMinWidth = 150.dp
         val episodeThumbnailWidth = 120.dp
