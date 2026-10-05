@@ -1,6 +1,11 @@
 package com.reiflix.reiflix_local.scanner
 
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -20,6 +25,14 @@ object NativeScanController {
     private val tokens = ConcurrentHashMap<String, Token>()
     private val sourceOwners = ConcurrentHashMap<String, String>()
 
+    /**
+     * Scanner work belongs to the process, not an Activity instance. Jobs are
+     * therefore launched from this process-owned scope while cancellation remains
+     * cooperative through each scan token, preserving final CANCELLED publication.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val jobs = ConcurrentHashMap<String, Job>()
+
     @Synchronized
     fun begin(scanId: String, sourceKey: String? = null): Boolean {
         if (tokens.containsKey(scanId)) return false
@@ -31,6 +44,16 @@ object NativeScanController {
 
     fun isCancelled(scanId: String): Boolean =
         tokens[scanId]?.cancelled?.get() == true
+
+    @Synchronized
+    fun launch(scanId: String, block: suspend CoroutineScope.() -> Unit): Boolean {
+        if (!tokens.containsKey(scanId) || jobs.containsKey(scanId)) return false
+        val job = scope.launch(start = CoroutineStart.LAZY, block = block)
+        jobs[scanId] = job
+        job.start()
+        return true
+    }
+
 
     fun isRunning(sourceKey: String): Boolean =
         sourceOwners.containsKey(sourceKey)
@@ -44,6 +67,7 @@ object NativeScanController {
     @Synchronized
     fun finish(scanId: String) {
         val token = tokens.remove(scanId) ?: return
+        jobs.remove(scanId)
         token.sourceKey?.let { key ->
             sourceOwners.remove(key, scanId)
         }

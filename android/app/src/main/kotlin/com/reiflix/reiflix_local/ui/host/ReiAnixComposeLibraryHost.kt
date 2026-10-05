@@ -8,7 +8,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -25,9 +24,7 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
 import org.json.JSONObject
 
 /**
@@ -39,6 +36,8 @@ import org.json.JSONObject
  */
 class ReiAnixComposeLibraryHost(
     private val activity: MainActivity,
+    private val libraryViewModel: ReiAnixLibraryViewModel,
+    private val settingsViewModel: ReiAnixSettingsViewModel,
 ) {
     private var composeView: ComposeView? = null
 
@@ -60,12 +59,6 @@ class ReiAnixComposeLibraryHost(
         if (view.tag != CONTENT_TAG) {
             view.tag = CONTENT_TAG
             view.setContent {
-            val settingsViewModel = androidx.compose.runtime.remember {
-                ViewModelProvider(
-                    activity,
-                    ReiAnixSettingsViewModelFactory(activity.applicationContext),
-                ).get(ReiAnixSettingsViewModel::class.java)
-            }
             val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
 
             val appearanceCardSize = settingsState.settings["appearance.card_size"]
@@ -91,12 +84,6 @@ class ReiAnixComposeLibraryHost(
                         }
                     }
 
-                    val libraryViewModel = androidx.compose.runtime.remember {
-                        ViewModelProvider(
-                            activity,
-                            ReiAnixLibraryViewModelFactory(activity.applicationContext),
-                        ).get(ReiAnixLibraryViewModel::class.java)
-                    }
                     ReiAnixNavigationHost(
                         navController = navController,
                         homeViewModel = libraryViewModel,

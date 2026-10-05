@@ -36,9 +36,15 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.viewModels
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
+import androidx.lifecycle.lifecycleScope
+import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
+import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
 import io.flutter.embedding.android.FlutterFragmentActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,6 +103,18 @@ class MainActivity : FlutterFragmentActivity() {
     private var lastObservedBroadAccess: Boolean? = null
     private var interactionProfileFingerprint: String? = null
     private val nativeRequestState = NativeRequestState()
+
+    /**
+     * Activity owns screen ViewModels. They survive configuration recreation while
+     * keeping the single repository instance per Activity/ViewModel lifecycle.
+     */
+    private val libraryViewModel: ReiAnixLibraryViewModel by viewModels {
+        ReiAnixLibraryViewModelFactory(applicationContext)
+    }
+    private val settingsViewModel: ReiAnixSettingsViewModel by viewModels {
+        ReiAnixSettingsViewModelFactory(applicationContext)
+    }
+
     private lateinit var composeLibraryHost: ReiAnixComposeLibraryHost
 
     private val playerActivityLauncher =
@@ -785,7 +803,7 @@ class MainActivity : FlutterFragmentActivity() {
         // The legacy-named Library host is now the single runtime Compose
         // visual shell. Settings and Storage are routes inside the same shell;
         // no competing Compose host is mounted for either screen.
-        composeLibraryHost = ReiAnixComposeLibraryHost(this)
+        composeLibraryHost = ReiAnixComposeLibraryHost(this, libraryViewModel, settingsViewModel)
         composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
         // The existing SystemUiController remains the single Android system-bar
         // authority while the Compose shell and legacy Flet surfaces coexist.
@@ -1619,7 +1637,7 @@ class MainActivity : FlutterFragmentActivity() {
             SafScanner.identityPayload(treeUri).put("scopeKind", "root").put("scopeRef", SafScanner.treeIdentity(treeUri).identity).put("scanId", scanId)
         )
         val appContext = applicationContext
-        CoroutineScope(Dispatchers.IO).launch {
+        NativeScanController.launch(scanId) {
             try {
                 NativeIndex.markGenerationRunning(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
                 NativeMailbox.write(appContext, JSONObject().put("type", "saf_scan_progress")
@@ -2870,7 +2888,7 @@ class MainActivity : FlutterFragmentActivity() {
         googleSignInJob?.cancel()
         googleSignInJob = null
         googleSignOutJob?.cancel()
-        val job = CoroutineScope(Dispatchers.Main).launch {
+        val job = lifecycleScope.launch {
             try {
                 val cleared = GoogleIdentity.signOut(this@MainActivity, requestId)
                 if (cleared) {
@@ -2917,7 +2935,7 @@ class MainActivity : FlutterFragmentActivity() {
         googleSignInJob = null
         googleSignOutJob?.cancel()
         googleSignOutJob = null
-        val job = CoroutineScope(Dispatchers.Main).launch {
+        val job = lifecycleScope.launch {
             try {
                 GoogleIdentity.signIn(this@MainActivity, serverClientId, requestId)
             } finally {
