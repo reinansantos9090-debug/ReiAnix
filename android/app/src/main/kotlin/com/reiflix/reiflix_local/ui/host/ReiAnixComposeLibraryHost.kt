@@ -151,7 +151,7 @@ class ReiAnixComposeLibraryHost(
                             )
                         },
                         startDestination = startDestination,
-                        showBottomNavigation = startDestination != ReiAnixRoutes.STORAGE,
+                        showBottomNavigation = true,
                     )
                 }
             }
