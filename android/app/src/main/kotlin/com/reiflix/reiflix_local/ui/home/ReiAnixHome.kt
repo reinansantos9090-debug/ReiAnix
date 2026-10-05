@@ -59,6 +59,8 @@ import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSectionTitle
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
@@ -590,14 +592,12 @@ private fun HomeHero(
             .height(ReiAnixTokens.Dimensions.homeHeroHeight)
             .clip(ReiAnixTokens.Shapes.hero),
     ) {
-        ReiAnixLocalArtwork(
+        ReiAnixBackdrop(
             localPath = anime.artworkPath,
-            contentDescription = anime.title,
+            contentDescription = null,
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            placeholder = "Sem capa",
+            identity = anime.stableKey,
             maxDimensionPx = 768,
-            shape = ReiAnixTokens.Shapes.hero,
         )
 
         Box(
@@ -846,14 +846,11 @@ private fun HomeContinueCard(
                     .aspectRatio(ReiAnixTokens.Dimensions.homeLandscapeArtworkAspectRatio)
                     .clip(ReiAnixTokens.Shapes.artwork),
             ) {
-                ReiAnixLocalArtwork(
+                ReiAnixEpisodeThumbnail(
                     localPath = item.artwork?.localPath,
                     contentDescription = item.animeTitle,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    placeholder = "Sem arte",
-                    maxDimensionPx = 512,
-                    shape = ReiAnixTokens.Shapes.artwork,
+                    identity = item.stableKey,
                 )
                 ReiAnixProgressIndicator(
                     progress = progress ?: 0f,
@@ -1014,6 +1011,7 @@ private fun HomeMediaCard(
                     placeholder = "Sem arte",
                     maxDimensionPx = 512,
                     shape = ReiAnixTokens.Shapes.artwork,
+                    identity = anime.stableKey,
                 )
                 if (anime.favorite) {
                     Surface(
