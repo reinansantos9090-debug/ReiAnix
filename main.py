@@ -3390,6 +3390,26 @@ async def main(page: ft.Page):
                                         )
                                     else:
                                         command_status = 'QUEUED'
+                                elif action == 'remove_saf':
+                                    reference = str(payload.get('source') or '').strip()
+                                    if not reference:
+                                        raise ValueError('A pasta SAF não foi informada.')
+                                    folder = next(
+                                        (
+                                            item for item in store.folders()
+                                            if item.get('path') == reference
+                                            and str(item.get('kind') or '').strip().lower() == 'saf'
+                                        ),
+                                        None,
+                                    )
+                                    if folder is None:
+                                        raise ValueError('A pasta SAF não está configurada na biblioteca.')
+                                    started = await remove_folder(reference)
+                                    if not started:
+                                        command_status = 'BLOCKED'
+                                        command_error = 'A remoção da pasta não pode acontecer enquanto outra operação de armazenamento está em andamento.'
+                                    else:
+                                        command_status = 'QUEUED'
                                 elif action == 'refresh':
                                     source = str(payload.get('source') or '').strip() or None
                                     transition = await scan_coordinator.request(
