@@ -678,7 +678,10 @@ private fun HomeHero(
                             text = description,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2,
+                            maxLines = if (
+                                LocalReiAnixResponsiveMetrics.current.heightClass ==
+                                    com.reiflix.reiflix_local.ui.theme.ReiAnixWindowHeightClass.COMPACT
+                            ) 2 else 4,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
