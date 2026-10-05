@@ -206,6 +206,7 @@ fun ReiAnixNavigationHost(
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,
     onRouteChanged: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> },
+    onOpenCollector: () -> Unit = {},
 ) {
     ReiAnixNavigationHost(
         home = {
@@ -214,6 +215,7 @@ fun ReiAnixNavigationHost(
                 viewModel = homeViewModel,
                 cardSize = appearanceCardSize,
                 showThumbnails = appearanceShowThumbnails,
+                onOpenCollector = onOpenCollector,
             )
         },
         library = {
@@ -251,6 +253,7 @@ fun ReiAnixNavigationHost(
         startDestination = startDestination,
         showBottomNavigation = showBottomNavigation,
         onRouteChanged = onRouteChanged,
+        onOpenCollector = onOpenCollector,
     )
 }
 
@@ -273,6 +276,7 @@ fun ReiAnixNavigationHost(
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,
     onRouteChanged: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> },
+    onOpenCollector: () -> Unit = {},
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
