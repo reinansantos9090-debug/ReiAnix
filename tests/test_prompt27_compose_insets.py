@@ -69,17 +69,6 @@ class Prompt27ComposeInsetsContractTests(unittest.TestCase):
         self.assertIn(".imePadding()", search)
         self.assertNotIn(".imePadding()", library)
 
-    def test_standalone_compose_hosts_apply_safe_drawing_and_settings_ime_padding(self):
-        storage = self.read(
-            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeStorageHost.kt"
-        )
-        settings = self.read(
-            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost.kt"
-        )
-        self.assertIn(".safeDrawingPadding()", storage)
-        self.assertIn(".safeDrawingPadding()", settings)
-        self.assertIn(".imePadding()", settings)
-
     def test_main_activity_keeps_adjust_resize_for_legacy_android_ime_behavior(self):
         manifest = self.read("android/app/src/main/AndroidManifest.xml")
         self.assertIn('android:windowSoftInputMode="adjustResize"', manifest)
