@@ -25,9 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.FilterAlt
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -332,7 +329,7 @@ private fun OrganizeTopBar(
                 contentDescription = "Gerenciar acesso ao armazenamento"
             },
         ) {
-            Icon(Icons.Filled.Folder, contentDescription = null)
+            Icon(Icons.Filled.Info, contentDescription = null)
         }
         IconButton(
             onClick = onRefresh,
@@ -380,8 +377,7 @@ private fun OrganizeOverview(
         modifier = modifier,
         contentPadding = PaddingValues(
             horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-            top = ReiAnixTokens.Spacing.md,
-            bottom = ReiAnixTokens.Spacing.huge,
+            vertical = ReiAnixTokens.Spacing.md,
         ),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
     ) {
@@ -411,7 +407,7 @@ private fun OrganizeOverview(
         } else if (state.scanState.equals("FAILED", ignoreCase = true)) {
             item(key = "scan-failed") {
                 OrganizeStatusBanner(
-                    icon = Icons.Filled.Error,
+                    icon = Icons.Filled.Warning,
                     message = state.lastCommandError ?: "A atualização da biblioteca falhou.",
                     tone = ReiAnixBadgeTone.Error,
                 )
@@ -432,14 +428,14 @@ private fun OrganizeOverview(
             OrganizeSectionHeader(
                 title = "Categorias",
                 subtitle = "Estados já existentes no catálogo local",
-                icon = Icons.Filled.FilterAlt,
+                icon = Icons.Filled.Settings,
             )
         }
 
         item(key = "categories-row") {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
+                contentPadding = PaddingValues(horizontal = ReiAnixTokens.Spacing.sm),
             ) {
                 items(
                     items = categories,
@@ -573,10 +569,8 @@ private fun OrganizeCollectionContent(
         state = gridState,
         modifier = modifier,
         contentPadding = PaddingValues(
-            start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-            end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-            top = ReiAnixTokens.Spacing.sm,
-            bottom = ReiAnixTokens.Spacing.huge,
+            horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            vertical = ReiAnixTokens.Spacing.sm,
         ),
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
