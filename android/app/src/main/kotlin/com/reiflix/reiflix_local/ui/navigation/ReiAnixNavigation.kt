@@ -127,10 +127,15 @@ fun NavHostController.navigateToTopLevel(route: String) {
 }
 
 fun NavHostController.navigateToMyList() {
+    // Minha Lista is intentionally a secondary destination (the visual source
+    // screens expose it from Home/library actions rather than the bottom bar).
+    // Restore any state previously saved when another top-level destination was
+    // selected, while keeping repeated taps from stacking another My List entry.
     navigate(
         ReiAnixRoutes.MY_LIST,
         navOptions {
             launchSingleTop = true
+            restoreState = true
         },
     )
 }
