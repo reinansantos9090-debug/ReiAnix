@@ -192,11 +192,13 @@ class ComposeSettingsBridge:
         email = str(profile.get("email") or "").strip()
         name = str(profile.get("name") or "").strip()
         connected = bool(email)
+        picture = str(profile.get("picture") or "").strip()
         return {
             "integrationAvailable": True,
             "connected": connected,
             "name": name,
             "email": email,
+            "picture": picture,
             "state": state,
         }
 
