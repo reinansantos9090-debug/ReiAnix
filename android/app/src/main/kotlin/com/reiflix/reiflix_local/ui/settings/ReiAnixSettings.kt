@@ -967,7 +967,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             }
         }
     }
-}
 
 @Composable
 private fun SettingsHeader(
