@@ -230,12 +230,10 @@ fun ReiAnixHomeScreen(
     onWatch: (episodeId: Long, animeId: Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onRefresh: () -> Unit,
-    onOpenMyList: () -> Unit = {
-    ReiAnixResponsiveRoot {
-    }
-},
+    onOpenMyList: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
 ) {
+    ReiAnixResponsiveRoot {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -276,6 +274,8 @@ fun ReiAnixHomeScreen(
                 onOpenLibrary = onOpenLibrary,
             )
         }
+    }
+
     }
 }
 
