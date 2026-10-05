@@ -43,6 +43,7 @@ object ReiAnixRoutes {
 
     const val SETTINGS = "settings"
     const val STORAGE = "storage"
+    const val ORGANIZE = "organize"
     const val DETAILS = "details/{animeId}?origin={origin}"
     const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"
 
@@ -126,6 +127,13 @@ fun NavHostController.navigateToTopLevel(route: String) {
     )
 }
 
+fun NavHostController.navigateToOrganize() {
+    navigate(
+        ReiAnixRoutes.ORGANIZE,
+        navOptions { launchSingleTop = true },
+    )
+}
+
 fun NavHostController.navigateToMyList() {
     // Minha Lista is intentionally a secondary destination (the visual source
     // screens expose it from Home/library actions rather than the bottom bar).
@@ -178,6 +186,7 @@ fun ReiAnixNavigationHost(
             viewModel = homeViewModel,
         )
     },
+    organize: @Composable () -> Unit = {},
     search: @Composable () -> Unit = {},
     settings: @Composable () -> Unit = {},
     storage: @Composable () -> Unit = {},
@@ -214,6 +223,7 @@ fun ReiAnixNavigationHost(
             )
         },
         myList = myList,
+        organize = organize,
         search = {
             ReiAnixSearchRoute(
                 navController = navController,
@@ -246,6 +256,7 @@ fun ReiAnixNavigationHost(
     home: @Composable () -> Unit,
     library: @Composable () -> Unit,
     myList: @Composable () -> Unit = {},
+    organize: @Composable () -> Unit = {},
     search: @Composable () -> Unit,
     settings: @Composable () -> Unit,
     storage: @Composable () -> Unit = {},
@@ -296,6 +307,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.HOME) { home() }
             composable(ReiAnixRoutes.LIBRARY) { library() }
             composable(ReiAnixRoutes.MY_LIST) { myList() }
+            composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
             composable(ReiAnixRoutes.SETTINGS) { settings() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
