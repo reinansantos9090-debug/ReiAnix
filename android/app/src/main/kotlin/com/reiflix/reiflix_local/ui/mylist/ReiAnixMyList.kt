@@ -18,13 +18,25 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
@@ -270,16 +282,41 @@ private fun ReiAnixMyListItem(
     onOpenDetails: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
-    val contentEpisodes = anime.contentEpisodes
-    val progressEpisode = anime.playbackTargetEpisodeId
-        ?.let { targetId -> contentEpisodes.firstOrNull { it.id == targetId } }
-        ?: contentEpisodes.firstOrNull {
-            it.progressFraction > 0f && !it.isCompleted
+    val renderData = remember(anime) {
+        val episodes = anime.contentEpisodes
+        val progressEpisode = anime.playbackTargetEpisodeId
+            ?.let { targetId -> episodes.firstOrNull { it.id == targetId } }
+            ?: episodes.firstOrNull {
+                it.progressFraction > 0f && !it.isCompleted
+            }
+        val progress = progressEpisode
+            ?.progressFraction
+            ?.takeIf { it > 0f && it < 1f }
+        val isWatching = episodes.any {
+            it.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
         }
-    val progress = progressEpisode
-        ?.progressFraction
-        ?.takeIf { it > 0f && it < 1f }
-    val status = myListStatus(anime)
+        val isCompleted = episodes.isNotEmpty() && episodes.all { episode ->
+            episode.media.availability !in setOf(
+                com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.MISSING,
+                com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.SCOPE_UNAVAILABLE,
+                com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.VOLUME_UNAVAILABLE,
+            ) && episode.isCompleted
+        }
+        MyListCardRenderData(
+            availableCount = episodes.count {
+                it.media.availability == com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE
+            },
+            progress = progress,
+            status = myListStatus(
+                anime = anime,
+                isWatching = isWatching,
+                isCompleted = isCompleted,
+            ),
+        )
+    }
+    var menuExpanded by rememberSaveable(anime.id) {
+        mutableStateOf(false)
+    }
 
     ReiAnixSurface(
         modifier = Modifier
@@ -326,72 +363,156 @@ private fun ReiAnixMyListItem(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
 
-                val metadata = buildList {
-                    anime.availableContentCount
-                        .takeIf { it > 0 }
-                        ?.let { count ->
-                            add(
-                                if (count == 1) "1 episódio" else count.toString() + " episódios",
-                            )
-                        }
-                    anime.year?.let { add(it.toString()) }
-                }
-                if (metadata.isNotEmpty()) {
-                    ReiAnixSecondaryText(
-                        text = metadata.joinToString(" • "),
-                        maxLines = 1,
-                    )
-                }
+                androidx.compose.material3.Text(
+                    text = if (renderData.availableCount == 0) {
+                        "Sem episódios disponíveis"
+                    } else if (renderData.availableCount == 1) {
+                        "1 episódio"
+                    } else {
+                        renderData.availableCount.toString() + " episódios"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = ReiAnixTokens.Dimensions.progressHeight),
-                ) {
+                if (renderData.progress != null) {
                     ReiAnixProgressIndicator(
-                        progress = progress ?: 0f,
-                        visible = progress != null,
+                        progress = renderData.progress,
+                        visible = true,
                     )
                 }
             }
 
             Spacer(Modifier.size(ReiAnixTokens.Spacing.sm))
 
-            ReiAnixBadge(
-                text = status.label,
-                tone = status.tone,
-                modifier = Modifier.semantics {
-                    contentDescription = "Estado: " + status.label
-                },
+            MyListStatusPill(
+                status = renderData.status,
             )
 
-            ReiAnixIconActionButton(
-                icon = if (anime.favorite) {
-                    Icons.Filled.Favorite
-                } else {
-                    Icons.Filled.FavoriteBorder
-                },
-                contentDescription = if (anime.favorite) {
-                    "Remover " + anime.title + " da Minha Lista"
-                } else {
-                    "Adicionar " + anime.title + " à Minha Lista"
-                },
-                onClick = onToggleFavorite,
-            )
+            Box {
+                IconButton(
+                    onClick = { menuExpanded = true },
+                    modifier = Modifier
+                        .size(ReiAnixTokens.Dimensions.touchTarget)
+                        .semantics {
+                            contentDescription = "Mais opções para " + anime.title
+                        },
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { androidx.compose.material3.Text("Remover da Minha Lista") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.FavoriteBorder,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onToggleFavorite()
+                        },
+                    )
+                }
+            }
         }
     }
 }
 
+private data class MyListCardRenderData(
+    val availableCount: Int,
+    val progress: Float?,
+    val status: MyListStatus,
+)
+
 private data class MyListStatus(
     val label: String,
     val tone: ReiAnixBadgeTone,
+    val icon: ImageVector,
 )
 
-private fun myListStatus(anime: ReiAnixAnimeUiModel): MyListStatus = when {
-    anime.isWatching -> MyListStatus("Assistindo", ReiAnixBadgeTone.Primary)
-    anime.isCompleted -> MyListStatus("Concluído", ReiAnixBadgeTone.Success)
-    anime.favorite -> MyListStatus("Favorito", ReiAnixBadgeTone.Neutral)
-    else -> MyListStatus("Não salvo", ReiAnixBadgeTone.Neutral)
+private fun myListStatus(
+    anime: ReiAnixAnimeUiModel,
+    isWatching: Boolean,
+    isCompleted: Boolean,
+): MyListStatus = when {
+    isWatching -> MyListStatus(
+        label = "Assistindo",
+        tone = ReiAnixBadgeTone.Primary,
+        icon = Icons.Filled.PlayArrow,
+    )
+    isCompleted -> MyListStatus(
+        label = "Concluído",
+        tone = ReiAnixBadgeTone.Success,
+        icon = Icons.Filled.Check,
+    )
+    anime.favorite -> MyListStatus(
+        label = "Favorito",
+        tone = ReiAnixBadgeTone.Error,
+        icon = Icons.Filled.Favorite,
+    )
+    else -> MyListStatus(
+        label = "Na lista",
+        tone = ReiAnixBadgeTone.Info,
+        icon = Icons.Filled.FavoriteBorder,
+    )
+}
+
+@Composable
+private fun MyListStatusPill(
+    status: MyListStatus,
+) {
+    val tint = when (status.tone) {
+        ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.primary
+        ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success
+        ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning
+        ReiAnixBadgeTone.Error -> MaterialTheme.colorScheme.error
+        ReiAnixBadgeTone.Info -> MaterialTheme.colorScheme.secondary
+        ReiAnixBadgeTone.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        shape = ReiAnixTokens.Shapes.chip,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.18f),
+        contentColor = tint,
+        border = androidx.compose.foundation.BorderStroke(
+            width = ReiAnixTokens.Dimensions.borderWidth,
+            color = tint.copy(alpha = 0.75f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                horizontal = ReiAnixTokens.Spacing.sm,
+                vertical = ReiAnixTokens.Spacing.xs,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+        ) {
+            Icon(
+                imageVector = status.icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
+            )
+            androidx.compose.material3.Text(
+                text = status.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = tint,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 private fun myListCountLabel(count: Int): String =
