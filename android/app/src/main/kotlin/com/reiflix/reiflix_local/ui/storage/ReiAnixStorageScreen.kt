@@ -391,22 +391,27 @@ private fun SafSourceCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = stateLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (available) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
-                )
-                Text(
-                    text = "Pasta local da biblioteca",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (available) {
+                    Text(
+                        text = "Pasta local da biblioteca",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState(
+                        title = stateLabel,
+                        message = when (state) {
+                            "revoked" -> "A autorização desta pasta não está mais disponível no Android."
+                            "unavailable" -> "O provedor desta pasta está indisponível no momento."
+                            else -> "Não foi possível confirmar o acesso desta pasta.",
+                        },
+                        actionLabel = null,
+                        onAction = null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
             ReiAnixBadge(
                 text = stateLabel,
