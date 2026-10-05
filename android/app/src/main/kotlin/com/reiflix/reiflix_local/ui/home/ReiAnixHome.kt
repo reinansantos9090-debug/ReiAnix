@@ -76,6 +76,8 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -132,6 +134,7 @@ private fun ReiAnixHomeObservedScreen(
     onRefresh: () -> Unit,
     onSelectSource: () -> Unit,
 ) {
+    ReiAnixResponsiveRoot {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -181,6 +184,8 @@ private fun ReiAnixHomeObservedScreen(
             )
         }
     }
+
+    }
 }
 
 @Composable
@@ -225,7 +230,10 @@ fun ReiAnixHomeScreen(
     onWatch: (episodeId: Long, animeId: Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onRefresh: () -> Unit,
-    onOpenMyList: () -> Unit = {},
+    onOpenMyList: () -> Unit = {
+    ReiAnixResponsiveRoot {
+    }
+},
     onOpenLibrary: () -> Unit = {},
 ) {
     Column(
@@ -281,7 +289,7 @@ private fun HomeHeader(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
         verticalAlignment = Alignment.CenterVertically,
@@ -462,6 +470,7 @@ private fun ColumnScope.HomeReadyContent(
     onOpenLibrary: () -> Unit,
 ) {
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val responsive = LocalReiAnixResponsiveMetrics.current
     val trending = remember(animes) { buildTrendingItems(animes) }
     val favorites = remember(animes) { animes.filter { it.favorite } }
     val genreSections = remember(animes) { buildHomeGenreSections(animes) }
@@ -505,7 +514,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "EM ALTA",
                     items = trending,
-                    cardWidth = homeAnimeCardWidth(cardSize),
+                    cardWidth = homeAnimeCardWidth(cardSize, LocalReiAnixResponsiveMetrics.current),
                     showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Em Alta",
@@ -567,7 +576,7 @@ private fun HomeHero(
     BoxWithConstraints(
         modifier = Modifier.fillMaxWidth(),
     ) {
-        val heroHeight = (maxWidth / 1.48f).coerceIn(300.dp, 400.dp)
+        val heroHeight = LocalReiAnixResponsiveMetrics.current.homeHeroHeight()
 
         Box(
             modifier = Modifier
@@ -718,7 +727,7 @@ private fun HomeContinueSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         HomeSectionHeader(
@@ -763,7 +772,7 @@ private fun HomeContinueCard(
 
     Card(
         modifier = Modifier
-            .width(ReiAnixTokens.Dimensions.homeContinueCardWidth)
+            .width(LocalReiAnixResponsiveMetrics.current.homeContinueCardWidth)
             .clickable(onClick = { onWatch(item.episodeId, item.animeId) })
             .semantics {
                 role = Role.Button
@@ -834,12 +843,10 @@ private fun HomeContinueCard(
 
 private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
 
-private fun homeAnimeCardWidth(preference: String): androidx.compose.ui.unit.Dp =
-    when (preference.trim().lowercase()) {
-        "small" -> 120.dp
-        "large" -> 172.dp
-        else -> 146.dp
-    }
+private fun homeAnimeCardWidth(
+    preference: String,
+    responsive: com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveMetrics,
+): androidx.compose.ui.unit.Dp = responsive.homeCardWidth(preference)
 
 @Composable
 private fun HomeMediaSection(
