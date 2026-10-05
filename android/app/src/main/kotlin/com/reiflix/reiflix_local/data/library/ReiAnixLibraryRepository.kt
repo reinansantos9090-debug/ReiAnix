@@ -101,6 +101,15 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         send(ReiAnixLibraryCommandCodec.Action.SELECT_SAF)
     }
 
+    fun removeSafTree(reference: String) {
+        val normalized = reference.trim()
+        if (normalized.isBlank()) return
+        send(
+            ReiAnixLibraryCommandCodec.Action.REMOVE_SAF,
+            source = normalized,
+        )
+    }
+
     fun toggleFavorite(animeId: Long) {
         send(ReiAnixLibraryCommandCodec.Action.TOGGLE_FAVORITE, animeId = animeId)
     }
