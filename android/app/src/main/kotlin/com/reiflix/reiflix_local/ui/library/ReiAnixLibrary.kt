@@ -432,8 +432,8 @@ private fun ColumnScope.LibraryReadyContent(
             modifier = Modifier
                 .fillMaxSize(),
             contentPadding = PaddingValues(
-                start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 top = ReiAnixTokens.Spacing.xs,
                 bottom = ReiAnixTokens.Spacing.huge,
             ),
@@ -819,8 +819,8 @@ private fun LibraryLoadingGrid(
         modifier = modifier,
         userScrollEnabled = false,
         contentPadding = PaddingValues(
-            start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-            end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+            end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             top = ReiAnixTokens.Spacing.sm,
             bottom = ReiAnixTokens.Spacing.huge,
         ),
