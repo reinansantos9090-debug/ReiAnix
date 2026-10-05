@@ -6,12 +6,15 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
+import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -47,6 +50,11 @@ class ReiAnixLibraryViewModel(context: Context) :
             ReiAnixDetailsUiStateProjection.from(state, animeId)
     }
 
+    private companion object {
+        const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
+        const val SEARCH_DEBOUNCE_MS = 180L
+    }
+
     private val repository = ReiAnixLibraryRepository(context)
     override val uiState: StateFlow<ReiAnixLibraryUiState> = repository.state
 
@@ -65,7 +73,7 @@ class ReiAnixLibraryViewModel(context: Context) :
             .flowOn(Dispatchers.Default)
             .stateIn(
                 viewModelScope,
-                SharingStarted.Eagerly,
+                SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
                 uiState.value.animes,
             )
 
@@ -86,7 +94,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             uiState.value.copy(
                 animes = emptyList(),
                 continueWatching = emptyList(),
@@ -116,7 +124,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             projectHomeState(uiState.value),
         )
 
@@ -135,7 +143,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             emptyList(),
         )
 
@@ -150,8 +158,64 @@ class ReiAnixLibraryViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             false,
+        )
+
+    private val libraryAvailabilitySource: StateFlow<ReiAnixLibraryPresentationUiState> = uiState
+        .map { state ->
+            ReiAnixLibraryPresentationUiState(
+                status = state.status,
+                sourceAvailable = state.sourceAvailable,
+                sourceState = state.sourceState,
+                scanInProgress = state.scanInProgress,
+                scanState = state.scanState,
+                error = state.error,
+            )
+        }
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
+            ReiAnixLibraryPresentationUiState(),
+        )
+
+    private data class CatalogCounts(
+        val animeCount: Int,
+        val availableEpisodeCount: Int,
+        val favoriteCount: Int,
+    )
+
+    private val catalogCounts: StateFlow<CatalogCounts> = canonicalCatalog
+        .map { animes ->
+            CatalogCounts(
+                animeCount = animes.size,
+                availableEpisodeCount = animes.sumOf { it.availableContentCount },
+                favoriteCount = animes.count { it.favorite },
+            )
+        }
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
+            CatalogCounts(animeCount = 0, availableEpisodeCount = 0, favoriteCount = 0),
+        )
+
+    val libraryPresentationState: StateFlow<ReiAnixLibraryPresentationUiState> = combine(
+        libraryAvailabilitySource,
+        catalogCounts,
+    ) { source, counts ->
+        source.copy(
+            animeCount = counts.animeCount,
+            availableEpisodeCount = counts.availableEpisodeCount,
+            favoriteCount = counts.favoriteCount,
+        )
+    }
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
+            ReiAnixLibraryPresentationUiState(),
         )
 
     val filteredLibraryAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
@@ -164,7 +228,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .flowOn(Dispatchers.Default)
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             emptyList(),
         )
 
@@ -199,7 +263,7 @@ class ReiAnixLibraryViewModel(context: Context) :
             .distinctUntilChanged()
             .stateIn(
                 viewModelScope,
-                SharingStarted.Eagerly,
+                SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
                 emptyList(),
             )
 
@@ -223,7 +287,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             uiState.value.continueWatching,
         )
 
@@ -233,7 +297,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             uiState.value.continueWatching.isNotEmpty(),
         )
 
@@ -247,7 +311,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .flowOn(Dispatchers.Default)
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             ReiAnixSearchEngine.buildIndex(emptyList()),
         )
 
@@ -266,7 +330,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             emptyList(),
         )
 
@@ -276,7 +340,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             emptyList(),
         )
 
@@ -296,7 +360,7 @@ class ReiAnixLibraryViewModel(context: Context) :
             .distinctUntilChanged()
             .stateIn(
                 viewModelScope,
-                SharingStarted.Eagerly,
+                SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
                 emptyList(),
             )
 
@@ -362,50 +426,63 @@ class ReiAnixLibraryViewModel(context: Context) :
     }
 
     private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val debouncedSearchQuery: StateFlow<String> = _searchQuery
+        .debounce(SEARCH_DEBOUNCE_MS)
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
+            "",
+        )
 
     private val _searchFilters = MutableStateFlow(ReiAnixSearchFilters())
 
     val searchState: StateFlow<ReiAnixSearchUiState> = combine(
         searchIndex,
-        _searchQuery,
+        debouncedSearchQuery,
         _searchFilters,
     ) { index, query, filters ->
-        runCatching {
-            val indexedResults = index.search(query)
-            val filteredResults = if (query.isBlank()) {
-                emptyList()
-            } else {
-                ReiAnixLibraryFilterEngine.filter(
-                    animes = indexedResults,
-                    filters = ReiAnixLibraryFilters(
-                        selectedGenreKey = filters.selectedGenreKey,
-                        favoritesOnly = filters.favoritesOnly,
-                        watchingOnly = filters.watchingOnly,
-                        completedOnly = filters.completedOnly,
-                        sort = filters.sort ?: "",
-                    ),
+        Triple(index, query, filters)
+    }
+        .mapLatest { (index, query, filters) ->
+            runCatching {
+                val indexedResults = index.search(query)
+                val filteredResults = if (query.isBlank()) {
+                    emptyList()
+                } else {
+                    ReiAnixLibraryFilterEngine.filter(
+                        animes = indexedResults,
+                        filters = ReiAnixLibraryFilters(
+                            selectedGenreKey = filters.selectedGenreKey,
+                            favoritesOnly = filters.favoritesOnly,
+                            watchingOnly = filters.watchingOnly,
+                            completedOnly = filters.completedOnly,
+                            sort = filters.sort ?: "",
+                        ),
+                    )
+                }
+                ReiAnixSearchUiState(
+                    query = query,
+                    results = filteredResults,
+                    filters = filters,
+                )
+            }.getOrElse { error ->
+                ReiAnixSearchUiState(
+                    query = query,
+                    results = emptyList(),
+                    filters = filters,
+                    error = error.message?.takeIf { it.isNotBlank() }
+                        ?: "Não foi possível pesquisar na biblioteca local.",
                 )
             }
-            ReiAnixSearchUiState(
-                query = query,
-                results = filteredResults,
-                filters = filters,
-            )
-        }.getOrElse { error ->
-            ReiAnixSearchUiState(
-                query = query,
-                results = emptyList(),
-                filters = filters,
-                error = error.message?.takeIf { it.isNotBlank() }
-                    ?: "Não foi possível pesquisar na biblioteca local.",
-            )
         }
-    }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
-            SharingStarted.Eagerly,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             ReiAnixSearchUiState(
                 query = "",
                 results = emptyList(),

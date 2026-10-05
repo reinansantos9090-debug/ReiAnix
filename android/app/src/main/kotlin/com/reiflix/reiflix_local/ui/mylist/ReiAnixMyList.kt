@@ -80,11 +80,11 @@ fun ReiAnixMyListRoute(
     viewModel: ReiAnixLibraryViewModel,
 ) {
     ReiAnixResponsiveRoot {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
     val filter by viewModel.myListFilter.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.myListAnimes.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-    val totalSaved = state.animes.count { it.favorite }
+    val totalSaved = state.favoriteCount
 
     Column(
         modifier = Modifier
@@ -111,7 +111,7 @@ fun ReiAnixMyListRoute(
                     .weight(1f),
             )
 
-            ReiAnixLibraryLoadStatus.ERROR -> if (state.animes.isNotEmpty()) {
+            ReiAnixLibraryLoadStatus.ERROR -> if (state.animeCount > 0) {
                 ReiAnixMyListReadyContent(
                     visibleAnimes = visibleAnimes,
                     totalSaved = totalSaved,
@@ -143,7 +143,7 @@ fun ReiAnixMyListRoute(
                 )
             }
 
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> if (state.animes.isNotEmpty()) {
+            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> if (state.animeCount > 0) {
                 ReiAnixMyListReadyContent(
                     visibleAnimes = visibleAnimes,
                     totalSaved = totalSaved,

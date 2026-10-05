@@ -82,7 +82,7 @@ fun ReiAnixLibraryRoute(
     cardSize: String = "medium",
     gridDensity: String = "medium",
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
@@ -148,8 +148,68 @@ fun ReiAnixLibraryRoute(
 }
 
 @Composable
+/**
+ * Compatibility overload for existing callers/tests that still provide the
+ * canonical full library state. Production navigation uses the compact
+ * presentation projection above so progress-only catalog changes do not force
+ * unrelated source-state UI to observe the full snapshot.
+ */
+@Composable
 fun ReiAnixLibraryScreen(
     state: ReiAnixLibraryUiState,
+    filters: ReiAnixLibraryFilters,
+    cardSize: String = "medium",
+    gridDensity: String = "medium",
+    visibleAnimes: List<ReiAnixAnimeUiModel>,
+    genres: List<ReiAnixGenreUiModel>,
+    isRefreshing: Boolean = false,
+    onQueryChange: (String) -> Unit,
+    onGenreSelected: (String?) -> Unit,
+    onToggleFavorites: () -> Unit,
+    onToggleWatching: () -> Unit,
+    onToggleCompleted: () -> Unit,
+    onSortSelected: (String) -> Unit = {},
+    onClearFilters: () -> Unit,
+    onRefresh: () -> Unit,
+    onOpenDetails: (Long) -> Unit,
+    onToggleFavorite: (Long) -> Unit = {},
+    onSearch: (() -> Unit)? = null,
+) {
+    val presentation = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState(
+        status = state.status,
+        sourceAvailable = state.sourceAvailable,
+        sourceState = state.sourceState,
+        scanInProgress = state.scanInProgress,
+        scanState = state.scanState,
+        error = state.error,
+        animeCount = state.animes.size,
+        availableEpisodeCount = state.animes.sumOf { it.availableContentCount },
+        favoriteCount = state.animes.count { it.favorite },
+    )
+    ReiAnixLibraryScreen(
+        state = presentation,
+        filters = filters,
+        cardSize = cardSize,
+        gridDensity = gridDensity,
+        visibleAnimes = visibleAnimes,
+        genres = genres,
+        isRefreshing = isRefreshing,
+        onQueryChange = onQueryChange,
+        onGenreSelected = onGenreSelected,
+        onToggleFavorites = onToggleFavorites,
+        onToggleWatching = onToggleWatching,
+        onToggleCompleted = onToggleCompleted,
+        onSortSelected = onSortSelected,
+        onClearFilters = onClearFilters,
+        onRefresh = onRefresh,
+        onOpenDetails = onOpenDetails,
+        onToggleFavorite = onToggleFavorite,
+        onSearch = onSearch,
+    )
+}
+
+fun ReiAnixLibraryScreen(
+    state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
     filters: ReiAnixLibraryFilters,
     cardSize: String = "medium",
     gridDensity: String = "medium",
@@ -398,9 +458,7 @@ private fun ColumnScope.LibraryReadyContent(
     var sortMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var genreMenuExpanded by rememberSaveable { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState()
-    val availableEpisodeCount = remember(state.animes) {
-        state.animes.sumOf { it.availableContentCount }
-    }
+    val availableEpisodeCount = state.availableEpisodeCount
     val gridState = rememberSaveable(
         saver = LazyGridState.Saver,
     ) {
@@ -448,7 +506,7 @@ private fun ColumnScope.LibraryReadyContent(
                 contentType = "library-source-summary",
             ) {
                 LibrarySourceSummaryCard(
-                    animeCount = state.animes.size,
+                    animeCount = state.animeCount,
                     episodeCount = availableEpisodeCount,
                     sourceAvailable = state.sourceAvailable,
                 )

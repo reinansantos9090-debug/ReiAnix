@@ -76,7 +76,6 @@ import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSearchFilters
 import com.reiflix.reiflix_local.ui.model.ReiAnixSearchUiState
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
@@ -117,7 +116,8 @@ fun ReiAnixSearchRoute(
     navController: NavHostController,
     viewModel: ReiAnixLibraryViewModel,
 ) {
-    val libraryState by viewModel.uiState.collectAsStateWithLifecycle()
+    val libraryState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
@@ -149,6 +149,7 @@ fun ReiAnixSearchRoute(
 
     ReiAnixSearchScreen(
         libraryState = libraryState,
+        searchQuery = searchQuery,
         searchState = searchState,
         genres = genres,
         showBackButton = showBackButton,
@@ -168,7 +169,8 @@ fun ReiAnixSearchRoute(
 
 @Composable
 fun ReiAnixSearchScreen(
-    libraryState: ReiAnixLibraryUiState,
+    libraryState: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
+    searchQuery: String,
     searchState: ReiAnixSearchUiState,
     genres: List<ReiAnixGenreUiModel> = emptyList(),
     showBackButton: Boolean = false,
@@ -219,7 +221,7 @@ fun ReiAnixSearchScreen(
         }
 
         ReiAnixSearchField(
-            value = searchState.query,
+            value = searchQuery,
             onValueChange = onQueryChange,
             accessibilityLabel = "Pesquisar na biblioteca",
             modifier = Modifier.padding(
@@ -238,7 +240,7 @@ fun ReiAnixSearchScreen(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (searchState.query.isNotBlank()) {
+                    if (searchQuery.isNotBlank()) {
                         IconButton(
                             onClick = { onQueryChange("") },
                             modifier = Modifier.semantics {
@@ -342,7 +344,7 @@ fun ReiAnixSearchScreen(
                     )
 
                     searchState.query.isBlank() -> SearchEmptyQueryState(
-                        librarySize = libraryState.animes.size,
+                        librarySize = libraryState.animeCount,
                     )
 
                     searchState.results.isEmpty() -> SearchNoResultsState(

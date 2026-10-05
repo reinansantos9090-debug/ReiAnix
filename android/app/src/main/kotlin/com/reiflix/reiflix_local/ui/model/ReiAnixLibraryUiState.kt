@@ -37,6 +37,19 @@ data class ReiAnixLibraryUiState(
 
 
 @Keep
+data class ReiAnixLibraryPresentationUiState(
+    val status: ReiAnixLibraryLoadStatus = ReiAnixLibraryLoadStatus.LOADING,
+    val sourceAvailable: Boolean = false,
+    val sourceState: String = "UNKNOWN",
+    val scanInProgress: Boolean = false,
+    val scanState: String = "IDLE",
+    val error: String? = null,
+    val animeCount: Int = 0,
+    val availableEpisodeCount: Int = 0,
+    val favoriteCount: Int = 0,
+)
+
+@Keep
 data class ReiAnixHomeLibraryUiState(
     val status: ReiAnixLibraryLoadStatus = ReiAnixLibraryLoadStatus.LOADING,
     val animes: List<ReiAnixHomeAnimeUiModel> = emptyList(),
