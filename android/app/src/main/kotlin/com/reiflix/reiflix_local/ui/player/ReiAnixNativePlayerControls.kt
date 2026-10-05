@@ -16,8 +16,14 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -196,26 +202,20 @@ fun ReiAnixNativePlayerCenterControls(
             horizontalArrangement = Arrangement.spacedBy(22.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PlayerSeekGlyphButton(
-                glyph = "↶",
-                seconds = "10",
+            PlayerSeekIconButton(
+                icon = Icons.Filled.Replay10,
                 description = "Voltar 10 segundos",
                 onClick = { onSeekRelative(-10_000L) },
             )
 
             Box(
-                modifier = Modifier
-                    .size(76.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.94f),
-                        shape = CircleShape,
-                    ),
+                modifier = Modifier.size(72.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 IconButton(
                     onClick = onPlayPause,
                     modifier = Modifier
-                        .fillMaxSize()
+                        .size(64.dp)
                         .semantics {
                             contentDescription = when {
                                 state.ended -> "Reproduzir novamente"
@@ -228,30 +228,25 @@ fun ReiAnixNativePlayerCenterControls(
                     if (state.isBuffering) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(30.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
+                            color = Color.White,
                             strokeWidth = 3.dp,
-                        )
-                    } else if (state.isPlaying && !state.ended) {
-                        Text(
-                            text = "Ⅱ",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontSize = 30.sp,
-                            fontWeight = FontWeight.Bold,
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Filled.PlayArrow,
+                            imageVector = when {
+                                state.isPlaying && !state.ended -> Icons.Filled.Pause
+                                else -> Icons.Filled.PlayArrow
+                            },
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(34.dp),
+                            tint = Color.White,
+                            modifier = Modifier.size(48.dp),
                         )
                     }
                 }
             }
 
-            PlayerSeekGlyphButton(
-                glyph = "↷",
-                seconds = "10",
+            PlayerSeekIconButton(
+                icon = Icons.Filled.Forward10,
                 description = "Avançar 10 segundos",
                 onClick = { onSeekRelative(10_000L) },
             )
@@ -260,9 +255,8 @@ fun ReiAnixNativePlayerCenterControls(
 }
 
 @Composable
-private fun PlayerSeekGlyphButton(
-    glyph: String,
-    seconds: String,
+private fun PlayerSeekIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
 ) {
@@ -270,27 +264,17 @@ private fun PlayerSeekGlyphButton(
         onClick = onClick,
         modifier = Modifier
             .size(58.dp)
-            .background(Color.Black.copy(alpha = 0.55f), CircleShape)
             .semantics {
                 contentDescription = description
                 role = Role.Button
             },
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = seconds,
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = glyph,
-                color = Color.White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.TopStart),
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(52.dp),
+        )
     }
 }
 
@@ -384,7 +368,6 @@ fun ReiAnixNativePlayerBottomControls(
                     .height(38.dp)
                     .semantics {
                         contentDescription = "Barra de progresso"
-                        role = Role.Button
                     },
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
@@ -412,26 +395,25 @@ fun ReiAnixNativePlayerBottomControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlayerBottomAction(
-                glyph = null,
                 icon = Icons.Filled.Lock,
                 label = "Bloquear toques",
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
             )
             PlayerBottomAction(
-                glyph = "⛶",
+                icon = Icons.Filled.Fullscreen,
                 label = "Redimensionar",
                 contentDescription = "Redimensionar vídeo",
                 onClick = onResize,
             )
             PlayerBottomAction(
-                glyph = "☷",
+                icon = Icons.Filled.PlaylistPlay,
                 label = "Fonte",
                 contentDescription = "Fonte e opções do player",
                 onClick = onSource,
             )
             PlayerBottomAction(
-                glyph = "»",
+                icon = Icons.Filled.SkipNext,
                 label = "Próximo episódio",
                 contentDescription = "Próximo episódio",
                 onClick = onNext,
