@@ -220,6 +220,7 @@ fun ReiAnixSearchScreen(
         ReiAnixSearchField(
             value = searchState.query,
             onValueChange = onQueryChange,
+            accessibilityLabel = "Pesquisar na biblioteca",
             modifier = Modifier.padding(
                 horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             ),
