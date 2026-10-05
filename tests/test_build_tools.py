@@ -16,7 +16,6 @@ PREPARE_TEMPLATE = ROOT / "scripts" / "prepare_flet_template.py"
 DESCRIPTORS = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
     b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;",
-    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost;",
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeMailbox;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeRequestState;",
@@ -65,7 +64,6 @@ class AndroidHostVerificationTests(unittest.TestCase):
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/ReiAnixComposeRootKt.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/viewmodel/ReiAnixViewModel.class",
-                "tmp/kotlin-classes/release/com/reiflix/reiflix_local/ui/host/ReiAnixComposeSettingsHost.class",
                 "tmp/kotlin-classes/release/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.class",
             ):
                 path = classes / relative
