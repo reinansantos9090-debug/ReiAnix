@@ -119,6 +119,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             ReiAnixLibraryCommandCodec.Action.SET_WATCHED,
             episodeId = episodeId,
             watched = watched,
+            source = source,
         )
     }
 
@@ -130,6 +131,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         animeId: Long? = null,
         episodeId: Long? = null,
         watched: Boolean? = null,
+        source: String? = null,
     ): String {
         val requestId = UUID.randomUUID().toString()
         val command = ReiAnixLibraryCommandCodec.create(
