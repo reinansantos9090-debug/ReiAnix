@@ -272,6 +272,7 @@ fun ReiAnixNavigationHost(
     navController: NavHostController = rememberNavController(),
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,
+    onRouteChanged: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> },
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
