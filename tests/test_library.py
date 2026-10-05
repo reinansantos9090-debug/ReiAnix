@@ -1987,8 +1987,14 @@ class OrganizeTests(unittest.TestCase):
             bridge = AndroidBridge(d)
             queue = Path(d) / "reiflix-native-events"
             queue.mkdir()
-            (queue / "event-2.json").write_text(json.dumps({"type": "second"}), encoding="utf-8")
-            (queue / "event-1.json").write_text(json.dumps({"type": "first"}), encoding="utf-8")
+            (queue / "event-2.json").write_text(
+                json.dumps({"type": "second", "createdAt": 2}),
+                encoding="utf-8",
+            )
+            (queue / "event-1.json").write_text(
+                json.dumps({"type": "first", "createdAt": 1}),
+                encoding="utf-8",
+            )
             events = bridge.drain()
             self.assertEqual([event["type"] for event in events], ["first", "second"])
             self.assertEqual(list(queue.glob("event-*.json")), [])
