@@ -1282,6 +1282,16 @@ async def main(page: ft.Page):
         player_active_player_generation["value"] = 0
         return True
 
+    def player_callback_identity_is_complete(payload):
+        """Require the canonical playback identity before accepting durable progress callbacks."""
+        if not isinstance(payload, dict):
+            return False
+        session_id = str(payload.get("playerSessionId") or payload.get("player_session_id") or "").strip()
+        episode_id = str(payload.get("episodeId") or "").strip()
+        media_id = str(payload.get("mediaId") or "").strip()
+        uri = str(payload.get("uri") or "").strip()
+        return bool(session_id and episode_id and media_id and uri)
+
     def player_callback_is_current(event_request_id, payload, *, require_active=True, episode_id=None, media_id=None, anime_id=None):
         session_id = str(payload.get("playerSessionId") or payload.get("player_session_id") or "").strip()
         activity_instance_id = str(
@@ -4443,6 +4453,21 @@ async def main(page: ft.Page):
                                 )
                         elif event_type in {'player_progress', 'player_paused', 'player_completed'}:
                             path_ref = str(payload.get('uri') or '').strip()
+                            if not player_callback_identity_is_complete(payload):
+                                performance.event(
+                                    "PLAYER_CALLBACK_REJECTED_INCOMPLETE_IDENTITY",
+                                    screen=navigation.current,
+                                    status="discarded",
+                                    metadata={
+                                        "request_id": event_request_id,
+                                        "player_session_id": payload.get("playerSessionId"),
+                                        "episode_id": payload.get("episodeId"),
+                                        "media_id": payload.get("mediaId"),
+                                        "uri": payload.get("uri"),
+                                        "event": event_type,
+                                    },
+                                )
+                                continue
                             if path_ref:
                                 try:
                                     position_ms = max(0.0, float(payload.get('positionMs') or 0.0))
@@ -5299,6 +5324,21 @@ async def main(page: ft.Page):
                             page.snack_bar.open = True
                             safe_update()
                         elif event_type == 'player_exited':
+                            if not player_callback_identity_is_complete(payload):
+                                performance.event(
+                                    "PLAYER_CALLBACK_REJECTED_INCOMPLETE_IDENTITY",
+                                    screen=navigation.current,
+                                    status="discarded",
+                                    metadata={
+                                        "request_id": event_request_id,
+                                        "player_session_id": payload.get("playerSessionId"),
+                                        "episode_id": payload.get("episodeId"),
+                                        "media_id": payload.get("mediaId"),
+                                        "uri": payload.get("uri"),
+                                        "event": event_type,
+                                    },
+                                )
+                                continue
                             exit_session_id = str(payload.get("playerSessionId") or "").strip()
                             exit_activity_instance_id = str(payload.get("activityInstanceId") or "").strip()
                             exit_callback_current, exit_callback_reason = player_callback_is_current(
@@ -5370,6 +5410,7 @@ async def main(page: ft.Page):
                                         position_seconds,
                                         duration_seconds,
                                         episode_id=payload.get("episodeId"),
+                                        media_id=payload.get("mediaId"),
                                         event_created_at=event.get('createdAt') or event.get('timestamp'),
                                         session_id=payload.get("playerSessionId"),
                                     )

@@ -513,7 +513,7 @@ class NativePlayerActivity : ComponentActivity() {
                     .put("transitionGeneration", transitionGeneration)
                     .put("sessionState", sessionState.name)
                     .put("activityElapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
-                    .put("playerSessionId", playerSessionId)
+                    .put("playerSessionId", sessionId)
                     .put("activityInstanceId", activityInstanceId)
                     .put("originRequestId", originRequestId)
                     .put("originCreatedAtMs", originCreatedAtMs)
@@ -4246,6 +4246,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun buildProgressEvent(eventType: String, force: Boolean): JSONObject? {
         if (!::player.isInitialized) return null
+        val episodeId = currentEpisodeId()
+        val mediaId = currentMediaId()
+        val sessionId = playerSessionId.trim()
+        val mediaUri = uri.toString().trim()
+        if (episodeId.isBlank() || mediaId.isBlank() || sessionId.isBlank() || mediaUri.isBlank()) {
+            logPlayer(
+                "PROGRESS_EVENT_REJECTED_INCOMPLETE_IDENTITY requestId=" + requestId.ifEmpty { "-" } +
+                    " episodeId=" + episodeId.ifEmpty { "-" } +
+                    " mediaId=" + mediaId.ifEmpty { "-" } +
+                    " playerSessionId=" + sessionId.ifEmpty { "-" },
+            )
+            return null
+        }
         val rawDuration = player.duration
         val duration = if (rawDuration > 0L) rawDuration else 0L
         val rawPosition = player.currentPosition.coerceAtLeast(0L)
@@ -4264,9 +4277,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put(
                 "payload",
                 JSONObject()
-                    .put("uri", uri.toString())
-                    .put("mediaId", currentMediaId())
-                    .put("episodeId", currentEpisodeId())
+                    .put("uri", mediaUri)
+                    .put("mediaId", mediaId)
+                    .put("episodeId", episodeId)
                     .put("animeId", intent.getStringExtra("animeId").orEmpty())
                     .put("positionMs", position)
                     .put("durationMs", duration)
