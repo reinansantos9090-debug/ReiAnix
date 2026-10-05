@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 DETAILS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"
@@ -8,12 +9,48 @@ def read_details() -> str:
     return DETAILS.read_text(encoding="utf-8")
 
 
-def test_player_launch_guard_is_released_by_details_resume_lifecycle():
+def lifecycle_block(source: str) -> str:
+    start = source.index("DisposableEffect(lifecycleOwner)")
+    end = source.index("ReiAnixDetailsScreen(", start)
+    return source[start:end]
+
+
+def test_player_launch_guard_requires_a_real_lifecycle_exit_before_release():
     source = read_details()
-    assert "DisposableEffect(lifecycleOwner)" in source
-    assert "LifecycleEventObserver" in source
-    assert "event == Lifecycle.Event.ON_RESUME" in source
-    assert "playerLaunchInFlight = false" in source
+    block = lifecycle_block(source)
+
+    assert "DisposableEffect(lifecycleOwner)" in block
+    assert "LifecycleEventObserver" in block
+    assert "detailsWasPaused" in block
+
+    pause_transition = re.search(
+        r"Lifecycle\.Event\.ON_PAUSE,\s*"
+        r"Lifecycle\.Event\.ON_STOP\s*->\s*\{\s*"
+        r"detailsWasPaused\s*=\s*true\s*\}",
+        block,
+        re.DOTALL,
+    )
+    assert pause_transition is not None
+
+    resume_transition = re.search(
+        r"Lifecycle\.Event\.ON_RESUME\s*->\s*\{\s*"
+        r"if\s*\(detailsWasPaused\)\s*\{\s*"
+        r"playerLaunchInFlight\s*=\s*false\s*"
+        r"detailsWasPaused\s*=\s*false\s*\}",
+        block,
+        re.DOTALL,
+    )
+    assert resume_transition is not None
+    assert block.index("detailsWasPaused = true") < block.index("playerLaunchInFlight = false")
+
+    # Regression guard: ON_RESUME alone must never release the lock.
+    assert re.search(
+        r"if\s*\(event\s*==\s*Lifecycle\.Event\.ON_RESUME\)\s*\{\s*"
+        r"playerLaunchInFlight\s*=\s*false",
+        block,
+        re.DOTALL,
+    ) is None
+
     assert "delay(" not in source
     assert "LaunchedEffect(Unit)" not in source
 
