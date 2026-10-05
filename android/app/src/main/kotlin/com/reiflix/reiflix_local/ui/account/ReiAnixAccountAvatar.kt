@@ -35,7 +35,7 @@ private const val MAX_AVATAR_DIMENSION = 256
 @Composable
 fun ReiAnixAccountAvatar(
     pictureUrl: String,
-    contentDescription: String = "Foto de perfil da conta Google",
+    contentDescription: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var bitmap by remember(pictureUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
