@@ -1039,9 +1039,7 @@ private fun BooleanSettingCard(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     ReiAnixCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = "Configuração " + keyName },
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier
@@ -1090,9 +1088,7 @@ private fun LanguageSettingCard(
         androidx.compose.runtime.mutableStateOf(selectedValue)
     }
     ReiAnixCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = "Configuração " + keyName },
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier
