@@ -522,6 +522,22 @@ private fun DetailsSectionTabs(
                 contentDescription = "Abrir seção Episódios"
             },
         )
+        ReiAnixChip(
+            text = "Personagens",
+            enabled = false,
+            onClick = {},
+            modifier = Modifier.semantics {
+                contentDescription = "Personagens indisponíveis"
+            },
+        )
+        ReiAnixChip(
+            text = "Relacionados",
+            enabled = false,
+            onClick = {},
+            modifier = Modifier.semantics {
+                contentDescription = "Relacionados indisponíveis"
+            },
+        )
     }
 }
 
