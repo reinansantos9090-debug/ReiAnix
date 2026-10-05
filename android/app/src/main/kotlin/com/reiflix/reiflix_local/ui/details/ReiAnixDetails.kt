@@ -153,52 +153,54 @@ fun ReiAnixDetailsScreen(
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
 ) {
-    when (state.status) {
-        ReiAnixDetailsLoadStatus.LOADING -> ReiAnixDetailsLoadingContent()
-        ReiAnixDetailsLoadStatus.READY -> {
-            state.anime?.let { anime ->
-                ReiAnixDetailsReady(
-                    anime = anime,
-                    onBack = onBack,
-                    onRefresh = onRetry,
-                    onWatch = onWatch,
-                    onToggleFavorite = onToggleFavorite,
-                    onSetEpisodeWatched = onSetEpisodeWatched,
+    Column(modifier = Modifier.fillMaxSize()) {
+        when (state.status) {
+            ReiAnixDetailsLoadStatus.LOADING -> ReiAnixDetailsLoadingContent()
+            ReiAnixDetailsLoadStatus.READY -> {
+                state.anime?.let { anime ->
+                    ReiAnixDetailsReady(
+                        anime = anime,
+                        onBack = onBack,
+                        onRefresh = onRetry,
+                        onWatch = onWatch,
+                        onToggleFavorite = onToggleFavorite,
+                        onSetEpisodeWatched = onSetEpisodeWatched,
+                    )
+                } ?: ReiAnixRecoverableErrorState(
+                    title = "Detalhes indisponíveis",
+                    message = "Os dados do conteúdo não estão disponíveis.",
+                    onRetry = onRetry,
+                    modifier = Modifier.fillMaxSize(),
                 )
-            } ?: ReiAnixRecoverableErrorState(
-                title = "Detalhes indisponíveis",
-                message = "Os dados do conteúdo não estão disponíveis.",
+            }
+
+            ReiAnixDetailsLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
+                message = "Nenhum anime local está disponível.",
+                actionLabel = "Atualizar",
+                onAction = onRetry,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            ReiAnixDetailsLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
+                title = "Biblioteca local indisponível",
+                message = state.error ?: "A fonte local não está disponível agora.",
+                onAction = onRetry,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            ReiAnixDetailsLoadStatus.NOT_FOUND -> ReiAnixEmptyState(
+                title = "Conteúdo não encontrado",
+                message = state.error ?: "O conteúdo não está presente na biblioteca local.",
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            ReiAnixDetailsLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
+                title = "Erro nos detalhes",
+                message = state.error ?: "Não foi possível carregar os detalhes.",
                 onRetry = onRetry,
                 modifier = Modifier.fillMaxSize(),
             )
         }
-
-        ReiAnixDetailsLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
-            message = "Nenhum anime local está disponível.",
-            actionLabel = "Atualizar",
-            onAction = onRetry,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        ReiAnixDetailsLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
-            title = "Biblioteca local indisponível",
-            message = state.error ?: "A fonte local não está disponível agora.",
-            onAction = onRetry,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        ReiAnixDetailsLoadStatus.NOT_FOUND -> ReiAnixEmptyState(
-            title = "Conteúdo não encontrado",
-            message = state.error ?: "O conteúdo não está presente na biblioteca local.",
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        ReiAnixDetailsLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
-            title = "Erro nos detalhes",
-            message = state.error ?: "Não foi possível carregar os detalhes.",
-            onRetry = onRetry,
-            modifier = Modifier.fillMaxSize(),
-        )
     }
 }
 
@@ -279,7 +281,7 @@ private fun DetailsSkeletonButton(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ReiAnixDetailsReady(
+private fun ColumnScope.ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
