@@ -11,10 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
+import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
 
 /**
  * Native Compose storage surface layered over the existing Settings screen.
@@ -75,8 +78,13 @@ class ReiAnixComposeStorageHost(
 
         val factory = ReiAnixLibraryViewModelFactory(activity.applicationContext)
         val viewModel = ViewModelProvider(activity, factory).get(ReiAnixLibraryViewModel::class.java)
+        val settingsFactory = ReiAnixSettingsViewModelFactory(activity.applicationContext)
+        val settingsViewModel = ViewModelProvider(activity, settingsFactory).get(ReiAnixSettingsViewModel::class.java)
         view.setContent {
-            ReiAnixComposeRoot {
+            val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+            ReiAnixComposeRoot(
+                themeMode = settingsState.settings["appearance.theme"],
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
