@@ -31,5 +31,6 @@ internal object ReiAnixLibraryCommandCodec {
         REFRESH("refresh"),
         OPEN_MEDIA("open_media"),
         SELECT_SAF("select_saf"),
+        REMOVE_SAF("remove_saf"),
     }
 }
