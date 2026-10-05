@@ -78,7 +78,7 @@ private fun ReiAnixBottomNavigation(
             .semantics {
                 contentDescription = "ReiAnixBottomNavigation"
             },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = ReiAnixTokens.Elevation.none,
         windowInsets = NavigationBarDefaults.windowInsets,
