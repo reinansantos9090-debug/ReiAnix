@@ -88,7 +88,7 @@ fun ReiAnixLibraryRoute(
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
-    ReiAnixLibraryScreen(
+    ReiAnixLibraryPresentationScreen(
         state = state,
         filters = filters,
         visibleAnimes = visibleAnimes,
@@ -207,6 +207,7 @@ fun ReiAnixLibraryScreen(
     )
 }
 
+@Composable
 private fun ReiAnixLibraryPresentationScreen(
     state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
     filters: ReiAnixLibraryFilters,
