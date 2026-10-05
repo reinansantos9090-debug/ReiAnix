@@ -171,6 +171,8 @@ private fun ReiAnixHomeObservedScreen(
             ReiAnixLibraryLoadStatus.READY -> HomeObservedContent(
                 state = state,
                 continueWatching = continueWatching,
+                cardSize = cardSize,
+                showThumbnails = showThumbnails,
                 onOpenDetails = onOpenDetails,
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
@@ -185,6 +187,8 @@ private fun ReiAnixHomeObservedScreen(
 private fun ColumnScope.HomeObservedContent(
     state: ReiAnixHomeLibraryUiState,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
+    cardSize: String = "medium",
+    showThumbnails: Boolean = true,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
@@ -198,6 +202,8 @@ private fun ColumnScope.HomeObservedContent(
     HomeReadyContent(
         animes = renderAnimes,
         continueWatching = continueWatching,
+        cardSize = cardSize,
+        showThumbnails = showThumbnails,
         onOpenDetails = onOpenDetails,
         onWatch = onWatch,
         onHeroSecondaryAction = { featured -> onToggleFavorite(featured.id) },
@@ -253,6 +259,8 @@ fun ReiAnixHomeScreen(
             )
             ReiAnixLibraryLoadStatus.READY -> HomeContent(
                 state = state,
+                cardSize = cardSize,
+                showThumbnails = showThumbnails,
                 onOpenDetails = onOpenDetails,
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
@@ -338,6 +346,8 @@ private fun HomeHeader(
 @Composable
 private fun ColumnScope.HomeContent(
     state: ReiAnixLibraryUiState,
+    cardSize: String = "medium",
+    showThumbnails: Boolean = true,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
@@ -351,6 +361,8 @@ private fun ColumnScope.HomeContent(
     HomeReadyContent(
         animes = renderAnimes,
         continueWatching = state.continueWatching,
+        cardSize = cardSize,
+        showThumbnails = showThumbnails,
         onOpenDetails = onOpenDetails,
         onWatch = onWatch,
         onHeroSecondaryAction = { featured -> onOpenDetails(featured.id) },
@@ -440,6 +452,8 @@ private fun ReiAnixHomeAnimeUiModel.toHomeRenderData(): HomeAnimeRenderData =
 private fun ColumnScope.HomeReadyContent(
     animes: List<HomeAnimeRenderData>,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
+    cardSize: String = "medium",
+    showThumbnails: Boolean = true,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
     onHeroSecondaryAction: (HomeAnimeRenderData) -> Unit,
@@ -467,6 +481,7 @@ private fun ColumnScope.HomeReadyContent(
             item(key = "home-hero") {
                 HomeHero(
                     anime = selectFeaturedAnime(animes),
+                    showThumbnails = showThumbnails,
                     onWatch = onWatch,
                     onSecondaryAction = onHeroSecondaryAction,
                     secondaryLabel = heroSecondaryLabel,
@@ -478,6 +493,7 @@ private fun ColumnScope.HomeReadyContent(
             item(key = "home-section-continue") {
                 HomeContinueSection(
                     items = continueWatching,
+                    showThumbnails = showThumbnails,
                     onWatch = onWatch,
                     onSeeAll = onOpenLibrary,
                 )
@@ -489,6 +505,8 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "EM ALTA",
                     items = trending,
+                    cardWidth = homeAnimeCardWidth(cardSize),
+                    showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Em Alta",
                     onSeeAll = onOpenLibrary,
@@ -501,6 +519,8 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "MINHA LISTA",
                     items = favorites,
+                    cardWidth = homeAnimeCardWidth(cardSize),
+                    showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
                     onSeeAll = onOpenMyList,
@@ -513,6 +533,8 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = section.title,
                     items = section.items,
+                    cardWidth = homeAnimeCardWidth(cardSize),
+                    showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home " + section.title,
                 )
@@ -524,6 +546,8 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "FILMES",
                     items = movies,
+                    cardWidth = homeAnimeCardWidth(cardSize),
+                    showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Filmes",
                 )
@@ -535,6 +559,7 @@ private fun ColumnScope.HomeReadyContent(
 @Composable
 private fun HomeHero(
     anime: HomeAnimeRenderData,
+    showThumbnails: Boolean = true,
     onWatch: (Long, Long) -> Unit,
     onSecondaryAction: (HomeAnimeRenderData) -> Unit,
     secondaryLabel: (HomeAnimeRenderData) -> String,
@@ -551,8 +576,8 @@ private fun HomeHero(
                 .clip(ReiAnixTokens.Shapes.hero),
         ) {
             ReiAnixBackdrop(
-                localPath = anime.backdropLocalPath,
-                fallbackLocalPath = anime.artworkPath,
+                localPath = anime.backdropLocalPath.takeIf { showThumbnails },
+                fallbackLocalPath = anime.artworkPath.takeIf { showThumbnails },
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 identity = anime.stableKey,
@@ -686,6 +711,7 @@ private fun HomeHero(
 @Composable
 private fun HomeContinueSection(
     items: List<ReiAnixContinueWatchingUiModel>,
+    showThumbnails: Boolean = true,
     onWatch: (Long, Long) -> Unit,
     onSeeAll: (() -> Unit)? = null,
 ) {
@@ -723,6 +749,7 @@ private fun HomeContinueSection(
 @Composable
 private fun HomeContinueCard(
     item: ReiAnixContinueWatchingUiModel,
+    showThumbnails: Boolean = true,
     onWatch: (Long, Long) -> Unit,
 ) {
     val progress = progressFraction(item.progressSeconds, item.durationSeconds)
@@ -762,7 +789,7 @@ private fun HomeContinueCard(
                     .clip(ReiAnixTokens.Shapes.artwork),
             ) {
                 ReiAnixEpisodeThumbnail(
-                    localPath = item.artwork?.localPath,
+                    localPath = item.artwork?.localPath.takeIf { showThumbnails },
                     contentDescription = item.animeTitle,
                     modifier = Modifier.fillMaxSize(),
                     identity = item.stableKey,
@@ -807,10 +834,19 @@ private fun HomeContinueCard(
 
 private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
 
+private fun homeAnimeCardWidth(preference: String): androidx.compose.ui.unit.Dp =
+    when (preference.trim().lowercase()) {
+        "small" -> 120.dp
+        "large" -> 172.dp
+        else -> 146.dp
+    }
+
 @Composable
 private fun HomeMediaSection(
     title: String,
     items: List<HomeAnimeRenderData>,
+    cardWidth: androidx.compose.ui.unit.Dp = ReiAnixTokens.Dimensions.homeCardWidth,
+    showThumbnails: Boolean = true,
     onOpenDetails: (Long) -> Unit,
     contentDescription: String,
     onSeeAll: (() -> Unit)? = null,
@@ -837,7 +873,12 @@ private fun HomeMediaSection(
                 key = { it.stableKey },
                 contentType = { "home-media-anime" },
             ) { anime ->
-                HomeMediaCard(anime = anime, onClick = { onOpenDetails(anime.id) })
+                HomeMediaCard(
+                    anime = anime,
+                    cardWidth = cardWidth,
+                    showThumbnails = showThumbnails,
+                    onClick = { onOpenDetails(anime.id) },
+                )
             }
         }
     }
@@ -878,11 +919,13 @@ private fun HomeSectionHeader(
 @Composable
 private fun HomeMediaCard(
     anime: HomeAnimeRenderData,
+    cardWidth: androidx.compose.ui.unit.Dp = ReiAnixTokens.Dimensions.homeCardWidth,
+    showThumbnails: Boolean = true,
     onClick: () -> Unit,
 ) {
     Card(
         modifier = Modifier
-            .width(ReiAnixTokens.Dimensions.homeCardWidth)
+            .width(cardWidth)
             .clickable(onClick = onClick)
             .semantics {
                 role = Role.Button
