@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -37,7 +38,7 @@ fun ReiAnixLoadingState(
     Column(
         modifier = modifier
             .padding(ReiAnixTokens.Spacing.xxl)
-            .semantics { contentDescription = "ReiAnixLoadingState" },
+            .semantics { contentDescription = title },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
@@ -67,7 +68,7 @@ fun ReiAnixEmptyState(
     Column(
         modifier = modifier
             .padding(ReiAnixTokens.Spacing.xxl)
-            .semantics { contentDescription = "ReiAnixEmptyState" },
+            .semantics { contentDescription = title + ". " + message },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
@@ -83,7 +84,8 @@ fun ReiAnixEmptyState(
             text = title,
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
-                    )
+            modifier = Modifier.semantics { heading() },
+        )
         Text(
             text = message,
             style = MaterialTheme.typography.bodyLarge,
@@ -127,7 +129,7 @@ fun ReiAnixScannerInProgressState(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(ReiAnixTokens.Spacing.md)
-                .semantics { contentDescription = "ReiAnixScannerInProgressState" },
+                .semantics { contentDescription = "Varredura em andamento. " + normalizedState },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
@@ -169,9 +171,7 @@ fun ReiAnixSourceUnavailableState(
     ReiAnixEmptyState(
         title = title,
         message = message,
-        modifier = modifier.semantics {
-            contentDescription = "ReiAnixSourceUnavailableState"
-        },
+        modifier = modifier,
         actionLabel = actionLabel,
         onAction = onAction,
     )
@@ -191,7 +191,7 @@ fun ReiAnixFileUnavailableState(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(vertical = ReiAnixTokens.Spacing.xs)
-                .semantics { contentDescription = "ReiAnixFileUnavailableState" },
+                .semantics { contentDescription = title + ". " + message },
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
         ) {
             Text(
@@ -215,9 +215,7 @@ fun ReiAnixFileUnavailableState(
         ReiAnixEmptyState(
             title = title,
             message = message,
-            modifier = modifier.semantics {
-                contentDescription = "ReiAnixFileUnavailableState"
-            },
+            modifier = modifier,
             actionLabel = actionLabel,
             onAction = onAction,
         )
@@ -230,9 +228,7 @@ fun ReiAnixArtworkMissingState(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier.semantics {
-            contentDescription = "ReiAnixArtworkMissingState"
-        },
+        modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -271,6 +267,7 @@ fun ReiAnixRecoverableErrorState(
             text = title,
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.semantics { heading() },
         )
         Text(
             text = message,
