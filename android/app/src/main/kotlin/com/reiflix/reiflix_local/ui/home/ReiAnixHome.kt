@@ -532,7 +532,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "MINHA LISTA",
                     items = favorites,
-                    cardWidth = homeAnimeCardWidth(cardSize),
+                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
                     showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
@@ -546,7 +546,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = section.title,
                     items = section.items,
-                    cardWidth = homeAnimeCardWidth(cardSize),
+                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
                     showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home " + section.title,
@@ -559,7 +559,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "FILMES",
                     items = movies,
-                    cardWidth = homeAnimeCardWidth(cardSize),
+                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
                     showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Filmes",
