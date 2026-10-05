@@ -1,9 +1,11 @@
 package com.reiflix.reiflix_local.ui.artwork
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -73,6 +75,8 @@ fun ReiAnixLocalArtwork(
     placeholder: String = "Sem arte",
     maxDimensionPx: Int = 1024,
     shape: Shape = ReiAnixTokens.Shapes.artwork,
+    identity: String? = null,
+    fallbackLocalPath: String? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -99,28 +103,60 @@ fun ReiAnixLocalArtwork(
             maxDimensionPx = maxDimensionPx,
         )
 
+        val stableIdentity = identity?.trim().takeUnless { it.isNullOrEmpty() }
+            ?: localPath?.trim().orEmpty()
         val imageState by produceState<LocalArtworkLoadState>(
-            initialValue = if (localPath.isNullOrBlank() || targetMaxDimensionPx <= 0) {
-                LocalArtworkLoadState.Error
+            initialValue = if (
+                (localPath.isNullOrBlank() && fallbackLocalPath.isNullOrBlank()) ||
+                targetMaxDimensionPx <= 0
+            ) {
+                LocalArtworkLoadState.Missing
             } else {
                 LocalArtworkLoadState.Loading
             },
-            key1 = localPath,
-            key2 = targetMaxDimensionPx,
+            key1 = stableIdentity,
+            key2 = localPath,
+            key3 = fallbackLocalPath,
+            key4 = targetMaxDimensionPx,
         ) {
-            if (localPath.isNullOrBlank() || targetMaxDimensionPx <= 0) {
+            val candidates = listOf(localPath, fallbackLocalPath)
+                .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+                .distinct()
+
+            if (candidates.isEmpty() || targetMaxDimensionPx <= 0) {
                 value = LocalArtworkLoadState.Missing
                 return@produceState
             }
 
             val decoded = try {
                 withContext(Dispatchers.IO) {
-                    decodeLocalArtwork(context, localPath, targetMaxDimensionPx)
+                    var sawError = false
+                    var resolved: LocalArtworkDecodeResult? = null
+                    for (candidate in candidates) {
+                        when (val result = decodeLocalArtwork(
+                            context = context,
+                            rawPath = candidate,
+                            maxDimensionPx = targetMaxDimensionPx,
+                            identity = stableIdentity,
+                        )) {
+                            is LocalArtworkDecodeResult.Ready -> {
+                                resolved = result
+                                break
+                            }
+                            LocalArtworkDecodeResult.Error -> sawError = true
+                            LocalArtworkDecodeResult.Missing -> Unit
+                        }
+                    }
+                    resolved ?: if (sawError) {
+                        LocalArtworkDecodeResult.Error
+                    } else {
+                        LocalArtworkDecodeResult.Missing
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (exception: Exception) {
-                Log.w(TAG, "Artwork decode failed for a local reference", exception)
+                Log.w(TAG, "Artwork decode failed for local reference(s)", exception)
                 LocalArtworkDecodeResult.Error
             }
 
@@ -133,16 +169,7 @@ fun ReiAnixLocalArtwork(
 
         when (val state = imageState) {
             LocalArtworkLoadState.Loading -> {
-                Text(
-                    text = placeholder,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics {
-                        this.contentDescription = "Carregando " + placeholder
-                    },
-                )
+                ArtworkLoadingPlaceholder(label = placeholder)
             }
 
             is LocalArtworkLoadState.Ready -> {
@@ -170,6 +197,139 @@ fun ReiAnixLocalArtwork(
  * safety limit. This preserves the historical 320 px thumbnail cap while
  * avoiding unnecessary poster resolution when the actual slot is smaller.
  */
+@Composable
+private fun ArtworkLoadingPlaceholder(
+    label: String,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .semantics {
+                contentDescription = "Carregando " + label
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private val ARTWORK_MEMORY_CACHE: LruCache<String, ImageBitmap> by lazy {
+    object : LruCache<String, ImageBitmap>(artworkMemoryCacheKb()) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int {
+            return ((value.width.toLong() * value.height.toLong() * 4L) / 1024L)
+                .coerceAtLeast(1L)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+        }
+    }
+}
+
+private fun artworkMemoryCacheKb(): Int {
+    val maxMemoryKb = Runtime.getRuntime().maxMemory()
+        .div(1024L)
+        .coerceAtLeast(16_384L)
+    return (maxMemoryKb / 32L)
+        .coerceIn(4_096L, 16_384L)
+        .toInt()
+}
+
+private fun buildDecodeCacheKey(
+    identity: String,
+    rawPath: String,
+    maxDimensionPx: Int,
+    config: String,
+): String =
+    identity.trim() + "|" + rawPath.trim() + "|" + maxDimensionPx + "|" + config
+
+private fun preferredBitmapConfig(context: Context, rawPath: String): Bitmap.Config {
+    val lower = rawPath.lowercase()
+    val isJpegByPath = lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+    val isJpegByMime = if (lower.startsWith("content://")) {
+        runCatching {
+            context.contentResolver.getType(Uri.parse(rawPath))
+        }.getOrNull()?.equals("image/jpeg", ignoreCase = true) == true
+    } else {
+        false
+    }
+    return if (isJpegByPath || isJpegByMime) {
+        Bitmap.Config.RGB_565
+    } else {
+        Bitmap.Config.ARGB_8888
+    }
+}
+
+@Composable
+fun ReiAnixPoster(
+    localPath: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    identity: String? = null,
+    fallbackLocalPath: String? = null,
+    maxDimensionPx: Int = 512,
+) {
+    ReiAnixLocalArtwork(
+        localPath = localPath,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+        placeholder = "Sem poster",
+        maxDimensionPx = maxDimensionPx,
+        shape = ReiAnixTokens.Shapes.artwork,
+        identity = identity,
+        fallbackLocalPath = fallbackLocalPath,
+    )
+}
+
+@Composable
+fun ReiAnixBackdrop(
+    localPath: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    identity: String? = null,
+    fallbackLocalPath: String? = null,
+    maxDimensionPx: Int = 1024,
+) {
+    ReiAnixLocalArtwork(
+        localPath = localPath,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+        placeholder = "Sem backdrop",
+        maxDimensionPx = maxDimensionPx,
+        shape = ReiAnixTokens.Shapes.hero,
+        identity = identity,
+        fallbackLocalPath = fallbackLocalPath,
+    )
+}
+
+@Composable
+fun ReiAnixEpisodeThumbnail(
+    localPath: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    identity: String? = null,
+    fallbackLocalPath: String? = null,
+) {
+    ReiAnixLocalArtwork(
+        localPath = localPath,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+        placeholder = "Sem thumbnail",
+        maxDimensionPx = 320,
+        shape = ReiAnixTokens.Shapes.small,
+        identity = identity,
+        fallbackLocalPath = fallbackLocalPath,
+    )
+}
+
 internal fun resolveTargetDimensionPx(
     widthPx: Int,
     heightPx: Int,
@@ -184,6 +344,7 @@ private fun decodeLocalArtwork(
     context: Context,
     rawPath: String?,
     maxDimensionPx: Int,
+    identity: String,
 ): LocalArtworkDecodeResult {
     val path = rawPath?.trim().orEmpty()
     if (path.isEmpty() || maxDimensionPx <= 0) {
@@ -206,12 +367,23 @@ private fun decodeLocalArtwork(
         return LocalArtworkDecodeResult.Error
     }
 
+    val preferredConfig = preferredBitmapConfig(context, path)
+    val cacheKey = buildDecodeCacheKey(
+        identity = identity,
+        rawPath = path,
+        maxDimensionPx = maxDimensionPx,
+        config = preferredConfig.name,
+    )
+    ARTWORK_MEMORY_CACHE.get(cacheKey)?.let { cached ->
+        return LocalArtworkDecodeResult.Ready(cached)
+    }
+
     val sample = calculateSampleSize(bounds.outWidth, bounds.outHeight, maxDimensionPx)
     val bitmap = try {
         openArtworkStream(context, path)?.use { stream ->
             val options = BitmapFactory.Options().apply {
                 inSampleSize = sample
-                inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+                inPreferredConfig = preferredConfig
             }
             BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
         }
@@ -220,6 +392,7 @@ private fun decodeLocalArtwork(
         return LocalArtworkDecodeResult.Error
     } ?: return LocalArtworkDecodeResult.Error
 
+    ARTWORK_MEMORY_CACHE.put(cacheKey, bitmap)
     return LocalArtworkDecodeResult.Ready(bitmap)
 }
 
