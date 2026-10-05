@@ -577,6 +577,7 @@ private fun OrganizeCollectionContent(
         state = gridState,
         modifier = modifier
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
+            .fillMaxWidth()
             .imePadding(),
         contentPadding = PaddingValues(
             horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
