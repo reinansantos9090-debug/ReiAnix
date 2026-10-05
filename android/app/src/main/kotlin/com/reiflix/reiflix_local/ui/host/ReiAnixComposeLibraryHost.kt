@@ -179,6 +179,7 @@ class ReiAnixComposeLibraryHost(
                         },
                         startDestination = startDestination,
                         showBottomNavigation = true,
+                        onRouteChanged = ::publishComposeRouteChanged,
                     )
                 }
             }
@@ -198,8 +199,8 @@ class ReiAnixComposeLibraryHost(
 
     /**
      * Back is consumed by the Compose stack first. At a root destination the
-     * transitional shell is dismissed and the existing Flet navigation receives
-     * the legacy back contract.
+     * existing logical navigation authority receives the legacy back contract.
+     * The separate Settings/Storage host classes are not used as visual siblings.
      */
     fun handleBack(): Boolean {
         val controller = composeNavController ?: return false
@@ -269,6 +270,30 @@ class ReiAnixComposeLibraryHost(
                 )
             }
         }
+    }
+
+    /**
+     * Compose is the visible navigation owner on Android. Publish only the
+     * stable route identity so Python can keep its existing lifecycle/domain
+     * navigation projection synchronized without rendering a second UI tree.
+     */
+    private fun publishComposeRouteChanged(
+        route: String,
+        animeId: String?,
+        episodeId: String?,
+        origin: String?,
+    ) {
+        val payload = JSONObject()
+            .put("route", route)
+            .put("animeId", animeId ?: "")
+            .put("episodeId", episodeId ?: "")
+            .put("origin", origin ?: "")
+        NativeMailbox.writeBestEffort(
+            activity,
+            JSONObject()
+                .put("type", "compose_navigation_changed")
+                .put("payload", payload),
+        )
     }
 
     private fun hideAndPublishLegacyBack() {
