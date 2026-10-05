@@ -44,11 +44,14 @@ class Prompt26ComposePerformanceTests(unittest.TestCase):
 
     def test_home_lazy_rows_use_stable_identity_and_content_types(self):
         home = self.read(HOME)
-        for marker in ('item(key = "home-section-continue")', 'item(key = "home-section-my-list")'):
-            start = home.index(marker)
-            block = home[start:start + 1900]
-            self.assertIn("key = { it.stableKey }", block)
-            self.assertIn("contentType =", block)
+        continue_start = home.index("private fun HomeContinueSection")
+        media_start = home.index("private fun HomeMediaSection")
+        continue_block = home[continue_start:continue_start + 2600]
+        media_block = home[media_start:media_start + 2600]
+        self.assertIn("key = { it.stableKey }", continue_block)
+        self.assertIn('contentType = { "home-continue-episode" }', continue_block)
+        self.assertIn("key = { it.stableKey }", media_block)
+        self.assertIn('contentType = { "home-media-anime" }', media_block)
 
     def test_existing_io_boundaries_remain_intact(self):
         repository = self.read(REPOSITORY)
