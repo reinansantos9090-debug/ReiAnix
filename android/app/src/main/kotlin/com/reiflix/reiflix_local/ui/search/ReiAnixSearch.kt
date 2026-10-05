@@ -172,15 +172,13 @@ fun ReiAnixSearchScreen(
     genres: List<ReiAnixGenreUiModel> = emptyList(),
     showBackButton: Boolean = false,
     onQueryChange: (String) -> Unit,
-    onBack: () -> Unit = {
-    ReiAnixResponsiveRoot {
-    }
-},
+    onBack: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onOpenFilters: () -> Unit = {},
     onClearFilters: () -> Unit = {},
     onOpenDetails: (Long) -> Unit = {},
 ) {
+    ReiAnixResponsiveRoot {
     val listState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -357,6 +355,8 @@ fun ReiAnixSearchScreen(
                 }
             }
         }
+    }
+
     }
 }
 
