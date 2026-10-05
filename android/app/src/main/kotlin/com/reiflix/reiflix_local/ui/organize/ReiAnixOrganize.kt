@@ -70,6 +70,10 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.widthIn
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
 @Composable
@@ -141,6 +145,7 @@ fun ReiAnixOrganizeScreen(
     onOpenDetails: (Long) -> Unit,
     onRefresh: () -> Unit,
 ) {
+    ReiAnixResponsiveRoot {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -257,6 +262,8 @@ fun ReiAnixOrganizeScreen(
             }
         }
     }
+
+    }
 }
 
 @Composable
@@ -273,7 +280,7 @@ private fun OrganizeTopBar(
             .fillMaxWidth()
             .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
             .padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.xs,
             ),
         verticalAlignment = Alignment.CenterVertically,
@@ -560,14 +567,17 @@ private fun OrganizeCollectionContent(
     modifier: Modifier = Modifier,
     showCatalogError: String?,
 ) {
-    val gridState = rememberLazyGridState()
+    val gridState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     var genreMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = ReiAnixTokens.Dimensions.libraryGridMinWidth),
+        columns = GridCells.Adaptive(minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium")),
         state = gridState,
-        modifier = modifier,
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
+            .imePadding(),
         contentPadding = PaddingValues(
             horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
             vertical = ReiAnixTokens.Spacing.sm,
@@ -893,7 +903,7 @@ private fun EmptyAction(
 ) {
     Surface(
         modifier = modifier
-            .heightIn(min = 52.dp)
+            .heightIn(min = ReiAnixTokens.Dimensions.buttonMinHeight)
             .semantics {
                 contentDescription = label
                 role = Role.Button
