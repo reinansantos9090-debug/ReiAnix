@@ -11,6 +11,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navOptions
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
@@ -73,13 +74,6 @@ class ReiAnixComposeLibraryHost(
                             ReiAnixLibraryViewModelFactory(activity.applicationContext),
                         ).get(ReiAnixLibraryViewModel::class.java)
                     }
-                    val settingsViewModel = androidx.compose.runtime.remember {
-                        ViewModelProvider(
-                            activity,
-                            ReiAnixSettingsViewModelFactory(activity.applicationContext),
-                        ).get(ReiAnixSettingsViewModel::class.java)
-                    }
-
                     ReiAnixNavigationHost(
                         navController = navController,
                         homeViewModel = libraryViewModel,
