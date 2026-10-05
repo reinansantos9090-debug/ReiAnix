@@ -250,6 +250,7 @@ fun ReiAnixNavigationHost(
         navController = navController,
         startDestination = startDestination,
         showBottomNavigation = showBottomNavigation,
+        onRouteChanged = onRouteChanged,
     )
 }
 
