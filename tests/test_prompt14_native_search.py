@@ -32,7 +32,9 @@ class Prompt14NativeSearchTests(unittest.TestCase):
         self.assertIn("key = { anime -> anime.stableKey }", source)
         self.assertIn("onOpenDetails(anime.id)", source)
         self.assertTrue(
-            "ReiAnixLocalArtwork(" in source or "ReiAnixAnimeCard(" in source
+            "ReiAnixLocalArtwork(" in source
+            or "ReiAnixAnimeCard(" in source
+            or "ReiAnixPoster(" in source
         )
         self.assertIn("anime.year", source)
         self.assertIn("anime.genres", source)
