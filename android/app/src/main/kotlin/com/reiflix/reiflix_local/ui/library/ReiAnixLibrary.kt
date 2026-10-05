@@ -174,6 +174,7 @@ fun ReiAnixLibraryScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         LibraryHeader(
             sourceAvailable = state.sourceAvailable,
@@ -408,7 +409,9 @@ private fun ColumnScope.LibraryReadyContent(
     }
 
     PullToRefreshBox(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
         state = refreshState,
         isRefreshing = isRefreshing,
         onRefresh = {
@@ -817,7 +820,9 @@ private fun LibraryLoadingGrid(
         columns = GridCells.Adaptive(
             minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium"),
         ),
-        modifier = modifier,
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
         userScrollEnabled = false,
         contentPadding = PaddingValues(
             start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
