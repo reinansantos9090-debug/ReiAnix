@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -82,6 +81,14 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixSearchUiState
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
 private val ReiAnixFilterIcon: ImageVector = ImageVector.Builder(
@@ -165,17 +172,16 @@ fun ReiAnixSearchScreen(
     genres: List<ReiAnixGenreUiModel> = emptyList(),
     showBackButton: Boolean = false,
     onQueryChange: (String) -> Unit,
-    onBack: () -> Unit = {},
+    onBack: () -> Unit = {
+    ReiAnixResponsiveRoot {
+    }
+},
     onRefresh: () -> Unit = {},
     onOpenFilters: () -> Unit = {},
     onClearFilters: () -> Unit = {},
     onOpenDetails: (Long) -> Unit = {},
 ) {
-    val listState = rememberSaveable(
-        saver = androidx.compose.foundation.lazy.LazyListState.Saver,
-    ) {
-        androidx.compose.foundation.lazy.LazyListState()
-    }
+    val listState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -216,7 +222,7 @@ fun ReiAnixSearchScreen(
             value = searchState.query,
             onValueChange = onQueryChange,
             modifier = Modifier.padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             ),
             placeholder = {
                 Text("Digite o nome do anime, gênero ou estúdio...")
@@ -360,20 +366,27 @@ private fun SearchResults(
     listState: androidx.compose.foundation.lazy.LazyListState,
     onOpenDetails: (Long) -> Unit,
 ) {
-    LazyColumn(
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(
+            minSize = LocalReiAnixResponsiveMetrics.current.searchGridMinWidth,
+        ),
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
         contentPadding = PaddingValues(
-            start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-            end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+            end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             top = ReiAnixTokens.Spacing.sm,
             bottom = ReiAnixTokens.Spacing.huge,
         ),
+        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         item(
             key = "search-results-header",
             contentType = "search-results-header",
+            span = { GridItemSpan(maxLineSpan) },
         ) {
             Row(
                 modifier = Modifier
