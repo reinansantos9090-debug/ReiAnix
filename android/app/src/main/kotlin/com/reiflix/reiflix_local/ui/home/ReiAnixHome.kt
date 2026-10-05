@@ -139,6 +139,7 @@ private fun ReiAnixHomeObservedScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         HomeHeader(
             sourceAvailable = state.sourceAvailable,
@@ -479,7 +480,8 @@ private fun ColumnScope.HomeReadyContent(
     LazyColumn(
         modifier = Modifier
             .weight(1f)
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .widthIn(max = responsive.contentMaxWidth),
         state = listState,
         contentPadding = PaddingValues(
             bottom = ReiAnixTokens.Spacing.huge,
