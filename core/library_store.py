@@ -2819,7 +2819,7 @@ class LibraryStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def save_progress(self, path, position, duration, *, episode_id=None, event_created_at=None, session_id=None):
+    def save_progress(self, path, position, duration, *, episode_id=None, media_id=None, event_created_at=None, session_id=None):
         # Playback ordering contract: if durable_time <= last_seen, reject the stale event before any write.
         """Persist one normalized playback event with canonical local-media identity."""
         started = time.perf_counter()
@@ -2889,6 +2889,29 @@ class LibraryStore:
 
                 canonical_path = str(row["path"])
                 canonical_episode_id = int(row["id"])
+                normalized_media_id = str(media_id or "").strip()
+                if normalized_media_id:
+                    expected_media_id = f"episode:{canonical_episode_id}"
+                    # NativePlayerActivity uses the canonical episode identity as
+                    # MediaItem.mediaId. Reject a mismatched identity at the
+                    # persistence boundary so late events cannot be written to
+                    # another episode.
+                    if parsed_episode_id is not None:
+                        if normalized_media_id != expected_media_id:
+                            get_performance_monitor().record_sqlite(
+                                "save_progress",
+                                (time.perf_counter() - started) * 1000.0,
+                                rows=0,
+                                status="media_identity_mismatch",
+                                metadata={
+                                    "episode_id": canonical_episode_id,
+                                    "media_id": normalized_media_id,
+                                    "expected_media_id": expected_media_id,
+                                },
+                            )
+                            return False
+                    elif normalized_media_id not in {expected_media_id, canonical_path}:
+                        return False
                 stored_duration = float(row["duration"] or 0)
                 if duration <= 0 and stored_duration > 0:
                     duration = stored_duration
@@ -3056,7 +3079,7 @@ class LibraryStore:
             if not is_regular_episode(dict(current)):
                 return None
             rows = c.execute(
-                "SELECT e.*, a.title AS anime_title FROM episodes e JOIN anime a ON a.id=e.anime_id WHERE e.anime_id=? AND e.missing=0 AND e.episode_type NOT IN ('movie','special','ova','oad','ona','extra')",
+                "SELECT e.*, a.title AS anime_title FROM episodes e JOIN anime a ON a.id=e.anime_id WHERE e.anime_id=? AND e.missing=0 AND COALESCE(e.availability_state,'available')='available' AND e.episode_type NOT IN ('movie','special','ova','oad','ona','extra')",
                 (current["anime_id"],),
             ).fetchall()
         current_row = dict(current)
