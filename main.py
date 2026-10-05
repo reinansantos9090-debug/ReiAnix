@@ -4360,6 +4360,10 @@ async def main(page: ft.Page):
                                     and bool(session_id)
                                     and session_id == str(context.get("player_session_id") or "")
                                     and str(payload.get("episodeId") or "") == str(context.get("target_episode_id") or "")
+                                    and (
+                                        not payload.get("mediaId")
+                                        or str(payload.get("mediaId")).strip() == f"episode:{context.get('target_episode_id')}"
+                                    )
                                     and player_session_active["value"]
                                     and player_active_session_id["value"] == session_id
                                     and player_transition_generation["value"] == int(context.get("python_transition_generation") or 0)
@@ -4477,6 +4481,7 @@ async def main(page: ft.Page):
                                         position_ms / 1000.0,
                                         duration_ms / 1000.0,
                                         episode_id=payload.get("episodeId"),
+                                        media_id=payload.get("mediaId"),
                                         event_created_at=event.get('createdAt') or event.get('timestamp'),
                                         session_id=payload.get("playerSessionId"),
                                     )
@@ -4485,6 +4490,8 @@ async def main(page: ft.Page):
                                         payload,
                                         require_active=bool(player_session_active["value"]),
                                         episode_id=payload.get("episodeId"),
+                                        media_id=payload.get("mediaId"),
+                                        anime_id=payload.get("animeId"),
                                     )
                                     if not callback_current:
                                         performance.event(
