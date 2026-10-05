@@ -293,6 +293,38 @@ fun ReiAnixNavigationHost(
         currentRoute != ReiAnixRoutes.STORAGE &&
         (selectedBottomRoute != null || currentRoute == ReiAnixRoutes.DETAILS)
 
+    val composeRoute = when (currentRoute) {
+        ReiAnixRoutes.HOME,
+        ReiAnixRoutes.LIBRARY,
+        ReiAnixRoutes.MY_LIST,
+        ReiAnixRoutes.SEARCH,
+        ReiAnixRoutes.SETTINGS,
+        ReiAnixRoutes.STORAGE,
+        ReiAnixRoutes.ORGANIZE,
+        ReiAnixRoutes.DETAILS,
+        ReiAnixRoutes.PLAYER,
+        -> currentRoute
+        else -> null
+    }
+    val animeId = backStackEntry?.arguments
+        ?.getString(ReiAnixRoutes.ARG_ANIME_ID)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+    val episodeId = backStackEntry?.arguments
+        ?.getString(ReiAnixRoutes.ARG_EPISODE_ID)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+    val routeOrigin = backStackEntry?.arguments
+        ?.getString(ReiAnixRoutes.ARG_ORIGIN)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+    LaunchedEffect(composeRoute, animeId, episodeId, routeOrigin) {
+        composeRoute?.let { route ->
+            onRouteChanged(route, animeId, episodeId, routeOrigin)
+        }
+    }
+
     ReiAnixAppShell(
         modifier = modifier,
         selectedRoute = selectedBottomRoute,
