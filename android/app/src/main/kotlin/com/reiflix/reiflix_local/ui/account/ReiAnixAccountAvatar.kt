@@ -48,8 +48,7 @@ fun ReiAnixAccountAvatar(
         modifier = modifier
             .size(ReiAnixTokens.Dimensions.accountAvatarSize)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .semantics { this.contentDescription = contentDescription },
+            .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         val image = bitmap
@@ -87,7 +86,7 @@ private suspend fun loadRemoteAvatarBitmap(urlString: String): android.graphics.
         try {
             connection.connectTimeout = 8_000
             connection.readTimeout = 8_000
-            connection.instanceFollowRedirects = true
+            connection.instanceFollowRedirects = false
             connection.requestMethod = "GET"
             connection.setRequestProperty("Accept", "image/*")
             connection.setRequestProperty("User-Agent", "ReiAnix/0.2.1")
@@ -124,6 +123,8 @@ private suspend fun loadRemoteAvatarBitmap(urlString: String): android.graphics.
                 inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
             }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         } finally {
