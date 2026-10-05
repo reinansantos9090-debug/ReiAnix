@@ -19,7 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
@@ -77,7 +77,7 @@ private fun ReiAnixBottomNavigation(
         modifier = Modifier
             .fillMaxWidth()
             .semantics {
-                contentDescription = "ReiAnixBottomNavigation"
+                isTraversalGroup = true
             },
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -107,7 +107,7 @@ private fun ReiAnixBottomNavigation(
                         } else {
                             destination.unselectedIcon
                         },
-                        contentDescription = destination.contentDescription,
+                        contentDescription = null,
                         tint = contentColor,
                     )
                 },
