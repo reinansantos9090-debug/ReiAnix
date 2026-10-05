@@ -22,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -211,11 +210,6 @@ fun ReiAnixSearchScreen(
                 modifier = Modifier.weight(1f),
             )
 
-            ReiAnixIconActionButton(
-                icon = Icons.Filled.Refresh,
-                contentDescription = "Atualizar biblioteca local",
-                onClick = onRefresh,
-            )
         }
 
         ReiAnixSearchField(
@@ -225,7 +219,7 @@ fun ReiAnixSearchScreen(
                 horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
             ),
             placeholder = {
-                Text("Pesquisar na biblioteca")
+                Text("Digite o nome do anime, gênero ou estúdio...")
             },
             leadingIcon = {
                 Icon(
@@ -523,10 +517,12 @@ private fun SearchEmptyQueryState(
 ) {
     ReiAnixEmptyState(
         title = "Pesquise na biblioteca",
-        message = if (librarySize == 1) {
-            "1 título local disponível."
+        message = if (librarySize == 0) {
+            "Digite o nome do anime, gênero ou estúdio para pesquisar no conteúdo local."
         } else {
-            librarySize.toString() + " títulos locais disponíveis."
+            "Digite o nome do anime, gênero ou estúdio para pesquisar entre " +
+                librarySize.toString() +
+                if (librarySize == 1) " título local." else " títulos locais."
         },
         modifier = Modifier
             .fillMaxSize()

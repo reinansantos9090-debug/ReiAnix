@@ -41,7 +41,9 @@ class ReiAnixSearchIndex private constructor(
         terms: List<String>,
     ): Int {
         val normalizedTitle = document.normalizedTitle
+        val normalizedAliases = document.normalizedAliases
         val normalizedGenres = document.normalizedGenres
+        val normalizedStudio = document.normalizedStudio
 
         var result = 0
         val normalizedQuery = terms.joinToString(" ")
@@ -52,14 +54,24 @@ class ReiAnixSearchIndex private constructor(
             result += 800
         } else if (normalizedTitle.contains(normalizedQuery)) {
             result += 600
+        } else if (normalizedAliases.any { it == normalizedQuery }) {
+            result += 520
+        } else if (normalizedAliases.any { it.startsWith(normalizedQuery) }) {
+            result += 420
+        } else if (normalizedStudio == normalizedQuery) {
+            result += 300
         }
 
         for (term in terms) {
             when {
                 normalizedTitle == term -> result += 350
                 normalizedTitle.contains(term) -> result += 180
+                normalizedAliases.any { it == term } -> result += 150
+                normalizedAliases.any { it.contains(term) } -> result += 100
                 normalizedGenres.any { it == term } -> result += 120
                 normalizedGenres.any { it.contains(term) } -> result += 80
+                normalizedStudio == term -> result += 70
+                normalizedStudio.contains(term) -> result += 50
                 document.normalizedSearchText.contains(term) -> result += 20
             }
         }
@@ -75,7 +87,9 @@ class ReiAnixSearchIndex private constructor(
     private data class SearchDocument(
         val anime: ReiAnixAnimeUiModel,
         val normalizedTitle: String,
+        val normalizedAliases: List<String>,
         val normalizedGenres: List<String>,
+        val normalizedStudio: String,
         val normalizedSearchText: String,
     )
 
@@ -84,13 +98,25 @@ class ReiAnixSearchIndex private constructor(
             ReiAnixSearchIndex(
                 animes.map { anime ->
                     val normalizedTitle = normalizeSearchText(anime.title)
+                    val normalizedAliases = anime.aliases.map(::normalizeSearchText).filter(String::isNotBlank)
                     val normalizedGenres = anime.genres.map { normalizeSearchText(it.name) }
+                    val normalizedStudio = normalizeSearchText(anime.studio.orEmpty())
                     val contentTerms = buildList {
+                        addAll(normalizedAliases)
+                        anime.romajiTitle?.let { add(normalizeSearchText(it)) }
+                        anime.englishTitle?.let { add(normalizeSearchText(it)) }
+                        anime.nativeTitle?.let { add(normalizeSearchText(it)) }
+                        anime.description?.let { add(normalizeSearchText(it)) }
+                        anime.status?.let { add(normalizeSearchText(it)) }
+                        anime.format?.let { add(normalizeSearchText(it)) }
+                        anime.seasonLabel?.let { add(normalizeSearchText(it)) }
+                        addAll(anime.userTags.map(::normalizeSearchText))
+                        anime.personalNote?.let { add(normalizeSearchText(it)) }
                         anime.year?.let { add(it.toString()) }
                         addAll(normalizedGenres)
                         anime.contentEpisodes.forEach { episode ->
-                            episode.title?.let { add(it) }
-                            add(episode.fileName)
+                            episode.title?.let { add(normalizeSearchText(it)) }
+                            add(normalizeSearchText(episode.fileName))
                             episode.seasonNumber?.let { season ->
                                 add("s" + season.toString().padStart(2, '0'))
                                 add("season $season")
@@ -112,7 +138,18 @@ class ReiAnixSearchIndex private constructor(
 
                     val searchableFields = buildList {
                         add(anime.title)
+                        addAll(anime.aliases)
                         addAll(anime.genres.map { it.name })
+                        anime.romajiTitle?.let(::add)
+                        anime.englishTitle?.let(::add)
+                        anime.nativeTitle?.let(::add)
+                        anime.description?.let(::add)
+                        anime.studio?.let(::add)
+                        anime.status?.let(::add)
+                        anime.format?.let(::add)
+                        anime.seasonLabel?.let(::add)
+                        addAll(anime.userTags)
+                        anime.personalNote?.let(::add)
                         anime.year?.let { add(it.toString()) }
                         addAll(contentTerms)
                     }
@@ -120,7 +157,9 @@ class ReiAnixSearchIndex private constructor(
                     SearchDocument(
                         anime = anime,
                         normalizedTitle = normalizedTitle,
+                        normalizedAliases = normalizedAliases,
                         normalizedGenres = normalizedGenres,
+                        normalizedStudio = normalizedStudio,
                         normalizedSearchText = normalizeSearchText(searchableFields.joinToString(" ")),
                     )
                 },

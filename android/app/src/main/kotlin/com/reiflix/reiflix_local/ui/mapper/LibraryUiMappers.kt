@@ -11,6 +11,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
 import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
+import org.json.JSONArray
 
 /**
  * Explicit adapters from the existing Python/SQLite catalog projection to the
@@ -54,6 +55,9 @@ object LibraryUiMappers {
             romajiTitle = metadata.stringOrNull("romaji"),
             englishTitle = metadata.stringOrNull("english"),
             nativeTitle = metadata.stringOrNull("native"),
+            aliases = metadata.stringList("aliases"),
+            userTags = source.stringList("user_tags"),
+            personalNote = source.stringOrNull("personal_note"),
             status = metadata.stringOrNull("status"),
             format = metadata.stringOrNull("format"),
             durationMinutes = metadata.intOrNull("duration"),
@@ -254,6 +258,23 @@ object LibraryUiMappers {
                 value.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
             is Array<*> ->
                 value.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
+            is String -> {
+                val raw = value.trim()
+                if (raw.isEmpty()) {
+                    emptyList()
+                } else {
+                    runCatching {
+                        JSONArray(raw).let { array ->
+                            (0 until array.length())
+                                .mapNotNull { index ->
+                                    array.optString(index).trim().takeIf(String::isNotEmpty)
+                                }
+                        }
+                    }.getOrElse {
+                        listOf(raw)
+                    }
+                }
+            }
             else -> emptyList()
         }
 

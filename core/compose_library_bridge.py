@@ -318,6 +318,9 @@ class ComposeLibraryBridge:
             ),
             "genres": list(source.get("genres") or []),
             "genre_ids": list(source.get("genre_ids") or []),
+            "user_tags": list(source.get("user_tags") or []),
+            "personal_note": source.get("personal_note"),
+
             "artwork_local_path": (
                 (poster_artwork or {}).get("local_path")
                 or meta.get("cover_cache")
@@ -337,6 +340,7 @@ class ComposeLibraryBridge:
                 "metadata_status": meta.get("metadata_status") or source.get("metadata_status"),
                 "score": meta.get("score", source.get("score")),
                 "title": meta.get("title") or source.get("main_title") or source.get("title"),
+                "aliases": meta.get("aliases", source.get("aliases")),
                 "romaji": meta.get("romaji"),
                 "english": meta.get("english"),
                 "native": meta.get("native"),
