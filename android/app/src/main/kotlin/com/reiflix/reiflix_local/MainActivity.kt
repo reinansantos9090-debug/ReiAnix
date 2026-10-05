@@ -2260,28 +2260,67 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun releaseTree(reference: String?, requestId: String? = null) {
         if (reference.isNullOrBlank()) {
-            publishNativeCommandError(requestId, "verify_tree", "command_validation", "MISSING_TREE_URI",
-                "A pasta SAF não foi informada corretamente.")
+            publishNativeCommandError(
+                requestId,
+                "release_tree",
+                "command_validation",
+                "MISSING_TREE_URI",
+                "A pasta SAF não foi informada corretamente.",
+            )
             return
         }
-        val treeUri = Uri.parse(reference)
-        try {
-            contentResolver.releasePersistableUriPermission(
-                treeUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val treeUri = runCatching { Uri.parse(reference) }.getOrNull()
+        if (treeUri == null || treeUri.scheme?.lowercase() != "content" || !DocumentsContract.isTreeUri(treeUri)) {
+            publishNativeCommandError(
+                requestId,
+                "release_tree",
+                "command_validation",
+                "INVALID_TREE_URI",
+                "A referência da pasta SAF é inválida.",
             )
-            Log.i(tag, "SAF permission released")
-            nativeRequestState.markOperationState(requestId, "release_tree", NativeRequestState.OperationState.COMPLETED)
-            NativeMailbox.write(this, JSONObject().put("type", "saf_released")
-                .put("requestId", requestId ?: "")
-                .put("payload", JSONObject().put("treeUri", reference)))
+            return
+        }
+        try {
+            val hadPersistedReadGrant = SafScanner.hasPersistedReadPermission(this, treeUri)
+            if (hadPersistedReadGrant) {
+                contentResolver.releasePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            } else {
+                Log.i(tag, "SAF permission already absent; treating release as completed")
+            }
+            val alreadyAbsent = !SafScanner.hasPersistedReadPermission(this, treeUri)
+            nativeRequestState.markOperationState(
+                requestId,
+                "release_tree",
+                NativeRequestState.OperationState.COMPLETED,
+            )
+            NativeMailbox.write(
+                this,
+                JSONObject().put("type", "saf_released")
+                    .put("requestId", requestId ?: "")
+                    .put(
+                        "payload",
+                        JSONObject()
+                            .put("treeUri", reference)
+                            .put("alreadyAbsent", alreadyAbsent),
+                    ),
+            )
         } catch (exception: Exception) {
-            nativeRequestState.markOperationState(requestId, "release_tree", NativeRequestState.OperationState.FAILED)
+            nativeRequestState.markOperationState(
+                requestId,
+                "release_tree",
+                NativeRequestState.OperationState.FAILED,
+            )
             Log.e(tag, "Failed to release SAF permission", exception)
-            NativeMailbox.write(this, JSONObject().put("type", "saf_error")
-                .put("requestId", requestId ?: "")
-                .put("message", "Não foi possível liberar a permissão desta pasta.")
-                .put("payload", JSONObject().put("treeUri", reference)))
+            NativeMailbox.write(
+                this,
+                JSONObject().put("type", "saf_error")
+                    .put("requestId", requestId ?: "")
+                    .put("message", "Não foi possível liberar a permissão desta pasta.")
+                    .put("payload", JSONObject().put("treeUri", reference)),
+            )
         }
     }
     private fun verifyTree(reference: String?, requestId: String? = null) {
