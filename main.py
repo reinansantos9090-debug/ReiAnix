@@ -3391,7 +3391,6 @@ async def main(page: ft.Page):
                                     if not existing:
                                         raise ValueError('Anime não encontrado.')
                                     await asyncio.to_thread(store.toggle_favorite, anime_id)
-                                    compose_library_bridge.request_publish('compose_toggle_favorite')
                                     on_catalog_changed(refresh_details=False)
                                 elif action == 'set_watched':
                                     episode_id = int(payload.get('episodeId') or 0)
@@ -3406,7 +3405,6 @@ async def main(page: ft.Page):
                                     )
                                     if not updated:
                                         raise ValueError('Episódio não encontrado ou referência local incompatível.')
-                                    compose_library_bridge.request_publish('compose_set_watched')
                                     on_catalog_changed(refresh_details=False)
                                 elif action == 'select_saf':
                                     started = await add_folder()
