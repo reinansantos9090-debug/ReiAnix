@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.Home as OutlinedHome
 import androidx.compose.material.icons.outlined.List as OutlinedList
 import androidx.compose.material.icons.outlined.Search as OutlinedSearch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
