@@ -224,7 +224,7 @@ private fun ReiAnixMyListReadyContent(
     modifier: Modifier = Modifier,
 ) {
     // The My List destination remains on the NavController back stack when
-    // Details/Player are opened. Save the actual LazyColumn position so returning
+    // Details/Player are opened. Save the actual lazy-grid position so returning
     // to the source list does not jump to the first row.
     val listState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     val refreshState = rememberPullToRefreshState()
