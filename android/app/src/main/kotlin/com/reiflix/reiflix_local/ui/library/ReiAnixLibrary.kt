@@ -122,13 +122,13 @@ fun ReiAnixLibraryRoute(
     viewModel: ReiAnixLibraryViewModel,
     onOpenDetails: (Long) -> Unit,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
-    ReiAnixLibraryScreen(
+    ReiAnixLibraryPresentationScreen(
         state = state,
         filters = filters,
         visibleAnimes = visibleAnimes,
@@ -147,7 +147,6 @@ fun ReiAnixLibraryRoute(
     )
 }
 
-@Composable
 /**
  * Compatibility overload for existing callers/tests that still provide the
  * canonical full library state. Production navigation uses the compact
@@ -186,7 +185,7 @@ fun ReiAnixLibraryScreen(
         availableEpisodeCount = state.animes.sumOf { it.availableContentCount },
         favoriteCount = state.animes.count { it.favorite },
     )
-    ReiAnixLibraryScreen(
+    ReiAnixLibraryPresentationScreen(
         state = presentation,
         filters = filters,
         cardSize = cardSize,
@@ -208,7 +207,7 @@ fun ReiAnixLibraryScreen(
     )
 }
 
-fun ReiAnixLibraryScreen(
+private fun ReiAnixLibraryPresentationScreen(
     state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
     filters: ReiAnixLibraryFilters,
     cardSize: String = "medium",
@@ -261,7 +260,7 @@ fun ReiAnixLibraryScreen(
             }
 
             ReiAnixLibraryLoadStatus.ERROR -> {
-                if (state.animes.isNotEmpty()) {
+                if (state.animeCount > 0) {
                     LibraryReadyContent(
                         state = state,
                         filters = filters,
@@ -435,7 +434,7 @@ private fun LibraryHeader(
 
 @Composable
 private fun ColumnScope.LibraryReadyContent(
-    state: ReiAnixLibraryUiState,
+    state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
     cardSize: String = "medium",
     gridDensity: String = "medium",
     filters: ReiAnixLibraryFilters,
