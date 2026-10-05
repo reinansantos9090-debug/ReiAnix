@@ -286,7 +286,7 @@ private fun ReiAnixDetailsLoadingContent() {
         item(key = "details-loading-seasons", contentType = "details-loading-seasons") {
             Column(
                 modifier = Modifier.padding(
-                    horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                     vertical = ReiAnixTokens.Spacing.lg,
                 ),
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
@@ -449,7 +449,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                         title = "Nenhum episódio nesta temporada",
                         message = "Esta temporada não possui episódios locais disponíveis.",
                         modifier = Modifier.padding(
-                            horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                            horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                             vertical = ReiAnixTokens.Spacing.lg,
                         ),
                     )
@@ -524,7 +524,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     title = "Nenhum episódio local",
                     message = "Este conteúdo não possui episódios ou arquivos disponíveis.",
                     modifier = Modifier.padding(
-                        horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                        horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                         vertical = ReiAnixTokens.Spacing.lg,
                     ),
                 )
@@ -549,7 +549,7 @@ private fun DetailsSectionTabs(
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
@@ -653,7 +653,7 @@ private fun DetailsHero(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                        horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                         vertical = ReiAnixTokens.Spacing.sm,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
@@ -685,7 +685,7 @@ private fun DetailsHero(
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .padding(
-                        horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                        horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                         vertical = ReiAnixTokens.Spacing.lg,
                     ),
                 verticalAlignment = Alignment.Bottom,
@@ -870,7 +870,7 @@ private fun DetailsAboutSection(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.lg,
             ),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
@@ -965,7 +965,7 @@ private fun DetailsSeasonsSection(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
@@ -999,7 +999,7 @@ private fun DetailsSeasonsSection(
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-            contentPadding = PaddingValues(end = ReiAnixTokens.Dimensions.screenHorizontalPadding),
+            contentPadding = PaddingValues(end = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         ) {
             items(
                 items = anime.seasons,
@@ -1107,8 +1107,8 @@ private fun DetailsSectionHeader(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 top = ReiAnixTokens.Spacing.lg,
                 bottom = ReiAnixTokens.Spacing.sm,
             ),
@@ -1139,7 +1139,7 @@ private fun DetailsEpisodeItem(
     ReiAnixEpisodeCard(
         episode = episode,
         modifier = Modifier.padding(
-            horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             vertical = ReiAnixTokens.Spacing.xs,
         ),
         onPlay = { onWatch(episode.id) },
