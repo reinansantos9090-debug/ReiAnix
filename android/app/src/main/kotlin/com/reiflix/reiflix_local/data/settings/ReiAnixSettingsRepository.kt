@@ -35,7 +35,7 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         ): ReiAnixSettingsUiState {
             val preserveKnownState =
                 decoded.status == ReiAnixSettingsLoadStatus.ERROR &&
-                    previous.status == ReiAnixSettingsLoadStatus.READY
+                    previous.status != ReiAnixSettingsLoadStatus.LOADING
             return if (!preserveKnownState) {
                 decoded
             } else {
