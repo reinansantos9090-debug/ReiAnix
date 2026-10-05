@@ -26,6 +26,11 @@ import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilterEngine
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
 import com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListFilter
+import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeFilters
+import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeCategory
+import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeMode
+import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
+import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 @Keep
 class ReiAnixLibraryViewModel(context: Context) :
@@ -192,6 +197,116 @@ class ReiAnixLibraryViewModel(context: Context) :
             SharingStarted.Eagerly,
             ReiAnixSearchEngine.buildIndex(emptyList()),
         )
+
+    private val _organizeFilters = MutableStateFlow(ReiAnixOrganizeFilters())
+
+    val organizeFilters: StateFlow<ReiAnixOrganizeFilters> = _organizeFilters.asStateFlow()
+
+    val organizeGenres: StateFlow<List<ReiAnixGenreUiModel>> = uiState
+        .map { state ->
+            state.animes
+                .flatMap { anime -> anime.genres }
+                .distinctBy(ReiAnixGenreUiModel::stableKey)
+                .sortedBy { it.name.lowercase() }
+        }
+        .flowOn(Dispatchers.Default)
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            emptyList(),
+        )
+
+    val organizeCategories: StateFlow<List<ReiAnixOrganizeCategory>> = uiState
+        .map { state -> buildOrganizeCategories(state.animes) }
+        .flowOn(Dispatchers.Default)
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            emptyList(),
+        )
+
+    val organizeVisibleAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
+        combine(
+            uiState.map { it.animes },
+            searchIndex,
+            organizeFilters,
+        ) { animes, index, filters ->
+            filterOrganizeAnimes(
+                animes = animes,
+                searchIndex = index,
+                filters = filters,
+            )
+        }
+            .flowOn(Dispatchers.Default)
+            .distinctUntilChanged()
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                emptyList(),
+            )
+
+    fun setOrganizeQuery(value: String) {
+        _organizeFilters.value = _organizeFilters.value.copy(
+            query = value,
+            mode = ReiAnixOrganizeMode.COLLECTION,
+        )
+    }
+
+    fun setOrganizeState(value: String) {
+        val normalized = value.trim().takeIf { it.isNotEmpty() }
+            ?: ReiAnixOrganizeFilters.DEFAULT_STATE
+        _organizeFilters.value = _organizeFilters.value.copy(
+            state = normalized,
+            mode = ReiAnixOrganizeMode.COLLECTION,
+        )
+    }
+
+    fun setOrganizeGenre(key: String?) {
+        _organizeFilters.value = _organizeFilters.value.copy(
+            genreKey = key?.trim()?.takeIf { it.isNotEmpty() },
+            mode = ReiAnixOrganizeMode.COLLECTION,
+        )
+    }
+
+    fun setOrganizeSort(label: String) {
+        val normalized = ReiAnixLibrarySort.fromLabel(label).label
+        _organizeFilters.value = _organizeFilters.value.copy(
+            sort = normalized,
+            mode = ReiAnixOrganizeMode.COLLECTION,
+        )
+    }
+
+    fun clearOrganizeFilters() {
+        _organizeFilters.value = ReiAnixOrganizeFilters(
+            mode = ReiAnixOrganizeMode.COLLECTION,
+        )
+    }
+
+    fun openOrganizeCollection(value: String) {
+        val normalized = value.trim()
+        if (normalized.isBlank()) return
+        _organizeFilters.value = when {
+            ReiAnixOrganizeFilters.states.contains(normalized) ->
+                _organizeFilters.value.copy(
+                    state = normalized,
+                    genreKey = null,
+                    mode = ReiAnixOrganizeMode.COLLECTION,
+                )
+            else ->
+                _organizeFilters.value.copy(
+                    genreKey = normalized,
+                    mode = ReiAnixOrganizeMode.COLLECTION,
+                )
+        }
+    }
+
+    fun openOrganizeOverview() {
+        _organizeFilters.value = _organizeFilters.value.copy(
+            mode = ReiAnixOrganizeMode.OVERVIEW,
+        )
+    }
 
     private val _searchQuery = MutableStateFlow("")
 
