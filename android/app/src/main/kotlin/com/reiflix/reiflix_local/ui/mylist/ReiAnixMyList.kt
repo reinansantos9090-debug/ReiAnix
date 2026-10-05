@@ -484,6 +484,7 @@ private fun ReiAnixMyListItem(
                     ReiAnixProgressIndicator(
                         progress = renderData.progress,
                         visible = true,
+                        announceProgress = false,
                     )
                 }
             }
