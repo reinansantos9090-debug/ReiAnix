@@ -337,6 +337,7 @@ fun ReiAnixStorageScreen(
     }
 
     }
+    }
 }
 
 @Composable
