@@ -2915,12 +2915,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         val audioCount = supportedTrackCount(C.TRACK_TYPE_AUDIO)
         val subtitleCount = supportedTrackCount(C.TRACK_TYPE_TEXT)
+        val audioAvailable = audioCount > 0
+        val subtitleAvailable = subtitleCount > 0
 
         // A single audio track has no useful selection UI. Subtitles retain the
         // button even with one track because the existing selector can turn the
         // subtitle track off explicitly.
-        findViewByTag<View>("reiflix_audio_button")?.isEnabled = audioCount > 1
-        findViewByTag<View>("reiflix_subtitle_button")?.isEnabled = subtitleCount > 0
+        findViewByTag<View>("reiflix_audio_button")?.isEnabled = audioAvailable && audioCount > 1
+        findViewByTag<View>("reiflix_subtitle_button")?.isEnabled = subtitleAvailable
     }
 
     private fun updateProgressUi() {
