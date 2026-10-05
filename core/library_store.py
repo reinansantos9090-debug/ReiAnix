@@ -3199,7 +3199,8 @@ class LibraryStore:
         with self._conn() as c:
             anime = c.execute("SELECT media_kind FROM anime WHERE id=?", (anime_id,)).fetchone()
             rows = c.execute(
-                "SELECT * FROM episodes WHERE anime_id=? AND missing=0",
+                "SELECT * FROM episodes WHERE anime_id=? AND missing=0 "
+                "AND COALESCE(availability_state,'available')='available'",
                 (anime_id,),
             ).fetchall()
         get_performance_monitor().record_sqlite("current_episode", (time.perf_counter()-started)*1000.0, rows=len(rows))
@@ -3230,7 +3231,8 @@ class LibraryStore:
             return current
         with self._conn() as c:
             rows = c.execute(
-                "SELECT * FROM episodes WHERE anime_id=? AND missing=0",
+                "SELECT * FROM episodes WHERE anime_id=? AND missing=0 "
+                "AND COALESCE(availability_state,'available')='available'",
                 (anime_id,),
             ).fetchall()
         media_kind = str(self._conn_media_kind(anime_id) or "series").casefold()
