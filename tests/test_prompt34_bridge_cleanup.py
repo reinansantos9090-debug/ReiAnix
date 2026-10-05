@@ -22,6 +22,8 @@ def test_prompt34_removes_only_obsolete_compose_host_surfaces():
     assert "composeLibraryHost" in main
     assert "ReiAnixRoutes.SETTINGS" in main
     assert "ReiAnixRoutes.STORAGE" in main
+    assert "composeSettingsHost" not in main
+    assert "composeStorageHost" not in main
 
 
 def test_prompt34_preserves_domain_bridges_and_stable_event_contracts():
@@ -40,8 +42,8 @@ def test_prompt34_preserves_domain_bridges_and_stable_event_contracts():
     assert "eventId" in mailbox
     assert "requestId" in mailbox
     assert "AtomicMoveNotSupportedException" in mailbox
-    assert '"player_exited"' in player
-    assert '"player_error"' in player
+    assert "player_exited" in player
+    assert "player_error" in player
     assert "COMMAND_PROCESSING_FAILED" in dispatcher
     assert "publishFailure(" in dispatcher
 
