@@ -33,7 +33,9 @@ object ReiAnixTokens {
 
         val primary = Color(0xFF3D8BFF)
         val primaryContainer = Color(0xFF173D78)
-        val onPrimary = Color(0xFFFFFFFF)
+        // Dark-theme primary text uses a dark navy to keep the existing electric-blue
+        // accent while bringing normal button text above WCAG AA contrast.
+        val onPrimary = Color(0xFF07101E)
         val onPrimaryContainer = Color(0xFFE3EEFF)
         val active = primary
         val focus = Color(0xFF7FB3FF)
