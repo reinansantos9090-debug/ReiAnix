@@ -44,6 +44,7 @@ class ComposeSettingsBridge:
         account_provider: Callable[[], dict[str, Any]] | None = None,
         account_state_provider: Callable[[], str] | None = None,
         storage_available: bool = False,
+        storage_state_provider: Callable[[], Any] | None = None,
         enabled: bool = True,
     ):
         self.data_dir = Path(data_dir)
@@ -51,6 +52,7 @@ class ComposeSettingsBridge:
         self.account_provider = account_provider
         self.account_state_provider = account_state_provider
         self.storage_available = bool(storage_available)
+        self.storage_state_provider = storage_state_provider
         self.enabled = bool(enabled)
         self.snapshot_dir = self.data_dir / self.SNAPSHOT_DIR_NAME
         self.snapshot_path = self.snapshot_dir / self.SNAPSHOT_FILE_NAME
@@ -63,6 +65,9 @@ class ComposeSettingsBridge:
 
     def set_storage_available(self, available: bool) -> None:
         self.storage_available = bool(available)
+
+    def set_storage_state_provider(self, provider: Callable[[], Any] | None) -> None:
+        self.storage_state_provider = provider
 
     def request_publish(self, reason: str = "unknown") -> None:
         if not self.enabled:
@@ -94,6 +99,7 @@ class ComposeSettingsBridge:
             categories = self._category_presence(values)
             categories["Conta"] = True
             categories["Armazenamento"] = self.storage_available
+            storage = self._storage_snapshot()
             payload = {
                 "schemaVersion": self.SCHEMA_VERSION,
                 "revision": int(revision),
@@ -102,6 +108,7 @@ class ComposeSettingsBridge:
                 "status": "READY",
                 "account": account,
                 "categories": categories,
+                "storage": storage,
                 "settings": {
                     str(key): self._json_safe(value)
                     for key, value in values.items()
@@ -122,6 +129,7 @@ class ComposeSettingsBridge:
                     "state": "ERROR",
                 },
                 "categories": {},
+                "storage": {},
                 "settings": {},
                 "error": str(exc)[:500],
             }
