@@ -56,9 +56,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -618,7 +622,7 @@ private fun DetailsHero(
         ) {
             ReiAnixBackdrop(
                 localPath = backdropPath,
-                contentDescription = "Backdrop de " + anime.title,
+                contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 identity = anime.stableKey + ":backdrop",
                 fallbackLocalPath = posterPath,
@@ -698,7 +702,7 @@ private fun DetailsHero(
                 if (wide) {
                     ReiAnixPoster(
                         localPath = posterPath,
-                        contentDescription = "Poster de " + anime.title,
+                        contentDescription = null,
                         modifier = Modifier
                             .width(ReiAnixTokens.Dimensions.detailsHeroPosterWidth)
                             .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio),
@@ -717,6 +721,7 @@ private fun DetailsHero(
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.semantics { heading() },
                     )
 
                     anime.preferredAlternateTitle
@@ -1039,11 +1044,13 @@ private fun DetailsSeasonCard(
     Surface(
         modifier = Modifier
             .width(ReiAnixTokens.Dimensions.detailsSeasonCardWidth)
+            .clickable(onClick = onClick)
             .semantics {
-                role = Role.Button
-                contentDescription = "Selecionar $title"
-            }
-            .clickable(onClick = onClick),
+                role = Role.RadioButton
+                selected = selected
+                contentDescription = title + ", " + episodeCountLabel(season.episodes.size)
+                stateDescription = if (selected) "Selecionada" else "Não selecionada"
+            },
         shape = ReiAnixTokens.Shapes.card,
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
@@ -1064,14 +1071,16 @@ private fun DetailsSeasonCard(
             ) {
                 ReiAnixEpisodeThumbnail(
                     localPath = preview,
-                    contentDescription = title,
+                    contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = season.stableKey + ":preview",
                 )
             }
 
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clearAndSetSemantics {},
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 Text(
