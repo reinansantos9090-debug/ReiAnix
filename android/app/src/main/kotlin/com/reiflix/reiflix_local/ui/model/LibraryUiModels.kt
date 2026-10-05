@@ -199,6 +199,12 @@ data class ReiAnixAnimeUiModel(
     val romajiTitle: String? = null,
     val englishTitle: String? = null,
     val nativeTitle: String? = null,
+    /** Persisted alternate titles used by the canonical local search projection. */
+    val aliases: List<String> = emptyList(),
+    /** Existing local user tags; presentation only and never a second source of truth. */
+    val userTags: List<String> = emptyList(),
+    /** Existing local note; searchable only because it is already canonical library data. */
+    val personalNote: String? = null,
     val status: String? = null,
     val format: String? = null,
     val durationMinutes: Int? = null,
