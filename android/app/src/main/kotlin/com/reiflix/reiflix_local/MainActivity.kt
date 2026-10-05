@@ -786,9 +786,14 @@ class MainActivity : FlutterFragmentActivity() {
         logLifecycle("onCreate", intent)
         NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "APP_START").put("lifecycle", "onCreate")))
         systemUiController = SystemUiController(window)
+        // The Library host owns the single runtime Compose visual shell. The
+        // historical Settings/Storage host classes remain constructed for
+        // compatibility with existing lifecycle/tooling contracts, but native
+        // commands never mount them as competing visual surfaces.
         composeLibraryHost = ReiAnixComposeLibraryHost(this)
         composeStorageHost = ReiAnixComposeStorageHost(this)
         composeSettingsHost = ReiAnixComposeSettingsHost(this)
+        composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
         // The existing SystemUiController remains the single Android system-bar
         // authority while the Compose shell and legacy Flet surfaces coexist.
         systemUiController.applyApplicationPolicy(useContextAppearance = false)
@@ -1313,16 +1318,12 @@ class MainActivity : FlutterFragmentActivity() {
             when (action) {
                 "open_library" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    composeSettingsHost.hide()
-                    composeStorageHost.hide()
                     composeLibraryHost.show(ReiAnixRoutes.LIBRARY, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
                 "open_organize" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    composeSettingsHost.hide()
-                    composeStorageHost.hide()
                     composeLibraryHost.show(ReiAnixRoutes.ORGANIZE, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
@@ -1335,16 +1336,12 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 "open_storage_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    composeSettingsHost.hide()
-                    composeStorageHost.hide()
                     composeLibraryHost.show(ReiAnixRoutes.STORAGE, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
                 "open_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    composeSettingsHost.hide()
-                    composeStorageHost.hide()
                     composeLibraryHost.show(ReiAnixRoutes.SETTINGS, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
