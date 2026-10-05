@@ -187,6 +187,7 @@ fun ReiAnixPrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    leadingIcon: ImageVector? = null,
 ) {
     Button(
         onClick = onClick,
@@ -202,6 +203,13 @@ fun ReiAnixPrimaryButton(
             disabledContentColor = ReiAnixTokens.Colors.textDisabled,
         ),
     ) {
+        leadingIcon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
+            )
+        }
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
@@ -217,6 +225,7 @@ fun ReiAnixSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    leadingIcon: ImageVector? = null,
 ) {
     OutlinedButton(
         onClick = onClick,
@@ -235,6 +244,13 @@ fun ReiAnixSecondaryButton(
             color = if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
+        leadingIcon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
+            )
+        }
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
