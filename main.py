@@ -2230,7 +2230,7 @@ async def main(page: ft.Page):
             page.snack_bar = ft.SnackBar(ft.Text("Aguarde a atualização ou a seleção de pasta terminar antes de remover uma pasta."))
             page.snack_bar.open = True
             safe_update()
-            return
+            return False
         folder = next((item for item in store.folders() if item.get("path") == reference), None)
         if folder and folder.get("kind") == "saf" and bridge.available:
             try:
@@ -2239,14 +2239,16 @@ async def main(page: ft.Page):
                 page.snack_bar = ft.SnackBar(ft.Text("Liberando a permissão da pasta…"))
                 page.snack_bar.open = True
                 safe_update()
+                return True
             except Exception as exc:
                 pending_folder_removals.discard(reference)
                 page.snack_bar = ft.SnackBar(ft.Text(f"Não foi possível liberar a pasta: {exc}"))
                 page.snack_bar.open = True
                 safe_update()
-            return
+                return False
         store.remove_folder(reference)
         on_catalog_changed()
+        return True
     async def resolve_match(lookup_title, anilist_id):
         request_id = str(uuid.uuid4())
         local_row = store.anime_metadata(lookup_title) or {}
