@@ -193,9 +193,9 @@ fun ReiAnixSearchScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                    start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                     top = ReiAnixTokens.Dimensions.screenTopPadding,
-                    end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                    end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                     bottom = ReiAnixTokens.Spacing.sm,
                 ),
             verticalAlignment = Alignment.CenterVertically,
@@ -539,7 +539,7 @@ private fun SearchEmptyQueryState(
         },
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
     )
 }
 
@@ -559,7 +559,7 @@ private fun SearchNoResultsState(
         },
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding),
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
     )
 }
 
@@ -574,7 +574,7 @@ private fun SearchActiveFilters(
             .fillMaxWidth()
             .padding(top = ReiAnixTokens.Spacing.sm),
         contentPadding = PaddingValues(
-            horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+            horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
         ),
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
     ) {
@@ -656,8 +656,8 @@ private fun ReiAnixSearchFilterSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-                    end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                    start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                    end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                     bottom = ReiAnixTokens.Spacing.huge,
                 ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
