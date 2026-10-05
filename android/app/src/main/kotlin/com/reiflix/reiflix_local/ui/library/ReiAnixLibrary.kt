@@ -879,6 +879,7 @@ private fun LibraryAnimeCard(
             ) && it.isCompleted
         }
         LibraryCardRenderData(
+            availableCount = availableCount,
             metadata = buildList {
                 anime.year?.let { add(it.toString()) }
                 if (availableCount > 0) {
@@ -916,7 +917,7 @@ private fun LibraryAnimeCard(
         onClick = onClick,
         bottomBadgeText = when {
             anime.mediaKind == com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind.MOVIE -> "Filme"
-            availableCount > 0 -> availableCount.toString() + if (availableCount == 1) " episódio" else " episódios"
+            renderData.availableCount > 0 -> renderData.availableCount.toString() + if (renderData.availableCount == 1) " episódio" else " episódios"
             else -> null
         },
         onFavoriteClick = onToggleFavorite,
@@ -925,6 +926,7 @@ private fun LibraryAnimeCard(
 }
 
 private data class LibraryCardRenderData(
+    val availableCount: Int,
     val metadata: List<String>,
     val progress: Float?,
     val favorite: Boolean,
