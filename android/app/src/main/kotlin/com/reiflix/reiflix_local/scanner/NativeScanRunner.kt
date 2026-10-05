@@ -121,7 +121,7 @@ object NativeScanRunner {
             } finally {
                 NativeScanController.finish(scanId)
             }
-        
+
     }
 
     suspend fun runBroadScan(
@@ -184,7 +184,7 @@ object NativeScanRunner {
             } finally {
                 NativeScanController.finish(scanId)
             }
-        
+
     }
 
     suspend fun runMediaStoreScan(
@@ -250,6 +250,6 @@ object NativeScanRunner {
             } finally {
                 NativeScanController.finish(scanId)
             }
-        
+
     }
 }
