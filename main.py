@@ -1282,7 +1282,7 @@ async def main(page: ft.Page):
         player_active_player_generation["value"] = 0
         return True
 
-    def player_callback_is_current(event_request_id, payload, *, require_active=True, episode_id=None):
+    def player_callback_is_current(event_request_id, payload, *, require_active=True, episode_id=None, media_id=None, anime_id=None):
         session_id = str(payload.get("playerSessionId") or payload.get("player_session_id") or "").strip()
         activity_instance_id = str(
             payload.get("activityInstanceId")
@@ -1308,6 +1308,19 @@ async def main(page: ft.Page):
             return False, "stale_transition_generation"
         if episode_id and player_active_episode_id["value"] not in (None, episode_id):
             return False, "stale_episode"
+        normalized_media_id = str(media_id or "").strip()
+        if normalized_media_id:
+            active_episode_id = player_active_episode_id["value"]
+            if active_episode_id is not None:
+                expected_media_id = f"episode:{active_episode_id}"
+                if normalized_media_id != expected_media_id:
+                    return False, "stale_media_identity"
+            elif player_active_uri["value"] and normalized_media_id != str(player_active_uri["value"]).strip():
+                return False, "stale_media_identity"
+        normalized_anime_id = str(anime_id or "").strip()
+        active_anime_id = str(player_active_anime_id["value"] or "").strip()
+        if normalized_anime_id and active_anime_id and normalized_anime_id != active_anime_id:
+            return False, "stale_anime"
         return True, ""
 
     def player_transition_is_current(generation, request_id, player_session_id=None):
@@ -3413,6 +3426,8 @@ async def main(page: ft.Page):
                                 payload,
                                 require_active=bool(player_session_active["value"]),
                                 episode_id=payload.get("episodeId") if event_type in {"player_progress", "player_paused", "player_completed"} else None,
+                                media_id=payload.get("mediaId"),
+                                anime_id=payload.get("animeId"),
                             )
                             if not callback_current:
                                 performance.event(
@@ -4433,6 +4448,8 @@ async def main(page: ft.Page):
                                         payload,
                                         require_active=bool(player_session_active["value"]),
                                         episode_id=payload.get("episodeId"),
+                                        media_id=payload.get("mediaId"),
+                                        anime_id=payload.get("animeId"),
                                     )
                                     if not pre_current:
                                         performance.event(
@@ -5277,8 +5294,16 @@ async def main(page: ft.Page):
                         elif event_type == 'player_exited':
                             exit_session_id = str(payload.get("playerSessionId") or "").strip()
                             exit_activity_instance_id = str(payload.get("activityInstanceId") or "").strip()
+                            exit_callback_current, exit_callback_reason = player_callback_is_current(
+                                event_request_id,
+                                payload,
+                                require_active=bool(player_session_active["value"]),
+                                episode_id=payload.get("episodeId"),
+                                media_id=payload.get("mediaId"),
+                                anime_id=payload.get("animeId"),
+                            )
                             exit_is_current = (
-                                player_session_active["value"]
+                                exit_callback_current
                                 and (
                                     not exit_session_id
                                     or player_active_session_id["value"] in (None, exit_session_id)
