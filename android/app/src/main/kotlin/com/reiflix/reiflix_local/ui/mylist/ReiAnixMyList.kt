@@ -309,8 +309,6 @@ private fun ReiAnixMyListItem(
                         height = ReiAnixTokens.Dimensions.myListPosterHeight,
                     )
                     .clip(ReiAnixTokens.Shapes.small),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                placeholder = "Sem arte",
                 maxDimensionPx = 320,
             )
 
