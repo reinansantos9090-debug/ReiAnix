@@ -25,6 +25,7 @@ internal object ReiAnixSettingsSnapshotCodec {
             connected = accountObject?.optBoolean("connected", false) ?: false,
             name = accountObject?.optString("name").orEmpty().trim(),
             email = accountObject?.optString("email").orEmpty().trim(),
+            picture = accountObject?.optString("picture").orEmpty().trim(),
             state = accountObject?.optString("state").orEmpty().trim().lowercase(),
         )
 
@@ -104,5 +105,6 @@ internal data class ReiAnixSettingsAccount(
     val connected: Boolean,
     val name: String,
     val email: String,
+    val picture: String,
     val state: String,
 )
