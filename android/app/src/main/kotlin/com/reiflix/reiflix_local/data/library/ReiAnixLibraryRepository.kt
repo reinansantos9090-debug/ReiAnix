@@ -37,12 +37,24 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         internal fun mergeSnapshotState(
             decoded: ReiAnixLibraryUiState,
             previous: ReiAnixLibraryUiState,
-        ): ReiAnixLibraryUiState = decoded.copy(
-            lastCommandId = previous.lastCommandId,
-            lastCommandAction = previous.lastCommandAction,
-            lastCommandStatus = previous.lastCommandStatus,
-            lastCommandError = previous.lastCommandError,
-        )
+        ): ReiAnixLibraryUiState {
+            // A transient projection/IPC failure is not permission to erase the
+            // last known canonical catalog from the UI. Keep the snapshot that was
+            // last known-good while surfacing the new ERROR state so Compose can
+            // show the failure without making the library visually disappear.
+            val preserveCatalog = decoded.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
+                decoded.animes.isEmpty() &&
+                previous.animes.isNotEmpty()
+            return decoded.copy(
+                animes = if (preserveCatalog) previous.animes else decoded.animes,
+                continueWatching = if (preserveCatalog) previous.continueWatching else decoded.continueWatching,
+                storage = if (preserveCatalog) previous.storage else decoded.storage,
+                lastCommandId = previous.lastCommandId,
+                lastCommandAction = previous.lastCommandAction,
+                lastCommandStatus = previous.lastCommandStatus,
+                lastCommandError = previous.lastCommandError,
+            )
+        }
     }
     private val appContext = context.applicationContext
     private val dataDirectory = File(appContext.filesDir, "data")
