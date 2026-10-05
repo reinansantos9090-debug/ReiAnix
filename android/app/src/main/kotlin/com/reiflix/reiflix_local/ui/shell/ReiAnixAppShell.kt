@@ -48,7 +48,7 @@ fun ReiAnixAppShell(
 ) {
     Scaffold(
         modifier = modifier,
-        containerColor = ReiAnixTokens.Colors.background,
+        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
@@ -78,8 +78,8 @@ private fun ReiAnixBottomNavigation(
             .semantics {
                 contentDescription = "ReiAnixBottomNavigation"
             },
-        containerColor = ReiAnixTokens.Colors.surfaceNavigation,
-        contentColor = ReiAnixTokens.Colors.text,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = ReiAnixTokens.Elevation.none,
         windowInsets = NavigationBarDefaults.windowInsets,
     ) {
@@ -87,9 +87,9 @@ private fun ReiAnixBottomNavigation(
             val selected = selectedRoute == destination.route
             val contentColor by animateColorAsState(
                 targetValue = if (selected) {
-                    ReiAnixTokens.Colors.primary
+                    MaterialTheme.colorScheme.primary
                 } else {
-                    ReiAnixTokens.Colors.textMuted
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 animationSpec = androidx.compose.animation.core.tween(
                     durationMillis = ReiAnixTokens.Motion.stateChangeMillis,
@@ -117,11 +117,11 @@ private fun ReiAnixBottomNavigation(
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = ReiAnixTokens.Colors.primary,
-                    selectedTextColor = ReiAnixTokens.Colors.primary,
-                    unselectedIconColor = ReiAnixTokens.Colors.textMuted,
-                    unselectedTextColor = ReiAnixTokens.Colors.textMuted,
-                    indicatorColor = ReiAnixTokens.Colors.surfaceSelected,
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                 ),
             )
         }
