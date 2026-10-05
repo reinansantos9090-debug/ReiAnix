@@ -601,7 +601,12 @@ class AndroidBridge:
             self.queue_dir.mkdir(parents=True, exist_ok=True)
             self._migrate_legacy_mailbox()
 
-            candidates: list[tuple[float, int, Path]] = []
+            # createdAt is the primary logical clock. When several control-plane
+            # events are emitted in the same millisecond (common during a fast
+            # native scan), UUID filenames cannot safely recover publication order.
+            # Use the filesystem publication timestamp as a deterministic tie-breaker
+            # so scan batches remain ahead of the terminal scan event they preceded.
+            candidates: list[tuple[float, int, int, Path]] = []
             for index, source in enumerate(sorted(self.queue_dir.glob("event-*.json"))):
                 try:
                     payload = json.loads(source.read_text(encoding="utf-8"))
@@ -616,17 +621,25 @@ class AndroidBridge:
                 if normalized is None:
                     continue
                 event_time = self._event_time(normalized)
-                candidate = (-event_time, -index, source)
+                try:
+                    publication_time_ns = int(source.stat().st_mtime_ns)
+                except OSError:
+                    publication_time_ns = index
+                candidate = (-event_time, -publication_time_ns, -index, source)
                 if len(candidates) < limit:
                     heapq.heappush(candidates, candidate)
                 elif candidate > candidates[0]:
                     heapq.heapreplace(candidates, candidate)
 
             selected = sorted(
-                ((-item[0], -item[1], item[2]) for item in candidates),
-                key=lambda item: (item[0], item[1]),
+                (
+                    (-item[0], -item[1], -item[2], item[3])
+                    for item in candidates
+                ),
+                key=lambda item: (item[0], item[1], item[2]),
             )
-            for _, _, source in selected:
+            claimed_events: list[tuple[float, int, int, dict]] = []
+            for event_time, publication_time_ns, index, source in selected:
                 consumed = source.with_suffix(".consumed")
                 try:
                     payload = json.loads(source.read_text(encoding="utf-8"))
@@ -640,11 +653,12 @@ class AndroidBridge:
                     logger.warning("[ANDROID] Failed to claim selected native event %s: %s", source.name, exc)
                     continue
                 claimed.append(consumed)
-                events.append(normalized)
+                claimed_events.append((event_time, publication_time_ns, index, normalized))
 
             self._claimed = claimed
             self._retained = set()
-            events.sort(key=self._event_time)
+            claimed_events.sort(key=lambda item: (item[0], item[1], item[2]))
+            events = [item[3] for item in claimed_events]
             coalesced = self._coalesce_progress_events(events)
             if len(coalesced) != len(events):
                 logger.info(
