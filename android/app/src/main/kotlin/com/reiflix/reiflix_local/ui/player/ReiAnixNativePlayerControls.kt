@@ -41,6 +41,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -375,9 +377,15 @@ fun ReiAnixNativePlayerBottomControls(
                 enabled = duration > 0L,
                 modifier = Modifier
                     .weight(1f)
-                    .height(38.dp)
+                    .heightIn(min = 48.dp)
                     .semantics {
-                        contentDescription = "Barra de progresso"
+                        contentDescription = "Barra de progresso do vídeo"
+                        stateDescription = if (duration > 0L) {
+                            PlayerTimeFormatter.format(displayPosition) +
+                                " de " + PlayerTimeFormatter.format(duration)
+                        } else {
+                            "Duração indisponível"
+                        }
                     },
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
@@ -443,18 +451,18 @@ private fun RowScope.PlayerBottomAction(
     enabled: Boolean = true,
 ) {
     Column(
-        modifier = Modifier
-            .weight(1f)
-            .semantics {
-                this.contentDescription = contentDescription
-                role = Role.Button
-            },
+        modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         IconButton(
             onClick = onClick,
             enabled = enabled,
-            modifier = Modifier.size(42.dp),
+            modifier = Modifier
+                .size(48.dp)
+                .semantics {
+                    this.contentDescription = contentDescription
+                    role = Role.Button
+                },
         ) {
             if (glyph != null) {
                 Text(
