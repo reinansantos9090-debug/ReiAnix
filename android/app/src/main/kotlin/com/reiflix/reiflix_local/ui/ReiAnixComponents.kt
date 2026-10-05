@@ -448,8 +448,8 @@ fun ReiAnixSectionTitle(
             text = title,
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
+            overflow = TextOverflow.Clip,
         )
         if (!subtitle.isNullOrBlank()) {
             Text(
@@ -1068,6 +1068,7 @@ fun ReiAnixProgressIndicator(
     progress: Float,
     modifier: Modifier = Modifier,
     visible: Boolean = true,
+    announceProgress: Boolean = true,
 ) {
     val clampedProgress = if (progress.isFinite()) {
         progress.coerceIn(0f, 1f)
@@ -1079,15 +1080,21 @@ fun ReiAnixProgressIndicator(
         modifier = modifier
             .fillMaxWidth()
             .height(ReiAnixTokens.Dimensions.progressHeight)
-            .semantics {
-                contentDescription = "Progresso"
-                progressBarRangeInfo = ProgressBarRangeInfo(
-                    current = clampedProgress,
-                    range = 0f..1f,
-                    steps = 0,
-                )
-                stateDescription = ((clampedProgress * 100f).roundToInt()).toString() + "% assistido"
-            },
+            .then(
+                if (announceProgress) {
+                    Modifier.semantics {
+                        contentDescription = "Progresso"
+                        progressBarRangeInfo = ProgressBarRangeInfo(
+                            current = clampedProgress,
+                            range = 0f..1f,
+                            steps = 0,
+                        )
+                        stateDescription = ((clampedProgress * 100f).roundToInt()).toString() + "% assistido"
+                    }
+                } else {
+                    Modifier
+                },
+            ),
         color = if (visible) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
         trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
