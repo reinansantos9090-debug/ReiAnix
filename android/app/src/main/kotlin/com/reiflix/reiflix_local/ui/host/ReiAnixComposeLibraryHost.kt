@@ -138,6 +138,7 @@ class ReiAnixComposeLibraryHost(
                                         hide()
                                     }
                                 },
+                                onRemoveSaf = libraryViewModel::removeSafTree,
                                 onRequestMediaAccess = {
                                     activity.requestNativeStorageAction("request_media_access")
                                 },
@@ -150,7 +151,7 @@ class ReiAnixComposeLibraryHost(
                             )
                         },
                         startDestination = startDestination,
-                        showBottomNavigation = true,
+                        showBottomNavigation = startDestination != ReiAnixRoutes.STORAGE,
                     )
                 }
             }
