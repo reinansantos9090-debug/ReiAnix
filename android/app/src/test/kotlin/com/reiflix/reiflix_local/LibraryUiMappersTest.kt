@@ -61,7 +61,7 @@ class LibraryUiMappersTest {
         assertEquals("content://media/102", episodes[1].media.uri)
         assertNull(episodes[1].media.path)
         assertEquals("identity-102", episodes[1].media.mediaIdentity)
-        assertEquals("anime:10:season:1", model.seasons.single().stableKey)
+        assertEquals("anime:10:season:number:1", model.seasons.single().stableKey)
     }
 
     @Test
@@ -444,7 +444,7 @@ class LibraryUiMappersTest {
         val model = LibraryUiMappers.anime(source)
 
         assertEquals("anime:42", model.stableKey)
-        assertEquals("anime:42:season:3", model.seasons.single().stableKey)
+        assertEquals("anime:42:season:number:3", model.seasons.single().stableKey)
         assertEquals(4201L, model.seasons.single().episodes.single().id)
     }
 
