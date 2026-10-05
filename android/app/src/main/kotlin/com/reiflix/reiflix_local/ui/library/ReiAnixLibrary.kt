@@ -162,16 +162,14 @@ fun ReiAnixLibraryScreen(
     onToggleFavorites: () -> Unit,
     onToggleWatching: () -> Unit,
     onToggleCompleted: () -> Unit,
-    onSortSelected: (String) -> Unit = {
-    ReiAnixResponsiveRoot {
-    }
-},
+    onSortSelected: (String) -> Unit = {},
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
 ) {
+    ReiAnixResponsiveRoot {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -273,6 +271,8 @@ fun ReiAnixLibraryScreen(
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+
     }
 }
 
