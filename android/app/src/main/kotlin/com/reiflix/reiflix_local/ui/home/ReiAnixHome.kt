@@ -834,8 +834,8 @@ private fun HomeContinueCard(
                     text = item.animeTitle,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
+                    overflow = TextOverflow.Clip,
                 )
                 Text(
                     text = detailText,
