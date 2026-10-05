@@ -84,6 +84,8 @@ import kotlin.math.roundToInt
 fun ReiAnixHomeRoute(
     navController: NavHostController,
     viewModel: ReiAnixLibraryViewModel = rememberReiAnixLibraryViewModel(),
+    cardSize: String = "medium",
+    showThumbnails: Boolean = true,
 ) {
     val state by viewModel.homeState.collectAsStateWithLifecycle()
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
@@ -91,6 +93,8 @@ fun ReiAnixHomeRoute(
     ReiAnixHomeObservedScreen(
         state = state,
         continueWatching = continueWatching,
+        cardSize = cardSize,
+        showThumbnails = showThumbnails,
         onSearch = { navController.navigateToTopLevel(ReiAnixRoutes.SEARCH) },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
@@ -117,6 +121,8 @@ fun ReiAnixHomeRoute(
 private fun ReiAnixHomeObservedScreen(
     state: ReiAnixHomeLibraryUiState,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
+    cardSize: String = "medium",
+    showThumbnails: Boolean = true,
     onSearch: () -> Unit,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
@@ -206,6 +212,8 @@ private fun ColumnScope.HomeObservedContent(
 @Composable
 fun ReiAnixHomeScreen(
     state: ReiAnixLibraryUiState,
+    cardSize: String = "medium",
+    showThumbnails: Boolean = true,
     onSearch: () -> Unit,
     onOpenDetails: (Long) -> Unit,
     onWatch: (episodeId: Long, animeId: Long) -> Unit,
