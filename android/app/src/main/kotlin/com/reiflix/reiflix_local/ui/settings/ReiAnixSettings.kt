@@ -36,8 +36,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.BuildConfig
@@ -1015,6 +1019,7 @@ fun SettingsHeader(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = subtitle,
@@ -1063,6 +1068,10 @@ private fun BooleanSettingCard(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                modifier = Modifier.semantics {
+                    contentDescription = title + ". " + description
+                    stateDescription = if (checked) "Ativado" else "Desativado"
+                },
             )
         }
     }
@@ -1105,7 +1114,9 @@ private fun LanguageSettingCard(
                 value = draftValue,
                 onValueChange = { draftValue = it },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = title },
             )
             ReiAnixPrimaryButton(
                 text = "Salvar",
@@ -1151,12 +1162,15 @@ private fun ChoiceSettingCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .selectable(
+                            selected = selected,
+                            onClick = { onSelected(choice.value) },
+                            role = Role.RadioButton,
+                        )
                         .semantics {
                             contentDescription = title + ": " + choice.label
+                            stateDescription = if (selected) "Selecionado" else "Não selecionado"
                         }
-                        .clickable(
-                            onClick = { onSelected(choice.value) },
-                        )
                         .padding(vertical = ReiAnixTokens.Spacing.xs)
                         .heightIn(min = ReiAnixTokens.Dimensions.touchTarget),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1164,7 +1178,7 @@ private fun ChoiceSettingCard(
                 ) {
                     RadioButton(
                         selected = selected,
-                        onClick = { onSelected(choice.value) },
+                        onClick = null,
                     )
                     Text(
                         text = choice.label,
