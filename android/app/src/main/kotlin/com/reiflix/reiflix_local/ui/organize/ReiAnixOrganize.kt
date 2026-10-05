@@ -417,7 +417,7 @@ private fun OrganizeOverview(
         statusMessage?.takeIf { it.isNotBlank() }?.let { message ->
             item(key = "command-error") {
                 OrganizeStatusBanner(
-                    icon = Icons.Filled.Error,
+                    icon = Icons.Filled.Warning,
                     message = message,
                     tone = ReiAnixBadgeTone.Error,
                 )
@@ -747,7 +747,7 @@ private fun OrganizeCollectionContent(
                 span = { GridItemSpan(maxLineSpan) },
             ) {
                 OrganizeStatusBanner(
-                    icon = Icons.Filled.Error,
+                    icon = Icons.Filled.Warning,
                     message = state.lastCommandError ?: "A atualização da biblioteca falhou.",
                     tone = ReiAnixBadgeTone.Error,
                 )
@@ -785,7 +785,7 @@ private fun OrganizeCollectionContent(
                 span = { GridItemSpan(maxLineSpan) },
             ) {
                 OrganizeStatusBanner(
-                    icon = Icons.Filled.Error,
+                    icon = Icons.Filled.Warning,
                     message = showCatalogError,
                     tone = ReiAnixBadgeTone.Error,
                 )
@@ -858,7 +858,7 @@ private fun EmptyOrganizeContent(
             EmptyAction(
                 label = "Acesso amplo",
                 onClick = onOpenStorageAccess,
-                icon = Icons.Filled.Folder,
+                icon = Icons.Filled.Info,
                 modifier = Modifier.weight(1f),
             )
         }
