@@ -193,6 +193,7 @@ fun ReiAnixDetailsScreen(
     }
 },
 ) {
+    ReiAnixResponsiveRoot {
     Column(modifier = Modifier.fillMaxSize()) {
         when (state.status) {
             ReiAnixDetailsLoadStatus.LOADING -> ReiAnixDetailsLoadingContent()
@@ -241,6 +242,8 @@ fun ReiAnixDetailsScreen(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+    }
+
     }
 }
 
