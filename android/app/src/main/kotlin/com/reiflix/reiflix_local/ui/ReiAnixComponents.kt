@@ -52,7 +52,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -540,6 +541,7 @@ fun ReiAnixAnimeCard(
         modifier = modifier,
         onClick = onClick,
         maxDimensionPx = maxDimensionPx,
+        artworkIdentity = anime.stableKey,
     )
 }
 
@@ -557,6 +559,7 @@ fun ReiAnixAnimeCard(
     onClick: (() -> Unit)? = null,
     onFavoriteClick: (() -> Unit)? = null,
     maxDimensionPx: Int = 512,
+    artworkIdentity: String? = null,
 ) {
     Card(
         modifier = modifier
@@ -586,15 +589,14 @@ fun ReiAnixAnimeCard(
     ) {
         Column {
             Box {
-                ReiAnixLocalArtwork(
+                ReiAnixPoster(
                     localPath = artworkPath,
                     contentDescription = title,
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
                         .clip(ReiAnixTokens.Shapes.artwork),
-                    contentScale = ContentScale.Crop,
-                    placeholder = "Sem arte",
+                    identity = artworkIdentity,
                     maxDimensionPx = maxDimensionPx,
                 )
                 if (favorite || watching || watched || completed) {
@@ -726,14 +728,11 @@ fun ReiAnixEpisodeCard(
                     .clip(ReiAnixTokens.Shapes.small),
                 contentAlignment = Alignment.Center,
             ) {
-                ReiAnixLocalArtwork(
+                ReiAnixEpisodeThumbnail(
                     localPath = episode.artwork?.localPath,
                     contentDescription = episode.displayTitle,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    placeholder = "Sem thumbnail",
-                    maxDimensionPx = 320,
-                    shape = ReiAnixTokens.Shapes.small,
+                    identity = episode.stableKey,
                 )
                 episode.durationSeconds
                     ?.takeIf { it.isFinite() && it >= 0.0 }
