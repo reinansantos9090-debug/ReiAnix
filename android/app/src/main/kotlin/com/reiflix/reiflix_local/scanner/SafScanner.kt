@@ -127,9 +127,7 @@ object SafScanner {
         }
     }
 
-    fun displayName(context:Context,treeUri:Uri):String = runCatching {
-        DocumentFile.fromTreeUri(context, treeUri)?.name
-    }.getOrNull()?.trim()?.takeIf { it.isNotBlank() } ?: "Pasta da biblioteca"
+    fun displayName(context:Context,treeUri:Uri):String = runCatching{DocumentFile.fromTreeUri(context,treeUri)?.name}.getOrNull()?.trim()?.takeIf{it.isNotBlank()} ?: "Pasta da biblioteca"
 
     fun scan(context:Context,treeUri:Uri,onProgress:((JSONObject)->Unit)?=null,shouldCancel:()->Boolean={false},scanId:String?=null,onBatch:((JSONObject)->Unit)?=null):JSONObject {
         val identity=treeIdentity(treeUri)
