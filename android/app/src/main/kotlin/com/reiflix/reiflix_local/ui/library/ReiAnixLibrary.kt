@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -23,15 +24,19 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,11 +58,9 @@ import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSearchField
 import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
-import com.reiflix.reiflix_local.ui.ReiAnixScreenTitle
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -163,7 +166,7 @@ fun ReiAnixLibraryScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         LibraryHeader(
-            count = state.animes.size,
+            sourceAvailable = state.sourceAvailable,
             onRefresh = onRefresh,
             onSearch = onSearch,
             isRefreshing = isRefreshing,
@@ -187,14 +190,39 @@ fun ReiAnixLibraryScreen(
                 }
             }
 
-            ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
-                title = "Erro na biblioteca",
-                message = state.error ?: "Não foi possível carregar a biblioteca local.",
-                onRetry = onRefresh,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            )
+            ReiAnixLibraryLoadStatus.ERROR -> {
+                if (state.animes.isNotEmpty()) {
+                    LibraryReadyContent(
+                        state = state,
+                        filters = filters,
+                        visibleAnimes = visibleAnimes,
+                        genres = genres,
+                        isRefreshing = isRefreshing,
+                        onQueryChange = onQueryChange,
+                        onGenreSelected = onGenreSelected,
+                        onToggleFavorites = onToggleFavorites,
+                        onToggleWatching = onToggleWatching,
+                        onToggleCompleted = onToggleCompleted,
+                        onSortSelected = onSortSelected,
+                        onClearFilters = onClearFilters,
+                        onOpenDetails = onOpenDetails,
+                        onToggleFavorite = onToggleFavorite,
+                        onRefresh = onRefresh,
+                        errorMessage = state.error
+                            ?: "Não foi possível atualizar a biblioteca local.",
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    ReiAnixRecoverableErrorState(
+                        title = "Erro na biblioteca",
+                        message = state.error ?: "Não foi possível carregar a biblioteca local.",
+                        onRetry = onRefresh,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    )
+                }
+            }
 
             ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = "Biblioteca local indisponível",
@@ -238,69 +266,96 @@ fun ReiAnixLibraryScreen(
 
 @Composable
 private fun LibraryHeader(
-    count: Int,
+    sourceAvailable: Boolean,
     onRefresh: () -> Unit,
     onSearch: (() -> Unit)?,
     isRefreshing: Boolean,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                start = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-                end = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-                top = ReiAnixTokens.Dimensions.screenTopPadding,
-                bottom = ReiAnixTokens.Spacing.md,
+                horizontal = ReiAnixTokens.Dimensions.screenHorizontalPadding,
+                vertical = ReiAnixTokens.Spacing.sm,
             ),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ReiAnixScreenTitle(
-                title = "Biblioteca",
-                subtitle = libraryCountLabel(count),
-                modifier = Modifier.weight(1f),
-            )
+        Text(
+            text = "ReiAnix",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+        )
 
-            if (onSearch != null) {
-                IconButton(
-                    onClick = onSearch,
-                    modifier = Modifier.semantics {
-                        contentDescription = "Pesquisar na biblioteca"
-                    },
-                ) {
+        Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
+
+        Surface(
+            shape = ReiAnixTokens.Shapes.chip,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ) {
+            Row(
+                modifier = Modifier.padding(
+                    horizontal = ReiAnixTokens.Spacing.md,
+                    vertical = ReiAnixTokens.Spacing.xs,
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+            ) {
+                if (!sourceAvailable) {
                     Icon(
-                        imageVector = Icons.Filled.Search,
+                        imageVector = Icons.Filled.CloudOff,
                         contentDescription = null,
+                        modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
                     )
                 }
+                Text(
+                    text = if (sourceAvailable) "Offline" else "Indisponível",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
             }
+        }
 
+        Spacer(modifier = Modifier.weight(1f))
+
+        if (onSearch != null) {
             IconButton(
-                onClick = onRefresh,
-                enabled = !isRefreshing,
+                onClick = onSearch,
                 modifier = Modifier.semantics {
-                    contentDescription = if (isRefreshing) {
-                        "Atualizando biblioteca"
-                    } else {
-                        "Atualizar biblioteca"
-                    }
+                    contentDescription = "Pesquisar na biblioteca"
                 },
             ) {
-                if (isRefreshing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(ReiAnixTokens.Dimensions.loadingIndicatorSize),
-                        strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                )
+            }
+        }
+
+        IconButton(
+            onClick = onRefresh,
+            enabled = !isRefreshing,
+            modifier = Modifier.semantics {
+                contentDescription = if (isRefreshing) {
+                    "Atualizando biblioteca"
                 } else {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
+                    "Atualizar biblioteca"
                 }
+            },
+        ) {
+            if (isRefreshing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(ReiAnixTokens.Dimensions.loadingIndicatorSize),
+                    strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }
@@ -323,9 +378,11 @@ private fun ColumnScope.LibraryReadyContent(
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onRefresh: () -> Unit,
+    errorMessage: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var sortMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var genreMenuExpanded by rememberSaveable { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState()
     val gridState = rememberSaveable(
         saver = LazyGridState.Saver,
@@ -367,6 +424,33 @@ private fun ColumnScope.LibraryReadyContent(
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
+            item(
+                key = "library-source-summary",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "library-source-summary",
+            ) {
+                LibrarySourceSummaryCard(
+                    animeCount = state.animes.size,
+                    episodeCount = state.animes.sumOf { it.availableContentCount },
+                    sourceAvailable = state.sourceAvailable,
+                )
+            }
+
+            if (!errorMessage.isNullOrBlank()) {
+                item(
+                    key = "library-error-banner",
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = "library-error-banner",
+                ) {
+                    ReiAnixRecoverableErrorState(
+                        title = "Atualização indisponível",
+                        message = errorMessage,
+                        onRetry = onRefresh,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
             item(
                 key = "library-search",
                 span = { GridItemSpan(maxLineSpan) },
@@ -415,11 +499,65 @@ private fun ColumnScope.LibraryReadyContent(
                         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                         contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
                     ) {
-                        item(key = "filter-title") {
-                            ReiAnixBadge(
-                                text = "Filtros",
-                                tone = ReiAnixBadgeTone.Neutral,
-                            )
+                        item(key = "filter-genre") {
+                            Box {
+                                ReiAnixChip(
+                                    text = "Gêneros",
+                                    selected = filters.selectedGenreKey != null,
+                                    enabled = genres.isNotEmpty(),
+                                    onClick = { genreMenuExpanded = true },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = if (filters.selectedGenreKey == null) {
+                                            "Gêneros"
+                                        } else {
+                                            "Gênero selecionado"
+                                        }
+                                    },
+                                )
+                                DropdownMenu(
+                                    expanded = genreMenuExpanded,
+                                    onDismissRequest = { genreMenuExpanded = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Todos os gêneros") },
+                                        onClick = {
+                                            genreMenuExpanded = false
+                                            onGenreSelected(null)
+                                        },
+                                        trailingIcon = if (filters.selectedGenreKey == null) {
+                                            {
+                                                Text(
+                                                    text = "✓",
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                )
+                                            }
+                                        } else {
+                                            null
+                                        },
+                                    )
+                                    genres.forEach { genre ->
+                                        DropdownMenuItem(
+                                            text = { Text(genre.name) },
+                                            onClick = {
+                                                genreMenuExpanded = false
+                                                onGenreSelected(genre.stableKey)
+                                            },
+                                            trailingIcon = if (filters.selectedGenreKey == genre.stableKey) {
+                                                {
+                                                    Text(
+                                                        text = "✓",
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                    )
+                                                }
+                                            } else {
+                                                null
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                         }
                         item(key = "filter-favorite") {
                             LibraryFilterChip(
@@ -441,21 +579,6 @@ private fun ColumnScope.LibraryReadyContent(
                                 selected = filters.completedOnly,
                                 onClick = onToggleCompleted,
                             )
-                        }
-                        genres.forEach { genre ->
-                            item(key = "genre-" + genre.stableKey) {
-                                LibraryFilterChip(
-                                    text = genre.name,
-                                    selected = filters.selectedGenreKey == genre.stableKey,
-                                    onClick = {
-                                        onGenreSelected(
-                                            genre.stableKey.takeUnless {
-                                                it == filters.selectedGenreKey
-                                            },
-                                        )
-                                    },
-                                )
-                            }
                         }
                     }
 
@@ -569,16 +692,95 @@ private fun ColumnScope.LibraryReadyContent(
                     key = { anime -> anime.stableKey },
                     contentType = { "library-anime-card" },
                 ) { anime ->
-                    LibraryAnimeCard(
-                        anime = anime,
-                        onClick = { onOpenDetails(anime.id) },
-                        onToggleFavorite = { onToggleFavorite(anime.id) },
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        LibraryAnimeCard(
+                            anime = anime,
+                            onClick = { onOpenDetails(anime.id) },
+                            onToggleFavorite = { onToggleFavorite(anime.id) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = ReiAnixTokens.Dimensions.libraryGridMaxItemWidth),
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun LibrarySourceSummaryCard(
+    animeCount: Int,
+    episodeCount: Int,
+    sourceAvailable: Boolean,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = ReiAnixTokens.Shapes.large,
+        color = ReiAnixTokens.Colors.surfaceCard,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(ReiAnixTokens.Spacing.xxl),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
+        ) {
+            Surface(
+                shape = ReiAnixTokens.Shapes.card,
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.VideoLibrary,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier
+                        .size(ReiAnixTokens.Dimensions.touchTarget)
+                        .padding(ReiAnixTokens.Spacing.sm),
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+            ) {
+                Text(
+                    text = "Capas sincronizadas",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = librarySourceCountLabel(animeCount, episodeCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                ReiAnixBadge(
+                    text = if (sourceAvailable) "Funciona offline" else "Fonte indisponível",
+                    tone = if (sourceAvailable) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+            )
+        }
+    }
+}
+
+private fun librarySourceCountLabel(animeCount: Int, episodeCount: Int): String =
+    animeCount.toString() + " " + if (animeCount == 1) "anime" else "animes" +
+        " • " + episodeCount.toString() + " " +
+        if (episodeCount == 1) "episódio" else "episódios"
 
 @Composable
 private fun LibraryLoadingGrid(
@@ -662,6 +864,7 @@ private fun LibraryAnimeCard(
     anime: ReiAnixAnimeUiModel,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val renderData = remember(anime) {
         val episodes = anime.contentEpisodes
@@ -709,8 +912,13 @@ private fun LibraryAnimeCard(
         watching = renderData.watching,
         watched = renderData.watched,
         completed = renderData.completed,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         onClick = onClick,
+        bottomBadgeText = when {
+            anime.mediaKind == com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind.MOVIE -> "Filme"
+            availableCount > 0 -> availableCount.toString() + if (availableCount == 1) " episódio" else " episódios"
+            else -> null
+        },
         onFavoriteClick = onToggleFavorite,
         maxDimensionPx = 512,
     )
@@ -724,9 +932,6 @@ private data class LibraryCardRenderData(
     val watched: Boolean,
     val completed: Boolean,
 )
-
-private fun libraryCountLabel(count: Int): String =
-    count.toString() + " " + if (count == 1) "título" else "títulos"
 
 private fun libraryResultLabel(count: Int): String =
     count.toString() + " " + if (count == 1) "resultado" else "resultados"
