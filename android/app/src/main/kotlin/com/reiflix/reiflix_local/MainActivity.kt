@@ -2046,7 +2046,7 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         val appContext = applicationContext
-        CoroutineScope(Dispatchers.IO).launch {
+        NativeScanController.launch(scanId) {
             try {
                 val result = BroadStorageScanner.scan(
                     appContext,
@@ -2120,7 +2120,7 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         val appContext = applicationContext
-        CoroutineScope(Dispatchers.IO).launch {
+        NativeScanController.launch(scanId) {
             try {
                 NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_scan_progress")
                     .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE).put("scanId", scanId)
@@ -2221,7 +2221,7 @@ class MainActivity : FlutterFragmentActivity() {
         }
 
         val appContext = applicationContext
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val result = VideoThumbnailExtractor.extract(appContext, localUri, size, modifiedAt, mediaIdentity)
                 if (result == null) {
