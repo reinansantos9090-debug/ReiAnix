@@ -250,8 +250,7 @@ fun ReiAnixRecoverableErrorState(
 ) {
     Column(
         modifier = modifier
-            .padding(ReiAnixTokens.Spacing.xxl)
-            .semantics { contentDescription = "ReiAnixRecoverableErrorState" },
+            .padding(ReiAnixTokens.Spacing.xxl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
