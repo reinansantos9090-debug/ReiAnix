@@ -150,6 +150,7 @@ fun ReiAnixOrganizeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         OrganizeTopBar(
             sourceAvailable = state.sourceAvailable,
