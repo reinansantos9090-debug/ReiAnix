@@ -978,7 +978,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     }
 
 @Composable
-private fun SettingsHeader(
+fun SettingsHeader(
     title: String,
     subtitle: String,
     onBack: () -> Unit,
