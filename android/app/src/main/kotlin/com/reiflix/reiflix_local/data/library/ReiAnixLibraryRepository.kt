@@ -119,7 +119,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             ReiAnixLibraryCommandCodec.Action.SET_WATCHED,
             episodeId = episodeId,
             watched = watched,
-            source = source,
         )
     }
 
@@ -140,6 +139,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             animeId = animeId,
             episodeId = episodeId,
             watched = watched,
+            source = source,
         )
         scope.launch {
             val written = runCatching { NativeMailbox.write(appContext, command) }
