@@ -907,3 +907,20 @@ private fun ReiAnixSettingRow(
             .then(interactiveModifier)
             .semantics {
                 contentDescription = "Configuração: $keyName"
+
+private fun storageSummary(state: ReiAnixSettingsUiState): String {
+    val storage = state.storage
+    if (!storage.known) return "Verificando permissões"
+    val media = when (storage.mediaReadState) {
+        "full" -> "Vídeos permitidos"
+        "partial" -> "Acesso parcial"
+        "denied" -> "Vídeos sem permissão"
+        else -> "Estado de vídeos desconhecido"
+    }
+    val saf = storage.safRootCount
+    return buildString {
+        append(media)
+        if (saf > 0) append(" • $saf SAF")
+        if (storage.safSelectionPending) append(" • Seleção em andamento")
+    }
+}
