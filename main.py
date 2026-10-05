@@ -1063,6 +1063,18 @@ async def main(page: ft.Page):
             page_views_replaced,
         )
 
+    async def _show_compose_home():
+        if not bridge.available or navigation.current != "home" or not ui_alive[0]:
+            return
+        try:
+            await bridge.open_library(start_destination="home")
+        except Exception as exc:
+            logger.exception("[COMPOSE_HOME] shell restore failed", exc_info=True)
+            if navigation.current == "home" and ui_alive[0]:
+                page.snack_bar = ft.SnackBar(ft.Text("Não foi possível restaurar a Home Compose agora."))
+                page.snack_bar.open = True
+                safe_update()
+
     async def _show_compose_library():
         if not bridge.available or navigation.current != "library" or not ui_alive[0]:
             return
@@ -1176,6 +1188,8 @@ async def main(page: ft.Page):
             navigation.push("collector")
             render_current(reason="open_collector")
             persist_navigation_state()
+            if bridge.available:
+                page.run_task(bridge.hide_library)
     player_transition_inflight = {"value": False}
     player_launch_inflight = {"value": False}
     player_transition_generation = {"value": 0}
@@ -2527,7 +2541,9 @@ async def main(page: ft.Page):
             if navigation.current == "organize":
                 _drop_screen_cache("organize")
             render_current(reason="back")
-            if navigation.current == "library" and route_before != "library":
+            if navigation.current == "home" and route_before == "collector":
+                page.run_task(_show_compose_home)
+            elif navigation.current == "library" and route_before != "library":
                 page.run_task(_show_compose_library)
             elif (
                 navigation.current == "settings"
@@ -3417,6 +3433,13 @@ async def main(page: ft.Page):
                             destination = str(payload.get('destination') or '').strip().lower()
                             if destination == 'back':
                                 navigate_back('compose_library_back')
+                            elif destination == 'collector':
+                                if bridge.available:
+                                    try:
+                                        await bridge.hide_library()
+                                    except Exception:
+                                        logger.exception("[COMPOSE_COLLECTOR] failed to hide Compose shell before Collector")
+                                navigate_collector()
                             elif destination == 'details':
                                 try:
                                     anime_id = int(payload.get('animeId') or 0)
