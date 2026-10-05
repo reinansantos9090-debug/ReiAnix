@@ -209,6 +209,9 @@ fun ReiAnixPrimaryButton(
                 contentDescription = null,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
             )
+            androidx.compose.foundation.layout.Spacer(
+                modifier = Modifier.width(ReiAnixTokens.Spacing.sm),
+            )
         }
         Text(
             text = text,
