@@ -42,7 +42,14 @@ data class ReiAnixStorageUiState(
                     identity != null -> identity in safRootIdentities
                     else -> source.reference in safRoots
                 }
-                if (authorized) "available" else "revoked"
+                if (authorized) {
+                    "available"
+                } else {
+                    when (source.status.lowercase()) {
+                        "unavailable", "error", "partial" -> source.status.lowercase()
+                        else -> "revoked"
+                    }
+                }
             }
             "mediastore", "media" -> mediaReadState
             "broad-storage", "broad" -> broadStorageState
