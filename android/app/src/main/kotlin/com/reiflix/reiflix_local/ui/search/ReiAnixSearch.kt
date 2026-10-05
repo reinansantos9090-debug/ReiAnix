@@ -444,7 +444,7 @@ private fun SearchResultRow(
                 contentDescription = "Abrir " + anime.title
             },
         shape = ReiAnixTokens.Shapes.card,
-        color = ReiAnixTokens.Colors.surfaceCard,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
             modifier = Modifier
@@ -636,7 +636,7 @@ private fun ReiAnixSearchFilterSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = ReiAnixTokens.Colors.surfaceSheet,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(
