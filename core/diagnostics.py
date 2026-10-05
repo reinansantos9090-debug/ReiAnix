@@ -24,6 +24,7 @@ class DiagnosticEvent:
     scan_id: str | None = None
     source: str | None = None
     result: str | None = None
+    refresh_id: str | None = None
     counts: dict[str, int] | None = None
     error: str | None = None
     extra: dict[str, Any] | None = None
@@ -36,7 +37,7 @@ class DiagnosticTimeline:
         self._events: deque[DiagnosticEvent] = deque(maxlen=max_events)
 
     def record(self, name: str, *, request_id: Any = None, scan_id: Any = None,
-               source: Any = None, result: Any = None,
+               source: Any = None, result: Any = None, refresh_id: Any = None,
                counts: dict[str, Any] | None = None, error: Any = None,
                **extra: Any) -> DiagnosticEvent:
         normalized_counts = None
@@ -56,6 +57,7 @@ class DiagnosticTimeline:
             scan_id=str(scan_id).strip() or None if scan_id is not None else None,
             source=str(source).strip() or None if source is not None else None,
             result=str(result).strip() or None if result is not None else None,
+            refresh_id=str(refresh_id).strip() or None if refresh_id is not None else None,
             counts=normalized_counts,
             error=str(error)[:500] if error else None,
             extra=normalized_extra,
