@@ -569,6 +569,65 @@ async def main(page: ft.Page):
     details_state = {}
     settings_state = {}
     device_interaction_profile = {}
+    
+    artwork_event_loop = asyncio.get_running_loop()
+
+    def _dispatch_artwork_event(event_name, payload):
+        """Publish artwork completion on the main UI loop without touching UI from workers."""
+        event_name = str(event_name or "").strip()
+        payload = dict(payload or {})
+
+        def apply_event():
+            if not ui_alive[0]:
+                return
+            entity_type = str(payload.get("entity_type") or "").strip().lower()
+            artwork_type = str(payload.get("artwork_type") or "").strip().lower()
+            local_path = str(payload.get("local_path") or "").strip()
+            try:
+                entity_id = int(payload.get("entity_id"))
+            except (TypeError, ValueError):
+                entity_id = 0
+
+            if event_name in {
+                "ARTWORK_DOWNLOAD_SUCCEEDED",
+                "ARTWORK_PUBLISHED",
+                "ARTWORK_CACHE_HIT",
+            } and local_path and entity_id > 0:
+                changed = False
+                for target_state in (home_state, details_state):
+                    updater = target_state.get("_update_artwork")
+                    if not callable(updater):
+                        continue
+                    try:
+                        changed = bool(
+                            updater(entity_type, entity_id, artwork_type, local_path)
+                        ) or changed
+                    except Exception:
+                        logger.exception(
+                            "[ARTWORK] incremental UI update failed event=%s entity=%s id=%s type=%s",
+                            event_name,
+                            entity_type,
+                            entity_id,
+                            artwork_type,
+                        )
+                if compose_library_bridge.enabled:
+                    compose_library_bridge.request_publish(
+                        "artwork_ready" if event_name != "ARTWORK_CACHE_HIT" else "artwork_cache_hit"
+                    )
+                if changed:
+                    safe_update()
+                return
+
+            if event_name == "ARTWORK_CACHE_INVALID" and compose_library_bridge.enabled:
+                compose_library_bridge.request_publish("artwork_cache_invalid")
+
+        try:
+            artwork_event_loop.call_soon_threadsafe(apply_event)
+        except RuntimeError:
+            logger.debug("[ARTWORK] main UI loop already closed", exc_info=True)
+
+    library.artwork.set_change_listener(_dispatch_artwork_event)
+    library.artwork.set_diagnostic_recorder(diagnostics.record)
     navigation = NavigationController()
     performance.set_screen_provider(lambda: navigation.current)
     performance.install_page_hooks(page)
