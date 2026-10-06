@@ -591,30 +591,24 @@ private fun SearchBrowseState(
                 )
             }
             item(key = "search-suggestions") {
-                Column(
+                LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                    contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
                 ) {
-                    suggestions.chunked(3).forEachIndexed { index, row ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                        ) {
-                            row.forEach { anime ->
-                                ReiAnixChip(
-                                    text = anime.title,
-                                    onClick = { onOpenDetails(anime.id) },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                            repeat(3 - row.size) {
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
-                        }
+                    items(
+                        items = suggestions,
+                        key = { anime -> "search-suggestion:" + anime.stableKey },
+                        contentType = { "search-suggestion" },
+                    ) { anime ->
+                        ReiAnixChip(
+                            text = anime.title,
+                            onClick = { onOpenDetails(anime.id) },
+                        )
                     }
                 }
             }
-        }
+       }
 
         if (recent.isNotEmpty()) {
             item(key = "search-library-title") {
