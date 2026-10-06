@@ -498,7 +498,7 @@ private fun SearchResultRow(
             ) {
                 Text(
                     text = anime.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
