@@ -187,6 +187,7 @@ class ReiAnixComposeLibraryHost(
                     }
                 }
                 }
+            }
         } else {
             navigateToRequestedDestination(
                 route = startDestination,
