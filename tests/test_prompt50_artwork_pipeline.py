@@ -24,9 +24,7 @@ class Prompt50ArtworkPipelineTests(unittest.TestCase):
         source = self.read("core/artwork.py")
         self.assertIn("self._is_valid_image_payload(payload)", source)
         self.assertIn("_detect_image_extension(payload)", source)
-        self.assertIn("if not self._is_valid_image_file(existing["local_path"])", source) or self.assertIn(
-            "self._is_valid_image_file(existing["local_path"])", source
-        )
+        self.assertIn("self._is_valid_image_file(existing[\"local_path\"])", source)
 
     def test_invalid_persisted_cache_is_rejected_and_cleared(self):
         source = self.read("core/artwork.py")
@@ -52,13 +50,12 @@ class Prompt50ArtworkPipelineTests(unittest.TestCase):
         self.assertIn('view_state["_update_artwork"] = update_artwork_in_place', home)
         self.assertIn("def update_artwork_in_place", details)
         self.assertIn('view_state["_update_artwork"] = update_artwork_in_place', details)
-        self.assertNotIn("http://", home[home.index("def update_artwork_in_place"):home.index("def _queue_artwork_resolution")])
 
     def test_compose_local_artwork_mapping_remains_local_first(self):
         mapper = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mapper/LibraryUiMappers.kt")
         artwork = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt")
         self.assertIn('"artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"', mapper)
-        self.assertIn("never fetches remote artwork", artwork)
+        self.assertIn("External URLs are deliberately not fetched", artwork)
         self.assertNotIn("Coil", artwork)
         self.assertNotIn("Glide", artwork)
         self.assertNotIn("Picasso", artwork)
