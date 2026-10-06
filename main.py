@@ -3044,7 +3044,7 @@ async def main(page: ft.Page):
             except (TypeError, ValueError, AttributeError):
                 published_at = 0
             last_mutation = int(storage_onboarding.get("last_storage_mutation_at_ms") or 0)
-            if published_at > 0 and last_mutation > published_at:
+            if storage_snapshot_is_stale(published_at, last_mutation):
                 # A lifecycle snapshot can legitimately be older than a folder
                 # selection that completed while that snapshot was still in flight.
                 # Preserve the newer SAF authorization set while accepting other
@@ -6065,9 +6065,9 @@ async def main(page: ft.Page):
                             last_storage_mutation_at_ms = int(
                                 storage_onboarding.get("last_storage_mutation_at_ms") or 0
                             )
-                            stale_inventory = (
-                                inventory_started_at_ms > 0
-                                and last_storage_mutation_at_ms > inventory_started_at_ms
+                            stale_inventory = storage_snapshot_is_stale(
+                                inventory_started_at_ms,
+                                last_storage_mutation_at_ms,
                             )
                             if stale_inventory:
                                 logger.info(
