@@ -47,7 +47,8 @@ class Phase7DetailsContractTests(unittest.TestCase):
         details = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
         self.assertNotIn('text = "Personagens"', details)
         self.assertNotIn('text = "Relacionados"', details)
-        self.assertNotIn("enabled = false", details)
+        self.assertNotIn("Personagens indisponíveis", details)
+        self.assertNotIn("Relacionados indisponíveis", details)
 
     def test_compose_details_is_projection_only(self):
         details = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt").casefold()
