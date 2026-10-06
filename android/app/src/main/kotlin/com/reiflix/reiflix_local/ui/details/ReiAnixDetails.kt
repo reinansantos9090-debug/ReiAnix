@@ -741,7 +741,7 @@ private fun DetailsHero(
                 ) {
                     Text(
                         text = anime.title,
-                        style = MaterialTheme.typography.headlineLarge,
+                        style = ReiAnixTokens.TypographyTokens.heroTitle,
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -1017,7 +1017,7 @@ private fun DetailsSeasonsSection(
             if (selectedSeason != null && anime.seasons.size > 1) {
                 Text(
                     text = "Ver todas  ›",
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .clickable(onClick = onViewEpisodes)
