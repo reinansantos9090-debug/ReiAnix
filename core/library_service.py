@@ -110,10 +110,35 @@ class LibraryService:
                                               source=source or metadata.get("metadata_source") or "local",
                                               replace_source=True)
 
-    def _cached_metadata_is_current(self, cached, associated_id):
+    @staticmethod
+    def _metadata_is_materialized(cached):
+        """Return whether metadata is durably available without a new AniList call."""
         if not cached:
             return False
-        if cached.get("anilist_id") != associated_id:
+        source = str(cached.get("metadata_source") or "").strip().casefold()
+        status = str(cached.get("metadata_status") or "").strip().casefold()
+        if source == "manual" or status == "manual":
+            return True
+        anilist_id = str(cached.get("anilist_id") or "").strip()
+        try:
+            fetched_at = float(cached.get("metadata_fetched_at") or 0)
+        except (TypeError, ValueError):
+            fetched_at = 0
+        return (
+            source == "anilist"
+            and bool(anilist_id)
+            and fetched_at > 0
+            and status not in {"unresolved", "error", "ambiguous", "refreshing"}
+        )
+
+    def _cached_metadata_is_current(self, cached, associated_id):
+        if self._metadata_is_materialized(cached):
+            # TTL is informational. Automatic library rendering never turns an
+            # already-materialized row back into a remote fetch.
+            return True
+        if not cached:
+            return False
+        if associated_id and cached.get("anilist_id") != associated_id:
             return False
 
         updated_at = cached.get("metadata_updated_at")
@@ -143,8 +168,22 @@ class LibraryService:
         match_state = self.store.anilist_match(lookup_title) or {}
         associated_id = match_state.get("anilist_id") or self.store.association(lookup_title)
         if cached:
+            if self._metadata_is_materialized(cached):
+                self._record_diagnostic(
+                    "METADATA_MATERIALIZATION_SKIPPED",
+                    anime_id=cached.get("id"),
+                    anilist_id=cached.get("anilist_id"),
+                    lookup_title=lookup_title,
+                    reason="already_materialized",
+                )
+                return self._ensure_cached_description_pt_br(
+                    lookup_title,
+                    cached,
+                    local_anime_id=cached.get("id"),
+                    schedule=True,
+                )
             if associated_id and cached.get("anilist_id") != associated_id:
-                # Keep the durable association authoritative, but do not fetch during scan.
+                # An existing materialized association remains authoritative.
                 if allow_network:
                     return self.refresh_metadata(lookup_title, display_title, force=True)
             if self._cached_metadata_is_current(cached, associated_id or cached.get("anilist_id")):
@@ -783,6 +822,15 @@ class LibraryService:
             if cached and anilist_id:
                 cached = self._ensure_cached_description_pt_br(effective_lookup, cached)
             status = str(cached.get('metadata_status') or 'unresolved').casefold()
+            materialized = self._metadata_is_materialized(cached)
+            if materialized:
+                self._record_diagnostic(
+                    "METADATA_MATERIALIZATION_SKIPPED",
+                    anime_id=cached.get("id"),
+                    anilist_id=anilist_id,
+                    lookup_title=effective_lookup,
+                    reason="hydrate_materialized",
+                )
             if status == 'manual' and not anilist_id:
                 continue
             entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
@@ -799,20 +847,46 @@ class LibraryService:
                         extra={'lookup_title': lookup_title, 'anime_id': cached.get('id')},
                         exc_info=True,
                     )
-            needs_metadata = not anilist_id or status in {'unresolved', 'error', 'stale'}
+            # "stale" is an informational TTL state, never an automatic
+            # AniList trigger. Only genuinely unmaterialized metadata enters
+            # the one-shot materialization path.
+            needs_metadata = not materialized and (
+                not anilist_id or status in {'unresolved', 'error', 'ambiguous'}
+            )
             if status == 'ambiguous' and not anilist_id:
                 if pending_cache is None: pending_cache = self.store.pending_matches()
                 needs_metadata = not any(p.get('lookup_title') == effective_lookup for p in pending_cache)
-            needs_cover = bool(
-                anilist_id
-                and str(cached.get('cover_url') or '').strip()
-                and self._setting("artwork.enabled", True)
-            )
-            if not needs_metadata and not needs_cover:
+            needs_cover = False
+            needs_backdrop = False
+            if anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
+                entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
+                poster_rows = self.artwork.list_for(entity_type, cached['id'], 'poster')
+                backdrop_rows = self.artwork.list_for(entity_type, cached['id'], 'backdrop')
+                needs_cover = bool(
+                    str(cached.get('cover_url') or '').strip()
+                    and not any(
+                        row.get('local_path') and self.artwork._is_valid_image_file(row.get('local_path'))
+                        for row in poster_rows
+                    )
+                )
+                needs_backdrop = bool(
+                    str(cached.get('banner_url') or '').strip()
+                    and not any(
+                        row.get('local_path') and self.artwork._is_valid_image_file(row.get('local_path'))
+                        for row in backdrop_rows
+                    )
+                )
+            if not needs_metadata and not needs_cover and not needs_backdrop:
                 continue
             try:
                 metadata_refreshed = False
                 cover_attempt_failed = False
+                self._record_diagnostic(
+                    "METADATA_MATERIALIZATION_START",
+                    anime_id=cached.get("id") if isinstance(cached, dict) else local_anime_id,
+                    anilist_id=anilist_id,
+                    lookup_title=effective_lookup,
+                )
                 if needs_metadata:
                     cached = self.refresh_metadata(
                         effective_lookup,
@@ -835,13 +909,10 @@ class LibraryService:
                     anilist_id = cached.get('anilist_id') or self.store.association(effective_lookup)
                     metadata_refreshed = True
                 cover_url = str(cached.get('cover_url') or '').strip()
-                if anilist_id and cover_url and self._setting("artwork.enabled", True):
+                if anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
                     entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
-                    if cached.get('id'):
-                        # Seed the ArtworkEngine from durable metadata before requesting.
-                        # This also repairs databases created before the artwork table
-                        # became the sole owner of remote cover downloads.
-                        self.artwork.sync_anime_metadata(cached['id'], cached)
+                    self.artwork.sync_anime_metadata(cached['id'], cached)
+                    if cover_url and (needs_cover or metadata_refreshed):
                         resolved = self.artwork.request(
                             entity_type,
                             cached['id'],
@@ -859,6 +930,16 @@ class LibraryService:
                             resolved
                             and resolved.get('local_path')
                             and self.artwork._is_valid_image_file(resolved.get('local_path'))
+                        )
+                    banner_url = str(cached.get('banner_url') or '').strip()
+                    if banner_url and (needs_backdrop or metadata_refreshed):
+                        self.artwork.request(
+                            entity_type,
+                            cached['id'],
+                            'backdrop',
+                            priority=90,
+                            allow_network=True,
+                            blocking=True,
                         )
                 if cached.get('id'):
                     self.artwork.sync_anime_metadata(cached['id'], cached)
