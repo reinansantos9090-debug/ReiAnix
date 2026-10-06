@@ -172,7 +172,7 @@ object ReiAnixTokens {
         val detailsSeasonPreviewWidth = 108.dp
         val detailsSeasonPreviewHeight = 72.dp
         val detailsInfoLabelWidth = 96.dp
-        val homeHeroHeight = 200.dp
+        val homeHeroHeight = 220.dp
         val homeCardWidth = 100.dp
         val homeContinueCardWidth = 110.dp
         val homeLandscapeArtworkAspectRatio = 1.55f
@@ -188,7 +188,7 @@ object ReiAnixTokens {
         val card = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
         val large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val artwork = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-        val hero = androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+        val hero = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val dialog = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
         val sheet = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
         val textField = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
