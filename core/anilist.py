@@ -157,6 +157,18 @@ class AniListClient:
                 result=result,
                 error=error,
             )
+            alias = {
+                "TRANSLATION_STARTED": "DESCRIPTION_TRANSLATION_START",
+                "TRANSLATION_SUCCEEDED": "DESCRIPTION_TRANSLATION_SUCCESS",
+            }.get(name)
+            if alias:
+                recorder(
+                    alias,
+                    request_id=request_id,
+                    source=source_language,
+                    result=result,
+                    error=error,
+                )
         except TypeError:
             logger.debug("Diagnostic recorder rejected translation event %s", name, exc_info=True)
 
