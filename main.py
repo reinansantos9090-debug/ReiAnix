@@ -401,16 +401,37 @@ async def main(page: ft.Page):
     # ScanCoordinator. Python binds function definitions as local names only when
     # execution reaches the definition; constructing the coordinator first caused
     # startup-time UnboundLocalError before the storage UI could render.
-    storage_onboarding = {"dismissed": False, "dialog_open": False, "waiting_for_result": False}
+    storage_onboarding = {
+        "dismissed": False,
+        "dialog_open": False,
+        "waiting_for_result": False,
+        "startup_gate": True,
+        "inventory_complete": False,
+        "auto_launch_requested": False,
+        "state": "CHECKING",
+        "message": None,
+        "error": None,
+    }
     storage_capabilities = [StorageCapabilities.unknown()]
     if compose_library_bridge.enabled:
-        compose_library_bridge.set_storage_state_provider(lambda: {"capabilities": storage_capabilities[0], "safSelectionPending": saf_selection.pending})
+        compose_library_bridge.set_storage_state_provider(
+            lambda: {
+                "capabilities": storage_capabilities[0],
+                "safSelectionPending": saf_selection.pending,
+                "onboardingState": storage_onboarding["state"],
+                "onboardingMessage": storage_onboarding["message"],
+                "onboardingError": storage_onboarding["error"],
+            }
+        )
         compose_library_bridge.request_publish("storage_startup")
     if compose_settings_bridge.enabled:
         compose_settings_bridge.set_storage_state_provider(
             lambda: {
                 "capabilities": storage_capabilities[0],
                 "safSelectionPending": saf_selection.pending,
+                "onboardingState": storage_onboarding["state"],
+                "onboardingMessage": storage_onboarding["message"],
+                "onboardingError": storage_onboarding["error"],
             }
         )
         compose_settings_bridge.request_publish("storage_startup")
@@ -2574,6 +2595,13 @@ async def main(page: ft.Page):
             return False
         if not saf_selection.begin():
             return False
+        storage_onboarding["waiting_for_result"] = True
+        storage_onboarding["dialog_open"] = False
+        storage_onboarding["state"] = "FOLDER_PICKER_OPEN"
+        storage_onboarding["message"] = None
+        storage_onboarding["error"] = None
+        logger.info("[STORAGE] STORAGE_PICKER_OPENED")
+        diagnostics.record("STORAGE_PICKER_OPENED", source="saf", result="requested")
         if compose_library_bridge.enabled:
             compose_library_bridge.request_publish("saf_selection_started")
         try:
@@ -2581,6 +2609,12 @@ async def main(page: ft.Page):
             return True
         except Exception as exc:
             saf_selection.finish()
+            storage_onboarding["waiting_for_result"] = False
+            storage_onboarding["state"] = "ERROR"
+            storage_onboarding["error"] = "Não foi possível abrir o seletor de pastas. Tente novamente."
+            diagnostics.record("STORAGE_ERROR", source="saf", error=str(exc))
+            if compose_library_bridge.enabled:
+                compose_library_bridge.request_publish("saf_selection_error")
             page.snack_bar=ft.SnackBar(ft.Text(str(exc))); page.snack_bar.open=True; safe_update()
             raise
     async def check_video_access(_=None):
@@ -2841,12 +2875,66 @@ async def main(page: ft.Page):
         if thumbnail_reconciliation_task is None or thumbnail_reconciliation_task.done():
             thumbnail_reconciliation_task = asyncio.create_task(reconcile_missing_thumbnails(reason))
 
+    def _configured_valid_library_saf_roots():
+        caps = storage_capabilities[0]
+        if not caps.known:
+            return ()
+        return configured_library_saf_roots(
+            caps.saf_roots,
+            store.folders(),
+        )
+
+    def _has_configured_saf_folder():
+        return any(
+            str(folder.get("kind") or "").strip().casefold() == "saf"
+            and str(folder.get("path") or "").strip()
+            for folder in store.folders()
+            if isinstance(folder, dict)
+        )
+
+    def _set_storage_onboarding_state(
+        state,
+        *,
+        message=None,
+        error=None,
+        diagnostic_event=None,
+        result=None,
+    ):
+        normalized = str(state or "CHECKING").strip().upper()
+        storage_onboarding["state"] = normalized
+        storage_onboarding["message"] = message
+        storage_onboarding["error"] = error
+        if diagnostic_event:
+            try:
+                diagnostics.record(
+                    diagnostic_event,
+                    source="saf",
+                    result=result or normalized,
+                    error=error,
+                )
+            except TypeError:
+                # DiagnosticTimeline has a strict keyword contract. Never pass
+                # arbitrary lifecycle metadata through diagnostics.record().
+                logger.exception("[STORAGE] diagnostic contract rejected event=%s", diagnostic_event)
+        logger.info(
+            "[STORAGE] startup_state=%s startup_gate=%s message=%s error=%s",
+            normalized,
+            storage_onboarding["startup_gate"],
+            bool(message),
+            bool(error),
+        )
+        if compose_library_bridge.enabled:
+            compose_library_bridge.request_publish("storage_onboarding_state")
+        if compose_settings_bridge.enabled:
+            compose_settings_bridge.request_publish("storage_onboarding_state")
+
     def storage_state():
         caps = storage_capabilities[0]
+        valid_library_roots = bool(_configured_valid_library_saf_roots())
         return storage_access_state(
             caps.media_read_state,
             caps.broad_storage_state == "available",
-            bool(caps.saf_roots),
+            valid_library_roots,
             dismissed=storage_onboarding["dismissed"],
         )
 
@@ -2879,79 +2967,86 @@ async def main(page: ft.Page):
             lifecycle_state=current.lifecycle_state,
             api=current.api,
         )
-        if compose_library_bridge.enabled:
-            compose_library_bridge.request_publish("saf_inventory_changed")
+
+    async def _auto_launch_storage_onboarding():
+        if not storage_onboarding["startup_gate"]:
+            return
+        if not bridge.available or not storage_capabilities[0].known or not storage_onboarding["inventory_complete"]:
+            return
+        if _configured_valid_library_saf_roots() or saf_selection.pending:
+            return
+        storage_onboarding["auto_launch_requested"] = True
+        _set_storage_onboarding_state(
+            "NEEDS_FOLDER",
+            message=(
+                "O acesso à pasta da sua biblioteca é necessário. "
+                "Selecione a pasta onde estão armazenados seus animes."
+            ),
+            error=None,
+            diagnostic_event="STORAGE_PERMISSION_MISSING",
+            result="library_root_missing",
+        )
+        try:
+            started = await add_folder()
+            if not started:
+                storage_onboarding["auto_launch_requested"] = False
+                _set_storage_onboarding_state(
+                    "ERROR",
+                    error="Não foi possível abrir a seleção da pasta agora. Tente novamente.",
+                    diagnostic_event="STORAGE_ERROR",
+                    result="picker_not_started",
+                )
+        except Exception:
+            storage_onboarding["auto_launch_requested"] = False
 
     def maybe_show_storage_onboarding():
-        """Ask for an explicit library folder, independent of media/broad grants."""
-        if not bridge.available or storage_onboarding["dialog_open"] or storage_onboarding["waiting_for_result"]:
+        """Coordinate first-access SAF onboarding; Android uses only DocumentsUI."""
+        if not bridge.available or not storage_onboarding["startup_gate"]:
             return
-        if not storage_capabilities[0].known:
-            return
-        if dedupe_saf_roots(storage_capabilities[0].saf_roots):
+        if not storage_capabilities[0].known or not storage_onboarding["inventory_complete"]:
             return
 
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Fonte da biblioteca necessária"),
-            content=ft.Text(
-                "Escolha uma pasta que pertença à sua biblioteca do ReiAnix. "
-                "Somente vídeos dentro dessa pasta e de suas subpastas serão considerados."
-            ),
+        valid_roots = _configured_valid_library_saf_roots()
+        if valid_roots:
+            storage_onboarding["auto_launch_requested"] = False
+            storage_onboarding["startup_gate"] = False
+            _set_storage_onboarding_state(
+                "READY",
+                message=None,
+                error=None,
+                diagnostic_event="STORAGE_READY",
+                result="configured_library_root_valid",
+            )
+            return
+
+        if saf_selection.pending or storage_onboarding["waiting_for_result"]:
+            _set_storage_onboarding_state(
+                "FOLDER_PICKER_OPEN",
+                message="Selecione a pasta onde estão armazenados seus animes.",
+                error=None,
+                diagnostic_event=None,
+            )
+            return
+
+        configured_exists = _has_configured_saf_folder()
+        if configured_exists:
+            message = "O acesso à pasta da sua biblioteca foi perdido. Selecione novamente a pasta onde estão seus animes."
+            diagnostic_event = "STORAGE_PERMISSION_REVOKED"
+            result = "configured_root_invalid"
+        else:
+            message = "Selecione a pasta onde estão armazenados seus animes."
+            diagnostic_event = "STORAGE_PERMISSION_MISSING"
+            result = "library_root_missing"
+
+        _set_storage_onboarding_state(
+            "NEEDS_FOLDER",
+            message=message,
+            error=None,
+            diagnostic_event=diagnostic_event,
+            result=result,
         )
-
-        async def choose_folder(_event):
-            storage_onboarding["dialog_open"] = False
-            storage_onboarding["waiting_for_result"] = True
-            page.pop_dialog()
-            try:
-                started = await add_folder()
-                if not started:
-                    storage_onboarding["waiting_for_result"] = False
-                    page.snack_bar = ft.SnackBar(
-                        ft.Text("A seleção de pasta já está em andamento ou a biblioteca está sendo atualizada.")
-                    )
-                    page.snack_bar.open = True
-                    safe_update()
-            except Exception:
-                storage_onboarding["waiting_for_result"] = False
-                page.snack_bar = ft.SnackBar(
-                    ft.Text("Não foi possível abrir o seletor de pasta.")
-                )
-                page.snack_bar.open = True
-                safe_update()
-
-        async def allow_media(_event):
-            # Retained for lifecycle compatibility with the existing storage
-            # permission flow. A MediaStore grant never creates a library source.
-            storage_onboarding["dialog_open"] = False
-            storage_onboarding["waiting_for_result"] = True
-            page.pop_dialog()
-            try:
-                await request_video_access()
-            except Exception:
-                storage_onboarding["waiting_for_result"] = False
-                page.snack_bar = ft.SnackBar(
-                    ft.Text("Não foi possível abrir a solicitação de acesso.")
-                )
-                page.snack_bar.open = True
-                safe_update()
-
-        def cancel(_event):
-            logger.info("[LIBRARY_SOURCE] onboarding cancelled")
-            storage_onboarding["dialog_open"] = False
-            storage_onboarding["dismissed"] = True
-            page.pop_dialog()
-            safe_update()
-
-        dialog.actions = [
-            ft.TextButton("CANCELAR", on_click=cancel),
-            ft.TextButton("ESCOLHER PASTA", on_click=choose_folder),
-        ]
-        storage_onboarding["dialog_open"] = True
-        logger.info("[LIBRARY_SOURCE] LIBRARY_SOURCE_INVALID reason=no_configured_library_source")
-        page.show_dialog(dialog)
-        safe_update()
+        if not storage_onboarding["auto_launch_requested"]:
+            page.run_task(_auto_launch_storage_onboarding)
 
     async def refresh_library(_=None, *, _home_refresh_context=None):
         if saf_selection.pending:
