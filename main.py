@@ -629,6 +629,7 @@ async def main(page: ft.Page):
 
     library.artwork.set_change_listener(_dispatch_artwork_event)
     library.artwork.set_diagnostic_recorder(diagnostics.record)
+    navigation = NavigationController()
 
     def _dispatch_metadata_change(event_name, payload):
         """Publish background metadata localization changes on the main UI loop."""
@@ -655,7 +656,6 @@ async def main(page: ft.Page):
             logger.debug("[METADATA] main UI loop already closed", exc_info=True)
 
     library.set_metadata_change_listener(_dispatch_metadata_change)
-    navigation = NavigationController()
     performance.set_screen_provider(lambda: navigation.current)
     performance.install_page_hooks(page)
     details_instance_generation = [0]
