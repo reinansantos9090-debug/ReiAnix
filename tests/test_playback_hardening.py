@@ -103,7 +103,9 @@ class PlaybackHardeningTests(unittest.TestCase):
         state_block = player[state_block_start:state_block_end]
         ready = state_block[state_block.index("                Player.STATE_READY -> {"):state_block.index("                Player.STATE_BUFFERING -> {")]
         buffering = state_block[state_block.index("                Player.STATE_BUFFERING -> {"):state_block.index("                Player.STATE_ENDED -> {")]
-        self.assertIn("playerReadyAtMs = System.currentTimeMillis()", ready)
+        self.assertIn("val readyAtMs = System.currentTimeMillis()", ready)
+        self.assertIn("val firstReadyForGeneration = playerReadyAtMs == 0L", ready)
+        self.assertIn("playerReadyAtMs = readyAtMs", ready)
         self.assertIn("preparingIndicator.visibility = View.GONE", ready)
         self.assertIn("preparingIndicator.visibility = View.VISIBLE", buffering)
         self.assertIn("events.contains(Player.EVENT_RENDERED_FIRST_FRAME)", player)

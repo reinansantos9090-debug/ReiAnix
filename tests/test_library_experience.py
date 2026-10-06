@@ -73,7 +73,7 @@ class LibraryExperienceTests(unittest.TestCase):
     def test_movie_details_uses_movie_artwork_entity_contract(self):
         details = (Path(__file__).resolve().parents[1] / "views" / "details_view.py").read_text(encoding="utf-8")
         self.assertIn('artwork_entity = "movie" if is_movie else "anime"', details)
-        self.assertIn('resolve_artwork(artwork_entity, anime_group["id"], "poster"', details)
+        self.assertIn('resolve_artwork(\n                artwork_entity,\n                anime_group["id"],\n                "poster",', details)
 
     def test_movie_artwork_discovery_uses_movie_entity(self):
         artwork = (Path(__file__).resolve().parents[1] / "core" / "artwork.py").read_text(encoding="utf-8")

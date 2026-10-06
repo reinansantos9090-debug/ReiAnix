@@ -197,7 +197,8 @@ class ArtworkEngineTests(unittest.TestCase):
         second = self.engine.resolve("anime", anime, "poster", allow_network=False)
         self.assertEqual(second["local_path"], str(cached))
         self.assertEqual(second["status"], STATUS_READY)
-        self.assertTrue(Path(self.store.anime_metadata("local")["cover_cache"]).is_file())
+        self.assertEqual(second["source"], "cache")
+        self.assertEqual(Path(second["local_path"]).resolve(), cached.resolve())
 
     def test_success_publishes_incremental_artwork_event(self):
         anime = self._media("Artwork events")
