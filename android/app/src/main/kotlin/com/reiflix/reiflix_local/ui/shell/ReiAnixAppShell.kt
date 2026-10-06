@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui.shell
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
+import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 /**
@@ -92,9 +94,13 @@ private fun ReiAnixBottomNavigation(
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = ReiAnixTokens.Motion.stateChangeMillis,
-                ),
+                animationSpec = if (ReiAnixMotionPolicy.systemAnimationsEnabled()) {
+                    androidx.compose.animation.core.tween(
+                        durationMillis = ReiAnixTokens.Motion.stateChangeMillis,
+                    )
+                } else {
+                    snap()
+                },
                 label = "bottom-nav-color",
             )
             NavigationBarItem(
