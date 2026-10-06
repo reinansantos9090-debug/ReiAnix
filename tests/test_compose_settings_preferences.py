@@ -97,3 +97,68 @@ def test_scope_is_whitelisted_in_python_before_persistence():
     assert "supported_compose_settings" in block
     assert "settings.set" in block
     assert "logger.warning" in block
+
+def test_prompt47_settings_surface_is_single_compact_compose_language():
+    compose = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
+    )
+    categories = (
+        "Conta",
+        "Geral",
+        "Aparência",
+        "Biblioteca",
+        "Player",
+        "Gestos",
+        "Áudio e Legendas",
+        "Metadata",
+        "Artwork",
+        "Armazenamento",
+        "Dados e Cache",
+        "Backup e Restauração",
+        "Privacidade",
+        "Varredura",
+        "Diagnóstico",
+        "Sobre",
+    )
+
+    assert "fun ReiAnixSettingsRow(" in compose
+    assert "fun ReiAnixSettingsSurface(" in compose
+    assert "items = state.categories" in compose
+    assert 'key = { category -> "settings:' in compose
+    assert "ReiAnixSettingCard(" not in compose
+    assert "SettingsSpacing" not in compose
+    assert "SettingsDimensions" not in compose
+    assert "SettingsTokens" not in compose
+    assert "Color(0x" not in compose
+
+    for category in categories:
+        assert f'ReiAnixSettingsCategoryUiModel("{category}"' in compose
+
+    assert '"Artwork" -> {' in compose
+    assert '"Dados e Cache" -> {' in compose
+    assert '"Backup e Restauração" -> {' in compose
+    assert '"Diagnóstico" -> {' in compose
+    assert "NativeManagedSettingsCategories" in compose
+    assert '.filterNot { it == "Armazenamento" }' in compose
+
+
+def test_prompt47_settings_uses_centralized_visual_tokens_and_no_remote_account_image():
+    compose = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
+    )
+    tokens = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt"
+    )
+    storage = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixStorageScreen.kt"
+    )
+
+    assert "ReiAnixTokens.Dimensions.settingsRowMinHeight" in compose
+    assert "ReiAnixTokens.Dimensions.settingsIconContainerSize" in compose
+    assert "ReiAnixTokens.Dimensions.settingsTrailingSize" in compose
+    assert "ReiAnixTokens.Shapes.card" in compose
+    assert "ReiAnixAccountAvatar" not in compose
+    assert "androidx.compose.foundation.layout.safeDrawing" not in compose
+    assert "val settingsRowMinHeight = 72.dp" in tokens
+    assert "ReiAnixSettingsSurface(" in storage
+    assert "settingsMaxWidth" in storage
