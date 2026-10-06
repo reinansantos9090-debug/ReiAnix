@@ -191,7 +191,7 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
             "open_broad_storage_settings", "backup_create", "backup_restore", "backup_integrity",
             "backup_reconcile", "diagnostic_export",
         )) return
-        dispatchCommand("compose_settings_action", normalizedAction, normalizedAction) { requestId ->
+        dispatchCommand(normalizedAction, normalizedAction) { requestId ->
             JSONObject()
                 .put("type", "compose_settings_action")
                 .put("requestId", requestId)
@@ -201,7 +201,7 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     fun requestAccountAction(action: String) {
         val normalizedAction = action.trim().lowercase()
         if (normalizedAction !in setOf("login", "logout", "switch")) return
-        dispatchCommand("compose_account_action", normalizedAction, "account:" + normalizedAction) { requestId ->
+        dispatchCommand(normalizedAction, "account:" + normalizedAction) { requestId ->
             JSONObject()
                 .put("type", "compose_account_action")
                 .put("requestId", requestId)
