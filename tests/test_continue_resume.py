@@ -49,13 +49,23 @@ class ContinueResumeTests(unittest.TestCase):
         self.assertIn('launch_progress_seconds = raw_progress_seconds', play)
         self.assertIn('"PROGRESS_VALIDATED"', play)
 
-    def test_ready_gates_resume_seek_before_playback(self):
+    def test_ready_uses_preloaded_resume_position_before_playback(self):
         prepare = PLAYER[PLAYER.index("private fun prepareCurrentMedia"):PLAYER.index("private fun createPlayerListener")]
-        self.assertIn("player.playWhenReady = false", prepare)
-        self.assertIn("RESUME_SEEK_REQUESTED", PLAYER)
-        self.assertIn("RESUME_SEEK_APPLIED", PLAYER)
-        self.assertIn("val appliedResumePositionMs = seekToSavedPosition(restoredPositionMs ?: savedPosition)", PLAYER)
-        self.assertIn("player.playWhenReady = requestedPlayWhenReadyForGeneration", PLAYER)
+        self.assertIn("player.setMediaItem(mediaItem, initialPositionMsForGeneration)", prepare)
+        self.assertIn("initialPositionMsForGeneration", prepare)
+        self.assertIn("player.playWhenReady = shouldPlayWhenReady", prepare)
+        self.assertLess(
+            prepare.index("player.playWhenReady = shouldPlayWhenReady"),
+            prepare.index("player.prepare()"),
+        )
+        self.assertNotIn("player.playWhenReady = false", prepare)
+        self.assertNotIn("RESUME_SEEK_REQUESTED", PLAYER)
+        self.assertNotIn("RESUME_SEEK_APPLIED", PLAYER)
+        self.assertNotIn(
+            "val appliedResumePositionMs = seekToSavedPosition(restoredPositionMs ?: savedPosition)",
+            PLAYER,
+        )
+        self.assertIn("RESUME_POSITION_ALREADY_PRELOADED", PLAYER)
 
     def test_resume_position_is_clamped_by_existing_policy(self):
         self.assertIn("fun safeResumePosition", POLICY)

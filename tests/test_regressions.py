@@ -83,7 +83,7 @@ class RegressionTests(unittest.TestCase):
 
     def test_player_media_transition_keeps_single_media3_prepare_path(self):
         self.assertIn("onNewIntent", PLAYER)
-        self.assertIn("player.setMediaItem(mediaItem)", PLAYER)
+        self.assertIn(player.setMediaItem(mediaItem, initialPositionMsForGeneration), PLAYER)
         self.assertIn("player.prepare()", PLAYER)
         self.assertEqual(1, PLAYER.count("ExoPlayer.Builder(this).build()"))
 

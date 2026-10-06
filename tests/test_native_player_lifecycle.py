@@ -37,16 +37,19 @@ class NativePlayerLifecycleTests(unittest.TestCase):
         self.assertIn("uri == localUri", self.player)
         self.assertIn("isCurrentPreparation(generation, localUri, preparationTransitionGeneration)", self.player)
 
-    def test_resume_is_applied_once_after_ready(self):
+    def test_resume_position_is_preloaded_before_ready(self):
+        prepare = self.player[
+            self.player.index("private fun prepareCurrentMedia"):
+            self.player.index("private fun createPlayerListener")
+        ]
         ready = self.player[
             self.player.index("Player.STATE_READY -> {"):
             self.player.index("Player.STATE_BUFFERING -> {")
         ]
-        self.assertIn("if (!initialSeekApplied)", ready)
-        self.assertIn("seekToSavedPosition(restoredPositionMs ?: savedPosition)", ready)
-        self.assertIn("initialSeekApplied = true", ready)
-        self.assertEqual(1, ready.count("seekToSavedPosition(restoredPositionMs ?: savedPosition)"))
-
+        self.assertIn("player.setMediaItem(mediaItem, initialPositionMsForGeneration)", prepare)
+        self.assertIn("initialSeekApplied = true", prepare)
+        self.assertNotIn("seekToSavedPosition(restoredPositionMs ?: savedPosition)", ready)
+        self.assertIn("RESUME_POSITION_ALREADY_PRELOADED", ready)
     def test_media_reset_rebinds_texture_view_between_media_items(self):
         prepare = self.player[
             self.player.index("private fun prepareCurrentMedia"):
@@ -132,7 +135,7 @@ class NativePlayerLifecycleTests(unittest.TestCase):
         ]
         self.assertIn("playbackWorker.submit", prepare)
         self.assertIn("handler.post {", prepare)
-        self.assertIn("player.setMediaItem(mediaItem)", prepare)
+        self.assertIn(player.setMediaItem(mediaItem, initialPositionMsForGeneration), prepare)
         self.assertIn("player.prepare()", prepare)
 
     def test_android_host_compilation_contracts_used_by_player_diagnostics(self):

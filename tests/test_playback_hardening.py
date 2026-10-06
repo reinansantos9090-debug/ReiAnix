@@ -92,8 +92,9 @@ class PlaybackHardeningTests(unittest.TestCase):
 
     def test_ready_state_clears_loading_and_first_frame_remains_authoritative(self):
         player = PLAYER.read_text(encoding="utf-8")
-        ready = player[player.index("Player.STATE_READY ->"):player.index("Player.STATE_BUFFERING ->")]
-        buffering = player[player.index("Player.STATE_BUFFERING ->"):player.index("Player.STATE_ENDED ->")]
+        state_start = player.index("override fun onPlaybackStateChanged(state: Int)")
+        ready = player[player.index("Player.STATE_READY ->", state_start):player.index("Player.STATE_BUFFERING ->", state_start)]
+        buffering = player[player.index("Player.STATE_BUFFERING ->", state_start):player.index("Player.STATE_ENDED ->", state_start)]
         self.assertIn("playerReadyAtMs = System.currentTimeMillis()", ready)
         self.assertIn("preparingIndicator.visibility = View.GONE", ready)
         self.assertIn("preparingIndicator.visibility = View.VISIBLE", buffering)

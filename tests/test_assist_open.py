@@ -61,7 +61,7 @@ class AssistOpenTests(unittest.TestCase):
         self.assertIn('"URI_VALIDATED"', MAIN_PY)
         prepare = PLAYER[PLAYER.index("private fun prepareCurrentMedia"):PLAYER.index("private fun createPlayerListener")]
         self.assertIn("validateLocalSource(localUri)", prepare)
-        self.assertIn("player.setMediaItem(mediaItem)", prepare)
+        self.assertIn(player.setMediaItem(mediaItem, initialPositionMsForGeneration), prepare)
         self.assertIn("player.prepare()", prepare)
         self.assertNotIn("Thread.sleep", prepare)
         self.assertNotIn("SystemClock.sleep", prepare)
