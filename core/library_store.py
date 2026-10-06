@@ -1027,6 +1027,47 @@ class LibraryStore:
             )
             return True
 
+    def has_native_request(self, request_id, *, namespace="default"):
+        """Check a bounded requestId ledger stored in the existing preferences table."""
+        request_id = str(request_id or "").strip()
+        namespace = str(namespace or "default").strip() or "default"
+        if not request_id:
+            return False
+        key = f"native_request_ids:{namespace}"
+        with self._conn() as c:
+            row = c.execute("SELECT value FROM preferences WHERE key=?", (key,)).fetchone()
+            try:
+                ids = json.loads(row["value"]) if row else []
+            except (TypeError, json.JSONDecodeError):
+                ids = []
+            return request_id in ids if isinstance(ids, list) else False
+
+    def claim_native_request(self, request_id, *, namespace="default", limit=1000):
+        """Atomically claim a requestId without introducing a new table or store."""
+        request_id = str(request_id or "").strip()
+        namespace = str(namespace or "default").strip() or "default"
+        if not request_id:
+            return True
+        key = f"native_request_ids:{namespace}"
+        with self._conn() as c:
+            row = c.execute("SELECT value FROM preferences WHERE key=?", (key,)).fetchone()
+            try:
+                ids = json.loads(row["value"]) if row else []
+            except (TypeError, json.JSONDecodeError):
+                ids = []
+            if not isinstance(ids, list):
+                ids = []
+            if request_id in ids:
+                return False
+            ids.append(request_id)
+            ids = ids[-max(1, int(limit)):]
+            c.execute(
+                """INSERT INTO preferences(key,value,updated_at) VALUES (?,?,?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at""",
+                (key, json.dumps(ids, ensure_ascii=False), time.time()),
+            )
+            return True
+
     def interrupted_scans(self):
         """Return scans that were interrupted by a prior process shutdown."""
         with self._conn() as c:
