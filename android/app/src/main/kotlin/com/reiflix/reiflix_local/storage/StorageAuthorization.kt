@@ -1,6 +1,4 @@
 package com.reiflix.reiflix_local.storage
-import android.net.Uri
-import android.provider.DocumentsContract
 
 /**
  * Single native authorization model.
