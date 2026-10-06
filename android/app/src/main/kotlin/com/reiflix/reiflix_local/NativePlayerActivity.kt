@@ -15,8 +15,6 @@ import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.StateListDrawable
 import android.view.KeyEvent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -53,14 +51,12 @@ import android.view.WindowManager
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerControls
 import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerTopControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerCenterControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerBottomControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerUiState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -69,7 +65,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.Format
@@ -2016,10 +2011,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
         lastSavedPosition = -1L
         lastProgressPersistAt = System.currentTimeMillis()
         val generation = playerGeneration
-        activePlayerListener = createPlayerListener(generation)
-        activeAnalyticsListener = createAnalyticsListener(generation)
-        player.addListener(activePlayerListener!!)
-        player.addAnalyticsListener(activeAnalyticsListener!!)
+        val playerListener = createPlayerListener(generation)
+        val analyticsListener = createAnalyticsListener(generation)
+        activePlayerListener = playerListener
+        activeAnalyticsListener = analyticsListener
+        player.addListener(playerListener)
+        player.addAnalyticsListener(analyticsListener)
         logPlayer("PLAYER_GENERATION_START generation=$generation reason=$reason requestId=" + requestId.ifEmpty { "-" })
     }
 
