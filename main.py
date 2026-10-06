@@ -3292,7 +3292,16 @@ async def main(page: ft.Page):
                                 *(
                                     key
                                     for key in settings.EXPORT_KEYS
-                                    if key.startswith(("player.", "gestures.", "audio."))
+                                    if key.startswith(
+                                        (
+                                            "library.",
+                                            "player.",
+                                            "gestures.",
+                                            "audio.",
+                                            "metadata.",
+                                            "artwork.",
+                                        )
+                                    )
                                 ),
                             }
                             if setting_key not in supported_compose_settings:
