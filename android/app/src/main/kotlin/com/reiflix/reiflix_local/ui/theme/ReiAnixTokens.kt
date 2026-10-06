@@ -82,7 +82,7 @@ object ReiAnixTokens {
         val inverseSurface = Color(0xFFE9EEF7)
         val inverseOnSurface = Color(0xFF1A1E27)
         val inversePrimary = Color(0xFF2D6FD0)
-        val lightPrimary = Color(0xFF1764D1)
+        val lightPrimary = Color(0xFF2563C7)
         val lightOnPrimary = Color(0xFFFFFFFF)
         val lightPrimaryContainer = Color(0xFFD8E9FF)
         val lightOnPrimaryContainer = Color(0xFF001A3D)

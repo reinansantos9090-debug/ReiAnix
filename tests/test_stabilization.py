@@ -22,11 +22,11 @@ class StabilizationTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         store = LibraryStore(tmp.name)
         anime = store.upsert_anime(
-            "stage2",
-            {"title": "earlier validation stage 2", "genres": "[]", "media_kind": "series"},
+            "stabilization-fixture",
+            {"title": "Stabilization Fixture", "genres": "[]", "media_kind": "series"},
         )
-        path = "/storage/emulated/0/Anime/earlier validation stage 2 S01E01.mkv"
-        store.upsert_episode(anime, path, "earlier validation stage 2 S01E01.mkv", 1, 1)
+        path = "/storage/emulated/0/Anime/Stabilization Fixture S01E01.mkv"
+        store.upsert_episode(anime, path, "Stabilization Fixture S01E01.mkv", 1, 1)
         return tmp, store, path
 
     def test_details_guards_remain(self):
@@ -94,7 +94,7 @@ class StabilizationTests(unittest.TestCase):
     def test_file_uri_updates_absolute_path_progress_and_watched_state(self):
         tmp, store, path = self._episode_store()
         self.addCleanup(tmp.cleanup)
-        uri = "file:///storage/emulated/0/Anime/stage%202%20S01E01.mkv"
+        uri = "file:///storage/emulated/0/Anime/Stabilization%20Fixture%20S01E01.mkv"
         now = int(time.time() * 1000)
         self.assertTrue(store.save_progress(uri, 30, 100, event_created_at=now))
         self.assertEqual(30, store.physical_row(path)["progress"])
