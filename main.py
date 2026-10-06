@@ -5084,6 +5084,15 @@ async def main(page: ft.Page):
                                 if registered:
                                     thumbnail_retry_counts.pop(thumbnail_key, None)
                                     thumbnail_latest_at[uri] = time.monotonic()
+                                    diagnostics.record(
+                                        "THUMBNAIL_PUBLISHED",
+                                        request_id=request_id,
+                                        source=payload.get('source') or "media_metadata_retriever",
+                                        result="COMPOSE_SNAPSHOT_REQUESTED" if compose_library_bridge.enabled else "FLET_ONLY",
+                                        duration_ms=metadata["durationMs"],
+                                    )
+                                    if compose_library_bridge.enabled:
+                                        compose_library_bridge.request_publish("thumbnail_ready")
                                     if started_native is not None:
                                         performance.event(
                                             "artwork.thumbnail",
