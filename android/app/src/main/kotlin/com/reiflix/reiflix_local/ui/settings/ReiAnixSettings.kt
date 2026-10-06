@@ -1143,7 +1143,7 @@ fun ReiAnixSettingsRow(
             )
             .semantics(mergeDescendants = true) {
                 contentDescription = if (description.isBlank()) title else "$title. $description"
-                role = Role.Button
+                this.role = Role.Button
             },
     ) {
         Row(
@@ -1289,7 +1289,7 @@ private fun BooleanSettingCard(
                 )
                 .semantics(mergeDescendants = true) {
                     contentDescription = "$title. $description"
-                    role = Role.Switch
+                    this.role = Role.Switch
                     stateDescription = if (checked) "Ativado" else "Desativado"
                 }
                 .padding(
@@ -1647,7 +1647,7 @@ private fun ReiAnixSettingsCategoryCard(
         onClick = onClick,
     ) {
         Icon(
-            imageVector = androidx.compose.material.icons.automirrored.filled.ArrowForward,
+            imageVector = androidx.compose.material.icons.filled.ChevronRight,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
