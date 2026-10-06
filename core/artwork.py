@@ -657,6 +657,16 @@ class ArtworkEngine:
             row = con.execute("SELECT media_kind FROM anime WHERE id=?", (int(anime_id),)).fetchone()
         entity_type = "movie" if row and str(row["media_kind"] or "series").casefold() == "movie" else "anime"
 
+        if cover_cache and not self._is_valid_image_file(cover_cache):
+            # A stale/deleted cover_cache pointer is not a local artwork.
+            # Clearing only the pointer leaves any valid ArtworkEngine row intact,
+            # so a later request can safely repair it from the persisted URL.
+            with self.store._conn() as con:
+                con.execute(
+                    "UPDATE anime SET cover_cache='' WHERE id=? AND cover_cache=?",
+                    (int(anime_id), cover_cache),
+                )
+            cover_cache = ""
         if cover_cache and self._is_valid_image_file(cover_cache):
             key = self._make_key("anilist" if anilist_id else "cache",
                                  f"{anilist_id or cover_url or cover_cache}|{cover_url}",
