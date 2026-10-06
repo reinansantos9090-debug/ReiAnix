@@ -1032,7 +1032,7 @@ class LibraryService:
             rows = [
                 dict(row) for row in con.execute(
                     """SELECT id,anime_id,path,file_size,modified_at,media_identity,missing,
-                              availability_state,last_played_at
+                              availability_state,last_played_at,duration
                        FROM episodes
                        WHERE id > ?
                          AND missing=0
@@ -1057,7 +1057,7 @@ class LibraryService:
                 "thumbnail_ready": str(row["id"]) in exact,
             }
             for row in rows
-            if str(row["id"]) not in exact
+            if str(row["id"]) not in exact or float(row.get("duration") or 0) <= 0.0
         ]
 
     def resolve_artwork_batch(self, entity_type, entity_ids, artwork_types=("episode_thumbnail", "poster")):
