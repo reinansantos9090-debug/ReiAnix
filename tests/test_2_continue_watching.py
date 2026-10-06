@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class Prompt52ContinueWatchingTests(unittest.TestCase):
+class ContinueWatchingTests(unittest.TestCase):
     def _store(self, directory):
         from core.library_store import LibraryStore
         return LibraryStore(directory)
@@ -18,16 +18,16 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
             Path(path).name,
             1,
             number,
-            media_identity=f"prompt52:{Path(path).name}",
+            media_identity=f"stage52:{Path(path).name}",
         )
         return store.physical_row(path)
 
     def test_same_anime_keeps_multiple_resumable_episodes(self):
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            anime = store.upsert_anime("prompt52-a", {"title": "Prompt 5.2 A", "genres": "[]"})
+            anime = store.upsert_anime("fixture_52-a", {"title": "earlier validation stage 5.2 A", "genres": "[]"})
             episodes = [
-                self._episode(store, anime, f"content://prompt52/a/e0{n}", n)
+                self._episode(store, anime, f"content://stage52/a/e0{n}", n)
                 for n in (1, 2, 3)
             ]
             for stamp, episode, progress in zip((100, 200, 300), episodes, (10, 20, 30)):
@@ -55,11 +55,11 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
     def test_multiple_animes_keep_each_episode_as_an_independent_item(self):
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            anime_a = store.upsert_anime("prompt52-b-a", {"title": "Prompt 5.2 B A", "genres": "[]"})
-            anime_b = store.upsert_anime("prompt52-b-b", {"title": "Prompt 5.2 B B", "genres": "[]"})
-            a1 = self._episode(store, anime_a, "content://prompt52/b/a1", 1)
-            a2 = self._episode(store, anime_a, "content://prompt52/b/a2", 2)
-            b1 = self._episode(store, anime_b, "content://prompt52/b/b1", 1)
+            anime_a = store.upsert_anime("fixture_52-b-a", {"title": "earlier validation stage 5.2 B A", "genres": "[]"})
+            anime_b = store.upsert_anime("fixture_52-b-b", {"title": "earlier validation stage 5.2 B B", "genres": "[]"})
+            a1 = self._episode(store, anime_a, "content://stage52/b/a1", 1)
+            a2 = self._episode(store, anime_a, "content://stage52/b/a2", 2)
+            b1 = self._episode(store, anime_b, "content://stage52/b/b1", 1)
 
             for stamp, episode in ((100, a1), (200, a2), (300, b1)):
                 self.assertTrue(
@@ -85,9 +85,9 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
     def test_completed_episode_is_excluded_without_hiding_other_episode(self):
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            anime = store.upsert_anime("prompt52-c", {"title": "Prompt 5.2 C", "genres": "[]"})
-            completed = self._episode(store, anime, "content://prompt52/c/e1", 1)
-            active = self._episode(store, anime, "content://prompt52/c/e2", 2)
+            anime = store.upsert_anime("fixture_52-c", {"title": "earlier validation stage 5.2 C", "genres": "[]"})
+            completed = self._episode(store, anime, "content://stage52/c/e1", 1)
+            active = self._episode(store, anime, "content://stage52/c/e2", 2)
             store.save_progress(completed["path"], 90, 100, episode_id=completed["id"], event_created_at=100)
             store.save_progress(active["path"], 20, 100, episode_id=active["id"], event_created_at=200)
 
@@ -98,9 +98,9 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
     def test_missing_episode_is_excluded_without_mutating_missing_state(self):
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            anime = store.upsert_anime("prompt52-d", {"title": "Prompt 5.2 D", "genres": "[]"})
-            missing = self._episode(store, anime, "content://prompt52/d/e1", 1)
-            active = self._episode(store, anime, "content://prompt52/d/e2", 2)
+            anime = store.upsert_anime("fixture_52-d", {"title": "earlier validation stage 5.2 D", "genres": "[]"})
+            missing = self._episode(store, anime, "content://stage52/d/e1", 1)
+            active = self._episode(store, anime, "content://stage52/d/e2", 2)
             store.save_progress(missing["path"], 20, 100, episode_id=missing["id"], event_created_at=100)
             store.save_progress(active["path"], 30, 100, episode_id=active["id"], event_created_at=200)
             with store._conn() as con:
@@ -113,10 +113,10 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
     def test_activity_order_is_last_played_at_descending(self):
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            anime = store.upsert_anime("prompt52-e", {"title": "Prompt 5.2 E", "genres": "[]"})
-            e1 = self._episode(store, anime, "content://prompt52/e/e1", 1)
-            e2 = self._episode(store, anime, "content://prompt52/e/e2", 2)
-            e3 = self._episode(store, anime, "content://prompt52/e/e3", 3)
+            anime = store.upsert_anime("fixture_52-e", {"title": "earlier validation stage 5.2 E", "genres": "[]"})
+            e1 = self._episode(store, anime, "content://stage52/e/e1", 1)
+            e2 = self._episode(store, anime, "content://stage52/e/e2", 2)
+            e3 = self._episode(store, anime, "content://stage52/e/e3", 3)
             for stamp, episode in ((100, e1), (200, e2), (150, e3)):
                 store.save_progress(
                     episode["path"],
@@ -133,9 +133,9 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
     def test_limit_is_applied_after_episode_ordering(self):
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            anime = store.upsert_anime("prompt52-f", {"title": "Prompt 5.2 F", "genres": "[]"})
+            anime = store.upsert_anime("fixture_52-f", {"title": "earlier validation stage 5.2 F", "genres": "[]"})
             episodes = [
-                self._episode(store, anime, f"content://prompt52/f/e{n}", n)
+                self._episode(store, anime, f"content://stage52/f/e{n}", n)
                 for n in range(1, 6)
             ]
             for stamp, episode in enumerate(episodes, start=100):
@@ -153,9 +153,9 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
     def test_restart_preserves_all_resumable_episode_rows(self):
         with tempfile.TemporaryDirectory() as directory:
             first = self._store(directory)
-            anime = first.upsert_anime("prompt52-g", {"title": "Prompt 5.2 G", "genres": "[]"})
+            anime = first.upsert_anime("fixture_52-g", {"title": "earlier validation stage 5.2 G", "genres": "[]"})
             episodes = [
-                self._episode(first, anime, f"content://prompt52/g/e{n}", n)
+                self._episode(first, anime, f"content://stage52/g/e{n}", n)
                 for n in (1, 2, 3)
             ]
             for stamp, episode, progress in zip((100, 200, 300), episodes, (20, 30, 40)):
@@ -179,9 +179,9 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
     def test_episode_rows_are_not_deduplicated_by_anime_or_title(self):
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            anime = store.upsert_anime("prompt52-h", {"title": "Same Title", "genres": "[]"})
-            first = self._episode(store, anime, "content://prompt52/h/one", 1)
-            second = self._episode(store, anime, "content://prompt52/h/two", 2)
+            anime = store.upsert_anime("fixture_52-h", {"title": "Same Title", "genres": "[]"})
+            first = self._episode(store, anime, "content://stage52/h/one", 1)
+            second = self._episode(store, anime, "content://stage52/h/two", 2)
             store.save_progress(first["path"], 10, 100, episode_id=first["id"], event_created_at=100)
             store.save_progress(second["path"], 20, 100, episode_id=second["id"], event_created_at=200)
 
@@ -189,7 +189,7 @@ class Prompt52ContinueWatchingTests(unittest.TestCase):
             self.assertEqual({first["id"], second["id"]}, {row["id"] for row in rows})
             self.assertEqual(2, len({row["episode_id"] for row in rows}))
 
-    def test_prompt52_static_contract_preserves_current_episode_separation(self):
+    def test_static_contract_preserves_current_episode_separation(self):
         store_source = (ROOT / "core/library_store.py").read_text(encoding="utf-8")
         service_source = (ROOT / "core/library_service.py").read_text(encoding="utf-8")
         self.assertIn("def continue_watching(self, limit=12):", store_source)

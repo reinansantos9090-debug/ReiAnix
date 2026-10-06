@@ -15,7 +15,7 @@ PLAYER = (
 ).read_text(encoding="utf-8")
 
 
-class Prompt26AssistOpenTests(unittest.TestCase):
+class AssistOpenTests(unittest.TestCase):
     def test_paused_play_preserves_the_original_native_command(self):
         self.assertIn(
             'private const val STATE_PENDING_PLAY_INTENT_DATA = "reiflix.pendingPlayIntentData"',
@@ -96,7 +96,7 @@ class Prompt26AssistOpenTests(unittest.TestCase):
         self.assertIn('events.contains(Player.EVENT_RENDERED_FIRST_FRAME)', PLAYER)
         self.assertIn('publishPlayerError', PLAYER)
 
-    def test_prompt25_session_generation_fences_are_preserved(self):
+    def test_session_generation_fences_are_preserved(self):
         for token in (
             "player_callback_is_current",
             "stale_session",
@@ -134,7 +134,7 @@ class Prompt26AssistOpenTests(unittest.TestCase):
         ):
             self.assertIn(token, PLAYER)
 
-    def test_prompt26_race_matrix_has_a_real_contract_for_each_case(self):
+    def test_race_matrix_has_a_real_contract_for_each_case(self):
         cases = {
             "A_normal_assist": ("ASSIST_REQUEST_CREATED", "ASSIST_COMPLETED"),
             "B_double_tap": ("OPEN_REQUEST_IN_FLIGHT", "seenPlayerRequestIds"),
@@ -165,7 +165,7 @@ class Prompt26AssistOpenTests(unittest.TestCase):
         combined = MAIN_PY + MAIN_ACTIVITY + PLAYER
         for name, required in cases.items():
             for token in required:
-                self.assertIn(token, combined, msg=f"Prompt 26 case {name} lacks contract {token}")
+                self.assertIn(token, combined, msg=f"earlier validation stage 26 case {name} lacks contract {token}")
 
 
 if __name__ == "__main__":

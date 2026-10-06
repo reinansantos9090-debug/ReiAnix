@@ -9,7 +9,7 @@ from core.library_store import LibraryStore
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class Prompt53DetailsSemanticsTests(unittest.TestCase):
+class DetailsSemanticsTests(unittest.TestCase):
     def _episode(self, store, anime_id, path, number):
         store.upsert_episode(
             anime_id,
@@ -17,7 +17,7 @@ class Prompt53DetailsSemanticsTests(unittest.TestCase):
             Path(path).name,
             1,
             number,
-            media_identity=f"prompt53:{Path(path).name}",
+            media_identity=f"stage53:{Path(path).name}",
         )
         return store.physical_row(path)
 
@@ -25,10 +25,10 @@ class Prompt53DetailsSemanticsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime = store.upsert_anime(
-                "prompt53-next",
-                {"title": "Prompt 5.3 Next", "genres": "[]"},
+                "fixture_53-next",
+                {"title": "earlier validation stage 5.3 Next", "genres": "[]"},
             )
-            first = self._episode(store, anime, "content://prompt53/e01", 1)
+            first = self._episode(store, anime, "content://stage53/e01", 1)
             current = store.current_episode(anime)
 
             self.assertEqual(first["id"], current["id"])
@@ -39,11 +39,11 @@ class Prompt53DetailsSemanticsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime = store.upsert_anime(
-                "prompt53-partial",
-                {"title": "Prompt 5.3 Partial", "genres": "[]"},
+                "fixture_53-partial",
+                {"title": "earlier validation stage 5.3 Partial", "genres": "[]"},
             )
-            first = self._episode(store, anime, "content://prompt53/p01", 1)
-            second = self._episode(store, anime, "content://prompt53/p02", 2)
+            first = self._episode(store, anime, "content://stage53/p01", 1)
+            second = self._episode(store, anime, "content://stage53/p02", 2)
             self.assertTrue(
                 store.save_progress(
                     second["path"],

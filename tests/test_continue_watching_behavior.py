@@ -7,28 +7,28 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
 
 
-class Prompt08ContinueWatchingTests(unittest.TestCase):
+class ContinueWatchingTests(unittest.TestCase):
     def test_continue_watching_boundary_states_are_source_driven(self):
         from core.library_store import LibraryStore
 
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            anime = store.upsert_anime("prompt08", {"title": "Prompt 08", "genres": "[]"})
+            anime = store.upsert_anime("stage08", {"title": "earlier validation stage 08", "genres": "[]"})
             for number in range(1, 5):
                 store.upsert_episode(
                     anime,
-                    f"content://prompt08/e0{number}",
+                    f"content://stage08/e0{number}",
                     f"E0{number}.mkv",
                     1,
                     number,
-                    media_identity=f"prompt08:e0{number}",
+                    media_identity=f"stage08:e0{number}",
                 )
 
             rows = [
-                store.physical_row("content://prompt08/e01"),
-                store.physical_row("content://prompt08/e02"),
-                store.physical_row("content://prompt08/e03"),
-                store.physical_row("content://prompt08/e04"),
+                store.physical_row("content://stage08/e01"),
+                store.physical_row("content://stage08/e02"),
+                store.physical_row("content://stage08/e03"),
+                store.physical_row("content://stage08/e04"),
             ]
             self.assertTrue(store.save_progress(rows[0]["path"], 0, 1000, episode_id=rows[0]["id"], event_created_at=1_000))
             self.assertTrue(store.save_progress(rows[1]["path"], 100, 1000, episode_id=rows[1]["id"], event_created_at=2_000))
@@ -43,16 +43,16 @@ class Prompt08ContinueWatchingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            anime = store.upsert_anime("prompt08-reopen", {"title": "Prompt 08 Reopen", "genres": "[]"})
+            anime = store.upsert_anime("fixture_08-reopen", {"title": "earlier validation stage 08 Reopen", "genres": "[]"})
             store.upsert_episode(
                 anime,
-                "content://prompt08-reopen/e01",
+                "content://fixture_08-reopen/e01",
                 "E01.mkv",
                 1,
                 1,
-                media_identity="prompt08-reopen:e01",
+                media_identity="fixture_08-reopen:e01",
             )
-            episode = store.physical_row("content://prompt08-reopen/e01")
+            episode = store.physical_row("content://fixture_08-reopen/e01")
             self.assertTrue(
                 store.save_progress(
                     episode["path"],

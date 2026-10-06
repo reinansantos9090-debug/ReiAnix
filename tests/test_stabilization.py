@@ -17,19 +17,19 @@ PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePl
 SYSTEM_UI = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt").read_text(encoding="utf-8")
 
 
-class Prompt2StabilizationTests(unittest.TestCase):
+class StabilizationTests(unittest.TestCase):
     def _episode_store(self):
         tmp = tempfile.TemporaryDirectory()
         store = LibraryStore(tmp.name)
         anime = store.upsert_anime(
-            "prompt2",
-            {"title": "Prompt 2", "genres": "[]", "media_kind": "series"},
+            "stage2",
+            {"title": "earlier validation stage 2", "genres": "[]", "media_kind": "series"},
         )
-        path = "/storage/emulated/0/Anime/Prompt 2 S01E01.mkv"
-        store.upsert_episode(anime, path, "Prompt 2 S01E01.mkv", 1, 1)
+        path = "/storage/emulated/0/Anime/earlier validation stage 2 S01E01.mkv"
+        store.upsert_episode(anime, path, "earlier validation stage 2 S01E01.mkv", 1, 1)
         return tmp, store, path
 
-    def test_prompt1_details_guards_remain(self):
+    def test_details_guards_remain(self):
         self.assertNotIn("autofocus=bool(primary_target)", DETAILS)
         self.assertIn("palette_changed = (", DETAILS)
         self.assertIn("home_state.get('_update_thumbnail')", MAIN)
@@ -94,7 +94,7 @@ class Prompt2StabilizationTests(unittest.TestCase):
     def test_file_uri_updates_absolute_path_progress_and_watched_state(self):
         tmp, store, path = self._episode_store()
         self.addCleanup(tmp.cleanup)
-        uri = "file:///storage/emulated/0/Anime/Prompt%202%20S01E01.mkv"
+        uri = "file:///storage/emulated/0/Anime/stage%202%20S01E01.mkv"
         now = int(time.time() * 1000)
         self.assertTrue(store.save_progress(uri, 30, 100, event_created_at=now))
         self.assertEqual(30, store.physical_row(path)["progress"])
@@ -106,7 +106,7 @@ class Prompt2StabilizationTests(unittest.TestCase):
     def test_playback_event_ordering_is_atomic_across_uri_representations(self):
         tmp, store, path = self._episode_store()
         self.addCleanup(tmp.cleanup)
-        uri = "file:///storage/emulated/0/Anime/Prompt%202%20S01E01.mkv"
+        uri = "file:///storage/emulated/0/Anime/stage%202%20S01E01.mkv"
         t1 = int(time.time() * 1000)
         self.assertTrue(store.save_progress(uri, 80, 100, event_created_at=t1))
         self.assertFalse(store.save_progress(path, 40, 100, event_created_at=t1 - 100))
@@ -272,7 +272,7 @@ class Prompt2StabilizationTests(unittest.TestCase):
         self.assertEqual("settings_inner", nav.back())
         self.assertEqual("previous", nav.back())
         self.assertEqual("previous", nav.back())
-        self.assertEqual("prompt_exit", nav.back())
+        self.assertEqual("exit_requested", nav.back())
 
 
 if __name__ == "__main__":

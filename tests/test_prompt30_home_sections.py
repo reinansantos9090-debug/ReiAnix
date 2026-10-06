@@ -1,4 +1,4 @@
-"""Prompt 30 regression contracts for definitive Home section removal."""
+"""earlier validation stage 30 regression contracts for definitive Home section removal."""
 from pathlib import Path
 import tempfile
 import unittest
@@ -30,7 +30,7 @@ REMOVED_KEYS = (
 )
 
 
-class Prompt30HomeSectionRemovalTests(unittest.TestCase):
+class HomeSectionRemovalTests(unittest.TestCase):
     def test_removed_home_titles_and_section_keys_are_absent_from_render_pipeline(self):
         refresh_start = HOME.index("async def refresh_home_sections")
         sections_start = HOME.index("sections_column = ft.Column")

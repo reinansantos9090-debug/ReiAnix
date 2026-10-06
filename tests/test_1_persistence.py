@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
 
 
-class Prompt51DurableProgressTests(unittest.TestCase):
+class DurableProgressTests(unittest.TestCase):
     def test_dispatcher_allows_durable_replay_when_no_live_player_exists(self):
         start = MAIN.index("elif event_type in {'player_progress', 'player_paused', 'player_completed'}:")
         end = MAIN.index("elif event_type == 'player_mark_watched':", start)
@@ -22,16 +22,16 @@ class Prompt51DurableProgressTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             first = LibraryStore(directory)
-            anime = first.upsert_anime("prompt51-one", {"title": "Prompt 5.1 One", "genres": "[]"})
+            anime = first.upsert_anime("fixture_51-one", {"title": "earlier validation stage 5.1 One", "genres": "[]"})
             first.upsert_episode(
                 anime,
-                "content://prompt51/e01",
+                "content://stage51/e01",
                 "E01.mkv",
                 1,
                 1,
-                media_identity="prompt51:e01",
+                media_identity="stage51:e01",
             )
-            episode = first.physical_row("content://prompt51/e01")
+            episode = first.physical_row("content://stage51/e01")
 
             # The native durable event survives in the mailbox while Python is
             # restarted before it can consume it. The new process has no live
@@ -59,18 +59,18 @@ class Prompt51DurableProgressTests(unittest.TestCase):
             episodes = []
             for index, progress in enumerate((100, 200, 300, 400, 500), start=1):
                 anime = first.upsert_anime(
-                    f"prompt51-five-{index}",
-                    {"title": f"Prompt 5.1 {index}", "genres": "[]"},
+                    f"fixture_51-five-{index}",
+                    {"title": f"earlier validation stage 5.1 {index}", "genres": "[]"},
                 )
                 first.upsert_episode(
                     anime,
-                    f"content://prompt51/e0{index}",
+                    f"content://stage51/e0{index}",
                     f"E0{index}.mkv",
                     1,
                     index,
-                    media_identity=f"prompt51:e0{index}",
+                    media_identity=f"stage51:e0{index}",
                 )
-                episodes.append(first.physical_row(f"content://prompt51/e0{index}"))
+                episodes.append(first.physical_row(f"content://stage51/e0{index}"))
 
             restarted = LibraryStore(directory)
             for index, (episode, progress) in enumerate(
@@ -100,16 +100,16 @@ class Prompt51DurableProgressTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            anime = store.upsert_anime("prompt51-order", {"title": "Prompt 5.1 Order", "genres": "[]"})
+            anime = store.upsert_anime("fixture_51-order", {"title": "earlier validation stage 5.1 Order", "genres": "[]"})
             store.upsert_episode(
                 anime,
-                "content://prompt51/order",
+                "content://stage51/order",
                 "Order.mkv",
                 1,
                 1,
-                media_identity="prompt51:order",
+                media_identity="stage51:order",
             )
-            episode = store.physical_row("content://prompt51/order")
+            episode = store.physical_row("content://stage51/order")
 
             self.assertTrue(
                 store.save_progress(
@@ -148,25 +148,25 @@ class Prompt51DurableProgressTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            anime = store.upsert_anime("prompt51-identity", {"title": "Prompt 5.1 Identity", "genres": "[]"})
+            anime = store.upsert_anime("fixture_51-identity", {"title": "earlier validation stage 5.1 Identity", "genres": "[]"})
             store.upsert_episode(
                 anime,
-                "content://prompt51/identity-e01",
+                "content://stage51/identity-e01",
                 "E01.mkv",
                 1,
                 1,
-                media_identity="prompt51:identity-e01",
+                media_identity="stage51:identity-e01",
             )
             store.upsert_episode(
                 anime,
-                "content://prompt51/identity-e02",
+                "content://stage51/identity-e02",
                 "E02.mkv",
                 1,
                 2,
-                media_identity="prompt51:identity-e02",
+                media_identity="stage51:identity-e02",
             )
-            first = store.physical_row("content://prompt51/identity-e01")
-            second = store.physical_row("content://prompt51/identity-e02")
+            first = store.physical_row("content://stage51/identity-e01")
+            second = store.physical_row("content://stage51/identity-e02")
 
             self.assertFalse(
                 store.save_progress(

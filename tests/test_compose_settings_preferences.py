@@ -8,7 +8,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_prompt19_settings_controls_use_existing_preference_contract():
+def test_settings_controls_use_existing_preference_contract():
     settings = read("core/settings.py")
     compose = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
@@ -45,11 +45,11 @@ def test_prompt19_settings_controls_use_existing_preference_contract():
     assert "apply_settings_runtime(setting_key, normalized)" in main
 
     # Notifications have no persisted/source-of-truth preference in this project,
-    # so Prompt 19 must not invent a non-functional Compose toggle for them.
+    # so earlier validation stage 19 must not invent a non-functional Compose toggle for them.
     assert "notifications" not in compose.lower()
 
 
-def test_prompt19_theme_follows_flow_without_activity_restart():
+def test_theme_follows_flow_without_activity_restart():
     compose = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
     )
@@ -80,7 +80,7 @@ def test_prompt19_theme_follows_flow_without_activity_restart():
     assert "appearance.show_thumbnails" in compose
 
 
-def test_prompt19_scope_is_whitelisted_in_python_before_persistence():
+def test_scope_is_whitelisted_in_python_before_persistence():
     main = read("main.py")
     start = main.index("if event_type == 'compose_settings_set':")
     end = main.index("if event_type == 'compose_settings_navigation':", start)

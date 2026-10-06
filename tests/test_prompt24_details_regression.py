@@ -7,18 +7,18 @@ from core.compose_library_bridge import ComposeLibraryBridge
 from core.library_store import LibraryStore
 
 
-class Prompt24DetailsRegressionTests(unittest.IsolatedAsyncioTestCase):
+class DetailsRegressionTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_sqlite_progress_survives_bridge_republish_and_store_reopen(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime(
-                "prompt24-details",
-                {"title": "Prompt 24 Details", "genres": "[]"},
+                "fixture_24-details",
+                {"title": "earlier validation stage 24 Details", "genres": "[]"},
                 source="local",
             )
             episode_ids = []
             for number in range(1, 11):
-                path = f"content://prompt24/episode-{number}"
+                path = f"content://stage24/episode-{number}"
                 store.upsert_episode(
                     anime_id,
                     path,
@@ -26,7 +26,7 @@ class Prompt24DetailsRegressionTests(unittest.IsolatedAsyncioTestCase):
                     1,
                     number,
                     episode_type="regular",
-                    media_identity=f"prompt24:episode:{number}",
+                    media_identity=f"stage24:episode:{number}",
                 )
                 episode_ids.append(store.physical_row(path)["id"])
 
@@ -35,7 +35,7 @@ class Prompt24DetailsRegressionTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertTrue(
                 store.save_progress(
-                    "content://prompt24/episode-7",
+                    "content://stage24/episode-7",
                     18,
                     100,
                     episode_id=episode_ids[6],
@@ -44,7 +44,7 @@ class Prompt24DetailsRegressionTests(unittest.IsolatedAsyncioTestCase):
             )
 
             bridge = ComposeLibraryBridge(directory, store, store)
-            bridge.request_publish("prompt24_progress")
+            bridge.request_publish("fixture_24_progress")
             await bridge.wait_for_idle()
 
             snapshot = json.loads(
@@ -64,7 +64,7 @@ class Prompt24DetailsRegressionTests(unittest.IsolatedAsyncioTestCase):
 
             reopened = LibraryStore(directory)
             reopened_bridge = ComposeLibraryBridge(directory, reopened, reopened)
-            reopened_bridge.request_publish("prompt24_reopen")
+            reopened_bridge.request_publish("fixture_24_reopen")
             await reopened_bridge.wait_for_idle()
 
             reopened_snapshot = json.loads(

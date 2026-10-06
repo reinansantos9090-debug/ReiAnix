@@ -17,7 +17,7 @@ POLICY = (
 HOME = (ROOT / "views/home_view.py").read_text(encoding="utf-8")
 
 
-class Prompt27ContinueResumeTests(unittest.TestCase):
+class ContinueResumeTests(unittest.TestCase):
     def test_continue_resolves_episode_by_canonical_episode_id(self):
         self.assertIn("def episode_by_id(self, episode_id):", STORE_SOURCE)
         self.assertIn("fresh_episode = await asyncio.to_thread(store.episode_by_id, episode_id)", MAIN)
@@ -30,7 +30,7 @@ class Prompt27ContinueResumeTests(unittest.TestCase):
         self.assertIn('anime_id=launch_anime_id', play)
         self.assertIn('episode_id=fresh_episode.get("id")', play)
         self.assertIn('uri_source": "canonical_sqlite_row"', play)
-        # The Home control tree is intentionally untouched in this prompt.
+        # The Home control tree is intentionally untouched in this stage.
         self.assertIn('on_play_episode(', HOME)
 
     def test_resume_uses_seconds_in_sqlite_and_ms_on_native_boundary(self):
@@ -80,19 +80,19 @@ class Prompt27ContinueResumeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            anime = store.upsert_anime("prompt27", {"title": "Prompt 27", "genres": "[]"})
+            anime = store.upsert_anime("stage27", {"title": "earlier validation stage 27", "genres": "[]"})
             store.upsert_episode(
                 anime,
-                "content://prompt27/e01",
+                "content://stage27/e01",
                 "E01.mkv",
                 1,
                 1,
-                media_identity="prompt27:e01",
+                media_identity="stage27:e01",
             )
             self.assertTrue(store.activate_playback_session("session-a"))
             self.assertTrue(
                 store.save_progress(
-                    "content://prompt27/e01",
+                    "content://stage27/e01",
                     300,
                     1000,
                     episode_id=1,
@@ -103,7 +103,7 @@ class Prompt27ContinueResumeTests(unittest.TestCase):
             self.assertTrue(store.activate_playback_session("session-b"))
             self.assertFalse(
                 store.save_progress(
-                    "content://prompt27/e01",
+                    "content://stage27/e01",
                     300,
                     1000,
                     episode_id=1,
@@ -113,7 +113,7 @@ class Prompt27ContinueResumeTests(unittest.TestCase):
             )
             self.assertTrue(
                 store.save_progress(
-                    "content://prompt27/e01",
+                    "content://stage27/e01",
                     500,
                     1000,
                     episode_id=1,
@@ -121,23 +121,23 @@ class Prompt27ContinueResumeTests(unittest.TestCase):
                     session_id="session-b",
                 )
             )
-            self.assertEqual(500, store.physical_row("content://prompt27/e01")["progress"])
+            self.assertEqual(500, store.physical_row("content://stage27/e01")["progress"])
 
     def test_same_session_can_update_progress_without_creating_parallel_state(self):
         from core.library_store import LibraryStore
 
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            anime = store.upsert_anime("prompt27-b", {"title": "Prompt 27 B", "genres": "[]"})
+            anime = store.upsert_anime("fixture_27-b", {"title": "earlier validation stage 27 B", "genres": "[]"})
             store.upsert_episode(
                 anime,
-                "content://prompt27/e02",
+                "content://stage27/e02",
                 "E02.mkv",
                 1,
                 2,
-                media_identity="prompt27:e02",
+                media_identity="stage27:e02",
             )
-            episode = store.physical_row("content://prompt27/e02")
+            episode = store.physical_row("content://stage27/e02")
             self.assertTrue(store.activate_playback_session("same"))
             self.assertTrue(
                 store.save_progress(
@@ -168,16 +168,16 @@ class Prompt27ContinueResumeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            anime = store.upsert_anime("prompt27-c", {"title": "Prompt 27 C", "genres": "[]"})
+            anime = store.upsert_anime("fixture_27-c", {"title": "earlier validation stage 27 C", "genres": "[]"})
             store.upsert_episode(
                 anime,
-                "content://prompt27/e03",
+                "content://stage27/e03",
                 "E03.mkv",
                 1,
                 3,
-                media_identity="prompt27:e03",
+                media_identity="stage27:e03",
             )
-            episode = store.physical_row("content://prompt27/e03")
+            episode = store.physical_row("content://stage27/e03")
             self.assertTrue(store.save_progress(episode["path"], 899, 1000, episode_id=episode["id"], event_created_at=1_000))
             self.assertEqual(1, len(store.continue_watching()))
             self.assertTrue(store.save_progress(episode["path"], 900, 1000, episode_id=episode["id"], event_created_at=2_000))
