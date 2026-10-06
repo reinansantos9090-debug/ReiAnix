@@ -629,7 +629,7 @@ private fun SearchBrowseState(
                     )
                     Text(
                         text = "Ver tudo  ›",
-                        style = MaterialTheme.TypographyTokensCompat.sectionAction,
+                        style = ReiAnixTokens.TypographyTokens.button,
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
