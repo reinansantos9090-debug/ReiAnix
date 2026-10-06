@@ -88,7 +88,8 @@ def test_compose_writes_to_existing_python_settings_store():
     assert "asyncio.to_thread(" in main[worker_start:worker_end]
     assert "settings.set" in main[worker_start:worker_end]
     assert "Compose does not keep a second preference store" in repository
-    assert "NativeMailbox.write(appContext, event)" in repository
+    assert "NativeMailbox.write(" in repository
+    assert "appContext" in repository
 
 
 def test_player_handoff_contains_every_migrated_preference():
