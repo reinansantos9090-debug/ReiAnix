@@ -180,6 +180,43 @@ class ArtworkEngineTests(unittest.TestCase):
         backdrop = self.engine.resolve("anime", anime, "backdrop", allow_network=False)
         self.assertTrue(backdrop["fallback"])
 
+    def test_metadata_sync_preserves_valid_downloaded_cache(self):
+        anime = self._media("Metadata refresh")
+        cached = self.engine.cache_dir / "stable-cover.jpg"
+        cached.write_bytes(JPEG)
+        self.engine.sync_anime_metadata(
+            anime,
+            {"anilist_id": 16498, "cover_url": "https://example/cover.jpg", "cover_cache": str(cached)},
+        )
+        first = self.engine.resolve("anime", anime, "poster", allow_network=False)
+        self.assertEqual(first["local_path"], str(cached))
+        self.engine.sync_anime_metadata(
+            anime,
+            {"anilist_id": 16498, "cover_url": "https://example/cover.jpg"},
+        )
+        second = self.engine.resolve("anime", anime, "poster", allow_network=False)
+        self.assertEqual(second["local_path"], str(cached))
+        self.assertEqual(second["status"], STATUS_READY)
+        self.assertTrue(Path(self.store.anime_metadata("local")["cover_cache"]).is_file())
+
+    def test_success_publishes_incremental_artwork_event(self):
+        anime = self._media("Artwork events")
+        self._remote(anime)
+        events = []
+        self.engine.set_change_listener(lambda name, payload: events.append((name, payload)))
+        self.engine._downloader = lambda _url: (JPEG, "image/jpeg", 200)
+        result = self.engine.request("anime", anime, "poster", blocking=True)
+        names = [name for name, _ in events]
+        self.assertEqual(result["status"], STATUS_READY)
+        self.assertIn("ARTWORK_REQUESTED", names)
+        self.assertIn("ARTWORK_DOWNLOAD_STARTED", names)
+        self.assertIn("ARTWORK_DOWNLOAD_SUCCEEDED", names)
+        self.assertIn("ARTWORK_PUBLISHED", names)
+        published = next(payload for name, payload in events if name == "ARTWORK_PUBLISHED")
+        self.assertEqual(int(published["entity_id"]), anime)
+        self.assertEqual(published["artwork_type"], "poster")
+        self.assertTrue(Path(published["local_path"]).is_file())
+
     def test_download_success_is_atomic_and_persistent(self):
         anime = self._media()
         self._remote(anime)
