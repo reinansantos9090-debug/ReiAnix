@@ -326,7 +326,7 @@ class ProfessionalMetadataTests(unittest.TestCase):
         def downloader(url):
             return VALID_JPEG, "image/jpeg", 200
 
-        with patch.object(self.service.anilist, "search", return_value=[media]),              patch.object(self.service.artwork, "_downloader", side_effect=downloader) as download:
+        with patch.object(self.service.anilist, "search", return_value=[media]),              patch.object(self.service.anilist, "localize_description_to_pt_br", return_value="Original synopsis."),              patch.object(self.service.artwork, "_downloader", side_effect=downloader) as download:
             self.service.hydrate_catalog_metadata(self.service.catalog())
         self.assertEqual(download.call_count, 2)
 
