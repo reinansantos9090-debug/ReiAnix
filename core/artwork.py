@@ -79,7 +79,8 @@ class ArtworkEngine:
     REQUEST_TIMEOUT_SECONDS = 15.0
 
     def __init__(self, store, *, downloader=None, max_workers=None,
-                 cache_limit_bytes=None, max_download_bytes=None):
+                 cache_limit_bytes=None, max_download_bytes=None,
+                 change_listener=None, diagnostic_recorder=None):
         self.store = store
         self.cache_dir = Path(store.cache_dir) / "artwork"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -90,6 +91,8 @@ class ArtworkEngine:
         self.cache_limit_bytes = int(cache_limit_bytes or self.DEFAULT_CACHE_LIMIT_BYTES)
         self.max_download_bytes = int(max_download_bytes or self.MAX_DOWNLOAD_BYTES)
         self._downloader = downloader or self._download_url
+        self._change_listener = change_listener
+        self._diagnostic_recorder = diagnostic_recorder
         self._lock = threading.RLock()
         self._pending: dict[str, Future] = {}
         self._sequence = 0
@@ -103,6 +106,62 @@ class ArtworkEngine:
         # is opened; otherwise an oversized cache could remain above the limit
         # until another download happens.
         self._evict_if_needed()
+
+    def set_change_listener(self, listener):
+        """Set the single incremental artwork publication hook."""
+        self._change_listener = listener if callable(listener) else None
+
+    def set_diagnostic_recorder(self, recorder):
+        """Set a callback compatible with DiagnosticTimeline.record()."""
+        self._diagnostic_recorder = recorder if callable(recorder) else None
+
+    def _notify(self, event, *, row=None, error=None, local_path=None, duration_ms=None, **extra):
+        event_name = {
+            "request": "ARTWORK_REQUESTED",
+            "hit": "ARTWORK_CACHE_HIT",
+            "miss": "ARTWORK_CACHE_MISS",
+            "invalid": "ARTWORK_CACHE_INVALID",
+            "start": "ARTWORK_DOWNLOAD_STARTED",
+            "success": "ARTWORK_DOWNLOAD_SUCCEEDED",
+            "failure": "ARTWORK_DOWNLOAD_FAILED",
+            "retry": "ARTWORK_RETRY",
+            "published": "ARTWORK_PUBLISHED",
+        }.get(event, str(event))
+        source = dict(row or {})
+        payload = {
+            "event": event_name,
+            "entity_type": source.get("entity_type") or extra.get("entity_type"),
+            "entity_id": source.get("entity_id") or extra.get("entity_id"),
+            "artwork_type": source.get("artwork_type") or extra.get("artwork_type"),
+            "cache_key": source.get("artwork_key") or extra.get("cache_key"),
+            "external_url": source.get("external_url") or extra.get("external_url"),
+            "source_ref": source.get("source_ref") or extra.get("source_ref"),
+            "local_path": local_path if local_path is not None else source.get("local_path"),
+            "duration_ms": duration_ms,
+        }
+        payload.update({key: value for key, value in extra.items() if value is not None})
+        if error:
+            payload["error"] = str(error)[:500]
+
+        listener = self._change_listener
+        if callable(listener):
+            try:
+                listener(event_name, dict(payload))
+            except Exception:
+                logger.exception("Artwork change listener failed")
+
+        recorder = self._diagnostic_recorder
+        if callable(recorder):
+            try:
+                import json
+                recorder(
+                    event_name,
+                    source="artwork",
+                    result=json.dumps(payload, ensure_ascii=False, separators=(",", ":"))[:2000],
+                    error=str(error)[:500] if error else None,
+                )
+            except Exception:
+                logger.exception("Artwork diagnostic recorder failed")
 
     def _log(self, event, **extra):
         logger.info("%s %s", _EVENT_NAMES.get(event, event), extra)
@@ -307,6 +366,33 @@ class ArtworkEngine:
                          AND source_ref IS ?""",
                     (entity_type, str(entity_id), artwork_type, source_ref),
                 ).fetchone()
+
+            existing = con.execute(
+                "SELECT * FROM artwork WHERE id=?",
+                (row["id"],),
+            ).fetchone() if row else None
+            if (
+                existing
+                and not local_path
+                and self._is_valid_image_file(existing["local_path"])
+                and (
+                    source in {"anilist", "cache"}
+                    or existing["source"] == "cache"
+                )
+            ):
+                local_path = str(existing["local_path"])
+                source = "cache"
+                status = STATUS_READY
+                failure_count = 0
+                try:
+                    byte_size = byte_size or int(existing["byte_size"] or Path(local_path).stat().st_size)
+                except (OSError, TypeError, ValueError):
+                    byte_size = existing["byte_size"]
+                width = width or existing["width"]
+                height = height or existing["height"]
+                checksum = checksum or existing["checksum"]
+                content_type = content_type or existing["content_type"] or _mime_from_path(local_path)
+
             values = (
                 source, local_path, external_url, int(manual), priority, status,
                 now, failure_count, artwork_key, variant, byte_size, width, height,
@@ -862,6 +948,7 @@ class ArtworkEngine:
                 (STATUS_NOT_REQUESTED, time.time(), int(row["id"])),
             )
         self._log("miss", key=row.get("artwork_key"), reason="missing_local_file")
+        self._notify("invalid", row=row, reason="missing_or_invalid_local_file")
 
     def _retry_delay(self, failure_count):
         exponent = max(0, min(int(failure_count) - 1, 8))
@@ -890,24 +977,27 @@ class ArtworkEngine:
         entity_type = self._entity(entity_type, entity_id)
         artwork_type = self._type(artwork_type)
         self._log("request", entity_type=entity_type, entity_id=entity_id, artwork_type=artwork_type)
+        self._notify("request", entity_type=entity_type, entity_id=entity_id, artwork_type=artwork_type)
 
         rows = self.list_for(entity_type, entity_id, artwork_type)
         pending_remote = next(
             (item for item in rows
              if item.get("external_url")
-             and not (item.get("local_path") and self._is_file(item.get("local_path")))
+             and not (item.get("local_path") and self._is_valid_image_file(item.get("local_path")))
              and item.get("status") != STATUS_INVALID),
             None,
         )
         cached = self.get(entity_type, entity_id, artwork_type, allow_network=False)
         if cached and not pending_remote:
+            self._notify("hit", row=cached)
             return cached
         if cached and pending_remote and cached.get("external_url") == pending_remote.get("external_url"):
+            self._notify("hit", row=cached)
             return cached
         external_rows = [item for item in rows if item.get("external_url")]
         row = next(
             (item for item in external_rows
-             if not (item.get("local_path") and self._is_file(item.get("local_path")))),
+             if not (item.get("local_path") and self._is_valid_image_file(item.get("local_path")))),
             None,
         )
         row = row or (external_rows[0] if external_rows else None)
@@ -1010,8 +1100,18 @@ class ArtworkEngine:
         if not url or not _safe_http_url(url):
             self._set_status(row_id, STATUS_INVALID, http_status=None)
             self._log("failure", key=row.get("artwork_key"), reason="invalid_url")
+            self._notify("failure", row=row, error="invalid_url")
             return None
-        self._log("start", key=row.get("artwork_key"), url_host=_url_host(url))
+        download_started = time.perf_counter()
+        self._log(
+            "start",
+            key=row.get("artwork_key"),
+            url_host=_url_host(url),
+            entity_type=row.get("entity_type"),
+            entity_id=row.get("entity_id"),
+            artwork_type=row.get("artwork_type"),
+        )
+        self._notify("start", row=row)
         self._set_status(row_id, STATUS_DOWNLOADING)
         try:
             payload, content_type, http_status = self._downloader(url)
@@ -1066,7 +1166,24 @@ class ArtworkEngine:
                             "UPDATE anime SET cover_cache=? WHERE id=?",
                             (str(target), int(row["entity_id"])),
                         )
-            self._log("success", key=key, bytes=len(payload))
+            duration_ms = int((time.perf_counter() - download_started) * 1000)
+            self._log(
+                "success",
+                key=key,
+                bytes=len(payload),
+                entity_type=row.get("entity_type"),
+                entity_id=row.get("entity_id"),
+                artwork_type=row.get("artwork_type"),
+                local_path=str(target),
+                duration_ms=duration_ms,
+            )
+            self._notify("success", row=row, local_path=str(target), duration_ms=duration_ms, bytes=len(payload))
+            self._notify(
+                "published",
+                row=dict(row, local_path=str(target), status=STATUS_READY),
+                local_path=str(target),
+                duration_ms=duration_ms,
+            )
             self._evict_if_needed(protected={str(target)})
             return self.get(row["entity_type"], row["entity_id"], row["artwork_type"], allow_network=False)
         except urllib.error.HTTPError as exc:
@@ -1085,6 +1202,20 @@ class ArtworkEngine:
             self._failure(row_id, retry=True, reason=type(exc).__name__)
         except Exception as exc:
             self._failure(row_id, retry=False, reason=type(exc).__name__)
+        with self.store._conn() as con:
+            failed_row = con.execute(
+                "SELECT * FROM artwork WHERE id=?",
+                (row_id,),
+            ).fetchone()
+        if failed_row:
+            failed_row = dict(failed_row)
+            event = "retry" if failed_row.get("status") == STATUS_RETRY_WAIT else "failure"
+            self._notify(
+                event,
+                row=failed_row,
+                error=failed_row.get("status"),
+                duration_ms=int((time.perf_counter() - download_started) * 1000),
+            )
         return None
 
     def _download_url(self, url):
