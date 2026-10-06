@@ -57,7 +57,7 @@ NOVA aos-AVP is Apache-2.0 and separates Video UI, MediaLib, FileCoreLibrary and
 
 Animiru is Apache-2.0 and describes itself as a video player and library manager; it is useful as an anime-library/settings reference. urlAnimiru repositoryhttps://github.com/quickdesh/Animiru
 
-GitHub currently reports no license metadata for ReiAnix, so no third-party license should be assumed for the project. urlReiAnix repositoryhttps://github.com/reinansantos9090-debug/Rei-flix
+GitHub currently reports no license metadata for ReiAnix, so no third-party license should be assumed for the project. urlReiAnix repositoryhttps://github.com/reinansantos9090-debug/ReiAnix
 
 ## Validation classification
 
