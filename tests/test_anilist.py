@@ -200,17 +200,19 @@ class AniListClientTests(unittest.TestCase):
         self.assertEqual(AniListClient.detect_description_language(japanese)[0], "ja")
 
     def test_portuguese_description_does_not_call_translator(self):
-        client = AniListClient("/tmp/cache")
-        source = "A história acompanha uma jovem garota em uma cidade pequena."
-        with patch.object(client, "_translate_chunk_to_pt_br") as translate:
-            self.assertEqual(source, client.localize_description_to_pt_br(source))
-        translate.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            client = AniListClient(directory)
+            source = "A história acompanha uma jovem garota em uma cidade pequena."
+            with patch.object(client, "_translate_chunk_to_pt_br") as translate:
+                self.assertEqual(source, client.localize_description_to_pt_br(source))
+            translate.assert_not_called()
 
     def test_empty_description_does_not_call_translator(self):
-        client = AniListClient("/tmp/cache")
-        with patch.object(client, "_translate_chunk_to_pt_br") as translate:
-            self.assertEqual("", client.localize_description_to_pt_br(""))
-        translate.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            client = AniListClient(directory)
+            with patch.object(client, "_translate_chunk_to_pt_br") as translate:
+                self.assertEqual("", client.localize_description_to_pt_br(""))
+            translate.assert_not_called()
 
     def test_invalid_translation_response_falls_back_to_original(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -253,24 +255,32 @@ class AniListClientTests(unittest.TestCase):
                 self.assertEqual(expected, second.localize_description_to_pt_br(source))
 
     def test_translation_retry_handles_transient_429_before_success(self):
-        client = AniListClient("/tmp/cache")
-        rate_limited = HTTPError("https://api.mymemory.translated.net/get", 429, "rate", {"Retry-After": "0"}, None)
-        ok_response = type("Response", (), {
-            "__enter__": lambda self: self,
-            "__exit__": lambda self, *args: None,
-            "read": lambda self: json.dumps({
-                "responseStatus": 200,
-                "responseData": {"translatedText": "Esta é uma tradução válida."},
-            }).encode("utf-8"),
-            "status": 200,
-        })()
-        with patch("core.anilist.urllib.request.urlopen", side_effect=[rate_limited, ok_response]) as request,              patch("core.anilist.time.sleep") as sleep:
-            self.assertEqual(
-                "Esta é uma tradução válida.",
-                client._translate_chunk_to_pt_br("This is a valid translation.", "en"),
+        with tempfile.TemporaryDirectory() as directory:
+            client = AniListClient(directory)
+            rate_limited = HTTPError(
+                "https://api.mymemory.translated.net/get",
+                429,
+                "rate",
+                {"Retry-After": "0"},
+                None,
             )
-        self.assertEqual(2, request.call_count)
-        sleep.assert_called_once()
+            ok_response = type("Response", (), {
+                "__enter__": lambda self: self,
+                "__exit__": lambda self, *args: None,
+                "read": lambda self: json.dumps({
+                    "responseStatus": 200,
+                    "responseData": {"translatedText": "Esta é uma tradução válida."},
+                }).encode("utf-8"),
+                "status": 200,
+            })()
+            with patch("core.anilist.urllib.request.urlopen", side_effect=[rate_limited, ok_response]) as request, \
+                 patch("core.anilist.time.sleep") as sleep:
+                self.assertEqual(
+                    "Esta é uma tradução válida.",
+                    client._translate_chunk_to_pt_br("This is a valid translation.", "en"),
+                )
+            self.assertEqual(2, request.call_count)
+            sleep.assert_called_once()
 
     def test_paragraph_chunking_preserves_order_and_utf8_byte_limit(self):
         first = "ação coração São Paulo " * 40
