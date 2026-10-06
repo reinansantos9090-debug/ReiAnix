@@ -283,8 +283,6 @@ object VideoThumbnailExtractor {
     ): CachedResult? {
         val metadataFile = cacheMetadataFile(target)
         val metadata = readCacheMetadata(metadataFile, key, size, modifiedAt)
-        var repaired = false
-
         if (metadata?.durationMs == null) {
             val durationMs = readDurationMs(context, uri)
             val repairedResult = Result(
@@ -297,8 +295,7 @@ object VideoThumbnailExtractor {
                 mimeType = metadata?.mimeType,
             )
             writeCacheMetadata(target, key, size, modifiedAt, repairedResult)
-            repaired = metadata != null || metadataFile.exists()
-            return CachedResult(repairedResult, durationRepaired = repaired)
+            return CachedResult(repairedResult, durationRepaired = true)
         }
 
         val result = Result(
