@@ -98,7 +98,10 @@ class ComposeSettingsBridge:
             account = self._account_snapshot()
             categories = self._category_presence(values)
             categories["Conta"] = True
-            categories["Armazenamento"] = self.storage_available
+            # Storage Settings is an always-available Compose category. Its
+            # capabilities are represented by the real storage snapshot rather
+            # than by hiding the category when access is currently unavailable.
+            categories["Armazenamento"] = True
             storage = self._storage_snapshot()
             payload = {
                 "schemaVersion": self.SCHEMA_VERSION,
