@@ -271,20 +271,18 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('storage_onboarding["dismissed"] = True', block)
         self.assertIn("Do not reopen the onboarding modal", block)
 
-    def test_cancel_and_allow_callbacks_are_lifecycle_safe(self):
+    def test_add_folder_marks_native_picker_open_and_keeps_cancel_recoverable(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("        async def allow_media(_event):")
-        end = source.index("        dialog.actions =", start)
+        start = source.index("    async def add_folder(_=None):")
+        end = source.index("    async def check_video_access", start)
         block = source[start:end]
-        cancel_end = source.index("        dialog.actions =", source.index("        def cancel(_event):"))
-        cancel = source[source.index("        def cancel(_event):"):cancel_end]
-        self.assertIn('storage_onboarding["waiting_for_result"] = True', block)
-        self.assertIn("page.pop_dialog()", block)
+        self.assertIn('storage_onboarding["state"] = "FOLDER_PICKER_OPEN"', block)
+        self.assertIn('await bridge.select_tree()', block)
+        cancelled = source[source.index("event_type == 'saf_cancelled'"):source.index("event_type == 'saf_permission'")]
+        self.assertIn('"NEEDS_FOLDER"', cancelled)
+        self.assertIn('storage_onboarding["waiting_for_result"] = False', cancelled)
         self.assertNotIn("asyncio.sleep(0)", block)
-        self.assertIn("def cancel(_event):", cancel)
-        self.assertIn('storage_onboarding["dismissed"] = True', cancel)
-        self.assertNotIn("request_video_access", cancel)
-        self.assertNotIn("open_broad_storage_access", cancel)
+
 
     def test_startup_does_not_self_launch_main_activity_for_storage_snapshot(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
