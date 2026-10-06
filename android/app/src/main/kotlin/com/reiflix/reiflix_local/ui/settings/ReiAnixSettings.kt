@@ -58,6 +58,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixTextField
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
+import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -362,10 +363,24 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onAction: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
+    fun actionBusy(action: String): Boolean =
+        state.operations.values.any {
+            it.action == action &&
+                it.state in setOf(
+                    ReiAnixSettingsOperationState.QUEUED,
+                    ReiAnixSettingsOperationState.RUNNING,
+                )
+        }
+
+    val latestOperationError = state.operations.values.lastOrNull {
+        it.state == ReiAnixSettingsOperationState.ERROR
+    }
+
     var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
     fun requestDestructiveAction(action: String) {
+        if (actionBusy(action)) return
         if (state.settings["app.confirm_destructive"] == "true") {
             pendingConfirmationAction = action
         } else {
@@ -411,6 +426,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             pendingConfirmationAction = null
                             onAction(action)
                         },
+                        enabled = !actionBusy(action),
                     ) {
                         Text(confirmLabel)
                     }
@@ -440,6 +456,31 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     subtitle = settingsCategoryDescription(category),
                     onBack = onBack,
                 )
+            }
+            item(key = "operation-error") {
+                latestOperationError?.let { operation ->
+                    ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(ReiAnixTokens.Spacing.lg),
+                            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                        ) {
+                            Text(
+                                text = operation.error ?: "A operação de configurações não pôde ser concluída.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            operation.message?.takeIf { it.isNotBlank() }?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
             }
             if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING) {
                 item(key = "category-loading") {
@@ -746,6 +787,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar",
                                     onClick = { onAction("reset_player") },
+                                    enabled = !actionBusy("reset_player"),
                                     modifier = Modifier.align(Alignment.End),
                                 )
                             }
@@ -857,6 +899,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixSecondaryButton(
                                     text = "Limpar cache",
                                     onClick = { requestDestructiveAction("clear_anilist_cache") },
+                                    enabled = !actionBusy("clear_anilist_cache"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -921,17 +964,20 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixPrimaryButton(
                                     text = "Adicionar pasta",
                                     onClick = { onAction("select_saf") },
+                                    enabled = !actionBusy("select_saf"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Verificar acesso",
                                     onClick = { onAction("check_storage_access") },
+                                    enabled = !actionBusy("check_storage_access"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 if (storage.mediaReadState != "full") {
                                     ReiAnixSecondaryButton(
                                         text = "Solicitar acesso aos vídeos",
                                         onClick = { onAction("request_media_access") },
+                                        enabled = !actionBusy("request_media_access"),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
@@ -939,6 +985,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     ReiAnixSecondaryButton(
                                         text = "Armazenamento amplo",
                                         onClick = { onAction("open_broad_storage_settings") },
+                                        enabled = !actionBusy("open_broad_storage_settings"),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
@@ -984,11 +1031,13 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixPrimaryButton(
                                     text = "Exportar configurações",
                                     onClick = { onAction("settings_export") },
+                                    enabled = !actionBusy("settings_export"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Importar configurações",
                                     onClick = { onAction("settings_import") },
+                                    enabled = !actionBusy("settings_import"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
@@ -999,6 +1048,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar configurações",
                                     onClick = { requestDestructiveAction("reset_all_settings") },
+                                    enabled = !actionBusy("reset_all_settings"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -1039,21 +1089,25 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixPrimaryButton(
                                     text = "Fazer backup",
                                     onClick = { onAction("backup_create") },
+                                    enabled = !actionBusy("backup_create"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar backup",
                                     onClick = { requestDestructiveAction("backup_restore") },
+                                    enabled = !actionBusy("backup_restore"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Verificar integridade",
                                     onClick = { onAction("backup_integrity") },
+                                    enabled = !actionBusy("backup_integrity"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Reconciliar arquivos",
                                     onClick = { onAction("backup_reconcile") },
+                                    enabled = !actionBusy("backup_reconcile"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -1114,6 +1168,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixSecondaryButton(
                                     text = "Exportar diagnóstico",
                                     onClick = { onAction("diagnostic_export") },
+                                    enabled = !actionBusy("diagnostic_export"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
