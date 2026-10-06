@@ -1042,7 +1042,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Limpar cache de artwork",
-                                    onClick = { pendingConfirmationAction = "clear_anilist_cache" },
+                                    onClick = { requestDestructiveAction("clear_anilist_cache") },
+                                    enabled = !actionBusy("clear_anilist_cache"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
@@ -1163,6 +1164,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixPrimaryButton(
                                     text = "Verificar integridade",
                                     onClick = { onAction("backup_integrity") },
+                                    enabled = !actionBusy("backup_integrity"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
