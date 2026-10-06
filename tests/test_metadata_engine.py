@@ -286,6 +286,70 @@ class ProfessionalMetadataTests(unittest.TestCase):
         by_id.assert_not_called()
         downloader.assert_not_called()
 
+    def test_materialized_metadata_never_auto_refreshes_when_stale(self):
+        anime = self._anime("Attack on Titan", "attack on titan")
+        now = time.time() - 45 * 24 * 60 * 60
+        with self.store._conn() as con:
+            con.execute(
+                "UPDATE anime SET anilist_id=?,metadata_source='anilist',metadata_status='available',metadata_confidence='high',metadata_updated_at=?,metadata_fetched_at=?,description='Sinopse',description_original='Original' WHERE id=?",
+                (16498, now, now, anime),
+            )
+        with patch.object(self.service.anilist, "search", side_effect=AssertionError("unexpected AniList search")),              patch.object(self.service.anilist, "by_id", side_effect=AssertionError("unexpected AniList by_id")):
+            hydrated = self.service.hydrate_catalog_metadata(self.service.catalog())
+        self.assertEqual(len(hydrated), 1)
+        self.assertEqual(hydrated[0]["metadata"]["anilist_id"], 16498)
+
+    def test_hydration_materializes_backdrop_once_and_reuses_it_offline(self):
+        anime = self._anime("Backdrop Show", "backdrop show")
+        self.store.upsert_episode(anime, "content://backdrop/1", "Backdrop Show S01E01.mkv", 1, 1)
+        media = {
+            "id": 200,
+            "title": {"english": "Backdrop Show", "romaji": "Backdrop Show"},
+            "coverImage": {"extraLarge": "https://img.example/poster.jpg"},
+            "bannerImage": "https://img.example/backdrop.jpg",
+            "description": "Original synopsis.",
+        }
+
+        def downloader(url):
+            return VALID_JPEG, "image/jpeg", 200
+
+        with patch.object(self.service.anilist, "search", return_value=[media]),              patch.object(self.service.artwork, "_downloader", side_effect=downloader) as download:
+            self.service.hydrate_catalog_metadata(self.service.catalog())
+        self.assertEqual(download.call_count, 2)
+
+        reopened = LibraryStore(self.tmp.name)
+        reopened_service = LibraryService(reopened)
+        try:
+            with patch.object(reopened_service.anilist, "search", side_effect=AssertionError("offline search")),                  patch.object(reopened_service.anilist, "by_id", side_effect=AssertionError("offline by_id")):
+                hydrated = reopened_service.hydrate_catalog_metadata(reopened_service.catalog())
+            self.assertEqual(len(hydrated), 1)
+            poster = reopened_service.artwork.resolve("anime", anime, "poster", allow_network=False)
+            backdrop = reopened_service.artwork.resolve("anime", anime, "backdrop", allow_network=False)
+            self.assertTrue(poster and Path(poster["local_path"]).is_file())
+            self.assertTrue(backdrop and Path(backdrop["local_path"]).is_file())
+        finally:
+            reopened_service.artwork.shutdown()
+
+    def test_description_original_and_localized_description_persist_separately(self):
+        anime = self._anime("Localized Show", "localized show")
+        with self.store._conn() as con:
+            con.execute(
+                "UPDATE anime SET anilist_id=?,metadata_source='anilist',metadata_status='available',metadata_fetched_at=?,description=?,description_original=? WHERE id=?",
+                (321, time.time(), "The original description.", "The original description.", anime),
+            )
+        changed = self.service._persist_localized_description(
+            "localized show",
+            "The original description.",
+            "A descrição em português.",
+            local_anime_id=anime,
+            source_language="en",
+            from_cache=False,
+        )
+        self.assertTrue(changed)
+        row = self.store.anime_metadata_by_id(anime)
+        self.assertEqual(row["description_original"], "The original description.")
+        self.assertEqual(row["description"], "A descrição em português.")
+
     def test_missing_cover_is_retried_only_after_existing_artwork_backoff(self):
         anime = self._anime('Attack on Titan', 'attack on titan')
         self.store.upsert_episode(anime, 'content://hydrate/2', 'Attack on Titan S01E02.mkv', 1, 2)
