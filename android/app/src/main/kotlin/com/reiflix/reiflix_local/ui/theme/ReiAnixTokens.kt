@@ -184,7 +184,7 @@ object ReiAnixTokens {
     }
 
     object Shapes {
-        val chip = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        val chip = androidx.compose.foundation.shape.RoundedCornerShape(17.dp)
         val small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
         val button = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
         val card = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
