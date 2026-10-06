@@ -6,6 +6,7 @@ calls metadata providers, opens media files, or mutates library state.
 from __future__ import annotations
 
 import math
+import os
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -99,7 +100,19 @@ def _artwork_available(anime: dict) -> bool:
     if anime.get("artwork_available") is not None:
         return bool(anime.get("artwork_available"))
     meta = _metadata(anime)
-    return bool(meta.get("cover_cache") or meta.get("cover_url") or meta.get("banner_url"))
+    # A remote URL is metadata, not proof that a usable local artwork exists.
+    # The local catalog/search layer never performs network I/O.
+    local_path = str(
+        meta.get("cover_cache")
+        or anime.get("cover")
+        or ""
+    ).strip()
+    if not local_path or local_path.startswith(("http://", "https://")):
+        return False
+    try:
+        return os.path.isfile(local_path) and os.path.getsize(local_path) > 0
+    except OSError:
+        return False
 
 
 def _source_kinds(anime: dict) -> set[str]:
