@@ -30,6 +30,7 @@ class ComposeLibraryBridge:
         library,
         store,
         *,
+        settings=None,
         enabled: bool = True,
         scan_state_provider: Callable[[], dict[str, Any]] | None = None,
         storage_state_provider: Callable[[], StorageCapabilities | dict[str, Any]] | None = None,
@@ -37,6 +38,7 @@ class ComposeLibraryBridge:
         self.data_dir = Path(data_dir)
         self.library = library
         self.store = store
+        self.settings = settings
         self.enabled = bool(enabled)
         self.snapshot_dir = self.data_dir / self.SNAPSHOT_DIR_NAME
         self.snapshot_path = self.snapshot_dir / self.SNAPSHOT_FILE_NAME
@@ -97,8 +99,24 @@ class ComposeLibraryBridge:
             source_state = self._source_state(folders)
             scan_snapshot = self._scan_snapshot()
             storage_snapshot = self._storage_snapshot(folders)
+            # Continue Watching is derived from the same canonical catalog read.
+            # Do not perform a second progress query: a concurrent progress write
+            # must never make the Home projection disagree with the episode data
+            # already captured in this snapshot.
             continue_method = getattr(self.library, "continue_watching", None)
-            continue_rows = continue_method(limit=12) if callable(continue_method) else []
+            continue_enabled = True
+            continue_limit = 12
+            if self.settings is not None:
+                try:
+                    continue_enabled = bool(self.settings.get("library.continue_watching"))
+                    continue_limit = max(1, min(20, int(self.settings.get("library.continue_watching_limit"))))
+                except (TypeError, ValueError):
+                    continue_enabled = True
+                    continue_limit = 12
+            continue_rows = (
+                self._continue_watching_from_catalog(catalog, limit=continue_limit)
+                if continue_enabled else []
+            )
             status = "READY" if catalog else "EMPTY"
 
             # Details must consume the existing canonical playback_target()
@@ -417,6 +435,77 @@ class ComposeLibraryBridge:
         }
 
     @staticmethod
+    @classmethod
+    def _continue_watching_from_catalog(
+        cls,
+        catalog: list[dict[str, Any]],
+        *,
+        limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        """Project Continue Watching from the exact catalog snapshot used by Home/Details."""
+        rows: list[dict[str, Any]] = []
+        special_types = {"special", "ova", "oad", "ona", "extra", "movie"}
+
+        for anime in catalog or []:
+            if not isinstance(anime, dict):
+                continue
+            anime_id = anime.get("id")
+            anime_title = anime.get("main_title") or anime.get("title")
+            meta = anime.get("meta") if isinstance(anime.get("meta"), dict) else {}
+            cover_cache = meta.get("cover_cache")
+            cover_url = meta.get("cover_url")
+
+            episode_groups = []
+            for season in anime.get("seasons") or []:
+                if isinstance(season, dict):
+                    episode_groups.extend(season.get("episodes") or [])
+            for special in anime.get("specials") or []:
+                if isinstance(special, dict):
+                    episode_groups.extend(special.get("episodes") or [])
+            episode_groups.extend(anime.get("media_files") or [])
+
+            is_movie_catalog = str(anime.get("media_kind") or meta.get("media_kind") or "").strip().lower() == "movie"
+            for episode in episode_groups:
+                if not isinstance(episode, dict):
+                    continue
+                if episode.get("missing"):
+                    continue
+                try:
+                    progress = max(0.0, float(episode.get("progress") or 0.0))
+                    duration = max(0.0, float(episode.get("duration") or 0.0))
+                except (TypeError, ValueError):
+                    continue
+                if progress <= 0:
+                    continue
+
+                watched = bool(episode.get("watched"))
+                ratio = min(progress, duration) / duration if duration > 0 else 0.0
+                if watched or ratio >= 0.90:
+                    continue
+
+                episode_type = str(episode.get("episode_type") or "regular").strip().lower()
+                if not is_movie_catalog and episode_type in special_types:
+                    continue
+
+                row = dict(episode)
+                row.update(
+                    episode_id=episode.get("id"),
+                    anime_id=episode.get("anime_id") or anime_id,
+                    anime_title=anime_title,
+                    cover_cache=cover_cache,
+                    cover_url=cover_url,
+                )
+                rows.append(row)
+
+        rows.sort(
+            key=lambda item: (
+                -(float(item.get("last_played_at") or 0.0) if str(item.get("last_played_at") or "").strip() else 0.0),
+                -(int(item.get("id") or item.get("episode_id") or 0)),
+            )
+        )
+        return rows[:max(1, min(20, int(limit)))]
+
+
     def _project_continue_watching(source: dict[str, Any]) -> dict[str, Any]:
         return {
             "episode_id": source.get("episode_id") or source.get("id"),

@@ -9,9 +9,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Home as OutlinedHome
 import androidx.compose.material.icons.outlined.List as OutlinedList
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Search as OutlinedSearch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -105,10 +106,10 @@ private val topLevelDestinations = listOf(
         unselectedIcon = Icons.Outlined.OutlinedSearch,
     ),
     ReiAnixBottomNavDestination(
-        route = ReiAnixRoutes.SETTINGS,
-        label = "Ajustes",
-        selectedIcon = Icons.Filled.Settings,
-        unselectedIcon = Icons.Filled.Settings,
+        route = ReiAnixRoutes.MY_LIST,
+        label = "Minha Lista",
+        selectedIcon = Icons.Filled.Favorite,
+        unselectedIcon = Icons.Outlined.FavoriteBorder,
     ),
 )
 
@@ -285,9 +286,9 @@ fun ReiAnixNavigationHost(
         ?.trim()
         .orEmpty()
     val selectedBottomRoute = when {
-        currentRoute == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
+        currentRoute == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.MY_LIST
         currentRoute == ReiAnixRoutes.DETAILS &&
-            detailOrigin == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
+            detailOrigin == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.MY_LIST
         currentRoute == ReiAnixRoutes.DETAILS &&
             topLevelDestinations.any { it.route == detailOrigin } -> detailOrigin
         topLevelDestinations.any { it.route == currentRoute } -> currentRoute
