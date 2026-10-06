@@ -2399,22 +2399,24 @@ async def main(page: ft.Page):
         setting_key = str(key)
         compose_settings_bridge.request_publish("setting_changed")
         if setting_key == "appearance.theme":
-            # Theme changes invalidate only Python/Flet control trees. Navigation,
-            # query/filter state, scroll snapshots and all domain/storage/player
-            # state remain owned by their existing controllers.
+            # Compose is the native visual authority on Android. Its Settings
+            # StateFlow receives the persisted snapshot, so rebuilding the hidden
+            # Flet tree here only adds latency to the command path.
             apply_page_theme(page, settings.get("appearance.theme"))
             _invalidate_cached_view(home_state, "home")
             _invalidate_cached_view(organize_state, "organize")
             _clear_screen_cache()
-            render_current(force=True, reason="theme_changed")
+            if not compose_primary_ui:
+                render_current(force=True, reason="theme_changed")
             return
         library.configure_settings(settings)
         if setting_key.startswith(("appearance.", "library.")):
             _invalidate_cached_view(home_state, "home")
             _invalidate_cached_view(organize_state, "organize")
-            current_route = navigation.current
-            if current_route in {"home", "organize"}:
-                render_current(reason="runtime_setting_changed")
+            if not compose_primary_ui:
+                current_route = navigation.current
+                if current_route in {"home", "organize"}:
+                    render_current(reason="runtime_setting_changed")
 
     def handle_platform_brightness_change(_event=None):
         if settings.get("appearance.theme") != "system":
