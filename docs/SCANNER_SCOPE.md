@@ -12,4 +12,4 @@ A scanner result is not trusted solely because it came from MediaStore, filesyst
 
 There is no fallback from a missing, invalid, or revoked library source to the device-wide storage root.
 
-Prompt 35 is responsible for reconciling legacy rows that may have been imported before this boundary was enforced. Prompt 34 does not delete them.
+earlier validation stage 35 is responsible for reconciling legacy rows that may have been imported before this boundary was enforced. earlier validation stage 34 does not delete them.

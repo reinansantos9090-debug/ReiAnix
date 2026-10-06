@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the deterministic SQLite fixture used by Prompt 43 Android tests."""
+"""Create the deterministic SQLite fixture used by earlier validation stage 43 Android tests."""
 
 from __future__ import annotations
 
@@ -10,20 +10,20 @@ from pathlib import Path
 from core.library_store import LibraryStore
 
 
-OUTPUT = Path("android/app/src/androidTest/assets/prompt43_library.sqlite3")
+OUTPUT = Path("android/app/src/androidTest/assets/library_fixture.sqlite3")
 
 
 def main() -> None:
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="reianix-prompt43-") as directory:
+    with tempfile.TemporaryDirectory(prefix="reianix-fixture_43-") as directory:
         store = LibraryStore(directory)
         anime_id = store.upsert_anime(
-            "prompt43-fixture",
+            "fixture_43-fixture",
             {
-                "title": "Prompt 43 Fixture",
-                "romaji": "Prompt 43 Fixture",
-                "english": "Prompt 43 Fixture",
-                "native": "Prompt 43 Fixture",
+                "title": "earlier validation stage 43 Fixture",
+                "romaji": "earlier validation stage 43 Fixture",
+                "english": "earlier validation stage 43 Fixture",
+                "native": "earlier validation stage 43 Fixture",
                 "aliases": "[]",
                 "genres": "[]",
                 "anilist_id": 16498,
@@ -37,20 +37,20 @@ def main() -> None:
             status="available",
         )
         for number in range(1, 6):
-            path = f"content://prompt43/fixture/{number}"
+            path = f"content://stage43/fixture/{number}"
             episode_id = store.upsert_episode(
                 anime_id,
                 path,
-                f"Prompt 43 Fixture S01E{number:02d}.mkv",
+                f"earlier validation stage 43 Fixture S01E{number:02d}.mkv",
                 1,
                 number,
                 mime_type="video/mp4",
                 file_size=1000 + number,
                 modified_at=1000 + number,
-                source_folder="prompt43-fixture-source",
-                media_identity=f"prompt43:fixture:{number}",
+                source_folder="fixture_43-fixture-source",
+                media_identity=f"stage43:fixture:{number}",
                 episode_type="regular",
-                episode_title=f"Prompt 43 Episode {number:02d}",
+                episode_title=f"earlier validation stage 43 Episode {number:02d}",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )

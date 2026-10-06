@@ -21,7 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class Prompt43MetadataOwnerInstrumentedTest {
+class MetadataOwnerInstrumentedTest {
     private lateinit var target: Context
     private lateinit var device: UiDevice
     private lateinit var databaseFile: File
@@ -109,10 +109,10 @@ class Prompt43MetadataOwnerInstrumentedTest {
             assertTrue("Unable to create Flet data directory", dataDir.mkdirs() || dataDir.isDirectory)
         }
         databaseFile.delete()
-        InstrumentationRegistry.getInstrumentation().context.assets.open("prompt43_library.sqlite3").use { input ->
+        InstrumentationRegistry.getInstrumentation().context.assets.open("library_fixture.sqlite3").use { input ->
             databaseFile.outputStream().use { output -> input.copyTo(output) }
         }
-        assertTrue("Prompt 43 SQLite fixture must exist", databaseFile.isFile)
+        assertTrue("earlier validation stage 43 SQLite fixture must exist", databaseFile.isFile)
     }
 
     private data class DbSnapshot(

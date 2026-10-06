@@ -115,7 +115,7 @@ class NavigationController:
         self._exit_requested_at = None
 
     def back(self) -> str:
-        """Return settings_inner, previous, prompt_exit or exit."""
+        """Return settings_inner, previous, exit_requested or exit."""
         if self.current == "settings" and self._settings_path:
             self._settings_path.pop()
             self._exit_requested_at = None
@@ -130,7 +130,7 @@ class NavigationController:
             self._exit_requested_at = None
             return "exit"
         self._exit_requested_at = now
-        return "prompt_exit"
+        return "exit_requested"
 
 
 class SafSelectionState:

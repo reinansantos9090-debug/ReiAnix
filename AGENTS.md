@@ -16,7 +16,7 @@ Este é um projeto existente e em estabilização. Trabalhe sobre o código atua
 
 
 ## Proibição absoluta de testes/emuladores adicionados pelo agente
-- É PROIBIDO adicionar ao repositório qualquer workflow, script, job, etapa de CI ou infraestrutura que crie, inicialize ou execute um emulator Android especificamente para validar uma tarefa, Prompt ou alteração.
+- É PROIBIDO adicionar ao repositório qualquer workflow, script, job, etapa de CI ou infraestrutura que crie, inicialize ou execute um emulator Android especificamente para validar uma tarefa, stage ou alteração.
 - NÃO adicionar testes de emulator ao repositório em hipótese alguma.
 - NÃO criar workflows temporários ou permanentes de validação que usem emulator Android.
 - NÃO adicionar etapas como `Run ... instrumentation test on Android ...`, `android-emulator-runner`, matrizes de APIs/emuladores, Android TV emulator ou qualquer mecanismo equivalente.

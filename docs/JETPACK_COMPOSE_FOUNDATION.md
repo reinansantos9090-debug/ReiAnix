@@ -2,13 +2,13 @@
 
 ## Scope
 
-Prompt 01 established the Kotlin + Jetpack Compose foundation. Prompt 02 extends that foundation into a
+earlier validation stage 01 established the Kotlin + Jetpack Compose foundation. earlier validation stage 02 extends that foundation into a
 shared Material 3 visual design system without migrating any complete application screen.
 
 ## Current entry boundary
 
 MainActivity remains the existing FlutterFragmentActivity entry used by the Flet-generated Android
-host. Compose runs in the same Android module and, from Prompt 03 onward, is attached through the
+host. Compose runs in the same Android module and, from earlier validation stage 03 onward, is attached through the
 existing Compose host boundary as the native App Shell is activated. The legacy Flet UI remains
 available outside the migrated shell until each individual surface is explicitly cut over.
 
@@ -17,7 +17,7 @@ performed here.
 
 ## Design-system boundary
 
-Prompt 02 introduces presentation-only Compose infrastructure:
+earlier validation stage 02 introduces presentation-only Compose infrastructure:
 
 - `ReiAnixTokens` is the single source of truth for colors, spacing, dimensions, shapes, elevations
   and typography.
@@ -39,7 +39,7 @@ through the screen-level layout boundary rather than introducing a second system
 ## Data and domain boundary
 
 There is no second Kotlin database or duplicate catalog. The existing Python/Flet + SQLite +
-scanner/SAF/MediaStore pipeline remains authoritative until a later prompt explicitly moves a
+scanner/SAF/MediaStore pipeline remains authoritative until a later stage explicitly moves a
 specific screen or capability.
 
 Compose UI must consume state through ViewModels/StateFlow and call application-facing boundaries
@@ -47,7 +47,7 @@ rather than embedding scan, persistence, playback, or storage business rules ins
 
 ## Navigation boundary
 
-Prompt 03 establishes the first shared Navigation Compose shell. The canonical bottom-navigation
+earlier validation stage 03 establishes the first shared Navigation Compose shell. The canonical bottom-navigation
 destinations are Home, Biblioteca, Buscar and Ajustes, matching the visual reference screens. Minha Lista
 remains a secondary route and is not a bottom-navigation item. Details keeps the bottom navigation visible
 and selects the originating primary tab when applicable; Player is a full-screen secondary surface without
@@ -85,9 +85,9 @@ The official APK workflow runs `scripts/verify_compose_packaging.py` after the r
 It verifies the Compose foundation classes in the rendered Android project and final APK DEX. The existing
 `scripts/verify_android_host.py` then verifies the complete native host contract.
 
-## Prompt 29 — organização arquitetural
+## earlier validation stage 29 — organização arquitetural
 
-A reorganização do Prompt 29 é deliberadamente incremental. O código existente foi agrupado por responsabilidade em `ui`, `viewmodel`, `data`, `player`, `storage`, `bridge` e `scanner`, sem introduzir uma nova camada de domínio sem necessidade e sem criar outro banco de dados.
+A reorganização do earlier validation stage 29 é deliberadamente incremental. O código existente foi agrupado por responsabilidade em `ui`, `viewmodel`, `data`, `player`, `storage`, `bridge` e `scanner`, sem introduzir uma nova camada de domínio sem necessidade e sem criar outro banco de dados.
 
 `MainActivity` e `NativePlayerActivity` permanecem no pacote raiz porque são entrypoints Android referenciados diretamente pelo manifesto e por contratos de integração. O player continua sendo Media3; o pipeline local continua usando SQLite + SAF/MediaStore/Broad Storage e o mailbox existente. Os hosts Compose foram colocados em `ui/host`, enquanto as telas e a navegação continuam em `ui/`.
 

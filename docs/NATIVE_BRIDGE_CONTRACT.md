@@ -149,9 +149,9 @@ Após a migração, existe um único host visual nativo: `ReiAnixComposeLibraryH
 
 Settings, Storage, Home, Library, Search, My List e Organize são rotas dentro desse shell.
 
-Os antigos `ReiAnixComposeSettingsHost` e `ReiAnixComposeStorageHost` foram removidos porque não tinham consumidores de runtime após o Prompt 33.
+Os antigos `ReiAnixComposeSettingsHost` e `ReiAnixComposeStorageHost` foram removidos porque não tinham consumidores de runtime após o earlier validation stage 33.
 
-Flet continua somente onde há superfície legada real ou fallback que ainda não foi migrado. A limpeza deste prompt não remove esses consumidores.
+Flet continua somente onde há superfície legada real ou fallback que ainda não foi migrado. A limpeza deste stage não remove esses consumidores.
 
 ## Diagnostics
 

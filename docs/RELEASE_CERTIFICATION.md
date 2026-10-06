@@ -70,7 +70,7 @@ The previously reported files `66619.mp4`, `66621.mp4`, and `66625.mp4` are not 
 
 The final result is based on evidence, not on the existence of code alone.
 
-Allowed final classifications for the Prompt 3 report:
+Allowed final classifications for the earlier validation stage 3 report:
 
 - VALIDADO
 - PARCIALMENTE VALIDADO

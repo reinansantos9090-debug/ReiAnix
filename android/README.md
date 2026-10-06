@@ -80,22 +80,22 @@ atualiza o progresso persistido.
 
 ## Jetpack Compose foundation
 
-Prompt 01 adds the Kotlin Compose compiler plugin and native Compose/Material 3/Navigation
+earlier validation stage 01 adds the Kotlin Compose compiler plugin and native Compose/Material 3/Navigation
 dependencies without replacing the Flet launcher or migrating an existing screen. MainActivity
 remains the Flet/Flutter entry point, while NativePlayerActivity and Media3 remain untouched.
 
 The project targets compileSdk 36 with AGP 8.9.1. Compose 1.12.x requires API 37 and AGP 9.1.2+,
 so the foundation intentionally uses Compose BOM 2026.06.00 instead of forcing a toolchain upgrade
-outside Prompt 01.
+outside earlier validation stage 01.
 
 Kotlin 2.0+ uses the Compose Compiler Gradle plugin. ReiAnix keeps Kotlin 2.0.21 and applies
 org.jetbrains.kotlin.plugin.compose at the same version.
 
 Navigation Compose 2.9.8 and Lifecycle ViewModel Compose 2.10.0 are prepared as dependencies;
-Prompt 01 creates no navigation graph or migrated screen. Existing SQLite, scanner, SAF, MediaStore,
+earlier validation stage 01 creates no navigation graph or migrated screen. Existing SQLite, scanner, SAF, MediaStore,
 artwork, progress, mailbox and Media3 remain the source of truth.
 
-## Arquitetura Android após o Prompt 29
+## Arquitetura Android após o earlier validation stage 29
 
 O módulo Android mantém o host Flet existente e separa apenas responsabilidades que já estavam presentes no código. As atividades de entrada continuam no pacote raiz: `MainActivity` é o host Android/Flet e `NativePlayerActivity` é a Activity de reprodução Media3. `PerformanceDiagnostics` permanece no raiz por ser infraestrutura transversal do host.
 
@@ -109,6 +109,6 @@ A árvore de responsabilidades é:
 - `storage/`: indexação nativa, autorização de armazenamento, batching e extração de thumbnails.
 - `bridge/`: transporte Python/native, estado de requests, dispatcher de comandos e identidade Google.
 
-Nenhum pacote `domain/` artificial foi criado: não havia um modelo de domínio independente justificando outra camada. SQLite, scanner, SAF, MediaStore, permissões, artwork/cache, progresso e Media3 continuam sendo as fontes existentes. Também não foram adicionadas dependências Gradle para concluir a reorganização; o Prompt 29 usa as dependências Compose/Navigation/Lifecycle/Media3 já presentes no módulo.
+Nenhum pacote `domain/` artificial foi criado: não havia um modelo de domínio independente justificando outra camada. SQLite, scanner, SAF, MediaStore, permissões, artwork/cache, progresso e Media3 continuam sendo as fontes existentes. Também não foram adicionadas dependências Gradle para concluir a reorganização; o earlier validation stage 29 usa as dependências Compose/Navigation/Lifecycle/Media3 já presentes no módulo.
 
 As dependências seguem o sentido operacional host → bridge/ui → scanner/player → storage quando aplicável. As atividades continuam no raiz para preservar o manifesto, o host Flet e a integração Media3. Adapters Compose existentes não foram removidos porque ainda possuem consumidores reais em `MainActivity`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the Prompt 01 Compose foundation survives the official APK build."""
+"""Verify the earlier validation stage 01 Compose foundation survives the official APK build."""
 
 from __future__ import annotations
 

@@ -33,7 +33,7 @@ object ReiAnixTokens {
         val playerControl = Color.White
         val playerScrim = Color.Black
 
-        val primary = Color(0xFF1878F8)
+        val primary = Color(0xFF3D8BFF)
         val primaryContainer = Color(0xFF0D3B73)
         // Dark-theme primary text uses a dark navy to keep the existing electric-blue
         // accent while bringing normal button text above WCAG AA contrast.
