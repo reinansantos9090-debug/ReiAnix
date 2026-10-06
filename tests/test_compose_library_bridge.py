@@ -99,11 +99,40 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             "media_files": [],
         }
 
+    def test_episode_projection_preserves_duration_and_artwork(self):
+        projected = ComposeLibraryBridge._project_episode(
+            {
+                "id": 71,
+                "duration": 123.456,
+                "artwork": {
+                    "artwork_type": "episode_thumbnail",
+                    "local_path": "/cache/episode-71.jpg",
+                    "status": "ready",
+                },
+            }
+        )
+        self.assertEqual(123.456, projected["duration"])
+        self.assertEqual("/cache/episode-71.jpg", projected["artwork_local_path"])
+
     async def test_snapshot_is_real_derived_compact_projection_and_atomic_file(self):
         with tempfile.TemporaryDirectory() as directory:
+            library = FakeLibrary([self.anime_fixture()])
+
+            def resolve_artwork_batch(entity_type, entity_ids, artwork_types):
+                if entity_type == "episode":
+                    return {
+                        "71": {
+                            "artwork_type": "episode_thumbnail",
+                            "local_path": "/cache/episode-71.jpg",
+                            "status": "ready",
+                        }
+                    }
+                return {}
+
+            library.resolve_artwork_batch = resolve_artwork_batch
             bridge = ComposeLibraryBridge(
                 directory,
-                FakeLibrary([self.anime_fixture()]),
+                library,
                 FakeStore([{"path": "content://tree", "status": "granted", "authorization": "granted"}]),
             )
             bridge.request_publish("test")
@@ -122,6 +151,8 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("content://media/external/video/71", episode["path"])
             self.assertEqual("identity-71", episode["media_identity"])
             self.assertEqual(12.5, episode["progress"])
+            self.assertEqual(100.0, episode["duration"])
+            self.assertEqual("/cache/episode-71.jpg", episode["artwork_local_path"])
             self.assertEqual(71, snapshot["animes"][0]["playback_target_episode_id"])
             self.assertEqual([], snapshot["continue_watching"])
             self.assertEqual("MUST NOT CROSS THE COMPOSE BRIDGE", snapshot["animes"][0]["meta"].get("description"))
