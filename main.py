@@ -264,6 +264,13 @@ async def main(page: ft.Page):
         home_refresh_context["db_updated"] = False
         home_refresh_context["request_id"] = None
         settings_tasks.invalidate()
+        for task in tuple(compose_settings_tasks):
+            try:
+                task.cancel()
+            except Exception as exc:
+                logger.debug("[COMPOSE_SETTINGS] task cancellation failed: %s", exc)
+        compose_settings_tasks.clear()
+        compose_settings_setting_locks.clear()
 
     try:
         page.on_disconnect = _handle_page_disconnect
@@ -3462,6 +3469,14 @@ async def main(page: ft.Page):
             request_id,
             setting_key,
         )
+        await _write_compose_settings_result(
+            request_id,
+            "set:" + setting_key,
+            "RUNNING",
+            operation_state="RUNNING",
+            key=setting_key,
+            message="Persistindo configuração.",
+        )
         try:
             async with _compose_setting_lock(setting_key):
                 normalized = await asyncio.to_thread(
@@ -3534,6 +3549,13 @@ async def main(page: ft.Page):
             "SETTINGS_OPERATION_START requestId=%s action=%s",
             request_id,
             action,
+        )
+        await _write_compose_settings_result(
+            request_id,
+            action,
+            "RUNNING",
+            operation_state="RUNNING",
+            message="Operação em andamento.",
         )
         try:
             if action == 'reset_player':
