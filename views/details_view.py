@@ -120,26 +120,69 @@ class DetailView:
         def placeholder(height=198):
             return media_artwork(None, height, width=132, icon_size=38)
 
-        cover = metadata.get("cover_cache") or metadata.get("cover_url")
+        artwork_entity = "movie" if is_movie else "anime"
+        cover = metadata.get("cover_cache") or None
         if resolve_artwork:
-            artwork_entity = "movie" if is_movie else "anime"
-            resolved_poster = resolve_artwork(artwork_entity, anime_group["id"], "poster", allow_network=False)
-            if resolved_poster:
-                cover = resolved_poster.get("local_path") or cover
-        poster = media_artwork(cover, 198, width=132, icon_size=38)
+            resolved_poster = resolve_artwork(
+                artwork_entity,
+                anime_group["id"],
+                "poster",
+                allow_network=False,
+            )
+            if resolved_poster and resolved_poster.get("local_path"):
+                cover = resolved_poster.get("local_path")
 
-        backdrop = None
+        poster = ft.Container(
+            width=132,
+            height=198,
+            border_radius=RADIUS,
+            content=media_artwork(cover, 198, width=132, icon_size=38),
+        )
+
         backdrop_path = str(metadata.get("banner_url") or "").strip() or None
         if resolve_artwork:
-            resolved_backdrop = resolve_artwork(artwork_entity, anime_group["id"], "backdrop", allow_network=False)
-            if resolved_backdrop:
-                backdrop_path = resolved_backdrop.get("local_path") or resolved_backdrop.get("external_url") or backdrop_path
-        if backdrop_path:
-            backdrop = ft.Container(
+            resolved_backdrop = resolve_artwork(
+                artwork_entity,
+                anime_group["id"],
+                "backdrop",
+                allow_network=False,
+            )
+            if resolved_backdrop and resolved_backdrop.get("local_path"):
+                backdrop_path = resolved_backdrop.get("local_path")
+        backdrop = (
+            ft.Container(
                 content=media_artwork(backdrop_path, 150, width=None, icon_size=30),
                 height=150,
                 border_radius=RADIUS,
             )
+            if backdrop_path
+            else None
+        )
+
+        def update_artwork_in_place(entity, entity_id, artwork_type, local_path):
+            """Update only the active Details artwork slots; never rebuild episodes."""
+            try:
+                same_entity = str(entity or "").strip().lower() == artwork_entity
+                same_id = int(entity_id) == int(anime_group.get("id") or 0)
+            except (TypeError, ValueError):
+                return False
+            if not same_entity or not same_id or not isinstance(local_path, str) or not local_path.strip():
+                return False
+            local_path = local_path.strip()
+            if artwork_type == "poster":
+                poster.content = media_artwork(local_path, 198, width=132, icon_size=38)
+                metadata["cover_cache"] = local_path
+                anime_group.setdefault("meta", {})["cover_cache"] = local_path
+                anime_group["cover"] = local_path
+                return True
+            if artwork_type == "backdrop" and backdrop is not None:
+                backdrop.content = media_artwork(local_path, 150, width=None, icon_size=30)
+                metadata["banner_url"] = metadata.get("banner_url") or local_path
+                return True
+            return False
+
+        if isinstance(view_state, dict):
+            view_state["_update_artwork"] = update_artwork_in_place
 
         contextual_accent = [theme.primary]
         contextual_on_accent = [theme.text_on_accent]
