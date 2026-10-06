@@ -129,11 +129,11 @@ object ReiAnixTokens {
         val sectionGap = 24.dp
         val sectionTitleGap = 8.dp
         val cardMinHeight = 88.dp
-        val buttonMinHeight = 52.dp
-        val chipMinHeight = 36.dp
+        val buttonMinHeight = 40.dp
+        val chipMinHeight = 32.dp
         val touchTarget = 48.dp
         val iconSmall = 18.dp
-        val iconMedium = 24.dp
+        val iconMedium = 22.dp
         val loadingIndicatorSize = 20.dp
         val loadingIndicatorStroke = 2.dp
         val accountAvatarSize = 72.dp
@@ -165,6 +165,9 @@ object ReiAnixTokens {
         val detailsHeroMaxHeight = 420.dp
         val detailsHeroWideBreakpoint = 600.dp
         val detailsHeroPosterWidth = 112.dp
+        val emptyStateMinHeight = 280.dp
+        val organizeGenreCardWidth = 170.dp
+        val organizeCategoryCardWidth = 156.dp
         val detailsSeasonCardWidth = 340.dp
         val detailsSeasonPreviewWidth = 108.dp
         val detailsSeasonPreviewHeight = 72.dp
@@ -179,16 +182,16 @@ object ReiAnixTokens {
     }
 
     object Shapes {
-        val chip = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
-        val small = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
-        val button = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
-        val card = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
-        val large = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
-        val artwork = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-        val hero = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
-        val dialog = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
-        val sheet = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
-        val textField = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
+        val chip = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        val small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+        val button = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
+        val card = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+        val large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+        val artwork = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+        val hero = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        val dialog = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
+        val sheet = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+        val textField = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
     }
 
     object Elevation {
@@ -206,71 +209,122 @@ object ReiAnixTokens {
 
     object TypographyTokens {
         val display = TextStyle(
-            fontSize = 36.sp,
-            lineHeight = 44.sp,
-            fontWeight = FontWeight.Bold,
-        )
-        val screenTitle = TextStyle(
             fontSize = 28.sp,
             lineHeight = 34.sp,
             fontWeight = FontWeight.Bold,
         )
-        val sectionTitle = TextStyle(
+        val brandTitle = TextStyle(
+            fontSize = 18.sp,
+            lineHeight = 22.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        val heroTitle = TextStyle(
+            fontSize = 22.sp,
+            lineHeight = 26.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        val screenTitle = TextStyle(
+            fontSize = 20.sp,
+            lineHeight = 26.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        val emptyStateTitle = TextStyle(
             fontSize = 20.sp,
             lineHeight = 26.sp,
             fontWeight = FontWeight.SemiBold,
         )
+        val sectionTitle = TextStyle(
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
         val cardTitle = TextStyle(
-            fontSize = 16.sp,
-            lineHeight = 22.sp,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val subtitle = TextStyle(
-            fontSize = 15.sp,
-            lineHeight = 21.sp,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
             fontWeight = FontWeight.Normal,
         )
         val body = TextStyle(
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.Normal,
-        )
-        val bodySecondary = TextStyle(
             fontSize = 13.sp,
             lineHeight = 19.sp,
             fontWeight = FontWeight.Normal,
         )
-        val metadata = TextStyle(
+        val bodySecondary = TextStyle(
             fontSize = 12.sp,
-            lineHeight = 16.sp,
+            lineHeight = 17.sp,
+            fontWeight = FontWeight.Normal,
+        )
+        val metadata = TextStyle(
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
             fontWeight = FontWeight.Normal,
         )
         val episode = TextStyle(
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
             fontWeight = FontWeight.Medium,
         )
         val label = TextStyle(
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        val chip = TextStyle(
             fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        val button = TextStyle(
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
+        val chip = TextStyle(
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
             fontWeight = FontWeight.SemiBold,
+        )
+        val button = TextStyle(
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        val navigationLabel = TextStyle(
+            fontSize = 10.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        val playerTopLabel = TextStyle(
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        val playerTechnical = TextStyle(
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        val playerTime = TextStyle(
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        val playerGlyph = TextStyle(
+            fontSize = 17.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        val playerActionGlyph = TextStyle(
+            fontSize = 22.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        val playerActionLabel = TextStyle(
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            fontWeight = FontWeight.Medium,
         )
     }
 
     val typography = Typography(
         displayLarge = TypographyTokens.display,
         headlineLarge = TypographyTokens.screenTitle,
-        headlineSmall = TypographyTokens.screenTitle,
+        headlineMedium = TypographyTokens.heroTitle,
+        headlineSmall = TypographyTokens.emptyStateTitle,
         titleLarge = TypographyTokens.sectionTitle,
         titleMedium = TypographyTokens.cardTitle,
         bodyLarge = TypographyTokens.body,
