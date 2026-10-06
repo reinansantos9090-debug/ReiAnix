@@ -1650,10 +1650,12 @@ private fun ReiAnixSettingsCategoryCard(
         onClick = onClick,
     ) {
         Icon(
-            imageVector = androidx.compose.material.icons.filled.ChevronRight,
+            imageVector = Icons.Filled.ArrowBack,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+            modifier = Modifier
+                .size(ReiAnixTokens.Dimensions.iconMedium)
+                .rotate(180f),
         )
     }
 }
