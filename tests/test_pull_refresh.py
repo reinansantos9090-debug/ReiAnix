@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class Prompt32PullRefreshContractTests(unittest.TestCase):
+class PullRefreshContractTests(unittest.TestCase):
     def read(self, path):
         return (ROOT / path).read_text(encoding="utf-8")
 
@@ -50,7 +50,7 @@ class Prompt32PullRefreshContractTests(unittest.TestCase):
         self.assertIn("extent_before <= 1.0", scroll)
         self.assertIn("_scroll_direction_name", scroll)
 
-    def test_pull_refresh_reuses_prompt31_concurrency_state(self):
+    def test_pull_refresh_reuses_stage31_concurrency_state(self):
         source = self.read("views/home_view.py")
         self.assertIn('if refresh_state[0] == "REFRESHING":', source)
         self.assertIn('performance.counter("home.pull_refresh.rejected")', source)
@@ -74,7 +74,7 @@ class Prompt32PullRefreshContractTests(unittest.TestCase):
         self.assertIn("pull_refresh_active[0] = False", block)
         self.assertIn('normalized == "REFRESHING"', block)
 
-    def test_prompt31_button_contract_remains_intact(self):
+    def test_button_contract_remains_intact(self):
         source = self.read("views/home_view.py")
         self.assertIn('tooltip="Atualizar biblioteca"', source)
         self.assertIn('on_click=handle_manual_refresh', source)

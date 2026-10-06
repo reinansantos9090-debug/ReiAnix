@@ -9,7 +9,7 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_prompt25_has_reusable_state_components():
+def test_has_reusable_state_components():
     content = read(UI / "ReiAnixStateComponents.kt")
     for symbol in (
         "ReiAnixLoadingState",
@@ -24,7 +24,7 @@ def test_prompt25_has_reusable_state_components():
         assert f"fun {symbol}(" in content
 
 
-def test_prompt25_screen_flows_use_shared_states_and_real_recovery():
+def test_screen_flows_use_shared_states_and_real_recovery():
     home = read(UI / "home/ReiAnixHome.kt")
     library = read(UI / "library/ReiAnixLibrary.kt")
     details = read(UI / "details/ReiAnixDetails.kt")
@@ -68,7 +68,7 @@ def test_prompt25_screen_flows_use_shared_states_and_real_recovery():
     assert "onRetry = {" in player
 
 
-def test_prompt25_artwork_does_not_silently_swallow_decode_errors():
+def test_artwork_does_not_silently_swallow_decode_errors():
     artwork = read(UI / "artwork/ReiAnixLocalArtwork.kt")
 
     assert "catch (_: Exception)" not in artwork

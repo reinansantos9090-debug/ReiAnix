@@ -1,4 +1,4 @@
-"""Prompt 7 regression contracts for Home, Library and Organize performance boundaries."""
+"""earlier validation stage 7 regression contracts for Home, Library and Organize performance boundaries."""
 from pathlib import Path
 import unittest
 
@@ -10,7 +10,7 @@ ORGANIZE = ROOT / "views" / "organize_view.py"
 STORE = ROOT / "core" / "library_store.py"
 
 
-class Prompt7HomeLibraryOrganizeTests(unittest.TestCase):
+class HomeLibraryOrganizeTests(unittest.TestCase):
     def read(self, path):
         return path.read_text(encoding="utf-8")
 

@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "main.py"
 
 
-class Prompt20FinalAuditTests(unittest.TestCase):
+class FinalAuditTests(unittest.TestCase):
     def test_page_disconnect_cancels_player_transition_task(self):
         source = MAIN.read_text(encoding="utf-8")
         self.assertIn('player_transition_task = {"task": None}', source)

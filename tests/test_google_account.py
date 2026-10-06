@@ -87,7 +87,7 @@ def test_python_compose_account_actions_are_lifecycle_scoped_and_flet_logout_is_
 
 
 def test_existing_project_has_no_real_progress_sync_backend_to_integrate():
-    # Prompt 21 says to integrate an existing synchronization layer, not invent one.
+    # earlier validation stage 21 says to integrate an existing synchronization layer, not invent one.
     # This test documents the audit result; local SQLite progress remains authoritative.
     main = read(MAIN).lower()
     assert "firestore" not in main

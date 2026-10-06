@@ -8,7 +8,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_prompt34_removes_only_obsolete_compose_host_surfaces():
+def test_removes_only_obsolete_compose_host_surfaces():
     main = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
     verifier = read("scripts/verify_android_host.py")
     packaging = read("scripts/verify_compose_packaging.py")
@@ -26,7 +26,7 @@ def test_prompt34_removes_only_obsolete_compose_host_surfaces():
     assert "composeStorageHost" not in main
 
 
-def test_prompt34_preserves_domain_bridges_and_stable_event_contracts():
+def test_preserves_domain_bridges_and_stable_event_contracts():
     android_bridge = read("core/android_bridge.py")
     library_bridge = read("core/compose_library_bridge.py")
     settings_bridge = read("core/compose_settings_bridge.py")
@@ -48,7 +48,7 @@ def test_prompt34_preserves_domain_bridges_and_stable_event_contracts():
     assert "publishFailure(" in dispatcher
 
 
-def test_prompt34_keeps_diagnostics_and_refresh_correlation_explicit():
+def test_keeps_diagnostics_and_refresh_correlation_explicit():
     diagnostics = read("core/diagnostics.py")
     main = read("main.py")
     assert "refresh_id: str | None = None" in diagnostics
@@ -58,7 +58,7 @@ def test_prompt34_keeps_diagnostics_and_refresh_correlation_explicit():
     assert "diagnostics.record(" in main
 
 
-def test_prompt34_has_zero_removed_host_references_in_runtime_sources():
+def test_has_zero_removed_host_references_in_runtime_sources():
     runtime_roots = [
         ROOT / "main.py",
         ROOT / "core",

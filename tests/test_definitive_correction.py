@@ -12,20 +12,20 @@ from core.library_store import LibraryStore
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
+class DefinitiveCorrectionTests(unittest.TestCase):
     def read(self, path):
         return (ROOT / path).read_text(encoding="utf-8")
 
 
     def _seed_five_episodes(self, store):
         anime_id = store.upsert_anime(
-            "prompt43-show",
-            {"title": "Local Prompt 43 Show", "media_kind": "series", "genres": "[]"},
+            "fixture_43-show",
+            {"title": "Local earlier validation stage 43 Show", "media_kind": "series", "genres": "[]"},
             source="local",
         )
         rows = []
         for number in range(1, 6):
-            path = f"content://prompt43/episode{number}"
+            path = f"content://stage43/episode{number}"
             episode_id = store.upsert_episode(
                 anime_id,
                 path,
@@ -35,8 +35,8 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
                 mime_type="video/mp4",
                 file_size=1000 + number,
                 modified_at=1000 + number,
-                source_folder="prompt43-source",
-                media_identity=f"prompt43:stable:{number}",
+                source_folder="fixture_43-source",
+                media_identity=f"stage43:stable:{number}",
                 episode_type="regular",
                 identification_source="sxxexx",
                 identification_confidence="high",
@@ -100,9 +100,9 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
         return {
             "id": anilist_id,
             "title": {
-                "romaji": "Prompt 43 Remote",
-                "english": "Prompt 43 Remote",
-                "native": "Prompt 43 Remote",
+                "romaji": "earlier validation stage 43 Remote",
+                "english": "earlier validation stage 43 Remote",
+                "native": "earlier validation stage 43 Remote",
             },
             "description": "metadata fixture",
             "genres": ["Action"],
@@ -114,10 +114,10 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
 
     def _ani_list_metadata(self, anilist_id=16498):
         return {
-            "title": "Prompt 43 Remote",
-            "romaji": "Prompt 43 Remote",
-            "english": "Prompt 43 Remote",
-            "native": "Prompt 43 Remote",
+            "title": "earlier validation stage 43 Remote",
+            "romaji": "earlier validation stage 43 Remote",
+            "english": "earlier validation stage 43 Remote",
+            "native": "earlier validation stage 43 Remote",
             "aliases": "[]",
             "description": "metadata fixture",
             "description_original": "metadata fixture",
@@ -130,7 +130,7 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             "episodes_count": 12,
             "duration": 24,
             "format": "TV",
-            "studio": "Prompt Studio",
+            "studio": "stage Studio",
             "anilist_id": anilist_id,
             "media_kind": "series",
         }
@@ -139,8 +139,8 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
     def _scan_five(self, service, title):
         documents = [
             {
-                "uri": f"content://prompt43/matrix/{number}",
-                "stableId": f"prompt43:stable:{number}",
+                "uri": f"content://stage43/matrix/{number}",
+                "stableId": f"stage43:stable:{number}",
                 "name": f"{title} S01E{number:02d}.mkv",
                 "relativePath": f"{title}/Season 1/{title} S01E{number:02d}.mkv",
                 "mimeType": "video/mp4",
@@ -155,9 +155,9 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             return_value={"title": title, "genres": "[]", "media_kind": "series"},
         ):
             service.ingest_documents(
-                "content://prompt43/matrix-tree",
+                "content://stage43/matrix-tree",
                 documents,
-                folder_name="Prompt43Matrix",
+                folder_name="Matrix",
                 source_kind="saf",
             )
 
@@ -168,12 +168,12 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
              patch.object(service.anilist, "by_id", return_value=self._ani_list_media()), \
              patch.object(service.anilist, "metadata_from_media", return_value=self._ani_list_metadata()):
             service.refresh_metadata(
-                "prompt43-show",
-                "Prompt 43 Remote",
+                "fixture_43-show",
+                "earlier validation stage 43 Remote",
                 force=True,
                 bypass_request_dedupe=True,
                 local_anime_id=anime_id,
-                request_id="prompt43-matrix-refresh",
+                request_id="fixture_43-matrix-refresh",
             )
 
     def test_metadata_authorization_and_refresh_preserve_five_episode_identity(self):
@@ -194,33 +194,33 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
                 )
 
             store.set_pending_match(
-                "prompt43-show",
-                "Local Prompt 43 Show",
-                [{"id": 16498, "title": "Prompt 43 Remote"}],
+                "fixture_43-show",
+                "Local earlier validation stage 43 Show",
+                [{"id": 16498, "title": "earlier validation stage 43 Remote"}],
             )
             before = self._snapshot(store, anime_id)
 
             with patch.object(service.anilist, "by_id", return_value=self._ani_list_media()), \
                  patch.object(service.anilist, "metadata_from_media", return_value=self._ani_list_metadata()):
                 service.resolve_match(
-                    "prompt43-show",
+                    "fixture_43-show",
                     16498,
                     local_anime_id=anime_id,
-                    request_id="prompt43-manual",
+                    request_id="fixture_43-manual",
                 )
                 service.refresh_metadata(
-                    "prompt43-show",
-                    "Prompt 43 Remote",
+                    "fixture_43-show",
+                    "earlier validation stage 43 Remote",
                     force=True,
                     bypass_request_dedupe=True,
                     local_anime_id=anime_id,
-                    request_id="prompt43-refresh",
+                    request_id="fixture_43-refresh",
                 )
                 service.hydrate_catalog_metadata(service.catalog())
 
             after = self._snapshot(store, anime_id)
             self._assert_local_snapshot_invariants(before, after)
-            self.assertEqual("Prompt 43 Remote", after["title"])
+            self.assertEqual("earlier validation stage 43 Remote", after["title"])
             self.assertEqual(16498, after["anilist_id"])
 
             group = store.catalog(anime_ids=[anime_id])[0]
@@ -252,12 +252,12 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
                 with patch.object(service.anilist, "by_id", return_value=self._ani_list_media()), \
                      patch.object(service.anilist, "metadata_from_media", return_value=self._ani_list_metadata()):
                     service.refresh_metadata(
-                        "prompt43-show",
-                        "Prompt 43 Remote",
+                        "fixture_43-show",
+                        "earlier validation stage 43 Remote",
                         force=True,
                         bypass_request_dedupe=True,
                         local_anime_id=anime_id,
-                        request_id=f"prompt43-repeat-{row['id']}",
+                        request_id=f"fixture_43-repeat-{row['id']}",
                     )
                 after_repeat = self._snapshot(store, anime_id)
                 self._assert_local_identity_invariants(before_repeat, after_repeat)
@@ -288,8 +288,8 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             service = LibraryService(store)
             first_scan = [
                 {
-                    "uri": f"content://prompt43/initial/{number}",
-                    "stableId": f"prompt43:stable:{number}",
+                    "uri": f"content://stage43/initial/{number}",
+                    "stableId": f"stage43:stable:{number}",
                     "name": f"Local Show S01E{number:02d}.mkv",
                     "relativePath": f"Local Show/Season 1/Local Show S01E{number:02d}.mkv",
                     "mimeType": "video/mp4",
@@ -298,13 +298,13 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
                 }
                 for number in range(1, 6)
             ]
-            local_metadata = {"title": "Local Prompt 43 Show", "genres": "[]", "media_kind": "series"}
+            local_metadata = {"title": "Local earlier validation stage 43 Show", "genres": "[]", "media_kind": "series"}
 
             with patch.object(service, "_identify", return_value=local_metadata):
                 service.ingest_documents(
-                    "content://prompt43/tree",
+                    "content://stage43/tree",
                     first_scan,
-                    folder_name="Prompt43",
+                    folder_name="stage43",
                     source_kind="saf",
                 )
 
@@ -318,14 +318,14 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             ids_before = [episode["id"] for episode in episodes_before]
             self.assertEqual(5, len(ids_before))
 
-            remote_metadata = {**local_metadata, "title": "Prompt 43 Remote", "anilist_id": 16498}
+            remote_metadata = {**local_metadata, "title": "earlier validation stage 43 Remote", "anilist_id": 16498}
             second_scan = [
                 {
                     **document,
-                    "uri": f"content://prompt43/renamed/{number}",
-                    "stableId": f"prompt43:stable:{number}",
-                    "name": f"Prompt 43 Remote S01E{number:02d}.mkv",
-                    "relativePath": f"Prompt 43 Remote/Season 1/Prompt 43 Remote S01E{number:02d}.mkv",
+                    "uri": f"content://stage43/renamed/{number}",
+                    "stableId": f"stage43:stable:{number}",
+                    "name": f"earlier validation stage 43 Remote S01E{number:02d}.mkv",
+                    "relativePath": f"earlier validation stage 43 Remote/Season 1/earlier validation stage 43 Remote S01E{number:02d}.mkv",
                     "modifiedAt": 2000 + number,
                 }
                 for number, document in enumerate(first_scan, 1)
@@ -333,9 +333,9 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
 
             with patch.object(service, "_identify", return_value=remote_metadata):
                 service.ingest_documents(
-                    "content://prompt43/tree",
+                    "content://stage43/tree",
                     second_scan,
-                    folder_name="Prompt43",
+                    folder_name="stage43",
                     source_kind="saf",
                 )
 
@@ -351,35 +351,35 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             self.assertEqual(ids_before, [episode["id"] for episode in episodes_after])
             self.assertTrue(all(store.episode_by_id(episode["id"])["anime_id"] == anime_id for episode in episodes_after))
             self.assertEqual(
-                {f"content://prompt43/renamed/{number}" for number in range(1, 6)},
+                {f"content://stage43/renamed/{number}" for number in range(1, 6)},
                 {episode["path"] for episode in episodes_after},
             )
             self.assertEqual("local show", store.anime_metadata_by_id(anime_id)["lookup_title"])
-            self.assertEqual("Local Prompt 43 Show", store.anime_metadata_by_id(anime_id)["title"])
+            self.assertEqual("Local earlier validation stage 43 Show", store.anime_metadata_by_id(anime_id)["title"])
 
     def test_conflicting_cross_anime_media_identity_never_transfers_episode_owner(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            first_anime = store.upsert_anime("prompt43-a", {"title": "Prompt 43 A", "genres": "[]"})
-            second_anime = store.upsert_anime("prompt43-b", {"title": "Prompt 43 B", "genres": "[]"})
+            first_anime = store.upsert_anime("fixture_43-a", {"title": "earlier validation stage 43 A", "genres": "[]"})
+            second_anime = store.upsert_anime("fixture_43-b", {"title": "earlier validation stage 43 B", "genres": "[]"})
 
             first_id = store.upsert_episode(
                 first_anime,
-                "content://prompt43/conflict-a",
+                "content://stage43/conflict-a",
                 "A S01E01.mkv",
                 1,
                 1,
-                media_identity="prompt43:conflict",
+                media_identity="stage43:conflict",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )
             second_id = store.upsert_episode(
                 second_anime,
-                "content://prompt43/conflict-b",
+                "content://stage43/conflict-b",
                 "B S01E01.mkv",
                 1,
                 1,
-                media_identity="prompt43:conflict-other",
+                media_identity="stage43:conflict-other",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )
@@ -390,16 +390,16 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
                 connection.execute("DROP INDEX IF EXISTS idx_episodes_media_identity")
                 connection.execute(
                     "UPDATE episodes SET media_identity=? WHERE id=?",
-                    ("prompt43:conflict", second_id),
+                    ("stage43:conflict", second_id),
                 )
 
             result = store.upsert_episode(
                 second_anime,
-                "content://prompt43/conflict-b",
+                "content://stage43/conflict-b",
                 "B S01E01.mkv",
                 1,
                 2,
-                media_identity="prompt43:conflict",
+                media_identity="stage43:conflict",
                 identification_source="numeric_suffix",
                 identification_confidence="medium",
             )
@@ -440,9 +440,9 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
                         event_created_at=3000,
                     )
                     self._apply_metadata_fixture(service, anime_id)
-                    self._scan_five(service, "Prompt 43 Remote")
+                    self._scan_five(service, "earlier validation stage 43 Remote")
                 else:
-                    self._scan_five(service, "Local Prompt 43 Show")
+                    self._scan_five(service, "Local earlier validation stage 43 Show")
                     anime_id = store.catalog()[0]["id"]
                     first = store.catalog(anime_ids=[anime_id])[0]["seasons"][0]["episodes"][0]
                     store.save_progress(
@@ -461,7 +461,7 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
                     if scenario == "restart_metadata":
                         self._apply_metadata_fixture(service, anime_id)
                     if scenario in {"scan_metadata_scan", "metadata_restart_scan"}:
-                        self._scan_five(service, "Prompt 43 Remote")
+                        self._scan_five(service, "earlier validation stage 43 Remote")
 
                 snapshot = self._snapshot(store, anime_id)
                 self.assertEqual(5, len(snapshot["episode_ids"]))
@@ -502,12 +502,12 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
                 with patch.object(service.anilist, "search", side_effect=failure), \
                      patch.object(service.anilist, "by_id", side_effect=failure):
                     service.refresh_metadata(
-                        "prompt43-show",
-                        "Prompt 43 Failure Case",
+                        "fixture_43-show",
+                        "earlier validation stage 43 Failure Case",
                         force=True,
                         bypass_request_dedupe=True,
                         local_anime_id=anime_id,
-                        request_id=f"prompt43-failure-{type(failure).__name__}",
+                        request_id=f"fixture_43-failure-{type(failure).__name__}",
                     )
                 after = self._snapshot(store, anime_id)
                 self._assert_local_snapshot_invariants(before, after)
@@ -517,31 +517,31 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             first_anime = store.upsert_anime(
-                "prompt43-conflict-a",
-                {"title": "Prompt 43 Conflict A", "genres": "[]"},
+                "fixture_43-conflict-a",
+                {"title": "earlier validation stage 43 Conflict A", "genres": "[]"},
             )
             second_anime = store.upsert_anime(
-                "prompt43-conflict-b",
-                {"title": "Prompt 43 Conflict B", "genres": "[]"},
+                "fixture_43-conflict-b",
+                {"title": "earlier validation stage 43 Conflict B", "genres": "[]"},
             )
             first_id = store.upsert_episode(
                 first_anime,
-                "content://prompt43/conflict/existing",
+                "content://stage43/conflict/existing",
                 "Conflict A S01E01.mkv",
                 1,
                 1,
-                media_identity="prompt43:shared-conflict",
+                media_identity="stage43:shared-conflict",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )
 
             second_id = store.upsert_episode(
                 second_anime,
-                "content://prompt43/conflict/new",
+                "content://stage43/conflict/new",
                 "Conflict B S01E01.mkv",
                 1,
                 1,
-                media_identity="prompt43:shared-conflict",
+                media_identity="stage43:shared-conflict",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )
@@ -551,17 +551,17 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             second_row = store.episode_by_id(second_id)
             self.assertEqual(first_anime, first_row["anime_id"])
             self.assertEqual(second_anime, second_row["anime_id"])
-            self.assertEqual("prompt43:shared-conflict", first_row["media_identity"])
+            self.assertEqual("stage43:shared-conflict", first_row["media_identity"])
             self.assertNotEqual(first_row["media_identity"], second_row["media_identity"])
             self.assertIn("#owner-conflict:", second_row["media_identity"])
 
             repeated_id = store.upsert_episode(
                 second_anime,
-                "content://prompt43/conflict/new",
+                "content://stage43/conflict/new",
                 "Conflict B S01E01.mkv",
                 1,
                 1,
-                media_identity="prompt43:shared-conflict",
+                media_identity="stage43:shared-conflict",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )
@@ -572,9 +572,9 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             store = LibraryStore(directory)
             service = LibraryService(store)
             anime_id = store.upsert_anime(
-                "prompt43-canonical-lookup",
+                "fixture_43-canonical-lookup",
                 {
-                    "title": "Prompt 43 Local",
+                    "title": "earlier validation stage 43 Local",
                     "genres": "[]",
                     "metadata_source": "local",
                     "metadata_status": "unresolved",
@@ -582,11 +582,11 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             )
             episode_id = store.upsert_episode(
                 anime_id,
-                "content://prompt43/hydration/1",
-                "Prompt 43 Local S01E01.mkv",
+                "content://stage43/hydration/1",
+                "earlier validation stage 43 Local S01E01.mkv",
                 1,
                 1,
-                media_identity="prompt43:hydration:1",
+                media_identity="stage43:hydration:1",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )
@@ -594,7 +594,7 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             catalog = store.catalog(anime_ids=[anime_id])
             self.assertEqual(1, len(catalog))
             catalog[0]["meta"]["lookup_title"] = "stale-editorial-lookup"
-            catalog[0]["main_title"] = "Prompt 43 Renamed"
+            catalog[0]["main_title"] = "earlier validation stage 43 Renamed"
 
             with patch.object(
                 service,
@@ -605,7 +605,7 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
 
             self.assertEqual(1, len(hydrated))
             self.assertEqual(anime_id, hydrated[0]["id"])
-            self.assertEqual("prompt43-canonical-lookup", hydrated[0]["lookup_title"])
+            self.assertEqual("fixture_43-canonical-lookup", hydrated[0]["lookup_title"])
             self.assertEqual(anime_id, store.anime_metadata_by_id(anime_id)["id"])
             self.assertEqual(
                 1,
@@ -622,21 +622,21 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime(
-                "prompt43-stable-local",
+                "fixture_43-stable-local",
                 {"title": "Original Local Title", "anilist_id": 111, "genres": "[]"},
                 source="anilist",
             )
             episode_id = store.upsert_episode(
                 anime_id,
-                "content://prompt43/stable-local",
+                "content://stage43/stable-local",
                 "Original Local Title S01E01.mkv",
                 1,
                 1,
-                media_identity="prompt43:stable-local",
+                media_identity="stage43:stable-local",
                 identification_confidence="high",
             )
             store.save_progress(
-                "content://prompt43/stable-local",
+                "content://stage43/stable-local",
                 37,
                 100,
                 episode_id=episode_id,
@@ -644,7 +644,7 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             )
 
             store.upsert_anime(
-                "prompt43-remote-title",
+                "fixture_43-remote-title",
                 {
                     "title": "Remote Editorial Title",
                     "romaji": "Remote Editorial Title",
@@ -662,13 +662,13 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
             anime = store.anime_metadata_by_id(anime_id)
             episode = store.episode_by_id(episode_id)
             self.assertEqual(anime_id, anime["id"])
-            self.assertEqual("prompt43-stable-local", anime["lookup_title"])
+            self.assertEqual("fixture_43-stable-local", anime["lookup_title"])
             self.assertEqual("Remote Editorial Title", anime["title"])
             self.assertEqual(222, anime["anilist_id"])
             self.assertEqual(anime_id, episode["anime_id"])
             self.assertEqual(episode_id, episode["id"])
             self.assertEqual(37, episode["progress"])
-            self.assertEqual("prompt43:stable-local", episode["media_identity"])
+            self.assertEqual("stage43:stable-local", episode["media_identity"])
 
     def test_owner_resolution_prioritizes_local_identity_before_lookup_title(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -678,21 +678,21 @@ class Prompt43DefinitiveCorrectionTests(unittest.TestCase):
 
             episode_id = store.upsert_episode(
                 first_anime,
-                "content://prompt43/local",
+                "content://stage43/local",
                 "Same Title S01E01.mkv",
                 1,
                 1,
-                media_identity="prompt43:owner-priority",
-                source_folder="prompt43-source",
+                media_identity="stage43:owner-priority",
+                source_folder="fixture_43-source",
                 identification_confidence="high",
             )
 
             self.assertEqual(
                 first_anime,
                 store.resolve_local_anime_owner(
-                    media_identity="prompt43:owner-priority",
-                    path="content://prompt43/unknown",
-                    source_folder="prompt43-source",
+                    media_identity="stage43:owner-priority",
+                    path="content://stage43/unknown",
+                    source_folder="fixture_43-source",
                     relative_path="Same Title/Season 1/Same Title S01E01.mkv",
                     lookup_title="other",
                 ),

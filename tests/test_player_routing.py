@@ -13,7 +13,7 @@ DISPATCHER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridg
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 
 
-class Prompt3PlayerRoutingTests(unittest.TestCase):
+class PlayerRoutingTests(unittest.TestCase):
     def test_internal_player_actions_use_private_command_channel(self):
         source = BRIDGE.read_text(encoding="utf-8")
         dispatcher = DISPATCHER.read_text(encoding="utf-8")
@@ -43,12 +43,12 @@ class Prompt3PlayerRoutingTests(unittest.TestCase):
         bridge = object.__new__(AndroidBridge)
         with tempfile.TemporaryDirectory() as temp_dir:
             bridge.data_dir = Path(temp_dir)
-            request_id = "prompt3-atomic"
+            request_id = "fixture_3-atomic"
             bridge._write_internal_command(
                 request_id=request_id,
                 action="play",
                 created_at=123456789,
-                url="reiflix://native?action=play&request_id=prompt3-atomic",
+                url="reiflix://native?action=play&request_id=fixture_3-atomic",
             )
             queue = Path(temp_dir) / "reiflix-native-commands"
             target = queue / f"command-{request_id}.json"

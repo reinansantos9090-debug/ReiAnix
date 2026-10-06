@@ -4,11 +4,11 @@ import unittest
 from core.library_store import LibraryStore
 
 
-class Prompt42EpisodePersistenceTests(unittest.TestCase):
+class EpisodePersistenceTests(unittest.TestCase):
     def _episodes(self, store, anime_id):
         rows = []
         for number in range(1, 6):
-            path = f"content://prompt42/episode{number}"
+            path = f"content://stage42/episode{number}"
             episode_id = store.upsert_episode(
                 anime_id,
                 path,
@@ -18,8 +18,8 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
                 mime_type="video/mp4",
                 file_size=1000 + number,
                 modified_at=1000 + number,
-                source_folder="prompt42-source",
-                media_identity=f"prompt42:episode:{number}",
+                source_folder="fixture_42-source",
+                media_identity=f"stage42:episode:{number}",
                 episode_type="regular",
                 identification_source="sxxexx",
                 identification_confidence="high",
@@ -35,12 +35,12 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             service = LibraryService(store)
-            metadata = {"title": "Prompt 42 Show", "genres": "[]"}
+            metadata = {"title": "earlier validation stage 42 Show", "genres": "[]"}
             first_scan = []
             for number in range(1, 6):
                 first_scan.append({
-                    "uri": f"content://prompt42/service-{number}",
-                    "stableId": f"shared:primary:Prompt42/Show/{number}",
+                    "uri": f"content://stage42/service-{number}",
+                    "stableId": f"shared:primary:stage42/Show/{number}",
                     "name": f"Show S01E{number:02d}.mkv",
                     "relativePath": f"Show/Season 1/Show S01E{number:02d}.mkv",
                     "mimeType": "video/x-matroska",
@@ -49,7 +49,7 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
                 })
 
             with patch.object(service, "_identify", return_value=metadata):
-                service.ingest_documents("content://tree/prompt42", first_scan, folder_name="Prompt42")
+                service.ingest_documents("content://tree/stage42", first_scan, folder_name="stage42")
             before = store.catalog()[0]
             first = before["seasons"][0]["episodes"][0]
             self.assertTrue(store.save_progress(first["path"], 37, 100, episode_id=first["id"], event_created_at=1000))
@@ -62,7 +62,7 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
                 "modifiedAt": 2000,
             }
             with patch.object(service, "_identify", return_value=metadata):
-                service.ingest_documents("content://tree/prompt42", second_scan, folder_name="Prompt42")
+                service.ingest_documents("content://tree/stage42", second_scan, folder_name="stage42")
 
             reopened = LibraryStore(directory)
             group = reopened.catalog()[0]
@@ -79,8 +79,8 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime(
-                "prompt42-show",
-                {"title": "Prompt 42 Show", "media_kind": "series", "genres": "[]"},
+                "fixture_42-show",
+                {"title": "earlier validation stage 42 Show", "media_kind": "series", "genres": "[]"},
                 source="local",
             )
             before = self._episodes(store, anime_id)
@@ -118,37 +118,37 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             first_anime = store.upsert_anime(
-                "prompt42-dup-a",
-                {"title": "Prompt 42 Duplicate A", "media_kind": "series", "genres": "[]"},
+                "fixture_42-dup-a",
+                {"title": "earlier validation stage 42 Duplicate A", "media_kind": "series", "genres": "[]"},
                 source="local",
             )
             second_anime = store.upsert_anime(
-                "prompt42-dup-b",
-                {"title": "Prompt 42 Duplicate B", "media_kind": "series", "genres": "[]"},
+                "fixture_42-dup-b",
+                {"title": "earlier validation stage 42 Duplicate B", "media_kind": "series", "genres": "[]"},
                 source="local",
             )
-            stable = "prompt42:duplicate"
+            stable = "stage42:duplicate"
             old_id = store.upsert_episode(
                 first_anime,
-                "content://prompt42/old",
+                "content://stage42/old",
                 "Show S01E01.mkv",
                 1,
                 1,
-                source_folder="prompt42-source",
+                source_folder="fixture_42-source",
                 media_identity=stable,
                 episode_type="regular",
                 identification_source="sxxexx",
                 identification_confidence="high",
                 absolute_number=1,
             )
-            store.save_progress("content://prompt42/old", 37, 100, episode_id=old_id, event_created_at=1000)
+            store.save_progress("content://stage42/old", 37, 100, episode_id=old_id, event_created_at=1000)
             second_id = store.upsert_episode(
                 second_anime,
-                "content://prompt42/new",
+                "content://stage42/new",
                 "Show 07.mkv",
                 2,
                 7,
-                source_folder="prompt42-source",
+                source_folder="fixture_42-source",
                 media_identity=stable,
                 episode_type="regular",
                 identification_source="numeric_suffix",
@@ -171,19 +171,19 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime(
-                "prompt42-apply",
-                {"title": "Prompt 42 Apply", "media_kind": "series", "genres": "[]"},
+                "fixture_42-apply",
+                {"title": "earlier validation stage 42 Apply", "media_kind": "series", "genres": "[]"},
                 source="local",
             )
-            path = "content://prompt42/apply"
+            path = "content://stage42/apply"
             episode_id = store.upsert_episode(
                 anime_id,
                 path,
                 "Apply S01E01.mkv",
                 1,
                 1,
-                source_folder="prompt42-source",
-                media_identity="prompt42:apply",
+                source_folder="fixture_42-source",
+                media_identity="stage42:apply",
                 episode_type="regular",
                 identification_source="sxxexx",
                 identification_confidence="high",
@@ -207,19 +207,19 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime(
-                "prompt42-stable",
-                {"title": "Prompt 42 Stable", "media_kind": "series", "genres": "[]"},
+                "fixture_42-stable",
+                {"title": "earlier validation stage 42 Stable", "media_kind": "series", "genres": "[]"},
                 source="local",
             )
-            path = "content://prompt42/stable"
+            path = "content://stage42/stable"
             episode_id = store.upsert_episode(
                 anime_id,
                 path,
                 "Stable S01E01.mkv",
                 1,
                 1,
-                source_folder="prompt42-source",
-                media_identity="prompt42:stable",
+                source_folder="fixture_42-source",
+                media_identity="stage42:stable",
                 episode_type="regular",
                 identification_source="sxxexx",
                 identification_confidence="high",
@@ -240,8 +240,8 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
                 "Stable S01E01.mkv",
                 2,
                 7,
-                source_folder="prompt42-source",
-                media_identity="prompt42:stable",
+                source_folder="fixture_42-source",
+                media_identity="stage42:stable",
                 episode_type="regular",
                 identification_source="numeric_suffix",
                 identification_confidence="medium",
@@ -260,61 +260,61 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime(
-                "prompt42-stale",
-                {"title": "Prompt 42 Stale", "media_kind": "series", "genres": "[]"},
+                "fixture_42-stale",
+                {"title": "earlier validation stage 42 Stale", "media_kind": "series", "genres": "[]"},
                 source="local",
             )
             first_id = store.upsert_episode(
                 anime_id,
-                "content://prompt42/stale-1",
+                "content://stage42/stale-1",
                 "Show S01E01.mkv",
                 1,
                 1,
-                source_folder="prompt42-source",
-                media_identity="prompt42:stale:1",
+                source_folder="fixture_42-source",
+                media_identity="stage42:stale:1",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )
             second_id = store.upsert_episode(
                 anime_id,
-                "content://prompt42/stale-2",
+                "content://stage42/stale-2",
                 "Show S01E02.mkv",
                 1,
                 2,
-                source_folder="prompt42-source",
-                media_identity="prompt42:stale:2",
+                source_folder="fixture_42-source",
+                media_identity="stage42:stale:2",
                 identification_source="sxxexx",
                 identification_confidence="high",
             )
 
             self.assertTrue(
                 store.save_progress(
-                    "content://prompt42/stale-1",
+                    "content://stage42/stale-1",
                     37,
                     100,
                     episode_id=first_id,
                     event_created_at=2000,
-                    session_id="prompt42-session",
+                    session_id="fixture_42-session",
                 )
             )
             self.assertFalse(
                 store.save_progress(
-                    "content://prompt42/stale-1",
+                    "content://stage42/stale-1",
                     2,
                     100,
                     episode_id=first_id,
                     event_created_at=1500,
-                    session_id="prompt42-session",
+                    session_id="fixture_42-session",
                 )
             )
             self.assertTrue(
                 store.save_progress(
-                    "content://prompt42/stale-2",
+                    "content://stage42/stale-2",
                     12,
                     100,
                     episode_id=second_id,
                     event_created_at=2100,
-                    session_id="prompt42-session",
+                    session_id="fixture_42-session",
                 )
             )
 
@@ -327,25 +327,25 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime(
-                "prompt42-reconcile",
-                {"title": "Prompt 42 Reconcile", "media_kind": "series", "genres": "[]"},
+                "fixture_42-reconcile",
+                {"title": "earlier validation stage 42 Reconcile", "media_kind": "series", "genres": "[]"},
                 source="local",
             )
             strong_id = store.upsert_episode(
                 anime_id,
-                "content://prompt42/reconcile-strong",
+                "content://stage42/reconcile-strong",
                 "Show S01E01.mkv",
                 1,
                 1,
-                source_folder="prompt42-source",
-                media_identity="prompt42:reconcile",
+                source_folder="fixture_42-source",
+                media_identity="stage42:reconcile",
                 episode_type="regular",
                 identification_source="sxxexx",
                 identification_confidence="high",
                 absolute_number=1,
             )
             store.save_progress(
-                "content://prompt42/reconcile-strong",
+                "content://stage42/reconcile-strong",
                 37,
                 100,
                 episode_id=strong_id,
@@ -370,7 +370,7 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
                     """,
                     (
                         anime_id,
-                        "content://prompt42/reconcile-valid",
+                        "content://stage42/reconcile-valid",
                         "Show 07.mkv",
                         2,
                         7,
@@ -380,8 +380,8 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
                         "video/mp4",
                         1000,
                         2000,
-                        "prompt42-source",
-                        "prompt42:reconcile",
+                        "fixture_42-source",
+                        "stage42:reconcile",
                         0,
                         2000,
                         "regular",
@@ -394,7 +394,7 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
                     ),
                 )
 
-            valid = store.physical_row("content://prompt42/reconcile-valid")
+            valid = store.physical_row("content://stage42/reconcile-valid")
             self.assertIsNotNone(valid)
             result = store.apply_library_reconciliation(
                 [],
@@ -402,7 +402,7 @@ class Prompt42EpisodePersistenceTests(unittest.TestCase):
             )
 
             self.assertGreaterEqual(result["duplicates_merged"], 1)
-            survivor = store.physical_row("content://prompt42/reconcile-valid")
+            survivor = store.physical_row("content://stage42/reconcile-valid")
             self.assertIsNotNone(survivor)
             self.assertEqual(1, survivor["season"])
             self.assertEqual(1, survivor["number"])
