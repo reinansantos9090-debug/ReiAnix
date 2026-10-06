@@ -98,7 +98,9 @@ def test_scope_is_whitelisted_in_python_before_persistence():
         assert key in block
 
     assert "supported_compose_settings" in block
-    assert "settings.set" in block
+    worker_start = main.index("async def _run_compose_settings_set")
+    worker_end = main.index("async def _run_compose_settings_action", worker_start)
+    assert "settings.set" in main[worker_start:worker_end]
     assert "logger.warning" in block
 
 
