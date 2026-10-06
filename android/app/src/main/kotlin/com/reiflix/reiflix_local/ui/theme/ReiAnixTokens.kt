@@ -207,6 +207,29 @@ object ReiAnixTokens {
         const val contentExitMillis = 160
     }
 
+    object PlayerDimensions {
+        val topHorizontalPadding = 8.dp
+        val topBottomPadding = 20.dp
+        val topTitleWidthFraction = 0.84f
+        val seekRowSpacing = 20.dp
+        val seekButtonSize = 56.dp
+        val centerButtonContainerSize = 72.dp
+        val centerButtonSize = 60.dp
+        val bufferingIndicatorSize = 28.dp
+        val bufferingStroke = 3.dp
+        val playIconSize = 44.dp
+        val seekSecondsTextSize = 12.sp
+        val seekGlyphSize = 17.sp
+        val timelineHeight = 48.dp
+        val timelineTimeWidth = 44.dp
+        val bottomHorizontalPadding = 8.dp
+        val bottomTopPadding = 22.dp
+        val bottomExtraPadding = 4.dp
+        val actionButtonSize = 48.dp
+        val actionGlyphSize = 22.dp
+        val actionIconSize = 22.dp
+    }
+
     object TypographyTokens {
         val display = TextStyle(
             fontSize = 28.sp,
