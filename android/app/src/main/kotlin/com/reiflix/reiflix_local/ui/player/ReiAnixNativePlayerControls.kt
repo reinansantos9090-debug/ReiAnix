@@ -382,7 +382,7 @@ fun ReiAnixNativePlayerBottomControls(
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.24f),
+                    inactiveTrackColor = MaterialTheme.colorScheme.outline,
                 ),
                 steps = 0,
             )
