@@ -17,6 +17,7 @@ from typing import Any, Callable
 class ComposeSettingsBridge:
     SNAPSHOT_DIR_NAME = "reianix-compose"
     SNAPSHOT_FILE_NAME = "settings.json"
+    COMMAND_RESULT_DIR_NAME = "command-results"
     SCHEMA_VERSION = 1
 
     CATEGORY_KEYS = {
@@ -56,12 +57,14 @@ class ComposeSettingsBridge:
         self.enabled = bool(enabled)
         self.snapshot_dir = self.data_dir / self.SNAPSHOT_DIR_NAME
         self.snapshot_path = self.snapshot_dir / self.SNAPSHOT_FILE_NAME
+        self.command_result_dir = self.snapshot_dir / self.COMMAND_RESULT_DIR_NAME
         self._requested_revision = 0
         self._publish_task: asyncio.Task[Any] | None = None
         self._last_published_revision = 0
         self._pending_reason_text = "unknown"
         if self.enabled:
             self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+            self.command_result_dir.mkdir(parents=True, exist_ok=True)
 
     def set_storage_available(self, available: bool) -> None:
         self.storage_available = bool(available)
@@ -137,6 +140,45 @@ class ComposeSettingsBridge:
                 "error": str(exc)[:500],
             }
         self._atomic_write_json(self.snapshot_path, payload)
+
+    def write_command_result(
+        self,
+        request_id: str,
+        action: str,
+        status: str,
+        *,
+        operation_state: str | None = None,
+        key: str | None = None,
+        value: Any = None,
+        error: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        """Publish ACK/result metadata through the existing Compose command-result directory."""
+        if not self.enabled:
+            return
+        normalized_id = str(request_id or "").strip()
+        if not normalized_id:
+            return
+        payload: dict[str, Any] = {
+            "schemaVersion": self.SCHEMA_VERSION,
+            "requestId": normalized_id,
+            "action": str(action or "").strip(),
+            "status": str(status or "").upper(),
+            "operationState": str(operation_state or "").upper() or None,
+            "timestamp": int(time.time() * 1000),
+            "error": str(error)[:500] if error else None,
+            "message": str(message)[:500] if message else None,
+        }
+        if key is not None:
+            payload["key"] = str(key).strip()
+        if value is not None:
+            payload["value"] = self._json_safe(value)
+        started = time.monotonic()
+        self._atomic_write_json(
+            self.command_result_dir / f"command-{normalized_id}.json",
+            payload,
+        )
+        return None
 
     def _storage_snapshot(self) -> dict[str, Any]:
         provider = self.storage_state_provider
