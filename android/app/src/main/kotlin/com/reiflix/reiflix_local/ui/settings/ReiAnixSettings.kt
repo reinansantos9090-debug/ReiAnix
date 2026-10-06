@@ -16,11 +16,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Cached
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -83,13 +78,13 @@ data class ReiAnixSettingsCategoryUiModel(
             ReiAnixSettingsCategoryUiModel("Gestos", "Interações de toque do player", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Áudio e Legendas", "Idiomas, legendas e áudio", Icons.Filled.Info),
             ReiAnixSettingsCategoryUiModel("Metadata", "AniList e matching", Icons.Filled.Search),
-            ReiAnixSettingsCategoryUiModel("Artwork", "Capas, thumbnails e cache", Icons.Filled.Image),
-            ReiAnixSettingsCategoryUiModel("Armazenamento", "Permissões, SAF, MediaStore e volumes", Icons.Filled.Storage),
-            ReiAnixSettingsCategoryUiModel("Dados e Cache", "Configurações, importação, exportação e cache", Icons.Filled.Cached),
-            ReiAnixSettingsCategoryUiModel("Backup e Restauração", "Backup, restauração, integridade e reconciliação", Icons.Filled.Backup),
+            ReiAnixSettingsCategoryUiModel("Artwork", "Capas, thumbnails e cache", Icons.Filled.Info),
+            ReiAnixSettingsCategoryUiModel("Armazenamento", "Permissões, SAF, MediaStore e volumes", Icons.Filled.Settings),
+            ReiAnixSettingsCategoryUiModel("Dados e Cache", "Configurações, importação, exportação e cache", Icons.Filled.Info),
+            ReiAnixSettingsCategoryUiModel("Backup e Restauração", "Backup, restauração, integridade e reconciliação", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Privacidade", "Dados locais e conectividade", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Varredura", "Estado e histórico das varreduras", Icons.Filled.Refresh),
-            ReiAnixSettingsCategoryUiModel("Diagnóstico", "Informações técnicas e diagnóstico", Icons.Filled.BugReport),
+            ReiAnixSettingsCategoryUiModel("Diagnóstico", "Informações técnicas e diagnóstico", Icons.Filled.Refresh),
             ReiAnixSettingsCategoryUiModel("Sobre", "Versão e componentes do ReiAnix", Icons.Filled.Info),
         )
     }
@@ -1103,6 +1098,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Diagnóstico" -> {
+                    val diagnosticStorage = state.storage
                     item(key = "diagnostic:info") {
                         ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1127,7 +1123,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(
-                                    text = "API Android: ${storageApiLabel(storage.api)} • ciclo: ${storage.lifecycleStateLabel()}",
+                                    text = "API Android: ${storageApiLabel(diagnosticStorage.api)} • ciclo: ${diagnosticStorage.lifecycleStateLabel()}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
