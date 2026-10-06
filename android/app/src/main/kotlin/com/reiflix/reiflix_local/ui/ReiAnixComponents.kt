@@ -783,9 +783,9 @@ fun ReiAnixEpisodeCard(
             )
         }
         add(episode.displayTitle)
-        episode.durationSeconds?.takeIf { it >= 0.0 }?.let {
-            add(formatDurationLabel(it))
-        }
+        episode.durationSeconds
+            ?.takeIf { it.isFinite() && it > 0.0 }
+            ?.let { add(formatDurationLabel(it)) }
         episode.progressPercent?.let { add(it.toString() + "% assistido") }
         if (episode.isCompleted) {
             add("Concluído")
@@ -840,7 +840,7 @@ fun ReiAnixEpisodeCard(
                     identity = episode.stableKey,
                 )
                 episode.durationSeconds
-                    ?.takeIf { it.isFinite() && it >= 0.0 }
+                    ?.takeIf { it.isFinite() && it > 0.0 }
                     ?.let { duration ->
                         Surface(
                             modifier = Modifier
@@ -889,10 +889,12 @@ fun ReiAnixEpisodeCard(
                                 },
                             )
                         }
-                        episode.durationSeconds?.takeIf { it >= 0 }?.let {
-                            if (isNotEmpty()) append(" • ")
-                            append(formatDurationLabel(it))
-                        }
+                        episode.durationSeconds
+                            ?.takeIf { it.isFinite() && it > 0.0 }
+                            ?.let {
+                                if (isNotEmpty()) append(" • ")
+                                append(formatDurationLabel(it))
+                            }
                         episode.progressPercent?.let {
                             if (isNotEmpty()) append(" • ")
                             append("$it%")
@@ -935,7 +937,8 @@ fun ReiAnixEpisodeCard(
     }
 }
 
-private fun formatDurationLabel(seconds: Double): String {
+internal fun formatDurationLabel(seconds: Double): String {
+    if (!seconds.isFinite() || seconds <= 0.0) return "—"
     val total = seconds.toLong().coerceAtLeast(0L)
     val hours = total / 3600L
     val minutes = (total % 3600L) / 60L
