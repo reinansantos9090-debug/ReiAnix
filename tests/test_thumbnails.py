@@ -78,6 +78,41 @@ class ThumbnailTests(unittest.TestCase):
                 ).fetchone()
             self.assertAlmostEqual(123.456, float(row["duration"]), places=6)
 
+    def test_valid_episode_thumbnail_without_duration_stays_reconcilable_for_repair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = LibraryStore(directory)
+            service = LibraryService(store)
+            anime_id = store.upsert_anime(
+                "fixture_57-repair",
+                {"title": "Prompt 57 Repair", "genres": "[]", "media_kind": "series"},
+            )
+            episode_id = store.upsert_episode(
+                anime_id,
+                "file:///tmp/fixture_57-repair-e01.mkv",
+                "E01.mkv",
+                1,
+                1,
+                media_identity="fixture_57-repair-e01",
+            )
+            thumb = Path(directory) / "repair.jpg"
+            self._image(thumb)
+
+            self.assertTrue(
+                service.register_generated_thumbnail(
+                    "file:///tmp/fixture_57-repair-e01.mkv",
+                    thumb,
+                    size=100,
+                    modified_at=200,
+                    media_identity="fixture_57-repair-e01",
+                    metadata={"mimeType": "video/mp4"},
+                )
+            )
+
+            candidates = service.thumbnail_candidates()
+            self.assertEqual([episode_id], [item["id"] for item in candidates])
+            self.assertTrue(candidates[0]["thumbnail_ready"])
+            self.assertEqual(0.0, float(candidates[0]["duration"] or 0.0))
+
     def test_valid_episode_thumbnail_removes_episode_from_reconciliation(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
@@ -103,7 +138,7 @@ class ThumbnailTests(unittest.TestCase):
                     size=100,
                     modified_at=200,
                     media_identity="fixture_36-ready",
-                    metadata={"mimeType": "video/mp4"},
+                    metadata={"mimeType": "video/mp4", "durationMs": 123000},
                 )
             )
             self.assertEqual([], service.thumbnail_candidates())
@@ -235,6 +270,7 @@ class ThumbnailTests(unittest.TestCase):
 
     def test_static_pipeline_contract(self):
         main = (ROOT / "main.py").read_text(encoding="utf-8")
+        service_source = (ROOT / "core" / "library_service.py").read_text(encoding="utf-8")
         home = (ROOT / "views" / "home_view.py").read_text(encoding="utf-8")
         details = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")
         extractor = (
@@ -258,6 +294,8 @@ class ThumbnailTests(unittest.TestCase):
         self.assertIn("isValidCachedThumbnail", extractor)
         self.assertIn("readCachedResult", extractor)
         self.assertIn("writeCacheMetadata", extractor)
+        self.assertIn("duration_known", main)
+        self.assertIn('float(row.get("duration") or 0) <= 0.0', service_source)
         self.assertIn('"THUMBNAIL_DURATION_REPAIRED"', extractor)
         self.assertIn('compose_library_bridge.request_publish("thumbnail_ready")', main)
         self.assertIn('"THUMBNAIL_PUBLISHED"', main)
