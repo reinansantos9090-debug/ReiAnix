@@ -59,7 +59,7 @@ def test_compose_exposes_only_existing_player_preferences():
 
     assert "NativeManagedSettingsCategories =" in compose
     assert "ReiAnixSettingsCategoryUiModel.defaultCategories()" in compose
-    assert '.filterNot { it == "Armazenamento" }' in compose
+    assert 'ReiAnixSettingsCategoryUiModel("Armazenamento"' in compose
     for category in ("Player", "Gestos", "Áudio e Legendas"):
         assert f'"{category}"' in compose
 
