@@ -311,6 +311,16 @@ jobs:
           echo "::error::APK build failed after 3 attempts."
           exit 1
 
+      - name: Run Kotlin unit tests
+        working-directory: build/flutter/android
+        shell: bash
+        env:
+          SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/site-packages
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Preserve build identity evidence
         shell: bash
         run: |
