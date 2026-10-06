@@ -1386,20 +1386,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
         expectedTransitionGeneration: Long,
     ) {
         try {
+            val appContext = applicationContext
             mediaMetadataWorker.submit {
-                logPlayer(
+                android.util.Log.i(
+                    TAG,
                     "MEDIA_METADATA_DEFERRED_START requestId=" + requestId.ifEmpty { "-" } +
                         " generation=" + generation +
                         " uri=" + localUri,
                 )
-                val displayName = displayNameForUri(localUri)
-                val providerMime = runCatching { contentResolver.getType(localUri) }.getOrNull()
+                val displayName = displayNameForUri(appContext, localUri)
+                val providerMime = runCatching { appContext.contentResolver.getType(localUri) }.getOrNull()
                 val resolvedMime = PlayerMediaPolicy.resolveVideoMimeType(providerMime, displayName)
-                val sizeBytes = localSizeBytes(localUri)
+                val sizeBytes = localSizeBytes(appContext, localUri)
                 val subtitleTracks = runCatching {
-                    LocalSubtitleResolver.resolve(this@NativePlayerActivity, localUri)
+                    LocalSubtitleResolver.resolve(appContext, localUri)
                 }.getOrElse { error ->
-                    logPlayer(
+                    android.util.Log.w(
+                        TAG,
                         "SUBTITLE_RESOLVE_FAILED generation=$generation uri=$localUri",
                         error,
                     )
@@ -4595,7 +4598,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         pendingPreparation?.cancel(true)
         playbackWorker.shutdown()
         progressWorker.shutdown()
-        mediaMetadataWorker.shutdown()
+        mediaMetadataWorker.shutdownNow()
         if (::player.isInitialized) {
             activePlayerListener?.let { player.removeListener(it) }
             activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }
@@ -5013,11 +5016,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         return result
     }
 
-    private fun displayNameForUri(localUri: Uri): String? =
+    private fun displayNameForUri(context: Context, localUri: Uri): String? =
         when (localUri.scheme?.lowercase(Locale.ROOT)) {
             "file" -> runCatching { File(localUri.path ?: "").name }.getOrNull()
             "content" -> runCatching {
-                contentResolver.query(
+                context.contentResolver.query(
                     localUri,
                     arrayOf(MediaStore.MediaColumns.DISPLAY_NAME),
                     null, null, null,
@@ -5030,17 +5033,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
             else -> null
         } ?: localUri.lastPathSegment?.substringAfterLast('/')
 
-    private fun localSizeBytes(localUri: Uri): Long? =
+    private fun localSizeBytes(context: Context, localUri: Uri): Long? =
         when (localUri.scheme?.lowercase(Locale.ROOT)) {
             "file" -> runCatching { File(localUri.path ?: "").length() }.getOrNull()
             "content" -> {
                 val descriptorSize = runCatching {
-                    contentResolver.openFileDescriptor(localUri, "r")?.use { descriptor ->
+                    context.contentResolver.openFileDescriptor(localUri, "r")?.use { descriptor ->
                         descriptor.statSize.takeIf { it >= 0L }
                     }
                 }.getOrNull()
                 descriptorSize ?: runCatching {
-                    contentResolver.query(
+                    context.contentResolver.query(
                         localUri,
                         arrayOf(MediaStore.MediaColumns.SIZE),
                         null, null, null,
