@@ -1,4 +1,4 @@
-"""Prompt 36 regression coverage for deterministic episode thumbnail generation."""
+"""earlier validation stage 36 regression coverage for deterministic episode thumbnail generation."""
 from pathlib import Path
 import tempfile
 import unittest
@@ -13,7 +13,7 @@ from core.library_store import LibraryStore
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class Prompt36ThumbnailTests(unittest.TestCase):
+class ThumbnailTests(unittest.TestCase):
     def _image(self, path: Path, size=(32, 32)):
         Image.new("RGB", size, (32, 64, 96)).save(path, format="JPEG", quality=90)
 
@@ -22,16 +22,16 @@ class Prompt36ThumbnailTests(unittest.TestCase):
             store = LibraryStore(directory)
             service = LibraryService(store)
             anime_id = store.upsert_anime(
-                "prompt36",
-                {"title": "Prompt 36", "genres": "[]", "media_kind": "series"},
+                "stage36",
+                {"title": "earlier validation stage 36", "genres": "[]", "media_kind": "series"},
             )
             episode_id = store.upsert_episode(
                 anime_id,
-                "file:///tmp/prompt36-e01.mkv",
-                "Prompt36 E01.mkv",
+                "file:///tmp/fixture_36-e01.mkv",
+                "stage36 E01.mkv",
                 1,
                 1,
-                media_identity="prompt36-e01",
+                media_identity="fixture_36-e01",
             )
             poster = Path(directory) / "poster.jpg"
             self._image(poster)
@@ -46,26 +46,26 @@ class Prompt36ThumbnailTests(unittest.TestCase):
             store = LibraryStore(directory)
             service = LibraryService(store)
             anime_id = store.upsert_anime(
-                "prompt36-ready",
-                {"title": "Prompt 36 Ready", "genres": "[]", "media_kind": "series"},
+                "fixture_36-ready",
+                {"title": "earlier validation stage 36 Ready", "genres": "[]", "media_kind": "series"},
             )
             episode_id = store.upsert_episode(
                 anime_id,
-                "file:///tmp/prompt36-ready-e01.mkv",
-                "Prompt36 Ready E01.mkv",
+                "file:///tmp/fixture_36-ready-e01.mkv",
+                "stage36 Ready E01.mkv",
                 1,
                 1,
-                media_identity="prompt36-ready",
+                media_identity="fixture_36-ready",
             )
             thumb = Path(directory) / "thumb.jpg"
             self._image(thumb)
             self.assertTrue(
                 service.register_generated_thumbnail(
-                    "file:///tmp/prompt36-ready-e01.mkv",
+                    "file:///tmp/fixture_36-ready-e01.mkv",
                     thumb,
                     size=100,
                     modified_at=200,
-                    media_identity="prompt36-ready",
+                    media_identity="fixture_36-ready",
                     metadata={"mimeType": "video/mp4"},
                 )
             )
@@ -93,8 +93,8 @@ class Prompt36ThumbnailTests(unittest.TestCase):
             engine = ArtworkEngine(store, max_workers=1)
             try:
                 anime_id = store.upsert_anime(
-                    "prompt36-identity",
-                    {"title": "Prompt 36 Identity", "genres": "[]", "media_kind": "series"},
+                    "fixture_36-identity",
+                    {"title": "earlier validation stage 36 Identity", "genres": "[]", "media_kind": "series"},
                 )
                 episode_id = store.upsert_episode(
                     anime_id,
@@ -136,16 +136,16 @@ class Prompt36ThumbnailTests(unittest.TestCase):
             store = LibraryStore(directory)
             service = LibraryService(store)
             anime_id = store.upsert_anime(
-                "prompt36-corrupt",
-                {"title": "Prompt 36 Corrupt", "genres": "[]", "media_kind": "series"},
+                "fixture_36-corrupt",
+                {"title": "earlier validation stage 36 Corrupt", "genres": "[]", "media_kind": "series"},
             )
             episode_id = store.upsert_episode(
                 anime_id,
-                "file:///tmp/prompt36-corrupt-e01.mkv",
-                "Prompt36 Corrupt E01.mkv",
+                "file:///tmp/fixture_36-corrupt-e01.mkv",
+                "stage36 Corrupt E01.mkv",
                 1,
                 1,
-                media_identity="prompt36-corrupt",
+                media_identity="fixture_36-corrupt",
             )
             bad = Path(directory) / "bad.jpg"
             bad.write_bytes(b"not-a-jpeg")
@@ -158,8 +158,8 @@ class Prompt36ThumbnailTests(unittest.TestCase):
                     ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         "episode", str(episode_id), "episode_thumbnail", "generated",
-                        "native:prompt36-corrupt", str(bad), "ready", 1.0, 1.0,
-                        "prompt36-corrupt-key", "small",
+                        "native:fixture_36-corrupt", str(bad), "ready", 1.0, 1.0,
+                        "fixture_36-corrupt-key", "small",
                     ),
                 )
             candidates = service.thumbnail_candidates()
@@ -170,17 +170,17 @@ class Prompt36ThumbnailTests(unittest.TestCase):
             store = LibraryStore(directory)
             service = LibraryService(store)
             anime_id = store.upsert_anime(
-                "prompt36-many",
-                {"title": "Prompt 36 Many", "genres": "[]", "media_kind": "series"},
+                "fixture_36-many",
+                {"title": "earlier validation stage 36 Many", "genres": "[]", "media_kind": "series"},
             )
             for number in range(1, 131):
                 store.upsert_episode(
                     anime_id,
-                    f"file:///tmp/prompt36-many-e{number:03d}.mkv",
+                    f"file:///tmp/fixture_36-many-e{number:03d}.mkv",
                     f"E{number:03d}.mkv",
                     1,
                     number,
-                    media_identity=f"prompt36-many-{number}",
+                    media_identity=f"fixture_36-many-{number}",
                 )
 
             first = service.thumbnail_candidates(after_id=0, limit=128)
@@ -196,7 +196,7 @@ class Prompt36ThumbnailTests(unittest.TestCase):
                 len({item["id"] for item in first + second}),
             )
 
-    def test_prompt36_static_pipeline_contract(self):
+    def test_static_pipeline_contract(self):
         main = (ROOT / "main.py").read_text(encoding="utf-8")
         home = (ROOT / "views" / "home_view.py").read_text(encoding="utf-8")
         details = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evidence-oriented source and CI integrity audit for ReiAnix Prompt 3.
+"""Evidence-oriented source and CI integrity audit for ReiAnix earlier validation stage 3.
 
 This audit is intentionally static. It never upgrades static evidence to a
 runtime PASS; runtime device/emulator evidence is produced by the instrumented

@@ -305,7 +305,7 @@ if compose_plugin_marker not in existing:
 # rendered Android module does not guarantee BuildConfig generation, so make
 # this explicit in the actual Gradle project that will compile the APK.
 
-# Jetpack Compose foundation. Prompt 01 enables the stack but intentionally does
+# Jetpack Compose foundation. earlier validation stage 01 enables the stack but intentionally does
 # not attach Compose content to the Flet launcher or migrate an existing screen.
 compose_marker = "ReiAnix Jetpack Compose foundation contract"
 if compose_marker not in existing:

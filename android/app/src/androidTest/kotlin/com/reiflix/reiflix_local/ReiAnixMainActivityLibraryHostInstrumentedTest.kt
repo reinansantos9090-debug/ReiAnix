@@ -19,7 +19,7 @@ class ReiAnixMainActivityLibraryHostInstrumentedTest {
             Intent.ACTION_VIEW,
             Uri.parse(
                 "reiflix://native?action=open_library" +
-                    "&request_id=prompt91-runtime" +
+                    "&request_id=compose-host-runtime" +
                     "",
             ),
         )
@@ -39,7 +39,7 @@ class ReiAnixMainActivityLibraryHostInstrumentedTest {
             Intent.ACTION_VIEW,
             Uri.parse(
                 "reiflix://native?action=open_library" +
-                    "&request_id=prompt91-runtime-back" +
+                    "&request_id=compose-host-runtime-back" +
                     "",
             ),
         )

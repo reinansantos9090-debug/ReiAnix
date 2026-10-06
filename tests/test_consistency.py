@@ -1,4 +1,4 @@
-"""Prompt 36 consistency hardening contracts without emulator/instrumented tests."""
+"""earlier validation stage 36 consistency hardening contracts without emulator/instrumented tests."""
 from pathlib import Path
 
 from core.compose_library_bridge import ComposeLibraryBridge

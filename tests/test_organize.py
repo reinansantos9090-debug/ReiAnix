@@ -1,4 +1,4 @@
-"""Prompt 37 regression tests for dynamic Organize categories."""
+"""earlier validation stage 37 regression tests for dynamic Organize categories."""
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,7 +13,7 @@ STORE = ROOT / "core" / "library_store.py"
 MAIN = ROOT / "main.py"
 
 
-class Prompt37SQLiteTests(unittest.TestCase):
+class SQLiteTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = LibraryStore(self.tmp.name)
@@ -31,7 +31,7 @@ class Prompt37SQLiteTests(unittest.TestCase):
         self.registry.sync_anime(anime_id, genres, source="local")
         self.store.upsert_episode(
             anime_id,
-            f"content://prompt37/{key}/01",
+            f"content://stage37/{key}/01",
             f"{title} S01E01.mkv",
             1,
             1,
@@ -81,7 +81,7 @@ class Prompt37SQLiteTests(unittest.TestCase):
         self.registry.sync_anime(anime_id, ["Action"], source="anilist")
         self.store.upsert_episode(
             anime_id,
-            "content://prompt37/dup/01",
+            "content://stage37/dup/01",
             "Duplicate S01E01.mkv",
             1,
             1,
@@ -99,7 +99,7 @@ class Prompt37SQLiteTests(unittest.TestCase):
             con.execute("DELETE FROM episodes WHERE anime_id=?", (anime_id,))
         self.assertNotIn("Horror", self.genre_counts())
 
-    def test_h_prompt35_out_of_scope_reconciliation_removes_genre_population(self):
+    def test_h_stage35_out_of_scope_reconciliation_removes_genre_population(self):
         root = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
         self.store.add_folder(
             root,
@@ -143,7 +143,7 @@ class Prompt37SQLiteTests(unittest.TestCase):
         )
         self.store.upsert_episode(
             anime_id,
-            "content://prompt37/normalized/01",
+            "content://stage37/normalized/01",
             "Normalized S01E01.mkv",
             1,
             1,
@@ -210,7 +210,7 @@ class Prompt37SQLiteTests(unittest.TestCase):
         self.assertTrue(all(int(item["count"]) == 1 for item in genres))
 
 
-class Prompt37SourceContractTests(unittest.TestCase):
+class SourceContractTests(unittest.TestCase):
     @staticmethod
     def read(path):
         return path.read_text(encoding="utf-8")

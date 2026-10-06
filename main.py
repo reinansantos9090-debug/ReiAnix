@@ -2550,7 +2550,7 @@ async def main(page: ft.Page):
             ):
                 page.run_task(_show_compose_settings)
             persist_navigation_state()
-        elif action == "prompt_exit":
+        elif action == "exit_requested":
             persist_navigation_state()
             page.snack_bar=ft.SnackBar(ft.Text("Pressione voltar novamente para sair"))
             page.snack_bar.open=True
@@ -3119,7 +3119,7 @@ async def main(page: ft.Page):
             scopes=['openid','email','profile'],
             user_endpoint='https://openidconnect.googleapis.com/v1/userinfo',
             user_id_fn=lambda u:u.get('sub'),
-            authorization_params={'access_type':'offline','prompt':'select_account'},
+            authorization_params={'access_type':'offline','stage':'select_account'},
         )
         await page.login(provider,fetch_user=True)
 

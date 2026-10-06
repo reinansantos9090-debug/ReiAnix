@@ -73,8 +73,8 @@ internal object PlayerMediaPolicy {
     }
 
     /**
-     * Compatibility classifier kept for the earlier Prompt 1-27 tests/contracts.
-     * Prompt 28 uses classifyPlaybackFailure for the more precise reason.
+     * Compatibility classifier kept for the earlier earlier validation stage 1-27 tests/contracts.
+     * earlier validation stage 28 uses classifyPlaybackFailure for the more precise reason.
      */
     fun classifyError(errorCodeName: String?, causeNames: List<String> = emptyList()): ErrorCategory {
         val code = errorCodeName.orEmpty().uppercase(Locale.ROOT)

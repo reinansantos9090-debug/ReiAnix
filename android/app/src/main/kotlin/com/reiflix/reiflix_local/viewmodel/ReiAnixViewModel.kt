@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
  * Base contract for future screen ViewModels.
  *
  * ViewModels expose immutable StateFlow to the UI and may use viewModelScope for
- * cancellable work. Prompt 01 deliberately does not create domain state or a
+ * cancellable work. earlier validation stage 01 deliberately does not create domain state or a
  * duplicate Kotlin data layer.
  */
 @Keep
