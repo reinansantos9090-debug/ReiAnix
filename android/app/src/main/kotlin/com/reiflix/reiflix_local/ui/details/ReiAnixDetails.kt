@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -395,6 +397,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onRefresh = onRefresh,
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
+                onSetEpisodeWatched = onSetEpisodeWatched,
             )
         }
 
@@ -607,15 +610,78 @@ private fun DetailsHero(
     onRefresh: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    onSetEpisodeWatched: (Long, Boolean) -> Unit,
 ) {
-    BoxWithConstraints(
-        modifier = Modifier.fillMaxWidth(),
+    val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
+    val responsive = LocalReiAnixResponsiveMetrics.current
+    val heroHeight = responsive.detailsHeroHeight()
+    val posterOverlap = ReiAnixTokens.Dimensions.detailsHeroPosterOverlap
+    val backdropPath = anime.artwork?.backdropLocalPath?.takeIf { it.isNotBlank() }
+    val posterPath = anime.artwork?.localPath?.takeIf { it.isNotBlank() }
+    val target = anime.playbackTargetEpisode
+    val metadata = buildList {
+        anime.year?.let { add(it.toString()) }
+        anime.episodeCount?.let { count ->
+            add(if (count == 1) "1 episódio" else "$count eps")
+        }
+        anime.score?.let { add("Nota " + formatScore(it)) }
+    }.joinToString(" • ")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background),
     ) {
-        var heroMenuExpanded by rememberSaveable(anime.id) { mutableStateOf(false) }
-        val wide = LocalReiAnixResponsiveMetrics.current.widthClass != com.reiflix.reiflix_local.ui.theme.ReiAnixWindowWidthClass.COMPACT
-        val heroHeight = LocalReiAnixResponsiveMetrics.current.detailsHeroHeight()
-        val backdropPath = anime.artwork?.backdropLocalPath?.takeIf { it.isNotBlank() }
-        val posterPath = anime.artwork?.localPath?.takeIf { it.isNotBlank() }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ReiAnixTokens.Dimensions.topBarMinHeight)
+                .padding(horizontal = responsive.horizontalPadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ReiAnixIconActionButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Voltar",
+                onClick = onBack,
+            )
+
+            Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
+
+            Text(
+                text = anime.title,
+                style = ReiAnixTokens.TypographyTokens.screenTitle,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+
+            Box {
+                ReiAnixIconActionButton(
+                    icon = Icons.Filled.MoreVert,
+                    contentDescription = "Mais opções",
+                    onClick = { menuExpanded.value = true },
+                )
+                DropdownMenu(
+                    expanded = menuExpanded.value,
+                    onDismissRequest = { menuExpanded.value = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Atualizar detalhes") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            menuExpanded.value = false
+                            onRefresh()
+                        },
+                    )
+                }
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -637,238 +703,144 @@ private fun DetailsHero(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
                                 Color.Transparent,
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.30f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.06f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.70f),
+                                MaterialTheme.colorScheme.background,
                             ),
                         ),
                     ),
             )
-            Box(
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = responsive.horizontalPadding)
+                .height(ReiAnixTokens.Dimensions.detailsHeroPosterHeight)
+                .offset(y = -posterOverlap),
+            verticalAlignment = Alignment.Top,
+        ) {
+            ReiAnixPoster(
+                localPath = posterPath,
+                contentDescription = null,
                 modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.18f),
-                                Color.Transparent,
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.30f),
-                            ),
-                        ),
-                    ),
+                    .width(ReiAnixTokens.Dimensions.detailsHeroPosterWidth)
+                    .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
+                    .clip(ReiAnixTokens.Shapes.artwork),
+                identity = anime.stableKey + ":poster",
+                maxDimensionPx = 512,
             )
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                        vertical = ReiAnixTokens.Spacing.sm,
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DetailsHeroIcon(
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    label = "Voltar",
-                    onClick = onBack,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Box {
-                    DetailsHeroIcon(
-                        icon = Icons.Filled.MoreVert,
-                        label = "Mais opções",
-                        onClick = { heroMenuExpanded = true },
-                    )
-                    DropdownMenu(
-                        expanded = heroMenuExpanded,
-                        onDismissRequest = { heroMenuExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Atualizar detalhes") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Filled.Refresh,
-                                    contentDescription = null,
-                                )
-                            },
-                            onClick = {
-                                heroMenuExpanded = false
-                                onRefresh()
-                            },
-                        )
-                    }
-                }
-                DetailsHeroIcon(
-                    icon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    label = if (anime.favorite) {
-                        "Remover da Minha Lista"
-                    } else {
-                        "Adicionar à Minha Lista"
-                    },
-                    onClick = { onToggleFavorite(anime.id) },
-                )
-            }
+            Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
 
-            Row(
+            Column(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                        vertical = ReiAnixTokens.Spacing.lg,
-                    ),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+                    .weight(1f)
+                    .padding(top = ReiAnixTokens.Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
-                if (wide) {
-                    ReiAnixPoster(
-                        localPath = posterPath,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .width(ReiAnixTokens.Dimensions.detailsHeroPosterWidth)
-                            .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio),
-                        identity = anime.stableKey + ":poster",
-                        maxDimensionPx = 512,
-                    )
-                }
+                Text(
+                    text = anime.title,
+                    style = ReiAnixTokens.TypographyTokens.heroTitle,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
 
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                ) {
+                if (metadata.isNotBlank()) {
                     Text(
-                        text = anime.title,
-                        style = ReiAnixTokens.TypographyTokens.heroTitle,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 2,
+                        text = metadata,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.semantics { heading() },
                     )
-
-                    anime.preferredAlternateTitle
-                        ?.takeIf { !it.equals(anime.title, ignoreCase = true) }
-                        ?.let { alternate ->
-                            Text(
-                                text = alternate,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-
-                    if (anime.genres.isNotEmpty()) {
-                        Text(
-                            text = anime.genres.joinToString(" • ") { it.name },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-
-                    val metadata = buildList {
-                        anime.score?.let { add("Nota " + formatScore(it) + "/10") }
-                        anime.year?.let { add(it.toString()) }
-                        anime.episodeCount?.let { count ->
-                            add(if (count == 1) "1 episódio" else "$count episódios")
-                        }
-                        anime.durationMinutes?.let { add(it.toString() + " min/ep") }
-                    }
-
-                    if (metadata.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            anime.score?.let {
-                                Icon(
-                                    imageVector = Icons.Filled.Star,
-                                    contentDescription = "Nota",
-                                    tint = ReiAnixTokens.Colors.warning,
-                                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
-                                )
-                            }
-                            metadata.forEach { value ->
-                                DetailsMetaText(value)
-                            }
-                        }
-                    }
-
-                    val target = anime.playbackTargetEpisode
-                    Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                    ) {
-                        if (target != null && target.isPlayable) {
-                            ReiAnixPrimaryButton(
-                                text = target.playbackActionLabel,
-                                onClick = { onWatch(target.id) },
-                                modifier = Modifier.weight(1f),
-                                leadingIcon = Icons.Filled.PlayArrow,
-                            )
-                        } else {
-                            ReiAnixPrimaryButton(
-                                text = "Nenhuma mídia local disponível para reprodução.",
-                                onClick = {},
-                                enabled = false,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-
-                        ReiAnixSecondaryButton(
-                            text = if (anime.favorite) "Remover da Lista" else "Minha Lista",
-                            onClick = { onToggleFavorite(anime.id) },
-                            modifier = Modifier.weight(1f),
-                            leadingIcon = if (anime.favorite) null else Icons.Filled.Add,
-                        )
-                    }
-
-                    target
-                        ?.takeIf {
-                            it.progressFraction > 0f &&
-                                it.consumptionState != ReiAnixConsumptionState.COMPLETED &&
-                                it.consumptionState != ReiAnixConsumptionState.WATCHED
-                        }
-                        ?.let { progressTarget ->
-                            Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.xs))
-                            Surface(
-                                shape = ReiAnixTokens.Shapes.card,
-                                color = ReiAnixTokens.Colors.overlay.copy(alpha = 0.55f),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
-                                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                                ) {
-                                    Text(
-                                        text = "Continuar " + formatEpisodeNumber(progressTarget.number),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Text(
-                                        text = progressTarget.displayTitle +
-                                            " • " + (progressTarget.progressPercent ?: 0) + "%",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    ReiAnixProgressIndicator(
-                                        progress = progressTarget.progressFraction,
-                                        visible = true,
-                                        announceProgress = false,
-                                    )
-                                }
-                            }
-                        }
                 }
             }
+        }
+
+        if (anime.genres.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = responsive.horizontalPadding,
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            ) {
+                anime.genres.take(4).forEach { genre ->
+                    ReiAnixChip(
+                        text = genre.name,
+                        onClick = {},
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        anime.description
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { description ->
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = responsive.horizontalPadding,
+                            top = ReiAnixTokens.Spacing.sm,
+                        ),
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = responsive.horizontalPadding,
+                    vertical = ReiAnixTokens.Spacing.md,
+                ),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+        ) {
+            if (target?.isPlayable == true) {
+                ReiAnixPrimaryButton(
+                    text = target.playbackActionLabel,
+                    onClick = { onWatch(target.id) },
+                    modifier = Modifier.weight(1.7f),
+                    leadingIcon = Icons.Filled.PlayArrow,
+                )
+            } else {
+                ReiAnixPrimaryButton(
+                    text = "Reproduzir indisponível",
+                    onClick = {},
+                    enabled = false,
+                    modifier = Modifier.weight(1.7f),
+                    leadingIcon = Icons.Filled.PlayArrow,
+                )
+            }
+
+            ReiAnixSecondaryButton(
+                text = if (anime.favorite) "Favoritado" else "Favoritar",
+                onClick = { onToggleFavorite(anime.id) },
+                modifier = Modifier.weight(1f),
+                leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            )
+
+            val watched = target?.isWatched == true || target?.consumptionState == ReiAnixConsumptionState.COMPLETED
+            ReiAnixSecondaryButton(
+                text = if (watched) "Desmarcar" else "Marcar visto",
+                onClick = {
+                    target?.let { onSetEpisodeWatched(it.id, !watched) }
+                },
+                enabled = target != null,
+                modifier = Modifier.weight(1f),
+                leadingIcon = if (watched) Icons.Filled.Check else Icons.Filled.Check,
+            )
         }
     }
 }
