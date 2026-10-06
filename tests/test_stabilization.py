@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -274,6 +275,69 @@ class StabilizationTests(unittest.TestCase):
         self.assertEqual("previous", nav.back())
         self.assertEqual("exit_requested", nav.back())
 
+
+
+    def test_background_description_localization_persists_and_notifies_details(self):
+        from unittest.mock import patch
+        from core.library_service import LibraryService
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = LibraryStore(directory)
+            source = "The story follows a young hero who protects their town."
+            anime_id = store.upsert_anime(
+                "localized",
+                {
+                    "title": "Localized",
+                    "description": source,
+                    "description_original": source,
+                    "anilist_id": 123,
+                    "genres": "[]",
+                },
+                source="anilist",
+            )
+            service = LibraryService(store)
+            changed = threading.Event()
+            service.set_metadata_change_listener(
+                lambda _event, _payload: changed.set()
+            )
+            started = threading.Event()
+            release = threading.Event()
+
+            def localize(_description, **_kwargs):
+                started.set()
+                release.wait(2.0)
+                return "A história acompanha um jovem herói que protege sua cidade."
+
+            try:
+                with patch.object(service.anilist, "localize_description_to_pt_br", side_effect=localize):
+                    scheduled = service._schedule_description_localization(
+                        "localized",
+                        source,
+                        local_anime_id=anime_id,
+                        request_id="translation-test",
+                    )
+                    self.assertTrue(scheduled)
+                    self.assertTrue(started.wait(1.0))
+                    self.assertEqual(source, store.anime_metadata_by_id(anime_id)["description"])
+                    release.set()
+                    self.assertTrue(changed.wait(2.0))
+                self.assertEqual(
+                    "A história acompanha um jovem herói que protege sua cidade.",
+                    store.anime_metadata_by_id(anime_id)["description"],
+                )
+                self.assertEqual(
+                    source,
+                    store.anime_metadata_by_id(anime_id)["description_original"],
+                )
+            finally:
+                release.set()
+                service.shutdown()
+
+    def test_details_and_main_use_canonical_localized_description_pipeline(self):
+        self.assertIn("metadata.get("description") or metadata.get("description_original")", DETAILS)
+        self.assertIn("library.set_metadata_change_listener(_dispatch_metadata_change)", MAIN)
+        self.assertIn("compose_library_bridge.request_publish("metadata_translation")", MAIN)
+        self.assertIn("description_original", ANILIST)
 
 if __name__ == "__main__":
     unittest.main()
