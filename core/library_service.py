@@ -239,6 +239,16 @@ class LibraryService:
             if local_anime_id
             else None
         ) or self.store.anime_metadata(lookup_title)
+        current_original = self.anilist.normalize_description(
+            (current or {}).get("description_original") or ""
+        )
+        if current_original and current_original != original:
+            logger.info(
+                "TRANSLATION_STALE_IGNORED lookupTitle=%s animeId=%s",
+                lookup_title,
+                (current or {}).get("id") or local_anime_id or "-",
+            )
+            return False
         if current and str(current.get("description") or "").strip() == localized:
             return False
         self.store.upsert_anime(
