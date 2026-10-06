@@ -45,10 +45,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 data class ReiAnixNativePlayerUiState(
     val title: String = "Episódio",
@@ -130,10 +127,10 @@ fun ReiAnixNativePlayerTopControls(
                 ),
             )
             .padding(
-                start = 4.dp,
-                end = 10.dp,
-                top = safeTop + 2.dp,
-                bottom = 24.dp,
+                start = ReiAnixTokens.PlayerDimensions.topHorizontalPadding,
+                end = ReiAnixTokens.PlayerDimensions.topHorizontalPadding,
+                top = safeTop + ReiAnixTokens.Spacing.xs,
+                bottom = ReiAnixTokens.PlayerDimensions.topBottomPadding,
             ),
     ) {
         IconButton(
@@ -156,30 +153,28 @@ fun ReiAnixNativePlayerTopControls(
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .fillMaxWidth(0.86f)
-                .padding(top = 3.dp),
+                .fillMaxWidth(ReiAnixTokens.PlayerDimensions.topTitleWidthFraction)
+                .padding(top = ReiAnixTokens.Spacing.xs / 2),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
                 text = state.episodeLabel.ifBlank { "Episódio" },
+                style = ReiAnixTokens.TypographyTokens.playerTopLabel,
                 color = ReiAnixTokens.Colors.playerControl,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
             )
             if (state.technicalLine.isNotBlank()) {
                 Text(
                     text = state.technicalLine,
+                    style = ReiAnixTokens.TypographyTokens.playerTechnical,
                     color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.78f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                 )
             }
             Text(
                 text = state.title.ifBlank { "Episódio" },
+                style = ReiAnixTokens.TypographyTokens.metadata,
                 color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.98f),
-                fontSize = 11.sp,
                 maxLines = 2,
             )
         }
@@ -197,7 +192,7 @@ fun ReiAnixNativePlayerCenterControls(
         contentAlignment = Alignment.Center,
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(22.dp),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.PlayerDimensions.seekRowSpacing),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlayerSeekGlyphButton(
@@ -208,13 +203,13 @@ fun ReiAnixNativePlayerCenterControls(
             )
 
             Box(
-                modifier = Modifier.size(72.dp),
+                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.centerButtonContainerSize),
                 contentAlignment = Alignment.Center,
             ) {
                 IconButton(
                     onClick = onPlayPause,
                     modifier = Modifier
-                        .size(64.dp)
+                        .size(ReiAnixTokens.PlayerDimensions.centerButtonSize)
                         .semantics {
                             contentDescription = when {
                                 state.ended -> "Reproduzir novamente"
@@ -226,23 +221,22 @@ fun ReiAnixNativePlayerCenterControls(
                 ) {
                     if (state.isBuffering) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(30.dp),
+                            modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.bufferingIndicatorSize),
                             color = ReiAnixTokens.Colors.playerControl,
-                            strokeWidth = 3.dp,
+                            strokeWidth = ReiAnixTokens.PlayerDimensions.bufferingStroke,
                         )
                     } else if (state.isPlaying && !state.ended) {
                         Text(
                             text = "Ⅱ",
+                            style = ReiAnixTokens.TypographyTokens.playerPauseGlyph,
                             color = ReiAnixTokens.Colors.playerControl,
-                            fontSize = 30.sp,
-                            fontWeight = FontWeight.Bold,
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Filled.PlayArrow,
                             contentDescription = null,
                             tint = ReiAnixTokens.Colors.playerControl,
-                            modifier = Modifier.size(48.dp),
+                            modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
                         )
                     }
                 }
@@ -268,7 +262,7 @@ private fun PlayerSeekGlyphButton(
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .size(58.dp)
+            .size(ReiAnixTokens.PlayerDimensions.seekButtonSize)
             .semantics {
                 contentDescription = description
                 role = Role.Button
@@ -277,15 +271,13 @@ private fun PlayerSeekGlyphButton(
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = seconds,
+                style = ReiAnixTokens.TypographyTokens.chip,
                 color = ReiAnixTokens.Colors.playerControl,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
             )
             Text(
                 text = glyph,
+                style = ReiAnixTokens.TypographyTokens.playerGlyph,
                 color = ReiAnixTokens.Colors.playerControl,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.TopStart),
             )
         }
@@ -343,10 +335,10 @@ fun ReiAnixNativePlayerBottomControls(
                 ),
             )
             .padding(
-                start = 10.dp,
-                end = 10.dp,
-                top = 26.dp,
-                bottom = safeBottom + 4.dp,
+                start = ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding,
+                end = ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding,
+                top = ReiAnixTokens.PlayerDimensions.bottomTopPadding,
+                bottom = safeBottom + ReiAnixTokens.PlayerDimensions.bottomExtraPadding,
             ),
     ) {
         Row(
@@ -358,7 +350,7 @@ fun ReiAnixNativePlayerBottomControls(
                 color = ReiAnixTokens.Colors.playerControl,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.widthIn(min = 48.dp),
+                modifier = Modifier.widthIn(min = ReiAnixTokens.PlayerDimensions.timelineTimeWidth),
             )
             Slider(
                 value = sliderFraction,
@@ -379,7 +371,7 @@ fun ReiAnixNativePlayerBottomControls(
                 enabled = duration > 0L,
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = ReiAnixTokens.PlayerDimensions.timelineHeight),
                     .semantics {
                         contentDescription = "Barra de progresso do vídeo"
                         stateDescription = if (duration > 0L) {
@@ -401,17 +393,17 @@ fun ReiAnixNativePlayerBottomControls(
                 color = ReiAnixTokens.Colors.playerControl,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.widthIn(min = 48.dp),
+                modifier = Modifier.widthIn(min = ReiAnixTokens.PlayerDimensions.timelineTimeWidth),
             )
         }
 
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.xs / 2))
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 1.dp),
-            horizontalArrangement = Arrangement.spacedBy(1.dp),
+                .padding(horizontal = ReiAnixTokens.Spacing.none),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlayerBottomAction(
@@ -471,7 +463,7 @@ private fun RowScope.PlayerBottomAction(
             onClick = onClick,
             enabled = enabled,
             modifier = Modifier
-                .size(48.dp)
+                .size(ReiAnixTokens.PlayerDimensions.actionButtonSize)
                 .semantics {
                     this.contentDescription = contentDescription
                     role = Role.Button
@@ -481,22 +473,21 @@ private fun RowScope.PlayerBottomAction(
                 Text(
                     text = glyph,
                     color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.Bold,
+                    style = ReiAnixTokens.TypographyTokens.playerActionGlyph,
                 )
             } else if (icon != null) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
                 )
             }
         }
         Text(
             text = label,
+            style = ReiAnixTokens.TypographyTokens.playerActionLabel,
             color = ReiAnixTokens.Colors.playerControl.copy(alpha = if (enabled) 0.92f else 0.42f),
-            fontSize = 10.sp,
             maxLines = 1,
         )
     }
