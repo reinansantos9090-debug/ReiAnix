@@ -275,10 +275,6 @@ fun ReiAnixSettingsScreen(
     onOpenCategory: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
-    var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
-        androidx.compose.runtime.mutableStateOf<String?>(null)
-    }
-
     ReiAnixResponsiveRoot {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -403,6 +399,10 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onAction: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
+    var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+
     ReiAnixResponsiveRoot {
     Surface(
         modifier = Modifier.fillMaxSize(),
