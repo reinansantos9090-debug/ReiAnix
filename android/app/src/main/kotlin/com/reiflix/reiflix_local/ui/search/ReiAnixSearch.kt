@@ -640,7 +640,9 @@ private fun SearchBrowseState(
                 )
             }
         } else if (suggestions.isEmpty()) {
-            SearchEmptyQueryState(librarySize = 0)
+            item(key = "search-empty-query") {
+                SearchEmptyQueryState(librarySize = 0)
+            }
         }
     }
 }
