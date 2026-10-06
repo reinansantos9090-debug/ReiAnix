@@ -102,8 +102,8 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     }
 
     /**
-     * Persists a supported setting through the existing Python SettingsStore.
-     * Compose does not keep a second preference store or optimistic local value.
+     * Optimistically updates Compose, then persists through the existing Python SettingsStore.
+     * The confirmed value is reconciled by command result and the canonical snapshot.
      */
     fun setSetting(key: String, value: String) {
         val normalizedKey = key.trim()
@@ -210,7 +210,6 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     }
 
     private fun dispatchCommand(
-        type: String,
         action: String,
         operationKey: String,
         builder: (String) -> JSONObject,
