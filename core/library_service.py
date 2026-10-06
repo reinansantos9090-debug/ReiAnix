@@ -182,6 +182,18 @@ class LibraryService:
                     local_anime_id=cached.get("id"),
                     schedule=True,
                 )
+            failed_match = str(
+                (self.store.anilist_match(lookup_title) or {}).get("anilist_match_status") or ""
+            ).strip().casefold()
+            if failed_match in {"not_found", "network_error", "rate_limited"}:
+                self._record_diagnostic(
+                    "METADATA_MATERIALIZATION_SKIPPED",
+                    anime_id=cached.get("id"),
+                    anilist_id=cached.get("anilist_id"),
+                    lookup_title=lookup_title,
+                    reason=f"previous_match_{failed_match}",
+                )
+                return cached
             if associated_id and cached.get("anilist_id") != associated_id:
                 # An existing materialized association remains authoritative.
                 if allow_network:
@@ -823,6 +835,9 @@ class LibraryService:
                 cached = self._ensure_cached_description_pt_br(effective_lookup, cached)
             status = str(cached.get('metadata_status') or 'unresolved').casefold()
             materialized = self._metadata_is_materialized(cached)
+            match_status = str(
+                (self.store.anilist_match(effective_lookup) or {}).get("anilist_match_status") or ""
+            ).strip().casefold()
             if materialized:
                 self._record_diagnostic(
                     "METADATA_MATERIALIZATION_SKIPPED",
@@ -851,7 +866,11 @@ class LibraryService:
             # AniList trigger. Only genuinely unmaterialized metadata enters
             # the one-shot materialization path.
             needs_metadata = not materialized and (
-                not anilist_id or status in {'unresolved', 'error', 'ambiguous'}
+                (
+                    not anilist_id
+                    or status in {'unresolved', 'error', 'ambiguous'}
+                )
+                and match_status not in {'not_found', 'network_error', 'rate_limited'}
             )
             if status == 'ambiguous' and not anilist_id:
                 if pending_cache is None: pending_cache = self.store.pending_matches()
