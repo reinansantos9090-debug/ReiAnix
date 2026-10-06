@@ -175,8 +175,8 @@ private fun ReiAnixHomeObservedScreen(
                 modifier = Modifier.fillMaxSize(),
             )
             ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
-                message = "Nenhum conteúdo local disponível.",
-                actionLabel = "Selecionar pasta",
+                message = "Nenhum anime encontrado. A pasta foi configurada corretamente, mas nenhum vídeo compatível foi encontrado.",
+                actionLabel = "Escolher outra pasta",
                 onAction = onSelectSource,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -267,8 +267,8 @@ fun ReiAnixHomeScreen(
                 onAction = onRefresh,
             )
             ReiAnixLibraryLoadStatus.EMPTY -> HomeMessage(
-                title = "Biblioteca vazia",
-                message = "Nenhum conteúdo local disponível.",
+                title = "Nenhum anime encontrado",
+                message = "A pasta foi configurada corretamente, mas nenhum vídeo compatível foi encontrado.",
                 actionLabel = "Atualizar",
                 onAction = onRefresh,
             )
