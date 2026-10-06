@@ -11,12 +11,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.FileObserver
-import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets
-import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
