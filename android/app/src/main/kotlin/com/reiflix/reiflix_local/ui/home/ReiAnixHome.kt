@@ -609,7 +609,8 @@ private fun HomeHero(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(heroHeight),
+                .height(heroHeight)
+                .clip(ReiAnixTokens.Shapes.hero),
         ) {
             ReiAnixBackdrop(
                 localPath = anime.backdropLocalPath.takeIf { showThumbnails },
@@ -652,12 +653,27 @@ private fun HomeHero(
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .padding(
-                        start = ReiAnixTokens.Spacing.lg,
-                        end = ReiAnixTokens.Spacing.lg,
-                        bottom = ReiAnixTokens.Spacing.lg,
+                        start = ReiAnixTokens.Spacing.xl,
+                        end = ReiAnixTokens.Spacing.xl,
+                        bottom = ReiAnixTokens.Spacing.xl,
                     ),
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
             ) {
+                Surface(
+                    shape = ReiAnixTokens.Shapes.chip,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ) {
+                    Text(
+                        text = "Em destaque",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(
+                            horizontal = ReiAnixTokens.Spacing.md,
+                            vertical = ReiAnixTokens.Spacing.xs,
+                        ),
+                    )
+                }
+
                 Text(
                     text = anime.title,
                     style = ReiAnixTokens.TypographyTokens.heroTitle,
@@ -679,6 +695,18 @@ private fun HomeHero(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+
+                anime.description?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { description ->
+                        Text(
+                            text = description,
+                            style = ReiAnixTokens.TypographyTokens.bodySecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
