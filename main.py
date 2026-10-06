@@ -175,8 +175,13 @@ async def main(page: ft.Page):
             compose_settings_tasks.discard(completed)
             try:
                 completed.exception()
-            except (asyncio.CancelledError, Exception):
-                pass
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.error(
+                    "[COMPOSE_SETTINGS] background task failed unexpectedly: %s",
+                    exc,
+                )
         task.add_done_callback(_done)
         return True
 
