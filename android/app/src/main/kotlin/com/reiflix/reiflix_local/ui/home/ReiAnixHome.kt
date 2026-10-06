@@ -812,7 +812,7 @@ private fun HomeContinueCard(
             ) {
                 Text(
                     text = item.animeTitle,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Clip,
@@ -1001,7 +1001,7 @@ private fun HomeMediaCard(
             ) {
                 Text(
                     text = anime.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
