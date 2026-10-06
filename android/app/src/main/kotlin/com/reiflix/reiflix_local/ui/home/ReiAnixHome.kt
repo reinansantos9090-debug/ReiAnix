@@ -609,8 +609,7 @@ private fun HomeHero(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(heroHeight)
-                .clip(ReiAnixTokens.Shapes.hero),
+                .height(heroHeight),
         ) {
             ReiAnixBackdrop(
                 localPath = anime.backdropLocalPath.takeIf { showThumbnails },
@@ -653,27 +652,12 @@ private fun HomeHero(
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .padding(
-                        start = ReiAnixTokens.Spacing.xxl,
-                        end = ReiAnixTokens.Spacing.xxl,
-                        bottom = ReiAnixTokens.Spacing.xxl,
+                        start = ReiAnixTokens.Spacing.lg,
+                        end = ReiAnixTokens.Spacing.lg,
+                        bottom = ReiAnixTokens.Spacing.lg,
                     ),
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
             ) {
-                Surface(
-                    shape = ReiAnixTokens.Shapes.chip,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ) {
-                    Text(
-                        text = "Em destaque",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(
-                            horizontal = ReiAnixTokens.Spacing.md,
-                            vertical = ReiAnixTokens.Spacing.xs,
-                        ),
-                    )
-                }
-
                 Text(
                     text = anime.title,
                     style = ReiAnixTokens.TypographyTokens.heroTitle,
@@ -695,21 +679,6 @@ private fun HomeHero(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-
-                anime.description?.trim()
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.let { description ->
-                        Text(
-                            text = description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = if (
-                                LocalReiAnixResponsiveMetrics.current.heightClass ==
-                                    com.reiflix.reiflix_local.ui.theme.ReiAnixWindowHeightClass.COMPACT
-                            ) 2 else 4,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -803,7 +772,7 @@ private fun HomeContinueCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = MaterialTheme.colorScheme.background,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
@@ -959,7 +928,7 @@ private fun HomeMediaCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = MaterialTheme.colorScheme.background,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
