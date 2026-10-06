@@ -612,8 +612,11 @@ class LibraryService:
                 candidates = self.anilist.search(display_title)
                 search_status = str(self.anilist.last_request_status or "idle")
                 if search_status in {"network_error", "rate_limited", "invalid_response", "http_error"}:
-                    existing_match = self.store.anilist_match(local_lookup)
-                    if search_status in {"network_error", "rate_limited"} and existing_match:
+                    existing_match = self.store.anilist_match(local_lookup) or {}
+                    if search_status in {"network_error", "rate_limited"}:
+                        # Persist failure even when this is the first lookup.
+                        # State C prevents Home/Library/Details from retrying
+                        # the same automatic materialization indefinitely.
                         self.store.set_anilist_match(
                             local_lookup,
                             existing_match.get("anilist_id"),
