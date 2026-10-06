@@ -69,7 +69,7 @@ def test_compose_writes_to_existing_python_settings_store():
     assert "compose_settings_set" in main
     assert "settings.EXPORT_KEYS" in main
     scope_start = main.index("supported_compose_settings", main.index("compose_settings_set"))
-    scope_end = main.index("if setting_key in supported_compose_settings:", scope_start)
+    scope_end = main.index("if setting_key not in supported_compose_settings:", scope_start)
     supported_scope = main[scope_start:scope_end]
     for prefix in (
         '"library."',
