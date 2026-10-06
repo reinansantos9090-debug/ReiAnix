@@ -132,6 +132,8 @@ class ComposeLibraryBridge:
             # Resolution is batched here; Compose still consumes only the resulting
             # local/cache references and never performs network work in composition.
             artwork_by_entity = {"anime": {}, "movie": {}}
+            episode_artwork = {}
+
             if callable(artwork_batch_method):
                 for entity_type in ("anime", "movie"):
                     entity_ids = [
@@ -154,8 +156,77 @@ class ComposeLibraryBridge:
                         for entity_id, row in (backdrop_rows or {}).items():
                             artwork_by_entity[entity_type].setdefault(str(entity_id), {})["backdrop"] = row
 
+                episode_ids = []
+                for item in catalog:
+                    for group_key in ("seasons", "specials"):
+                        for group in item.get(group_key) or []:
+                            if not isinstance(group, dict):
+                                continue
+                            for episode in group.get("episodes") or []:
+                                if isinstance(episode, dict) and episode.get("id") is not None:
+                                    episode_ids.append(episode.get("id"))
+                    for episode_key in (
+                        "media_files",
+                        "current_episode",
+                        "next_episode",
+                        "playback_target_episode",
+                    ):
+                        episode = item.get(episode_key)
+                        if isinstance(episode, dict) and episode.get("id") is not None:
+                            episode_ids.append(episode.get("id"))
+                episode_ids = list(dict.fromkeys(episode_ids))
+                if episode_ids:
+                    episode_rows = artwork_batch_method(
+                        "episode",
+                        episode_ids,
+                        ("episode_thumbnail",),
+                    )
+                    episode_artwork = {
+                        str(entity_id): row
+                        for entity_id, row in (episode_rows or {}).items()
+                        if isinstance(row, dict)
+                    }
+
+            def hydrate_episode(episode):
+                if not isinstance(episode, dict):
+                    return episode
+                artwork = episode_artwork.get(str(episode.get("id")))
+                if not isinstance(artwork, dict):
+                    return episode
+                hydrated = dict(episode)
+                hydrated["artwork"] = artwork
+                return hydrated
+
+            def hydrate_anime(item):
+                hydrated = dict(item)
+                for group_key in ("seasons", "specials"):
+                    groups = []
+                    for group in item.get(group_key) or []:
+                        if not isinstance(group, dict):
+                            groups.append(group)
+                            continue
+                        group_copy = dict(group)
+                        group_copy["episodes"] = [
+                            hydrate_episode(episode)
+                            for episode in group.get("episodes") or []
+                        ]
+                        groups.append(group_copy)
+                    hydrated[group_key] = groups
+                hydrated["media_files"] = [
+                    hydrate_episode(episode)
+                    for episode in item.get("media_files") or []
+                ]
+                for episode_key in (
+                    "current_episode",
+                    "next_episode",
+                    "playback_target_episode",
+                ):
+                    if isinstance(item.get(episode_key), dict):
+                        hydrated[episode_key] = hydrate_episode(item[episode_key])
+                return hydrated
+
             for item in catalog:
-                projected = item
+                projected = hydrate_anime(item)
                 if callable(playback_target_method) and not isinstance(
                     item.get("current_episode"), dict
                 ):
