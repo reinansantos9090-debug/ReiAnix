@@ -234,8 +234,8 @@ class ComposeLibraryBridge:
                     if anime_id is not None:
                         target = playback_target_method(anime_id)
                         if isinstance(target, dict):
-                            projected = dict(item)
-                            projected["playback_target_episode"] = target
+                            projected = dict(projected)
+                            projected["playback_target_episode"] = hydrate_episode(target)
 
                 media_kind = str(projected.get("media_kind") or "").strip().lower()
                 entity_type = "movie" if media_kind == "movie" else "anime"
