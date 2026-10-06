@@ -3030,15 +3030,13 @@ async def main(page: ft.Page):
 
     def apply_storage_capabilities(payload, *, event_created_at_ms=0):
         raw = payload.get("capabilities") if isinstance(payload, dict) else None
-        incoming_payload = (
-            raw
-            if isinstance(raw, dict)
-            else payload
-            if isinstance(payload, dict) and ("mediaReadState" in payload or "broadStorageState" in payload)
-            else None
-        )
-        if incoming_payload is not None:
-            incoming = StorageCapabilities.from_native(incoming_payload)
+        if isinstance(raw, dict):
+            incoming = StorageCapabilities.from_native(raw)
+        elif isinstance(payload, dict) and ("mediaReadState" in payload or "broadStorageState" in payload):
+            incoming = StorageCapabilities.from_native(payload)
+        else:
+            incoming = None
+        if incoming is not None:
             current = storage_capabilities[0]
             try:
                 published_at = int(event_created_at_ms or payload.get("publishedAtMs") or 0)
