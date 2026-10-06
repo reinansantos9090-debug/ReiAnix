@@ -2979,8 +2979,8 @@ async def main(page: ft.Page):
         _set_storage_onboarding_state(
             "NEEDS_FOLDER",
             message=(
-                "O acesso à pasta da sua biblioteca é necessário. "
-                "Selecione a pasta onde estão armazenados seus animes."
+                "Selecione a pasta onde estão armazenados seus animes.\n\n"
+                "O ReiAnix usará essa pasta para encontrar e organizar seus vídeos."
             ),
             error=None,
             diagnostic_event="STORAGE_PERMISSION_MISSING",
@@ -3034,7 +3034,7 @@ async def main(page: ft.Page):
             diagnostic_event = "STORAGE_PERMISSION_REVOKED"
             result = "configured_root_invalid"
         else:
-            message = "Selecione a pasta onde estão armazenados seus animes."
+            message = "Selecione a pasta onde estão armazenados seus animes.\n\nO ReiAnix usará essa pasta para encontrar e organizar seus vídeos."
             diagnostic_event = "STORAGE_PERMISSION_MISSING"
             result = "library_root_missing"
 
@@ -6043,11 +6043,22 @@ async def main(page: ft.Page):
                                     compose_library_bridge.request_publish("storage_event")
                                 if payload.get('granted') and tree_uri:
                                     storage_onboarding["waiting_for_result"] = False
+                                    if payload.get('selected'):
+                                        diagnostics.record(
+                                            "STORAGE_ROOT_SELECTED",
+                                            source="saf",
+                                            result=str(tree_uri),
+                                        )
                                     valid_after_selection = bool(_configured_valid_library_saf_roots())
                                     if valid_after_selection:
                                         storage_onboarding["auto_launch_requested"] = False
                                         if storage_onboarding["startup_gate"]:
                                             storage_onboarding["startup_gate"] = False
+                                        diagnostics.record(
+                                            "STORAGE_ROOT_VALIDATED",
+                                            source="saf",
+                                            result=str(tree_uri),
+                                        )
                                         _set_storage_onboarding_state(
                                             "READY",
                                             message=None,
