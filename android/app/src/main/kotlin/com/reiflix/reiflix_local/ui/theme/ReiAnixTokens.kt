@@ -129,6 +129,11 @@ object ReiAnixTokens {
         val sectionGap = 20.dp
         val sectionTitleGap = 8.dp
         val cardMinHeight = 88.dp
+        // Compact Settings rows follow the reference density while keeping the
+        // complete Compose accessibility touch target.
+        val settingsRowMinHeight = 72.dp
+        val settingsIconContainerSize = 40.dp
+        val settingsTrailingSize = 48.dp
         val buttonMinHeight = 40.dp
         val chipMinHeight = 34.dp
         val touchTarget = 48.dp
