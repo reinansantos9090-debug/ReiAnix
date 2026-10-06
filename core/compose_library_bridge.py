@@ -15,6 +15,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
+from PIL import Image
+
 from core.storage_access import StorageCapabilities, saf_source_identity
 
 
@@ -29,8 +31,14 @@ class ComposeLibraryBridge:
             return None
         try:
             file_path = Path(value)
-            return str(file_path) if file_path.is_file() and file_path.stat().st_size > 0 else None
-        except OSError:
+            if not file_path.is_file() or file_path.stat().st_size <= 0:
+                return None
+            # Keep the bridge's fallback conservative: a non-empty file is not
+            # enough to claim an image cache is usable by Compose.
+            with Image.open(file_path) as image:
+                image.verify()
+            return str(file_path)
+        except (OSError, ValueError):
             return None
     SNAPSHOT_FILE_NAME = "library.json"
     COMMAND_RESULT_DIR_NAME = "command-results"
