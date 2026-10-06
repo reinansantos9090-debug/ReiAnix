@@ -450,6 +450,25 @@ class LibraryUiMappersTest {
 
 
     @Test
+    fun remoteArtworkUrlDoesNotCountAsLocalArtworkAvailability() {
+        val source = animeSource(
+            id = 600L,
+            meta = mapOf(
+                "year" to 2026,
+                "metadata_status" to "available",
+                "cover_cache" to null,
+                "cover_url" to "https://img.example/poster.jpg",
+            ),
+            seasons = emptyList(),
+        )
+
+        val artwork = LibraryUiMappers.anime(source).artwork
+        assertEquals("https://img.example/poster.jpg", artwork?.externalUrl)
+        assertFalse(artwork?.isAvailable ?: true)
+        assertTrue(artwork?.hasExternalSource ?: false)
+    }
+
+    @Test
     fun detailsUsesLocalizedDescriptionWhenCanonicalDescriptionIsPortuguese() {
         val source = animeSource(
             id = 500L,
