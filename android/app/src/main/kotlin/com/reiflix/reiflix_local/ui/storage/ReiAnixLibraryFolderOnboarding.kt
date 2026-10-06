@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -50,7 +50,7 @@ fun ReiAnixLibraryFolderOnboarding(
             verticalArrangement = Arrangement.Center,
         ) {
             Icon(
-                imageVector = Icons.Outlined.FolderOpen,
+                imageVector = Icons.Outlined.Folder,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = ReiAnixTokens.Colors.primary,
