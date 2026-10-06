@@ -717,20 +717,23 @@ private fun DetailsHero(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = responsive.horizontalPadding)
-                .height(ReiAnixTokens.Dimensions.detailsHeroPosterHeight)
-                .offset(y = -posterOverlap),
+                .height(ReiAnixTokens.Dimensions.detailsHeroPosterHeight),
             verticalAlignment = Alignment.Top,
         ) {
-            ReiAnixPoster(
-                localPath = posterPath,
-                contentDescription = null,
-                modifier = Modifier
-                    .width(ReiAnixTokens.Dimensions.detailsHeroPosterWidth)
-                    .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
-                    .clip(ReiAnixTokens.Shapes.artwork),
-                identity = anime.stableKey + ":poster",
-                maxDimensionPx = 512,
-            )
+            Box(
+                modifier = Modifier.offset(y = -posterOverlap),
+            ) {
+                ReiAnixPoster(
+                    localPath = posterPath,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .width(ReiAnixTokens.Dimensions.detailsHeroPosterWidth)
+                        .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
+                        .clip(ReiAnixTokens.Shapes.artwork),
+                    identity = anime.stableKey + ":poster",
+                    maxDimensionPx = 512,
+                )
+            }
 
             Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
 
