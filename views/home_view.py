@@ -414,6 +414,54 @@ class HomeView:
             )
             return True
 
+        def update_artwork_in_place(entity, item_id, artwork_type, local_path):
+            """Apply a newly materialized canonical artwork path without rebuilding Home."""
+            if str(artwork_type or "").strip().lower() != "poster":
+                return False
+            if not _valid_artwork_source(local_path):
+                return False
+            try:
+                normalized_id = int(item_id)
+            except (TypeError, ValueError):
+                return False
+            binding_key = (
+                "movie" if str(entity or "").strip().lower() == "movie" else "anime",
+                normalized_id,
+                "poster",
+            )
+            changed = False
+            for holder, width, height in artwork_bindings.get(binding_key, ()):
+                changed = _apply_artwork(holder, width, height, local_path) or changed
+
+            # Keep the in-memory view projection aligned with the persisted cache
+            # so future incremental operations do not reintroduce the placeholder.
+            for item in (*catalog, *continuing):
+                if not isinstance(item, dict):
+                    continue
+                item_id_value = item.get("id")
+                if item_id_value is None:
+                    item_id_value = item.get("anime_id")
+                try:
+                    same_id = int(item_id_value) == normalized_id
+                except (TypeError, ValueError):
+                    same_id = False
+                item_entity = (
+                    "movie"
+                    if str(item.get("media_kind") or (item.get("meta") or {}).get("media_kind") or "").casefold() == "movie"
+                    else "anime"
+                )
+                if same_id and item_entity == binding_key[0]:
+                    item["cover"] = local_path
+                    item.setdefault("meta", {})["cover_cache"] = local_path
+                    changed = True
+
+            if changed:
+                schedule_artwork_ui_update()
+            return changed
+
+        if isinstance(view_state, dict):
+            view_state["_update_artwork"] = update_artwork_in_place
+
         def _queue_artwork_resolution(entity, item_id, kind, item):
             try:
                 normalized_id = int(item_id)
