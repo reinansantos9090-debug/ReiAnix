@@ -16,8 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
@@ -51,25 +49,38 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     private val dataDirectory = File(appContext.filesDir, "data")
     private val bridgeDirectory = File(dataDirectory, "reianix-compose")
     private val snapshotFile = File(bridgeDirectory, "settings.json")
+    private val commandResultDirectory = File(bridgeDirectory, "command-results")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(ReiAnixSettingsUiState())
     val state: StateFlow<ReiAnixSettingsUiState> = _state.asStateFlow()
-    /** Prevents overlapping FileObserver callbacks from applying snapshots out of order. */
-    private val stateMutex = Mutex()
+    private val stateLock = Any()
+
+    private data class PendingSetting(
+        val requestId: String,
+        val key: String,
+        val value: String,
+        val confirmedValue: String,
+    )
+
+    private val confirmedSettings = linkedMapOf<String, String>()
+    private val pendingSettings = linkedMapOf<String, PendingSetting>()
 
     private val snapshotObserver = object : FileObserver(
         bridgeDirectory.path,
         FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.CREATE,
     ) {
         override fun onEvent(event: Int, path: String?) {
-            if (path == snapshotFile.name) {
-                scope.launch { loadSnapshot() }
+            when {
+                path == snapshotFile.name -> scope.launch { loadSnapshot() }
+                path?.startsWith("command-") == true && path.endsWith(".json") ->
+                    scope.launch { loadCommandResult(path) }
             }
         }
     }
 
     init {
         bridgeDirectory.mkdirs()
+        commandResultDirectory.mkdirs()
         snapshotObserver.startWatching()
         scope.launch { loadSnapshot() }
     }
@@ -85,22 +96,73 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     fun setSetting(key: String, value: String) {
         val normalizedKey = key.trim()
         if (normalizedKey.isBlank()) return
+        val normalizedValue = value.trim()
+        val requestId = UUID.randomUUID().toString()
+        synchronized(stateLock) {
+            val current = _state.value
+            val confirmedValue = confirmedSettings[normalizedKey]
+                ?: current.settings[normalizedKey]
+                ?: normalizedValue
+            confirmedSettings.putIfAbsent(normalizedKey, confirmedValue)
+            pendingSettings[normalizedKey] = PendingSetting(requestId, normalizedKey, normalizedValue, confirmedValue)
+            _state.value = current.copy(
+                settings = current.settings + (normalizedKey to normalizedValue),
+                operations = upsertOperationLocked(
+                    current.operations,
+                    ReiAnixSettingsOperationUiState(
+                        requestId = requestId,
+                        action = "set:" + normalizedKey,
+                        key = normalizedKey,
+                        state = ReiAnixSettingsOperationState.QUEUED,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+        Log.i(TAG, "SETTINGS_ACTION_START requestId=" + requestId + " action=set key=" + normalizedKey)
         scope.launch {
-            val requestId = UUID.randomUUID().toString()
-            val event = JSONObject()
-                .put("type", "compose_settings_set")
-                .put("requestId", requestId)
-                .put(
-                    "payload",
-                    JSONObject()
-                        .put("key", normalizedKey)
-                        .put("value", value),
-                )
+            val writeStartedNs = System.nanoTime()
             val published = runCatching {
-                NativeMailbox.write(appContext, event)
+                NativeMailbox.write(
+                    appContext,
+                    JSONObject()
+                        .put("type", "compose_settings_set")
+                        .put("requestId", requestId)
+                        .put(
+                            "payload",
+                            JSONObject()
+                                .put("key", normalizedKey)
+                                .put("value", normalizedValue)
+                                .put("requestId", requestId),
+                        ),
+                )
             }.getOrElse { false }
-            if (!published) {
-                Log.e(TAG, "Failed to publish Compose setting update requestId=$requestId key=$normalizedKey")
+            val writeDurationMs = (System.nanoTime() - writeStartedNs) / 1_000_000.0
+            if (published) {
+                Log.i(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=set key=" + normalizedKey + " success=true writeDurationMs=" + writeDurationMs)
+            } else {
+                synchronized(stateLock) {
+                    val current = _state.value
+                    val pending = pendingSettings[normalizedKey]
+                    val rollback = if (pending != null && pending.requestId == requestId) {
+                        pendingSettings.remove(normalizedKey)
+                        confirmedSettings[normalizedKey] ?: pending.confirmedValue
+                    } else normalizedValue
+                    _state.value = current.copy(
+                        settings = current.settings + (normalizedKey to rollback),
+                        operations = upsertOperationLocked(
+                            current.operations,
+                            (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(
+                                requestId, "set:" + normalizedKey, normalizedKey,
+                            )).copy(
+                                state = ReiAnixSettingsOperationState.ERROR,
+                                error = "Não foi possível enviar a alteração para o backend.",
+                                timestampMs = System.currentTimeMillis(),
+                            ),
+                        ),
+                    )
+                }
+                Log.e(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=set key=" + normalizedKey + " success=false writeDurationMs=" + writeDurationMs)
             }
         }
     }
@@ -111,71 +173,85 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
      */
     fun requestAction(action: String) {
         val normalizedAction = action.trim().lowercase()
-        if (
-            normalizedAction !in setOf(
-                "reset_player",
-                "reset_all_settings",
-                "clear_anilist_cache",
-                "settings_export",
-                "settings_import",
-                "select_saf",
-                "request_media_access",
-                "check_storage_access",
-                "open_broad_storage_settings",
-                "backup_create",
-                "backup_restore",
-                "backup_integrity",
-                "backup_reconcile",
-                "diagnostic_export",
-            )
-        ) return
-        scope.launch {
-            val requestId = UUID.randomUUID().toString()
-            val event = JSONObject()
+        if (normalizedAction !in setOf(
+            "reset_player", "reset_all_settings", "clear_anilist_cache", "settings_export",
+            "settings_import", "select_saf", "request_media_access", "check_storage_access",
+            "open_broad_storage_settings", "backup_create", "backup_restore", "backup_integrity",
+            "backup_reconcile", "diagnostic_export",
+        )) return
+        dispatchCommand("compose_settings_action", normalizedAction, normalizedAction) { requestId ->
+            JSONObject()
                 .put("type", "compose_settings_action")
                 .put("requestId", requestId)
-                .put(
-                    "payload",
-                    JSONObject()
-                        .put("action", normalizedAction)
-                        .put("requestId", requestId),
-                )
-            val published = runCatching {
-                NativeMailbox.write(appContext, event)
-            }.getOrElse { false }
-            if (!published) {
-                Log.e(
-                    TAG,
-                    "Failed to publish Compose settings action requestId=$requestId action=$normalizedAction",
-                )
+                .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
+        }
+    }
+    fun requestAccountAction(action: String) {
+        val normalizedAction = action.trim().lowercase()
+        if (normalizedAction !in setOf("login", "logout", "switch")) return
+        dispatchCommand("compose_account_action", normalizedAction, "account:" + normalizedAction) { requestId ->
+            JSONObject()
+                .put("type", "compose_account_action")
+                .put("requestId", requestId)
+                .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
+        }
+    }
+
+    private fun dispatchCommand(
+        type: String,
+        action: String,
+        operationKey: String,
+        builder: (String) -> JSONObject,
+    ) {
+        val requestId = UUID.randomUUID().toString()
+        synchronized(stateLock) {
+            val current = _state.value
+            _state.value = current.copy(
+                operations = upsertOperationLocked(
+                    current.operations,
+                    ReiAnixSettingsOperationUiState(
+                        requestId = requestId,
+                        action = operationKey,
+                        state = ReiAnixSettingsOperationState.QUEUED,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+        Log.i(TAG, "SETTINGS_ACTION_START requestId=" + requestId + " action=" + action)
+        scope.launch {
+            val writeStartedNs = System.nanoTime()
+            val published = runCatching { NativeMailbox.write(appContext, builder(requestId)) }.getOrElse { false }
+            val durationMs = (System.nanoTime() - writeStartedNs) / 1_000_000.0
+            if (published) {
+                Log.i(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=" + action + " success=true writeDurationMs=" + durationMs)
+            } else {
+                synchronized(stateLock) {
+                    val current = _state.value
+                    _state.value = current.copy(
+                        operations = upsertOperationLocked(
+                            current.operations,
+                            (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(requestId, operationKey)).copy(
+                                state = ReiAnixSettingsOperationState.ERROR,
+                                error = "Não foi possível enviar o comando ao backend.",
+                                timestampMs = System.currentTimeMillis(),
+                            ),
+                        ),
+                    )
+                }
+                Log.e(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=" + action + " success=false writeDurationMs=" + durationMs)
             }
         }
     }
 
-    fun requestAccountAction(action: String) {
-        val normalizedAction = action.trim().lowercase()
-        if (normalizedAction !in setOf("login", "logout", "switch")) return
-        scope.launch {
-            val requestId = UUID.randomUUID().toString()
-            val event = JSONObject()
-                .put("type", "compose_account_action")
-                .put("requestId", requestId)
-                .put(
-                    "payload",
-                    JSONObject()
-                        .put("action", normalizedAction)
-                        .put("requestId", requestId),
-                )
-            val published = runCatching {
-                NativeMailbox.write(appContext, event)
-            }.getOrElse { false }
-            if (!published) {
-                Log.e(
-                    TAG,
-                    "Failed to publish Compose account action requestId=$requestId action=$normalizedAction",
-                )
-            }
-        }
+    private fun upsertOperationLocked(
+        current: Map<String, ReiAnixSettingsOperationUiState>,
+        operation: ReiAnixSettingsOperationUiState,
+    ): Map<String, ReiAnixSettingsOperationUiState> {
+        val result = LinkedHashMap(current)
+        result[operation.requestId] = operation
+        while (result.size > 48) result.remove(result.keys.first())
+        return result
     }
 
     private suspend fun loadSnapshot() {
@@ -183,7 +259,7 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
             if (!snapshotFile.isFile) return
             snapshotFile.readText(Charsets.UTF_8)
         }.getOrElse { error ->
-            stateMutex.withLock {
+            synchronized(stateLock) {
                 _state.value = _state.value.copy(
                     status = ReiAnixSettingsLoadStatus.ERROR,
                     error = error.message ?: error::class.java.simpleName,
@@ -191,26 +267,103 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
             }
             return
         }
-
-        stateMutex.withLock {
-            runCatching {
-                ReiAnixSettingsSnapshotCodec.decode(raw, _state.value.revision)
-            }.onSuccess { decoded ->
-                _state.value = mergeSnapshotState(
-                    ReiAnixSettingsUiState.fromSnapshot(decoded),
-                    _state.value,
-                )
-            }.onFailure { error ->
-                val message = error.message.orEmpty()
-                if (message.startsWith("Stale Compose settings snapshot")) return@onFailure
-                _state.value = _state.value.copy(
-                    status = ReiAnixSettingsLoadStatus.ERROR,
-                    error = message.ifBlank { error::class.java.simpleName },
-                )
-            }
+        synchronized(stateLock) {
+            runCatching { ReiAnixSettingsSnapshotCodec.decode(raw, _state.value.revision) }
+                .onSuccess { decoded ->
+                    val base = ReiAnixSettingsUiState.fromSnapshot(decoded)
+                    if (base.status == ReiAnixSettingsLoadStatus.READY) {
+                        confirmedSettings.clear()
+                        confirmedSettings.putAll(base.settings)
+                        val effective = base.settings.toMutableMap()
+                        val confirmedPending = mutableListOf<String>()
+                        for ((key, pending) in pendingSettings) {
+                            if (base.settings[key] == pending.value) {
+                                confirmedSettings[key] = pending.value
+                                confirmedPending += key
+                            } else {
+                                effective[key] = pending.value
+                            }
+                        }
+                        confirmedPending.forEach { pendingSettings.remove(it) }
+                        val current = _state.value
+                        _state.value = base.copy(settings = effective, operations = current.operations)
+                        Log.i(TAG, "SETTINGS_SNAPSHOT_CONSUMED revision=" + decoded.revision + " pending=" + pendingSettings.size)
+                    } else {
+                        _state.value = mergeSnapshotState(base, _state.value)
+                    }
+                }.onFailure { error ->
+                    val message = error.message.orEmpty()
+                    if (message.startsWith("Stale Compose settings snapshot")) return@onFailure
+                    _state.value = _state.value.copy(
+                        status = ReiAnixSettingsLoadStatus.ERROR,
+                        error = message.ifBlank { error::class.java.simpleName },
+                    )
+                }
         }
     }
 
+    private suspend fun loadCommandResult(fileName: String) {
+        val file = File(commandResultDirectory, fileName)
+        val raw = runCatching { file.readText(Charsets.UTF_8) }.getOrElse { return }
+        val root = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        val requestId = root.optString("requestId").trim()
+        if (requestId.isBlank()) return
+        val action = root.optString("action").trim()
+        val status = root.optString("status").trim().uppercase()
+        val operationState = when (root.optString("operationState").trim().uppercase()) {
+            "RUNNING" -> ReiAnixSettingsOperationState.RUNNING
+            "SUCCESS", "COMPLETED" -> ReiAnixSettingsOperationState.SUCCESS
+            "ERROR", "FAILED" -> ReiAnixSettingsOperationState.ERROR
+            "CANCELLED" -> ReiAnixSettingsOperationState.CANCELLED
+            else -> when (status) {
+                "ACK", "QUEUED" -> ReiAnixSettingsOperationState.QUEUED
+                "SUCCESS", "COMPLETED" -> ReiAnixSettingsOperationState.SUCCESS
+                "ERROR", "FAILED" -> ReiAnixSettingsOperationState.ERROR
+                "CANCELLED" -> ReiAnixSettingsOperationState.CANCELLED
+                else -> ReiAnixSettingsOperationState.RUNNING
+            }
+        }
+        val message = root.optString("message").trim().takeIf { it.isNotBlank() && it != "null" }
+        val error = root.optString("error").trim().takeIf { it.isNotBlank() && it != "null" }
+        val key = root.optString("key").trim().takeIf { it.isNotBlank() && it != "null" }
+        val value = if (root.has("value") && !root.isNull("value")) root.optString("value") else null
+        synchronized(stateLock) {
+            val current = _state.value
+            val existing = current.operations[requestId] ?: ReiAnixSettingsOperationUiState(requestId, action)
+            var settings = current.settings
+            if (operationState == ReiAnixSettingsOperationState.SUCCESS && key != null) {
+                val pending = pendingSettings[key]
+                if (pending != null && pending.requestId == requestId) {
+                    val confirmed = value ?: pending.value
+                    confirmedSettings[key] = confirmed
+                    pendingSettings.remove(key)
+                    settings = settings + (key to confirmed)
+                }
+            } else if (operationState == ReiAnixSettingsOperationState.ERROR && key != null) {
+                val pending = pendingSettings[key]
+                if (pending != null && pending.requestId == requestId) {
+                    pendingSettings.remove(key)
+                    val rollback = confirmedSettings[key] ?: pending.confirmedValue
+                    settings = settings + (key to rollback)
+                }
+            }
+            _state.value = current.copy(
+                settings = settings,
+                operations = upsertOperationLocked(
+                    current.operations,
+                    existing.copy(
+                        action = action.ifBlank { existing.action },
+                        key = key ?: existing.key,
+                        state = operationState,
+                        message = message,
+                        error = error,
+                        timestampMs = root.optLong("timestamp", System.currentTimeMillis()),
+                    ),
+                ),
+            )
+        }
+        file.delete()
+    }
     override fun close() {
         snapshotObserver.stopWatching()
         scope.coroutineContext[Job]?.cancel()
