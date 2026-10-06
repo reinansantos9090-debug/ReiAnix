@@ -51,7 +51,8 @@ object LibraryUiMappers {
             addedAt = metadata.doubleOrNull("added_at") ?: source.doubleOrNull("added_at"),
             lastPlayedAt = source.doubleOrNull("last_played_at"),
             pinned = source.booleanOrNull("is_pinned") ?: metadata.booleanOrNull("is_pinned") ?: false,
-            description = metadata.stringOrNull("description"),
+            description = metadata.stringOrNull("description")
+                ?: metadata.stringOrNull("description_original"),
             romajiTitle = metadata.stringOrNull("romaji"),
             englishTitle = metadata.stringOrNull("english"),
             nativeTitle = metadata.stringOrNull("native"),
