@@ -4,6 +4,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
@@ -22,6 +24,7 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeRoute
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
+import com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFolderOnboarding
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
@@ -60,6 +63,7 @@ class ReiAnixComposeLibraryHost(
             view.tag = CONTENT_TAG
             view.setContent {
             val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+            val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
 
             val appearanceCardSize = settingsState.settings["appearance.card_size"]
                 ?.takeIf { it in setOf("small", "medium", "large") }
@@ -84,6 +88,7 @@ class ReiAnixComposeLibraryHost(
                         }
                     }
 
+                    Box(modifier = Modifier.fillMaxSize()) {
                     ReiAnixNavigationHost(
                         navController = navController,
                         homeViewModel = libraryViewModel,
@@ -170,8 +175,17 @@ class ReiAnixComposeLibraryHost(
                             publishLegacyNavigation("collector")
                         },
                     )
+                    val onboardingState = libraryState.storage.onboardingState.trim().lowercase()
+                    if (onboardingState in setOf("checking", "needs_folder", "folder_picker_open", "error")) {
+                        ReiAnixLibraryFolderOnboarding(
+                            state = onboardingState,
+                            message = libraryState.storage.onboardingMessage,
+                            error = libraryState.storage.onboardingError,
+                            onSelectFolder = libraryViewModel::selectSafTree,
+                        )
+                    }
                 }
-            }
+                }
         } else {
             navigateToRequestedDestination(
                 route = startDestination,
