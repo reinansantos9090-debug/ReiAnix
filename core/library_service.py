@@ -180,7 +180,10 @@ class LibraryService:
                     lookup_title,
                     cached,
                     local_anime_id=cached.get("id"),
-                    schedule=True,
+                    # Do not turn a restart/Home read into another network
+                    # translation attempt. Initial materialization schedules
+                    # localization explicitly from refresh_metadata().
+                    schedule=False,
                 )
             failed_match = str(
                 (self.store.anilist_match(lookup_title) or {}).get("anilist_match_status") or ""
@@ -832,7 +835,14 @@ class LibraryService:
             effective_lookup = str(cached.get("lookup_title") or lookup_title)
             anilist_id = cached.get('anilist_id') or self.store.association(effective_lookup)
             if cached and anilist_id:
-                cached = self._ensure_cached_description_pt_br(effective_lookup, cached)
+                # Reading an already-associated row must remain offline-safe.
+                # Translation is scheduled by the first metadata materialization
+                # path, not by every Home/Library hydration.
+                cached = self._ensure_cached_description_pt_br(
+                    effective_lookup,
+                    cached,
+                    schedule=False,
+                )
             status = str(cached.get('metadata_status') or 'unresolved').casefold()
             materialized = self._metadata_is_materialized(cached)
             match_status = str(
