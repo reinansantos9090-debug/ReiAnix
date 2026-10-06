@@ -38,6 +38,16 @@ class ScanUiState(str, Enum):
     VOLUME_UNAVAILABLE = "VOLUME_UNAVAILABLE"
 
 
+def storage_snapshot_is_stale(event_at_ms: int | float | None, latest_mutation_at_ms: int | float | None) -> bool:
+    """Return whether a native storage snapshot predates a newer user mutation."""
+    try:
+        event_at = int(event_at_ms or 0)
+        mutation_at = int(latest_mutation_at_ms or 0)
+    except (TypeError, ValueError):
+        return False
+    return event_at > 0 and mutation_at > event_at
+
+
 def scan_ui_state_from_native(status: str | None, *, errors: bool = False, cancelled: bool = False,
                               waiting_for_mediastore: bool = False, volume_available: bool = True) -> ScanUiState:
     if waiting_for_mediastore:
