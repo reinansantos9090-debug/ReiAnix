@@ -55,10 +55,45 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
             / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("val primary = Color(0xFF3D8BFF)", tokens)
+        expected_tokens = {
+            "val background = Color(0xFF050505)",
+            "val surface = Color(0xFF0B0B0B)",
+            "val surfaceVariant = Color(0xFF111111)",
+            "val surfaceRaised = Color(0xFF171717)",
+            "val surfaceDialog = Color(0xFF141414)",
+            "val surfaceNavigation = Color(0xFF080808)",
+            "val divider = Color(0xFF242424)",
+            "val border = Color(0xFF292929)",
+            "val text = Color(0xFFF5F5F5)",
+            "val textMuted = Color(0xFFB8B8B8)",
+            "val textTertiary = Color(0xFF858585)",
+            "val textDisabled = Color(0xFF5F5F5F)",
+            "val primary = Color(0xFF3D8BFF)",
+        }
+        for token in expected_tokens:
+            self.assertIn(token, tokens)
         self.assertIn("val lightPrimary = Color(0xFF2563C7)", tokens)
+        self.assertIn("background = ReiAnixTokens.Colors.background", theme)
+        self.assertIn("surface = ReiAnixTokens.Colors.surface", theme)
+        self.assertIn("surfaceContainer = ReiAnixTokens.Colors.surfaceVariant", theme)
+        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceRaised", theme)
+        self.assertIn("surfaceContainerHighest = ReiAnixTokens.Colors.surfaceDialog", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.primary", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.lightPrimary", theme)
+        forbidden_blue_surfaces = (
+            "02070D",
+            "07111A",
+            "0A1B2B",
+            "102537",
+            "0D2134",
+            "050C15",
+            "0D3B73",
+            "1B456E",
+            "163149",
+        )
+        for color in forbidden_blue_surfaces:
+            self.assertNotIn(color, tokens)
+            self.assertNotIn(color, theme)
 
 
 if __name__ == "__main__":
