@@ -277,7 +277,7 @@ fun ReiAnixSettingsScreen(
                 horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
         ) {
             item(key = "header") {
                 SettingsHeader(
@@ -1382,6 +1382,7 @@ private fun ReiAnixSettingsCategoryCard(
         icon = category.icon,
         onClick = onClick,
         enabled = true,
+        continuous = true,
         trailingContent = {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowForward,
