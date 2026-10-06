@@ -103,8 +103,8 @@ data class ReiAnixResponsiveMetrics(
         if (isLandscape || heightClass == ReiAnixWindowHeightClass.COMPACT) {
             return (maxWidth * 0.50f).coerceIn(180.dp, 240.dp)
         }
-        return (maxWidth * 0.52f).coerceIn(
-            180.dp,
+        return (maxWidth * 0.56f).coerceIn(
+            190.dp,
             if (widthClass == ReiAnixWindowWidthClass.EXPANDED) 280.dp else 240.dp,
         )
     }
