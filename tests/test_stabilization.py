@@ -106,7 +106,7 @@ class StabilizationTests(unittest.TestCase):
     def test_playback_event_ordering_is_atomic_across_uri_representations(self):
         tmp, store, path = self._episode_store()
         self.addCleanup(tmp.cleanup)
-        uri = "file:///storage/emulated/0/Anime/stage%202%20S01E01.mkv"
+        uri = "file:///storage/emulated/0/Anime/Stabilization%20Fixture%20S01E01.mkv"
         t1 = int(time.time() * 1000)
         self.assertTrue(store.save_progress(uri, 80, 100, event_created_at=t1))
         self.assertFalse(store.save_progress(path, 40, 100, event_created_at=t1 - 100))
