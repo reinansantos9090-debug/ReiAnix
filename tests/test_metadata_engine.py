@@ -287,7 +287,8 @@ class ProfessionalMetadataTests(unittest.TestCase):
         downloader.assert_not_called()
 
     def test_first_anilist_network_failure_is_persisted_and_not_retried_automatically(self):
-        self._anime("First failure", "first failure")
+        anime = self._anime("First failure", "first failure")
+        self.store.upsert_episode(anime, "content://first-failure/1", "First failure S01E01.mkv", 1, 1)
         def offline_search(_title):
             self.service.anilist._last_request_status = "network_error"
             return []
@@ -305,6 +306,7 @@ class ProfessionalMetadataTests(unittest.TestCase):
 
     def test_materialized_metadata_never_auto_refreshes_when_stale(self):
         anime = self._anime("Attack on Titan", "attack on titan")
+        self.store.upsert_episode(anime, "content://materialized/1", "Attack on Titan S01E01.mkv", 1, 1)
         now = time.time() - 45 * 24 * 60 * 60
         with self.store._conn() as con:
             con.execute(
