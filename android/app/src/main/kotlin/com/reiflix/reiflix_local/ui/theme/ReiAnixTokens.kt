@@ -16,51 +16,49 @@ import androidx.compose.ui.unit.sp
  */
 object ReiAnixTokens {
     object Colors {
-        // ReiAnix visual language: near-black canvas, cool dark surfaces and one
-        // consistent electric-blue interaction accent. Keep semantic aliases here
+        // ReiAnix visual language: neutral near-black canvas, layered dark-gray surfaces,
+        // and one controlled electric-blue interaction accent. Keep semantic aliases here
         // so Compose screens never need ad-hoc hex/RGB values.
-        val background = Color(0xFF02070D)
-        val backgroundSecondary = Color(0xFF050C14)
-        val surface = Color(0xFF07111A)
-        val surfaceVariant = Color(0xFF0A1B2B)
-        val surfaceRaised = Color(0xFF102537)
-        val surfaceCard = surfaceVariant
-        val surfaceDialog = Color(0xFF0D2134)
-        val surfaceSheet = Color(0xFF091825)
-        val surfacePlayer = Color(0xFF020408)
-        val surfaceSelected = Color(0xFF0B3C73)
-        val surfaceNavigation = Color(0xFF050C15)
-        val playerControl = Color.White
-        val playerScrim = Color.Black
+        val background = Color(0xFF050505)
+        val backgroundSecondary = Color(0xFF080808)
+        val surface = Color(0xFF0B0B0B)
+        val surfaceVariant = Color(0xFF111111)
+        val surfaceRaised = Color(0xFF171717)
+        val surfaceCard = Color(0xFF111111)
+        val surfaceDialog = Color(0xFF141414)
+        val surfaceSheet = Color(0xFF141414)
+        val surfacePlayer = Color(0xFF000000)
+        val surfaceSelected = Color(0xFF171717)
+        val surfaceNavigation = Color(0xFF080808)
+        val playerControl = Color(0xFFF5F5F5)
+        val playerScrim = Color(0xFF000000)
 
         val primary = Color(0xFF3D8BFF)
-        val primaryContainer = Color(0xFF0D3B73)
-        // Dark-theme primary text uses a dark navy to keep the existing electric-blue
-        // accent while bringing normal button text above WCAG AA contrast.
-        val onPrimary = Color(0xFFFFFFFF)
-        val onPrimaryContainer = Color(0xFFEAF3FF)
+        val primaryContainer = Color(0xFF171717)
+        val onPrimary = Color(0xFFF5F5F5)
+        val onPrimaryContainer = Color(0xFFF5F5F5)
         val active = primary
         val focus = Color(0xFF7FB3FF)
         val pressed = Color(0xFF2D6FD0)
 
-        val secondary = Color(0xFF8CB9FF)
-        val secondaryContainer = Color(0xFF12365F)
-        val onSecondary = Color(0xFF06101B)
-        val onSecondaryContainer = Color(0xFFE1EEFF)
+        val secondary = Color(0xFFB8B8B8)
+        val secondaryContainer = Color(0xFF171717)
+        val onSecondary = Color(0xFF0B0B0B)
+        val onSecondaryContainer = Color(0xFFF5F5F5)
 
-        val tertiary = Color(0xFFB18CFF)
-        val tertiaryContainer = Color(0xFF38275D)
-        val onTertiary = Color(0xFF160D2B)
-        val onTertiaryContainer = Color(0xFFEEDFFF)
+        val tertiary = Color(0xFFB8B8B8)
+        val tertiaryContainer = Color(0xFF171717)
+        val onTertiary = Color(0xFF0B0B0B)
+        val onTertiaryContainer = Color(0xFFF5F5F5)
 
-        val text = Color(0xFFF5F7FB)
-        val textMuted = Color(0xFFA6B4C7)
-        val textTertiary = Color(0xFF71859B)
-        val textDisabled = Color(0xFF525B6A)
+        val text = Color(0xFFF5F5F5)
+        val textMuted = Color(0xFFB8B8B8)
+        val textTertiary = Color(0xFF858585)
+        val textDisabled = Color(0xFF5F5F5F)
         val textOnPrimary = onPrimary
-        val border = Color(0xFF1B456E)
-        val borderStrong = Color(0xFF2A5E8D)
-        val divider = Color(0xFF163149)
+        val border = Color(0xFF292929)
+        val borderStrong = Color(0xFF333333)
+        val divider = Color(0xFF242424)
 
         val error = Color(0xFFFF6B6B)
         val onError = Color(0xFF240608)
@@ -70,7 +68,7 @@ object ReiAnixTokens {
 
         val success = Color(0xFF4ADE80)
         val warning = Color(0xFFF6C85F)
-        val disabledSurface = Color(0xFF0B141E)
+        val disabledSurface = Color(0xFF111111)
         val overlay = Color(0xB3000000)
         val overlayStrong = Color(0xCC000000)
         val statusContainerAlpha = 0.16f
@@ -79,8 +77,8 @@ object ReiAnixTokens {
         val surfaceOverlayAlpha = 0.84f
         val disabledContainerAlpha = 0.45f
 
-        val inverseSurface = Color(0xFFE9EEF7)
-        val inverseOnSurface = Color(0xFF1A1E27)
+        val inverseSurface = Color(0xFFECECEC)
+        val inverseOnSurface = Color(0xFF1A1A1A)
         val inversePrimary = Color(0xFF2D6FD0)
         val lightPrimary = Color(0xFF2563C7)
         val lightOnPrimary = Color(0xFFFFFFFF)
