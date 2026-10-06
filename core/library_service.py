@@ -381,7 +381,7 @@ class LibraryService:
             self._translation_executor.shutdown(wait=False, cancel_futures=True)
             self._translation_pending.clear()
 
-    def _ensure_cached_description_pt_br(self, lookup_title, cached, *, local_anime_id=None):
+    def _ensure_cached_description_pt_br(self, lookup_title, cached, *, local_anime_id=None, schedule=True):
         if not cached:
             return cached
         if str(cached.get("metadata_source") or "").casefold() != "anilist":
@@ -433,7 +433,7 @@ class LibraryService:
                 ) or self.store.anime_metadata(lookup_title) or cached
             return cached
 
-        if description == original and source_language != "unknown":
+        if schedule and description == original and source_language != "unknown":
             self._schedule_description_localization(
                 lookup_title,
                 original,
@@ -474,6 +474,7 @@ class LibraryService:
                     local_lookup,
                     cached,
                     local_anime_id=owner_id,
+                    schedule=False,
                 )
             if not anilist_enabled:
                 return cached or {
