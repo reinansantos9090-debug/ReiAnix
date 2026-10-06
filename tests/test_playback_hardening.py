@@ -33,7 +33,9 @@ class PlaybackHardeningTests(unittest.TestCase):
     def test_player_defers_nonessential_media_io_until_after_prepare(self):
         player = PLAYER.read_text(encoding="utf-8")
         policy = POLICY.read_text(encoding="utf-8")
-        prepare = player[player.index("private fun prepareCurrentMedia"):player.index("private fun createPlayerListener")]
+        prepare_start = player.index("private fun prepareCurrentMedia")
+        prepare_end = player.index("private fun hydrateLocalMediaReferencesAsync", prepare_start)
+        prepare = player[prepare_start:prepare_end]
         self.assertIn("playbackWorker", prepare)
         self.assertIn("PREFLIGHT_ASYNC_START", prepare)
         self.assertIn("PREFLIGHT_ASYNC_OK", prepare)
@@ -93,8 +95,11 @@ class PlaybackHardeningTests(unittest.TestCase):
     def test_ready_state_clears_loading_and_first_frame_remains_authoritative(self):
         player = PLAYER.read_text(encoding="utf-8")
         state_start = player.index("override fun onPlaybackStateChanged(state: Int)")
-        ready = player[player.index("Player.STATE_READY ->", state_start):player.index("Player.STATE_BUFFERING ->", state_start)]
-        buffering = player[player.index("Player.STATE_BUFFERING ->", state_start):player.index("Player.STATE_ENDED ->", state_start)]
+        state_block_start = player.index("            when (state) {", state_start)
+        state_block_end = player.index("        }\n\n", state_block_start)
+        state_block = player[state_block_start:state_block_end]
+        ready = state_block[state_block.index("                Player.STATE_READY -> {"):state_block.index("                Player.STATE_BUFFERING -> {")]
+        buffering = state_block[state_block.index("                Player.STATE_BUFFERING -> {"):state_block.index("                Player.STATE_ENDED -> {")]
         self.assertIn("playerReadyAtMs = System.currentTimeMillis()", ready)
         self.assertIn("preparingIndicator.visibility = View.GONE", ready)
         self.assertIn("preparingIndicator.visibility = View.VISIBLE", buffering)
