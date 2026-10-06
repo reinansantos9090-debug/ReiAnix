@@ -372,9 +372,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 )
         }
 
-    val latestOperationError = state.operations.values.lastOrNull {
-        it.state == ReiAnixSettingsOperationState.ERROR
-    }
+    val latestOperationError = state.operations.values.lastOrNull()
+        ?.takeIf { it.state == ReiAnixSettingsOperationState.ERROR }
 
     var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
