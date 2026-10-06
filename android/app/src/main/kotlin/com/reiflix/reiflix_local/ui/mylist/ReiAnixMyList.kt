@@ -19,7 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.DropdownMenu
@@ -612,7 +611,7 @@ private fun myListStatus(
     else -> MyListStatus(
         label = "Na lista",
         tone = ReiAnixBadgeTone.Primary,
-        icon = Icons.Filled.BookmarkBorder,
+        icon = Icons.Filled.FavoriteBorder,
     )
 }
 
