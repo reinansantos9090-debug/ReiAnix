@@ -781,7 +781,7 @@ class AniListClient:
         cache=''
         t=media.get('title') or {}; studios=((media.get('studios') or {}).get('nodes') or [])
         studios = [studio for studio in studios if isinstance(studio, dict)]
-        original_description = str(media.get('description') or '').strip()
+        original_description = self.normalize_description(media.get('description') or '')
         description = (
             self.localize_description_to_pt_br(original_description)
             if localize_description and original_description
