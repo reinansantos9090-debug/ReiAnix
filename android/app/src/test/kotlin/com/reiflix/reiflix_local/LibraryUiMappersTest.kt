@@ -413,7 +413,7 @@ class LibraryUiMappersTest {
         assertTrue(model.genres.isEmpty())
         assertEquals("Episode-1.mkv", model.seasons.single().episodes.single().displayTitle)
         assertNull(model.seasons.single().episodes.single().artwork)
-        assertNull(model.seasons.single().episodes.single().media.uri)
+        assertEquals("content://media/111", model.seasons.single().episodes.single().media.uri)
     }
 
     @Test
