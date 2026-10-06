@@ -837,7 +837,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "artwork:clear-cache") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -867,7 +867,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Armazenamento" -> {
                     val storage = state.storage
                     item(key = "storage:status") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -911,7 +911,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         }
                     }
                     item(key = "storage:actions") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -949,7 +949,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
                 "Dados e Cache" -> {
                     item(key = "data-cache:info") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -974,7 +974,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         }
                     }
                     item(key = "data-cache:actions") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1008,7 +1008,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
                 "Backup e Restauração" -> {
                     item(key = "backup:info") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1029,7 +1029,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         }
                     }
                     item(key = "backup:actions") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1064,7 +1064,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Diagnóstico" -> {
                     val diagnosticStorage = state.storage
                     item(key = "diagnostic:info") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1099,7 +1099,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         }
                     }
                     item(key = "diagnostic:actions") {
-                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
