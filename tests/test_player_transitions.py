@@ -112,7 +112,7 @@ class PlayerTransitionContractTests(unittest.TestCase):
             self.player.index("private fun prepareCurrentMedia"):
             self.player.index("private fun createPlayerListener")
         ]
-        self.assertIn(player.setMediaItem(mediaItem, initialPositionMsForGeneration), prepare)
+        self.assertIn("player.setMediaItem(mediaItem, initialPositionMsForGeneration)", prepare)
         self.assertIn("player.prepare()", prepare)
         self.assertNotIn("player.setMediaItems(", prepare)
         self.assertNotIn("player.addMediaItem(", prepare)

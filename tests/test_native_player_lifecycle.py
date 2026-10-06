@@ -135,7 +135,7 @@ class NativePlayerLifecycleTests(unittest.TestCase):
         ]
         self.assertIn("playbackWorker.submit", prepare)
         self.assertIn("handler.post {", prepare)
-        self.assertIn(player.setMediaItem(mediaItem, initialPositionMsForGeneration), prepare)
+        self.assertIn("player.setMediaItem(mediaItem, initialPositionMsForGeneration)", prepare)
         self.assertIn("player.prepare()", prepare)
 
     def test_android_host_compilation_contracts_used_by_player_diagnostics(self):

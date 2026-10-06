@@ -1638,17 +1638,30 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 " positionMs=" + if (::player.isInitialized) player.currentPosition else 0L)
             when (state) {
                 Player.STATE_READY -> {
-                    playerReadyAtMs = System.currentTimeMillis()
+                    val readyAtMs = System.currentTimeMillis()
+                    val firstReadyForGeneration = playerReadyAtMs == 0L
+                    if (firstReadyForGeneration) {
+                        playerReadyAtMs = readyAtMs
+                    }
                     if (::preparingIndicator.isInitialized) {
                         preparingIndicator.visibility = View.GONE
                     }
-                    logPlayer(
-                        "PLAYER_READY requestId=" + requestId.ifEmpty { "-" } +
-                            " generation=" + generation +
-                            " playerReadyAtMs=" + playerReadyAtMs +
-                            " prepareToReadyMs=" + metricDelta(prepareDispatchedAtMs, playerReadyAtMs) +
-                            " tapToReadyMs=" + metricDelta(episodeTapAtMs, playerReadyAtMs),
-                    )
+                    if (firstReadyForGeneration) {
+                        logPlayer(
+                            "PLAYER_READY requestId=" + requestId.ifEmpty { "-" } +
+                                " generation=" + generation +
+                                " playerReadyAtMs=" + playerReadyAtMs +
+                                " prepareToReadyMs=" + metricDelta(prepareDispatchedAtMs, playerReadyAtMs) +
+                                " tapToReadyMs=" + metricDelta(episodeTapAtMs, playerReadyAtMs),
+                        )
+                    } else {
+                        logPlayer(
+                            "PLAYER_READY_REENTRY requestId=" + requestId.ifEmpty { "-" } +
+                                " generation=" + generation +
+                                " playerReadyAtMs=" + playerReadyAtMs +
+                                " reentryAtMs=" + readyAtMs,
+                        )
+                    }
                     if (episodeChangePending && (nextTransitionActive || previousTransitionActive)) {
                         setTransitionPhase(TransitionPhase.READY, "media3_ready")
                     }

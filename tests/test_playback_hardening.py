@@ -45,10 +45,13 @@ class PlaybackHardeningTests(unittest.TestCase):
         self.assertNotIn("LocalSubtitleResolver.resolve(this@NativePlayerActivity, localUri)", prepare)
         self.assertNotIn("contentResolver.getType(localUri)", prepare)
         self.assertNotIn("localSizeBytes(localUri)", prepare)
-        self.assertIn("LocalSubtitleResolver.resolve(this@NativePlayerActivity, localUri)", player)
-        self.assertIn("contentResolver.getType(localUri)", player)
-        self.assertIn("PlayerMediaPolicy.resolveVideoMimeType", player)
-        self.assertIn("localSizeBytes(localUri)", player)
+        metadata_start = player.index("private fun hydrateLocalMediaReferencesAsync")
+        metadata_end = player.index("private fun createPlayerListener", metadata_start)
+        metadata = player[metadata_start:metadata_end]
+        self.assertIn("LocalSubtitleResolver.resolve(appContext, localUri)", metadata)
+        self.assertIn("appContext.contentResolver.getType(localUri)", metadata)
+        self.assertIn("PlayerMediaPolicy.resolveVideoMimeType", metadata)
+        self.assertIn("localSizeBytes(appContext, localUri)", metadata)
         self.assertIn("video/x-matroska", policy)
         self.assertIn("video/webm", policy)
         self.assertIn("video/x-msvideo", policy)
@@ -104,6 +107,17 @@ class PlaybackHardeningTests(unittest.TestCase):
         self.assertIn("preparingIndicator.visibility = View.GONE", ready)
         self.assertIn("preparingIndicator.visibility = View.VISIBLE", buffering)
         self.assertIn("events.contains(Player.EVENT_RENDERED_FIRST_FRAME)", player)
+
+    def test_player_ready_metric_is_anchored_to_first_ready_per_generation(self):
+        player = PLAYER.read_text(encoding="utf-8")
+        state_start = player.index("override fun onPlaybackStateChanged(state: Int)")
+        state_end = player.index("        }\n\n", state_start)
+        state_block = player[state_start:state_end]
+        self.assertIn("val readyAtMs = System.currentTimeMillis()", state_block)
+        self.assertIn("val firstReadyForGeneration = playerReadyAtMs == 0L", state_block)
+        self.assertIn("if (firstReadyForGeneration)", state_block)
+        self.assertIn("PLAYER_READY_REENTRY", state_block)
+        self.assertIn("playerReadyAtMs = readyAtMs", state_block)
 
     def test_resume_policy_clamps_invalid_positions(self):
         policy = POLICY.read_text(encoding="utf-8")
