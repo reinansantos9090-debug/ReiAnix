@@ -65,6 +65,25 @@ class ThemeEngineTests(unittest.TestCase):
         self.assertNotEqual(DARK_THEME.text, LIGHT_THEME.text)
         self.assertNotEqual(DARK_THEME.text_muted, LIGHT_THEME.text_muted)
 
+    def test_dark_palette_is_neutral_with_controlled_blue_accent(self):
+        source = (ROOT / "core/ui.py").read_text(encoding="utf-8")
+        expected = {
+            'background="#050505"',
+            'surface="#0B0B0B"',
+            'surface_variant="#111111"',
+            'surface_raised="#171717"',
+            'text="#F5F5F5"',
+            'text_muted="#B8B8B8"',
+            'primary="#3D8BFF"',
+            'border="#292929"',
+            'divider="#242424"',
+            'overlay="#000000D9"',
+        }
+        for value in expected:
+            self.assertIn(value, source)
+        for legacy in ("#16151F", "#252331", "#302D3E", "#2D2A3B", "#39364B", "#3C394C"):
+            self.assertNotIn(legacy, source)
+
     def test_theme_tokens_resolve_without_parallel_theme_store(self):
         self.assertIs(theme_tokens("dark"), DARK_THEME)
         self.assertIs(theme_tokens("light"), LIGHT_THEME)
