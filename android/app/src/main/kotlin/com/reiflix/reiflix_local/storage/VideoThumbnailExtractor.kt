@@ -12,6 +12,7 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
+import org.json.JSONObject
 
 /**
  * Extracts a bounded local video frame and metadata without crossing the
@@ -29,12 +30,31 @@ object VideoThumbnailExtractor {
         val mimeType: String? = null,
     )
 
+    private data class CachedResult(
+        val result: Result,
+        val durationRepaired: Boolean,
+    )
+
+    private data class CachedMetadata(
+        val durationMs: Long?,
+        val width: Int,
+        val height: Int,
+        val rotation: Int,
+        val title: String?,
+        val mimeType: String?,
+    )
+
+    private const val CACHE_METADATA_VERSION = 1
+
     private val inFlight = ConcurrentHashMap<String, Any>()
     private val extractionPermits = Semaphore(2)
     private const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
     private const val MAX_FRAME_DIMENSION = 320
     internal fun cacheKey(mediaIdentity: String, size: Long, modifiedAt: Long): String =
         sha256(mediaIdentity + "|" + size + "|" + modifiedAt)
+
+    internal fun parseDurationMs(raw: String?): Long =
+        raw?.trim()?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
 
     fun extract(
         context: Context,
@@ -58,13 +78,37 @@ object VideoThumbnailExtractor {
                     .put("modifiedAt", modifiedAt)),
         )
         if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
-            NativeMailbox.writeBestEffort(
-                context,
-                org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
-                    .put("payload", org.json.JSONObject().put("event", "THUMBNAIL_CACHE_HIT")
-                        .put("requestId", requestId).put("mediaIdentity", identity).put("size", size)),
-            )
-            return Result(target.absolutePath)
+            val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
+            if (cached != null) {
+                NativeMailbox.writeBestEffort(
+                    context,
+                    JSONObject().put("type", "diagnostic").put("requestId", requestId)
+                        .put(
+                            "payload",
+                            JSONObject()
+                                .put("event", "THUMBNAIL_CACHE_HIT")
+                                .put("requestId", requestId)
+                                .put("mediaIdentity", identity)
+                                .put("size", size)
+                                .put("durationMs", cached.result.durationMs),
+                        ),
+                )
+                if (cached.durationRepaired) {
+                    NativeMailbox.writeBestEffort(
+                        context,
+                        JSONObject().put("type", "diagnostic").put("requestId", requestId)
+                            .put(
+                                "payload",
+                                JSONObject()
+                                    .put("event", "THUMBNAIL_DURATION_REPAIRED")
+                                    .put("requestId", requestId)
+                                    .put("mediaIdentity", identity)
+                                    .put("durationMs", cached.result.durationMs),
+                            ),
+                    )
+                }
+                return cached.result
+            }
         }
         NativeMailbox.writeBestEffort(
             context,
@@ -76,7 +120,8 @@ object VideoThumbnailExtractor {
         val lock = inFlight.computeIfAbsent(key) { Any() }
         synchronized(lock) {
             if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
-                return Result(target.absolutePath)
+                val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
+                if (cached != null) return cached.result
             }
             runCatching {
                 if (target.exists()) target.delete()
@@ -93,7 +138,8 @@ object VideoThumbnailExtractor {
                             .put("requestId", requestId)),
                 )
                 if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
-                    return Result(target.absolutePath)
+                    val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
+                    if (cached != null) return cached.result
                 }
                 val result = extractLocked(context, uri, target, key, size, modifiedAt)
                 NativeMailbox.writeBestEffort(
@@ -142,9 +188,9 @@ object VideoThumbnailExtractor {
                 else -> return null
             }
 
-            val durationMs = retriever.extractMetadata(
-                MediaMetadataRetriever.METADATA_KEY_DURATION
-            )?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+            val durationMs = parseDurationMs(
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            )
             val width = retriever.extractMetadata(
                 MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH
             )?.toIntOrNull()?.coerceAtLeast(0) ?: 0
@@ -205,7 +251,7 @@ object VideoThumbnailExtractor {
             }
 
             trimCache(target.parentFile ?: return null, target)
-            Result(
+            val result = Result(
                 path = target.absolutePath,
                 durationMs = durationMs,
                 width = width,
@@ -214,6 +260,8 @@ object VideoThumbnailExtractor {
                 title = title,
                 mimeType = mimeType,
             )
+            writeCacheMetadata(target, key, size, modifiedAt, result)
+            result
         } catch (_: Exception) {
             temp.delete()
             null
@@ -223,6 +271,124 @@ object VideoThumbnailExtractor {
         }
     }
 
+
+
+    private fun readCachedResult(
+        context: Context,
+        uri: Uri,
+        target: File,
+        key: String,
+        size: Long,
+        modifiedAt: Long,
+    ): CachedResult? {
+        val metadataFile = cacheMetadataFile(target)
+        val metadata = readCacheMetadata(metadataFile, key, size, modifiedAt)
+        var repaired = false
+
+        if (metadata?.durationMs == null) {
+            val durationMs = readDurationMs(context, uri)
+            val repairedResult = Result(
+                path = target.absolutePath,
+                durationMs = durationMs,
+                width = metadata?.width ?: 0,
+                height = metadata?.height ?: 0,
+                rotation = metadata?.rotation ?: 0,
+                title = metadata?.title,
+                mimeType = metadata?.mimeType,
+            )
+            writeCacheMetadata(target, key, size, modifiedAt, repairedResult)
+            repaired = metadata != null || metadataFile.exists()
+            return CachedResult(repairedResult, durationRepaired = repaired)
+        }
+
+        val result = Result(
+            path = target.absolutePath,
+            durationMs = metadata.durationMs,
+            width = metadata.width,
+            height = metadata.height,
+            rotation = metadata.rotation,
+            title = metadata.title,
+            mimeType = metadata.mimeType,
+        )
+        return CachedResult(result, durationRepaired = false)
+    }
+
+    private fun readDurationMs(context: Context, uri: Uri): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            when (uri.scheme?.lowercase()) {
+                "content" -> retriever.setDataSource(context, uri)
+                "file" -> retriever.setDataSource(uri.path ?: return 0L)
+                else -> return 0L
+            }
+            parseDurationMs(
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            )
+        } catch (_: Exception) {
+            0L
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun cacheMetadataFile(target: File): File =
+        File(target.parentFile, target.nameWithoutExtension + ".json")
+
+    private fun readCacheMetadata(
+        file: File,
+        key: String,
+        size: Long,
+        modifiedAt: Long,
+    ): CachedMetadata? = runCatching {
+        if (!file.isFile || file.length() <= 0L) return@runCatching null
+        val json = JSONObject(file.readText(Charsets.UTF_8))
+        if (json.optInt("version", 0) != CACHE_METADATA_VERSION) return@runCatching null
+        if (json.optString("cacheKey") != key) return@runCatching null
+        if (json.optLong("size", Long.MIN_VALUE) != size) return@runCatching null
+        if (json.optLong("modifiedAt", Long.MIN_VALUE) != modifiedAt) return@runCatching null
+        val durationMs = when {
+            !json.has("durationMs") || json.isNull("durationMs") -> null
+            else -> json.optLong("durationMs", 0L).coerceAtLeast(0L)
+        }
+        CachedMetadata(
+            durationMs = durationMs,
+            width = json.optInt("width", 0).coerceAtLeast(0),
+            height = json.optInt("height", 0).coerceAtLeast(0),
+            rotation = ((json.optInt("rotation", 0) % 360) + 360) % 360,
+            title = json.optString("title").takeIf { it.isNotBlank() },
+            mimeType = json.optString("mimeType").takeIf { it.isNotBlank() },
+        )
+    }.getOrNull()
+
+    private fun writeCacheMetadata(
+        target: File,
+        key: String,
+        size: Long,
+        modifiedAt: Long,
+        result: Result,
+    ) {
+        runCatching {
+            val metadataFile = cacheMetadataFile(target)
+            val temporary = File(
+                metadataFile.parentFile,
+                "." + metadataFile.name + ".tmp",
+            )
+            val json = JSONObject()
+                .put("version", CACHE_METADATA_VERSION)
+                .put("cacheKey", key)
+                .put("size", size)
+                .put("modifiedAt", modifiedAt)
+                .put("durationMs", if (result.durationMs > 0L) result.durationMs else JSONObject.NULL)
+                .put("width", result.width)
+                .put("height", result.height)
+                .put("rotation", result.rotation)
+                .put("title", result.title ?: "")
+                .put("mimeType", result.mimeType ?: "")
+            temporary.writeText(json.toString(), Charsets.UTF_8)
+            if (metadataFile.isFile) metadataFile.delete()
+            if (!temporary.renameTo(metadataFile)) temporary.delete()
+        }
+    }
 
     private fun trimCache(directory: File, protected: File) {
         runCatching {
@@ -236,8 +402,17 @@ object VideoThumbnailExtractor {
                 if (file == protected) continue
                 if (total <= MAX_CACHE_BYTES) break
                 val length = file.length()
-                if (file.delete()) total -= length
+                if (file.delete()) {
+                    total -= length
+                    cacheMetadataFile(file).delete()
+                }
             }
+            directory.listFiles()
+                ?.filter { it.isFile && it.extension.equals("json", ignoreCase = true) }
+                ?.forEach { metadata ->
+                    val jpg = File(directory, metadata.nameWithoutExtension + ".jpg")
+                    if (!jpg.isFile) metadata.delete()
+                }
         }
     }
 
