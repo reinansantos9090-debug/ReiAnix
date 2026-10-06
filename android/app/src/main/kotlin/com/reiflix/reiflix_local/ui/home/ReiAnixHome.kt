@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -325,10 +324,10 @@ private fun HomeHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Cloud,
-                    contentDescription = null,
-                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
+                Text(
+                    text = "☁",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
                 )
                 Text(
                     text = if (sourceAvailable) "Offline" else "Indisponível",
