@@ -860,6 +860,7 @@ class LibraryService:
                     reason="hydrate_materialized",
                 )
             if status == 'manual' and not anilist_id:
+                hydrated.append({'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached})
                 continue
             entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
             if cached.get('id'):
@@ -916,6 +917,7 @@ class LibraryService:
                     lookup_title=effective_lookup,
                     reason="materialized_no_artwork_work",
                 )
+                hydrated.append({'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached})
                 continue
             try:
                 metadata_refreshed = False
