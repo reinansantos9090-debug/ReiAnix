@@ -645,7 +645,7 @@ class ArtworkEngine:
             row = con.execute("SELECT media_kind FROM anime WHERE id=?", (int(anime_id),)).fetchone()
         entity_type = "movie" if row and str(row["media_kind"] or "series").casefold() == "movie" else "anime"
 
-        if cover_cache and self._is_file(cover_cache):
+        if cover_cache and self._is_valid_image_file(cover_cache):
             key = self._make_key("anilist" if anilist_id else "cache",
                                  f"{anilist_id or cover_url or cover_cache}|{cover_url}",
                                  "poster", "large")
