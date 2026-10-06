@@ -165,6 +165,7 @@ object ReiAnixTokens {
         val detailsHeroMaxHeight = 300.dp
         val detailsHeroWideBreakpoint = 600.dp
         val detailsHeroPosterWidth = 112.dp
+        val detailsHeroPosterOverlap = 64.dp
         val emptyStateMinHeight = 280.dp
         val organizeGenreCardWidth = 170.dp
         val organizeCategoryCardWidth = 156.dp
@@ -305,7 +306,7 @@ object ReiAnixTokens {
             fontWeight = FontWeight.SemiBold,
         )
         val navigationLabel = TextStyle(
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             lineHeight = 14.sp,
             fontWeight = FontWeight.Medium,
         )
