@@ -7,6 +7,14 @@ import org.junit.Test
 
 class VideoThumbnailExtractorTest {
     @Test
+    fun durationMetadataIsParsedAsMillisecondsWithoutUnitConversion() {
+        assertEquals(123456L, VideoThumbnailExtractor.parseDurationMs("123456"))
+        assertEquals(0L, VideoThumbnailExtractor.parseDurationMs(null))
+        assertEquals(0L, VideoThumbnailExtractor.parseDurationMs("invalid"))
+        assertEquals(0L, VideoThumbnailExtractor.parseDurationMs("-42"))
+    }
+
+    @Test
     fun stableIdentityChangesOnlyWhenCacheRelevantInputsChange() {
         val sameA = VideoThumbnailExtractor.cacheKey("stable-media-id", 123L, 456L)
         val sameB = VideoThumbnailExtractor.cacheKey("stable-media-id", 123L, 456L)
