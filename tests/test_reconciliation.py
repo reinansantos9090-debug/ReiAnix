@@ -6,7 +6,7 @@ from core.library_service import LibraryService
 from core.library_store import LibraryStore
 
 
-class Prompt35ReconciliationTests(unittest.TestCase):
+class ReconciliationTests(unittest.TestCase):
     SAF_ROOT = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
 
     def setUp(self):
@@ -269,7 +269,7 @@ class Prompt35ReconciliationTests(unittest.TestCase):
                 "modifiedAt": 1000,
             }],
             source_kind="saf",
-            scan_id="prompt35-complete",
+            scan_id="fixture_35-complete",
             scope_kind="root",
             scope_ref=self.SAF_ROOT,
             scan_stats={"status": "completed"},

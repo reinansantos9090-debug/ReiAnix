@@ -12,7 +12,7 @@ STORE_TEST = ROOT / "tests/test_settings_store.py"
 ANDROID_REQUEST_TEST = ROOT / "android/app/src/test/kotlin/com/reiflix/reiflix_local/NativePlayerRequestTest.kt"
 
 
-class Prompt19ZoomContractTests(unittest.TestCase):
+class ZoomContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.player = PLAYER.read_text(encoding="utf-8")

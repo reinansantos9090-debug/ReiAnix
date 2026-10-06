@@ -11,7 +11,7 @@ REQUEST = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
 
 
-class Prompt9PlaybackRegressionTests(unittest.TestCase):
+class PlaybackRegressionTests(unittest.TestCase):
     def test_same_episode_new_request_id_is_not_rejected_by_uri_window(self):
         self.assertIn("seenPlayerRequestIds", MAIN_ACTIVITY)
         self.assertIn("reason=same_request", MAIN_ACTIVITY)

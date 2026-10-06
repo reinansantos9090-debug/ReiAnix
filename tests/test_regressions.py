@@ -14,7 +14,7 @@ PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePl
 SYSTEM_UI = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt").read_text(encoding="utf-8")
 
 
-class Prompt1RegressionTests(unittest.TestCase):
+class RegressionTests(unittest.TestCase):
     def test_details_primary_action_does_not_autofocus_or_rebuild_for_thumbnails(self):
         self.assertNotIn("autofocus=bool(primary_target)", DETAILS)
         self.assertIn("palette_changed = (", DETAILS)

@@ -15,7 +15,7 @@ HOME = ROOT / "views/home_view.py"
 MAIN = ROOT / "main.py"
 
 
-class Prompt91ComposeHostTests(unittest.TestCase):
+class ComposeHostTests(unittest.TestCase):
     def test_main_activity_attaches_reversible_compose_library_host(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         host = HOST.read_text(encoding="utf-8")

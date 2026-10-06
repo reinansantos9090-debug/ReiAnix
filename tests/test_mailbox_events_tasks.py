@@ -15,7 +15,7 @@ ORGANIZE = ROOT / "views" / "organize_view.py"
 PLAYER = ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt"
 
 
-class NativeMailboxPrompt14Tests(unittest.TestCase):
+class NativeMailboxstage14Tests(unittest.TestCase):
     @staticmethod
     def write_event(root: Path, event_id: str, created_at: int, event_type: str = "diagnostic") -> Path:
         queue = root / "reiflix-native-events"
@@ -28,7 +28,7 @@ class NativeMailboxPrompt14Tests(unittest.TestCase):
             "eventType": event_type,
             "createdAt": created_at,
             "timestamp": created_at,
-            "payload": {"event": "PROMPT14_TEST"},
+            "payload": {"event": "MAILBOX_TEST"},
         }
         path.write_text(json.dumps(payload), encoding="utf-8")
         return path

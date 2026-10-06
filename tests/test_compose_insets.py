@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ANDROID = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local"
 
 
-class Prompt27ComposeInsetsContractTests(unittest.TestCase):
+class ComposeInsetsContractTests(unittest.TestCase):
     def read(self, relative_path: str) -> str:
         return (ROOT / relative_path).read_text(encoding="utf-8")
 

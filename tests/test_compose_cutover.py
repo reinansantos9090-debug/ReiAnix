@@ -19,7 +19,7 @@ COMPOSE_HOST = (
 )
 
 
-class Prompt33ComposeCutoverTests(unittest.TestCase):
+class ComposeCutoverTests(unittest.TestCase):
     def test_compose_is_the_single_android_visual_host(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         self.assertIn(
