@@ -877,6 +877,13 @@ class LibraryService:
                     )
                 )
             if not needs_metadata and not needs_cover and not needs_backdrop:
+                self._record_diagnostic(
+                    "METADATA_MATERIALIZATION_SKIPPED",
+                    anime_id=cached.get("id"),
+                    anilist_id=anilist_id,
+                    lookup_title=effective_lookup,
+                    reason="materialized_no_artwork_work",
+                )
                 continue
             try:
                 metadata_refreshed = False
@@ -945,6 +952,14 @@ class LibraryService:
                     self.artwork.sync_anime_metadata(cached['id'], cached)
                     if cover_attempt_failed:
                         self.artwork.mark_download_failure(entity_type, cached['id'], 'poster', cover_url)
+                    self._record_diagnostic(
+                        "METADATA_MATERIALIZATION_SUCCESS",
+                        anime_id=cached.get("id"),
+                        anilist_id=cached.get("anilist_id"),
+                        lookup_title=effective_lookup,
+                        artwork_local=bool(self.artwork.resolve(entity_type, cached['id'], 'poster', allow_network=False)),
+                        backdrop_local=bool(self.artwork.resolve(entity_type, cached['id'], 'backdrop', allow_network=False)),
+                    )
                 hydrated.append({'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached})
             except Exception:
                 logger.exception('Local metadata/artwork hydration failed', extra={'screen':'home','lookup_title':lookup_title,'library_items':len(catalog)})
