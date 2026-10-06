@@ -380,11 +380,24 @@ class AniListClient:
                 if not isinstance(payload, dict):
                     return None
                 response_status = payload.get("responseStatus")
-                if response_status not in (None, 200, "200"):
+                try:
+                    response_status_code = int(response_status) if response_status is not None else 200
+                except (TypeError, ValueError):
+                    response_status_code = 0
+                if response_status_code != 200:
+                    if response_status_code == 429 or response_status_code >= 500:
+                        raise urllib.error.HTTPError(
+                            request.full_url,
+                            response_status_code,
+                            str(payload.get("responseDetails") or "translation service error"),
+                            None,
+                            None,
+                        )
                     return None
-                translated = self.normalize_description(
-                    (payload.get("responseData") or {}).get("translatedText") or ""
-                )
+                raw_translated = (payload.get("responseData") or {}).get("translatedText")
+                if not isinstance(raw_translated, str):
+                    return None
+                translated = self.normalize_description(raw_translated)
                 if self._is_valid_translation(text, translated):
                     return translated
                 return None
