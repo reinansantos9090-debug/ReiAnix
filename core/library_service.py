@@ -6,6 +6,7 @@ import json
 import logging
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import unquote, urlparse
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -64,6 +65,15 @@ class LibraryService:
         self.genre_registry = GenreRegistry(store)
         self._scan_lock = threading.Lock()
         self._metadata_lock = threading.RLock()
+        self._translation_executor = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="reianix-translation",
+        )
+        self._translation_pending: dict[str, object] = {}
+        self._translation_pending_lock = threading.RLock()
+        self._translation_pending_limit = 64
+        self._diagnostic_recorder = None
+        self._metadata_change_listener = None
         if settings is not None:
             self.configure_settings(settings)
 
@@ -177,32 +187,249 @@ class LibraryService:
             stale = True
         return "stale" if stale else "available"
 
-    def _ensure_cached_description_pt_br(self, lookup_title, cached, *, local_anime_id=None):
-        if not cached:
-            return cached
-        # Only AniList-owned descriptions are eligible for automatic localization.
-        # Manual/local descriptions must remain exactly as the user supplied them.
-        if str(cached.get("metadata_source") or "").casefold() != "anilist":
-            return cached
-        description = str(cached.get("description") or "").strip()
-        original = str(cached.get("description_original") or "").strip()
-        source_text = original or description
-        if not source_text:
-            return cached
-        localized = self.anilist.localize_description_to_pt_br(source_text)
-        if localized == description and original:
-            return cached
+    def set_diagnostic_recorder(self, recorder) -> None:
+        self._diagnostic_recorder = recorder if callable(recorder) else None
+        self.anilist.set_diagnostic_recorder(self._record_diagnostic)
+
+    def _record_diagnostic(self, name, **kwargs) -> None:
+        recorder = self._diagnostic_recorder
+        if not callable(recorder):
+            return
+        try:
+            recorder(name, **kwargs)
+        except TypeError:
+            logger.debug("Diagnostic recorder rejected event %s", name, exc_info=True)
+
+    def set_metadata_change_listener(self, listener) -> None:
+        """Receive canonical metadata changes from background localization work."""
+        self._metadata_change_listener = listener if callable(listener) else None
+
+    def _notify_metadata_change(self, event_name, *, anime_id=None, lookup_title=None, source_language=None) -> None:
+        listener = self._metadata_change_listener
+        if not callable(listener):
+            return
+        try:
+            listener(
+                event_name,
+                {
+                    "anime_id": anime_id,
+                    "lookup_title": lookup_title,
+                    "source_language": source_language,
+                },
+            )
+        except Exception:
+            logger.exception("Metadata change listener failed for %s", event_name)
+
+    def _persist_localized_description(
+        self,
+        lookup_title,
+        original,
+        localized,
+        *,
+        local_anime_id=None,
+        source_language=None,
+        from_cache=False,
+    ):
+        original = self.anilist.normalize_description(original)
+        localized = self.anilist.normalize_description(localized)
+        if not original or not self.anilist._is_valid_translation(original, localized):
+            return False
+        current = (
+            self.store.anime_metadata_by_id(local_anime_id)
+            if local_anime_id
+            else None
+        ) or self.store.anime_metadata(lookup_title)
+        if current and str(current.get("description") or "").strip() == localized:
+            return False
         self.store.upsert_anime(
             lookup_title,
             {
                 "description": localized,
-                "description_original": source_text,
+                "description_original": original,
             },
             source="anilist",
-            confidence=cached.get("metadata_confidence") or "medium",
-            status=cached.get("metadata_status") or "available",
+            confidence=(current or {}).get("metadata_confidence") or "medium",
+            status=(current or {}).get("metadata_status") or "available",
             local_anime_id=local_anime_id,
         )
+        row = (
+            self.store.anime_metadata_by_id(local_anime_id)
+            if local_anime_id
+            else None
+        ) or self.store.anime_metadata(lookup_title)
+        anime_id = (row or current or {}).get("id") or local_anime_id
+        logger.info(
+            "TRANSLATION_PERSISTED animeId=%s lookupTitle=%s sourceLanguage=%s cacheHit=%s",
+            anime_id or "-", lookup_title, source_language or "-", bool(from_cache),
+        )
+        self._notify_metadata_change(
+            "TRANSLATION_CACHE_HIT" if from_cache else "TRANSLATION_SUCCEEDED",
+            anime_id=anime_id,
+            lookup_title=lookup_title,
+            source_language=source_language,
+        )
+        return True
+
+    def _translation_task_done(self, key, future) -> None:
+        with self._translation_pending_lock:
+            if self._translation_pending.get(key) is future:
+                self._translation_pending.pop(key, None)
+        try:
+            future.result()
+        except Exception:
+            logger.exception("Background description localization task failed")
+
+    def _run_description_localization(
+        self,
+        lookup_title,
+        original,
+        *,
+        local_anime_id=None,
+        request_id=None,
+    ):
+        original = self.anilist.normalize_description(original)
+        if not original:
+            return original
+        started = time.monotonic()
+        source_language, _ = self.anilist.detect_description_language(original)
+        localized = self.anilist.localize_description_to_pt_br(
+            original,
+            source_language=source_language,
+            request_id=request_id,
+        )
+        if localized and localized != original and self.anilist._is_valid_translation(original, localized):
+            from_cache = self.anilist.get_cached_description_pt_br(original, source_language) == localized
+            self._persist_localized_description(
+                lookup_title,
+                original,
+                localized,
+                local_anime_id=local_anime_id,
+                source_language=source_language,
+                from_cache=from_cache,
+            )
+        logger.info(
+            "TRANSLATION_BACKGROUND_DONE lookupTitle=%s sourceLanguage=%s durationMs=%d",
+            lookup_title,
+            source_language or "-",
+            int((time.monotonic() - started) * 1000),
+        )
+        return localized
+
+    def _schedule_description_localization(
+        self,
+        lookup_title,
+        original,
+        *,
+        local_anime_id=None,
+        request_id=None,
+    ) -> bool:
+        original = self.anilist.normalize_description(original)
+        if not original:
+            return False
+        source_language, _ = self.anilist.detect_description_language(original)
+        if source_language == "pt":
+            return False
+        if source_language == "unknown":
+            logger.info(
+                "TRANSLATION_SKIPPED lookupTitle=%s reason=source_language_unknown",
+                lookup_title,
+            )
+            return False
+        key = self.anilist.translation_cache_key(original, source_language)
+        with self._translation_pending_lock:
+            if key in self._translation_pending:
+                return False
+            if len(self._translation_pending) >= self._translation_pending_limit:
+                logger.warning(
+                    "TRANSLATION_BACKPRESSURE lookupTitle=%s pending=%d limit=%d",
+                    lookup_title,
+                    len(self._translation_pending),
+                    self._translation_pending_limit,
+                )
+                self._record_diagnostic(
+                    "TRANSLATION_FAILED",
+                    request_id=request_id,
+                    source=source_language,
+                    result="backpressure",
+                )
+                return False
+            future = self._translation_executor.submit(
+                self._run_description_localization,
+                lookup_title,
+                original,
+                local_anime_id=local_anime_id,
+                request_id=request_id,
+            )
+            self._translation_pending[key] = future
+            future.add_done_callback(
+                lambda completed, cache_key=key: self._translation_task_done(cache_key, completed)
+            )
+        return True
+
+    def shutdown(self) -> None:
+        with self._translation_pending_lock:
+            self._translation_executor.shutdown(wait=False, cancel_futures=True)
+            self._translation_pending.clear()
+
+    def _ensure_cached_description_pt_br(self, lookup_title, cached, *, local_anime_id=None):
+        if not cached:
+            return cached
+        if str(cached.get("metadata_source") or "").casefold() != "anilist":
+            return cached
+
+        original = self.anilist.normalize_description(
+            cached.get("description_original") or cached.get("description") or ""
+        )
+        description = self.anilist.normalize_description(cached.get("description") or "")
+        if not original:
+            return cached
+
+        source_language, _ = self.anilist.detect_description_language(original)
+        cached_localized = self.anilist.get_cached_description_pt_br(original, source_language)
+
+        if cached_localized and cached_localized != description:
+            changed = self._persist_localized_description(
+                lookup_title,
+                original,
+                cached_localized,
+                local_anime_id=local_anime_id,
+                source_language=source_language,
+                from_cache=True,
+            )
+            if changed:
+                return (
+                    self.store.anime_metadata_by_id(local_anime_id)
+                    if local_anime_id
+                    else None
+                ) or self.store.anime_metadata(lookup_title) or cached
+
+        if source_language == "pt":
+            if description != original:
+                self.store.upsert_anime(
+                    lookup_title,
+                    {
+                        "description": original,
+                        "description_original": original,
+                    },
+                    source="anilist",
+                    confidence=cached.get("metadata_confidence") or "medium",
+                    status=cached.get("metadata_status") or "available",
+                    local_anime_id=local_anime_id,
+                )
+                return (
+                    self.store.anime_metadata_by_id(local_anime_id)
+                    if local_anime_id
+                    else None
+                ) or self.store.anime_metadata(lookup_title) or cached
+            return cached
+
+        if description == original and source_language != "unknown":
+            self._schedule_description_localization(
+                lookup_title,
+                original,
+                local_anime_id=local_anime_id,
+            )
+
         return (
             self.store.anime_metadata_by_id(local_anime_id)
             if local_anime_id
@@ -272,7 +499,7 @@ class LibraryService:
                 if refresh_id:
                     media = self.anilist.by_id(refresh_id)
                     if media:
-                        refreshed = self.anilist.metadata_from_media(display_title, media, localize_description=True)
+                        refreshed = self.anilist.metadata_from_media(display_title, media, localize_description=False)
                         refreshed["anilist_id"] = refresh_id
                         logger.info(
                             "METADATA_ACTION_DB_WRITE requestId=%s animeId=%s lookupTitle=%s anilistId=%s screen=library_service",
@@ -289,6 +516,12 @@ class LibraryService:
                         )
                         row = self.store.anime_metadata_by_id(owner_id) if owner_id else self.store.anime_metadata(local_lookup)
                         if row:
+                            self._schedule_description_localization(
+                                local_lookup,
+                                row.get("description_original") or row.get("description") or "",
+                                local_anime_id=row.get("id"),
+                                request_id=request_id,
+                            )
                             self._sync_genres(row["id"], row, source="anilist")
                             self.artwork.sync_anime_metadata(row["id"], row)
                         return row or refreshed
@@ -351,7 +584,7 @@ class LibraryService:
                     score = float(selected.get("match_score") or 0.0)
                     second = float(ranked[1].get("match_score") or 0.0) if len(ranked) > 1 else 0.0
                     margin = round(score - second, 3)
-                    refreshed = self.anilist.metadata_from_media(display_title, selected, localize_description=True)
+                    refreshed = self.anilist.metadata_from_media(display_title, selected, localize_description=False)
                     refreshed["anilist_id"] = selected["id"]
                     confidence = "high" if score >= 0.9 else "medium"
                     logger.info(
@@ -377,6 +610,12 @@ class LibraryService:
                     )
                     row = self.store.anime_metadata_by_id(owner_id) if owner_id else self.store.anime_metadata(local_lookup)
                     if row:
+                        self._schedule_description_localization(
+                            local_lookup,
+                            row.get("description_original") or row.get("description") or "",
+                            local_anime_id=row.get("id"),
+                            request_id=request_id,
+                        )
                         self._sync_genres(row["id"], row, source="anilist")
                         self.artwork.sync_anime_metadata(row["id"], row)
                     logger.info(
@@ -1749,6 +1988,12 @@ class LibraryService:
         self.store.resolve_match(local_lookup, anilist_id)
         row = self.store.anime_metadata_by_id(owner_id) if owner_id else self.store.anime_metadata(local_lookup)
         if row:
+            self._schedule_description_localization(
+                local_lookup,
+                row.get("description_original") or row.get("description") or "",
+                local_anime_id=row.get("id"),
+                request_id=request_id,
+            )
             self._sync_genres(row["id"], row, source="anilist")
             self.artwork.sync_anime_metadata(row["id"], row)
         logger.info(
