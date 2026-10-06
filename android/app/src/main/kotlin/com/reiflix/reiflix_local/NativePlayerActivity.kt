@@ -2276,7 +2276,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         errorPanel.addView(TextView(this).apply {
             tag = "reiflix_error_reason"
             textSize = 10f
-            setTextColor(0xFFBDB8C9.toInt())
+            setTextColor(0xFFB8B8B8.toInt())
             gravity = Gravity.CENTER
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -4652,7 +4652,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (localMetadata.notes.isNotEmpty()) {
             container.addView(android.widget.TextView(this).apply {
                 text = "Notas deste episódio"
-                setTextColor(0xFFE0DCE8.toInt())
+                setTextColor(0xFFF5F5F5.toInt())
                 setPadding(0, dp(10), 0, dp(4))
             })
             localMetadata.notes.sortedBy { it.timestampMs }.forEach { note ->
