@@ -610,6 +610,7 @@ private fun DetailsHero(
             .fillMaxWidth()
             .clip(ReiAnixTokens.Shapes.hero),
     ) {
+        var heroMenuExpanded by rememberSaveable(anime.id) { mutableStateOf(false) }
         val wide = LocalReiAnixResponsiveMetrics.current.widthClass != com.reiflix.reiflix_local.ui.theme.ReiAnixWindowWidthClass.COMPACT
         val heroHeight = LocalReiAnixResponsiveMetrics.current.detailsHeroHeight()
         val backdropPath = anime.artwork?.backdropLocalPath?.takeIf { it.isNotBlank() }
@@ -672,11 +673,31 @@ private fun DetailsHero(
                     onClick = onBack,
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                DetailsHeroIcon(
-                    icon = Icons.Filled.Refresh,
-                    label = "Atualizar detalhes",
-                    onClick = onRefresh,
-                )
+                Box {
+                    DetailsHeroIcon(
+                        icon = Icons.Filled.MoreVert,
+                        label = "Mais opções",
+                        onClick = { heroMenuExpanded = true },
+                    )
+                    DropdownMenu(
+                        expanded = heroMenuExpanded,
+                        onDismissRequest = { heroMenuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Atualizar detalhes") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                heroMenuExpanded = false
+                                onRefresh()
+                            },
+                        )
+                    }
+                }
                 DetailsHeroIcon(
                     icon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     label = if (anime.favorite) {
@@ -1033,6 +1054,12 @@ private fun DetailsSeasonCard(
     onClick: () -> Unit,
 ) {
     val preview = season.episodes.firstOrNull()?.artwork?.localPath
+    val responsive = LocalReiAnixResponsiveMetrics.current
+    val availableWidth = (
+        responsive.maxWidth -
+            responsive.horizontalPadding -
+            responsive.horizontalPadding
+        ).coerceAtLeast(240.dp)
     val title = season.title.ifBlank {
         season.number?.let { "Temporada $it" } ?: "Temporada"
     }
@@ -1044,7 +1071,7 @@ private fun DetailsSeasonCard(
 
     Surface(
         modifier = Modifier
-            .width(ReiAnixTokens.Dimensions.detailsSeasonCardWidth)
+            .width(minOf(ReiAnixTokens.Dimensions.detailsSeasonCardWidth, availableWidth))
             .clickable(onClick = onClick)
             .semantics {
                 role = Role.RadioButton
@@ -1087,7 +1114,11 @@ private fun DetailsSeasonCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1097,15 +1128,6 @@ private fun DetailsSeasonCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = if (selected) "Selecionada" else " ",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        Color.Transparent
-                    },
                 )
             }
         }

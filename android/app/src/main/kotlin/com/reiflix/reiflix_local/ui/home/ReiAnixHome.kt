@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -316,15 +317,25 @@ private fun HomeHeader(
             color = MaterialTheme.colorScheme.surfaceVariant,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ) {
-            Text(
-                text = if (sourceAvailable) "Offline" else "Indisponível",
-                style = MaterialTheme.typography.labelMedium,
+            Row(
                 modifier = Modifier.padding(
                     horizontal = ReiAnixTokens.Spacing.md,
                     vertical = ReiAnixTokens.Spacing.xs,
                 ),
-                maxLines = 1,
-            )
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CloudDone,
+                    contentDescription = null,
+                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
+                )
+                Text(
+                    text = if (sourceAvailable) "Offline" else "Indisponível",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
+            }
         }
 
         TextButton(
@@ -531,7 +542,7 @@ private fun ColumnScope.HomeReadyContent(
         if (trending.isNotEmpty()) {
             item(key = "home-section-trending") {
                 HomeMediaSection(
-                    title = "EM ALTA",
+                    title = "Em alta",
                     items = trending,
                     cardWidth = homeAnimeCardWidth(cardSize, LocalReiAnixResponsiveMetrics.current),
                     showThumbnails = showThumbnails,
@@ -545,7 +556,7 @@ private fun ColumnScope.HomeReadyContent(
         if (favorites.isNotEmpty()) {
             item(key = "home-section-my-list") {
                 HomeMediaSection(
-                    title = "MINHA LISTA",
+                    title = "Minha lista",
                     items = favorites,
                     cardWidth = homeAnimeCardWidth(cardSize, responsive),
                     showThumbnails = showThumbnails,
@@ -572,7 +583,7 @@ private fun ColumnScope.HomeReadyContent(
         if (movies.isNotEmpty()) {
             item(key = "home-section-movies") {
                 HomeMediaSection(
-                    title = "FILMES",
+                    title = "Filmes",
                     items = movies,
                     cardWidth = homeAnimeCardWidth(cardSize, responsive),
                     showThumbnails = showThumbnails,
@@ -702,19 +713,6 @@ private fun HomeHero(
                         )
                     }
 
-                val metadata = listOfNotNull(
-                    anime.year?.toString(),
-                    anime.format?.trim()?.takeIf(String::isNotEmpty),
-                    anime.studio?.trim()?.takeIf(String::isNotEmpty),
-                    anime.score?.let(::formatScore),
-                    anime.availableContentCount.takeIf { it > 0 }?.let {
-                        if (it == 1) "1 episódio" else it.toString() + " episódios"
-                    },
-                )
-                if (metadata.isNotEmpty()) {
-                    ReiAnixMetadata(text = metadata.joinToString(" • "))
-                }
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
@@ -753,7 +751,7 @@ private fun HomeContinueSection(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         HomeSectionHeader(
-            title = "CONTINUAR ASSISTINDO",
+            title = "Continuar assistindo",
             onSeeAll = onSeeAll,
         )
 
@@ -763,7 +761,7 @@ private fun HomeContinueSection(
             contentPadding = PaddingValues(
                 end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             ),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             items(
                 items = items,

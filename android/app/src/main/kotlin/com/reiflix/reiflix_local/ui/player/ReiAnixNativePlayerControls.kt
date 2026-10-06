@@ -36,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -122,8 +121,8 @@ fun ReiAnixNativePlayerTopControls(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color.Black.copy(alpha = 0.88f),
-                        Color.Black.copy(alpha = 0.50f),
+                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.88f),
+                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.50f),
                         Color.Transparent,
                     ),
                 ),
@@ -148,7 +147,7 @@ fun ReiAnixNativePlayerTopControls(
             Icon(
                 imageVector = Icons.Filled.ArrowBack,
                 contentDescription = null,
-                tint = Color.White,
+                tint = ReiAnixTokens.Colors.playerControl,
             )
         }
 
@@ -161,7 +160,7 @@ fun ReiAnixNativePlayerTopControls(
         ) {
             Text(
                 text = state.episodeLabel.ifBlank { "Episódio" },
-                color = Color.White,
+                color = ReiAnixTokens.Colors.playerControl,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -169,7 +168,7 @@ fun ReiAnixNativePlayerTopControls(
             if (state.technicalLine.isNotBlank()) {
                 Text(
                     text = state.technicalLine,
-                    color = Color.White.copy(alpha = 0.78f),
+                    color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.78f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -177,7 +176,7 @@ fun ReiAnixNativePlayerTopControls(
             }
             Text(
                 text = state.title.ifBlank { "Episódio" },
-                color = Color.White.copy(alpha = 0.98f),
+                color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.98f),
                 fontSize = 11.sp,
                 maxLines = 2,
             )
@@ -226,13 +225,13 @@ fun ReiAnixNativePlayerCenterControls(
                     if (state.isBuffering) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(30.dp),
-                            color = Color.White,
+                            color = ReiAnixTokens.Colors.playerControl,
                             strokeWidth = 3.dp,
                         )
                     } else if (state.isPlaying && !state.ended) {
                         Text(
                             text = "Ⅱ",
-                            color = Color.White,
+                            color = ReiAnixTokens.Colors.playerControl,
                             fontSize = 30.sp,
                             fontWeight = FontWeight.Bold,
                         )
@@ -240,7 +239,7 @@ fun ReiAnixNativePlayerCenterControls(
                         Icon(
                             imageVector = Icons.Filled.PlayArrow,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = ReiAnixTokens.Colors.playerControl,
                             modifier = Modifier.size(48.dp),
                         )
                     }
@@ -276,13 +275,13 @@ private fun PlayerSeekGlyphButton(
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = seconds,
-                color = Color.White,
+                color = ReiAnixTokens.Colors.playerControl,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
                 text = glyph,
-                color = Color.White,
+                color = ReiAnixTokens.Colors.playerControl,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.TopStart),
@@ -336,8 +335,8 @@ fun ReiAnixNativePlayerBottomControls(
                 Brush.verticalGradient(
                     listOf(
                         Color.Transparent,
-                        Color.Black.copy(alpha = 0.50f),
-                        Color.Black.copy(alpha = 0.92f),
+                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.50f),
+                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.92f),
                     ),
                 ),
             )
@@ -354,7 +353,7 @@ fun ReiAnixNativePlayerBottomControls(
         ) {
             Text(
                 text = PlayerTimeFormatter.format(displayPosition),
-                color = Color.White,
+                color = ReiAnixTokens.Colors.playerControl,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.widthIn(min = 48.dp),
@@ -391,13 +390,13 @@ fun ReiAnixNativePlayerBottomControls(
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.24f),
+                    inactiveTrackColor = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.24f),
                 ),
                 steps = 0,
             )
             Text(
                 text = if (duration > 0L) PlayerTimeFormatter.format(duration) else "--:--",
-                color = Color.White,
+                color = ReiAnixTokens.Colors.playerControl,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.widthIn(min = 48.dp),
@@ -479,7 +478,7 @@ private fun RowScope.PlayerBottomAction(
             if (glyph != null) {
                 Text(
                     text = glyph,
-                    color = if (enabled) Color.White else Color.White.copy(alpha = 0.36f),
+                    color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                     fontSize = 23.sp,
                     fontWeight = FontWeight.Bold,
                 )
@@ -487,14 +486,14 @@ private fun RowScope.PlayerBottomAction(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (enabled) Color.White else Color.White.copy(alpha = 0.36f),
+                    tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                     modifier = Modifier.size(22.dp),
                 )
             }
         }
         Text(
             text = label,
-            color = Color.White.copy(alpha = if (enabled) 0.92f else 0.42f),
+            color = ReiAnixTokens.Colors.playerControl.copy(alpha = if (enabled) 0.92f else 0.42f),
             fontSize = 10.sp,
             maxLines = 1,
         )

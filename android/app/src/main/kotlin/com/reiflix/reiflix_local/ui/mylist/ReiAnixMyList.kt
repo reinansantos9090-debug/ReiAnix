@@ -94,7 +94,6 @@ fun ReiAnixMyListRoute(
     ) {
         ReiAnixScreenTitle(
             title = "Minha Lista",
-            subtitle = myListCountLabel(totalSaved),
             modifier = Modifier.padding(
                 start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
