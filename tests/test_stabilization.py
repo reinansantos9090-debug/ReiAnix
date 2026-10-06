@@ -334,9 +334,9 @@ class StabilizationTests(unittest.TestCase):
                 service.shutdown()
 
     def test_details_and_main_use_canonical_localized_description_pipeline(self):
-        self.assertIn("metadata.get("description") or metadata.get("description_original")", DETAILS)
+        self.assertIn('metadata.get("description") or metadata.get("description_original")', DETAILS)
         self.assertIn("library.set_metadata_change_listener(_dispatch_metadata_change)", MAIN)
-        self.assertIn("compose_library_bridge.request_publish("metadata_translation")", MAIN)
+        self.assertIn('compose_library_bridge.request_publish("metadata_translation")', MAIN)
         self.assertIn("description_original", ANILIST)
 
 if __name__ == "__main__":
