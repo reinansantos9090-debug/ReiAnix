@@ -448,6 +448,43 @@ class LibraryUiMappersTest {
         assertEquals(4201L, model.seasons.single().episodes.single().id)
     }
 
+
+    @Test
+    fun detailsUsesLocalizedDescriptionWhenCanonicalDescriptionIsPortuguese() {
+        val source = animeSource(
+            id = 500L,
+            meta = mapOf(
+                "year" to 2026,
+                "metadata_status" to "available",
+                "description" to "A história acompanha um jovem herói.",
+                "description_original" to "The story follows a young hero.",
+            ),
+            seasons = emptyList(),
+        )
+
+        val model = LibraryUiMappers.anime(source)
+
+        assertEquals("A história acompanha um jovem herói.", model.description)
+    }
+
+    @Test
+    fun detailsFallsBackToOriginalDescriptionWhenLocalizedValueIsAbsent() {
+        val source = animeSource(
+            id = 501L,
+            meta = mapOf(
+                "year" to 2026,
+                "metadata_status" to "available",
+                "description" to null,
+                "description_original" to "The story follows a young hero.",
+            ),
+            seasons = emptyList(),
+        )
+
+        val model = LibraryUiMappers.anime(source)
+
+        assertEquals("The story follows a young hero.", model.description)
+    }
+
     private fun animeSource(
         id: Long,
         meta: Map<String, Any?> = mapOf(
