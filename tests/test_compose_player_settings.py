@@ -83,7 +83,9 @@ def test_compose_writes_to_existing_python_settings_store():
     ):
         assert prefix in supported_scope
     assert "key.startswith(" in supported_scope
-    assert "await asyncio.to_thread(settings.set, setting_key, setting_value)" in main
+    assert "async def _run_compose_settings_set" in main
+    assert "await asyncio.to_thread(" in main
+    assert "settings.set" in main
     assert "Compose does not keep a second preference store" in repository
     assert "NativeMailbox.write(appContext, event)" in repository
 
