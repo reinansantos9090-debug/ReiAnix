@@ -33,6 +33,27 @@ data class ReiAnixSettingsAccountUiState(
 )
 
 @Keep
+enum class ReiAnixSettingsOperationState {
+    IDLE,
+    QUEUED,
+    RUNNING,
+    SUCCESS,
+    ERROR,
+    CANCELLED,
+}
+
+@Keep
+data class ReiAnixSettingsOperationUiState(
+    val requestId: String,
+    val action: String,
+    val key: String? = null,
+    val state: ReiAnixSettingsOperationState = ReiAnixSettingsOperationState.QUEUED,
+    val message: String? = null,
+    val error: String? = null,
+    val timestampMs: Long = 0L,
+)
+
+@Keep
 data class ReiAnixSettingsUiState(
     val status: ReiAnixSettingsLoadStatus = ReiAnixSettingsLoadStatus.LOADING,
     val revision: Long = 0L,
@@ -40,6 +61,7 @@ data class ReiAnixSettingsUiState(
     val categories: List<ReiAnixSettingsCategoryUiModel> = emptyList(),
     val settings: Map<String, String> = emptyMap(),
     val storage: ReiAnixSettingsStorageUiState = ReiAnixSettingsStorageUiState(),
+    val operations: Map<String, ReiAnixSettingsOperationUiState> = emptyMap(),
     val error: String? = null,
 ) {
     companion object {
