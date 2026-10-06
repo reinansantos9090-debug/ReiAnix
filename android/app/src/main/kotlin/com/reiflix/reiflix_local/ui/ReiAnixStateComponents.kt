@@ -73,12 +73,17 @@ fun ReiAnixEmptyState(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         icon?.let {
-            Icon(
-                imageVector = it,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            Box(
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget),
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+                )
+            }
         }
         Text(
             text = title,
@@ -255,12 +260,17 @@ fun ReiAnixRecoverableErrorState(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
         icon?.let {
-            Icon(
-                imageVector = it,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
+            Box(
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget),
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+                )
+            }
         }
         Text(
             text = title,
