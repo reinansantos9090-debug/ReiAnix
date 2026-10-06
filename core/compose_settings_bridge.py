@@ -7,11 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
+
+
+logger = logging.getLogger("reiflix.compose_settings")
 
 
 class ComposeSettingsBridge:
@@ -140,6 +144,12 @@ class ComposeSettingsBridge:
                 "error": str(exc)[:500],
             }
         self._atomic_write_json(self.snapshot_path, payload)
+        logger.info(
+            "SETTINGS_SNAPSHOT_PUBLISHED revision=%s reason=%s status=%s",
+            revision,
+            reason,
+            payload.get("status"),
+        )
 
     def write_command_result(
         self,
