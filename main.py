@@ -3955,26 +3955,35 @@ async def main(page: ft.Page):
                                     )
                                     current_task = account_action_task[0]
                                     if current_task is None or current_task.done():
-                                        async def _run_account_action():
+                                        account_task = page.run_task(execute_account_action, action)
+                                        account_action_task[0] = account_task
+
+                                        def _finish_account_action(done_task, rid=request_id, account_action=action):
+                                            async def _publish_account_result():
+                                                try:
+                                                    done_task.result()
+                                                    await _write_compose_settings_result(
+                                                        rid, "account:" + account_action, "SUCCESS",
+                                                        operation_state="SUCCESS", message="Operação da conta concluída.",
+                                                    )
+                                                except asyncio.CancelledError:
+                                                    await _write_compose_settings_result(
+                                                        rid, "account:" + account_action, "CANCELLED",
+                                                        operation_state="CANCELLED", error="Operação da conta cancelada.",
+                                                    )
+                                                except Exception as exc:
+                                                    logger.exception("[COMPOSE_ACCOUNT] action failed action=%s requestId=%s", account_action, rid)
+                                                    await _write_compose_settings_result(
+                                                        rid, "account:" + account_action, "ERROR",
+                                                        operation_state="ERROR", error=str(exc),
+                                                    )
+
                                             try:
-                                                await execute_account_action(action)
-                                                await _write_compose_settings_result(
-                                                    request_id, "account:" + action, "SUCCESS",
-                                                    operation_state="SUCCESS", message="Operação da conta concluída.",
-                                                )
-                                            except asyncio.CancelledError:
-                                                await _write_compose_settings_result(
-                                                    request_id, "account:" + action, "CANCELLED",
-                                                    operation_state="CANCELLED", error="Operação da conta cancelada.",
-                                                )
-                                                raise
-                                            except Exception as exc:
-                                                logger.exception("[COMPOSE_ACCOUNT] action failed action=%s requestId=%s", action, request_id)
-                                                await _write_compose_settings_result(
-                                                    request_id, "account:" + action, "ERROR",
-                                                    operation_state="ERROR", error=str(exc),
-                                                )
-                                        account_action_task[0] = page.run_task(_run_account_action)
+                                                page.run_task(_publish_account_result)
+                                            except Exception:
+                                                logger.exception("[COMPOSE_ACCOUNT] failed to publish result requestId=%s", rid)
+
+                                        account_task.add_done_callback(_finish_account_action)
                                     else:
                                         compose_settings_bridge.write_command_result(
                                             request_id, "account:" + action, "ERROR",
