@@ -535,35 +535,31 @@ class LibraryService:
             status = str(cached.get('metadata_status') or 'unresolved').casefold()
             if status == 'manual' and not anilist_id:
                 continue
-            cover_cache = str(cached.get('cover_cache') or '').strip()
             entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
-            cover_valid = False
             if cached.get('id'):
                 try:
+                    # Always reconcile durable AniList artwork metadata before
+                    # deciding whether a network request is needed. The
+                    # ArtworkEngine itself is cache-hit aware and deduplicates
+                    # identical requests.
                     self.artwork.sync_anime_metadata(cached['id'], cached)
-                    resolved_cached = self.artwork.resolve(
-                        entity_type,
-                        cached['id'],
-                        'poster',
-                        allow_network=False,
-                    )
-                    cover_valid = bool(
-                        resolved_cached
-                        and resolved_cached.get('local_path')
-                    )
                 except Exception:
                     logger.debug(
-                        'Artwork cache validation failed during metadata hydration',
+                        'Artwork metadata reconciliation failed during hydration',
                         extra={'lookup_title': lookup_title, 'anime_id': cached.get('id')},
                         exc_info=True,
                     )
-                    cover_valid = False
             needs_metadata = not anilist_id or status in {'unresolved', 'error', 'stale'}
             if status == 'ambiguous' and not anilist_id:
                 if pending_cache is None: pending_cache = self.store.pending_matches()
                 needs_metadata = not any(p.get('lookup_title') == effective_lookup for p in pending_cache)
-            needs_cover = bool(anilist_id and str(cached.get('cover_url') or '').strip() and not cover_valid)
-            if not needs_metadata and not needs_cover: continue
+            needs_cover = bool(
+                anilist_id
+                and str(cached.get('cover_url') or '').strip()
+                and self._setting("artwork.enabled", True)
+            )
+            if not needs_metadata and not needs_cover:
+                continue
             try:
                 metadata_refreshed = False
                 cover_attempt_failed = False
@@ -588,10 +584,8 @@ class LibraryService:
                     effective_lookup = str(cached.get("lookup_title") or effective_lookup)
                     anilist_id = cached.get('anilist_id') or self.store.association(effective_lookup)
                     metadata_refreshed = True
-                cover_cache = str(cached.get('cover_cache') or '').strip()
-                cover_valid = bool(cover_cache and os.path.isfile(cover_cache) and os.path.getsize(cover_cache) > 0)
                 cover_url = str(cached.get('cover_url') or '').strip()
-                if anilist_id and cover_url and not cover_valid and self._setting("artwork.enabled", True):
+                if anilist_id and cover_url and self._setting("artwork.enabled", True):
                     entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
                     if cached.get('id'):
                         # Seed the ArtworkEngine from durable metadata before requesting.
@@ -612,8 +606,9 @@ class LibraryService:
                             else None
                         ) or self.store.anime_metadata(effective_lookup) or cached
                         cover_attempt_failed = not bool(
-                            resolved and resolved.get('local_path')
-                            and os.path.isfile(resolved.get('local_path'))
+                            resolved
+                            and resolved.get('local_path')
+                            and self.artwork._is_valid_image_file(resolved.get('local_path'))
                         )
                 if cached.get('id'):
                     self.artwork.sync_anime_metadata(cached['id'], cached)
