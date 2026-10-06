@@ -455,8 +455,6 @@ class HomeView:
                     item.setdefault("meta", {})["cover_cache"] = local_path
                     changed = True
 
-            if changed:
-                schedule_artwork_ui_update()
             return changed
 
         if isinstance(view_state, dict):
