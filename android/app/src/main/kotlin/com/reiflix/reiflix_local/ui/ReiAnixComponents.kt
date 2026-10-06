@@ -552,6 +552,7 @@ fun ReiAnixIconActionButton(
             } else {
                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f)
             },
+            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
         )
     }
 }
@@ -855,7 +856,7 @@ fun ReiAnixEpisodeCard(
                                 maxLines = 1,
                                 modifier = Modifier.padding(
                                     horizontal = ReiAnixTokens.Spacing.xs,
-                                    vertical = 2.dp,
+                                    vertical = ReiAnixTokens.Spacing.xs / 2,
                                 ),
                             )
                         }
@@ -1003,12 +1004,21 @@ fun ReiAnixSettingCard(
             ),
         ) {
             icon?.let {
-                Icon(
-                    imageVector = it,
-                    contentDescription = null,
-                    tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
+                Box(
                     modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget),
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = it,
+                        contentDescription = null,
+                        tint = if (enabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f)
+                        },
+                        modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -1097,7 +1107,7 @@ fun ReiAnixProgressIndicator(
                 },
             ),
         color = if (visible) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
-        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        trackColor = if (visible) MaterialTheme.colorScheme.surfaceVariant else androidx.compose.ui.graphics.Color.Transparent,
     )
 }
 
