@@ -1,6 +1,6 @@
 """Cliente AniList somente para metadados, com falha segura e cache de capas."""
 from __future__ import annotations
-import hashlib, json, logging, os, re, tempfile, threading, time, unicodedata, urllib.error, urllib.request
+import hashlib, json, logging, os, re, tempfile, threading, time, urllib.error, urllib.request
 from html import unescape
 from urllib.parse import urlencode
 
@@ -27,8 +27,6 @@ class AniListClient:
         self._translation_cache: dict[str, dict] | None = None
         self._translation_inflight: dict[str, threading.Event] = {}
         self._diagnostic_recorder = None
-
-    MAX_TRANSLATION_CACHE_ENTRIES = 4096
 
     def _trim_translation_cache(self) -> dict:
         cache = self._translation_cache or {}
@@ -218,7 +216,7 @@ class AniListClient:
         if script_language:
             return script_language, 0.99
 
-        tokens = re.findall(r"[^W\d_]+", normalized.casefold(), flags=re.UNICODE)
+        tokens = re.findall(r"[^\W\d_]+", normalized.casefold(), flags=re.UNICODE)
         if not tokens:
             return "unknown", 0.0
 
