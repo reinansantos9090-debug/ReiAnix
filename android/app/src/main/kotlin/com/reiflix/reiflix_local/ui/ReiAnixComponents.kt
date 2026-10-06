@@ -202,7 +202,7 @@ fun ReiAnixPrimaryButton(
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = ReiAnixTokens.Colors.text,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
             disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
@@ -418,7 +418,7 @@ fun ReiAnixChip(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             labelColor = MaterialTheme.colorScheme.onSurface,
             selectedContainerColor = MaterialTheme.colorScheme.primary,
-            selectedLabelColor = ReiAnixTokens.Colors.text,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
             disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
