@@ -402,6 +402,13 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
+    fun requestDestructiveAction(action: String) {
+        if (state.settings["app.confirm_destructive"] == "true") {
+            pendingConfirmationAction = action
+        } else {
+            onAction(action)
+        }
+    }
 
     ReiAnixResponsiveRoot {
     Surface(
@@ -890,7 +897,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Limpar cache",
-                                    onClick = { pendingConfirmationAction = "clear_anilist_cache" },
+                                    onClick = { requestDestructiveAction("clear_anilist_cache") },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -1032,7 +1039,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar configurações",
-                                    onClick = { pendingConfirmationAction = "reset_all_settings" },
+                                    onClick = { requestDestructiveAction("reset_all_settings") },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -1077,7 +1084,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar backup",
-                                    onClick = { pendingConfirmationAction = "backup_restore" },
+                                    onClick = { requestDestructiveAction("backup_restore") },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
