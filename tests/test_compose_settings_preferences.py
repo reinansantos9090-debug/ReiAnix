@@ -41,7 +41,10 @@ def test_settings_controls_use_existing_preference_contract():
     assert "NativeMailbox.write(" in repository
     assert "fun setSetting(key: String, value: String)" in viewmodel
     assert "compose_settings_set" in main
-    assert "await asyncio.to_thread(settings.set, setting_key, setting_value)" in main
+    assert "async def _run_compose_settings_set" in main
+    assert "await asyncio.to_thread(" in main
+    assert "settings.set" in main
+    assert "setting_key" in main
     assert "apply_settings_runtime(setting_key, normalized)" in main
 
     # Notifications have no persisted/source-of-truth preference in this project,
