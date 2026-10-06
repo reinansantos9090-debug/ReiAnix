@@ -445,7 +445,7 @@ fun ReiAnixSectionTitle(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = ReiAnixTokens.TypographyTokens.sectionTitle,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Clip,
@@ -750,7 +750,7 @@ fun ReiAnixAnimeCard(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -872,7 +872,7 @@ fun ReiAnixEpisodeCard(
             ) {
                 Text(
                     text = episode.displayTitle,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
