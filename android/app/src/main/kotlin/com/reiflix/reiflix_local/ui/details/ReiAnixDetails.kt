@@ -793,7 +793,8 @@ private fun DetailsHero(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = responsive.horizontalPadding,
+                            start = responsive.horizontalPadding,
+                            end = responsive.horizontalPadding,
                             top = ReiAnixTokens.Spacing.sm,
                         ),
                     maxLines = 4,
