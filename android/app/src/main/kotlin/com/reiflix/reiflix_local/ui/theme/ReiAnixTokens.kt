@@ -166,6 +166,7 @@ object ReiAnixTokens {
         val detailsHeroWideBreakpoint = 600.dp
         val detailsHeroPosterWidth = 112.dp
         val detailsHeroPosterOverlap = 64.dp
+        val detailsHeroPosterHeight = 160.dp
         val emptyStateMinHeight = 280.dp
         val organizeGenreCardWidth = 170.dp
         val organizeCategoryCardWidth = 156.dp
