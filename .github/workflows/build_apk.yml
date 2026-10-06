@@ -314,8 +314,11 @@ jobs:
       - name: Run Kotlin unit tests
         working-directory: build/flutter/android
         shell: bash
+        env:
+          SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/site-packages
         run: |
           set -euo pipefail
+          test -d "$SERIOUS_PYTHON_SITE_PACKAGES"
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
