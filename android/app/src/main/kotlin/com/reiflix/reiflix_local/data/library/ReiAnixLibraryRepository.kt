@@ -44,17 +44,27 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             // last known canonical catalog from the UI. Keep the snapshot that was
             // last known-good while surfacing the new ERROR state so Compose can
             // show the failure without making the library visually disappear.
-            val preserveCatalog = decoded.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
+            val preserveCatalogOnError = decoded.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
                 decoded.animes.isEmpty() &&
                 previous.animes.isNotEmpty()
+            val preserveCatalogDuringScan = decoded.scanInProgress &&
+                decoded.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY &&
+                decoded.animes.isEmpty() &&
+                decoded.sourceState !in setOf("UNAVAILABLE", "ERROR") &&
+                previous.animes.isNotEmpty()
+            val preserveCatalog = preserveCatalogOnError || preserveCatalogDuringScan
             return decoded.copy(
+                // Keep the last known-good catalog visible during a transient
+                // scan projection. Scan state still comes from the new snapshot,
+                // so reconciliation remains observable without visual deletion.
+                status = if (preserveCatalogDuringScan) previous.status else decoded.status,
                 animes = if (preserveCatalog) previous.animes else decoded.animes,
                 continueWatching = if (preserveCatalog) previous.continueWatching else decoded.continueWatching,
                 storage = if (preserveCatalog) previous.storage else decoded.storage,
                 sourceAvailable = if (preserveCatalog) previous.sourceAvailable else decoded.sourceAvailable,
                 sourceState = if (preserveCatalog) previous.sourceState else decoded.sourceState,
-                scanInProgress = if (preserveCatalog) previous.scanInProgress else decoded.scanInProgress,
-                scanState = if (preserveCatalog) previous.scanState else decoded.scanState,
+                scanInProgress = decoded.scanInProgress,
+                scanState = decoded.scanState,
                 lastCommandId = previous.lastCommandId,
                 lastCommandAction = previous.lastCommandAction,
                 lastCommandStatus = previous.lastCommandStatus,

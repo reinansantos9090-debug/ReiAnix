@@ -31,7 +31,7 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertNotIn("if (isFinishing || isChangingConfigurations) NativeScanController.cancelAll()", source)
 
     def test_long_running_native_scan_batch_helper_is_not_bound_to_activity_instance(self):
-        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun publishNativeScanBatch", source)
         self.assertIn("NativeScanPublisher.publish(", source)

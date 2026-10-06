@@ -182,8 +182,9 @@ class TestFinalStorageHardening(unittest.TestCase):
 
     def test_storage_capabilities_expose_reconciliation_layer(self):
         source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
+        runner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "NativeScanRunner.kt").read_text(encoding="utf-8")
         self.assertIn("reconciliationCapabilities", source)
-        self.assertIn("WAITING_FOR_MEDIASTORE", source)
+        self.assertIn("WAITING_FOR_MEDIASTORE", runner)
 
 
 class TestNovaFormatCompatibility(unittest.TestCase):

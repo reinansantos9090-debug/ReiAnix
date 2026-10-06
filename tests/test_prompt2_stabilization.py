@@ -259,7 +259,7 @@ class Prompt2StabilizationTests(unittest.TestCase):
     def test_google_sign_in_job_is_cancelled_with_main_activity(self):
         self.assertIn("googleSignInJob?.cancel()", MAIN_ACTIVITY)
         self.assertIn("googleSignInJob = null", MAIN_ACTIVITY)
-        self.assertIn("val job = CoroutineScope(Dispatchers.Main).launch", MAIN_ACTIVITY)
+        self.assertIn("val job = lifecycleScope.launch", MAIN_ACTIVITY)
         self.assertIn("googleSignInJob = job", MAIN_ACTIVITY)
 
     def test_navigation_controller_behavioral_back_flow(self):

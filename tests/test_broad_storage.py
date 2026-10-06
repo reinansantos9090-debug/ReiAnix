@@ -68,11 +68,12 @@ class TestBroadStorageArchitecture(unittest.TestCase):
     def test_broad_access_uses_only_android_authoritative_special_permission(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
+        runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         self.assertIn("Environment.isExternalStorageManager()", scanner)
         self.assertIn("permissionAuthority", scanner)
         self.assertNotIn("legacyBroadPermissionRequester", source)
         self.assertNotIn("READ_EXTERNAL_STORAGE", scanner)
-        self.assertIn("NativeIndex.failActiveGenerations", source)
+        self.assertIn("NativeIndex.failActiveGenerations", runner)
 
     def test_nomedia_directory_filtering_supported(self):
         broad_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")

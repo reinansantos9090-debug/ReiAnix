@@ -160,7 +160,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('storage_onboarding["waiting_for_result"] = False', onboarding)
 
     def test_native_scan_publication_uses_failing_mailbox_contract(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun publishNativeScanBatch", source)
         self.assertIn("NativeScanPublisher.publish(", source)

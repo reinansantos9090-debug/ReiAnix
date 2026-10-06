@@ -919,7 +919,7 @@ class TestSafScannerHardening(unittest.TestCase):
         self.assertNotIn('put("pending", pending.size)', scanner)
 
     def test_main_activity_publishes_scan_progress_before_final_result(self):
-        main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
+        main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "NativeScanRunner.kt").read_text(encoding="utf-8")
         progress = main.index('put("type", "saf_scan_progress")')
         final = main.index('put("type", "saf_scan")', progress)
         self.assertLess(progress, final)
@@ -1016,7 +1016,7 @@ class Prompt1BuildIdentityContractTests(unittest.TestCase):
 
 class NativeMainActivityDecompositionTests(unittest.TestCase):
     def test_main_activity_delegates_scan_batch_publication(self):
-        main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun publishNativeScanBatch(", main)
         self.assertNotIn("NativeIndex.prepareBatch(", main)

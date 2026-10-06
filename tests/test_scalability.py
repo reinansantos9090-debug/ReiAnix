@@ -211,7 +211,7 @@ class TestScalability(unittest.TestCase):
         broad = (SCANNER_DIR / 'BroadStorageScanner.kt').read_text(encoding='utf-8')
         saf = (SCANNER_DIR / 'SafScanner.kt').read_text(encoding='utf-8')
         media = (SCANNER_DIR / 'MediaStoreScanner.kt').read_text(encoding='utf-8')
-        main = (NATIVE_DIR / 'MainActivity.kt').read_text(encoding='utf-8')
+        main = (SCANNER_DIR / 'NativeScanRunner.kt').read_text(encoding='utf-8')
         for source in (broad, saf, media):
             self.assertIn('NativeBatch.Accumulator', source)
         self.assertNotIn('val docsByVolume =', broad)

@@ -43,13 +43,26 @@ internal object ReiAnixLibrarySnapshotCodec {
 
         val storage = decodeStorage(root.optJSONObject("storage"))
 
+        val validAnimeIds = animes.asSequence()
+            .map { it.id }
+            .toSet()
+        val validEpisodeIds = animes.asSequence()
+            .flatMap { it.contentEpisodes.asSequence() }
+            .map { it.id }
+            .toSet()
+
         val rawContinueWatching = root.optJSONArray("continue_watching") ?: JSONArray()
         val continueWatching = buildList(rawContinueWatching.length()) {
             for (index in 0 until rawContinueWatching.length()) {
                 val item = rawContinueWatching.optJSONObject(index)
                     ?: error("Malformed continue-watching item at snapshot index=$index")
                 @Suppress("UNCHECKED_CAST")
-                add(LibraryUiMappers.continueWatching(item.toMap()))
+                val model = LibraryUiMappers.continueWatching(item.toMap())
+                // Continue Watching belongs to the same canonical snapshot.
+                // Never expose an orphan episode/anime pair from a racing write.
+                if (model.animeId in validAnimeIds && model.episodeId in validEpisodeIds) {
+                    add(model)
+                }
             }
         }
 

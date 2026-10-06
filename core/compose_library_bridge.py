@@ -276,13 +276,17 @@ class ComposeLibraryBridge:
             return "NOT_CONFIGURED"
         active = False
         unavailable = True
+        terminal_unavailable = {"revoked", "unavailable", "error", "removed"}
         for row in rows:
             status = str(row.get("status") or "").strip().lower()
             authorization = str(row.get("authorization") or "").strip().lower()
+            # Folder status is authoritative; stale authorization must not
+            # promote a revoked SAF source back to AVAILABLE.
+            if status in terminal_unavailable:
+                continue
             if status in {"granted", "available", "active"} or authorization == "granted":
                 active = True
-            if status not in {"revoked", "unavailable", "error", "removed"}:
-                unavailable = False
+            unavailable = False
         if active:
             return "AVAILABLE"
         if unavailable:

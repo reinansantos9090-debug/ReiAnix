@@ -3019,7 +3019,7 @@ async def main(page: ft.Page):
         try:
             message, waiting = await refresh_library(_home_refresh_context=home_refresh_context)
         except Exception:
-            logger.exception("[HOME_REFRESH] request failed refreshId=%s", refresh_id)
+            logger.exception("[HOME_REFRESH] request failed refresh_id=%s", refresh_id)
             _fail_home_refresh("request_exception")
             return "Não foi possível atualizar a biblioteca agora.", False
         if waiting:
