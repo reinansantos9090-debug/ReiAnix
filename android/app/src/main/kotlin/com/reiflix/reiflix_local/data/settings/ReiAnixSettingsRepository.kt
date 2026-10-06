@@ -72,10 +72,19 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.CREATE,
     ) {
         override fun onEvent(event: Int, path: String?) {
-            when {
-                path == snapshotFile.name -> scope.launch { loadSnapshot() }
-                path?.startsWith("command-") == true && path.endsWith(".json") ->
-                    scope.launch { loadCommandResult(path) }
+            if (path == snapshotFile.name) {
+                scope.launch { loadSnapshot() }
+            }
+        }
+    }
+
+    private val commandResultObserver = object : FileObserver(
+        commandResultDirectory.path,
+        FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.CREATE,
+    ) {
+        override fun onEvent(event: Int, path: String?) {
+            if (path?.startsWith("command-") == true && path.endsWith(".json")) {
+                scope.launch { loadCommandResult(path) }
             }
         }
     }
@@ -84,6 +93,7 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         bridgeDirectory.mkdirs()
         commandResultDirectory.mkdirs()
         snapshotObserver.startWatching()
+        commandResultObserver.startWatching()
         scope.launch { loadSnapshot() }
     }
 
