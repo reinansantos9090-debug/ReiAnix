@@ -248,6 +248,19 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('Text("Tentar novamente")', screen)
         self.assertIn("ACTION_OPEN_DOCUMENT_TREE", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8"))
 
+    def test_storage_onboarding_cannot_overlay_settings_navigation(self):
+        host = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("currentBackStackEntryAsState", host)
+        self.assertIn("val onboardingAllowed", host)
+        self.assertIn("ReiAnixRoutes.HOME", host)
+        self.assertIn("ReiAnixRoutes.LIBRARY", host)
+        overlay = host[host.index("val onboardingState"):host.index("fun hide()")]
+        self.assertIn("onboardingAllowed", overlay)
+        self.assertIn("ReiAnixLibraryFolderOnboarding(", overlay)
+
     def test_selected_saf_root_becomes_ready_without_a_second_store(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         granted = source[source.index("event_type == 'saf_permission'"):source.index("event_type == 'saf_released'")]
