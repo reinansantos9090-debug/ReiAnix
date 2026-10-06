@@ -123,10 +123,10 @@ object ReiAnixTokens {
     }
 
     object Dimensions {
-        val screenHorizontalPadding = 20.dp
+        val screenHorizontalPadding = 16.dp
         val screenTopPadding = 8.dp
         val screenBottomPadding = 24.dp
-        val sectionGap = 24.dp
+        val sectionGap = 20.dp
         val sectionTitleGap = 8.dp
         val cardMinHeight = 88.dp
         val buttonMinHeight = 40.dp
@@ -160,9 +160,9 @@ object ReiAnixTokens {
         val episodeThumbnailWidth = 120.dp
         val episodeThumbnailHeight = 68.dp
         val detailsEpisodeThumbnailFraction = 0.27f
-        val detailsHeroHeight = 250.dp
-        val searchFieldHeight = 56.dp
-        val detailsHeroMaxHeight = 420.dp
+        val detailsHeroHeight = 240.dp
+        val searchFieldHeight = 48.dp
+        val detailsHeroMaxHeight = 300.dp
         val detailsHeroWideBreakpoint = 600.dp
         val detailsHeroPosterWidth = 112.dp
         val emptyStateMinHeight = 280.dp
@@ -172,9 +172,9 @@ object ReiAnixTokens {
         val detailsSeasonPreviewWidth = 108.dp
         val detailsSeasonPreviewHeight = 72.dp
         val detailsInfoLabelWidth = 96.dp
-        val homeHeroHeight = 282.dp
-        val homeCardWidth = 122.dp
-        val homeContinueCardWidth = 132.dp
+        val homeHeroHeight = 200.dp
+        val homeCardWidth = 100.dp
+        val homeContinueCardWidth = 110.dp
         val homeLandscapeArtworkAspectRatio = 1.55f
         val progressHeight = 4.dp
         val dividerHeight = 1.dp
@@ -188,10 +188,10 @@ object ReiAnixTokens {
         val card = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
         val large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val artwork = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-        val hero = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        val hero = androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
         val dialog = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
         val sheet = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
-        val textField = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
+        val textField = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
     }
 
     object Elevation {
