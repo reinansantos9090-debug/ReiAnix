@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
@@ -88,6 +89,13 @@ class ReiAnixComposeLibraryHost(
                             }
                         }
                     }
+
+                    val currentRoute by navController.currentBackStackEntryAsState()
+                    val onboardingAllowed =
+                        currentRoute?.destination?.route in setOf(
+                            ReiAnixRoutes.HOME,
+                            ReiAnixRoutes.LIBRARY,
+                        )
 
                     Box(modifier = Modifier.fillMaxSize()) {
                     ReiAnixNavigationHost(
@@ -177,7 +185,10 @@ class ReiAnixComposeLibraryHost(
                         },
                     )
                     val onboardingState = libraryState.storage.onboardingState.trim().lowercase()
-                    if (onboardingState in setOf("checking", "needs_folder", "folder_picker_open", "error")) {
+                    if (
+                        onboardingAllowed &&
+                        onboardingState in setOf("checking", "needs_folder", "folder_picker_open", "error")
+                    ) {
                         ReiAnixLibraryFolderOnboarding(
                             state = onboardingState,
                             message = libraryState.storage.onboardingMessage,
