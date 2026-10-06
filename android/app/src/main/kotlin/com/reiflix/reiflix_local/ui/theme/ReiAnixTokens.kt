@@ -118,7 +118,7 @@ object ReiAnixTokens {
         val xxl = 24.dp
         val xxxl = 32.dp
         val huge = 40.dp
-        val section = 28.dp
+        val section = 20.dp
         val screen = 20.dp
     }
 
