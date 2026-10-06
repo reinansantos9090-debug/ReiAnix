@@ -160,6 +160,32 @@ async def main(page: ft.Page):
     account_action_task = [None]
     player_transition_task = {"task": None}
     settings_tasks = SettingsTaskRegistry()
+    # Native Compose Settings work is tracked separately from the legacy Flet
+    # SettingsTaskRegistry because replacing a Flet view must never cancel a
+    # native Settings operation already handed to the backend.
+    compose_settings_tasks: set[asyncio.Task] = set()
+    compose_settings_setting_locks: dict[str, asyncio.Lock] = {}
+    COMPOSE_SETTINGS_MAX_TASKS = 8
+
+    def _track_compose_settings_task(task: asyncio.Task) -> bool:
+        if len(compose_settings_tasks) >= COMPOSE_SETTINGS_MAX_TASKS:
+            return False
+        compose_settings_tasks.add(task)
+        def _done(completed):
+            compose_settings_tasks.discard(completed)
+            try:
+                completed.exception()
+            except (asyncio.CancelledError, Exception):
+                pass
+        task.add_done_callback(_done)
+        return True
+
+    def _compose_setting_lock(key: str) -> asyncio.Lock:
+        lock = compose_settings_setting_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            compose_settings_setting_locks[key] = lock
+        return lock
     home_refresh_context = {
         "active": False,
         "state": "IDLE",
@@ -3393,6 +3419,316 @@ async def main(page: ft.Page):
             set_account_state("connected", "login_completed")
         navigate_settings()
 
+    async def _write_compose_settings_result(
+        request_id,
+        action,
+        status,
+        *,
+        operation_state=None,
+        key=None,
+        value=None,
+        error=None,
+        message=None,
+    ):
+        try:
+            await asyncio.to_thread(
+                compose_settings_bridge.write_command_result,
+                request_id,
+                action,
+                status,
+                operation_state=operation_state,
+                key=key,
+                value=value,
+                error=error,
+                message=message,
+            )
+        except Exception:
+            logger.exception(
+                "[COMPOSE_SETTINGS] result publication failed requestId=%s action=%s status=%s",
+                request_id or "-",
+                action or "-",
+                status or "-",
+            )
+
+    async def _run_compose_settings_set(setting_key, setting_value, request_id):
+        started = performance.now()
+        performance.event(
+            "SETTINGS_OPERATION_START",
+            request_id=request_id,
+            metadata={"action": "set", "key": setting_key},
+        )
+        logger.info(
+            "SETTINGS_OPERATION_START requestId=%s action=set key=%s",
+            request_id,
+            setting_key,
+        )
+        try:
+            async with _compose_setting_lock(setting_key):
+                normalized = await asyncio.to_thread(
+                    settings.set,
+                    setting_key,
+                    setting_value,
+                )
+            apply_settings_runtime(setting_key, normalized)
+            compose_settings_bridge.request_publish("setting:" + setting_key)
+            await _write_compose_settings_result(
+                request_id,
+                "set:" + setting_key,
+                "SUCCESS",
+                operation_state="SUCCESS",
+                key=setting_key,
+                value=normalized,
+                message="Configuração persistida.",
+            )
+            performance.event(
+                "SETTINGS_SNAPSHOT_PUBLISHED",
+                request_id=request_id,
+                metadata={"reason": "setting:" + setting_key},
+            )
+            logger.info(
+                "SETTINGS_OPERATION_END requestId=%s action=set key=%s result=SUCCESS durationMs=%s",
+                request_id,
+                setting_key,
+                int((performance.now() - started) * 1000),
+            )
+        except asyncio.CancelledError:
+            await _write_compose_settings_result(
+                request_id,
+                "set:" + setting_key,
+                "CANCELLED",
+                operation_state="CANCELLED",
+                key=setting_key,
+                error="Operação de configuração cancelada.",
+            )
+            raise
+        except Exception as exc:
+            logger.exception(
+                "[COMPOSE_SETTINGS] setting worker failed key=%s requestId=%s",
+                setting_key,
+                request_id,
+            )
+            await _write_compose_settings_result(
+                request_id,
+                "set:" + setting_key,
+                "ERROR",
+                operation_state="ERROR",
+                key=setting_key,
+                error=str(exc),
+                message="Não foi possível persistir a configuração.",
+            )
+            logger.info(
+                "SETTINGS_OPERATION_END requestId=%s action=set key=%s result=ERROR durationMs=%s",
+                request_id,
+                setting_key,
+                int((performance.now() - started) * 1000),
+            )
+
+    async def _run_compose_settings_action(action, request_id):
+        started = performance.now()
+        performance.event(
+            "SETTINGS_OPERATION_START",
+            request_id=request_id,
+            metadata={"action": action},
+        )
+        logger.info(
+            "SETTINGS_OPERATION_START requestId=%s action=%s",
+            request_id,
+            action,
+        )
+        try:
+            if action == 'reset_player':
+                await asyncio.to_thread(settings.reset_category, "player")
+                compose_settings_bridge.request_publish("player_settings_reset")
+            elif action == 'reset_all_settings':
+                await asyncio.to_thread(settings.reset_all)
+                apply_settings_runtime(
+                    "appearance.theme",
+                    settings.get("appearance.theme"),
+                )
+                compose_settings_bridge.request_publish("all_settings_reset")
+            elif action == 'clear_anilist_cache':
+                removed = await asyncio.to_thread(library.clear_anilist_cache)
+                logger.info(
+                    "[COMPOSE_SETTINGS] artwork cache cleared removed=%s requestId=%s",
+                    removed,
+                    request_id or '-',
+                )
+                compose_settings_bridge.request_publish("artwork_cache_cleared")
+            elif action == 'settings_export':
+                raw = await asyncio.to_thread(
+                    lambda: settings.export_json().encode("utf-8")
+                )
+                stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
+                path_out = await ft.FilePicker().save_file(
+                    dialog_title="Exportar configurações",
+                    file_name=f"reiflix-settings-{stamp}.json",
+                    file_type=ft.FilePickerFileType.CUSTOM,
+                    allowed_extensions=["json"],
+                    src_bytes=raw,
+                )
+                logger.info(
+                    "[COMPOSE_SETTINGS] settings export finished path=%s requestId=%s",
+                    bool(path_out),
+                    request_id or '-',
+                )
+            elif action == 'settings_import':
+                files = await ft.FilePicker().pick_files(
+                    dialog_title="Importar configurações",
+                    allow_multiple=False,
+                    with_data=True,
+                    file_type=ft.FilePickerFileType.CUSTOM,
+                    allowed_extensions=["json"],
+                )
+                if files:
+                    raw = files[0].bytes or b""
+                    if not raw:
+                        raise ValueError("O arquivo de configurações está vazio.")
+                    result = await asyncio.to_thread(
+                        settings.import_json,
+                        raw.decode("utf-8"),
+                    )
+                    apply_settings_runtime(
+                        "appearance.theme",
+                        settings.get("appearance.theme"),
+                    )
+                    on_catalog_changed()
+                    compose_settings_bridge.request_publish("settings_imported")
+                    logger.info(
+                        "[COMPOSE_SETTINGS] settings import completed imported=%s requestId=%s",
+                        result.get("imported"),
+                        request_id or '-',
+                    )
+            elif action == 'select_saf':
+                started_picker = await add_folder()
+                if not started_picker:
+                    raise RuntimeError("A seleção de pasta já está em andamento ou a biblioteca está sendo atualizada.")
+            elif action == 'request_media_access':
+                await request_video_access()
+            elif action == 'check_storage_access':
+                await check_video_access()
+                compose_settings_bridge.request_publish("storage_access_checked")
+            elif action == 'open_broad_storage_settings':
+                await open_broad_storage_access()
+            elif action == 'backup_create':
+                raw = await create_backup()
+                if not raw:
+                    raise RuntimeError("Backup vazio.")
+                stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
+                path_out = await ft.FilePicker().save_file(
+                    dialog_title="Salvar backup ReiAnix",
+                    file_name=f"reiflix-backup-{stamp}.zip",
+                    file_type=ft.FilePickerFileType.CUSTOM,
+                    allowed_extensions=["zip"],
+                    src_bytes=raw,
+                )
+                logger.info(
+                    "[COMPOSE_SETTINGS] backup export finished path=%s requestId=%s",
+                    bool(path_out),
+                    request_id or '-',
+                )
+            elif action == 'backup_restore':
+                files = await ft.FilePicker().pick_files(
+                    dialog_title="Selecionar backup ReiAnix",
+                    allow_multiple=False,
+                    with_data=True,
+                    file_type=ft.FilePickerFileType.CUSTOM,
+                    allowed_extensions=["zip"],
+                )
+                if files:
+                    raw = files[0].bytes or b""
+                    if not raw:
+                        raise ValueError("O arquivo de backup está vazio.")
+                    await inspect_backup(raw)
+                    result = await restore_backup(raw)
+                    compose_settings_bridge.request_publish("backup_restored")
+                    logger.info(
+                        "[COMPOSE_SETTINGS] backup restore completed result=%s requestId=%s",
+                        result.get("result") if isinstance(result, dict) else "success",
+                        request_id or '-',
+                    )
+            elif action == 'backup_integrity':
+                report = await integrity_check()
+                database = report.get("database") or {}
+                logger.info(
+                    "[COMPOSE_SETTINGS] integrity overall=%s quick_check=%s foreign_keys=%s requestId=%s",
+                    report.get("overall"),
+                    database.get("quick_check"),
+                    database.get("foreign_key_ok"),
+                    request_id or '-',
+                )
+            elif action == 'backup_reconcile':
+                result = await request_restore_reconciliation()
+                logger.info(
+                    "[COMPOSE_SETTINGS] restore reconciliation result=%s requestId=%s",
+                    result,
+                    request_id or '-',
+                )
+            elif action == 'diagnostic_export':
+                raw = await export_diagnostics()
+                if not raw:
+                    raise RuntimeError("Diagnóstico vazio.")
+                stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
+                path_out = await ft.FilePicker().save_file(
+                    dialog_title="Exportar diagnóstico",
+                    file_name=f"reiflix-diagnostic-{stamp}.json",
+                    file_type=ft.FilePickerFileType.CUSTOM,
+                    allowed_extensions=["json"],
+                    src_bytes=raw,
+                )
+                logger.info(
+                    "[COMPOSE_SETTINGS] diagnostic export finished path=%s requestId=%s",
+                    bool(path_out),
+                    request_id or '-',
+                )
+            await _write_compose_settings_result(
+                request_id,
+                action,
+                "SUCCESS",
+                operation_state="SUCCESS",
+                message="Operação concluída.",
+            )
+            compose_settings_bridge.request_publish("compose_settings_action:" + action)
+            performance.event(
+                "SETTINGS_SNAPSHOT_PUBLISHED",
+                request_id=request_id,
+                metadata={"reason": "compose_settings_action:" + action},
+            )
+            logger.info(
+                "SETTINGS_OPERATION_END requestId=%s action=%s result=SUCCESS durationMs=%s",
+                request_id,
+                action,
+                int((performance.now() - started) * 1000),
+            )
+        except asyncio.CancelledError:
+            await _write_compose_settings_result(
+                request_id,
+                action,
+                "CANCELLED",
+                operation_state="CANCELLED",
+                error="Operação de configurações cancelada.",
+            )
+            raise
+        except Exception as exc:
+            logger.exception(
+                "[COMPOSE_SETTINGS] action worker failed action=%s requestId=%s",
+                action,
+                request_id,
+            )
+            await _write_compose_settings_result(
+                request_id,
+                action,
+                "ERROR",
+                operation_state="ERROR",
+                error=str(exc),
+                message="A operação não pôde ser concluída.",
+            )
+            logger.info(
+                "SETTINGS_OPERATION_END requestId=%s action=%s result=ERROR durationMs=%s",
+                request_id,
+                action,
+                int((performance.now() - started) * 1000),
+            )
+
     async def poll_native_bridge():
         async def ingest_native_batch(event_type, payload, event_request_id):
             source_map = {
@@ -3507,234 +3843,123 @@ async def main(page: ft.Page):
                             setting_key = str(payload.get('key') or '').strip()
                             setting_value = payload.get('value')
                             request_id = str(event_request_id or payload.get('requestId') or '').strip()
-                            supported_compose_settings = {
-                                'app.confirm_destructive',
-                                'appearance.theme',
-                                'appearance.card_size',
-                                'appearance.show_thumbnails',
-                                *(
-                                    key
-                                    for key in settings.EXPORT_KEYS
-                                    if key.startswith(
-                                        (
-                                            "library.",
-                                            "player.",
-                                            "gestures.",
-                                            "audio.",
-                                            "metadata.",
-                                            "artwork.",
-                                        )
-                                    )
-                                ),
-                            }
-                            if setting_key not in supported_compose_settings:
-                                logger.warning(
-                                    "[COMPOSE_SETTINGS] write rejected key=%s requestId=%s",
-                                    setting_key or '-',
-                                    request_id or '-',
-                                )
+                            if not request_id or not setting_key:
+                                logger.warning("[COMPOSE_SETTINGS] command rejected requestId=%s key=%s", request_id or "-", setting_key or "-")
+                            elif not store.claim_native_request(request_id, namespace="compose_settings"):
+                                logger.info("[COMPOSE_SETTINGS] duplicate request ignored requestId=%s action=set key=%s", request_id, setting_key)
                             else:
-                                try:
-                                    normalized = await asyncio.to_thread(settings.set, setting_key, setting_value)
-                                    apply_settings_runtime(setting_key, normalized)
-                                    logger.info(
-                                        "[COMPOSE_SETTINGS] setting persisted key=%s requestId=%s",
-                                        setting_key,
-                                        request_id or '-',
+                                supported_compose_settings = {
+                                    'app.confirm_destructive',
+                                    'appearance.theme',
+                                    'appearance.card_size',
+                                    'appearance.show_thumbnails',
+                                    *(key for key in settings.EXPORT_KEYS if key.startswith(("library.", "player.", "gestures.", "audio.", "metadata.", "artwork."))),
+                                }
+                                if setting_key not in supported_compose_settings:
+                                    await _write_compose_settings_result(
+                                        request_id, "set:" + setting_key, "ERROR",
+                                        operation_state="ERROR", key=setting_key,
+                                        error="Configuração não suportada.",
                                     )
-                                except Exception as exc:
-                                    logger.exception(
-                                        "[COMPOSE_SETTINGS] setting write failed key=%s requestId=%s",
-                                        setting_key or '-',
-                                        request_id or '-',
+                                else:
+                                    diagnostics.record("SETTINGS_COMMAND_RECEIVED", request_id=request_id, action="set", key=setting_key)
+                                    performance.event("SETTINGS_COMMAND_RECEIVED", request_id=request_id, metadata={"action": "set", "key": setting_key})
+                                    logger.info("SETTINGS_COMMAND_RECEIVED requestId=%s action=set key=%s", request_id, setting_key)
+                                    compose_settings_bridge.write_command_result(
+                                        request_id, "set:" + setting_key, "ACK",
+                                        operation_state="QUEUED", key=setting_key,
+                                        message="Comando recebido e agendado.",
                                     )
+                                    task = asyncio.create_task(_run_compose_settings_set(setting_key, setting_value, request_id))
+                                    if not _track_compose_settings_task(task):
+                                        task.cancel()
+                                        compose_settings_bridge.write_command_result(
+                                            request_id, "set:" + setting_key, "ERROR",
+                                            operation_state="ERROR", key=setting_key,
+                                            error="Limite de operações de Settings em andamento atingido.",
+                                        )
+                                    else:
+                                        diagnostics.record("SETTINGS_ACK", request_id=request_id, action="set", key=setting_key)
+                                        performance.event("SETTINGS_ACK", request_id=request_id, metadata={"action": "set", "key": setting_key})
+                                        logger.info("SETTINGS_ACK requestId=%s action=set key=%s", request_id, setting_key)
 
                         if event_type == 'compose_settings_action':
                             action = str(payload.get('action') or '').strip().lower()
                             request_id = str(event_request_id or payload.get('requestId') or '').strip()
                             supported_actions = {
-                                'reset_player',
-                                'reset_all_settings',
-                                'clear_anilist_cache',
-                                'settings_export',
-                                'settings_import',
-                                'select_saf',
-                                'request_media_access',
-                                'check_storage_access',
-                                'open_broad_storage_settings',
-                                'backup_create',
-                                'backup_restore',
-                                'backup_integrity',
-                                'backup_reconcile',
-                                'diagnostic_export',
+                                'reset_player', 'reset_all_settings', 'clear_anilist_cache',
+                                'settings_export', 'settings_import', 'select_saf',
+                                'request_media_access', 'check_storage_access', 'open_broad_storage_settings',
+                                'backup_create', 'backup_restore', 'backup_integrity',
+                                'backup_reconcile', 'diagnostic_export',
                             }
-                            if action not in supported_actions:
-                                logger.warning(
-                                    "[COMPOSE_SETTINGS] action rejected action=%s requestId=%s",
-                                    action or '-',
-                                    request_id or '-',
-                                )
+                            if not request_id or action not in supported_actions:
+                                logger.warning("[COMPOSE_SETTINGS] action rejected action=%s requestId=%s", action or "-", request_id or "-")
+                            elif not store.claim_native_request(request_id, namespace="compose_settings"):
+                                logger.info("[COMPOSE_SETTINGS] duplicate request ignored requestId=%s action=%s", request_id, action)
                             else:
-                                try:
-                                    if action == 'reset_player':
-                                        await asyncio.to_thread(settings.reset_category, "player")
-                                        compose_settings_bridge.request_publish("player_settings_reset")
-                                    elif action == 'reset_all_settings':
-                                        await asyncio.to_thread(settings.reset_all)
-                                        apply_settings_runtime(
-                                            "appearance.theme",
-                                            settings.get("appearance.theme"),
-                                        )
-                                        compose_settings_bridge.request_publish("all_settings_reset")
-                                    elif action == 'clear_anilist_cache':
-                                        removed = await asyncio.to_thread(library.clear_anilist_cache)
-                                        logger.info(
-                                            "[COMPOSE_SETTINGS] artwork cache cleared removed=%s requestId=%s",
-                                            removed,
-                                            request_id or '-',
-                                        )
-                                        compose_settings_bridge.request_publish("artwork_cache_cleared")
-                                    elif action == 'settings_export':
-                                        raw = await asyncio.to_thread(
-                                            lambda: settings.export_json().encode("utf-8")
-                                        )
-                                        stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
-                                        path_out = await ft.FilePicker().save_file(
-                                            dialog_title="Exportar configurações",
-                                            file_name=f"reiflix-settings-{stamp}.json",
-                                            file_type=ft.FilePickerFileType.CUSTOM,
-                                            allowed_extensions=["json"],
-                                            src_bytes=raw,
-                                        )
-                                        logger.info(
-                                            "[COMPOSE_SETTINGS] settings export finished path=%s requestId=%s",
-                                            bool(path_out),
-                                            request_id or '-',
-                                        )
-                                    elif action == 'settings_import':
-                                        files = await ft.FilePicker().pick_files(
-                                            dialog_title="Importar configurações",
-                                            allow_multiple=False,
-                                            with_data=True,
-                                            file_type=ft.FilePickerFileType.CUSTOM,
-                                            allowed_extensions=["json"],
-                                        )
-                                        if files:
-                                            raw = files[0].bytes or b""
-                                            if not raw:
-                                                raise ValueError("O arquivo de configurações está vazio.")
-                                            result = await asyncio.to_thread(
-                                                settings.import_json,
-                                                raw.decode("utf-8"),
-                                            )
-                                            apply_settings_runtime(
-                                                "appearance.theme",
-                                                settings.get("appearance.theme"),
-                                            )
-                                            on_catalog_changed()
-                                            compose_settings_bridge.request_publish("settings_imported")
-                                            logger.info(
-                                                "[COMPOSE_SETTINGS] settings import completed imported=%s requestId=%s",
-                                                result.get("imported"),
-                                                request_id or '-',
-                                            )
-                                    elif action == 'select_saf':
-                                        await add_folder()
-                                    elif action == 'request_media_access':
-                                        await request_video_access()
-                                    elif action == 'check_storage_access':
-                                        await check_video_access()
-                                        compose_settings_bridge.request_publish("storage_access_checked")
-                                    elif action == 'open_broad_storage_settings':
-                                        await open_broad_storage_access()
-                                    elif action == 'backup_create':
-                                        raw = await create_backup()
-                                        if not raw:
-                                            raise RuntimeError("Backup vazio.")
-                                        stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
-                                        path_out = await ft.FilePicker().save_file(
-                                            dialog_title="Salvar backup ReiAnix",
-                                            file_name=f"reiflix-backup-{stamp}.zip",
-                                            file_type=ft.FilePickerFileType.CUSTOM,
-                                            allowed_extensions=["zip"],
-                                            src_bytes=raw,
-                                        )
-                                        logger.info(
-                                            "[COMPOSE_SETTINGS] backup export finished path=%s requestId=%s",
-                                            bool(path_out),
-                                            request_id or '-',
-                                        )
-                                    elif action == 'backup_restore':
-                                        files = await ft.FilePicker().pick_files(
-                                            dialog_title="Selecionar backup ReiAnix",
-                                            allow_multiple=False,
-                                            with_data=True,
-                                            file_type=ft.FilePickerFileType.CUSTOM,
-                                            allowed_extensions=["zip"],
-                                        )
-                                        if files:
-                                            raw = files[0].bytes or b""
-                                            if not raw:
-                                                raise ValueError("O arquivo de backup está vazio.")
-                                            await inspect_backup(raw)
-                                            result = await restore_backup(raw)
-                                            compose_settings_bridge.request_publish("backup_restored")
-                                            logger.info(
-                                                "[COMPOSE_SETTINGS] backup restore completed result=%s requestId=%s",
-                                                result.get("result") if isinstance(result, dict) else "success",
-                                                request_id or '-',
-                                            )
-                                    elif action == 'backup_integrity':
-                                        report = await integrity_check()
-                                        database = report.get("database") or {}
-                                        logger.info(
-                                            "[COMPOSE_SETTINGS] integrity overall=%s quick_check=%s foreign_keys=%s requestId=%s",
-                                            report.get("overall"),
-                                            database.get("quick_check"),
-                                            database.get("foreign_key_ok"),
-                                            request_id or '-',
-                                        )
-                                    elif action == 'backup_reconcile':
-                                        result = await request_restore_reconciliation()
-                                        logger.info(
-                                            "[COMPOSE_SETTINGS] restore reconciliation result=%s requestId=%s",
-                                            result,
-                                            request_id or '-',
-                                        )
-                                    elif action == 'diagnostic_export':
-                                        raw = await export_diagnostics()
-                                        if not raw:
-                                            raise RuntimeError("Diagnóstico vazio.")
-                                        stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
-                                        path_out = await ft.FilePicker().save_file(
-                                            dialog_title="Exportar diagnóstico",
-                                            file_name=f"reiflix-diagnostic-{stamp}.json",
-                                            file_type=ft.FilePickerFileType.CUSTOM,
-                                            allowed_extensions=["json"],
-                                            src_bytes=raw,
-                                        )
-                                        logger.info(
-                                            "[COMPOSE_SETTINGS] diagnostic export finished path=%s requestId=%s",
-                                            bool(path_out),
-                                            request_id or '-',
-                                        )
-                                    compose_settings_bridge.request_publish("compose_settings_action")
-                                except Exception:
-                                    logger.exception(
-                                        "[COMPOSE_SETTINGS] action failed action=%s requestId=%s",
-                                        action or '-',
-                                        request_id or '-',
+                                diagnostics.record("SETTINGS_COMMAND_RECEIVED", request_id=request_id, action=action)
+                                performance.event("SETTINGS_COMMAND_RECEIVED", request_id=request_id, metadata={"action": action})
+                                logger.info("SETTINGS_COMMAND_RECEIVED requestId=%s action=%s", request_id, action)
+                                compose_settings_bridge.write_command_result(
+                                    request_id, action, "ACK",
+                                    operation_state="QUEUED",
+                                    message="Comando recebido e agendado.",
+                                )
+                                task = asyncio.create_task(_run_compose_settings_action(action, request_id))
+                                if not _track_compose_settings_task(task):
+                                    task.cancel()
+                                    compose_settings_bridge.write_command_result(
+                                        request_id, action, "ERROR",
+                                        operation_state="ERROR",
+                                        error="Limite de operações de Settings em andamento atingido.",
                                     )
-
+                                else:
+                                    diagnostics.record("SETTINGS_ACK", request_id=request_id, action=action)
+                                    performance.event("SETTINGS_ACK", request_id=request_id, metadata={"action": action})
+                                    logger.info("SETTINGS_ACK requestId=%s action=%s", request_id, action)
                         if event_type == 'compose_account_action':
                             action = str(payload.get('action') or '').strip().lower()
-                            if action in {'login', 'logout', 'switch'}:
-                                current_task = account_action_task[0]
-                                if current_task is None or current_task.done():
-                                    account_action_task[0] = page.run_task(execute_account_action, action)
+                            request_id = str(event_request_id or payload.get('requestId') or '').strip()
+                            if action in {'login', 'logout', 'switch'} and request_id:
+                                if store.claim_native_request(request_id, namespace="compose_account"):
+                                    diagnostics.record("SETTINGS_COMMAND_RECEIVED", request_id=request_id, action="account:" + action)
+                                    compose_settings_bridge.write_command_result(
+                                        request_id, "account:" + action, "ACK",
+                                        operation_state="QUEUED",
+                                        message="Operação de conta recebida.",
+                                    )
+                                    current_task = account_action_task[0]
+                                    if current_task is None or current_task.done():
+                                        async def _run_account_action():
+                                            try:
+                                                await execute_account_action(action)
+                                                await _write_compose_settings_result(
+                                                    request_id, "account:" + action, "SUCCESS",
+                                                    operation_state="SUCCESS", message="Operação da conta concluída.",
+                                                )
+                                            except asyncio.CancelledError:
+                                                await _write_compose_settings_result(
+                                                    request_id, "account:" + action, "CANCELLED",
+                                                    operation_state="CANCELLED", error="Operação da conta cancelada.",
+                                                )
+                                                raise
+                                            except Exception as exc:
+                                                logger.exception("[COMPOSE_ACCOUNT] action failed action=%s requestId=%s", action, request_id)
+                                                await _write_compose_settings_result(
+                                                    request_id, "account:" + action, "ERROR",
+                                                    operation_state="ERROR", error=str(exc),
+                                                )
+                                        account_action_task[0] = page.run_task(_run_account_action)
+                                    else:
+                                        compose_settings_bridge.write_command_result(
+                                            request_id, "account:" + action, "ERROR",
+                                            operation_state="ERROR", error="Outra operação de conta já está em andamento.",
+                                        )
+                                else:
+                                    logger.info("[COMPOSE_ACCOUNT] duplicate request ignored requestId=%s action=%s", request_id, action)
                             else:
-                                logger.warning("[COMPOSE_ACCOUNT] action rejected action=%s", action or "-")
-
+                                logger.warning("[COMPOSE_ACCOUNT] action rejected action=%s requestId=%s", action or "-", request_id or "-")
                         if event_type == 'compose_navigation_changed':
                             destination = str(payload.get('route') or '').strip().lower()
                             anime_id_raw = str(payload.get('animeId') or '').strip()
