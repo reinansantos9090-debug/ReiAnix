@@ -39,13 +39,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.unit.dp
 
 data class ReiAnixNativePlayerUiState(
     val title: String = "Episódio",
@@ -347,9 +347,8 @@ fun ReiAnixNativePlayerBottomControls(
         ) {
             Text(
                 text = PlayerTimeFormatter.format(displayPosition),
+                style = ReiAnixTokens.TypographyTokens.playerTime,
                 color = ReiAnixTokens.Colors.playerControl,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
                 modifier = Modifier.widthIn(min = ReiAnixTokens.PlayerDimensions.timelineTimeWidth),
             )
             Slider(
@@ -371,7 +370,7 @@ fun ReiAnixNativePlayerBottomControls(
                 enabled = duration > 0L,
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = ReiAnixTokens.PlayerDimensions.timelineHeight),
+                    .heightIn(min = ReiAnixTokens.PlayerDimensions.timelineHeight)
                     .semantics {
                         contentDescription = "Barra de progresso do vídeo"
                         stateDescription = if (duration > 0L) {
@@ -390,9 +389,8 @@ fun ReiAnixNativePlayerBottomControls(
             )
             Text(
                 text = if (duration > 0L) PlayerTimeFormatter.format(duration) else "--:--",
+                style = ReiAnixTokens.TypographyTokens.playerTime,
                 color = ReiAnixTokens.Colors.playerControl,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
                 modifier = Modifier.widthIn(min = ReiAnixTokens.PlayerDimensions.timelineTimeWidth),
             )
         }
