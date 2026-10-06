@@ -1,6 +1,7 @@
 """Cliente AniList somente para metadados, com falha segura e cache de capas."""
 from __future__ import annotations
-import hashlib, json, logging, os, re, tempfile, threading, time, urllib.error, urllib.request
+import hashlib, json, logging, os, re, tempfile, threading, time, unicodedata, urllib.error, urllib.request
+from html import unescape
 from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,8 @@ class AniListClient:
         self._translation_lock = threading.RLock()
         self._translation_cache_path = os.path.join(self.cache_dir, "anilist_description_ptbr.json")
         self._translation_cache: dict[str, dict] | None = None
+        self._translation_inflight: dict[str, threading.Event] = {}
+        self._diagnostic_recorder = None
 
     MAX_TRANSLATION_CACHE_ENTRIES = 4096
 
@@ -65,108 +68,548 @@ class AniListClient:
             except OSError:
                 pass
 
-    @staticmethod
-    def _looks_english_description(text: str) -> bool:
-        words = {
-            token.strip(".,!?;:\"'()[]{}").casefold()
-            for token in str(text or "").split()
-        }
-        english = {
+    TRANSLATION_TARGET_LANGUAGE = "pt-BR"
+    MAX_TRANSLATION_CACHE_ENTRIES = 4096
+    TRANSLATION_MAX_BYTES = 480
+    TRANSLATION_RETRIES = 3
+
+    _LANGUAGE_PROFILES = {
+        "en": {
             "the", "this", "that", "with", "from", "when", "where", "after",
             "before", "into", "about", "story", "follows", "young", "girl",
             "boy", "people", "their", "they", "is", "are", "has", "have",
-        }
-        return len(words & english) >= 2
+            "for", "and", "but", "not", "who", "his", "her", "their",
+        },
+        "pt": {
+            "que", "uma", "um", "não", "com", "quando", "através", "está",
+            "são", "dos", "das", "para", "por", "como", "história", "segue",
+            "jovem", "garota", "garoto", "pessoas", "seus", "suas", "eles",
+            "elas", "tem", "têm", "isso", "esta", "este", "depois", "antes",
+            "entre", "sobre", "sem", "mais", "também", "porque", "onde",
+        },
+        "es": {
+            "que", "una", "uno", "con", "cuando", "desde", "después",
+            "antes", "sobre", "para", "por", "como", "historia", "sigue",
+            "joven", "chica", "chico", "personas", "sus", "ellos", "ellas",
+            "tiene", "está", "son", "esta", "este", "entre", "pero",
+        },
+        "fr": {
+            "que", "une", "un", "avec", "quand", "dans", "après", "avant",
+            "pour", "par", "comme", "histoire", "suit", "jeune", "fille",
+            "garçon", "personnes", "leurs", "ils", "elles", "est", "sont",
+            "avoir", "cette", "ce", "mais", "entre", "sans",
+        },
+        "it": {
+            "che", "una", "uno", "con", "quando", "dopo", "prima", "per",
+            "come", "storia", "segue", "giovane", "ragazza", "ragazzo",
+            "persone", "loro", "sono", "questa", "questo", "avere", "ma",
+            "tra", "senza", "dove", "anche",
+        },
+        "de": {
+            "der", "die", "das", "ein", "eine", "mit", "wenn", "nach",
+            "vor", "für", "von", "wie", "geschichte", "folgt", "junge",
+            "mädchen", "junge", "menschen", "ihre", "sie", "ist", "sind",
+            "haben", "dies", "diese", "aber", "ohne",
+        },
+        "nl": {
+            "de", "het", "een", "met", "wanneer", "na", "voor", "voor", "van",
+            "zoals", "verhaal", "volgt", "jonge", "meisje", "jongen", "mensen",
+            "hun", "zij", "is", "zijn", "heeft", "maar", "zonder",
+        },
+        "pl": {
+            "że", "jest", "są", "z", "do", "dla", "kiedy", "po", "przed",
+            "jak", "historia", "śledzi", "młody", "dziewczyna", "chłopak",
+            "ludzie", "ich", "ma", "ten", "ta", "ale", "bez",
+        },
+        "tr": {
+            "bir", "ve", "ile", "ne", "zaman", "sonra", "önce", "için",
+            "gibi", "hikaye", "takip", "genç", "kız", "erkek", "insanlar",
+            "onların", "onlar", "olan", "ama", "bu",
+        },
+    }
 
-    @staticmethod
-    def _looks_portuguese_description(text: str) -> bool:
-        value = str(text or "").casefold()
-        words = {
-            token.strip(".,!?;:\"'()[]{}")
-            for token in value.split()
-        }
-        return len(words & {
-            "que", "uma", "um", "não", "com", "quando", "através",
-            "está", "são", "dos", "das", "para", "por", "como",
-        }) >= 2
+    _LANGUAGE_ALIASES = {
+        "pt": "pt", "pt-br": "pt", "pt_pt": "pt",
+        "en": "en", "en-us": "en", "en-gb": "en",
+        "es": "es", "fr": "fr", "it": "it", "de": "de", "nl": "nl",
+        "pl": "pl", "tr": "tr", "ru": "ru", "ja": "ja", "zh": "zh-CN",
+        "zh-cn": "zh-CN", "ko": "ko", "ar": "ar", "el": "el",
+    }
 
-    @staticmethod
-    def _translation_chunks(text: str, max_bytes: int = 480) -> list[str]:
-        chunks: list[str] = []
-        current: list[str] = []
-        current_bytes = 0
-        for word in str(text).split():
-            encoded = word.encode("utf-8")
-            extra = len(encoded) + (1 if current else 0)
-            if current and current_bytes + extra > max_bytes:
-                chunks.append(" ".join(current))
-                current = [word]
-                current_bytes = len(encoded)
-            else:
-                current.append(word)
-                current_bytes += extra
-        if current:
-            chunks.append(" ".join(current))
-        return chunks
+    def set_diagnostic_recorder(self, recorder) -> None:
+        self._diagnostic_recorder = recorder if callable(recorder) else None
 
-    def _translate_chunk_to_pt_br(self, text: str) -> str | None:
-        query = urlencode({"q": text, "langpair": "en|pt-BR", "mt": "1"})
-        request = urllib.request.Request(
-            "https://api.mymemory.translated.net/get?" + query,
-            headers={"User-Agent": "ReiAnix/1.0 (personal-use)"},
-        )
+    def _record_translation_event(
+        self,
+        name: str,
+        *,
+        request_id=None,
+        source_language=None,
+        result=None,
+        error=None,
+    ) -> None:
+        recorder = getattr(self, "_diagnostic_recorder", None)
+        if not callable(recorder):
+            return
         try:
-            with urllib.request.urlopen(request, timeout=12) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            translated = str((payload.get("responseData") or {}).get("translatedText") or "").strip()
-            if not translated or translated.casefold() == text.casefold():
-                return None
-            if "MYMEMORY WARNING" in translated.upper():
-                return None
-            return translated
-        except (OSError, ValueError, TypeError, urllib.error.URLError, urllib.error.HTTPError):
-            logger.warning("AniList PT-BR translation request failed", exc_info=True)
-            return None
+            recorder(
+                name,
+                request_id=request_id,
+                source=source_language,
+                result=result,
+                error=error,
+            )
+        except TypeError:
+            logger.debug("Diagnostic recorder rejected translation event %s", name, exc_info=True)
 
-    def localize_description_to_pt_br(self, description: str) -> str:
-        original = str(description or "").strip()
-        if not original or self._looks_portuguese_description(original) or not self._looks_english_description(original):
+    @staticmethod
+    def normalize_description(description: str) -> str:
+        """Normalize AniList description HTML while preserving paragraph structure."""
+        value = str(description or "").replace("\r\n", "\n").replace("\r", "\n")
+        value = unescape(value)
+        value = re.sub(r"(?is)<br\s*/?>", "\n\n", value)
+        value = re.sub(r"(?is)</p>\s*<p\b[^>]*>", "\n\n", value)
+        value = re.sub(
+            r"(?is)</?(?:p|div|li|blockquote|h[1-6])\b[^>]*>",
+            "\n\n",
+            value,
+        )
+        value = re.sub(r"(?is)<[^>]+>", "", value)
+        value = unescape(value)
+
+        paragraphs = []
+        for part in re.split(r"\n\s*\n+", value):
+            cleaned = " ".join(part.split())
+            if cleaned:
+                paragraphs.append(cleaned)
+        return "\n\n".join(paragraphs).strip()
+
+    @staticmethod
+    def _script_language(text: str) -> str | None:
+        for char in str(text or ""):
+            code = ord(char)
+            if 0x3040 <= code <= 0x30FF:
+                return "ja"
+            if 0xAC00 <= code <= 0xD7AF:
+                return "ko"
+            if 0x0400 <= code <= 0x04FF:
+                return "ru"
+            if 0x0600 <= code <= 0x06FF:
+                return "ar"
+            if 0x0370 <= code <= 0x03FF:
+                return "el"
+        if any(0x4E00 <= ord(char) <= 0x9FFF for char in str(text or "")):
+            return "zh-CN"
+        return None
+
+    @classmethod
+    def detect_description_language(cls, text: str) -> tuple[str, float]:
+        """Return a conservative source-language guess and confidence.
+
+        Script-based languages are deterministic. Latin-script languages require
+        several independent lexical signals and a score margin to avoid the
+        fragile two-word heuristics used by the previous implementation.
+        """
+        normalized = cls.normalize_description(text)
+        if not normalized:
+            return "unknown", 0.0
+
+        script_language = cls._script_language(normalized)
+        if script_language:
+            return script_language, 0.99
+
+        tokens = re.findall(r"[^W\d_]+", normalized.casefold(), flags=re.UNICODE)
+        if not tokens:
+            return "unknown", 0.0
+
+        scores = {}
+        unique_tokens = set(tokens)
+        for language, profile in cls._LANGUAGE_PROFILES.items():
+            hits = len(unique_tokens & profile)
+            weighted = sum(1 for token in tokens if token in profile)
+            accent_bonus = 0
+            if language == "pt":
+                accent_bonus = sum(1 for token in tokens if any(ch in token for ch in "ãõçáéíóúâêô"))
+            scores[language] = (hits, weighted + accent_bonus)
+
+        ranked = sorted(scores.items(), key=lambda item: (item[1][0], item[1][1]), reverse=True)
+        best_language, (best_hits, best_weighted) = ranked[0]
+        second_hits, second_weighted = ranked[1][1]
+
+        token_count = len(tokens)
+        strong_enough = best_hits >= 3 or (best_hits >= 2 and token_count <= 6 and best_weighted >= 3)
+        margin = best_hits - second_hits
+        if not strong_enough or (margin < 1 and best_weighted - second_weighted < 2):
+            return "unknown", 0.0
+
+        confidence = min(0.99, 0.45 + (best_hits / max(4, token_count)) * 0.5 + min(0.15, max(0, margin) * 0.05))
+        return best_language, round(confidence, 3)
+
+    @classmethod
+    def _normalize_source_language(cls, value: str | None) -> str:
+        raw = str(value or "").strip().casefold().replace("_", "-")
+        return cls._LANGUAGE_ALIASES.get(raw, raw if raw in {"ru", "ja", "zh-CN", "ko", "ar", "el"} else "unknown")
+
+    @classmethod
+    def translation_cache_key(cls, description: str, source_language: str | None = None) -> str:
+        original = cls.normalize_description(description)
+        source = cls._normalize_source_language(source_language)
+        if source == "unknown":
+            source, _ = cls.detect_description_language(original)
+        material = f"{source}|{cls.TRANSLATION_TARGET_LANGUAGE}|{original}"
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _looks_like_error_translation(text: str) -> bool:
+        upper = str(text or "").strip().upper()
+        if not upper:
+            return True
+        error_markers = (
+            "MYMEMORY WARNING",
+            "MYMEMORY ERROR",
+            "RATE LIMIT",
+            "TOO MANY REQUESTS",
+            "SERVICE UNAVAILABLE",
+            "INTERNAL SERVER ERROR",
+            "BAD REQUEST",
+            "TRANSLATION ERROR",
+            "ERROR:",
+        )
+        return any(marker in upper for marker in error_markers)
+
+    @classmethod
+    def _is_valid_translation(cls, source_text: str, translated_text: str) -> bool:
+        source = cls.normalize_description(source_text)
+        translated = cls.normalize_description(translated_text)
+        if not source or not translated:
+            return False
+        if translated.casefold() == source.casefold():
+            return False
+        if re.search(r"<(?:html|body|script|json)\b", str(translated_text or ""), flags=re.IGNORECASE):
+            return False
+        raw = str(translated_text or "").strip()
+        if (raw.startswith("{") and raw.endswith("}")) or (raw.startswith("[") and raw.endswith("]")):
+            try:
+                json.loads(raw)
+                return False
+            except (TypeError, ValueError):
+                pass
+        if cls._looks_like_error_translation(translated):
+            return False
+        source_compact = len(re.sub(r"\s+", "", source))
+        translated_compact = len(re.sub(r"\s+", "", translated))
+        if source_compact >= 80 and translated_compact < max(8, int(source_compact * 0.08)):
+            return False
+        if translated_compact > max(120, source_compact * 4):
+            return False
+        return True
+
+    @staticmethod
+    def _paragraph_chunks(text: str, max_bytes: int = 480) -> list[list[str]]:
+        sections = []
+        for paragraph in str(text or "").split("\n\n"):
+            words = paragraph.split()
+            if not words:
+                continue
+            chunks = []
+            current = []
+            current_bytes = 0
+            for word in words:
+                encoded_size = len(word.encode("utf-8"))
+                extra = encoded_size + (1 if current else 0)
+                if current and current_bytes + extra > max_bytes:
+                    chunks.append(" ".join(current))
+                    current = [word]
+                    current_bytes = encoded_size
+                else:
+                    current.append(word)
+                    current_bytes += extra
+            if current:
+                chunks.append(" ".join(current))
+            if chunks:
+                sections.append(chunks)
+        return sections
+
+    @classmethod
+    def _translation_chunks(cls, text: str, max_bytes: int = 480) -> list[str]:
+        """Compatibility helper retaining the legacy flat chunk contract."""
+        return [chunk for section in cls._paragraph_chunks(text, max_bytes) for chunk in section]
+
+    def get_cached_description_pt_br(
+        self,
+        description: str,
+        source_language: str | None = None,
+    ) -> str | None:
+        original = self.normalize_description(description)
+        if not original:
+            return None
+        source = self._normalize_source_language(source_language)
+        if source == "unknown":
+            source, _ = self.detect_description_language(original)
+        if source == "pt":
             return original
-        key = hashlib.sha256(("en|pt-BR|" + original).encode("utf-8")).hexdigest()
+        key = self.translation_cache_key(original, source)
+        with self._translation_lock:
+            entry = self._load_translation_cache().get(key)
+        if isinstance(entry, dict) and entry.get("status") == "ok":
+            translated = self.normalize_description(entry.get("translated") or "")
+            if self._is_valid_translation(original, translated):
+                return translated
+        return None
+
+    def _translate_chunk_to_pt_br(self, text: str, source_language: str = "en") -> str | None:
+        source = self._normalize_source_language(source_language)
+        if source == "unknown" or source == "pt":
+            return self.normalize_description(text) if source == "pt" else None
+        for attempt in range(self.TRANSLATION_RETRIES):
+            query = urlencode({
+                "q": text,
+                "langpair": f"{source}|{self.TRANSLATION_TARGET_LANGUAGE}",
+                "mt": "1",
+            })
+            request = urllib.request.Request(
+                "https://api.mymemory.translated.net/get?" + query,
+                headers={"User-Agent": "ReiAnix/1.0 (personal-use)"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=12) as response:
+                    status = getattr(response, "status", None)
+                    payload = json.loads(response.read().decode("utf-8"))
+                if status is not None and int(status) >= 400:
+                    if int(status) == 429 or int(status) >= 500:
+                        raise urllib.error.HTTPError(request.full_url, int(status), "translation service", None, None)
+                    return None
+                if not isinstance(payload, dict):
+                    return None
+                response_status = payload.get("responseStatus")
+                if response_status not in (None, 200, "200"):
+                    return None
+                translated = self.normalize_description(
+                    (payload.get("responseData") or {}).get("translatedText") or ""
+                )
+                if self._is_valid_translation(text, translated):
+                    return translated
+                return None
+            except urllib.error.HTTPError as exc:
+                transient = exc.code == 429 or exc.code >= 500
+                if not transient or attempt >= self.TRANSLATION_RETRIES - 1:
+                    logger.warning("AniList PT-BR translation request failed: HTTP %s", exc.code)
+                    return None
+                retry_after = None
+                try:
+                    retry_after = float(exc.headers.get("Retry-After")) if exc.headers else None
+                except (TypeError, ValueError, AttributeError):
+                    retry_after = None
+                delay = min(8.0, retry_after if retry_after is not None else 0.5 * (2 ** attempt))
+                time.sleep(max(0.0, delay))
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                if attempt >= self.TRANSLATION_RETRIES - 1:
+                    logger.warning("AniList PT-BR translation request failed: %s", exc)
+                    return None
+                time.sleep(min(8.0, 0.5 * (2 ** attempt)))
+        return None
+
+    def localize_description_to_pt_br(
+        self,
+        description: str,
+        source_language: str | None = None,
+        *,
+        request_id=None,
+    ) -> str:
+        original = self.normalize_description(description)
+        if not original:
+            self._record_translation_event(
+                "TRANSLATION_FALLBACK_ORIGINAL",
+                request_id=request_id,
+                result="empty",
+            )
+            return original
+
+        source = self._normalize_source_language(source_language)
+        if source == "unknown":
+            source, confidence = self.detect_description_language(original)
+            if source == "unknown":
+                self._record_translation_event(
+                    "TRANSLATION_FALLBACK_ORIGINAL",
+                    request_id=request_id,
+                    result="source_language_unknown",
+                )
+                return original
+        else:
+            confidence = 1.0
+
+        if source == "pt":
+            key = self.translation_cache_key(original, source)
+            with self._translation_lock:
+                cache = self._load_translation_cache()
+                cache[key] = {
+                    "status": "not_needed",
+                    "translated": original,
+                    "source_language": "pt",
+                    "target_language": self.TRANSLATION_TARGET_LANGUAGE,
+                    "updated_at": time.time(),
+                }
+                self._save_translation_cache()
+            self._record_translation_event(
+                "TRANSLATION_SUCCEEDED",
+                request_id=request_id,
+                source_language=source,
+                result="not_needed",
+            )
+            return original
+
+        cached = self.get_cached_description_pt_br(original, source)
+        if cached:
+            self._record_translation_event(
+                "TRANSLATION_CACHE_HIT",
+                request_id=request_id,
+                source_language=source,
+                result="ok",
+            )
+            return cached
+
+        key = self.translation_cache_key(original, source)
         with self._translation_lock:
             cache = self._load_translation_cache()
             entry = cache.get(key)
-            if isinstance(entry, dict):
-                status = str(entry.get("status") or "")
-                if status == "ok" and str(entry.get("translated") or "").strip():
-                    return str(entry["translated"]).strip()
-                if status == "failed":
+            if isinstance(entry, dict) and entry.get("status") == "failed":
+                try:
                     retry_after = float(entry.get("retry_after") or 0)
-                    if time.time() < retry_after:
+                except (TypeError, ValueError):
+                    retry_after = 0
+                if time.time() < retry_after:
+                    self._record_translation_event(
+                        "TRANSLATION_FALLBACK_ORIGINAL",
+                        request_id=request_id,
+                        source_language=source,
+                        result="cached_failure",
+                    )
+                    return original
+            inflight = getattr(self, "_translation_inflight", {})
+            if not hasattr(self, "_translation_inflight"):
+                self._translation_inflight = inflight
+            event = inflight.get(key)
+            if event is None:
+                event = threading.Event()
+                inflight[key] = event
+                owner = True
+            else:
+                owner = False
+
+        if not owner:
+            event.wait(timeout=90.0)
+            cached = self.get_cached_description_pt_br(original, source)
+            if cached:
+                self._record_translation_event(
+                    "TRANSLATION_CACHE_HIT",
+                    request_id=request_id,
+                    source_language=source,
+                    result="inflight_result",
+                )
+                return cached
+            self._record_translation_event(
+                "TRANSLATION_FALLBACK_ORIGINAL",
+                request_id=request_id,
+                source_language=source,
+                result="inflight_failed",
+            )
+            return original
+
+        started = time.monotonic()
+        self._record_translation_event(
+            "TRANSLATION_REQUESTED",
+            request_id=request_id,
+            source_language=source,
+            result="requested",
+        )
+        self._record_translation_event(
+            "TRANSLATION_STARTED",
+            request_id=request_id,
+            source_language=source,
+            result=f"confidence={confidence:.3f}",
+        )
+        try:
+            translated_sections = []
+            for section in self._paragraph_chunks(original, self.TRANSLATION_MAX_BYTES):
+                section_translations = []
+                for chunk in section:
+                    translated = self._translate_chunk_to_pt_br(chunk, source)
+                    if not translated or not self._is_valid_translation(chunk, translated):
+                        with self._translation_lock:
+                            cache = self._load_translation_cache()
+                            cache[key] = {
+                                "status": "failed",
+                                "retry_after": time.time() + 60 * 60,
+                                "source_language": source,
+                                "target_language": self.TRANSLATION_TARGET_LANGUAGE,
+                                "updated_at": time.time(),
+                            }
+                            self._save_translation_cache()
+                        self._record_translation_event(
+                            "TRANSLATION_FAILED",
+                            request_id=request_id,
+                            source_language=source,
+                            result="invalid_response",
+                        )
+                        self._record_translation_event(
+                            "TRANSLATION_FALLBACK_ORIGINAL",
+                            request_id=request_id,
+                            source_language=source,
+                            result="translation_failed",
+                        )
                         return original
-            translated_chunks = []
-            for chunk in self._translation_chunks(original):
-                translated = self._translate_chunk_to_pt_br(chunk)
-                if not translated:
+                    section_translations.append(translated)
+                translated_sections.append(" ".join(section_translations))
+            localized = "\n\n".join(translated_sections).strip()
+            if not self._is_valid_translation(original, localized):
+                with self._translation_lock:
+                    cache = self._load_translation_cache()
                     cache[key] = {
                         "status": "failed",
-                        "retry_after": time.time() + 24 * 60 * 60,
+                        "retry_after": time.time() + 60 * 60,
+                        "source_language": source,
+                        "target_language": self.TRANSLATION_TARGET_LANGUAGE,
                         "updated_at": time.time(),
                     }
                     self._save_translation_cache()
-                    return original
-                translated_chunks.append(translated)
-            localized = " ".join(translated_chunks).strip()
-            if not localized:
+                self._record_translation_event(
+                    "TRANSLATION_FAILED",
+                    request_id=request_id,
+                    source_language=source,
+                    result="validation_failed",
+                )
+                self._record_translation_event(
+                    "TRANSLATION_FALLBACK_ORIGINAL",
+                    request_id=request_id,
+                    source_language=source,
+                    result="translation_invalid",
+                )
                 return original
-            cache[key] = {
-                "status": "ok",
-                "translated": localized,
-                "updated_at": time.time(),
-            }
-            self._save_translation_cache()
-            return localized
 
+            with self._translation_lock:
+                cache = self._load_translation_cache()
+                cache[key] = {
+                    "status": "ok",
+                    "translated": localized,
+                    "source_language": source,
+                    "target_language": self.TRANSLATION_TARGET_LANGUAGE,
+                    "updated_at": time.time(),
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                }
+                self._save_translation_cache()
+            self._record_translation_event(
+                "TRANSLATION_SUCCEEDED",
+                request_id=request_id,
+                source_language=source,
+                result="ok",
+            )
+            return localized
+        finally:
+            with self._translation_lock:
+                inflight = getattr(self, "_translation_inflight", {})
+                active_event = inflight.pop(key, None)
+                if active_event is not None:
+                    active_event.set()
     @staticmethod
     def _header(headers, name):
         if headers is None: return None
