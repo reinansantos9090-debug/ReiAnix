@@ -129,9 +129,11 @@ def test_all_settings_categories_are_compose_owned_and_actionable():
         "Diagnóstico",
         "Sobre",
     )
+    managed_start = compose.index("private val NativeManagedSettingsCategories")
+    managed_end = compose.index(")\n", managed_start) + 2
+    managed_block = compose[managed_start:managed_end]
     for category in categories:
-        assert f'"{category}"' in compose
-        assert f'"{category}"' in compose[compose.index("NativeManagedSettingsCategories"):]
+        assert f'"{category}"' in managed_block
 
     for category in (
         "Artwork",
