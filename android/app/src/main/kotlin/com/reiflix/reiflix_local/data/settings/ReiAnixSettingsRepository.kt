@@ -7,6 +7,8 @@ import com.reiflix.reiflix_local.bridge.NativeMailbox
 import org.json.JSONObject
 import java.util.UUID
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus
+import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
+import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
