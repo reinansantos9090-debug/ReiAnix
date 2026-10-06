@@ -642,6 +642,12 @@ class MainActivity : FlutterFragmentActivity() {
             " timestamp=" + System.currentTimeMillis())
 
         if (result.resultCode != RESULT_OK || uri == null) {
+            publishNativeDiagnostic(
+                "STORAGE_PICKER_CANCELLED",
+                requestId,
+                action = "select_tree",
+                result = "picker_cancelled",
+            )
             clearSafPickerPending(requestId, SafPickerPhase.CANCELLED)
             Log.i(tag, "SAF selection cancelled resultCode=" + result.resultCode)
             NativeMailbox.write(this, JSONObject().put("type", "saf_cancelled")
@@ -660,6 +666,12 @@ class MainActivity : FlutterFragmentActivity() {
             }
             Log.i(tag, "SAF_PICKER_RESULT_VALID requestId=" + (requestId ?: "-") +
                 " authority=" + (uri.authority ?: "-"))
+            publishNativeDiagnostic(
+                "STORAGE_ROOT_SELECTED",
+                requestId,
+                action = "select_tree",
+                result = uri.toString(),
+            )
             val transientInspection = SafScanner.inspectTree(this, uri, requirePersisted = false)
             val transientStatus = transientInspection.optString("status")
             if (transientStatus != SafScanner.STATUS_COMPLETED) {
@@ -683,6 +695,12 @@ class MainActivity : FlutterFragmentActivity() {
                     status = status, treeUri = uri)
                 return
             }
+            publishNativeDiagnostic(
+                "STORAGE_ROOT_VALIDATED",
+                requestId,
+                action = "select_tree",
+                result = uri.toString(),
+            )
             val payload = SafScanner.identityPayload(uri)
                 .put("granted", true).put("selected", true)
                 .put("status", SafScanner.STATUS_COMPLETED)
@@ -692,6 +710,12 @@ class MainActivity : FlutterFragmentActivity() {
             NativeMailbox.write(this, JSONObject().put("type", "saf_permission")
                 .put("requestId", requestId ?: "").put("payload", payload))
             try {
+                publishNativeDiagnostic(
+                    "STORAGE_SCAN_STARTED",
+                    requestId,
+                    action = "select_tree",
+                    result = "permission_change",
+                )
                 publishScanRequest("PERMISSION_CHANGE", "saf", uri.toString(), false, "saf_granted", requestId)
             } catch (exception: Exception) {
                 Log.e(tag, "SAF_PICKER_SCAN_TRIGGER_FAILED requestId=" + (requestId ?: "-"), exception)
