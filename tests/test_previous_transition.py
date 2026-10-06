@@ -10,7 +10,7 @@ ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainAc
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
 
 
-class Prompt24PreviousTransitionTests(unittest.TestCase):
+class PreviousTransitionTests(unittest.TestCase):
     def test_required_previous_events_exist(self):
         required = [
             "PREVIOUS_REQUEST_RECEIVED",

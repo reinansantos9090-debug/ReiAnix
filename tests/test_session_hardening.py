@@ -10,7 +10,7 @@ MAIN_ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/M
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
 
 
-class Prompt25SessionHardeningTests(unittest.TestCase):
+class SessionHardeningTests(unittest.TestCase):
     def test_single_session_identity_path_exists(self):
         for token in (
             "player_active_session_id",

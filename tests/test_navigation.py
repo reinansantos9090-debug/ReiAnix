@@ -11,7 +11,7 @@ class NavigationControllerTests(unittest.TestCase):
 
     def test_home_is_root_and_first_back_requests_exit_confirmation(self):
         self.assertEqual(self.navigation.current, "home")
-        self.assertEqual(self.navigation.back(), "prompt_exit")
+        self.assertEqual(self.navigation.back(), "exit_requested")
         self.assertEqual(self.navigation.current, "home")
 
     def test_second_home_back_inside_window_exits(self):
@@ -22,7 +22,7 @@ class NavigationControllerTests(unittest.TestCase):
     def test_home_back_after_window_requests_exit_confirmation(self):
         self.navigation.back()
         self.now[0] += 2.1
-        self.assertEqual(self.navigation.back(), "prompt_exit")
+        self.assertEqual(self.navigation.back(), "exit_requested")
 
     def test_details_back_returns_to_real_origin(self):
         self.navigation.push("details")
@@ -157,7 +157,7 @@ class NavigationControllerTests(unittest.TestCase):
     def test_multiple_back_events_never_underflow_history(self):
         self.navigation.push("organize")
         self.assertEqual(self.navigation.back(), "previous")
-        self.assertEqual(self.navigation.back(), "prompt_exit")
+        self.assertEqual(self.navigation.back(), "exit_requested")
         self.assertEqual(self.navigation.stack, ("home",))
 
 

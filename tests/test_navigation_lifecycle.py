@@ -11,7 +11,7 @@ NAVIGATION = ROOT / "core" / "navigation.py"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 
 
-class Prompt6NavigationLifecycleTests(unittest.TestCase):
+class NavigationLifecycleTests(unittest.TestCase):
     def test_cache_invalidation_marks_render_state_dirty(self):
         source = MAIN.read_text(encoding="utf-8")
         start = source.index("def _invalidate_cached_view")

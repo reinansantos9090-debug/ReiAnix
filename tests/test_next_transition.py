@@ -10,7 +10,7 @@ PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePla
 REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
 
 
-class Prompt23NextTransitionTests(unittest.TestCase):
+class NextTransitionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.main = MAIN.read_text(encoding="utf-8")

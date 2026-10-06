@@ -10,7 +10,7 @@ MAIN = ROOT / "main.py"
 BRIDGE = ROOT / "core/android_bridge.py"
 
 
-class Prompt2PlayerForensicTests(unittest.TestCase):
+class PlayerForensicTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.player = PLAYER.read_text(encoding="utf-8")

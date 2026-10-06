@@ -8,7 +8,7 @@ MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/Ma
 GRADLE = ROOT / "android/app/build.gradle.kts"
 
 
-class Prompt13NativePlayerLifecycleTests(unittest.TestCase):
+class NativePlayerLifecycleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.player = PLAYER.read_text(encoding="utf-8")

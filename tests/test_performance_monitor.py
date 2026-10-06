@@ -61,16 +61,16 @@ class PerformanceMonitorTests(unittest.TestCase):
     def test_two_percent_round_trip_keeps_same_episode(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
-            anime = store.upsert_anime("prompt2", {"title": "Prompt 2", "genres": "[]"})
-            path = "content://media/prompt2-e01"
-            store.upsert_episode(anime, path, "Prompt 2 E01", 1, 1,
-                                  media_identity="media:prompt2:e01")
+            anime = store.upsert_anime("stage2", {"title": "earlier validation stage 2", "genres": "[]"})
+            path = "content://media/fixture_2-e01"
+            store.upsert_episode(anime, path, "earlier validation stage 2 E01", 1, 1,
+                                  media_identity="media:stage2:e01")
             self.assertTrue(store.save_progress(path, 2, 100, event_created_at=1000))
             target = store.playback_target(anime)
             self.assertEqual(path, target["path"])
-            self.assertEqual("media:prompt2:e01", target["media_identity"])
-            store.upsert_episode(anime, path, "Prompt 2 E01", 1, 1,
-                                  media_identity="media:prompt2:e01")
+            self.assertEqual("media:stage2:e01", target["media_identity"])
+            store.upsert_episode(anime, path, "earlier validation stage 2 E01", 1, 1,
+                                  media_identity="media:stage2:e01")
             target_after_rescan = store.playback_target(anime)
             self.assertEqual(path, target_after_rescan["path"])
             self.assertEqual(2, store.physical_row(path)["progress"])

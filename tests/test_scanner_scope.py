@@ -12,7 +12,7 @@ SAF = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafS
 MEDIA = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt"
 BROAD = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt"
 
-class Prompt34ScopePolicyTests(unittest.TestCase):
+class ScopePolicyTests(unittest.TestCase):
     ROOT_URI = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
     ROOT_ID = "primary:Anime"
     ROOT_IDENTITY = "saf:com.android.externalstorage.documents:primary:Anime"

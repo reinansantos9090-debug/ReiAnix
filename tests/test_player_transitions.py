@@ -8,7 +8,7 @@ MAIN = ROOT / "main.py"
 STORE = ROOT / "core/library_store.py"
 
 
-class Prompt12PlayerTransitionContractTests(unittest.TestCase):
+class PlayerTransitionContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.player = PLAYER.read_text(encoding="utf-8")
