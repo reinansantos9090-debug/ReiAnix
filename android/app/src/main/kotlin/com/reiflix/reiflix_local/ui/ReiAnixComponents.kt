@@ -161,9 +161,9 @@ fun ReiAnixCard(
     Card(
         modifier = modifier
             .heightIn(min = ReiAnixTokens.Dimensions.cardMinHeight),
-        shape = ReiAnixTokens.Shapes.card,
+        shape = if (continuous) androidx.compose.foundation.shape.RoundedCornerShape(0.dp) else ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = if (continuous) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceContainer,
             contentColor = MaterialTheme.colorScheme.onSurface,
             disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
@@ -955,6 +955,7 @@ fun ReiAnixSettingCard(
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
+    continuous: Boolean = false,
 ) {
     Card(
         onClick = onClick ?: {},
