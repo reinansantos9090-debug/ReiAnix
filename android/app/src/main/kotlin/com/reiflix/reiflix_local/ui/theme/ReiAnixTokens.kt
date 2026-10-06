@@ -30,6 +30,8 @@ object ReiAnixTokens {
         val surfacePlayer = Color(0xFF020408)
         val surfaceSelected = Color(0xFF173B6D)
         val surfaceNavigation = Color(0xFF0B1017)
+        val playerControl = Color.White
+        val playerScrim = Color.Black
 
         val primary = Color(0xFF3D8BFF)
         val primaryContainer = Color(0xFF173D78)
@@ -178,12 +180,12 @@ object ReiAnixTokens {
 
     object Shapes {
         val chip = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
-        val small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        val small = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
         val button = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
-        val card = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
-        val large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
-        val artwork = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
-        val hero = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+        val card = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        val large = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
+        val artwork = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        val hero = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
         val dialog = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
         val sheet = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
         val textField = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)

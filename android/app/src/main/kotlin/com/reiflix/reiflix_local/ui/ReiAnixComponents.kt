@@ -1040,7 +1040,7 @@ fun ReiAnixArtwork(
 ) {
     Box(
         modifier = modifier
-            .aspectRatio(0.7f)
+            .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,

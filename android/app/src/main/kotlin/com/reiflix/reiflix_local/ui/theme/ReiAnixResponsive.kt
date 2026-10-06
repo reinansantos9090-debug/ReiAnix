@@ -54,9 +54,9 @@ data class ReiAnixResponsiveMetrics(
 ) {
     fun libraryGridMinWidth(preference: String): Dp {
         val base = when (preference.trim().lowercase()) {
-            "small" -> 120.dp
-            "large" -> 172.dp
-            else -> 146.dp
+            "small" -> 88.dp
+            "large" -> 128.dp
+            else -> 96.dp
         }
         return when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> base
@@ -67,9 +67,9 @@ data class ReiAnixResponsiveMetrics(
 
     fun homeCardWidth(preference: String): Dp {
         val base = when (preference.trim().lowercase()) {
-            "small" -> 120.dp
-            "large" -> 172.dp
-            else -> 146.dp
+            "small" -> 92.dp
+            "large" -> 120.dp
+            else -> 100.dp
         }
         return when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> base
@@ -80,7 +80,7 @@ data class ReiAnixResponsiveMetrics(
 
     val homeContinueCardWidth: Dp
         get() = when (widthClass) {
-            ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Dimensions.homeContinueCardWidth
+            ReiAnixWindowWidthClass.COMPACT -> 100.dp
             ReiAnixWindowWidthClass.MEDIUM -> 180.dp
             ReiAnixWindowWidthClass.EXPANDED -> 220.dp
         }

@@ -79,7 +79,7 @@ private fun ReiAnixBottomNavigation(
             .semantics {
                 isTraversalGroup = true
             },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        containerColor = ReiAnixTokens.Colors.surfaceNavigation,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = ReiAnixTokens.Elevation.none,
         windowInsets = NavigationBarDefaults.windowInsets,
