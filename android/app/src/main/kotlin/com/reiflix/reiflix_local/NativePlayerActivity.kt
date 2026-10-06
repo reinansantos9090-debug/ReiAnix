@@ -2011,12 +2011,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         lastSavedPosition = -1L
         lastProgressPersistAt = System.currentTimeMillis()
         val generation = playerGeneration
-        val playerListener = createPlayerListener(generation)
-        val analyticsListener = createAnalyticsListener(generation)
-        activePlayerListener = playerListener
-        activeAnalyticsListener = analyticsListener
-        player.addListener(playerListener)
-        player.addAnalyticsListener(analyticsListener)
+        activePlayerListener = createPlayerListener(generation)
+        activeAnalyticsListener = createAnalyticsListener(generation)
+        player.addListener(activePlayerListener!!)
+        player.addAnalyticsListener(activeAnalyticsListener!!)
         logPlayer("PLAYER_GENERATION_START generation=$generation reason=$reason requestId=" + requestId.ifEmpty { "-" })
     }
 
