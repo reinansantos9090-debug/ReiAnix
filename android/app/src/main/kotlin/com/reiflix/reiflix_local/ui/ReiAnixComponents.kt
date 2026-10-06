@@ -243,13 +243,13 @@ fun ReiAnixSecondaryButton(
             .semantics { role = Role.Button },
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
-            color = if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.62f) else MaterialTheme.colorScheme.outlineVariant,
+            color = if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
         leadingIcon?.let {
@@ -1096,7 +1096,7 @@ fun ReiAnixProgressIndicator(
                 },
             ),
         color = if (visible) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
-        trackColor = if (visible) MaterialTheme.colorScheme.surfaceVariant else androidx.compose.ui.graphics.Color.Transparent,
+        trackColor = if (visible) MaterialTheme.colorScheme.outline else androidx.compose.ui.graphics.Color.Transparent,
     )
 }
 
