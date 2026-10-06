@@ -611,22 +611,35 @@ class MainActivity : FlutterFragmentActivity() {
         val runnable = object : Runnable {
             override fun run() {
                 if (!safPickerPending || pendingSafRequestId != correlationId) return
+
+                // The watchdog is only allowed to cover the native launch window.
+                // Once DocumentsUI has accepted the launch and the phase is
+                // WAITING_RESULT, ActivityResult is the authoritative completion
+                // signal. Timing out after focus returns can race the legitimate SAF
+                // callback and destroy request correlation.
+                if (
+                    safPickerPhase != SafPickerPhase.REQUESTED &&
+                    safPickerPhase != SafPickerPhase.LAUNCHING
+                ) {
+                    cancelSafPickerWatchdog()
+                    return
+                }
+
                 val now = System.currentTimeMillis()
                 val focused = window?.decorView?.hasWindowFocus() == true
                 if (!activityResumed || !focused) {
                     safPickerWatchdogHandler.postDelayed(this, SAF_PICKER_WATCHDOG_RETRY_MS)
                     return
                 }
-                if (safPickerFocusLost) {
-                    if (safPickerFocusRegainedAtMs == 0L) safPickerFocusRegainedAtMs = now
-                    val elapsed = now - safPickerFocusRegainedAtMs
-                    if (elapsed >= SAF_PICKER_RETURN_GRACE_MS) timeoutSafPicker(correlationId)
-                    else safPickerWatchdogHandler.postDelayed(this, SAF_PICKER_RETURN_GRACE_MS - elapsed)
-                    return
-                }
                 val elapsed = now - safPickerStartedAtMs
-                if (elapsed >= SAF_PICKER_LAUNCH_TIMEOUT_MS) timeoutSafPicker(correlationId)
-                else safPickerWatchdogHandler.postDelayed(this, SAF_PICKER_LAUNCH_TIMEOUT_MS - elapsed)
+                if (elapsed >= SAF_PICKER_LAUNCH_TIMEOUT_MS) {
+                    timeoutSafPicker(correlationId)
+                } else {
+                    safPickerWatchdogHandler.postDelayed(
+                        this,
+                        SAF_PICKER_LAUNCH_TIMEOUT_MS - elapsed,
+                    )
+                }
             }
         }
         safPickerWatchdog = runnable
@@ -1794,6 +1807,7 @@ class MainActivity : FlutterFragmentActivity() {
         }
         val appContext = applicationContext
         val lifecycleSnapshot = if (activityResumed) "RESUMED" else "PAUSED"
+        val inventoryStartedAtMs = System.currentTimeMillis()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val trees = JSONArray()
@@ -1814,6 +1828,8 @@ class MainActivity : FlutterFragmentActivity() {
                         .put("trees", trees)
                         .put("count", trees.length())
                         .put("inventoryComplete", true)
+                        .put("inventoryStartedAtMs", inventoryStartedAtMs)
+                        .put("inventoryCompletedAtMs", System.currentTimeMillis())
                         .put("lifecycle", lifecycleSnapshot)))
             } catch (exception: Exception) {
                 Log.e(LOG_TAG, "SAF inventory failed", exception)
@@ -2683,7 +2699,9 @@ class MainActivity : FlutterFragmentActivity() {
                 " timestamp=" + System.currentTimeMillis())
             treePicker.launch(pickerIntent)
             setSafPickerPhase(correlationId, SafPickerPhase.WAITING_RESULT)
-            scheduleSafPickerWatchdog(correlationId)
+            // ActivityResult is the sole terminal signal once DocumentsUI has
+            // accepted the launch. Never run a focus-return timeout against it.
+            cancelSafPickerWatchdog()
             Log.i(tag, "SAF_PICKER_DIRECT_LAUNCH_ACCEPTED requestId=" + correlationId +
                 " timestamp=" + System.currentTimeMillis())
         } catch (exception: Exception) {
