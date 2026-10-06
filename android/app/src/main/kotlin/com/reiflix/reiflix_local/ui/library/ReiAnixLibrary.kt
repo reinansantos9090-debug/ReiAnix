@@ -27,9 +27,7 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -44,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -237,9 +236,7 @@ private fun ReiAnixLibraryPresentationScreen(
     ) {
         LibraryHeader(
             sourceAvailable = state.sourceAvailable,
-            onRefresh = onRefresh,
             onSearch = onSearch,
-            isRefreshing = isRefreshing,
         )
 
         when (state.status) {
@@ -339,10 +336,14 @@ private fun ReiAnixLibraryPresentationScreen(
 @Composable
 private fun LibraryHeader(
     sourceAvailable: Boolean,
-    onRefresh: () -> Unit,
     onSearch: (() -> Unit)?,
-    isRefreshing: Boolean,
 ) {
+    val statusColor = if (sourceAvailable) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -359,12 +360,16 @@ private fun LibraryHeader(
             maxLines = 1,
         )
 
-        Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
+        Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
 
         Surface(
-            shape = ReiAnixTokens.Shapes.chip,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            shape = ReiAnixTokens.Shapes.button,
+            color = Color.Transparent,
+            contentColor = statusColor,
+            border = androidx.compose.foundation.BorderStroke(
+                width = ReiAnixTokens.Dimensions.borderWidth,
+                color = statusColor.copy(alpha = 0.88f),
+            ),
         ) {
             Row(
                 modifier = Modifier.padding(
@@ -379,6 +384,12 @@ private fun LibraryHeader(
                         imageVector = Icons.Filled.Info,
                         contentDescription = null,
                         modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
+                    )
+                } else {
+                    Text(
+                        text = "☁",
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
                     )
                 }
                 Text(
@@ -396,35 +407,11 @@ private fun LibraryHeader(
                 onClick = onSearch,
                 modifier = Modifier.semantics {
                     contentDescription = "Pesquisar na biblioteca"
+                    role = androidx.compose.ui.semantics.Role.Button
                 },
             ) {
                 Icon(
                     imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                )
-            }
-        }
-
-        IconButton(
-            onClick = onRefresh,
-            enabled = !isRefreshing,
-            modifier = Modifier.semantics {
-                contentDescription = if (isRefreshing) {
-                    "Atualizando biblioteca"
-                } else {
-                    "Atualizar biblioteca"
-                }
-            },
-        ) {
-            if (isRefreshing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(ReiAnixTokens.Dimensions.loadingIndicatorSize),
-                    strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
