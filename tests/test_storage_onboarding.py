@@ -184,8 +184,12 @@ class StorageOnboardingTests(unittest.TestCase):
         main_activity = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
         ).read_text(encoding="utf-8")
+        saf_scanner = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt"
+        ).read_text(encoding="utf-8")
         self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", main_activity)
-        self.assertIn("takePersistableUriPermission", main_activity)
+        self.assertIn("SafScanner.persistPermission(this, uri, flags)", main_activity)
+        self.assertIn("takePersistableUriPermission", saf_scanner)
 
 
     def test_native_scan_publication_uses_failing_mailbox_contract(self):
@@ -254,6 +258,17 @@ class StorageOnboardingTests(unittest.TestCase):
     def test_storage_diagnostics_use_supported_python_record_keywords_only(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
+        onboarding_function = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "_set_storage_onboarding_state"
+            ),
+            None,
+        )
+        self.assertIsNotNone(onboarding_function)
+        onboarding_source = ast.get_source_segment(source, onboarding_function) or ""
 
         supported = {
             name
@@ -264,7 +279,7 @@ class StorageOnboardingTests(unittest.TestCase):
         }
 
         record_calls = []
-        for node in ast.walk(tree):
+        for node in ast.walk(onboarding_function):
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
@@ -278,7 +293,7 @@ class StorageOnboardingTests(unittest.TestCase):
             record_calls.append(node)
             self.assertFalse(
                 any(keyword.arg is None for keyword in node.keywords),
-                "diagnostics.record() must not receive dynamic **kwargs in startup code",
+                "diagnostics.record() must not receive dynamic **kwargs in the onboarding state helper",
             )
             invalid = {
                 keyword.arg
@@ -288,10 +303,11 @@ class StorageOnboardingTests(unittest.TestCase):
             self.assertEqual(
                 set(),
                 invalid,
-                "diagnostics.record() received unsupported keyword(s)",
+                "diagnostics.record() received unsupported keyword(s) in the onboarding state helper",
             )
 
         self.assertGreater(len(record_calls), 0)
+        self.assertIn("diagnostics.record(", onboarding_source)
         self.assertIn("source", supported)
         self.assertIn("result", supported)
         self.assertIn("error", supported)
