@@ -3320,25 +3320,179 @@ async def main(page: ft.Page):
                         if event_type == 'compose_settings_action':
                             action = str(payload.get('action') or '').strip().lower()
                             request_id = str(event_request_id or payload.get('requestId') or '').strip()
-                            if action == 'reset_player':
-                                try:
-                                    await asyncio.to_thread(settings.reset_category, "player")
-                                    compose_settings_bridge.request_publish("player_settings_reset")
-                                    logger.info(
-                                        "[COMPOSE_SETTINGS] player settings reset requestId=%s",
-                                        request_id or '-',
-                                    )
-                                except Exception:
-                                    logger.exception(
-                                        "[COMPOSE_SETTINGS] player settings reset failed requestId=%s",
-                                        request_id or '-',
-                                    )
-                            else:
+                            supported_actions = {
+                                'reset_player',
+                                'reset_all_settings',
+                                'clear_anilist_cache',
+                                'settings_export',
+                                'settings_import',
+                                'select_saf',
+                                'request_media_access',
+                                'check_storage_access',
+                                'open_broad_storage_settings',
+                                'backup_create',
+                                'backup_restore',
+                                'backup_integrity',
+                                'backup_reconcile',
+                                'diagnostic_export',
+                            }
+                            if action not in supported_actions:
                                 logger.warning(
                                     "[COMPOSE_SETTINGS] action rejected action=%s requestId=%s",
                                     action or '-',
                                     request_id or '-',
                                 )
+                            else:
+                                try:
+                                    if action == 'reset_player':
+                                        await asyncio.to_thread(settings.reset_category, "player")
+                                        compose_settings_bridge.request_publish("player_settings_reset")
+                                    elif action == 'reset_all_settings':
+                                        await asyncio.to_thread(settings.reset_all)
+                                        apply_settings_runtime(
+                                            "appearance.theme",
+                                            settings.get("appearance.theme"),
+                                        )
+                                        compose_settings_bridge.request_publish("all_settings_reset")
+                                    elif action == 'clear_anilist_cache':
+                                        removed = await asyncio.to_thread(library.clear_anilist_cache)
+                                        logger.info(
+                                            "[COMPOSE_SETTINGS] artwork cache cleared removed=%s requestId=%s",
+                                            removed,
+                                            request_id or '-',
+                                        )
+                                        compose_settings_bridge.request_publish("artwork_cache_cleared")
+                                    elif action == 'settings_export':
+                                        raw = await asyncio.to_thread(
+                                            lambda: settings.export_json().encode("utf-8")
+                                        )
+                                        stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
+                                        path_out = await ft.FilePicker().save_file(
+                                            dialog_title="Exportar configurações",
+                                            file_name=f"reiflix-settings-{stamp}.json",
+                                            file_type=ft.FilePickerFileType.CUSTOM,
+                                            allowed_extensions=["json"],
+                                            src_bytes=raw,
+                                        )
+                                        logger.info(
+                                            "[COMPOSE_SETTINGS] settings export finished path=%s requestId=%s",
+                                            bool(path_out),
+                                            request_id or '-',
+                                        )
+                                    elif action == 'settings_import':
+                                        files = await ft.FilePicker().pick_files(
+                                            dialog_title="Importar configurações",
+                                            allow_multiple=False,
+                                            with_data=True,
+                                            file_type=ft.FilePickerFileType.CUSTOM,
+                                            allowed_extensions=["json"],
+                                        )
+                                        if files:
+                                            raw = files[0].bytes or b""
+                                            if not raw:
+                                                raise ValueError("O arquivo de configurações está vazio.")
+                                            result = await asyncio.to_thread(
+                                                settings.import_json,
+                                                raw.decode("utf-8"),
+                                            )
+                                            apply_settings_runtime(
+                                                "appearance.theme",
+                                                settings.get("appearance.theme"),
+                                            )
+                                            on_catalog_changed()
+                                            compose_settings_bridge.request_publish("settings_imported")
+                                            logger.info(
+                                                "[COMPOSE_SETTINGS] settings import completed imported=%s requestId=%s",
+                                                result.get("imported"),
+                                                request_id or '-',
+                                            )
+                                    elif action == 'select_saf':
+                                        await add_folder()
+                                    elif action == 'request_media_access':
+                                        await request_video_access()
+                                    elif action == 'check_storage_access':
+                                        await check_video_access()
+                                        compose_settings_bridge.request_publish("storage_access_checked")
+                                    elif action == 'open_broad_storage_settings':
+                                        await open_broad_storage_access()
+                                    elif action == 'backup_create':
+                                        raw = await create_backup()
+                                        if not raw:
+                                            raise RuntimeError("Backup vazio.")
+                                        stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
+                                        path_out = await ft.FilePicker().save_file(
+                                            dialog_title="Salvar backup ReiAnix",
+                                            file_name=f"reiflix-backup-{stamp}.zip",
+                                            file_type=ft.FilePickerFileType.CUSTOM,
+                                            allowed_extensions=["zip"],
+                                            src_bytes=raw,
+                                        )
+                                        logger.info(
+                                            "[COMPOSE_SETTINGS] backup export finished path=%s requestId=%s",
+                                            bool(path_out),
+                                            request_id or '-',
+                                        )
+                                    elif action == 'backup_restore':
+                                        files = await ft.FilePicker().pick_files(
+                                            dialog_title="Selecionar backup ReiAnix",
+                                            allow_multiple=False,
+                                            with_data=True,
+                                            file_type=ft.FilePickerFileType.CUSTOM,
+                                            allowed_extensions=["zip"],
+                                        )
+                                        if files:
+                                            raw = files[0].bytes or b""
+                                            if not raw:
+                                                raise ValueError("O arquivo de backup está vazio.")
+                                            await inspect_backup(raw)
+                                            result = await restore_backup(raw)
+                                            compose_settings_bridge.request_publish("backup_restored")
+                                            logger.info(
+                                                "[COMPOSE_SETTINGS] backup restore completed result=%s requestId=%s",
+                                                result.get("result") if isinstance(result, dict) else "success",
+                                                request_id or '-',
+                                            )
+                                    elif action == 'backup_integrity':
+                                        report = await integrity_check()
+                                        database = report.get("database") or {}
+                                        logger.info(
+                                            "[COMPOSE_SETTINGS] integrity overall=%s quick_check=%s foreign_keys=%s requestId=%s",
+                                            report.get("overall"),
+                                            database.get("quick_check"),
+                                            database.get("foreign_key_ok"),
+                                            request_id or '-',
+                                        )
+                                    elif action == 'backup_reconcile':
+                                        result = await request_restore_reconciliation()
+                                        logger.info(
+                                            "[COMPOSE_SETTINGS] restore reconciliation result=%s requestId=%s",
+                                            result,
+                                            request_id or '-',
+                                        )
+                                    elif action == 'diagnostic_export':
+                                        raw = await export_diagnostics()
+                                        if not raw:
+                                            raise RuntimeError("Diagnóstico vazio.")
+                                        stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
+                                        path_out = await ft.FilePicker().save_file(
+                                            dialog_title="Exportar diagnóstico",
+                                            file_name=f"reiflix-diagnostic-{stamp}.json",
+                                            file_type=ft.FilePickerFileType.CUSTOM,
+                                            allowed_extensions=["json"],
+                                            src_bytes=raw,
+                                        )
+                                        logger.info(
+                                            "[COMPOSE_SETTINGS] diagnostic export finished path=%s requestId=%s",
+                                            bool(path_out),
+                                            request_id or '-',
+                                        )
+                                    compose_settings_bridge.request_publish("compose_settings_action")
+                                except Exception:
+                                    logger.exception(
+                                        "[COMPOSE_SETTINGS] action failed action=%s requestId=%s",
+                                        action or '-',
+                                        request_id or '-',
+                                    )
 
                         if event_type == 'compose_account_action':
                             action = str(payload.get('action') or '').strip().lower()
