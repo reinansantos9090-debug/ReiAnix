@@ -16,6 +16,35 @@ class SettingsContractTests(unittest.TestCase):
     def read(self, path):
         return path.read_text(encoding="utf-8")
 
+    def test_compose_settings_commands_are_async_and_correlated(self):
+        main = self.read(MAIN)
+        bridge = self.read(ROOT / "core/compose_settings_bridge.py")
+        repository = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt")
+        self.assertIn("async def _run_compose_settings_set", main)
+        self.assertIn("async def _run_compose_settings_action", main)
+        self.assertIn("_track_compose_settings_task", main)
+        self.assertIn("COMPOSE_SETTINGS_MAX_TASKS = 8", main)
+        self.assertIn("asyncio.create_task(_run_compose_settings_set", main)
+        self.assertIn("asyncio.create_task(_run_compose_settings_action", main)
+        self.assertIn("claim_native_request(request_id, namespace=\"compose_settings\")", main)
+        self.assertIn('write_command_result(', main)
+        self.assertIn("COMMAND_RESULT_DIR_NAME", bridge)
+        self.assertIn("SETTINGS_SNAPSHOT_PUBLISHED", bridge)
+        self.assertIn("commandResultObserver", repository)
+        self.assertIn("SETTINGS_SNAPSHOT_CONSUMED", repository)
+
+    def test_mailbox_dispatcher_does_not_await_settings_workers_in_place(self):
+        main = self.read(MAIN)
+        start = main.index("if event_type == 'compose_settings_set':")
+        end = main.index("if event_type == 'compose_navigation_changed':", start)
+        block = main[start:end]
+        self.assertNotIn("await asyncio.to_thread(settings.set", block)
+        self.assertNotIn("await add_folder()", block)
+        self.assertNotIn("await create_backup()", block)
+        self.assertNotIn("await restore_backup(", block)
+        self.assertIn("asyncio.create_task(_run_compose_settings_set", block)
+        self.assertIn("asyncio.create_task(_run_compose_settings_action", block)
+
     def test_settings_export_import_contract_exists(self):
         settings = self.read(SETTINGS)
         view = self.read(SETTINGS_VIEW)
