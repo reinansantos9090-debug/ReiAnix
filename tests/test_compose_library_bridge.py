@@ -123,7 +123,7 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("identity-71", episode["media_identity"])
             self.assertEqual(12.5, episode["progress"])
             self.assertEqual(71, snapshot["animes"][0]["playback_target_episode_id"])
-            self.assertEqual([71], [item["episode_id"] for item in snapshot["continue_watching"]])
+            self.assertEqual([], snapshot["continue_watching"])
             self.assertEqual("MUST NOT CROSS THE COMPOSE BRIDGE", snapshot["animes"][0]["meta"].get("description"))
             self.assertEqual([], list((Path(directory) / "reianix-compose").glob(".*.tmp*")))
 

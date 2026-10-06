@@ -112,7 +112,6 @@ async def main(page: ft.Page):
         data_dir,
         library,
         store,
-        settings=settings,
         enabled=bridge.available,
     )
     compose_settings_bridge = ComposeSettingsBridge(
