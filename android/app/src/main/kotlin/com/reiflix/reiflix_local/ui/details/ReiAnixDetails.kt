@@ -93,6 +93,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjection
 import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
+import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.widthIn
@@ -359,13 +360,21 @@ private fun ColumnScope.ReiAnixDetailsReady(
     val aboutIndex = 2
     val episodeHeadingIndex = if (hasSeasons) 4 else 3
 
+    fun scrollToDetailsSection(index: Int) {
+        coroutineScope.launch {
+            if (ReiAnixMotionPolicy.systemAnimationsEnabled()) {
+                listState.animateScrollToItem(index)
+            } else {
+                listState.scrollToItem(index)
+            }
+        }
+    }
+
     fun selectSeason(seasonKey: String) {
         if (anime.seasons.none { it.stableKey == seasonKey }) return
         if (seasonKey == selectedSeasonKey) return
         savedSeasonKey = seasonKey
-        coroutineScope.launch {
-            listState.animateScrollToItem(episodeHeadingIndex)
-        }
+        scrollToDetailsSection(episodeHeadingIndex)
     }
 
     LazyColumn(
@@ -397,15 +406,11 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 selectedSection = selectedSection,
                 onAbout = {
                     selectedSection = DetailsSection.ABOUT
-                    coroutineScope.launch {
-                        listState.animateScrollToItem(aboutIndex)
-                    }
+                    scrollToDetailsSection(aboutIndex)
                 },
                 onEpisodes = {
                     selectedSection = DetailsSection.EPISODES
-                    coroutineScope.launch {
-                        listState.animateScrollToItem(episodeHeadingIndex)
-                    }
+                    scrollToDetailsSection(episodeHeadingIndex)
                 },
             )
         }
@@ -429,9 +434,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     onSeasonSelected = ::selectSeason,
                     onViewEpisodes = {
                         selectedSection = DetailsSection.EPISODES
-                        coroutineScope.launch {
-                            listState.animateScrollToItem(episodeHeadingIndex)
-                        }
+                        scrollToDetailsSection(episodeHeadingIndex)
                     },
                 )
             }
