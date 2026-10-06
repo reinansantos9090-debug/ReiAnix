@@ -1,7 +1,6 @@
 package com.reiflix.reiflix_local.data.library
 
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
