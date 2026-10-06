@@ -1196,6 +1196,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         initialPositionMsForGeneration = (restoredPositionMs
             ?: intent.getLongExtra("positionMs", 0L))
             .coerceAtLeast(0L)
+        // Media3 receives the saved position atomically with the MediaItem, so no
+        // post-READY seek cycle is required on the normal startup path.
+        initialSeekApplied = true
         preflightStartedAtMs = 0L
         preflightCompletedAtMs = 0L
         prepareDispatchedAtMs = 0L
@@ -1646,8 +1649,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     if (episodeChangePending && (nextTransitionActive || previousTransitionActive)) {
                         setTransitionPhase(TransitionPhase.READY, "media3_ready")
                     }
-                    // READY means the media is prepared, but keep the preparation
-                    // indicator until Media3 actually renders the first frame.
+                    // READY means Media3 prepared the media. The preparation indicator
+                    // is no longer needed; first-frame telemetry remains independently
+                    // measured by EVENT_RENDERED_FIRST_FRAME.
                     if (!openedReported) {
                         openedReported = true
                         val opened = NativeMailbox.writeBestEffort(
@@ -1707,6 +1711,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         armFirstFrameDiagnostics(generation)
                     }
                     if (!errorVisible) scheduleControlsHide()
+                }
                 Player.STATE_BUFFERING -> {
                     updatePlayPauseButton()
                     if (::preparingIndicator.isInitialized && !errorVisible) {
@@ -3154,7 +3159,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("totalOpenToFirstFrameMs", metrics.tapToFirstFrameMs)
             .put("assist_to_activity_ms", metricDelta(commandCreatedAtMs, activityStartedAtMs))
             .put("activity_to_player_ms", metricDelta(activityStartedAtMs, prepareDispatchedAtMs))
-            .put("player_prepare_ms", metricDelta(prepareDispatchedAtMs, playerReadyAtMs))
+            .put("player_prepare_ms", metricDelta(preflightCompletedAtMs, prepareDispatchedAtMs))
+            .put("prepare_to_ready_ms", metrics.prepareToReadyMs)
             .put("first_frame_ms", metricDelta(prepareDispatchedAtMs, atMs))
     }
 
