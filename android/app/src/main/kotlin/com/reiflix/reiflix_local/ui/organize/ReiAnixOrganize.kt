@@ -479,7 +479,7 @@ private fun OrganizeOverview(
                     ) { genre ->
                         Surface(
                             modifier = Modifier
-                                .width(170.dp)
+                                .width(ReiAnixTokens.Dimensions.organizeGenreCardWidth)
                                 .semantics {
                                     contentDescription = "Gênero " + genre.name
                                 },
@@ -941,7 +941,7 @@ private fun OrganizeCategoryCard(
 ) {
     Surface(
         modifier = Modifier
-            .width(156.dp)
+            .width(ReiAnixTokens.Dimensions.organizeCategoryCardWidth)
             .semantics {
                 contentDescription = category.label + ": " + category.count + " animes"
                 role = Role.Button
