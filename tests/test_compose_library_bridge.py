@@ -127,6 +127,14 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("MUST NOT CROSS THE COMPOSE BRIDGE", snapshot["animes"][0]["meta"].get("description"))
             self.assertEqual([], list((Path(directory) / "reianix-compose").glob(".*.tmp*")))
 
+    def test_external_cover_url_is_not_published_as_local_artwork(self):
+        source = self.anime_fixture()
+        source["meta"]["cover_cache"] = "/cache/does-not-exist.jpg"
+        source["meta"]["cover_url"] = "https://img.example/poster.jpg"
+        projected = ComposeLibraryBridge._project_anime(source)
+        self.assertIsNone(projected["artwork_local_path"])
+        self.assertEqual("https://img.example/poster.jpg", projected["artwork_external_url"])
+
     async def test_empty_and_unavailable_states_are_distinct(self):
         with tempfile.TemporaryDirectory() as directory:
             empty = ComposeLibraryBridge(directory, FakeLibrary([]), FakeStore([]))
