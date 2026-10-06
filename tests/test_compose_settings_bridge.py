@@ -78,6 +78,53 @@ def test_compose_settings_bridge_keeps_settings_categories_visible_when_capabili
     assert "Segurança" not in payload["categories"]
 
 
+def test_compose_settings_command_result_is_atomic_and_correlatable(tmp_path):
+    bridge = ComposeSettingsBridge(
+        str(tmp_path),
+        _FakeSettings({"appearance.theme": "dark"}),
+    )
+
+    bridge.write_command_result(
+        "req-55",
+        "set:appearance.theme",
+        "ACK",
+        operation_state="QUEUED",
+        key="appearance.theme",
+        message="Comando recebido.",
+    )
+    result_path = tmp_path / "reianix-compose" / "command-results" / "command-req-55.json"
+    assert result_path.exists()
+    ack = json.loads(result_path.read_text(encoding="utf-8"))
+    assert ack["requestId"] == "req-55"
+    assert ack["status"] == "ACK"
+    assert ack["operationState"] == "QUEUED"
+    assert ack["key"] == "appearance.theme"
+
+    bridge.write_command_result(
+        "req-55",
+        "set:appearance.theme",
+        "SUCCESS",
+        operation_state="SUCCESS",
+        key="appearance.theme",
+        value="light",
+    )
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["requestId"] == "req-55"
+    assert result["status"] == "SUCCESS"
+    assert result["operationState"] == "SUCCESS"
+    assert result["value"] == "light"
+    assert not any(path.name.endswith(".tmp") for path in result_path.parent.iterdir())
+
+
+def test_settings_request_id_ledger_is_idempotent_without_a_new_store(tmp_path):
+    from core.library_store import LibraryStore
+
+    store = LibraryStore(str(tmp_path))
+    assert store.claim_native_request("same-request", namespace="compose_settings") is True
+    assert store.has_native_request("same-request", namespace="compose_settings") is True
+    assert store.claim_native_request("same-request", namespace="compose_settings") is False
+    assert store.claim_native_request("same-request", namespace="other") is True
+
 def test_native_settings_integration_contract():
     root = Path(__file__).resolve().parents[1]
     main = (root / "main.py").read_text(encoding="utf-8")
