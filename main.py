@@ -135,6 +135,7 @@ async def main(page: ft.Page):
     if compose_settings_bridge.enabled:
         compose_settings_bridge.request_publish("startup")
     diagnostics = DiagnosticTimeline()
+    library.set_diagnostic_recorder(diagnostics.record)
     backup_service = BackupService(store, settings=settings, app_version="0.2.1")
     diagnostic_service = DiagnosticsService(store, timeline=diagnostics, app_version="0.2.1")
     diagnostics.record("APP_START", result="python_backend_initialized")
@@ -628,6 +629,32 @@ async def main(page: ft.Page):
 
     library.artwork.set_change_listener(_dispatch_artwork_event)
     library.artwork.set_diagnostic_recorder(diagnostics.record)
+
+    def _dispatch_metadata_change(event_name, payload):
+        """Publish background metadata localization changes on the main UI loop."""
+        event_name = str(event_name or "").strip().upper()
+        payload = dict(payload or {})
+
+        def apply_event():
+            if not ui_alive[0]:
+                return
+            if compose_library_bridge.enabled:
+                compose_library_bridge.request_publish("metadata_translation")
+            if (
+                event_name in {"TRANSLATION_SUCCEEDED", "TRANSLATION_CACHE_HIT"}
+                and not compose_primary_ui
+                and navigation.current == "details"
+                and (current[0] or {}).get("id") == payload.get("anime_id")
+            ):
+                task = asyncio.create_task(refresh_current_details())
+                task.set_name("reianix-details-translation-refresh")
+
+        try:
+            artwork_event_loop.call_soon_threadsafe(apply_event)
+        except RuntimeError:
+            logger.debug("[METADATA] main UI loop already closed", exc_info=True)
+
+    library.set_metadata_change_listener(_dispatch_metadata_change)
     navigation = NavigationController()
     performance.set_screen_provider(lambda: navigation.current)
     performance.install_page_hooks(page)
