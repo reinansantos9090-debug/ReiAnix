@@ -979,7 +979,7 @@ class TestFletAsyncCallbacks(unittest.TestCase):
         self.assertIn("inspect.isawaitable(result)", source)
 
 
-class Prompt1BuildIdentityContractTests(unittest.TestCase):
+class BuildIdentityContractTests(unittest.TestCase):
     def test_main_does_not_reference_legacy_back_started(self):
         main = (ROOT / "main.py").read_text(encoding="utf-8")
         self.assertNotIn("back_started", main)

@@ -86,7 +86,7 @@ class UiRenderPipelineTests(unittest.TestCase):
         self.assertIn("_mark_ui_dirty()", clear_helper)
         self.assertNotIn("_clear_screen_cache()\\n        _mark_ui_dirty()", clear_helper)
 
-    def test_prompt3_settings_auto_scroll_protection_remains(self):
+    def test_settings_auto_scroll_protection_remains(self):
         source = SETTINGS.read_text(encoding="utf-8")
         self.assertIn("SettingsFocusState", source)
         self.assertIn("handle_category_focus", source)

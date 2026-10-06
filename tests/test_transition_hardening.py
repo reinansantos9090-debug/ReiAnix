@@ -12,7 +12,7 @@ SERVICE = ROOT / "core/library_service.py"
 REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
 
 
-class Prompt18TransitionHardeningTests(unittest.TestCase):
+class TransitionHardeningTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.player = PLAYER.read_text(encoding="utf-8")

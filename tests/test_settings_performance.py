@@ -77,7 +77,7 @@ class SettingsLazyConstructionTests(unittest.TestCase):
         self.assertIn("def get_database_check()", source)
 
 
-    def test_prompt3_focus_guard_remains_intact(self):
+    def test_focus_guard_remains_intact(self):
         source = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
         self.assertIn("SettingsFocusState", source)
         self.assertIn("handle_category_focus", source)

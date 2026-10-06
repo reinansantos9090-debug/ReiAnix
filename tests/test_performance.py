@@ -137,7 +137,7 @@ class StorePaginationTests(unittest.TestCase):
             self.assertLessEqual(len(sections["pinned"]), 8)
             self.assertLessEqual(len(sections["movies"]), 8)
 
-    def test_prompt8_episode_filter_index_has_a_direct_query_plan(self):
+    def test_episode_filter_index_has_a_direct_query_plan(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             with store._conn() as con:
@@ -152,7 +152,7 @@ class StorePaginationTests(unittest.TestCase):
                 plan_text = " ".join(str(row["detail"]) for row in plan)
                 self.assertIn("idx_episodes_anime_season_number_abs", plan_text)
 
-    def test_prompt8_organize_assistidos_preserves_missing_completed_rows(self):
+    def test_organize_assistidos_preserves_missing_completed_rows(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime("missing-completed", {"title": "Missing Completed", "genres": "[]"})
@@ -166,7 +166,7 @@ class StorePaginationTests(unittest.TestCase):
             self.assertEqual(1, values["Assistidos"])
             self.assertEqual(0, values["Concluídos"])
 
-    def test_prompt8_summary_projections_preserve_expected_counts(self):
+    def test_summary_projections_preserve_expected_counts(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             completed = store.upsert_anime("complete", {"title": "Complete", "genres": "[]"})
@@ -185,7 +185,7 @@ class StorePaginationTests(unittest.TestCase):
             self.assertEqual(1, values["Concluídos"])
             self.assertEqual(1, values["Não iniciados"])
 
-    def test_prompt8_library_summary_returns_expected_counts(self):
+    def test_library_summary_returns_expected_counts(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime("summary", {"title": "Summary", "genres": "[]"})
