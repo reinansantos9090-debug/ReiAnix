@@ -60,7 +60,7 @@ def test_compose_settings_bridge_projects_only_persisted_settings(tmp_path):
     assert "Segurança" not in payload["categories"]
 
 
-def test_compose_settings_bridge_does_not_invent_missing_preference_category(tmp_path):
+def test_compose_settings_bridge_keeps_settings_categories_visible_when_capabilities_are_unavailable(tmp_path):
     bridge = ComposeSettingsBridge(
         str(tmp_path),
         _FakeSettings({"player.autoplay_next": True}),
@@ -73,7 +73,7 @@ def test_compose_settings_bridge_does_not_invent_missing_preference_category(tmp
     )
 
     assert payload["categories"]["Player"] is True
-    assert payload["categories"]["Armazenamento"] is False
+    assert payload["categories"]["Armazenamento"] is True
     assert payload["categories"]["Geral"] is False
     assert "Segurança" not in payload["categories"]
 
