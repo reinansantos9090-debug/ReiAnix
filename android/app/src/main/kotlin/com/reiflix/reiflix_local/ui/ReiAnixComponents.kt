@@ -639,7 +639,7 @@ fun ReiAnixAnimeCard(
             ),
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = MaterialTheme.colorScheme.background,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
@@ -815,7 +815,7 @@ fun ReiAnixEpisodeCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = MaterialTheme.colorScheme.background,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
