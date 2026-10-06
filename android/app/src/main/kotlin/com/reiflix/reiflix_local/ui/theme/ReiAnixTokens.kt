@@ -331,6 +331,11 @@ object ReiAnixTokens {
             lineHeight = 20.sp,
             fontWeight = FontWeight.Bold,
         )
+        val playerPauseGlyph = TextStyle(
+            fontSize = 30.sp,
+            lineHeight = 32.sp,
+            fontWeight = FontWeight.Bold,
+        )
         val playerActionGlyph = TextStyle(
             fontSize = 22.sp,
             lineHeight = 24.sp,
