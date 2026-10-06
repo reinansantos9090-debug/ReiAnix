@@ -298,7 +298,7 @@ private fun ReiAnixMyListReadyContent(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 280.dp)
+                            .heightIn(min = ReiAnixTokens.Dimensions.emptyStateMinHeight)
                             .padding(vertical = ReiAnixTokens.Spacing.xxl),
                         contentAlignment = Alignment.Center,
                     ) {
