@@ -154,12 +154,24 @@ class ArtworkEngine:
         if callable(recorder):
             try:
                 import json
-                recorder(
-                    event_name,
-                    source="artwork",
-                    result=json.dumps(payload, ensure_ascii=False, separators=(",", ":"))[:2000],
-                    error=str(error)[:500] if error else None,
-                )
+                diagnostic_names = [event_name]
+                # Keep the established event names for compatibility while
+                # also exposing the shorter Prompt-56 contract names.
+                diagnostic_aliases = {
+                    "ARTWORK_DOWNLOAD_STARTED": "ARTWORK_DOWNLOAD_START",
+                    "ARTWORK_DOWNLOAD_SUCCEEDED": "ARTWORK_DOWNLOAD_SUCCESS",
+                }
+                alias = diagnostic_aliases.get(event_name)
+                if alias:
+                    diagnostic_names.append(alias)
+                serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))[:2000]
+                for diagnostic_name in diagnostic_names:
+                    recorder(
+                        diagnostic_name,
+                        source="artwork",
+                        result=serialized,
+                        error=str(error)[:500] if error else None,
+                    )
             except Exception:
                 logger.exception("Artwork diagnostic recorder failed")
 
