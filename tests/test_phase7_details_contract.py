@@ -43,6 +43,18 @@ class Phase7DetailsContractTests(unittest.TestCase):
         self.assertNotIn("history", anilist)
         self.assertNotIn("file_path", anilist)
 
+    def test_compose_details_has_no_dead_characters_or_related_sections(self):
+        details = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
+        self.assertNotIn('text = "Personagens"', details)
+        self.assertNotIn('text = "Relacionados"', details)
+        self.assertNotIn("enabled = false", details)
+
+    def test_compose_details_is_projection_only(self):
+        details = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt").casefold()
+        self.assertNotIn("anilistclient", details)
+        self.assertNotIn("urlconnection", details)
+        self.assertNotIn("http", details)
+
     def test_palette_cache_belongs_to_artwork_engine_not_sqlite_schema(self):
         artwork = self.read("core/artwork.py")
         self.assertIn(".reiflix-palette-", artwork)
