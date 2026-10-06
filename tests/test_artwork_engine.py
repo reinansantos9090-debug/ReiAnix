@@ -204,7 +204,11 @@ class ArtworkEngineTests(unittest.TestCase):
         anime = self._media("Artwork events")
         self._remote(anime)
         events = []
+        diagnostics = []
         self.engine.set_change_listener(lambda name, payload: events.append((name, payload)))
+        self.engine.set_diagnostic_recorder(
+            lambda name, **payload: diagnostics.append((name, payload))
+        )
         self.engine._downloader = lambda _url: (JPEG, "image/jpeg", 200)
         result = self.engine.request("anime", anime, "poster", blocking=True)
         names = [name for name, _ in events]
@@ -212,10 +216,10 @@ class ArtworkEngineTests(unittest.TestCase):
         self.assertIn("ARTWORK_REQUESTED", names)
         self.assertIn("ARTWORK_DOWNLOAD_STARTED", names)
         self.assertIn("ARTWORK_DOWNLOAD_SUCCEEDED", names)
-        # Prompt-56 diagnostics expose the concise aliases as well; the listener
-        # contract above remains backward compatible.
-        self.assertIn("ARTWORK_DOWNLOAD_START", [name for name, _ in events])
-        self.assertIn("ARTWORK_DOWNLOAD_SUCCESS", [name for name, _ in events])
+        # Prompt-56 concise aliases are diagnostics, not listener event names.
+        diagnostic_names = [name for name, _ in diagnostics]
+        self.assertIn("ARTWORK_DOWNLOAD_START", diagnostic_names)
+        self.assertIn("ARTWORK_DOWNLOAD_SUCCESS", diagnostic_names)
         self.assertIn("ARTWORK_PUBLISHED", names)
         published = next(payload for name, payload in events if name == "ARTWORK_PUBLISHED")
         self.assertEqual(int(published["entity_id"]), anime)
