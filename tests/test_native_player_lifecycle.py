@@ -71,11 +71,22 @@ class NativePlayerLifecycleTests(unittest.TestCase):
             self.player.index("private fun prepareCurrentMedia"):
             self.player.index("private fun createPlayerListener")
         ]
-        guard = prepare.index('if (reason != "initial")')
+        guards = []
+        cursor = 0
+        while True:
+            found = prepare.find('if (reason != "initial")', cursor)
+            if found < 0:
+                break
+            guards.append(found)
+            cursor = found + 1
         set_media = prepare.index("player.setMediaItem(mediaItem, initialPositionMsForGeneration)")
         detach = prepare.index("detachPlayerViewForMediaReset(reason)")
-        self.assertLess(guard, set_media)
-        self.assertLess(set_media, detach)
+        reattach = prepare.index("reattachPlayerViewAfterMediaReset(reason)")
+        self.assertEqual(2, len(guards))
+        self.assertLess(guards[0], detach)
+        self.assertLess(detach, set_media)
+        self.assertLess(set_media, guards[1])
+        self.assertLess(guards[1], reattach)
 
     def test_new_intent_cannot_inherit_stale_foreground_resume_state(self):
         reuse = self.player[
