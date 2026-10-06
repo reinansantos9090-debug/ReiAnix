@@ -6,11 +6,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,11 +46,11 @@ fun ReiAnixLibraryFolderOnboarding(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Folder,
-                contentDescription = null,
+            Text(
+                text = "📁",
                 modifier = Modifier.size(64.dp),
-                tint = ReiAnixTokens.Colors.primary,
+                style = MaterialTheme.typography.displaySmall,
+                textAlign = TextAlign.Center,
             )
 
             Text(
