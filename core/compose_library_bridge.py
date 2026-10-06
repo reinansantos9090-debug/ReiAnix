@@ -20,6 +20,18 @@ from core.storage_access import StorageCapabilities, saf_source_identity
 
 class ComposeLibraryBridge:
     SNAPSHOT_DIR_NAME = "reianix-compose"
+
+    @staticmethod
+    def _valid_local_artwork_path(path: Any) -> str | None:
+        """Return only a real, non-empty local filesystem artwork path."""
+        value = str(path or "").strip()
+        if not value or value.startswith(("content://", "http://", "https://")):
+            return None
+        try:
+            file_path = Path(value)
+            return str(file_path) if file_path.is_file() and file_path.stat().st_size > 0 else None
+        except OSError:
+            return None
     SNAPSHOT_FILE_NAME = "library.json"
     COMMAND_RESULT_DIR_NAME = "command-results"
     SCHEMA_VERSION = 1
@@ -343,14 +355,16 @@ class ComposeLibraryBridge:
             "personal_note": source.get("personal_note"),
 
             "artwork_local_path": (
-                (poster_artwork or {}).get("local_path")
-                or meta.get("cover_cache")
+                cls._valid_local_artwork_path((poster_artwork or {}).get("local_path"))
+                or cls._valid_local_artwork_path(meta.get("cover_cache"))
             ),
             "artwork_external_url": (
                 (poster_artwork or {}).get("external_url")
                 or meta.get("cover_url")
             ),
-            "backdrop_local_path": (backdrop_artwork or {}).get("local_path"),
+            "backdrop_local_path": cls._valid_local_artwork_path(
+                (backdrop_artwork or {}).get("local_path")
+            ),
             "backdrop_external_url": (
                 (backdrop_artwork or {}).get("external_url")
                 or meta.get("banner_url")
