@@ -117,6 +117,7 @@ fun ReiAnixSearchRoute(
     viewModel: ReiAnixLibraryViewModel,
 ) {
     val libraryState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
+    val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
@@ -149,6 +150,7 @@ fun ReiAnixSearchRoute(
 
     ReiAnixSearchScreen(
         libraryState = libraryState,
+        browseAnimes = catalogState.animes,
         searchQuery = searchQuery,
         searchState = searchState,
         genres = genres,
@@ -170,6 +172,7 @@ fun ReiAnixSearchRoute(
 @Composable
 fun ReiAnixSearchScreen(
     libraryState: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
+    browseAnimes: List<ReiAnixAnimeUiModel> = emptyList(),
     searchQuery: String,
     searchState: ReiAnixSearchUiState,
     genres: List<ReiAnixGenreUiModel> = emptyList(),
@@ -343,8 +346,9 @@ fun ReiAnixSearchScreen(
                         retryLabel = "Tentar novamente",
                     )
 
-                    searchState.query.isBlank() -> SearchEmptyQueryState(
-                        librarySize = libraryState.animeCount,
+                    searchState.query.isBlank() -> SearchBrowseState(
+                        animes = browseAnimes,
+                        onOpenDetails = onOpenDetails,
                     )
 
                     searchState.results.isEmpty() -> SearchNoResultsState(
@@ -531,6 +535,115 @@ private fun SearchResultRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
             )
+        }
+    }
+}
+
+@Composable
+private fun SearchBrowseState(
+    animes: List<ReiAnixAnimeUiModel>,
+    onOpenDetails: (Long) -> Unit,
+) {
+    val suggestions = remember(animes) {
+        animes
+            .asSequence()
+            .sortedWith(
+                compareBy<ReiAnixAnimeUiModel> { it.title.lowercase(Locale.ROOT) }
+                    .thenBy { it.id },
+            )
+            .take(6)
+            .toList()
+    }
+    val recent = remember(animes) {
+        animes
+            .asSequence()
+            .sortedWith(
+                compareByDescending<ReiAnixAnimeUiModel> {
+                    it.lastPlayedAt ?: it.addedAt ?: Double.NEGATIVE_INFINITY
+                }.thenBy { it.title.lowercase(Locale.ROOT) }
+                    .thenBy { it.id },
+            )
+            .take(6)
+            .toList()
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
+        contentPadding = PaddingValues(
+            start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+            end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+            top = ReiAnixTokens.Spacing.lg,
+            bottom = ReiAnixTokens.Spacing.huge,
+        ),
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+    ) {
+        if (suggestions.isNotEmpty()) {
+            item(key = "search-suggestions-title") {
+                Text(
+                    text = "Sugestões",
+                    style = ReiAnixTokens.TypographyTokens.sectionTitle,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            item(key = "search-suggestions") {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                ) {
+                    suggestions.chunked(3).forEachIndexed { index, row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                        ) {
+                            row.forEach { anime ->
+                                ReiAnixChip(
+                                    text = anime.title,
+                                    onClick = { onOpenDetails(anime.id) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            repeat(3 - row.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (recent.isNotEmpty()) {
+            item(key = "search-library-title") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Sua biblioteca",
+                        style = ReiAnixTokens.TypographyTokens.sectionTitle,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "Ver tudo  ›",
+                        style = MaterialTheme.TypographyTokensCompat.sectionAction,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            items(
+                items = recent,
+                key = { anime -> "search-browse:" + anime.stableKey },
+                contentType = { "search-browse-row" },
+            ) { anime ->
+                SearchResultRow(
+                    anime = anime,
+                    onClick = { onOpenDetails(anime.id) },
+                )
+            }
+        } else if (suggestions.isEmpty()) {
+            SearchEmptyQueryState(librarySize = 0)
         }
     }
 }
