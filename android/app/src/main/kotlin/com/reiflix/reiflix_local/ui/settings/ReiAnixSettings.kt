@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -1143,7 +1144,7 @@ fun ReiAnixSettingsRow(
             )
             .semantics(mergeDescendants = true) {
                 contentDescription = if (description.isBlank()) title else "$title. $description"
-                this.role = Role.Button
+
             },
     ) {
         Row(
@@ -1289,7 +1290,7 @@ private fun BooleanSettingCard(
                 )
                 .semantics(mergeDescendants = true) {
                     contentDescription = "$title. $description"
-                    this.role = Role.Switch
+
                     stateDescription = if (checked) "Ativado" else "Desativado"
                 }
                 .padding(
@@ -1620,10 +1621,12 @@ private fun ReiAnixSettingsAccountCard(
         onClick = onClick,
     ) {
         Icon(
-            imageVector = androidx.compose.material.icons.filled.ChevronRight,
+            imageVector = Icons.Filled.ArrowBack,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+            modifier = Modifier
+                .size(ReiAnixTokens.Dimensions.iconMedium)
+                .rotate(180f),
         )
     }
 }
