@@ -46,7 +46,6 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
 import io.flutter.embedding.android.FlutterFragmentActivity
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
