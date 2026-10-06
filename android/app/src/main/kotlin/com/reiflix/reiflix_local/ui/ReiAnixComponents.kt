@@ -109,7 +109,7 @@ fun ReiAnixBadge(
     tone: ReiAnixBadgeTone = ReiAnixBadgeTone.Neutral,
 ) {
     val container = when (tone) {
-        ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.primaryContainer
+        ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.primary
         ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success.copy(alpha = ReiAnixTokens.Colors.statusContainerAlpha)
         ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning.copy(alpha = ReiAnixTokens.Colors.statusContainerAlpha)
         ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.errorContainer
@@ -117,7 +117,7 @@ fun ReiAnixBadge(
         ReiAnixBadgeTone.Neutral -> MaterialTheme.colorScheme.surfaceContainer
     }
     val content = when (tone) {
-        ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.onPrimaryContainer
+        ReiAnixBadgeTone.Primary -> MaterialTheme.colorScheme.onPrimary
         ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success
         ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning
         ReiAnixBadgeTone.Error -> ReiAnixTokens.Colors.onErrorContainer
@@ -248,7 +248,7 @@ fun ReiAnixSecondaryButton(
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
-            color = if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
+            color = if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.62f) else MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
         leadingIcon?.let {
@@ -406,7 +406,7 @@ fun ReiAnixChip(
                 style = MaterialTheme.typography.labelMedium,
                 color = when {
                     !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f)
-                    selected -> MaterialTheme.colorScheme.onPrimaryContainer
+                    selected -> MaterialTheme.colorScheme.onPrimary
                     else -> MaterialTheme.colorScheme.onSurface
                 },
                 maxLines = 1,
@@ -815,7 +815,7 @@ fun ReiAnixEpisodeCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
