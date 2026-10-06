@@ -54,6 +54,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerControls
+import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerTopControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerCenterControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerBottomControls
@@ -5486,6 +5487,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         private fun animateZoomToFit() {
             zoomAnimator?.cancel()
+            if (!ReiAnixMotionPolicy.systemAnimationsEnabled()) {
+                zoomScale = 1f
+                zoomTranslationX = 0f
+                zoomTranslationY = 0f
+                restoreConfiguredAspectMode()
+                applyZoomTransform()
+                showFeedback("FIT", 900L)
+                zoomAnimator = null
+                return
+            }
+
             val startScale = zoomScale
             val startX = zoomTranslationX
             val startY = zoomTranslationY
