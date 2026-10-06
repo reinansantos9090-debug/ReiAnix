@@ -261,7 +261,7 @@ class StorageOnboardingTests(unittest.TestCase):
         onboarding_function = next(
             (
                 node
-                for node in tree.body
+                for node in ast.walk(tree)
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name == "_set_storage_onboarding_state"
             ),
