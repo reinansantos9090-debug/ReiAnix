@@ -111,6 +111,11 @@ internal object ReiAnixLibrarySnapshotCodec {
         return ReiAnixStorageUiState(
             mediaReadState = capabilities.optString("mediaReadState", "denied").trim().lowercase(),
             broadStorageState = capabilities.optString("broadStorageState", "unavailable").trim().lowercase(),
+            onboardingState = raw.optString("onboardingState", "checking").trim().lowercase(),
+            onboardingMessage = raw.optString("onboardingMessage").trim()
+                .takeIf { it.isNotEmpty() && it != "null" },
+            onboardingError = raw.optString("onboardingError").trim()
+                .takeIf { it.isNotEmpty() && it != "null" },
             safRoots = capabilities.stringList("safRoots"),
             safSelectionPending = raw.optBoolean("safSelectionPending", false),
             safRootIdentities = capabilities.stringList("safRootIdentities"),
