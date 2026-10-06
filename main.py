@@ -2975,7 +2975,6 @@ async def main(page: ft.Page):
             return
         if _configured_valid_library_saf_roots() or saf_selection.pending:
             return
-        storage_onboarding["auto_launch_requested"] = True
         _set_storage_onboarding_state(
             "NEEDS_FOLDER",
             message=(
@@ -3046,6 +3045,7 @@ async def main(page: ft.Page):
             result=result,
         )
         if not storage_onboarding["auto_launch_requested"]:
+            storage_onboarding["auto_launch_requested"] = True
             page.run_task(_auto_launch_storage_onboarding)
 
     async def refresh_library(_=None, *, _home_refresh_context=None):
