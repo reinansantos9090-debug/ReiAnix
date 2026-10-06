@@ -7,7 +7,7 @@ from pathlib import Path
 from core.compose_library_bridge import ComposeLibraryBridge
 
 
-class Prompt13DetailsActionsProgressTests(unittest.TestCase):
+class DetailsActionsProgressTests(unittest.TestCase):
     def test_compose_projection_uses_canonical_special_only_playback_target(self):
         class FakeLibrary:
             def __init__(self):
@@ -71,7 +71,7 @@ class Prompt13DetailsActionsProgressTests(unittest.TestCase):
             bridge = ComposeLibraryBridge(directory, library, FakeStore())
 
             async def publish():
-                bridge.request_publish("prompt13")
+                bridge.request_publish("stage13")
                 await bridge.wait_for_idle()
 
             asyncio.run(publish())

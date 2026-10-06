@@ -41,7 +41,7 @@ class FakeStore:
         ]
 
 
-class Prompt17ComposeStorageBridgeTest(unittest.TestCase):
+class ComposeStorageBridgeTest(unittest.TestCase):
     def test_storage_projection_uses_canonical_capabilities_and_configured_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             bridge = ComposeLibraryBridge(
@@ -62,7 +62,7 @@ class Prompt17ComposeStorageBridgeTest(unittest.TestCase):
                 },
             )
             async def publish():
-                bridge.request_publish("prompt17")
+                bridge.request_publish("stage17")
                 await bridge.wait_for_idle()
 
             asyncio.run(publish())

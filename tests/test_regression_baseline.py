@@ -94,7 +94,7 @@ class RegressionBaselineTests(unittest.TestCase):
 
     # Compatibility alias kept because the blocking contract runner invokes the
     # historical test name directly. The assertion body follows the current
-    # Prompt 04 rule: generic horizontal swipe must not seek.
+    # earlier validation stage 04 rule: generic horizontal swipe must not seek.
     def test_player_contracts_and_horizontal_seek_are_present(self):
         self.test_player_contracts_and_horizontal_swipe_seek_is_forbidden()
 

@@ -8,7 +8,7 @@ EPISODE_MODEL = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui
 INSTRUMENTED = ROOT / "android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetailsInstrumentedTest.kt"
 
 
-class Prompt12DetailsComposeContractTests(unittest.TestCase):
+class DetailsComposeContractTests(unittest.TestCase):
     def test_details_uses_lazy_lists_and_stable_episode_identity(self):
         source = DETAILS.read_text(encoding="utf-8")
         self.assertIn("LazyColumn(", source)
@@ -32,7 +32,7 @@ class Prompt12DetailsComposeContractTests(unittest.TestCase):
         self.assertIn("val progressFraction: Float", model)
         self.assertIn("val progressPercent: Int?", model)
 
-    def test_required_prompt12_compose_regressions_have_tests(self):
+    def test_required_stage12_compose_regressions_have_tests(self):
         tests = INSTRUMENTED.read_text(encoding="utf-8")
         self.assertIn("episodeListKeepsEpisodeIdentityWhenProgressChanges", tests)
         self.assertIn("seasonSelectorShowsOnlyTheSelectedSeasonInCanonicalOrder", tests)

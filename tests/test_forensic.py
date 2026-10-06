@@ -6,7 +6,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PLAYER = ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt"
 
 
-class Prompt41ForensicTests(unittest.TestCase):
+class ForensicTests(unittest.TestCase):
     def test_player_reuse_watchdog_binds_to_new_player_generation(self):
         source = PLAYER.read_text(encoding="utf-8")
         self.assertIn("private fun armEpisodeChangeTimeout(reason: String)", source)

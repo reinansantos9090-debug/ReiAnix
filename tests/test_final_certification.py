@@ -5,7 +5,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_prompt32_native_compose_surface_contract_is_present():
+def test_native_compose_surface_contract_is_present():
     navigation = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
     shell = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/shell/ReiAnixAppShell.kt")
     theme = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt")
@@ -18,7 +18,7 @@ def test_prompt32_native_compose_surface_contract_is_present():
     assert "ReiAnixComposeTheme" in theme
 
 
-def test_prompt32_details_and_library_use_stable_episode_identity():
+def test_details_and_library_use_stable_episode_identity():
     models = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/LibraryUiModels.kt")
     details = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
     assert 'get() = "episode:" + id' in models
@@ -27,7 +27,7 @@ def test_prompt32_details_and_library_use_stable_episode_identity():
     assert "collectAsStateWithLifecycle" in details
 
 
-def test_prompt32_canonical_local_playback_contract_is_preserved():
+def test_canonical_local_playback_contract_is_preserved():
     bridge = read("core/android_bridge.py")
     player = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
     main = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
@@ -40,7 +40,7 @@ def test_prompt32_canonical_local_playback_contract_is_preserved():
     assert not (ROOT / "views/player_view.py").exists()
 
 
-def test_prompt32_storage_and_lifecycle_contracts_are_preserved():
+def test_storage_and_lifecycle_contracts_are_preserved():
     manifest = read("android/app/src/main/AndroidManifest.xml")
     main = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
     for permission in (
@@ -57,7 +57,7 @@ def test_prompt32_storage_and_lifecycle_contracts_are_preserved():
     assert "override fun onPause()" in main
 
 
-def test_prompt32_scanner_and_native_index_contracts_are_present():
+def test_scanner_and_native_index_contracts_are_present():
     scanner = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt")
     media = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt")
     broad = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt")
@@ -69,7 +69,7 @@ def test_prompt32_scanner_and_native_index_contracts_are_present():
     assert "stableIdentity(" in index
 
 
-def test_prompt32_runtime_suite_exists_and_is_not_silently_disabled():
+def test_runtime_suite_exists_and_is_not_silently_disabled():
     workflow = read(".github/workflows/android_instrumented.yml")
     script = read("scripts/run_android_instrumented.sh")
     expected_tests = (
@@ -87,7 +87,7 @@ def test_prompt32_runtime_suite_exists_and_is_not_silently_disabled():
     assert "on:\n  workflow_dispatch:" in workflow
 
 
-def test_prompt32_no_forbidden_remote_media_pipeline_was_added():
+def test_no_forbidden_remote_media_pipeline_was_added():
     player = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").lower()
     bridge = read("core/android_bridge.py").lower()
     assert "okhttp" not in player
@@ -102,7 +102,7 @@ def test_prompt32_no_forbidden_remote_media_pipeline_was_added():
     assert 'scheme not in {"content", "file"}' in normalized
 
 
-def test_prompt32_episode_reconciliation_path_is_canonical_after_player_exit():
+def test_episode_reconciliation_path_is_canonical_after_player_exit():
     main = read("main.py")
     start = main.index("elif event_type == 'player_exited':")
     end = main.index("elif event_type == 'google_sign_in_started':", start)
@@ -117,7 +117,7 @@ def test_prompt32_episode_reconciliation_path_is_canonical_after_player_exit():
     assert "store.save_progress" in block
 
 
-def test_prompt32_no_known_ui_tree_mutation_regression_was_reintroduced():
+def test_no_known_ui_tree_mutation_regression_was_reintroduced():
     details = read("views/details_view.py")
     compose_details = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
     assert "episode_column.controls.clear()" not in details
@@ -126,7 +126,7 @@ def test_prompt32_no_known_ui_tree_mutation_regression_was_reintroduced():
     assert "items(\n                items = season.episodes" in compose_details
 
 
-def test_prompt32_no_weakening_or_fake_runtime_pass_contracts():
+def test_no_weakening_or_fake_runtime_pass_contracts():
     runner = read("scripts/release_certification.py")
     tests = read("tests/test_certification_runner.py")
     assert "ALLOWED" in runner

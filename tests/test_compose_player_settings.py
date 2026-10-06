@@ -50,7 +50,7 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_prompt20_compose_exposes_only_existing_player_preferences():
+def test_compose_exposes_only_existing_player_preferences():
     settings = read(SETTINGS)
     compose = read(COMPOSE)
     for key in PLAYER_KEYS + GESTURE_KEYS + AUDIO_KEYS:
@@ -62,7 +62,7 @@ def test_prompt20_compose_exposes_only_existing_player_preferences():
         assert f'"{category}"' in compose
 
 
-def test_prompt20_compose_writes_to_existing_python_settings_store():
+def test_compose_writes_to_existing_python_settings_store():
     main = read(MAIN)
     repository = read(REPOSITORY)
 
@@ -74,7 +74,7 @@ def test_prompt20_compose_writes_to_existing_python_settings_store():
     assert "NativeMailbox.write(appContext, event)" in repository
 
 
-def test_prompt20_player_handoff_contains_every_migrated_preference():
+def test_player_handoff_contains_every_migrated_preference():
     main = read(MAIN)
     request = read(REQUEST)
     player = read(PLAYER)
@@ -114,7 +114,7 @@ def test_prompt20_player_handoff_contains_every_migrated_preference():
         assert extra in player
 
 
-def test_prompt20_does_not_create_false_subtitle_delay_control():
+def test_does_not_create_false_subtitle_delay_control():
     compose = read(COMPOSE)
     assert "audio.subtitle_delay" not in compose
     assert "Delay global de legenda" not in compose

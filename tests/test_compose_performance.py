@@ -11,7 +11,7 @@ REPOSITORY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/
 ARTWORK = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt"
 
 
-class Prompt26ComposePerformanceTests(unittest.TestCase):
+class ComposePerformanceTests(unittest.TestCase):
     def read(self, path):
         return path.read_text(encoding="utf-8")
 
@@ -60,7 +60,7 @@ class Prompt26ComposePerformanceTests(unittest.TestCase):
         self.assertIn("withContext(Dispatchers.IO)", artwork)
         self.assertIn("collectAsStateWithLifecycle()", self.read(SEARCH))
 
-    def test_prompt26_does_not_reintroduce_database_or_filesystem_access_to_compose_ui(self):
+    def test_does_not_reintroduce_database_or_filesystem_access_to_compose_ui(self):
         sources = []
         for path in (HOME, DETAILS, SEARCH):
             sources.append(self.read(path))
