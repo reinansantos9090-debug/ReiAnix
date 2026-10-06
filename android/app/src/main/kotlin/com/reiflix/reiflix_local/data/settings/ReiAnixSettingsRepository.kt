@@ -111,7 +111,24 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
      */
     fun requestAction(action: String) {
         val normalizedAction = action.trim().lowercase()
-        if (normalizedAction !in setOf("reset_player")) return
+        if (
+            normalizedAction !in setOf(
+                "reset_player",
+                "reset_all_settings",
+                "clear_anilist_cache",
+                "settings_export",
+                "settings_import",
+                "select_saf",
+                "request_media_access",
+                "check_storage_access",
+                "open_broad_storage_settings",
+                "backup_create",
+                "backup_restore",
+                "backup_integrity",
+                "backup_reconcile",
+                "diagnostic_export",
+            )
+        ) return
         scope.launch {
             val requestId = UUID.randomUUID().toString()
             val event = JSONObject()

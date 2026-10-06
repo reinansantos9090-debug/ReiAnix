@@ -70,7 +70,19 @@ def test_compose_writes_to_existing_python_settings_store():
 
     assert "compose_settings_set" in main
     assert "settings.EXPORT_KEYS" in main
-    assert 'key.startswith(("player.", "gestures.", "audio."))' in main
+    scope_start = main.index("supported_compose_settings", main.index("compose_settings_set"))
+    scope_end = main.index("if setting_key not in supported_compose_settings:", scope_start)
+    supported_scope = main[scope_start:scope_end]
+    for prefix in (
+        '"library."',
+        '"player."',
+        '"gestures."',
+        '"audio."',
+        '"metadata."',
+        '"artwork."',
+    ):
+        assert prefix in supported_scope
+    assert "key.startswith(" in supported_scope
     assert "await asyncio.to_thread(settings.set, setting_key, setting_value)" in main
     assert "Compose does not keep a second preference store" in repository
     assert "NativeMailbox.write(appContext, event)" in repository

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
@@ -30,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -84,19 +86,31 @@ data class ReiAnixSettingsCategoryUiModel(
             ReiAnixSettingsCategoryUiModel("Backup e Restauração", "Backup, restauração, integridade e reconciliação", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Privacidade", "Dados locais e conectividade", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Varredura", "Estado e histórico das varreduras", Icons.Filled.Refresh),
-            ReiAnixSettingsCategoryUiModel("Diagnóstico", "Informações técnicas e diagnóstico", Icons.Filled.Settings),
+            ReiAnixSettingsCategoryUiModel("Diagnóstico", "Informações técnicas e diagnóstico", Icons.Filled.Refresh),
             ReiAnixSettingsCategoryUiModel("Sobre", "Versão e componentes do ReiAnix", Icons.Filled.Info),
         )
     }
 }
 
 
-private val NativeManagedSettingsCategories =
-    ReiAnixSettingsCategoryUiModel.defaultCategories()
-        .asSequence()
-        .map { it.label }
-        .filterNot { it == "Armazenamento" }
-        .toSet()
+private val NativeManagedSettingsCategories = setOf(
+    "Conta",
+    "Geral",
+    "Aparência",
+    "Biblioteca",
+    "Player",
+    "Gestos",
+    "Áudio e Legendas",
+    "Metadata",
+    "Artwork",
+    "Armazenamento",
+    "Dados e Cache",
+    "Backup e Restauração",
+    "Privacidade",
+    "Varredura",
+    "Diagnóstico",
+    "Sobre",
+)
 
 private data class SettingChoice(
     val value: String,
@@ -230,7 +244,7 @@ fun ReiAnixSettingsRoute(
             onBack = { selectedCategory = null },
             onUpdateSetting = viewModel::setSetting,
             onAccountAction = viewModel::requestAccountAction,
-            onResetPlayer = viewModel::requestAction,
+            onAction = viewModel::requestAction,
             onRetry = viewModel::refresh,
         )
     } else {
@@ -345,14 +359,70 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onBack: () -> Unit,
     onUpdateSetting: (String, String) -> Unit,
     onAccountAction: (String) -> Unit,
-    onResetPlayer: (String) -> Unit,
+    onAction: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
+    var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    fun requestDestructiveAction(action: String) {
+        if (state.settings["app.confirm_destructive"] == "true") {
+            pendingConfirmationAction = action
+        } else {
+            onAction(action)
+        }
+    }
+
     ReiAnixResponsiveRoot {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
+        pendingConfirmationAction?.let { action ->
+            val (title, message, confirmLabel) = when (action) {
+                "clear_anilist_cache" -> Triple(
+                    "Limpar cache de artwork?",
+                    "A biblioteca, progresso, favoritos, notas, pins e arquivos não serão apagados.",
+                    "Limpar",
+                )
+                "reset_all_settings" -> Triple(
+                    "Restaurar todas as configurações?",
+                    "Somente as preferências do ReiAnix serão restauradas. Biblioteca, consumo, metadata manual, artwork, arquivos e permissões permanecem intactos.",
+                    "Restaurar",
+                )
+                "backup_restore" -> Triple(
+                    "Restaurar backup?",
+                    "O BackupService existente validará o arquivo antes de alterar o estado lógico local.",
+                    "Continuar",
+                )
+                else -> Triple(
+                    "Confirmar ação",
+                    "Confirme para continuar.",
+                    "Confirmar",
+                )
+            }
+            AlertDialog(
+                onDismissRequest = { pendingConfirmationAction = null },
+                title = { Text(title) },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            pendingConfirmationAction = null
+                            onAction(action)
+                        },
+                    ) {
+                        Text(confirmLabel)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingConfirmationAction = null }) {
+                        Text("Cancelar")
+                    }
+                },
+            )
+        }
+
         LazyColumn(
             state = rememberSaveable(saver = LazyListState.Saver) { LazyListState() },
             modifier = Modifier
@@ -675,7 +745,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar",
-                                    onClick = { onResetPlayer("reset_player") },
+                                    onClick = { onAction("reset_player") },
                                     modifier = Modifier.align(Alignment.End),
                                 )
                             }
@@ -738,6 +808,316 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             checked = state.settings["metadata.auto_match"] == "true",
                             onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
                         )
+                    }
+                }
+
+                "Artwork" -> {
+                    item(key = "setting:artwork.enabled") {
+                        BooleanSettingCard(
+                            keyName = "artwork.enabled",
+                            title = "Artwork remoto",
+                            description = "Permite downloads remotos de capas pelo Artwork Engine existente.",
+                            checked = state.settings["artwork.enabled"] == "true",
+                            onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:artwork.cache_limit_mb") {
+                        ChoiceSettingCard(
+                            keyName = "artwork.cache_limit_mb",
+                            title = "Limite do cache de artwork",
+                            description = "Limite persistido aplicado ao único Artwork Engine.",
+                            selectedValue = state.settings["artwork.cache_limit_mb"],
+                            choices = listOf(
+                                SettingChoice("64", "64 MB"),
+                                SettingChoice("128", "128 MB"),
+                                SettingChoice("256", "256 MB"),
+                                SettingChoice("512", "512 MB"),
+                            ),
+                            onSelected = { onUpdateSetting("artwork.cache_limit_mb", it) },
+                        )
+                    }
+                    item(key = "artwork:clear-cache") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Limpar cache de artwork",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Remove somente o cache temporário administrado pelo catálogo.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Limpar cache",
+                                    onClick = { requestDestructiveAction("clear_anilist_cache") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                "Armazenamento" -> {
+                    val storage = state.storage
+                    item(key = "storage:status") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Estado real do armazenamento",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Vídeos: ${storageMediaAccessLabel(storage.mediaReadState)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Armazenamento amplo: ${storageBroadAccessLabel(storage.broadStorageState)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "SAF autorizadas: ${storage.safRootCount} • volumes removíveis: ${storage.removableVolumeCount}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                storage.api?.let {
+                                    Text(
+                                        text = "API Android: $it • ciclo: ${storage.lifecycleState}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                if (storage.safSelectionPending) {
+                                    ReiAnixBadge(
+                                        text = "Seleção de pasta em andamento",
+                                        tone = ReiAnixBadgeTone.Info,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    item(key = "storage:actions") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                ReiAnixPrimaryButton(
+                                    text = "Adicionar pasta",
+                                    onClick = { onAction("select_saf") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Verificar acesso",
+                                    onClick = { onAction("check_storage_access") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                if (storage.mediaReadState != "full") {
+                                    ReiAnixSecondaryButton(
+                                        text = "Solicitar acesso aos vídeos",
+                                        onClick = { onAction("request_media_access") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                                if (storage.broadStorageState != "available") {
+                                    ReiAnixSecondaryButton(
+                                        text = "Armazenamento amplo",
+                                        onClick = { onAction("open_broad_storage_settings") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                "Dados e Cache" -> {
+                    item(key = "data-cache:info") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Dados locais",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "As preferências continuam persistidas pelo SettingsStore existente.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(
+                                    text = "Fonte única: SettingsStore",
+                                    tone = ReiAnixBadgeTone.Neutral,
+                                )
+                            }
+                        }
+                    }
+                    item(key = "data-cache:actions") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                ReiAnixPrimaryButton(
+                                    text = "Exportar configurações",
+                                    onClick = { onAction("settings_export") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Importar configurações",
+                                    onClick = { onAction("settings_import") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Limpar cache de artwork",
+                                    onClick = { pendingConfirmationAction = "clear_anilist_cache" },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Restaurar configurações",
+                                    onClick = { requestDestructiveAction("reset_all_settings") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                "Backup e Restauração" -> {
+                    item(key = "backup:info") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Backup e restauração",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Utiliza o BackupService e o schema SQLite existentes. Nenhum banco paralelo é criado.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    item(key = "backup:actions") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                ReiAnixPrimaryButton(
+                                    text = "Fazer backup",
+                                    onClick = { onAction("backup_create") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Restaurar backup",
+                                    onClick = { requestDestructiveAction("backup_restore") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Verificar integridade",
+                                    onClick = { onAction("backup_integrity") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Reconciliar arquivos",
+                                    onClick = { onAction("backup_reconcile") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                "Diagnóstico" -> {
+                    val diagnosticStorage = state.storage
+                    item(key = "diagnostic:info") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Diagnóstico técnico",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Versão: ${BuildConfig.VERSION_NAME}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Revisão do snapshot: ${state.revision}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "API Android: ${storageApiLabel(diagnosticStorage.api)} • ciclo: ${diagnosticStorage.lifecycleStateLabel()}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(
+                                    text = "DiagnosticsService existente",
+                                    tone = ReiAnixBadgeTone.Neutral,
+                                )
+                            }
+                        }
+                    }
+                    item(key = "diagnostic:actions") {
+                        ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                ReiAnixPrimaryButton(
+                                    text = "Verificar integridade",
+                                    onClick = { onAction("backup_integrity") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Exportar diagnóstico",
+                                    onClick = { onAction("diagnostic_export") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -1692,8 +2072,12 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
             ?.takeIf { it.isNotBlank() }
             ?: "Padrão"
         "Metadata" -> if (settings["metadata.anilist_enabled"] == "true") "AniList ativo" else "AniList desativado"
+        "Artwork" -> if (settings["artwork.enabled"] == "true") "Artwork remoto ativo" else "Artwork remoto desativado"
         "Privacidade" -> "Dados locais"
         "Varredura" -> "ScanCoordinator existente"
+        "Dados e Cache" -> "Preferências locais"
+        "Backup e Restauração" -> "BackupService existente"
+        "Diagnóstico" -> "Diagnóstico local"
         "Sobre" -> "ReiAnix"
         "Artwork" -> if (settings["artwork.enabled"] == "true") {
             "Artwork remoto ativo"
@@ -1703,6 +2087,27 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
         else -> ""
     }
 
+
+
+private fun storageMediaAccessLabel(state: String): String = when (state.lowercase()) {
+    "full" -> "Acesso concedido"
+    "partial" -> "Acesso parcial"
+    "denied" -> "Sem permissão"
+    "unknown" -> "Verificando"
+    else -> state.ifBlank { "Desconhecido" }
+}
+
+private fun storageBroadAccessLabel(state: String): String = when (state.lowercase()) {
+    "available" -> "Disponível"
+    "unavailable" -> "Indisponível"
+    "unknown" -> "Verificando"
+    else -> state.ifBlank { "Desconhecido" }
+}
+
+private fun storageApiLabel(api: Int?): String = api?.toString() ?: "desconhecida"
+
+private fun com.reiflix.reiflix_local.ui.model.ReiAnixSettingsStorageUiState.lifecycleStateLabel(): String =
+    lifecycleState.ifBlank { "desconhecido" }
 
 private fun storageSummary(state: ReiAnixSettingsUiState): String {
     val storage = state.storage

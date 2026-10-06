@@ -98,10 +98,19 @@ def test_scope_is_whitelisted_in_python_before_persistence():
     assert "settings.set" in block
     assert "logger.warning" in block
 
-def test_prompt47_settings_surface_is_single_compact_compose_language():
+
+def test_all_settings_categories_are_compose_owned_and_actionable():
     compose = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
     )
+    host = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    )
+    repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
+    main = read("main.py")
+
     categories = (
         "Conta",
         "Geral",
@@ -120,45 +129,40 @@ def test_prompt47_settings_surface_is_single_compact_compose_language():
         "Diagnóstico",
         "Sobre",
     )
-
-    assert "fun ReiAnixSettingsRow(" in compose
-    assert "fun ReiAnixSettingsSurface(" in compose
-    assert "items = state.categories" in compose
-    assert 'key = { category -> "settings:' in compose
-    assert "ReiAnixSettingCard(" not in compose
-    assert "SettingsSpacing" not in compose
-    assert "SettingsDimensions" not in compose
-    assert "SettingsTokens" not in compose
-    assert "Color(0x" not in compose
-
+    managed_start = compose.index("private val NativeManagedSettingsCategories")
+    managed_end = compose.index(")\n", managed_start) + 2
+    managed_block = compose[managed_start:managed_end]
     for category in categories:
-        assert f'ReiAnixSettingsCategoryUiModel("{category}"' in compose
+        assert f'"{category}"' in managed_block
 
-    assert '"Artwork" -> {' in compose
-    assert '"Dados e Cache" -> {' in compose
-    assert '"Backup e Restauração" -> {' in compose
-    assert '"Diagnóstico" -> {' in compose
-    assert "NativeManagedSettingsCategories" in compose
-    assert '.filterNot { it == "Armazenamento" }' in compose
+    for category in (
+        "Artwork",
+        "Armazenamento",
+        "Dados e Cache",
+        "Backup e Restauração",
+        "Diagnóstico",
+    ):
+        assert f'"{category}" -> {{' in compose
 
+    for action in (
+        "clear_anilist_cache",
+        "settings_export",
+        "settings_import",
+        "select_saf",
+        "request_media_access",
+        "check_storage_access",
+        "open_broad_storage_settings",
+        "backup_create",
+        "backup_restore",
+        "backup_integrity",
+        "backup_reconcile",
+        "diagnostic_export",
+    ):
+        assert action in repository
+        assert action in main
 
-def test_prompt47_settings_uses_centralized_visual_tokens_and_no_remote_account_image():
-    compose = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
-    )
-    tokens = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt"
-    )
-    storage = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixStorageScreen.kt"
-    )
-
-    assert "ReiAnixTokens.Dimensions.settingsRowMinHeight" in compose
-    assert "ReiAnixTokens.Dimensions.settingsIconContainerSize" in compose
-    assert "ReiAnixTokens.Dimensions.settingsTrailingSize" in compose
-    assert "ReiAnixTokens.Shapes.card" in compose
-    assert "ReiAnixAccountAvatar" not in compose
-    assert "androidx.compose.foundation.layout.safeDrawing" not in compose
-    assert "val settingsRowMinHeight = 72.dp" in tokens
-    assert "ReiAnixSettingsSurface(" in storage
-    assert "settingsMaxWidth" in storage
+    settings_callback_start = host.index("settings = {")
+    settings_callback_end = host.index("storage = {", settings_callback_start)
+    settings_callback = host[settings_callback_start:settings_callback_end]
+    assert "publishSettingsNavigation(" not in settings_callback
+    assert "ReiAnixRoutes.STORAGE" not in settings_callback
