@@ -383,7 +383,7 @@ private fun SafSourceCard(
     val stateLabel = safStateLabel(state)
     val actionLabel = if (available) "Alterar pasta" else "Reautorizar"
 
-    ReiAnixCard(
+    ReiAnixSettingsSurface(
         modifier = Modifier
             .fillMaxWidth()
             .semantics {
@@ -469,7 +469,7 @@ private fun DeviceAccessCard(
     actionLabel: String?,
     onAction: (() -> Unit)?,
 ) {
-    ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+    ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -522,7 +522,7 @@ private fun ConfiguredSourceCard(
     val stateLabel = genericSourceStateLabel(state)
     val available = state in setOf("available", "full", "partial", "granted")
 
-    ReiAnixCard(
+    ReiAnixSettingsSurface(
         modifier = Modifier
             .fillMaxWidth()
             .semantics {
@@ -577,7 +577,7 @@ private fun StorageScanCard(
 ) {
     val scanLabel = scanStateLabel(state.scanState, state.scanInProgress)
 
-    ReiAnixCard(modifier = Modifier.fillMaxWidth()) {
+    ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = "Atualização da biblioteca",
             style = MaterialTheme.typography.titleMedium,
