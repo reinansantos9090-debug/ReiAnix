@@ -92,6 +92,26 @@ class LibraryUiMappersTest {
     }
 
     @Test
+    fun realDurationAndEpisodeArtworkReachUiModelUnchanged() {
+        val source = episode(1202, 1, 0.0, 123.456, "unwatched").toMutableMap().apply {
+            this["artwork_local_path"] = "/cache/episode-1202.jpg"
+        }
+
+        val model = LibraryUiMappers.episode(source)
+
+        assertEquals(123.456, model.durationSeconds!!, 0.0)
+        assertEquals("/cache/episode-1202.jpg", model.artwork?.localPath)
+    }
+
+    @Test
+    fun durationFormatterDistinguishesUnknownFromKnownDuration() {
+        assertEquals("—", com.reiflix.reiflix_local.ui.formatDurationLabel(0.0))
+        assertEquals("1:05", com.reiflix.reiflix_local.ui.formatDurationLabel(65.0))
+        assertEquals("2:05", com.reiflix.reiflix_local.ui.formatDurationLabel(125.0))
+        assertEquals("1:02:05", com.reiflix.reiflix_local.ui.formatDurationLabel(3725.0))
+    }
+
+    @Test
     fun detailsProjectionPreservesEpisodeIdentityAcrossProgressTicks() {
         val episode = episode(1201, 1, 18.0, 100.0, "in_progress")
         val source = animeSource(
