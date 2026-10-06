@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,11 +24,12 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -292,6 +295,13 @@ private fun HomeHeader(
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
 ) {
+    val menuExpanded = rememberSaveable { mutableStateOf(false) }
+    val statusColor = if (sourceAvailable) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -308,12 +318,16 @@ private fun HomeHeader(
             maxLines = 1,
         )
 
-        Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
+        Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
 
         Surface(
-            shape = ReiAnixTokens.Shapes.chip,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            shape = ReiAnixTokens.Shapes.button,
+            color = Color.Transparent,
+            contentColor = statusColor,
+            border = BorderStroke(
+                width = ReiAnixTokens.Dimensions.borderWidth,
+                color = statusColor.copy(alpha = 0.88f),
+            ),
         ) {
             Row(
                 modifier = Modifier.padding(
@@ -336,31 +350,7 @@ private fun HomeHeader(
             }
         }
 
-        TextButton(
-            onClick = onOpenCollector,
-            modifier = Modifier.semantics {
-                contentDescription = "Abrir Collector"
-                role = Role.Button
-            },
-        ) {
-            Text("🏆 Collector")
-        }
-
         Spacer(modifier = Modifier.weight(1f))
-
-        IconButton(
-            onClick = onRefresh,
-            modifier = Modifier.semantics {
-                contentDescription = "Atualizar biblioteca local"
-                role = Role.Button
-            },
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Refresh,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-            )
-        }
 
         IconButton(
             onClick = onSearch,
@@ -375,9 +365,44 @@ private fun HomeHeader(
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
+
+        Box {
+            IconButton(
+                onClick = { menuExpanded.value = true },
+                modifier = Modifier.semantics {
+                    contentDescription = "Mais opções da Home"
+                    role = Role.Button
+                },
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded.value,
+                onDismissRequest = { menuExpanded.value = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Atualizar biblioteca") },
+                    onClick = {
+                        menuExpanded.value = false
+                        onRefresh()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Abrir Collector") },
+                    onClick = {
+                        menuExpanded.value = false
+                        onOpenCollector()
+                    },
+                )
+            }
+        }
     }
 }
-
 @Composable
 private fun ColumnScope.HomeContent(
     state: ReiAnixLibraryUiState,
@@ -968,53 +993,14 @@ private fun HomeMediaCard(
                     .clip(ReiAnixTokens.Shapes.artwork),
             ) {
                 ReiAnixBackdrop(
-                    localPath = anime.backdropLocalPath,
-                    fallbackLocalPath = anime.artworkPath,
+                    localPath = anime.backdropLocalPath.takeIf { showThumbnails },
+                    fallbackLocalPath = anime.artworkPath.takeIf { showThumbnails },
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = anime.stableKey,
                     maxDimensionPx = 512,
                 )
 
-                if (anime.favorite || anime.pinned) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(ReiAnixTokens.Spacing.xs),
-                        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                    ) {
-                        if (anime.pinned) {
-                            Surface(
-                                shape = ReiAnixTokens.Shapes.chip,
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-                            ) {
-                                Text(
-                                    text = "FIXADO",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(
-                                        horizontal = ReiAnixTokens.Spacing.xs,
-                                        vertical = ReiAnixTokens.Spacing.xs / 2,
-                                    ),
-                                )
-                            }
-                        }
-
-                        if (anime.favorite) {
-                            Surface(
-                                shape = ReiAnixTokens.Shapes.chip,
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Favorite,
-                                    contentDescription = "Na Minha Lista",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(ReiAnixTokens.Spacing.xs),
-                                )
-                            }
-                        }
-                    }
-                }
             }
 
             Column(
