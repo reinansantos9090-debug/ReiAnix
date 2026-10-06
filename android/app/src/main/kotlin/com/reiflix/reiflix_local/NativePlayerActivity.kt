@@ -5,6 +5,7 @@ import com.reiflix.reiflix_local.player.DeviceInteractionProfile
 import com.reiflix.reiflix_local.player.LocalSubtitleResolver
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import com.reiflix.reiflix_local.player.PlayerMediaPolicy
+import com.reiflix.reiflix_local.player.PlayerStartupMetrics
 import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import com.reiflix.reiflix_local.player.SystemUiController
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
@@ -33,6 +34,7 @@ import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import android.os.Bundle
 import android.os.Handler
@@ -188,10 +190,13 @@ class NativePlayerActivity : ComponentActivity() {
     private var commandReceivedAtMs = 0L
     private var handoffDispatchedAtMs = 0L
     private var activityStartedAtMs = 0L
+    private var episodeTapAtMs = 0L
     private var preflightStartedAtMs = 0L
     private var preflightCompletedAtMs = 0L
     private var prepareDispatchedAtMs = 0L
+    private var playerReadyAtMs = 0L
     private var firstFrameRenderedAtMs = 0L
+    private var initialPositionMsForGeneration = 0L
     private var errorVisible = false
     private var openedReported = false
     private var restoredPositionMs: Long? = null
@@ -326,6 +331,15 @@ class NativePlayerActivity : ComponentActivity() {
     private val progressWorker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ReiAnix-ProgressIO").apply { isDaemon = true }
     }
+    /**
+     * Local-media enrichment is isolated from the playback control plane.
+     * It never blocks Media3 from receiving a URI that is already known locally.
+     */
+    private val mediaMetadataWorker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "ReiAnix-MediaMetadata").apply { isDaemon = true }
+    }
+    private val deferredSubtitleCache =
+        ConcurrentHashMap<String, List<LocalSubtitleResolver.SubtitleTrack>>()
     private var activeAnalyticsListener: AnalyticsListener? = null
     private var firstFrameWatchGeneration = -1L
     private val firstFrameDiagnosticTimeoutMs = 8_000L
@@ -1175,28 +1189,51 @@ override fun onCreate(savedInstanceState: Bundle?) {
         pendingPreparation?.cancel(true)
         cancelFirstFrameDiagnostics("prepare_start")
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
+
+        episodeTapAtMs = commandCreatedAtMs.takeIf { it > 0L }
+            ?: activityStartedAtMs.takeIf { it > 0L }
+            ?: System.currentTimeMillis()
+        initialPositionMsForGeneration = (restoredPositionMs
+            ?: intent.getLongExtra("positionMs", 0L))
+            .coerceAtLeast(0L)
         preflightStartedAtMs = 0L
         preflightCompletedAtMs = 0L
         prepareDispatchedAtMs = 0L
+        playerReadyAtMs = 0L
         firstFrameRenderedAtMs = 0L
+
+        logPlayer(
+            "PLAYER_START requestId=" + requestId.ifEmpty { "-" } +
+                " episodeId=" + currentEpisodeId() +
+                " reason=" + reason +
+                " episodeTapAtMs=" + episodeTapAtMs,
+        )
         logPlayer(
             "PREPARE_ASYNC_START generation=$generation requestId=" +
-                requestId.ifEmpty { "-" } + " reason=" + reason,
+                requestId.ifEmpty { "-" } +
+                " reason=" + reason +
+                " initialPositionMs=" + initialPositionMsForGeneration,
         )
 
         pendingPreparation = playbackWorker.submit {
             try {
                 preflightStartedAtMs = System.currentTimeMillis()
-                logPlayer("PREFLIGHT_ASYNC_START requestId=" + requestId.ifEmpty { "-" } +
-                    " generation=" + generation + " uri=" + localUri +
-                    " atMs=" + preflightStartedAtMs)
+                logPlayer(
+                    "PREFLIGHT_ASYNC_START requestId=" + requestId.ifEmpty { "-" } +
+                        " generation=" + generation +
+                        " uri=" + localUri +
+                        " atMs=" + preflightStartedAtMs,
+                )
                 val preflightFailure = validateLocalSource(localUri)
                 if (preflightFailure != null) {
                     handler.post {
                         if (!isCurrentPreparation(generation, localUri, preparationTransitionGeneration)) return@post
-                        logPlayer("PREFLIGHT_ASYNC_FAILED requestId=" + requestId.ifEmpty { "-" } +
-                            " generation=" + generation + " errorCode=" + preflightFailure.code +
-                            " error=" + preflightFailure.message)
+                        logPlayer(
+                            "PREFLIGHT_ASYNC_FAILED requestId=" + requestId.ifEmpty { "-" } +
+                                " generation=" + generation +
+                                " errorCode=" + preflightFailure.code +
+                                " error=" + preflightFailure.message,
+                        )
                         val preflightClassification = PlayerMediaPolicy.classifyPlaybackFailure(
                             errorCodeName = preflightFailure.code,
                         )
@@ -1213,80 +1250,73 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     }
                     return@submit
                 }
+
                 preflightCompletedAtMs = System.currentTimeMillis()
-                logPlayer("PREFLIGHT_ASYNC_OK requestId=" + requestId.ifEmpty { "-" } +
-                    " generation=" + generation +
-                    " atMs=" + preflightCompletedAtMs +
-                    " latencyMs=" + metricDelta(preflightStartedAtMs, preflightCompletedAtMs))
-                val displayName = displayNameForUri(localUri)
-                val providerMime = runCatching { contentResolver.getType(localUri) }.getOrNull()
-                val resolvedMime = PlayerMediaPolicy.resolveVideoMimeType(providerMime, displayName)
-                val sizeBytes = localSizeBytes(localUri)
-                val subtitleTracks = runCatching {
-                    LocalSubtitleResolver.resolve(this@NativePlayerActivity, localUri)
-                }.getOrElse { error ->
-                    logPlayer("SUBTITLE_RESOLVE_FAILED generation=$generation uri=$localUri", error)
-                    emptyList()
-                }
+                logPlayer(
+                    "PREFLIGHT_ASYNC_OK requestId=" + requestId.ifEmpty { "-" } +
+                        " generation=" + generation +
+                        " atMs=" + preflightCompletedAtMs +
+                        " latencyMs=" + metricDelta(preflightStartedAtMs, preflightCompletedAtMs),
+                )
+
+                // Optional MIME/display-name/size/subtitle discovery starts in parallel
+                // but is never awaited by the playback path.
+                hydrateLocalMediaReferencesAsync(
+                    generation = generation,
+                    localUri = localUri,
+                    expectedTransitionGeneration = preparationTransitionGeneration,
+                )
 
                 handler.post {
                     if (!isCurrentPreparation(generation, localUri, preparationTransitionGeneration)) return@post
 
-                    contentMimeType = resolvedMime
-                    mediaDisplayName = displayName
-                    mediaSizeBytes = sizeBytes
-                    logPlayer(
-                        "MIME_RESOLVED generation=$generation provider=" +
-                            providerMime.orEmpty() + " resolved=" + resolvedMime.orEmpty() +
-                            " displayName=" + displayName.orEmpty(),
+                    val subtitleTracks = deferredSubtitleCache[localUri.toString()].orEmpty()
+                    val mediaItem = buildMediaItem(
+                        mediaUri = localUri,
+                        mimeType = null,
+                        subtitleTracks = subtitleTracks,
                     )
-
-                    if (sizeBytes == 0L) {
-                        showPlayerError(
-                            "Este arquivo está vazio e não contém dados de vídeo.",
-                            "empty_file",
-                            JSONObject().put("sizeBytes", 0),
-                            PlayerMediaPolicy.ErrorCategory.SOURCE_UNAVAILABLE,
-                        )
-                        return@post
-                    }
-
-                    val mediaItem = buildMediaItem(localUri, resolvedMime, subtitleTracks)
                     logPlayer(
                         "MEDIA_ITEM requestId=" + requestId.ifEmpty { "-" } +
                             " uri=" + mediaItem.localConfiguration?.uri +
-                            " mime=" + resolvedMime.orEmpty() +
-                            " subtitleCount=" + subtitleTracks.size +
+                            " mime=auto subtitleCount=" + subtitleTracks.size +
                             " reason=" + reason,
                     )
-                    // The reused player must relinquish the current TextureView surface before
-                    // resetting the media item. PlayerView.clear/setPlayer is the Media3-supported
-                    // ownership boundary for TextureView; keeping the old surface attached across
-                    // the media reset can leave the renderer targeting the previous surface.
-                    player.pause()
-                    detachPlayerViewForMediaReset(reason)
-                    player.setMediaItem(mediaItem)
-                    player.playWhenReady = false
-                    reattachPlayerViewAfterMediaReset(reason)
-                    logPlayer(
-                        "PLAY_WHEN_READY_DEFERRED requested=" + shouldPlayWhenReady +
-                            " requestId=" + requestId.ifEmpty { "-" } +
-                            " generation=$generation reason=" + reason,
-                    )
-                    logPlayer(
-                        "PREPARE requestId=" + requestId.ifEmpty { "-" } +
-                            " generation=$generation reason=" + reason,
-                    )
+
+                    // The initial PlayerView is already attached to this ExoPlayer.
+                    // Keep that surface intact for the fastest first-frame path.
+                    if (reason != "initial") {
+                        player.pause()
+                        detachPlayerViewForMediaReset(reason)
+                    }
+
+                    // Use Media3's start-position API so resume does not require a
+                    // second seek cycle after READY.
+                    player.setMediaItem(mediaItem, initialPositionMsForGeneration)
+                    player.playWhenReady = shouldPlayWhenReady
+
+                    if (reason != "initial") {
+                        reattachPlayerViewAfterMediaReset(reason)
+                    }
+
                     prepareDispatchedAtMs = System.currentTimeMillis()
-                    PerformanceDiagnostics.markPlayer(this@NativePlayerActivity, "prepare_dispatched",
-                        requestId, commandCreatedAtMs, reused = reason == "reuse")
+                    PerformanceDiagnostics.markPlayer(
+                        this@NativePlayerActivity,
+                        "prepare_dispatched",
+                        requestId,
+                        commandCreatedAtMs,
+                        reused = reason != "initial",
+                    )
                     logPlayer(
                         "MEDIA3_PREPARE_DISPATCHED requestId=" + requestId.ifEmpty { "-" } +
                             " generation=" + generation +
                             " mediaId=" + mediaItem.mediaId +
                             " atMs=" + prepareDispatchedAtMs +
-                            " latencyFromPreflightMs=" + metricDelta(preflightCompletedAtMs, prepareDispatchedAtMs),
+                            " latencyFromPreflightMs=" + metricDelta(preflightCompletedAtMs, prepareDispatchedAtMs) +
+                            " startPositionMs=" + initialPositionMsForGeneration +
+                            " playWhenReady=" + shouldPlayWhenReady,
                     )
+
                     try {
                         NativeMailbox.writeBestEffort(
                             this@NativePlayerActivity,
@@ -1300,7 +1330,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                         .put("episodeId", currentEpisodeId())
                                         .put("playerSessionId", playerSessionId)
                                         .put("playerGeneration", generation)
-                                        .put("transitionGeneration", transitionGeneration),
+                                        .put("transitionGeneration", transitionGeneration)
+                                        .put("startPositionMs", initialPositionMsForGeneration),
                                 ),
                         )
                         player.prepare()
@@ -1314,11 +1345,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         showPlayerError(
                             "Não foi possível preparar este arquivo local.",
                             "media3_prepare",
-                            JSONObject().put("stage", "media3_prepare")
+                            JSONObject()
+                                .put("stage", "media3_prepare")
                                 .put("error", error.message ?: error::class.java.simpleName),
                         )
                         return@post
                     }
+
                     updateTrackButtons()
                     updatePlayPauseButton()
                     updateProgressUi()
@@ -1344,6 +1377,74 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
+    private fun hydrateLocalMediaReferencesAsync(
+        generation: Long,
+        localUri: Uri,
+        expectedTransitionGeneration: Long,
+    ) {
+        try {
+            mediaMetadataWorker.submit {
+                logPlayer(
+                    "MEDIA_METADATA_DEFERRED_START requestId=" + requestId.ifEmpty { "-" } +
+                        " generation=" + generation +
+                        " uri=" + localUri,
+                )
+                val displayName = displayNameForUri(localUri)
+                val providerMime = runCatching { contentResolver.getType(localUri) }.getOrNull()
+                val resolvedMime = PlayerMediaPolicy.resolveVideoMimeType(providerMime, displayName)
+                val sizeBytes = localSizeBytes(localUri)
+                val subtitleTracks = runCatching {
+                    LocalSubtitleResolver.resolve(this@NativePlayerActivity, localUri)
+                }.getOrElse { error ->
+                    logPlayer(
+                        "SUBTITLE_RESOLVE_FAILED generation=$generation uri=$localUri",
+                        error,
+                    )
+                    emptyList()
+                }
+                deferredSubtitleCache[localUri.toString()] = subtitleTracks
+
+                handler.post {
+                    if (
+                        generation != playerGeneration ||
+                        transitionGeneration != expectedTransitionGeneration ||
+                        sessionState != SessionState.ACTIVE ||
+                        !::uri.isInitialized ||
+                        uri != localUri
+                    ) {
+                        return@post
+                    }
+                    contentMimeType = resolvedMime
+                    mediaDisplayName = displayName
+                    mediaSizeBytes = sizeBytes
+                    logPlayer(
+                        "MEDIA_METADATA_DEFERRED_READY requestId=" +
+                            requestId.ifEmpty { "-" } +
+                            " generation=" + generation +
+                            " displayName=" + displayName.orEmpty() +
+                            " mime=" + resolvedMime.orEmpty() +
+                            " sizeBytes=" + (sizeBytes ?: -1L) +
+                            " subtitleCount=" + subtitleTracks.size,
+                    )
+                    if (sizeBytes == 0L && !errorVisible && !firstFrameRenderedForTesting) {
+                        showPlayerError(
+                            "Este arquivo está vazio e não contém dados de vídeo.",
+                            "empty_file",
+                            JSONObject().put("sizeBytes", 0),
+                            PlayerMediaPolicy.ErrorCategory.SOURCE_UNAVAILABLE,
+                        )
+                    }
+                }
+            }
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            logPlayer(
+                "MEDIA_METADATA_DEFERRED_REJECTED requestId=" + requestId.ifEmpty { "-" } +
+                    " generation=" + generation,
+                error,
+            )
+        }
+    }
+
     private fun createPlayerListener(generation: Long): Player.Listener = object : Player.Listener {
         private fun isCurrent(): Boolean =
             generation == playerGeneration &&
@@ -1359,6 +1460,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 PerformanceDiagnostics.markPlayer(this@NativePlayerActivity, "first_frame",
                     requestId, commandCreatedAtMs, reused = false)
                 val timing = playbackTimingPayload(firstFrameRenderedAtMs)
+                logPlayer(
+                    "PLAYER_START requestId=" + requestId.ifEmpty { "-" } +
+                        " episodeId=" + currentEpisodeId() +
+                        " preflightMs=" + timing.optLong("preflightDurationMs") +
+                        " prepareMs=" + timing.optLong("prepareToReadyMs") +
+                        " firstFrameMs=" + timing.optLong("readyToFirstFrameMs") +
+                        " totalMs=" + timing.optLong("tapToFirstFrameMs"),
+                )
                 logPlayer(
                     "FIRST_FRAME_RENDERED requestId=" + requestId.ifEmpty { "-" } +
                         " generation=" + generation +
@@ -1523,6 +1632,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 " positionMs=" + if (::player.isInitialized) player.currentPosition else 0L)
             when (state) {
                 Player.STATE_READY -> {
+                    playerReadyAtMs = System.currentTimeMillis()
+                    if (::preparingIndicator.isInitialized) {
+                        preparingIndicator.visibility = View.GONE
+                    }
+                    logPlayer(
+                        "PLAYER_READY requestId=" + requestId.ifEmpty { "-" } +
+                            " generation=" + generation +
+                            " playerReadyAtMs=" + playerReadyAtMs +
+                            " prepareToReadyMs=" + metricDelta(prepareDispatchedAtMs, playerReadyAtMs) +
+                            " tapToReadyMs=" + metricDelta(episodeTapAtMs, playerReadyAtMs),
+                    )
                     if (episodeChangePending && (nextTransitionActive || previousTransitionActive)) {
                         setTransitionPhase(TransitionPhase.READY, "media3_ready")
                     }
@@ -1565,99 +1685,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         )
                     }
                     if (!initialSeekApplied) {
-                        val savedPosition = intent.getLongExtra("positionMs", 0L)
-                        val resumeRequestedMs = restoredPositionMs ?: savedPosition
-                        if (resumeRequestedMs > 0L) {
-                            NativeMailbox.writeBestEffort(
-                                this@NativePlayerActivity,
-                                JSONObject()
-                                    .put("type", "diagnostic")
-                                    .put("requestId", requestId)
-                                    .put(
-                                        "payload",
-                                        JSONObject()
-                                            .put("event", "RESUME_SEEK_REQUESTED")
-                                            .put("episodeId", currentEpisodeId())
-                                            .put("playerSessionId", playerSessionId)
-                                            .put("playerGeneration", generation)
-                                            .put("requestedPositionMs", resumeRequestedMs)
-                                            .put("durationMs", player.duration.coerceAtLeast(0L)),
-                                    ),
-                            )
-                        }
-                        val appliedResumePositionMs = seekToSavedPosition(restoredPositionMs ?: savedPosition)
-                        if (resumeRequestedMs > 0L) {
-                            NativeMailbox.writeBestEffort(
-                                this@NativePlayerActivity,
-                                JSONObject()
-                                    .put("type", "diagnostic")
-                                    .put("requestId", requestId)
-                                    .put(
-                                        "payload",
-                                        JSONObject()
-                                            .put("event", "RESUME_SEEK_APPLIED")
-                                            .put("episodeId", currentEpisodeId())
-                                            .put("playerSessionId", playerSessionId)
-                                            .put("playerGeneration", generation)
-                                            .put("requestedPositionMs", resumeRequestedMs)
-                                            .put("appliedPositionMs", appliedResumePositionMs)
-                                            .put("durationMs", player.duration.coerceAtLeast(0L)),
-                                    ),
-                            )
-                        }
+                        // Normal startup preloads the saved position through
+                        // setMediaItem(MediaItem, startPositionMs). Keep this defensive
+                        // branch only for unusual lifecycle recovery paths.
                         initialSeekApplied = true
-                    }
-                    if (sessionState == SessionState.ACTIVE && !errorVisible) {
-                        player.playWhenReady = requestedPlayWhenReadyForGeneration
                         logPlayer(
-                            "PLAY_WHEN_READY_APPLIED requested=" + requestedPlayWhenReadyForGeneration +
-                                " requestId=" + requestId.ifEmpty { "-" } +
-                                " generation=$generation",
+                            "RESUME_POSITION_ALREADY_PRELOADED requestId=" +
+                                requestId.ifEmpty { "-" } +
+                                " generation=$generation" +
+                                " requestedPositionMs=" + initialPositionMsForGeneration +
+                                " currentPositionMs=" + player.currentPosition.coerceAtLeast(0L),
                         )
-                    }
-                    if (
-                        (
-                            nextTransitionActive &&
-                            episodeChangePending &&
-                            transitionSourceRequestId == requestId &&
-                            transitionSourceUri == uri.toString() &&
-                            transitionReadyGeneration != generation
-                        ) || (
-                            previousTransitionActive &&
-                            episodeChangePending &&
-                            transitionSourceRequestId == requestId &&
-                            transitionSourceUri == uri.toString() &&
-                            transitionReadyGeneration != generation
-                        )
-                    ) {
-                        transitionReadyGeneration = generation
-                        if (transitionStartedAtMs > 0L) {
-                            val readyAtMs = System.currentTimeMillis()
-                            val transitionLatencyMs = readyAtMs - transitionStartedAtMs
-                            PerformanceDiagnostics.markPlayer(
-                                this@NativePlayerActivity,
-                                "transition_ready",
-                                requestId,
-                                commandCreatedAtMs,
-                                reused = true,
-                            )
-                            publishNavigationTransitionDiagnostic(
-                                if (nextTransitionActive) "NEXT_TRANSITION_READY" else "PREVIOUS_TRANSITION_READY",
-                                "media3_ready",
-                                JSONObject()
-                                    .put("episodeId", currentEpisodeId())
-                                    .put("generation", generation)
-                                    .put("playerSessionId", playerSessionId)
-                                    .put("transitionLatencyMs", transitionLatencyMs),
-                            )
-                            logPlayer(
-                                "PLAYER_TRANSITION_READY requestId=" + requestId.ifEmpty { "-" } +
-                                    " transitionLatencyMs=" + transitionLatencyMs +
-                                    " originRequestId=" + originRequestId.ifEmpty { "-" } +
-                                    " originCreatedAtMs=" + originCreatedAtMs +
-                                    " awaitingFirstFrame=true",
-                            )
-                        }
                     }
                     updateEpisodeNavigationButtons()
                     completionReported = false
@@ -1669,7 +1707,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         armFirstFrameDiagnostics(generation)
                     }
                     if (!errorVisible) scheduleControlsHide()
-                }
                 Player.STATE_BUFFERING -> {
                     updatePlayPauseButton()
                     if (::preparingIndicator.isInitialized && !errorVisible) {
@@ -2008,6 +2045,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         lastLoadErrorClass = ""
         lastLoadErrorMessage = ""
         openedReported = false
+        playerReadyAtMs = 0L
         lastSavedPosition = -1L
         lastProgressPersistAt = System.currentTimeMillis()
         val generation = playerGeneration
@@ -3073,32 +3111,52 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun metricDelta(startMs: Long, endMs: Long): Any =
         if (startMs > 0L && endMs >= startMs) endMs - startMs else JSONObject.NULL
 
-    private fun playbackTimingPayload(atMs: Long = System.currentTimeMillis()): JSONObject = JSONObject()
-        .put("commandCreatedAtMs", commandCreatedAtMs)
-        .put("originRequestId", originRequestId)
-        .put("originCreatedAtMs", originCreatedAtMs)
-        .put("originTransitionGeneration", originTransitionGeneration)
-        .put("playerSessionId", playerSessionId)
-        .put("transitionGeneration", transitionGeneration)
-        .put("commandReceivedAtMs", commandReceivedAtMs)
-        .put("handoffDispatchedAtMs", handoffDispatchedAtMs)
-        .put("activityStartedAtMs", activityStartedAtMs)
-        .put("preflightStartedAtMs", preflightStartedAtMs)
-        .put("preflightCompletedAtMs", preflightCompletedAtMs)
-        .put("prepareDispatchedAtMs", prepareDispatchedAtMs)
-        .put("firstFrameRenderedAtMs", firstFrameRenderedAtMs)
-        .put("commandDeliveryLatencyMs", metricDelta(commandCreatedAtMs, commandReceivedAtMs))
-        .put("mainActivityHandoffLatencyMs", metricDelta(commandReceivedAtMs, handoffDispatchedAtMs))
-        .put("handoffLatencyMs", metricDelta(commandCreatedAtMs, handoffDispatchedAtMs))
-        .put("activityStartupLatencyMs", metricDelta(handoffDispatchedAtMs, activityStartedAtMs))
-        .put("preflightLatencyMs", metricDelta(preflightStartedAtMs, preflightCompletedAtMs))
-        .put("prepareLatencyMs", metricDelta(preflightCompletedAtMs, prepareDispatchedAtMs))
-        .put("firstFrameLatencyMs", metricDelta(prepareDispatchedAtMs, atMs))
-        .put("totalOpenToFirstFrameMs", metricDelta(commandCreatedAtMs, atMs))
-        .put("assist_to_activity_ms", metricDelta(commandCreatedAtMs, activityStartedAtMs))
-        .put("activity_to_player_ms", metricDelta(activityStartedAtMs, prepareDispatchedAtMs))
-        .put("player_prepare_ms", metricDelta(preflightCompletedAtMs, prepareDispatchedAtMs))
-        .put("first_frame_ms", metricDelta(prepareDispatchedAtMs, atMs))
+    private fun playbackTimingPayload(atMs: Long = System.currentTimeMillis()): JSONObject {
+        val metrics = PlayerStartupMetrics(
+            episodeTapAtMs = episodeTapAtMs,
+            preflightStartedAtMs = preflightStartedAtMs,
+            preflightCompletedAtMs = preflightCompletedAtMs,
+            prepareDispatchedAtMs = prepareDispatchedAtMs,
+            playerReadyAtMs = playerReadyAtMs,
+            firstFrameRenderedAtMs = atMs,
+        )
+        return JSONObject()
+            .put("commandCreatedAtMs", commandCreatedAtMs)
+            .put("episodeTapAtMs", metrics.episodeTapAtMs)
+            .put("originRequestId", originRequestId)
+            .put("originCreatedAtMs", originCreatedAtMs)
+            .put("originTransitionGeneration", originTransitionGeneration)
+            .put("playerSessionId", playerSessionId)
+            .put("transitionGeneration", transitionGeneration)
+            .put("commandReceivedAtMs", commandReceivedAtMs)
+            .put("handoffDispatchedAtMs", handoffDispatchedAtMs)
+            .put("activityStartedAtMs", activityStartedAtMs)
+            .put("preflightStartedAtMs", metrics.preflightStartedAtMs)
+            .put("preflightCompletedAtMs", metrics.preflightCompletedAtMs)
+            .put("prepareDispatchedAtMs", metrics.prepareDispatchedAtMs)
+            .put("playerReadyAtMs", metrics.playerReadyAtMs)
+            .put("firstFrameRenderedAtMs", metrics.firstFrameRenderedAtMs)
+            .put("commandDeliveryLatencyMs", metricDelta(commandCreatedAtMs, commandReceivedAtMs))
+            .put("mainActivityHandoffLatencyMs", metricDelta(commandReceivedAtMs, handoffDispatchedAtMs))
+            .put("handoffLatencyMs", metricDelta(commandCreatedAtMs, handoffDispatchedAtMs))
+            .put("activityStartupLatencyMs", metricDelta(handoffDispatchedAtMs, activityStartedAtMs))
+            .put("tapToPreflightStartMs", metrics.tapToPreflightStartMs)
+            .put("preflightDurationMs", metrics.preflightDurationMs)
+            .put("prepareDispatchGapMs", metrics.prepareDispatchGapMs)
+            .put("prepareToReadyMs", metrics.prepareToReadyMs)
+            .put("readyToFirstFrameMs", metrics.readyToFirstFrameMs)
+            .put("tapToPrepareMs", metrics.tapToPrepareMs)
+            .put("tapToReadyMs", metrics.tapToReadyMs)
+            .put("tapToFirstFrameMs", metrics.tapToFirstFrameMs)
+            .put("preflightLatencyMs", metrics.preflightDurationMs)
+            .put("prepareLatencyMs", metrics.prepareDispatchGapMs)
+            .put("firstFrameLatencyMs", metricDelta(prepareDispatchedAtMs, atMs))
+            .put("totalOpenToFirstFrameMs", metrics.tapToFirstFrameMs)
+            .put("assist_to_activity_ms", metricDelta(commandCreatedAtMs, activityStartedAtMs))
+            .put("activity_to_player_ms", metricDelta(activityStartedAtMs, prepareDispatchedAtMs))
+            .put("player_prepare_ms", metricDelta(prepareDispatchedAtMs, playerReadyAtMs))
+            .put("first_frame_ms", metricDelta(prepareDispatchedAtMs, atMs))
+    }
 
     private fun diagnosticPayload(): JSONObject = JSONObject()
         .put("timestamp", System.currentTimeMillis())
@@ -4487,6 +4545,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         pendingPreparation?.cancel(true)
         playbackWorker.shutdown()
         progressWorker.shutdown()
+        mediaMetadataWorker.shutdown()
         if (::player.isInitialized) {
             activePlayerListener?.let { player.removeListener(it) }
             activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }

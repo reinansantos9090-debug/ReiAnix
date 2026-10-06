@@ -53,14 +53,29 @@ class NativePlayerLifecycleTests(unittest.TestCase):
             self.player.index("private fun createPlayerListener")
         ]
         detach_index = prepare.index("detachPlayerViewForMediaReset(reason)")
-        set_media_index = prepare.index("player.setMediaItem(mediaItem)")
+        set_media_index = prepare.index("player.setMediaItem(mediaItem, initialPositionMsForGeneration)")
         reattach_index = prepare.index("reattachPlayerViewAfterMediaReset(reason)")
         self.assertLess(detach_index, set_media_index)
         self.assertLess(set_media_index, reattach_index)
+        initial_guard = prepare.index('if (reason != "initial")')
+        self.assertLess(initial_guard, detach_index)
+        self.assertLess(initial_guard, set_media_index)
+        self.assertLess(initial_guard, reattach_index)
         self.assertIn("private fun detachPlayerViewForMediaReset(reason: String)", self.player)
         self.assertIn("private fun reattachPlayerViewAfterMediaReset(reason: String)", self.player)
         self.assertIn("playerView.player = null", self.player)
         self.assertIn("playerView.player = player", self.player)
+
+    def test_initial_prepare_keeps_fresh_player_view_attached(self):
+        prepare = self.player[
+            self.player.index("private fun prepareCurrentMedia"):
+            self.player.index("private fun createPlayerListener")
+        ]
+        guard = prepare.index('if (reason != "initial")')
+        set_media = prepare.index("player.setMediaItem(mediaItem, initialPositionMsForGeneration)")
+        detach = prepare.index("detachPlayerViewForMediaReset(reason)")
+        self.assertLess(guard, set_media)
+        self.assertLess(set_media, detach)
 
     def test_new_intent_cannot_inherit_stale_foreground_resume_state(self):
         reuse = self.player[

@@ -30,27 +30,39 @@ class PlaybackHardeningTests(unittest.TestCase):
         self.assertNotIn("IjkPlayer", player)
         self.assertNotIn("VlcPlayer", player)
 
-    def test_player_resolves_mime_and_prepares_local_io_off_main(self):
+    def test_player_defers_nonessential_media_io_until_after_prepare(self):
         player = PLAYER.read_text(encoding="utf-8")
         policy = POLICY.read_text(encoding="utf-8")
-        self.assertIn("playbackWorker", player)
-        self.assertIn("PREFLIGHT_ASYNC_START", player)
-        self.assertIn("PREFLIGHT_ASYNC_OK", player)
+        prepare = player[player.index("private fun prepareCurrentMedia"):player.index("private fun createPlayerListener")]
+        self.assertIn("playbackWorker", prepare)
+        self.assertIn("PREFLIGHT_ASYNC_START", prepare)
+        self.assertIn("PREFLIGHT_ASYNC_OK", prepare)
+        self.assertIn("hydrateLocalMediaReferencesAsync(", prepare)
+        self.assertIn("player.setMediaItem(mediaItem, initialPositionMsForGeneration)", prepare)
+        self.assertIn("player.prepare()", prepare)
+        self.assertNotIn("LocalSubtitleResolver.resolve(this@NativePlayerActivity, localUri)", prepare)
+        self.assertNotIn("contentResolver.getType(localUri)", prepare)
+        self.assertNotIn("localSizeBytes(localUri)", prepare)
         self.assertIn("LocalSubtitleResolver.resolve(this@NativePlayerActivity, localUri)", player)
         self.assertIn("contentResolver.getType(localUri)", player)
         self.assertIn("PlayerMediaPolicy.resolveVideoMimeType", player)
-        self.assertIn("setMimeType(it)", player)
         self.assertIn("localSizeBytes(localUri)", player)
-        self.assertIn("sizeBytes == 0L", player)
         self.assertIn("video/x-matroska", policy)
         self.assertIn("video/webm", policy)
         self.assertIn("video/x-msvideo", policy)
 
-    def test_player_waits_for_ready_before_resume_and_tracks(self):
+    def test_player_preloads_resume_position_and_requests_autoplay_before_prepare(self):
         player = PLAYER.read_text(encoding="utf-8")
+        prepare = player[player.index("private fun prepareCurrentMedia"):player.index("private fun createPlayerListener")]
         self.assertIn("Player.STATE_READY", player)
+        self.assertIn("initialPositionMsForGeneration", prepare)
+        self.assertIn("player.setMediaItem(mediaItem, initialPositionMsForGeneration)", prepare)
+        play_index = prepare.index("player.playWhenReady = shouldPlayWhenReady")
+        prepare_index = prepare.index("player.prepare()")
+        self.assertLess(play_index, prepare_index)
         self.assertIn("if (!initialSeekApplied)", player)
-        self.assertIn("seekToSavedPosition(restoredPositionMs ?: savedPosition)", player)
+        self.assertIn("RESUME_POSITION_ALREADY_PRELOADED", player)
+        self.assertNotIn("seekToSavedPosition(restoredPositionMs ?: savedPosition)", prepare)
         self.assertIn("onTracksChanged", player)
         self.assertIn("TRACKS_NO_AUDIO", player)
         self.assertIn("TRACKS_NO_SUBTITLE", player)
@@ -77,6 +89,15 @@ class PlaybackHardeningTests(unittest.TestCase):
             self.assertIn(token, player + policy)
         self.assertIn("classification.retryable", player)
         self.assertIn("showTechnicalInfo()", player)
+
+    def test_ready_state_clears_loading_and_first_frame_remains_authoritative(self):
+        player = PLAYER.read_text(encoding="utf-8")
+        ready = player[player.index("Player.STATE_READY ->"):player.index("Player.STATE_BUFFERING ->")]
+        buffering = player[player.index("Player.STATE_BUFFERING ->"):player.index("Player.STATE_ENDED ->")]
+        self.assertIn("playerReadyAtMs = System.currentTimeMillis()", ready)
+        self.assertIn("preparingIndicator.visibility = View.GONE", ready)
+        self.assertIn("preparingIndicator.visibility = View.VISIBLE", buffering)
+        self.assertIn("events.contains(Player.EVENT_RENDERED_FIRST_FRAME)", player)
 
     def test_resume_policy_clamps_invalid_positions(self):
         policy = POLICY.read_text(encoding="utf-8")
