@@ -32,7 +32,7 @@ GENERIC_THEME_TOKENS = (
 )
 
 
-class Prompt31ComposeThemeConsistencyTests(unittest.TestCase):
+class ComposeThemeConsistencyTests(unittest.TestCase):
     def test_screen_ui_uses_material_theme_for_generic_colors(self):
         for relative in COMPOSE_UI_FILES:
             source = (ROOT / relative).read_text(encoding="utf-8")

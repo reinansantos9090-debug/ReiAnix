@@ -7,7 +7,7 @@ HOME = (ROOT / "views" / "home_view.py").read_text(encoding="utf-8")
 SERVICE = (ROOT / "core" / "library_service.py").read_text(encoding="utf-8")
 
 
-class Prompt29HomeRenderingTests(unittest.TestCase):
+class HomeRenderingTests(unittest.TestCase):
     def test_home_uses_batched_local_artwork_resolution(self):
         self.assertIn("resolve_artwork_batch", HOME)
         self.assertIn("artwork_pending_items", HOME)

@@ -21,7 +21,7 @@ MAIN_ACTIVITY = (
 ).read_text(encoding="utf-8")
 
 
-class Prompt28Media3ErrorTests(unittest.TestCase):
+class Media3ErrorTests(unittest.TestCase):
     def test_media3_error_pipeline_is_structured(self):
         for token in (
             "PlaybackFailureKind",
@@ -118,7 +118,7 @@ class Prompt28Media3ErrorTests(unittest.TestCase):
         self.assertNotIn("FFmpeg", gradle)
         self.assertNotIn("media3-exoplayer-ffmpeg", gradle)
 
-    def test_policy_unit_tests_cover_prompt28_classes(self):
+    def test_policy_unit_tests_cover_stage28_classes(self):
         for token in (
             "preciseFailureClassificationSeparatesLocalAndMedia3Failures",
             "preciseRetryPolicyNeverRetriesDeterministicSourceOrDecoderFailures",

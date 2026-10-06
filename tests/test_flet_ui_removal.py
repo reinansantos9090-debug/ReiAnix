@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "main.py"
 
 
-class Prompt28FletUiRemovalTests(unittest.TestCase):
+class FletUiRemovalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.source = MAIN.read_text(encoding="utf-8")

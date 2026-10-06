@@ -8,7 +8,7 @@ VM = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/Rei
 NAV = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
 
 
-class Prompt14NativeSearchTests(unittest.TestCase):
+class NativeSearchTests(unittest.TestCase):
     def test_search_route_is_wired_to_existing_navigation_surface(self):
         source = NAV.read_text(encoding="utf-8")
         self.assertIn("ReiAnixSearchRoute", source)

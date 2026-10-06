@@ -78,7 +78,7 @@ def test_compose_settings_bridge_does_not_invent_missing_preference_category(tmp
     assert "Segurança" not in payload["categories"]
 
 
-def test_prompt18_native_settings_integration_contract():
+def test_native_settings_integration_contract():
     root = Path(__file__).resolve().parents[1]
     main = (root / "main.py").read_text(encoding="utf-8")
     request_state = (

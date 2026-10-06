@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class Prompt3CertificationTests(unittest.TestCase):
+class CertificationTests(unittest.TestCase):
     def test_player_view_remains_absent(self):
         self.assertFalse((ROOT / "views" / "player_view.py").exists())
 

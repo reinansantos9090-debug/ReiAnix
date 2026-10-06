@@ -46,7 +46,7 @@ class FakeBridge:
         raise AssertionError("BroadStorage must never be a library scan target")
 
 
-class Prompt33SourceIdentityTests(unittest.TestCase):
+class SourceIdentityTests(unittest.TestCase):
     URI_A = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
     URI_DUPLICATE_ENCODING = "content://com.android.externalstorage.documents/tree/primary%3AAnime/primary%3AAnime"
     URI_OTHER = "content://com.android.externalstorage.documents/tree/primary%3AAnime2"
@@ -102,7 +102,7 @@ class Prompt33SourceIdentityTests(unittest.TestCase):
 
 
 
-class Prompt33CoordinatorTests(unittest.IsolatedAsyncioTestCase):
+class CoordinatorTests(unittest.IsolatedAsyncioTestCase):
     ROOT = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
     OTHER = "content://com.android.externalstorage.documents/tree/primary%3AAnime2"
 
@@ -146,7 +146,7 @@ class Prompt33CoordinatorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], bridge.calls)
 
 
-class Prompt33DatabaseSourceTests(unittest.TestCase):
+class DatabaseSourceTests(unittest.TestCase):
     URI_A = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
     URI_B = "content://com.android.externalstorage.documents/tree/primary%3AAnime/primary%3AAnime"
     ID = "saf:com.android.externalstorage.documents:primary:Anime"
@@ -165,7 +165,7 @@ class Prompt33DatabaseSourceTests(unittest.TestCase):
             self.assertEqual(1, len(folders))
 
 
-class Prompt33ContractTests(unittest.TestCase):
+class ContractTests(unittest.TestCase):
     def test_library_target_provider_only_dispatches_saf(self):
         source = MAIN.read_text(encoding="utf-8")
         start = source.index("    def _authorized_scan_targets(source=None, scope_ref=None):")

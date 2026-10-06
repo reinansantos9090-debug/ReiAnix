@@ -8,7 +8,7 @@ from views.home_view import HOME_PULL_REFRESH_THRESHOLD, _pull_refresh_should_tr
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class Prompt1HomeRefreshBehaviorTests(unittest.TestCase):
+class HomeRefreshBehaviorTests(unittest.TestCase):
     def test_pull_below_threshold_does_not_trigger(self):
         self.assertFalse(
             _pull_refresh_should_trigger(
