@@ -2946,7 +2946,12 @@ async def main(page: ft.Page):
             )
         except Exception:
             exact_ready = False
-        if exact_ready:
+        duration_known = False
+        try:
+            duration_known = float(episode.get("duration") or 0) > 0.0
+        except (TypeError, ValueError):
+            duration_known = False
+        if exact_ready and duration_known:
             thumbnail_requests.discard(key)
             thumbnail_pending.pop(key, None)
             thumbnail_request_started_at.pop(key, None)
