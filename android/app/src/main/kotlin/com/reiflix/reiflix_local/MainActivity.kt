@@ -11,7 +11,6 @@ import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.scanner.MediaStoreRetryScheduler
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.NativeScanController
-import com.reiflix.reiflix_local.scanner.NativeScanPublisher
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
 import com.reiflix.reiflix_local.scanner.SafScanner
 import com.reiflix.reiflix_local.storage.NativeIndex
