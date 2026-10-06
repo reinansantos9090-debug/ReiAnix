@@ -67,8 +67,13 @@ class NativeRequestState {
         if(!seenRequestIds.add(id))return false
         while(seenRequestIds.size>64)seenRequestIds.iterator().apply{next();remove()}
         lastHandledRequestId=id
-        if(isSupportedAction(action)) {
-            requestSnapshots[id]=RequestSnapshot(action!!, OperationState.RECEIVED, createdAt, System.currentTimeMillis())
+        if (action != null && isSupportedAction(action)) {
+            requestSnapshots[id] = RequestSnapshot(
+                action,
+                OperationState.RECEIVED,
+                createdAt,
+                System.currentTimeMillis(),
+            )
             while(requestSnapshots.size>64)requestSnapshots.remove(requestSnapshots.keys.first())
         }
         persist()
