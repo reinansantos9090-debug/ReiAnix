@@ -366,6 +366,7 @@ class ComposeLibraryBridge:
                 "english": meta.get("english"),
                 "native": meta.get("native"),
                 "description": meta.get("description"),
+                "description_original": meta.get("description_original"),
                 "status": meta.get("status"),
                 "format": meta.get("format"),
                 "duration": meta.get("duration"),
