@@ -18,6 +18,9 @@ class ReiAnixStorageComposeTest {
               "scanInProgress":false,
               "scanState":"IDLE",
               "storage":{
+                "onboardingState":"ready",
+                "onboardingMessage":null,
+                "onboardingError":null,
                 "capabilities":{
                   "mediaReadState":"full",
                   "broadStorageState":"available",
@@ -50,6 +53,9 @@ class ReiAnixStorageComposeTest {
 
         assertEquals("full", state.storage.mediaReadState)
         assertEquals("available", state.storage.broadStorageState)
+        assertEquals("ready", state.storage.onboardingState)
+        assertEquals(null, state.storage.onboardingMessage)
+        assertEquals(null, state.storage.onboardingError)
         assertEquals(listOf("saf:com.example:primary:Anime"), state.storage.safRootIdentities)
         assertEquals(1, state.storage.configuredSources.size)
         assertTrue(state.storage.sourceState(state.storage.configuredSources.first()) == "available")
