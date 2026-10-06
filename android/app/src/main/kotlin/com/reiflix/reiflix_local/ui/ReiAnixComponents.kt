@@ -202,7 +202,7 @@ fun ReiAnixPrimaryButton(
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
+            contentColor = ReiAnixTokens.Colors.text,
             disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
@@ -417,8 +417,8 @@ fun ReiAnixChip(
         colors = FilterChipDefaults.filterChipColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             labelColor = MaterialTheme.colorScheme.onSurface,
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedContainerColor = MaterialTheme.colorScheme.primary,
+            selectedLabelColor = ReiAnixTokens.Colors.text,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
             disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
         ),
@@ -897,18 +897,6 @@ fun ReiAnixEpisodeCard(
                             append("$it%")
                         }
                     }.ifBlank { "Episódio" },
-                )
-                ReiAnixBadge(
-                    text = episode.playbackActionLabel,
-                    tone = when {
-                        !episode.isPlayable -> ReiAnixBadgeTone.Error
-                        episode.isCompleted -> ReiAnixBadgeTone.Success
-                        episode.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS -> ReiAnixBadgeTone.Primary
-                        else -> ReiAnixBadgeTone.Neutral
-                    },
-                    modifier = Modifier.semantics {
-                        contentDescription = "Ação: " + episode.playbackActionLabel
-                    },
                 )
                 ReiAnixProgressIndicator(
                     progress = episode.progressFraction,
