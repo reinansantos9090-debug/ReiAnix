@@ -227,9 +227,10 @@ fun ReiAnixSettingsRoute(
         selectedCategory = null
     }
 
-    if (selectedCategory != null) {
+    val activeCategory = selectedCategory
+    if (activeCategory != null) {
         ReiAnixComposeSettingsCategoryScreen(
-            category = selectedCategory,
+            category = activeCategory,
             state = state,
             onBack = { selectedCategory = null },
             onUpdateSetting = viewModel::setSetting,
