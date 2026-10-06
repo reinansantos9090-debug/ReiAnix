@@ -53,8 +53,16 @@ data class ReiAnixArtworkUiModel(
     val backdropLocalPath: String? = null,
     val backdropExternalUrl: String? = null,
 ) {
+    /** True only when Compose has a materialized local file to decode. */
     val isAvailable: Boolean
-        get() = !localPath.isNullOrBlank() || !externalUrl.isNullOrBlank()
+        get() = !localPath.isNullOrBlank()
+
+    /** Remote URL is metadata/source information, never an offline UI dependency. */
+    val hasExternalSource: Boolean
+        get() = !externalUrl.isNullOrBlank()
+
+    val hasBackdropLocalArtwork: Boolean
+        get() = !backdropLocalPath.isNullOrBlank()
 }
 
 data class ReiAnixLocalMediaUiModel(
