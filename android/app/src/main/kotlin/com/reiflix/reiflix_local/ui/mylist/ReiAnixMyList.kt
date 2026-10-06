@@ -458,7 +458,7 @@ private fun ReiAnixMyListItem(
             ) {
                 androidx.compose.material3.Text(
                     text = anime.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -472,7 +472,7 @@ private fun ReiAnixMyListItem(
                     } else {
                         renderData.availableCount.toString() + " episódios"
                     },
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = ReiAnixTokens.TypographyTokens.metadata,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
