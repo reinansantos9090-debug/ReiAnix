@@ -609,9 +609,7 @@ private fun DetailsHero(
     onToggleFavorite: (Long) -> Unit,
 ) {
     BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(ReiAnixTokens.Shapes.hero),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         var heroMenuExpanded by rememberSaveable(anime.id) { mutableStateOf(false) }
         val wide = LocalReiAnixResponsiveMetrics.current.widthClass != com.reiflix.reiflix_local.ui.theme.ReiAnixWindowWidthClass.COMPACT
