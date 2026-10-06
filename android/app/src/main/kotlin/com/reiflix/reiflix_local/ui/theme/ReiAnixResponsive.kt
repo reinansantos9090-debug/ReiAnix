@@ -80,7 +80,7 @@ data class ReiAnixResponsiveMetrics(
 
     val homeContinueCardWidth: Dp
         get() = when (widthClass) {
-            ReiAnixWindowWidthClass.COMPACT -> 100.dp
+            ReiAnixWindowWidthClass.COMPACT -> 110.dp
             ReiAnixWindowWidthClass.MEDIUM -> 180.dp
             ReiAnixWindowWidthClass.EXPANDED -> 220.dp
         }
@@ -101,19 +101,19 @@ data class ReiAnixResponsiveMetrics(
 
     fun homeHeroHeight(): Dp {
         if (isLandscape || heightClass == ReiAnixWindowHeightClass.COMPACT) {
-            return (maxWidth * 0.48f).coerceIn(220.dp, 300.dp)
+            return (maxWidth * 0.50f).coerceIn(180.dp, 240.dp)
         }
-        return (maxWidth / 1.48f).coerceIn(
-            300.dp,
-            if (widthClass == ReiAnixWindowWidthClass.EXPANDED) 420.dp else 400.dp,
+        return (maxWidth * 0.52f).coerceIn(
+            180.dp,
+            if (widthClass == ReiAnixWindowWidthClass.EXPANDED) 280.dp else 240.dp,
         )
     }
 
     fun detailsHeroHeight(): Dp {
         if (isLandscape) {
-            return (maxWidth * 0.45f).coerceIn(220.dp, 300.dp)
+            return (maxWidth * 0.44f).coerceIn(200.dp, 260.dp)
         }
-        return (maxWidth * 0.94f).coerceIn(
+        return (maxWidth * 0.66f).coerceIn(
             ReiAnixTokens.Dimensions.detailsHeroHeight,
             ReiAnixTokens.Dimensions.detailsHeroMaxHeight,
         )
@@ -162,8 +162,8 @@ fun ReiAnixResponsiveRoot(
 
         val horizontalPadding = when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Dimensions.screenHorizontalPadding
-            ReiAnixWindowWidthClass.MEDIUM -> 24.dp
-            ReiAnixWindowWidthClass.EXPANDED -> 28.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 20.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 24.dp
         }
 
         val contentMaxWidth = when (widthClass) {
