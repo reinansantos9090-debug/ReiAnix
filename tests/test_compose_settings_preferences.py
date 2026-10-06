@@ -97,3 +97,70 @@ def test_scope_is_whitelisted_in_python_before_persistence():
     assert "supported_compose_settings" in block
     assert "settings.set" in block
     assert "logger.warning" in block
+
+
+def test_all_settings_categories_are_compose_owned_and_actionable():
+    compose = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
+    )
+    host = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    )
+    repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
+    main = read("main.py")
+
+    categories = (
+        "Conta",
+        "Geral",
+        "Aparência",
+        "Biblioteca",
+        "Player",
+        "Gestos",
+        "Áudio e Legendas",
+        "Metadata",
+        "Artwork",
+        "Armazenamento",
+        "Dados e Cache",
+        "Backup e Restauração",
+        "Privacidade",
+        "Varredura",
+        "Diagnóstico",
+        "Sobre",
+    )
+    for category in categories:
+        assert f'"{category}"' in compose
+        assert f'"{category}"' in compose[compose.index("NativeManagedSettingsCategories"):]
+
+    for category in (
+        "Artwork",
+        "Armazenamento",
+        "Dados e Cache",
+        "Backup e Restauração",
+        "Diagnóstico",
+    ):
+        assert f'"{category}" -> {{' in compose
+
+    for action in (
+        "clear_anilist_cache",
+        "settings_export",
+        "settings_import",
+        "select_saf",
+        "request_media_access",
+        "check_storage_access",
+        "open_broad_storage_settings",
+        "backup_create",
+        "backup_restore",
+        "backup_integrity",
+        "backup_reconcile",
+        "diagnostic_export",
+    ):
+        assert action in repository
+        assert action in main
+
+    settings_callback_start = host.index("settings = {")
+    settings_callback_end = host.index("storage = {", settings_callback_start)
+    settings_callback = host[settings_callback_start:settings_callback_end]
+    assert "publishSettingsNavigation(" not in settings_callback
+    assert "ReiAnixRoutes.STORAGE" not in settings_callback
