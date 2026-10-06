@@ -960,9 +960,9 @@ fun ReiAnixSettingCard(
     Card(
         onClick = onClick ?: {},
         enabled = onClick != null && enabled,
-        shape = ReiAnixTokens.Shapes.card,
+        shape = if (continuous) androidx.compose.foundation.shape.RoundedCornerShape(0.dp) else ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = if (continuous) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceContainer,
             disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledContentAlpha),
         ),
         modifier = Modifier
