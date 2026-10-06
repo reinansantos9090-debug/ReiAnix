@@ -4382,6 +4382,7 @@ async def main(page: ft.Page):
                             storage_onboarding["waiting_for_result"] = False
                         if event_type == 'storage_capabilities':
                             apply_storage_capabilities(payload)
+                            storage_onboarding["inventory_complete"] = inventory_complete
                             refresh_settings_if_active()
                             maybe_show_storage_onboarding()
                         elif event_type == 'saf_scan_progress':
@@ -5996,6 +5997,14 @@ async def main(page: ft.Page):
                             if compose_library_bridge.enabled:
                                 compose_library_bridge.request_publish("saf_selection_finished")
                             storage_onboarding["waiting_for_result"] = False
+                            if storage_onboarding["startup_gate"]:
+                                _set_storage_onboarding_state(
+                                    "NEEDS_FOLDER",
+                                    message="O ReiAnix precisa de acesso à pasta onde seus animes estão armazenados.",
+                                    error=None,
+                                    diagnostic_event="STORAGE_PICKER_CANCELLED",
+                                    result="picker_cancelled",
+                                )
                             set_scan_state(ScanUiState.CANCELLED, source="saf", error=None, timestamp=event.get('createdAt'))
                             page.snack_bar=ft.SnackBar(ft.Text('Seleção de pasta cancelada.')); page.snack_bar.open=True; safe_update()
                             refresh_settings_if_active()
@@ -6032,6 +6041,20 @@ async def main(page: ft.Page):
                                     store.mark_source_unavailable(tree_uri, 'saf_permission_revoked')
                                 if compose_library_bridge.enabled:
                                     compose_library_bridge.request_publish("storage_event")
+                                if payload.get('granted') and tree_uri:
+                                    storage_onboarding["waiting_for_result"] = False
+                                    valid_after_selection = bool(_configured_valid_library_saf_roots())
+                                    if valid_after_selection:
+                                        storage_onboarding["auto_launch_requested"] = False
+                                        if storage_onboarding["startup_gate"]:
+                                            storage_onboarding["startup_gate"] = False
+                                        _set_storage_onboarding_state(
+                                            "READY",
+                                            message=None,
+                                            error=None,
+                                            diagnostic_event="STORAGE_READY",
+                                            result="library_root_valid",
+                                        )
                             refresh_settings_if_active()
                         elif event_type == 'saf_released':
                             tree_uri = payload.get('treeUri')
@@ -6048,6 +6071,13 @@ async def main(page: ft.Page):
                         elif event_type in {'saf_error','google_error'}:
                             if event_type == 'saf_error':
                                 storage_onboarding["waiting_for_result"] = False
+                                if storage_onboarding["startup_gate"]:
+                                    _set_storage_onboarding_state(
+                                        "ERROR",
+                                        error=event.get('message') or "Não foi possível acessar a pasta da biblioteca. Tente novamente.",
+                                        diagnostic_event="STORAGE_ERROR",
+                                        result=str(payload.get('code') or 'native_error'),
+                                    )
                                 status = str(payload.get('status') or '').upper()
                                 set_scan_state(
                                     scan_ui_state_from_native(
@@ -6181,7 +6211,6 @@ async def main(page: ft.Page):
         ))
         page.snack_bar.open = True
         safe_update()
-    schedule_thumbnail_reconciliation("startup")
     # Runtime navigation is deliberately process-local. The NavigationController
     # was initialized at Home and no persisted route is restored here.
     # MainActivity publishes the authoritative SAF grant inventory from
