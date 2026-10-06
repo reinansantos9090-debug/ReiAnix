@@ -131,17 +131,15 @@ class ReiAnixComposeLibraryHost(
                                     }
                                 },
                                 onOpenCategory = { label ->
-                                    if (label == "Armazenamento") {
-                                        navController.navigate(
-                                            ReiAnixRoutes.STORAGE,
-                                            navOptions {
-                                                launchSingleTop = true
-                                            },
-                                        )
-                                    } else {
-                                        hide()
-                                        publishSettingsNavigation("category", label)
-                                    }
+                                    // Every known Settings category is now owned by
+                                    // ReiAnixSettingsRoute. Keep this callback only as a
+                                    // defensive boundary for an unexpected future label;
+                                    // never leave the Compose Settings surface for a
+                                    // legacy/Flet category view.
+                                    android.util.Log.w(
+                                        TAG,
+                                        "Ignoring unsupported Compose Settings category=" + label,
+                                    )
                                 },
                             )
                         },
