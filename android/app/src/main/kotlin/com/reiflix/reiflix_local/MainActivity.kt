@@ -1771,7 +1771,7 @@ class MainActivity : FlutterFragmentActivity() {
         }
         val appContext = applicationContext
         val lifecycleSnapshot = if (activityResumed) "RESUMED" else "PAUSED"
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val trees = JSONArray()
                 val permissions = appContext.contentResolver.persistedUriPermissions
