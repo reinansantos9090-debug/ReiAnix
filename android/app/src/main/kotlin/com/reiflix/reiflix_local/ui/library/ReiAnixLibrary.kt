@@ -354,7 +354,7 @@ private fun LibraryHeader(
     ) {
         Text(
             text = "ReiAnix",
-            style = MaterialTheme.typography.headlineSmall,
+            style = ReiAnixTokens.TypographyTokens.brandTitle,
             color = MaterialTheme.colorScheme.primary,
             maxLines = 1,
         )
