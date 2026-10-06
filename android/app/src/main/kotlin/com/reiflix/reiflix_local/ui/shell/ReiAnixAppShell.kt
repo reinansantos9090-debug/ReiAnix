@@ -78,6 +78,7 @@ private fun ReiAnixBottomNavigation(
     NavigationBar(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = ReiAnixTokens.Dimensions.bottomNavigationMinHeight)
             .semantics {
                 isTraversalGroup = true
             },
@@ -115,12 +116,15 @@ private fun ReiAnixBottomNavigation(
                         },
                         contentDescription = null,
                         tint = contentColor,
+                        modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
                     )
                 },
                 label = {
                     Text(
                         text = destination.label,
+                        style = ReiAnixTokens.TypographyTokens.navigationLabel,
                         color = contentColor,
+                        maxLines = 1,
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
