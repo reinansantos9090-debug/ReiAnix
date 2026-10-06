@@ -44,6 +44,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
+import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsSurface
 import com.reiflix.reiflix_local.ui.settings.SettingsHeader
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.Box
@@ -122,13 +123,13 @@ fun ReiAnixStorageScreen(
         ) {
             LazyColumn(
                 modifier = Modifier
-                    .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
+                    .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
                     .fillMaxWidth(),
                 contentPadding = PaddingValues(
                 horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 vertical = ReiAnixTokens.Spacing.sm,
             ),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
         ) {
             item(key = "header") {
                 SettingsHeader(
@@ -168,7 +169,7 @@ fun ReiAnixStorageScreen(
 
             if (configuredSafSources.isEmpty()) {
                 item(key = "library-empty") {
-                    ReiAnixCard(
+                    ReiAnixSettingsSurface(
                         modifier = Modifier
                             .fillMaxWidth()
             
@@ -353,10 +354,10 @@ private fun StorageSectionTitle(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 2,
-            overflow = TextOverflow.Clip,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = description,
