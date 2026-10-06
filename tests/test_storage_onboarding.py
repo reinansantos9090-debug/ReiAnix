@@ -8,7 +8,7 @@ from pathlib import Path
 
 from core.dialogs import dismiss_dialog
 from core.diagnostics import DiagnosticTimeline
-from core.storage_access import StorageAccessState, StorageCapabilities, storage_access_state, storage_source_states
+from core.storage_access import StorageAccessState, StorageCapabilities, storage_access_state, storage_source_states, storage_snapshot_is_stale
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,6 +21,13 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("normalized.saf_roots", block)
         self.assertIn("normalized.removable_volumes", block)
         self.assertNotIn("snap.get(", block)
+
+    def test_storage_snapshot_ordering_rejects_older_native_state(self):
+        self.assertTrue(storage_snapshot_is_stale(1000, 1001))
+        self.assertFalse(storage_snapshot_is_stale(1001, 1001))
+        self.assertFalse(storage_snapshot_is_stale(0, 1001))
+        self.assertFalse(storage_snapshot_is_stale("bad", 1001))
+
 
     def test_storage_capabilities_normalize_native_snapshot(self):
         capabilities = StorageCapabilities.from_native({
