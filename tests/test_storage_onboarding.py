@@ -152,12 +152,15 @@ class StorageOnboardingTests(unittest.TestCase):
             StorageAccessState.READY,
         )
 
-    def test_saf_onboarding_clears_waiting_when_picker_request_cannot_start(self):
+    def test_startup_onboarding_launches_native_picker_without_flet_dialog(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        onboarding = source[source.index("async def choose_folder(_event):"):source.index("def cancel(_event):")]
-        self.assertIn("started = await add_folder()", onboarding)
-        self.assertIn('if not started:', onboarding)
-        self.assertIn('storage_onboarding["waiting_for_result"] = False', onboarding)
+        onboarding = source[source.index("def maybe_show_storage_onboarding"):source.index("async def refresh_library")]
+        self.assertIn("async def _auto_launch_storage_onboarding", onboarding)
+        self.assertIn("page.run_task(_auto_launch_storage_onboarding)", onboarding)
+        self.assertNotIn("ft.AlertDialog(", onboarding)
+        self.assertNotIn("page.show_dialog(", onboarding)
+        self.assertIn('storage_onboarding["startup_gate"]', onboarding)
+
 
     def test_native_scan_publication_uses_failing_mailbox_contract(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
@@ -181,28 +184,56 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('logger.error("[ANDROID] Invalid native mailbox event discarded:', source)
         self.assertIn('logger.error("[ANDROID] Native mailbox drain failed;', source)
 
-    def test_storage_onboarding_offers_saf_alternative(self):
+    def test_startup_onboarding_has_explicit_recoverable_states(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        onboarding = source[source.index("def maybe_show_storage_onboarding"):source.index("async def refresh_library")]
-        self.assertIn("async def choose_folder(_event):", onboarding)
-        self.assertIn("await add_folder()", onboarding)
-        self.assertIn('ft.TextButton("ESCOLHER PASTA"', onboarding)
-        self.assertNotIn('ft.FilledButton("PERMITIR"', onboarding)
-        self.assertIn('ft.TextButton("ESCOLHER PASTA"', onboarding)
-        source_state = source[source.index("def storage_state()"):source.index("def maybe_show_storage_onboarding")]
-        self.assertIn("storage_access_state(", source_state)
-        self.assertIn("bool(caps.saf_roots)", source_state)
-        self.assertIn("caps.media_read_state", source_state)
-        self.assertIn('caps.broad_storage_state == "available"', source_state)
+        self.assertIn('"state": "CHECKING"', source)
+        for state in ("NEEDS_FOLDER", "FOLDER_PICKER_OPEN", "READY", "ERROR"):
+            self.assertIn('"' + state + '"', source)
+        self.assertIn("_configured_valid_library_saf_roots()", source)
+        self.assertIn("configured_library_saf_roots(", source)
 
-    def test_storage_onboarding_cancel_uses_managed_flet_dialog_stack(self):
+
+    def test_startup_picker_cancel_returns_to_needs_folder(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        onboarding = source[source.index("def maybe_show_storage_onboarding"):source.index("async def refresh_library")]
-        self.assertIn("page.show_dialog(dialog)", onboarding)
-        self.assertIn("page.pop_dialog()", onboarding)
-        self.assertIn('storage_onboarding["dismissed"] = True', onboarding)
-        self.assertNotIn("page.overlay.append(dialog)", onboarding)
-        self.assertNotIn("dismiss_dialog(page, dialog)", onboarding)
+        cancelled = source[source.index("event_type == 'saf_cancelled'"):source.index("event_type == 'saf_permission'")]
+        self.assertIn('"NEEDS_FOLDER"', cancelled)
+        self.assertIn('"STORAGE_PICKER_CANCELLED"', cancelled)
+        self.assertIn('storage_onboarding["waiting_for_result"] = False', cancelled)
+
+
+    def test_compose_onboarding_is_the_android_startup_surface(self):
+        host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
+        screen = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixLibraryFolderOnboarding.kt").read_text(encoding="utf-8")
+        self.assertIn("libraryState.storage.onboardingState", host)
+        self.assertIn("ReiAnixLibraryFolderOnboarding(", host)
+        self.assertNotIn("views/settings_view.py", host)
+        self.assertIn('Text("Selecionar pasta")', screen)
+        self.assertIn('Text("Tentar novamente")', screen)
+        self.assertIn("ACTION_OPEN_DOCUMENT_TREE", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8"))
+
+    def test_selected_saf_root_becomes_ready_without_a_second_store(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        granted = source[source.index("event_type == 'saf_permission'"):source.index("event_type == 'saf_released'")]
+        self.assertIn("store.add_folder(", granted)
+        self.assertIn("_configured_valid_library_saf_roots()", granted)
+        self.assertIn('"READY"', granted)
+        self.assertNotIn("SharedPreferences", source)
+        self.assertNotIn("StorageV2", source)
+        self.assertNotIn("LibraryStoreV2", source)
+
+    def test_startup_does_not_schedule_thumbnail_reconciliation_before_storage_ready(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertNotIn('schedule_thumbnail_reconciliation("startup")', source)
+
+    def test_storage_diagnostics_use_supported_python_record_keywords_only(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        onboarding = source[source.index("def _set_storage_onboarding_state"):source.index("async def refresh_library")]
+        self.assertIn('diagnostics.record(', onboarding)
+        self.assertNotIn("refreshId=", onboarding)
+        self.assertNotIn("requestId=", onboarding)
+        self.assertNotIn("previous=", onboarding)
+        self.assertNotIn("state=", onboarding)
+        self.assertNotIn("reason=", onboarding)
 
     def test_storage_permission_dialogs_in_settings_use_managed_flet_stack(self):
         source = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
