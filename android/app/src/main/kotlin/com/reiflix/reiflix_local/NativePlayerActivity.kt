@@ -1701,6 +1701,50 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                 " currentPositionMs=" + player.currentPosition.coerceAtLeast(0L),
                         )
                     }
+                    if (
+                        (
+                            nextTransitionActive &&
+                            episodeChangePending &&
+                            transitionSourceRequestId == requestId &&
+                            transitionSourceUri == uri.toString() &&
+                            transitionReadyGeneration != generation
+                        ) || (
+                            previousTransitionActive &&
+                            episodeChangePending &&
+                            transitionSourceRequestId == requestId &&
+                            transitionSourceUri == uri.toString() &&
+                            transitionReadyGeneration != generation
+                        )
+                    ) {
+                        transitionReadyGeneration = generation
+                        if (transitionStartedAtMs > 0L) {
+                            val readyAtMs = System.currentTimeMillis()
+                            val transitionLatencyMs = readyAtMs - transitionStartedAtMs
+                            PerformanceDiagnostics.markPlayer(
+                                this@NativePlayerActivity,
+                                "transition_ready",
+                                requestId,
+                                commandCreatedAtMs,
+                                reused = true,
+                            )
+                            publishNavigationTransitionDiagnostic(
+                                if (nextTransitionActive) "NEXT_TRANSITION_READY" else "PREVIOUS_TRANSITION_READY",
+                                "media3_ready",
+                                JSONObject()
+                                    .put("episodeId", currentEpisodeId())
+                                    .put("generation", generation)
+                                    .put("playerSessionId", playerSessionId)
+                                    .put("transitionLatencyMs", transitionLatencyMs),
+                            )
+                            logPlayer(
+                                "PLAYER_TRANSITION_READY requestId=" + requestId.ifEmpty { "-" } +
+                                    " transitionLatencyMs=" + transitionLatencyMs +
+                                    " originRequestId=" + originRequestId.ifEmpty { "-" } +
+                                    " originCreatedAtMs=" + originCreatedAtMs +
+                                    " awaitingFirstFrame=true",
+                            )
+                        }
+                    }
                     updateEpisodeNavigationButtons()
                     completionReported = false
                     updateTrackButtons()
