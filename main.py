@@ -412,6 +412,9 @@ async def main(page: ft.Page):
         "state": "CHECKING",
         "message": None,
         "error": None,
+        # Wall-clock ordering is used only to fence short-lived native storage
+        # snapshots against a newer user authorization/revocation operation.
+        "last_storage_mutation_at_ms": 0,
     }
     storage_capabilities = [StorageCapabilities.unknown()]
     if compose_library_bridge.enabled:
@@ -3024,12 +3027,52 @@ async def main(page: ft.Page):
             dismissed=storage_onboarding["dismissed"],
         )
 
-    def apply_storage_capabilities(payload):
+    def apply_storage_capabilities(payload, *, event_created_at_ms=0):
         raw = payload.get("capabilities") if isinstance(payload, dict) else None
-        if isinstance(raw, dict):
-            storage_capabilities[0] = StorageCapabilities.from_native(raw)
-        elif isinstance(payload, dict) and ("mediaReadState" in payload or "broadStorageState" in payload):
-            storage_capabilities[0] = StorageCapabilities.from_native(payload)
+        incoming_payload = (
+            raw
+            if isinstance(raw, dict)
+            else payload
+            if isinstance(payload, dict) and ("mediaReadState" in payload or "broadStorageState" in payload)
+            else None
+        )
+        if incoming_payload is not None:
+            incoming = StorageCapabilities.from_native(incoming_payload)
+            current = storage_capabilities[0]
+            try:
+                published_at = int(event_created_at_ms or payload.get("publishedAtMs") or 0)
+            except (TypeError, ValueError, AttributeError):
+                published_at = 0
+            last_mutation = int(storage_onboarding.get("last_storage_mutation_at_ms") or 0)
+            if published_at > 0 and last_mutation > published_at:
+                # A lifecycle snapshot can legitimately be older than a folder
+                # selection that completed while that snapshot was still in flight.
+                # Preserve the newer SAF authorization set while accepting other
+                # capability dimensions from the incoming native snapshot.
+                saf_roots = current.saf_roots
+                scanner_capabilities = set(incoming.scanner_capabilities)
+                reconciliation_capabilities = set(incoming.reconciliation_capabilities)
+                if saf_roots:
+                    scanner_capabilities.add("saf")
+                    reconciliation_capabilities.add("saf")
+                storage_capabilities[0] = StorageCapabilities(
+                    media_read_state=incoming.media_read_state,
+                    broad_storage_state=incoming.broad_storage_state,
+                    saf_roots=saf_roots,
+                    removable_volumes=incoming.removable_volumes,
+                    scanner_capabilities=frozenset(scanner_capabilities),
+                    reconciliation_capabilities=frozenset(reconciliation_capabilities),
+                    lifecycle_state=incoming.lifecycle_state,
+                    api=incoming.api,
+                )
+                logger.info(
+                    "[STORAGE] stale capability snapshot ignored SAF regression "
+                    "published_at=%s last_mutation_at=%s",
+                    published_at,
+                    last_mutation,
+                )
+            else:
+                storage_capabilities[0] = incoming
         if compose_library_bridge.enabled:
             compose_library_bridge.request_publish("storage_capabilities_changed")
         if compose_settings_bridge.enabled:
@@ -4467,8 +4510,16 @@ async def main(page: ft.Page):
                         elif contract_event == 'permission_cancelled':
                             storage_onboarding["waiting_for_result"] = False
                         if event_type == 'storage_capabilities':
-                            apply_storage_capabilities(payload)
-                            storage_onboarding["inventory_complete"] = inventory_complete
+                            apply_storage_capabilities(
+                                payload,
+                                event_created_at_ms=event.get("createdAt") or 0,
+                            )
+                            # Inventory completion is monotonic for the lifetime
+                            # of this Python process; an older capability event must
+                            # never turn it back off.
+                            storage_onboarding["inventory_complete"] = (
+                                storage_onboarding["inventory_complete"] or inventory_complete
+                            )
                             refresh_settings_if_active()
                             maybe_show_storage_onboarding()
                         elif event_type == 'saf_scan_progress':
@@ -6007,6 +6058,33 @@ async def main(page: ft.Page):
                         elif event_type == 'saf_inventory':
                             trees = payload.get('trees') or []
                             inventory_complete = bool(payload.get('inventoryComplete'))
+                            try:
+                                inventory_started_at_ms = int(payload.get('inventoryStartedAtMs') or 0)
+                            except (TypeError, ValueError):
+                                inventory_started_at_ms = 0
+                            last_storage_mutation_at_ms = int(
+                                storage_onboarding.get("last_storage_mutation_at_ms") or 0
+                            )
+                            stale_inventory = (
+                                inventory_started_at_ms > 0
+                                and last_storage_mutation_at_ms > inventory_started_at_ms
+                            )
+                            if stale_inventory:
+                                logger.info(
+                                    "[STORAGE] stale SAF inventory ignored "
+                                    "inventory_started_at=%s last_mutation_at=%s",
+                                    inventory_started_at_ms,
+                                    last_storage_mutation_at_ms,
+                                )
+                                storage_onboarding["inventory_complete"] = (
+                                    storage_onboarding["inventory_complete"] or inventory_complete
+                                )
+                                refresh_settings_if_active()
+                                maybe_show_storage_onboarding()
+                                # Do not let a pre-selection inventory overwrite the
+                                # persisted authorization set produced by the newer
+                                # saf_permission event.
+                                continue
                             status_by_uri = {}
                             for item in trees:
                                 if not isinstance(item, dict) or not item.get('treeUri'):
@@ -6096,8 +6174,23 @@ async def main(page: ft.Page):
                             refresh_settings_if_active()
                         elif event_type == 'saf_permission':
                             storage_onboarding["waiting_for_result"] = False
+                            try:
+                                saf_mutation_at_ms = int(
+                                    event.get("createdAt")
+                                    or payload.get("timestamp")
+                                    or time.time() * 1000
+                                )
+                            except (TypeError, ValueError):
+                                saf_mutation_at_ms = int(time.time() * 1000)
+                            storage_onboarding["last_storage_mutation_at_ms"] = max(
+                                int(storage_onboarding.get("last_storage_mutation_at_ms") or 0),
+                                saf_mutation_at_ms,
+                            )
                             if payload.get('granted'):
-                                apply_storage_capabilities(payload)
+                                apply_storage_capabilities(
+                                    payload,
+                                    event_created_at_ms=saf_mutation_at_ms,
+                                )
                             tree_uri = payload.get('treeUri')
                             if tree_uri:
                                 if payload.get('granted'):
