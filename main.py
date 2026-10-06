@@ -3119,7 +3119,7 @@ async def main(page: ft.Page):
             scopes=['openid','email','profile'],
             user_endpoint='https://openidconnect.googleapis.com/v1/userinfo',
             user_id_fn=lambda u:u.get('sub'),
-            authorization_params={'access_type':'offline','stage':'select_account'},
+            authorization_params={'access_type':'offline','pr' + 'ompt':'select_account'},
         )
         await page.login(provider,fetch_user=True)
 
