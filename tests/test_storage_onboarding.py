@@ -1,3 +1,5 @@
+import ast
+import inspect
 import json
 import os
 import tempfile
@@ -5,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from core.dialogs import dismiss_dialog
+from core.diagnostics import DiagnosticTimeline
 from core.storage_access import StorageAccessState, StorageCapabilities, storage_access_state, storage_source_states
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,12 +157,35 @@ class StorageOnboardingTests(unittest.TestCase):
 
     def test_startup_onboarding_launches_native_picker_without_flet_dialog(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        onboarding = source[source.index("def maybe_show_storage_onboarding"):source.index("async def refresh_library")]
-        self.assertIn("async def _auto_launch_storage_onboarding", onboarding)
-        self.assertIn("page.run_task(_auto_launch_storage_onboarding)", onboarding)
-        self.assertNotIn("ft.AlertDialog(", onboarding)
-        self.assertNotIn("page.show_dialog(", onboarding)
-        self.assertIn('storage_onboarding["startup_gate"]', onboarding)
+        tree = ast.parse(source)
+        functions = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        auto = functions.get("_auto_launch_storage_onboarding")
+        maybe = functions.get("maybe_show_storage_onboarding")
+        self.assertIsNotNone(auto)
+        self.assertIsNotNone(maybe)
+
+        auto_source = ast.get_source_segment(source, auto) or ""
+        maybe_source = ast.get_source_segment(source, maybe) or ""
+
+        self.assertTrue(isinstance(auto, ast.AsyncFunctionDef))
+        self.assertIn("await add_folder()", auto_source)
+        self.assertIn('storage_onboarding["startup_gate"]', auto_source)
+        self.assertIn("page.run_task(_auto_launch_storage_onboarding)", maybe_source)
+        self.assertIn('storage_onboarding["startup_gate"]', maybe_source)
+
+        for segment in (auto_source, maybe_source):
+            self.assertNotIn("ft.AlertDialog(", segment)
+            self.assertNotIn("page.show_dialog(", segment)
+
+        main_activity = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", main_activity)
+        self.assertIn("takePersistableUriPermission", main_activity)
 
 
     def test_native_scan_publication_uses_failing_mailbox_contract(self):
@@ -227,13 +253,49 @@ class StorageOnboardingTests(unittest.TestCase):
 
     def test_storage_diagnostics_use_supported_python_record_keywords_only(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        onboarding = source[source.index("def _set_storage_onboarding_state"):source.index("async def refresh_library")]
-        self.assertIn('diagnostics.record(', onboarding)
-        self.assertNotIn("refreshId=", onboarding)
-        self.assertNotIn("requestId=", onboarding)
-        self.assertNotIn("previous=", onboarding)
-        self.assertNotIn("state=", onboarding)
-        self.assertNotIn("reason=", onboarding)
+        tree = ast.parse(source)
+
+        supported = {
+            name
+            for name, parameter in inspect.signature(DiagnosticTimeline.record).parameters.items()
+            if name != "self"
+            and parameter.kind
+            in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        }
+
+        record_calls = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not (
+                isinstance(func, ast.Attribute)
+                and func.attr == "record"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "diagnostics"
+            ):
+                continue
+            record_calls.append(node)
+            self.assertFalse(
+                any(keyword.arg is None for keyword in node.keywords),
+                "diagnostics.record() must not receive dynamic **kwargs in startup code",
+            )
+            invalid = {
+                keyword.arg
+                for keyword in node.keywords
+                if keyword.arg is not None and keyword.arg not in supported
+            }
+            self.assertEqual(
+                set(),
+                invalid,
+                "diagnostics.record() received unsupported keyword(s)",
+            )
+
+        self.assertGreater(len(record_calls), 0)
+        self.assertIn("source", supported)
+        self.assertIn("result", supported)
+        self.assertIn("error", supported)
+        self.assertNotIn("state", supported)
 
     def test_storage_permission_dialogs_in_settings_use_managed_flet_stack(self):
         source = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
