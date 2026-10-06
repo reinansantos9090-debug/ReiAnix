@@ -288,7 +288,11 @@ class ProfessionalMetadataTests(unittest.TestCase):
 
     def test_first_anilist_network_failure_is_persisted_and_not_retried_automatically(self):
         self._anime("First failure", "first failure")
-        with patch.object(self.service.anilist, "search", return_value=[]) as search,              patch.object(self.service.anilist, "last_request_status", "network_error"):
+        def offline_search(_title):
+            self.service.anilist._last_request_status = "network_error"
+            return []
+
+        with patch.object(self.service.anilist, "search", side_effect=offline_search) as search:
             first = self.service.refresh_metadata("first failure", "First failure", force=True)
             self.assertEqual("unresolved", first["metadata_status"])
             second = self.service.hydrate_catalog_metadata(self.service.catalog())
