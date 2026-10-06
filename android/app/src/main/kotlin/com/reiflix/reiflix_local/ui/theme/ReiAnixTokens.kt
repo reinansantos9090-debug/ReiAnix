@@ -218,8 +218,6 @@ object ReiAnixTokens {
         val bufferingIndicatorSize = 28.dp
         val bufferingStroke = 3.dp
         val playIconSize = 44.dp
-        val seekSecondsTextSize = 12.sp
-        val seekGlyphSize = 17.sp
         val timelineHeight = 48.dp
         val timelineTimeWidth = 44.dp
         val bottomHorizontalPadding = 8.dp
