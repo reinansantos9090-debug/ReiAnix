@@ -41,6 +41,43 @@ class ThumbnailTests(unittest.TestCase):
 
             self.assertEqual([episode_id], [item["id"] for item in candidates])
 
+    def test_generated_thumbnail_persists_real_duration_in_seconds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = LibraryStore(directory)
+            service = LibraryService(store)
+            anime_id = store.upsert_anime(
+                "fixture_57-duration",
+                {"title": "Prompt 57 Duration", "genres": "[]", "media_kind": "series"},
+            )
+            episode_id = store.upsert_episode(
+                anime_id,
+                "file:///tmp/fixture_57-duration-e01.mkv",
+                "E01.mkv",
+                1,
+                1,
+                media_identity="fixture_57-duration-e01",
+            )
+            thumb = Path(directory) / "duration.jpg"
+            self._image(thumb)
+
+            self.assertTrue(
+                service.register_generated_thumbnail(
+                    "file:///tmp/fixture_57-duration-e01.mkv",
+                    thumb,
+                    size=123,
+                    modified_at=456,
+                    media_identity="fixture_57-duration-e01",
+                    metadata={"mimeType": "video/mp4", "durationMs": 123456},
+                )
+            )
+
+            with store._conn() as con:
+                row = con.execute(
+                    "SELECT duration FROM episodes WHERE id=?",
+                    (episode_id,),
+                ).fetchone()
+            self.assertAlmostEqual(123.456, float(row["duration"]), places=6)
+
     def test_valid_episode_thumbnail_removes_episode_from_reconciliation(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
@@ -219,6 +256,11 @@ class ThumbnailTests(unittest.TestCase):
         self.assertIn("media_identity and item_identity == media_identity", home)
         self.assertIn("Semaphore(2)", extractor)
         self.assertIn("isValidCachedThumbnail", extractor)
+        self.assertIn("readCachedResult", extractor)
+        self.assertIn("writeCacheMetadata", extractor)
+        self.assertIn('"THUMBNAIL_DURATION_REPAIRED"', extractor)
+        self.assertIn('compose_library_bridge.request_publish("thumbnail_ready")', main)
+        self.assertIn('"THUMBNAIL_PUBLISHED"', main)
         self.assertIn('put("mediaIdentity", mediaIdentity)', activity)
         self.assertIn("count < 2", main)
         self.assertIn("retryable = status == 'EXTRACTION_FAILED'", main)
