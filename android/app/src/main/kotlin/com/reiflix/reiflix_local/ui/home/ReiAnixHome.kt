@@ -326,7 +326,7 @@ private fun HomeHeader(
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.CloudDone,
+                    imageVector = Icons.Filled.Cloud,
                     contentDescription = null,
                     modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
                 )
