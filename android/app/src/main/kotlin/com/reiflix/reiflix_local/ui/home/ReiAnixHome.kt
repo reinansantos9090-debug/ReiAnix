@@ -304,7 +304,7 @@ private fun HomeHeader(
     ) {
         Text(
             text = "ReiAnix",
-            style = MaterialTheme.typography.headlineSmall,
+            style = ReiAnixTokens.TypographyTokens.brandTitle,
             color = MaterialTheme.colorScheme.primary,
             maxLines = 1,
         )
@@ -677,7 +677,7 @@ private fun HomeHero(
 
                 Text(
                     text = anime.title,
-                    style = MaterialTheme.typography.headlineLarge,
+                    style = ReiAnixTokens.TypographyTokens.heroTitle,
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -935,7 +935,7 @@ private fun HomeSectionHeader(
             ) {
                 Text(
                     text = "Ver tudo  ›",
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -998,7 +998,7 @@ private fun HomeMediaCard(
                                     color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(
                                         horizontal = ReiAnixTokens.Spacing.xs,
-                                        vertical = 2.dp,
+                                        vertical = ReiAnixTokens.Spacing.xs / 2,
                                     ),
                                 )
                             }
