@@ -16,10 +16,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -1620,7 +1620,7 @@ private fun ReiAnixSettingsAccountCard(
         onClick = onClick,
     ) {
         Icon(
-            imageVector = androidx.compose.material.icons.automirrored.filled.ArrowForward,
+            imageVector = androidx.compose.material.icons.filled.ChevronRight,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
