@@ -94,7 +94,10 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         commandResultDirectory.mkdirs()
         snapshotObserver.startWatching()
         commandResultObserver.startWatching()
-        scope.launch { loadSnapshot() }
+        scope.launch {
+            loadSnapshot()
+            loadExistingCommandResults()
+        }
     }
 
     fun refresh() {
@@ -103,7 +106,8 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
 
     /**
      * Optimistically updates Compose, then persists through the existing Python SettingsStore.
-     * The confirmed value is reconciled by command result and the canonical snapshot.
+     * Compose does not keep a second preference store; the confirmed value is reconciled
+     * by command result and the canonical snapshot.
      */
     fun setSetting(key: String, value: String) {
         val normalizedKey = key.trim()
@@ -313,6 +317,15 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         }
     }
 
+    private suspend fun loadExistingCommandResults() {
+        val files = commandResultDirectory.listFiles { file ->
+            file.isFile && file.name.startsWith("command-") && file.name.endsWith(".json")
+        } ?: return
+        for (file in files.sortedBy { it.lastModified() }) {
+            loadCommandResult(file.name)
+        }
+    }
+
     private suspend fun loadCommandResult(fileName: String) {
         val file = File(commandResultDirectory, fileName)
         val raw = runCatching { file.readText(Charsets.UTF_8) }.getOrElse { return }
@@ -340,7 +353,10 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         val value = if (root.has("value") && !root.isNull("value")) root.optString("value") else null
         synchronized(stateLock) {
             val current = _state.value
-            val existing = current.operations[requestId] ?: ReiAnixSettingsOperationUiState(requestId, action)
+            val existing = current.operations[requestId]
+            if (existing == null) {
+                return@synchronized
+            }
             var settings = current.settings
             if (operationState == ReiAnixSettingsOperationState.SUCCESS && key != null) {
                 val pending = pendingSettings[key]
@@ -377,6 +393,7 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     }
     override fun close() {
         snapshotObserver.stopWatching()
+        commandResultObserver.stopWatching()
         scope.coroutineContext[Job]?.cancel()
     }
 }
