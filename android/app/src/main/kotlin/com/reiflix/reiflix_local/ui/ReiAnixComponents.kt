@@ -132,7 +132,7 @@ fun ReiAnixBadge(
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelMedium,
+            style = ReiAnixTokens.TypographyTokens.chip,
             color = content,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -219,7 +219,7 @@ fun ReiAnixPrimaryButton(
         }
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge,
+            style = ReiAnixTokens.TypographyTokens.button,
             maxLines = 2,
             overflow = TextOverflow.Clip,
         )
@@ -263,7 +263,7 @@ fun ReiAnixSecondaryButton(
         }
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge,
+            style = ReiAnixTokens.TypographyTokens.button,
             maxLines = 2,
             overflow = TextOverflow.Clip,
         )
@@ -479,7 +479,7 @@ fun ReiAnixScreenTitle(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineLarge,
+            style = ReiAnixTokens.TypographyTokens.screenTitle,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -501,7 +501,7 @@ fun ReiAnixMetadata(
 ) {
     Text(
         text = text,
-        style = MaterialTheme.typography.bodySmall,
+        style = ReiAnixTokens.TypographyTokens.metadata,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
         maxLines = maxLines,
@@ -517,7 +517,7 @@ fun ReiAnixSecondaryText(
 ) {
     Text(
         text = text,
-        style = MaterialTheme.typography.bodyMedium,
+        style = ReiAnixTokens.TypographyTokens.bodySecondary,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
         maxLines = maxLines,
