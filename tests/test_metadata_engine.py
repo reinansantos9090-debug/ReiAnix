@@ -286,6 +286,19 @@ class ProfessionalMetadataTests(unittest.TestCase):
         by_id.assert_not_called()
         downloader.assert_not_called()
 
+    def test_first_anilist_network_failure_is_persisted_and_not_retried_automatically(self):
+        self._anime("First failure", "first failure")
+        with patch.object(self.service.anilist, "search", side_effect=TimeoutError("offline")) as search:
+            first = self.service.refresh_metadata("first failure", "First failure", force=True)
+            self.assertEqual("unresolved", first["metadata_status"])
+            second = self.service.hydrate_catalog_metadata(self.service.catalog())
+        search.assert_called_once()
+        self.assertEqual(len(second), 1)
+        self.assertEqual(
+            "network_error",
+            self.store.anilist_match("first failure")["anilist_match_status"],
+        )
+
     def test_materialized_metadata_never_auto_refreshes_when_stale(self):
         anime = self._anime("Attack on Titan", "attack on titan")
         now = time.time() - 45 * 24 * 60 * 60
