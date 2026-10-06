@@ -212,6 +212,10 @@ class ArtworkEngineTests(unittest.TestCase):
         self.assertIn("ARTWORK_REQUESTED", names)
         self.assertIn("ARTWORK_DOWNLOAD_STARTED", names)
         self.assertIn("ARTWORK_DOWNLOAD_SUCCEEDED", names)
+        # Prompt-56 diagnostics expose the concise aliases as well; the listener
+        # contract above remains backward compatible.
+        self.assertIn("ARTWORK_DOWNLOAD_START", [name for name, _ in events])
+        self.assertIn("ARTWORK_DOWNLOAD_SUCCESS", [name for name, _ in events])
         self.assertIn("ARTWORK_PUBLISHED", names)
         published = next(payload for name, payload in events if name == "ARTWORK_PUBLISHED")
         self.assertEqual(int(published["entity_id"]), anime)
