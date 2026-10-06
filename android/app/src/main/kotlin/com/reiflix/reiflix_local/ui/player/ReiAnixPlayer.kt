@@ -122,8 +122,7 @@ fun ReiAnixPlayerRoute(
                     ?: "A mídia local não pôde ser enviada ao player.",
                 showProgress = false,
                 onRetry = {
-                    val canonicalEpisodeId = episodeId
-                    launchRequestId = viewModel.openEpisode(canonicalEpisodeId!!)
+                    launchRequestId = viewModel.openEpisode(episodeId)
                 },
             )
         }
