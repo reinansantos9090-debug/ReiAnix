@@ -280,12 +280,20 @@ data class ReiAnixAnimeUiModel(
     val stableKey: String
         get() = "anime:" + id
 
-    val contentEpisodes: List<ReiAnixEpisodeUiModel>
-        get() = buildList {
+    /**
+     * Flattened once per immutable anime instance. The previous computed getter
+     * allocated a new list every time cards, filters and projections queried it.
+     */
+    private val flattenedEpisodes: List<ReiAnixEpisodeUiModel> by lazy(LazyThreadSafetyMode.NONE) {
+        buildList {
             seasons.forEach { season -> addAll(season.episodes) }
             addAll(specials)
             addAll(mediaFiles)
         }
+    }
+
+    val contentEpisodes: List<ReiAnixEpisodeUiModel>
+        get() = flattenedEpisodes
 
     val availableContentCount: Int
         get() = contentEpisodes.count { it.media.availability == ReiAnixMediaAvailability.AVAILABLE }
