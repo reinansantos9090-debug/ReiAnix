@@ -42,7 +42,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -76,8 +75,6 @@ import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
@@ -444,29 +441,30 @@ private fun OrganizeSourcesAndScanPanel(
             }
 
             if (sources.isNotEmpty()) {
-                Column(
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 260.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .heightIn(max = 260.dp),
                     verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                    contentPadding = PaddingValues(vertical = ReiAnixTokens.Spacing.xs),
                 ) {
-                    sources.forEach { source ->
-                        key(source.stableKey) {
-                            val sourceState = state.storage.sourceState(source)
-                            OrganizeSourceRow(
-                                sourceName = sourceDisplayName(source.name, source.reference),
-                                location = source.reference,
-                                stateLabel = organizeSourceStateLabel(sourceState),
-                                stateTone = organizeSourceStateTone(sourceState),
-                                available = sourceState == "available",
-                                removeEnabled = !state.scanInProgress &&
-                                    !state.storage.safSelectionPending &&
-                                    !state.lastCommandAction.equals("remove_saf", ignoreCase = true),
-                                onReauthorize = onAddFolder,
-                                onRemove = { onRemoveFolder(source.reference) },
-                            )
-                        }
+                    items(
+                        items = sources,
+                        key = { it.stableKey },
+                    ) { source ->
+                        val sourceState = state.storage.sourceState(source)
+                        OrganizeSourceRow(
+                            sourceName = sourceDisplayName(source.name, source.reference),
+                            location = source.reference,
+                            stateLabel = organizeSourceStateLabel(sourceState),
+                            stateTone = organizeSourceStateTone(sourceState),
+                            available = sourceState == "available",
+                            removeEnabled = !state.scanInProgress &&
+                                !state.storage.safSelectionPending &&
+                                !state.lastCommandAction.equals("remove_saf", ignoreCase = true),
+                            onReauthorize = onAddFolder,
+                            onRemove = { onRemoveFolder(source.reference) },
+                        )
                     }
                 }
             } else {
