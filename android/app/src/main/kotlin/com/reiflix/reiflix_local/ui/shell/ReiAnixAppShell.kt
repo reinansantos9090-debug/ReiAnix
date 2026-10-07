@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
@@ -77,6 +78,13 @@ private fun ReiAnixBottomNavigation(
     destinations: List<ReiAnixBottomNavDestination>,
     onDestinationClick: (String) -> Unit,
 ) {
+    val navigationContainerColor =
+        if (MaterialTheme.colorScheme.background == ReiAnixTokens.Colors.background) {
+            ReiAnixTokens.Colors.surfaceNavigation
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
+
     NavigationBar(
         modifier = Modifier
             .fillMaxWidth()
@@ -84,7 +92,7 @@ private fun ReiAnixBottomNavigation(
             .semantics {
                 isTraversalGroup = true
             },
-        containerColor = ReiAnixTokens.Colors.surfaceNavigation,
+        containerColor = navigationContainerColor,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = ReiAnixTokens.Elevation.none,
         windowInsets = NavigationBarDefaults.windowInsets,
