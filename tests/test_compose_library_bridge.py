@@ -130,6 +130,10 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
                 return {}
 
             library.resolve_artwork_batch = resolve_artwork_batch
+            def forbidden_artwork_batch(*_args, **_kwargs):
+                raise AssertionError("snapshot publication must not resolve artwork for the whole catalog")
+
+            library.resolve_artwork_batch = forbidden_artwork_batch
             bridge = ComposeLibraryBridge(
                 directory,
                 library,
@@ -165,6 +169,12 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
         projected = ComposeLibraryBridge._project_anime(source)
         self.assertIsNone(projected["artwork_local_path"])
         self.assertEqual("https://img.example/poster.jpg", projected["artwork_external_url"])
+
+    def test_projection_helper_does_not_decode_artwork_pixels(self):
+        source = self.anime_fixture()
+        # A missing path is rejected cheaply at the projection boundary. Pixel
+        # verification belongs to ArtworkEngine/Compose viewport decoding.
+        self.assertIsNone(ComposeLibraryBridge._valid_local_artwork_path("/cache/missing.jpg"))
 
     async def test_empty_and_unavailable_states_are_distinct(self):
         with tempfile.TemporaryDirectory() as directory:
