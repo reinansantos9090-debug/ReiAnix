@@ -364,12 +364,6 @@ private fun LibraryHeader(
     sourceAvailable: Boolean,
     onSearch: (() -> Unit)?,
 ) {
-    val statusColor = if (sourceAvailable) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -380,54 +374,12 @@ private fun LibraryHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "ReiAnix",
-            style = ReiAnixTokens.TypographyTokens.brandTitle,
-            color = MaterialTheme.colorScheme.primary,
+            text = "Biblioteca",
+            style = ReiAnixTokens.TypographyTokens.screenTitle,
+            color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
         )
-
-        Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
-
-        Surface(
-            shape = ReiAnixTokens.Shapes.button,
-            color = Color.Transparent,
-            contentColor = statusColor,
-            border = androidx.compose.foundation.BorderStroke(
-                width = ReiAnixTokens.Dimensions.borderWidth,
-                color = statusColor.copy(alpha = 0.88f),
-            ),
-        ) {
-            Row(
-                modifier = Modifier.padding(
-                    horizontal = ReiAnixTokens.Spacing.md,
-                    vertical = ReiAnixTokens.Spacing.xs,
-                ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                if (!sourceAvailable) {
-                    Icon(
-                        imageVector = Icons.Filled.Info,
-                        contentDescription = null,
-                        modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
-                    )
-                } else {
-                    Text(
-                        text = "☁",
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                    )
-                }
-                Text(
-                    text = if (sourceAvailable) "Offline" else "Indisponível",
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                )
-            }
-        }
-
         Spacer(modifier = Modifier.weight(1f))
-
         if (onSearch != null) {
             IconButton(
                 onClick = onSearch,
@@ -445,7 +397,6 @@ private fun LibraryHeader(
         }
     }
 }
-
 @Composable
 private fun ColumnScope.LibraryReadyContent(
     state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
@@ -533,18 +484,6 @@ private fun ColumnScope.LibraryReadyContent(
             verticalArrangement = Arrangement.spacedBy(libraryGridSpacing(gridDensity)),
             horizontalArrangement = Arrangement.spacedBy(libraryGridSpacing(gridDensity)),
         ) {
-            item(
-                key = "library-source-summary",
-                span = { GridItemSpan(maxLineSpan) },
-                contentType = "library-source-summary",
-            ) {
-                LibrarySourceSummaryCard(
-                    animeCount = state.animeCount,
-                    episodeCount = availableEpisodeCount,
-                    sourceAvailable = state.sourceAvailable,
-                )
-            }
-
             if (!errorMessage.isNullOrBlank()) {
                 item(
                     key = "library-error-banner",
@@ -812,7 +751,7 @@ private fun ColumnScope.LibraryReadyContent(
                             onToggleFavorite = { onToggleFavorite(anime.id) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .widthIn(max = ReiAnixTokens.Dimensions.libraryGridMaxItemWidth),
+                                .widthIn(max = ReiAnixTokens.Dimensions.gridMaxItemWidth),
                         )
                     }
                 }
