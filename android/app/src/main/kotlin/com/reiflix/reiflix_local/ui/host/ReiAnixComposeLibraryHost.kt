@@ -351,6 +351,11 @@ class ReiAnixComposeLibraryHost(
         episodeId: String?,
         origin: String?,
     ) {
+        // A first Back on Home is only valid while the user remains on Home.
+        // Any logical route transition invalidates the pending double-back window.
+        if (route != ReiAnixRoutes.HOME) {
+            lastHomeBackAtElapsedRealtimeMs = 0L
+        }
         val payload = JSONObject()
             .put("route", route)
             .put("animeId", animeId ?: "")
