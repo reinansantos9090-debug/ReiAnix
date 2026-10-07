@@ -693,14 +693,18 @@ async def main(page: ft.Page):
                         )
                 if compose_library_bridge.enabled:
                     compose_library_bridge.request_publish(
-                        "artwork_ready" if event_name != "ARTWORK_CACHE_HIT" else "artwork_cache_hit"
+                        (
+                            "artwork_cache_hit" if event_name == "ARTWORK_CACHE_HIT" else "artwork_ready"
+                        ) + f":{entity_type}:{entity_id}:{artwork_type}"
                     )
                 if changed:
                     safe_update()
                 return
 
             if event_name == "ARTWORK_CACHE_INVALID" and compose_library_bridge.enabled:
-                compose_library_bridge.request_publish("artwork_cache_invalid")
+                compose_library_bridge.request_publish(
+                    f"artwork_cache_invalid:{entity_type}:{entity_id}:{artwork_type}"
+                )
 
         try:
             artwork_event_loop.call_soon_threadsafe(apply_event)
@@ -720,7 +724,9 @@ async def main(page: ft.Page):
             if not ui_alive[0]:
                 return
             if compose_library_bridge.enabled:
-                compose_library_bridge.request_publish("metadata_translation")
+                compose_library_bridge.request_publish(
+                    f"metadata_translation:{payload.get('anime_id') or 0}"
+                )
             if (
                 event_name in {"TRANSLATION_SUCCEEDED", "TRANSLATION_CACHE_HIT"}
                 and not compose_primary_ui
@@ -5302,7 +5308,9 @@ async def main(page: ft.Page):
                                         duration_ms=metadata["durationMs"],
                                     )
                                     if compose_library_bridge.enabled:
-                                        compose_library_bridge.request_publish("thumbnail_ready")
+                                        compose_library_bridge.request_publish(
+                                            f"thumbnail_ready:{payload.get('episodeId') or media_identity or uri}"
+                                        )
                                     if started_native is not None:
                                         performance.event(
                                             "artwork.thumbnail",
@@ -5591,7 +5599,9 @@ async def main(page: ft.Page):
                                         },
                                     )
                                     if updated:
-                                        compose_library_bridge.request_publish('player_progress')
+                                        compose_library_bridge.request_publish(
+                                            f"player_progress:{payload.get('episodeId') or 0}"
+                                        )
                                     performance.event("player.progress_persist", duration_ms=(performance.now()-progress_started)*1000.0,
                                                       screen=navigation.current,
                                                       metadata={"episode_id": payload.get("episodeId"), "media_identity": payload.get("mediaId"),
@@ -5616,7 +5626,9 @@ async def main(page: ft.Page):
                                     store.set_watched, path_ref, True, episode_id=payload.get("episodeId")
                                 )
                             if updated:
-                                compose_library_bridge.request_publish('player_mark_watched')
+                                compose_library_bridge.request_publish(
+                                    f"player_mark_watched:{payload.get('episodeId') or 0}"
+                                )
                             diagnostics.record(
                                 "PLAYER_MARK_WATCHED",
                                 request_id=event_request_id,
@@ -5631,7 +5643,9 @@ async def main(page: ft.Page):
                                     store.set_watched, path_ref, False, episode_id=payload.get("episodeId")
                                 )
                             if updated:
-                                compose_library_bridge.request_publish('player_mark_unwatched')
+                                compose_library_bridge.request_publish(
+                                    f"player_mark_unwatched:{payload.get('episodeId') or 0}"
+                                )
                             diagnostics.record(
                                 "PLAYER_MARK_UNWATCHED",
                                 request_id=event_request_id,
