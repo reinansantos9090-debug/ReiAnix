@@ -148,8 +148,10 @@ fun ReiAnixLocalArtwork(
             mutableStateOf(ArtworkRequestState.LOADING)
         }
 
-        if (source == null || effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
+        if (source == null) {
             ReiAnixArtworkMissingState(label = placeholder)
+        } else if (effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
+            ArtworkLoadingPlaceholder()
         } else {
             val request = remember(
                 stableIdentity,
@@ -202,7 +204,7 @@ fun ReiAnixLocalArtwork(
 
             when (requestState) {
                 ArtworkRequestState.LOADING -> {
-                    ArtworkLoadingPlaceholder(label = placeholder)
+                    ArtworkLoadingPlaceholder()
                 }
                 ArtworkRequestState.READY -> Unit
                 ArtworkRequestState.MISSING -> {
@@ -233,24 +235,21 @@ private enum class ArtworkRequestState {
 }
 
 @Composable
-private fun ArtworkLoadingPlaceholder(
-    label: String,
-) {
+private fun ArtworkLoadingPlaceholder() {
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .semantics(mergeDescendants = true) {
-                contentDescription = "Carregando " + label
+                contentDescription = "Carregando arte"
             },
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = label,
+            text = "Carregando…",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
