@@ -19,48 +19,48 @@ object ReiAnixTokens {
         // ReiAnix visual language: neutral near-black canvas, layered dark-gray surfaces,
         // and one controlled electric-blue interaction accent. Keep semantic aliases here
         // so Compose screens never need ad-hoc hex/RGB values.
-        val background = Color(0xFF050505)
-        val backgroundSecondary = Color(0xFF080808)
-        val surface = Color(0xFF0B0B0B)
-        val surfaceVariant = Color(0xFF111111)
-        val surfaceRaised = Color(0xFF171717)
-        val surfaceCard = Color(0xFF111111)
-        val surfaceDialog = Color(0xFF141414)
-        val surfaceSheet = Color(0xFF141414)
+        val background = Color(0xFF000000)
+        val backgroundSecondary = Color(0xFF050505)
+        val surface = Color(0xFF0A0A0A)
+        val surfaceVariant = Color(0xFF151515)
+        val surfaceRaised = Color(0xFF111111)
+        val surfaceCard = Color(0xFF0A0A0A)
+        val surfaceDialog = Color(0xFF151515)
+        val surfaceSheet = Color(0xFF151515)
         val surfacePlayer = Color(0xFF000000)
-        val surfaceSelected = Color(0xFF171717)
-        val surfaceNavigation = Color(0xFF080808)
-        val playerControl = Color(0xFFF5F5F5)
+        val surfaceSelected = Color(0xFF111111)
+        val surfaceNavigation = Color(0xFF000000)
+        val playerControl = Color(0xFFFFFFFF)
         val playerScrim = Color(0xFF000000)
 
-        val primary = Color(0xFF3D8BFF)
+        val primary = Color(0xFF2579FF)
         val primaryContainer = Color(0xFF171717)
-        val onPrimary = Color(0xFFF5F5F5)
+        val onPrimary = Color(0xFFFFFFFF)
         val onPrimaryContainer = Color(0xFFF5F5F5)
         val active = primary
-        val focus = Color(0xFF7FB3FF)
-        val pressed = Color(0xFF2D6FD0)
+        val focus = Color(0xFF6AA3FF)
+        val pressed = Color(0xFF1E61C7)
 
-        val secondary = Color(0xFFB8B8B8)
+        val secondary = Color(0xFFB3B3B3)
         val secondaryContainer = Color(0xFF171717)
         val onSecondary = Color(0xFF0B0B0B)
         val onSecondaryContainer = Color(0xFFF5F5F5)
 
-        val tertiary = Color(0xFFB8B8B8)
+        val tertiary = Color(0xFF777777)
         val tertiaryContainer = Color(0xFF171717)
         val onTertiary = Color(0xFF0B0B0B)
         val onTertiaryContainer = Color(0xFFF5F5F5)
 
-        val text = Color(0xFFF5F5F5)
-        val textMuted = Color(0xFFB8B8B8)
-        val textTertiary = Color(0xFF858585)
-        val textDisabled = Color(0xFF5F5F5F)
+        val text = Color(0xFFFFFFFF)
+        val textMuted = Color(0xFFB3B3B3)
+        val textTertiary = Color(0xFF777777)
+        val textDisabled = Color(0xFF666666)
         val textOnPrimary = onPrimary
-        val border = Color(0xFF292929)
-        val borderStrong = Color(0xFF333333)
-        val divider = Color(0xFF242424)
+        val border = Color(0xFF202020)
+        val borderStrong = Color(0xFF2A2A2A)
+        val divider = Color(0xFF202020)
 
-        val error = Color(0xFFFF6B6B)
+        val error = Color(0xFFFF5B61)
         val onError = Color(0xFF240608)
         val errorContainer = Color(0xFF5A1A1F)
         val onErrorContainer = Color(0xFFFFDADD)
@@ -71,6 +71,15 @@ object ReiAnixTokens {
         val disabledSurface = Color(0xFF111111)
         val overlay = Color(0xB3000000)
         val overlayStrong = Color(0xCC000000)
+        // Canonical semantic aliases used by shared components. Keep these as aliases
+        // of the palette above so the UI has one visual source of truth.
+        val surfaceElevated = surfaceRaised
+        val textPrimary = text
+        val textSecondary = textMuted
+        val accent = primary
+        val accentPressed = pressed
+        val accentDisabled = primary.copy(alpha = 0.38f)
+
         val statusContainerAlpha = 0.16f
         val disabledContentAlpha = 0.55f
         val subtleBorderAlpha = 0.55f
@@ -88,22 +97,22 @@ object ReiAnixTokens {
         val lightOnSecondary = Color(0xFFFFFFFF)
         val lightSecondaryContainer = Color(0xFFD9E5FF)
         val lightOnSecondaryContainer = Color(0xFF091B36)
-        val lightTertiary = Color(0xFF6750A4)
+        val lightTertiary = Color(0xFF5F6670)
         val lightOnTertiary = Color(0xFFFFFFFF)
-        val lightTertiaryContainer = Color(0xFFEADDFF)
-        val lightOnTertiaryContainer = Color(0xFF21005D)
+        val lightTertiaryContainer = Color(0xFFE9E9EC)
+        val lightOnTertiaryContainer = Color(0xFF17191C)
         val lightError = Color(0xFFBA1A1A)
         val lightOnError = Color(0xFFFFFFFF)
         val lightErrorContainer = Color(0xFFFFDAD6)
         val lightOnErrorContainer = Color(0xFF410002)
-        val lightBackground = Color(0xFFF7F9FC)
+        val lightBackground = Color(0xFFF7F7F7)
         val lightSurface = Color(0xFFFFFFFF)
-        val lightSurfaceVariant = Color(0xFFE9EEF6)
-        val lightSurfaceDialog = Color(0xFFF1F5FB)
-        val lightText = Color(0xFF171A20)
-        val lightTextMuted = Color(0xFF5E6572)
-        val lightBorder = Color(0xFF727A88)
-        val lightDivider = Color(0xFFD1D6DF)
+        val lightSurfaceVariant = Color(0xFFEFEFEF)
+        val lightSurfaceDialog = Color(0xFFE7E7EA)
+        val lightText = Color(0xFF141414)
+        val lightTextMuted = Color(0xFF5F5F5F)
+        val lightBorder = Color(0xFFD0D0D0)
+        val lightDivider = Color(0xFFDEDEDE)
     }
 
     object Spacing {
@@ -187,16 +196,16 @@ object ReiAnixTokens {
     }
 
     object Shapes {
-        val chip = androidx.compose.foundation.shape.RoundedCornerShape(17.dp)
+        val chip = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-        val button = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
+        val button = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
         val card = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
         val large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val artwork = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
         val hero = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
         val dialog = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
         val sheet = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
-        val textField = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
+        val textField = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
     }
 
     object Elevation {
