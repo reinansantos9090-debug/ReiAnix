@@ -25,7 +25,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import coil.ImageLoader
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Dimension
@@ -106,14 +106,8 @@ fun ReiAnixLocalArtwork(
             0
         }
 
-        val requestWidthPx = requestDimension(
-            measured = measuredWidthPx,
-            maxDimensionPx = maxDimensionPx,
-        )
-        val requestHeightPx = requestDimension(
-            measured = measuredHeightPx,
-            maxDimensionPx = maxDimensionPx,
-        )
+        val requestWidthPx = requestDimension(measuredWidthPx, maxDimensionPx)
+        val requestHeightPx = requestDimension(measuredHeightPx, maxDimensionPx)
         val fallbackDimensionPx = resolveTargetDimensionPx(
             widthPx = measuredWidthPx,
             heightPx = measuredHeightPx,
@@ -147,6 +141,9 @@ fun ReiAnixLocalArtwork(
             mutableIntStateOf(0)
         }
         val source = candidates.getOrNull(candidateIndex)
+        var requestState by remember(stableIdentity, source) {
+            mutableStateOf(ArtworkRequestState.LOADING)
+        }
 
         if (source == null || effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
             ReiAnixArtworkMissingState(label = placeholder)
@@ -174,21 +171,17 @@ fun ReiAnixLocalArtwork(
                     .build()
             }
 
-            SubcomposeAsyncImage(
+            AsyncImage(
                 model = request,
                 imageLoader = ReiAnixArtworkImageLoader.get(context),
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
-                loading = {
-                    ArtworkLoadingPlaceholder(label = placeholder)
+                onLoading = {
+                    requestState = ArtworkRequestState.LOADING
                 },
-                error = {
-                    if (candidateIndex < candidates.lastIndex) {
-                        ArtworkLoadingPlaceholder(label = placeholder)
-                    } else {
-                        ReiAnixArtworkMissingState(label = placeholder)
-                    }
+                onSuccess = {
+                    requestState = ArtworkRequestState.READY
                 },
                 onError = { state ->
                     Log.w(
@@ -198,11 +191,29 @@ fun ReiAnixLocalArtwork(
                     )
                     if (candidateIndex < candidates.lastIndex) {
                         candidateIndex += 1
+                    } else {
+                        requestState = ArtworkRequestState.MISSING
                     }
                 },
             )
+
+            when (requestState) {
+                ArtworkRequestState.LOADING -> {
+                    ArtworkLoadingPlaceholder(label = placeholder)
+                }
+                ArtworkRequestState.READY -> Unit
+                ArtworkRequestState.MISSING -> {
+                    ReiAnixArtworkMissingState(label = placeholder)
+                }
+            }
         }
     }
+}
+
+private enum class ArtworkRequestState {
+    LOADING,
+    READY,
+    MISSING,
 }
 
 @Composable
