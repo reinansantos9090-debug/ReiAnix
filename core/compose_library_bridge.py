@@ -145,6 +145,9 @@ class ComposeLibraryBridge:
             # every snapshot publish. A scanner batch or a single artwork event could
             # therefore fan out into a full-library artwork pass. Removing that eager
             # work establishes real lazy visual loading without a second cache.
+            def hydrate_episode(episode):
+                return dict(episode) if isinstance(episode, dict) else episode
+
             def hydrate_anime(item):
                 return dict(item) if isinstance(item, dict) else item
 
@@ -160,8 +163,6 @@ class ComposeLibraryBridge:
                             projected = dict(projected)
                             projected["playback_target_episode"] = hydrate_episode(target)
 
-                media_kind = str(projected.get("media_kind") or "").strip().lower()
-                entity_type = "movie" if media_kind == "movie" else "anime"
                 projected_animes.append(
                     self._project_anime(projected)
                 )
