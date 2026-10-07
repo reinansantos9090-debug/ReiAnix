@@ -38,6 +38,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
@@ -340,8 +341,8 @@ private fun OrganizeSourcesAndScanPanel(
 
     Surface(
         modifier = modifier,
-        shape = ReiAnixTokens.Shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        color = MaterialTheme.colorScheme.background,
     ) {
         Column(
             modifier = Modifier.padding(ReiAnixTokens.Spacing.md),
@@ -393,8 +394,8 @@ private fun OrganizeSourcesAndScanPanel(
             }
 
             Surface(
-                shape = ReiAnixTokens.Shapes.card,
-                color = MaterialTheme.colorScheme.surface,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                color = MaterialTheme.colorScheme.background,
             ) {
                 Row(
                     modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
@@ -440,6 +441,11 @@ private fun OrganizeSourcesAndScanPanel(
                     ReiAnixBadge(text = scanStatus.badge, tone = scanStatus.tone)
                 }
             }
+
+            HorizontalDivider(
+                thickness = ReiAnixTokens.Dimensions.dividerHeight,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+            )
 
             if (sources.isNotEmpty()) {
                 LazyColumn(
@@ -522,13 +528,13 @@ private fun OrganizeSourceRow(
     onReauthorize: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    Surface(
-        shape = ReiAnixTokens.Shapes.card,
-        color = MaterialTheme.colorScheme.surface,
+    Column(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = ReiAnixTokens.Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
@@ -540,7 +546,7 @@ private fun OrganizeSourceRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = sourceName,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -581,6 +587,10 @@ private fun OrganizeSourceRow(
                 Icon(Icons.Filled.Delete, contentDescription = null)
             }
         }
+        HorizontalDivider(
+            thickness = ReiAnixTokens.Dimensions.dividerHeight,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+        )
     }
 }
 
