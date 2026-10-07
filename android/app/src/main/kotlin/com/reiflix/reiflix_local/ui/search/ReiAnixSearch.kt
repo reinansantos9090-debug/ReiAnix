@@ -470,12 +470,39 @@ private fun SearchResults(
             key = { anime -> anime.stableKey },
             contentType = { "search-result-anime-card" },
         ) { anime ->
-            ReiAnixAnimeCard(
-                anime = anime,
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                onClick = { onOpenDetails(anime.id) },
-                maxDimensionPx = 320,
-            )
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+            ) {
+                ReiAnixAnimeCard(
+                    anime = anime,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onOpenDetails(anime.id) },
+                    maxDimensionPx = 320,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                ) {
+                    anime.year?.let { year ->
+                        Text(
+                            text = year.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                    if (anime.genres.isNotEmpty()) {
+                        Text(
+                            text = anime.genres.take(2).joinToString(" • ") { it.name },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
         }
     }
 }

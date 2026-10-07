@@ -453,7 +453,7 @@ private fun OrganizeSourcesAndScanPanel(
                     sources.forEach { source ->
                         item(
                             key = source.stableKey,
-                            contentType = { "organize-source-row" },
+                            contentType = "organize-source-row",
                         ) {
                             val sourceState = state.storage.sourceState(source)
                             OrganizeSourceRow(
