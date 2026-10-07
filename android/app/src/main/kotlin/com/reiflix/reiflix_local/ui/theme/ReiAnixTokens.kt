@@ -139,8 +139,8 @@ object ReiAnixTokens {
         val cardMinHeight = 88.dp
         // Compact Settings rows follow the reference density while keeping the
         // complete Compose accessibility touch target.
-        val settingsRowMinHeight = 72.dp
-        val settingsIconContainerSize = 40.dp
+        val settingsRowMinHeight = 60.dp
+        val settingsIconContainerSize = 36.dp
         val settingsTrailingSize = 48.dp
         val buttonMinHeight = 40.dp
         val chipMinHeight = 34.dp
@@ -155,6 +155,15 @@ object ReiAnixTokens {
         val bottomNavigationIndicatorHeight = 32.dp
         val artworkMinSize = 96.dp
         val animeCardWidth = 154.dp
+        // Shared responsive card widths. Screens consume these semantic tokens
+        // instead of inventing per-screen poster dimensions.
+        val cardWidthSmall = 92.dp
+        val cardWidthMedium = 108.dp
+        val cardWidthLarge = 132.dp
+        val gridMinWidthSmall = 92.dp
+        val gridMinWidthMedium = 108.dp
+        val gridMinWidthLarge = 132.dp
+        val gridMaxItemWidth = 184.dp
         val continueCardWidth = 250.dp
         val continuePosterWidth = 76.dp
         val continuePosterHeight = 108.dp
@@ -275,7 +284,7 @@ object ReiAnixTokens {
             fontWeight = FontWeight.SemiBold,
         )
         val cardTitle = TextStyle(
-            fontSize = 13.sp,
+            fontSize = 14.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold,
         )
