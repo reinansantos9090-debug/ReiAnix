@@ -287,7 +287,25 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             }.onSuccess { decoded ->
                 _state.value = mergeSnapshotState(decoded, _state.value)
                 val currentPaged = _pagedLibraryState.value
-                if (currentPaged.animes.isNotEmpty() && currentPaged.generation > 0L) {
+                if (currentPaged.generation == 1L) {
+                    // Generation 1 is the default unfiltered Library. Reuse the
+                    // newest canonical first page during scanner reconciliation so
+                    // newly discovered titles can appear without waiting for a
+                    // second manual refresh.
+                    val firstPage = _state.value.animes.take(36)
+                    _pagedLibraryState.value = currentPaged.copy(
+                        status = if (firstPage.isNotEmpty()) {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                        } else {
+                            currentPaged.status
+                        },
+                        animes = firstPage,
+                        totalCount = _state.value.animes.size,
+                        hasMore = _state.value.animes.size > firstPage.size,
+                        isLoading = currentPaged.isLoading,
+                        error = null,
+                    )
+                } else if (currentPaged.animes.isNotEmpty() && currentPaged.generation > 0L) {
                     val latestById = _state.value.animes.associateBy { it.id }
                     val patched = currentPaged.animes.mapNotNull { existing ->
                         latestById[existing.id]
