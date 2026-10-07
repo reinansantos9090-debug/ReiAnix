@@ -181,7 +181,10 @@ class ReiAnixLibraryPaginationReconciliationTest {
         val reconciled = reconcile(current, listOf(changed) + current.animes.drop(1))
 
         assertEquals(108, reconciled.animes.size)
-        assertEquals(87.0, reconciled.animes.first().seasons.first().episodes.first().progressSeconds, 0.0)
+        val updatedProgress = assertNotNull(
+            reconciled.animes.first().seasons.first().episodes.first().progressSeconds,
+        )
+        assertEquals(87.0, updatedProgress, 0.0)
     }
 
     @Test
