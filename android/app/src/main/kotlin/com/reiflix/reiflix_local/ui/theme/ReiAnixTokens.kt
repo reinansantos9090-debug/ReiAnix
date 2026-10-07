@@ -157,12 +157,12 @@ object ReiAnixTokens {
         val animeCardWidth = 154.dp
         // Shared responsive card widths. Screens consume these semantic tokens
         // instead of inventing per-screen poster dimensions.
-        val cardWidthSmall = 92.dp
+        val cardWidthSmall = 76.dp
         val cardWidthMedium = 108.dp
-        val cardWidthLarge = 132.dp
-        val gridMinWidthSmall = 92.dp
+        val cardWidthLarge = 144.dp
+        val gridMinWidthSmall = 76.dp
         val gridMinWidthMedium = 108.dp
-        val gridMinWidthLarge = 132.dp
+        val gridMinWidthLarge = 144.dp
         val gridMaxItemWidth = 184.dp
         val continueCardWidth = 250.dp
         val continuePosterWidth = 76.dp
