@@ -69,6 +69,8 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertNotIn("HomeAnimeRenderData", home)
         self.assertNotIn("toHomeRenderData", home)
         self.assertIn("List<ReiAnixHomeAnimeUiModel>", home)
+        self.assertIn("ReiAnixHomeLibraryUiState.from(state)", home)
+        self.assertNotIn("it.playbackEpisodeId", home)
 
     def test_home_keeps_usable_catalog_visible_during_incremental_loading(self):
         home = self.read(HOME)

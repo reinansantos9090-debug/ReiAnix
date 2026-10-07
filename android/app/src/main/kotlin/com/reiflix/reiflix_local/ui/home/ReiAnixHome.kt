@@ -527,8 +527,12 @@ private fun ColumnScope.HomeContent(
     onOpenMyList: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
+    val homeState = remember(state) {
+        ReiAnixHomeLibraryUiState.from(state)
+    }
+
     HomeReadyContent(
-        animes = state.animes,
+        animes = homeState.animes,
         continueWatching = state.continueWatching,
         cardSize = cardSize,
         showThumbnails = showThumbnails,
@@ -1100,7 +1104,7 @@ private fun HomeMediaCard(
 
 private fun selectFeaturedAnime(items: List<ReiAnixHomeAnimeUiModel>): ReiAnixHomeAnimeUiModel =
     items.firstOrNull {
-        it.playbackEpisodeId != null && it.playbackActionLabel != "Indisponível"
+        it.playbackTargetEpisodeId != null && it.playbackActionLabel != "Indisponível"
     }
         ?: items.firstOrNull { it.isWatching }
         ?: items.firstOrNull { it.favorite }
