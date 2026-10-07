@@ -632,10 +632,7 @@ private fun OrganizeTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
-            .padding(
-                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                vertical = ReiAnixTokens.Spacing.xs,
-            ),
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(
@@ -647,42 +644,13 @@ private fun OrganizeTopBar(
         ) {
             Icon(Icons.Filled.ArrowBack, contentDescription = null)
         }
-        Column(
+        Text(
+            text = "Organizar",
+            style = ReiAnixTokens.TypographyTokens.screenTitle,
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = "Organizar",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    shape = ReiAnixTokens.Shapes.chip,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Text(
-                        text = if (sourceAvailable) "Offline" else "Indisponível",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(
-                            horizontal = ReiAnixTokens.Spacing.sm,
-                            vertical = ReiAnixTokens.Spacing.xs,
-                        ),
-                    )
-                }
-                Text(
-                    text = "Biblioteca local",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
-        }
+            maxLines = 1,
+        )
         IconButton(
             onClick = onOpenStorageAccess,
             modifier = Modifier.semantics {
@@ -722,7 +690,6 @@ private fun OrganizeTopBar(
         }
     }
 }
-
 @Composable
 private fun OrganizeOverview(
     state: ReiAnixLibraryUiState,
