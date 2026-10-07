@@ -65,21 +65,14 @@ class ReiAnixComposeLibraryHost(
         if (view.tag != CONTENT_TAG) {
             view.tag = CONTENT_TAG
             view.setContent {
-            val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+            val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
+            val appearanceCardSize by settingsViewModel.appearanceCardSize.collectAsStateWithLifecycle()
+            val appearanceShowThumbnails by settingsViewModel.appearanceShowThumbnails.collectAsStateWithLifecycle()
+            val libraryGridDensity by settingsViewModel.libraryGridDensity.collectAsStateWithLifecycle()
             val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
 
-            val appearanceCardSize = settingsState.settings["appearance.card_size"]
-                ?.takeIf { it in setOf("small", "medium", "large") }
-                ?: "medium"
-            val appearanceShowThumbnails = settingsState.settings["appearance.show_thumbnails"]
-                ?.let { it == "true" }
-                ?: true
-            val libraryGridDensity = settingsState.settings["library.grid_density"]
-                ?.takeIf { it in setOf("small", "medium", "large") }
-                ?: "medium"
-
             ReiAnixComposeRoot(
-                themeMode = settingsState.settings["appearance.theme"],
+                themeMode = themeMode,
             ) {
                 val navController = rememberNavController()
                     DisposableEffect(navController) {

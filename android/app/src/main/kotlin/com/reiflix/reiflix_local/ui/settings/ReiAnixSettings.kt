@@ -2135,11 +2135,6 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
         "Backup e Restauração" -> "BackupService existente"
         "Diagnóstico" -> "Diagnóstico local"
         "Sobre" -> "ReiAnix"
-        "Artwork" -> if (settings["artwork.enabled"] == "true") {
-            "Artwork remoto ativo"
-        } else {
-            "Artwork remoto desativado"
-        }
         else -> ""
     }
 

@@ -171,3 +171,27 @@ def test_all_settings_categories_are_compose_owned_and_actionable():
     settings_callback = host[settings_callback_start:settings_callback_end]
     assert "publishSettingsNavigation(" not in settings_callback
     assert "ReiAnixRoutes.STORAGE" not in settings_callback
+
+
+def test_shell_observes_only_narrow_settings_projections():
+    viewmodel = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
+    )
+    host = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    )
+
+    for declaration in (
+        'val themeMode: StateFlow<String>',
+        'val appearanceCardSize: StateFlow<String>',
+        'val appearanceShowThumbnails: StateFlow<Boolean>',
+        'val libraryGridDensity: StateFlow<String>',
+    ):
+        assert declaration in viewmodel
+
+    assert "settingsViewModel.themeMode.collectAsStateWithLifecycle()" in host
+    assert "settingsViewModel.appearanceCardSize.collectAsStateWithLifecycle()" in host
+    assert "settingsViewModel.appearanceShowThumbnails.collectAsStateWithLifecycle()" in host
+    assert "settingsViewModel.libraryGridDensity.collectAsStateWithLifecycle()" in host
+    assert 'settingsState.settings["appearance.theme"]' not in host
+    assert 'settingsState.settings["appearance.card_size"]' not in host
