@@ -58,9 +58,22 @@ data class ReiAnixHomeLibraryUiState(
     val error: String? = null,
 ) {
     companion object {
-        fun from(state: ReiAnixLibraryUiState): ReiAnixHomeLibraryUiState =
-            ReiAnixHomeLibraryUiState(
-                status = state.status,
+        fun from(state: ReiAnixLibraryUiState): ReiAnixHomeLibraryUiState {
+            // A first scan can legitimately publish an empty catalog while work
+            // is still in progress. Keep Home in LOADING until the scanner settles
+            // so the UI never presents a false empty state.
+            val homeStatus = if (
+                state.scanInProgress &&
+                    state.animes.isEmpty() &&
+                    state.status == ReiAnixLibraryLoadStatus.EMPTY
+            ) {
+                ReiAnixLibraryLoadStatus.LOADING
+            } else {
+                state.status
+            }
+
+            return ReiAnixHomeLibraryUiState(
+                status = homeStatus,
                 animes = state.animes.map { anime ->
                     val targetEpisode = anime.playbackTargetEpisodeId?.let { targetId ->
                         anime.contentEpisodes.firstOrNull { it.id == targetId }
@@ -93,5 +106,6 @@ data class ReiAnixHomeLibraryUiState(
                 sourceState = state.sourceState,
                 error = state.error,
             )
+        }
     }
 }

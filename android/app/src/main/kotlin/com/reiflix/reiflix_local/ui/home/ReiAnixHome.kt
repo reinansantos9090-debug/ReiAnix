@@ -842,7 +842,11 @@ private fun HomeContinueSection(
                 key = { it.stableKey },
                 contentType = { "home-continue-episode" },
             ) { item ->
-                HomeContinueCard(item = item, onWatch = onWatch)
+                HomeContinueCard(
+                    item = item,
+                    showThumbnails = showThumbnails,
+                    onWatch = onWatch,
+                )
             }
         }
     }

@@ -92,6 +92,27 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertIn("item.episodeId, item.animeId", home)
         self.assertNotIn("COMPLETION_RATIO", home)
 
+    def test_home_continuation_respects_thumbnail_toggle_and_scan_loading_state(self):
+        home = self.read(HOME)
+        state = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixLibraryUiState.kt")
+
+        self.assertIn(
+            "showThumbnails = showThumbnails,\n                    onWatch = onWatch",
+            home,
+        )
+        self.assertIn(
+            "state.scanInProgress &&\n                    state.animes.isEmpty()",
+            state,
+        )
+        self.assertIn(
+            "state.status == ReiAnixLibraryLoadStatus.EMPTY",
+            state,
+        )
+        self.assertIn(
+            "ReiAnixLibraryLoadStatus.LOADING",
+            state,
+        )
+
     def test_existing_io_boundaries_remain_intact(self):
         repository = self.read(REPOSITORY)
         artwork = self.read(ARTWORK)
