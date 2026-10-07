@@ -3091,17 +3091,19 @@ async def main(page: ft.Page):
             finally:
                 metadata_hydration_task = None
                 if metadata_hydration_pending and ui_alive[0]:
-                    reconcile_catalog_metadata("pending")
+                    metadata_hydration_task = asyncio.create_task(
+                        reconcile_catalog_metadata("pending")
+                    )
 
         metadata_hydration_task = asyncio.create_task(worker())
 
     def schedule_catalog_metadata_hydration(reason="catalog_changed"):
+        nonlocal metadata_hydration_task, metadata_hydration_pending
         if not ui_alive[0]:
             return
-        try:
-            page.run_task(reconcile_catalog_metadata, reason)
-        except Exception:
-            logger.exception("[METADATA] failed to schedule catalog hydration reason=%s", reason)
+        metadata_hydration_pending = True
+        if metadata_hydration_task is None or metadata_hydration_task.done():
+            metadata_hydration_task = asyncio.create_task(reconcile_catalog_metadata(reason))
 
     async def reconcile_missing_thumbnails(reason="catalog_changed"):
         nonlocal thumbnail_reconciliation_pending, thumbnail_reconciliation_task
@@ -3205,6 +3207,25 @@ async def main(page: ft.Page):
         else:
             incoming = None
         if incoming is not None:
+            # A successful SAF result is stronger than an in-flight lifecycle
+            # snapshot: make the just-authorized tree part of the same capability
+            # projection immediately so READY does not depend on a later inventory.
+            if isinstance(payload, dict) and payload.get("granted"):
+                granted_tree_uri = str(payload.get("treeUri") or "").strip()
+                if granted_tree_uri:
+                    merged_roots = tuple(dict.fromkeys(
+                        list(incoming.saf_roots) + [granted_tree_uri]
+                    ))
+                    incoming = StorageCapabilities(
+                        media_read_state=incoming.media_read_state,
+                        broad_storage_state=incoming.broad_storage_state,
+                        saf_roots=merged_roots,
+                        removable_volumes=incoming.removable_volumes,
+                        scanner_capabilities=incoming.scanner_capabilities | frozenset({"saf"}),
+                        reconciliation_capabilities=incoming.reconciliation_capabilities | frozenset({"saf"}),
+                        lifecycle_state=incoming.lifecycle_state,
+                        api=incoming.api,
+                    )
             current = storage_capabilities[0]
             try:
                 published_at = int(event_created_at_ms or payload.get("publishedAtMs") or 0)
@@ -6808,6 +6829,7 @@ async def main(page: ft.Page):
                                             diagnostic_event="STORAGE_READY",
                                             result="library_root_valid",
                                         )
+                                        logger.info("[STORAGE] STORAGE_READY tree_uri=%s scanner_released=true", tree_uri)
                                         schedule_thumbnail_reconciliation("storage_ready")
                                         schedule_catalog_metadata_hydration("storage_ready")
                                         if compose_library_bridge.enabled:
