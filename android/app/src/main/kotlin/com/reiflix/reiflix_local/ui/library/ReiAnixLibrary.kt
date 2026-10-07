@@ -91,13 +91,7 @@ fun ReiAnixLibraryRoute(
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-    val state = baseState.copy(
-        status = pageState.status,
-        error = pageState.error ?: baseState.error,
-        animeCount = pageState.totalCount.coerceAtLeast(pageState.animes.size),
-        availableEpisodeCount = pageState.animes.sumOf { it.availableContentCount },
-        favoriteCount = pageState.animes.count { it.favorite },
-    )
+    val state = baseState
 
     ReiAnixLibraryPresentationScreen(
         state = state,
@@ -126,7 +120,7 @@ fun ReiAnixLibraryRoute(
         },
         onToggleFavorite = viewModel::toggleFavorite,
         hasMore = pageState.hasMore,
-        isLoadingMore = pageState.isLoading && pageState.animes.isNotEmpty(),
+        isLoadingMore = pageState.isLoading && visibleAnimes.isNotEmpty(),
         onLoadMore = viewModel::loadNextLibraryPage,
     )
 }
@@ -142,13 +136,7 @@ fun ReiAnixLibraryRoute(
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-    val state = baseState.copy(
-        status = pageState.status,
-        error = pageState.error ?: baseState.error,
-        animeCount = pageState.totalCount.coerceAtLeast(pageState.animes.size),
-        availableEpisodeCount = pageState.animes.sumOf { it.availableContentCount },
-        favoriteCount = pageState.animes.count { it.favorite },
-    )
+    val state = baseState
 
     ReiAnixLibraryPresentationScreen(
         state = state,
