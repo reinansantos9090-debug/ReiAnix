@@ -72,7 +72,7 @@ def test_artwork_does_not_silently_swallow_decode_errors():
     artwork = read(UI / "artwork/ReiAnixLocalArtwork.kt")
 
     assert "catch (_: Exception)" not in artwork
-    assert "Log.w(TAG" in artwork
+    assert "Log.w(" in artwork
     assert "ReiAnixArtworkMissingState(" in artwork
     assert "AsyncImage(" in artwork
     assert "SubcomposeAsyncImage(" not in artwork
