@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -21,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,22 +42,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
@@ -66,14 +66,10 @@ import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
-import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSearchField
 import com.reiflix.reiflix_local.ui.ReiAnixScreenTitle
-import com.reiflix.reiflix_local.ui.ReiAnixSecondaryText
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.ReiAnixSurface
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -92,7 +88,6 @@ import androidx.compose.foundation.lazy.grid.items
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import java.util.Locale
 
 private val ReiAnixFilterIcon: ImageVector = ImageVector.Builder(
     name = "ReiAnixFilter",
@@ -120,10 +115,10 @@ fun ReiAnixSearchRoute(
     viewModel: ReiAnixLibraryViewModel,
 ) {
     val libraryState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
-    val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
+    val catalogAnimes by viewModel.searchCatalog.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
-    val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
+    val genres by viewModel.searchGenres.collectAsStateWithLifecycle()
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
 
     if (showFilterSheet) {
@@ -153,7 +148,7 @@ fun ReiAnixSearchRoute(
 
     ReiAnixSearchScreen(
         libraryState = libraryState,
-        browseAnimes = catalogState.animes,
+        browseAnimes = catalogAnimes,
         searchQuery = searchQuery,
         searchState = searchState,
         genres = genres,
@@ -189,8 +184,13 @@ fun ReiAnixSearchScreen(
 ) {
     ReiAnixResponsiveRoot {
     val listState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
+    val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
 
     Column(
         modifier = Modifier
@@ -230,9 +230,11 @@ fun ReiAnixSearchScreen(
             value = searchQuery,
             onValueChange = onQueryChange,
             accessibilityLabel = "Pesquisar na biblioteca",
-            modifier = Modifier.padding(
-                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            ),
+            modifier = Modifier
+                .padding(
+                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                )
+                .focusRequester(focusRequester),
             placeholder = {
                 Text("Digite o nome do anime, gênero ou estúdio...")
             },
@@ -307,69 +309,112 @@ fun ReiAnixSearchScreen(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            when (libraryState.status) {
-                ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
-                    title = "Carregando pesquisa",
-                    message = if (libraryState.scanInProgress) {
-                        "Carregando enquanto a varredura continua…"
+            val hasLocalCatalog = browseAnimes.isNotEmpty()
+            when {
+                searchQuery.isBlank() -> {
+                    if (hasLocalCatalog) {
+                        SearchEmptyQueryState(librarySize = browseAnimes.size)
                     } else {
-                        "Lendo a biblioteca local…"
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                        when (libraryState.status) {
+                            ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
+                                title = "Não foi possível pesquisar",
+                                message = libraryState.error
+                                    ?: "A biblioteca local retornou um erro.",
+                                onRetry = onRefresh,
+                                modifier = Modifier.fillMaxSize(),
+                                retryLabel = "Atualizar",
+                            )
+                            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
+                                title = "Biblioteca local indisponível",
+                                message = "A fonte local configurada não está disponível agora.",
+                                onAction = onRefresh,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
+                                message = "Nenhum conteúdo local disponível para pesquisa.",
+                                actionLabel = "Atualizar",
+                                onAction = onRefresh,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            else -> ReiAnixLoadingState(
+                                title = "Carregando pesquisa",
+                                message = if (libraryState.scanInProgress) {
+                                    "Carregando enquanto a varredura continua…"
+                                } else {
+                                    "Lendo a biblioteca local…"
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                }
 
-                ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
-                    title = "Não foi possível pesquisar",
-                    message = libraryState.error ?: "A biblioteca local retornou um erro.",
-                    onRetry = onRefresh,
-                    modifier = Modifier.fillMaxSize(),
-                    retryLabel = "Atualizar",
-                )
-
-                ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
-                    title = "Biblioteca local indisponível",
-                    message = "A fonte local configurada não está disponível agora.",
-                    onAction = onRefresh,
-                    modifier = Modifier.fillMaxSize(),
-                )
-
-                ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
-                    message = "Nenhum conteúdo local disponível para pesquisa.",
-                    actionLabel = "Atualizar",
-                    onAction = onRefresh,
-                    modifier = Modifier.fillMaxSize(),
-                )
-
-                ReiAnixLibraryLoadStatus.READY -> when {
-                    searchState.error != null -> ReiAnixRecoverableErrorState(
-                        title = "Erro na busca",
-                        message = searchState.error,
+                !hasLocalCatalog -> when (libraryState.status) {
+                    ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
+                        title = "Não foi possível pesquisar",
+                        message = libraryState.error
+                            ?: "A biblioteca local retornou um erro.",
                         onRetry = onRefresh,
                         modifier = Modifier.fillMaxSize(),
-                        retryLabel = "Tentar novamente",
+                        retryLabel = "Atualizar",
                     )
-
-                    searchState.query.isBlank() -> SearchBrowseState(
-                        animes = browseAnimes,
-                        onOpenDetails = onOpenDetails,
+                    ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
+                        title = "Biblioteca local indisponível",
+                        message = "A fonte local configurada não está disponível agora.",
+                        onAction = onRefresh,
+                        modifier = Modifier.fillMaxSize(),
                     )
-
-                    searchState.results.isEmpty() -> SearchNoResultsState(
-                        query = searchState.query,
-                        filtersActive = searchState.filters.hasAnyFilter,
+                    ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
+                        message = "Nenhum conteúdo local disponível para pesquisa.",
+                        actionLabel = "Atualizar",
+                        onAction = onRefresh,
+                        modifier = Modifier.fillMaxSize(),
                     )
-
-                    else -> SearchResults(
-                        results = searchState.results,
-                        listState = listState,
-                        onOpenDetails = onOpenDetails,
+                    else -> ReiAnixLoadingState(
+                        title = "Carregando pesquisa",
+                        message = if (libraryState.scanInProgress) {
+                            "Carregando enquanto a varredura continua…"
+                        } else {
+                            "Lendo a biblioteca local…"
+                        },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
+
+                searchState.query != searchQuery -> SearchQueryLoadingState()
+
+                searchState.error != null -> ReiAnixRecoverableErrorState(
+                    title = "Erro na busca",
+                    message = searchState.error,
+                    onRetry = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                    retryLabel = "Tentar novamente",
+                )
+
+                searchState.results.isEmpty() -> SearchNoResultsState(
+                    query = searchState.query,
+                    filtersActive = searchState.filters.hasAnyFilter,
+                )
+
+                else -> SearchResults(
+                    results = searchState.results,
+                    listState = listState,
+                    onOpenDetails = onOpenDetails,
+                )
             }
         }
     }
 
     }
+}
+
+@Composable
+private fun SearchQueryLoadingState() {
+    ReiAnixLoadingState(
+        title = "Pesquisando na biblioteca",
+        message = "Buscando somente no conteúdo local…",
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable
@@ -380,7 +425,7 @@ private fun SearchResults(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(
-            minSize = LocalReiAnixResponsiveMetrics.current.searchGridMinWidth,
+            minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium"),
         ),
         state = listState,
         modifier = Modifier
@@ -425,224 +470,14 @@ private fun SearchResults(
         items(
             items = results,
             key = { anime -> anime.stableKey },
-            contentType = { "search-result-anime-row" },
+            contentType = { "search-result-anime-card" },
         ) { anime ->
-            SearchResultRow(
+            ReiAnixAnimeCard(
                 anime = anime,
+                modifier = Modifier.fillMaxWidth(),
                 onClick = { onOpenDetails(anime.id) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SearchResultRow(
-    anime: ReiAnixAnimeUiModel,
-    onClick: () -> Unit,
-) {
-    val metadata = buildList {
-        anime.year?.let { add(it.toString()) }
-        anime.genres
-            .asSequence()
-            .map { it.name.trim() }
-            .filter(String::isNotEmpty)
-            .take(3)
-            .joinToString(" • ")
-            .takeIf { it.isNotBlank() }
-            ?.let(::add)
-    }
-    val progressEpisode = anime.playbackTargetEpisodeId
-        ?.let { id -> anime.contentEpisodes.firstOrNull { it.id == id } }
-        ?: anime.contentEpisodes.firstOrNull {
-            it.progressFraction > 0f && !it.isCompleted
-        }
-    val progress = progressEpisode
-        ?.progressFraction
-        ?.takeIf { it > 0f && it < 1f }
-
-    ReiAnixSurface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .semantics {
-                role = Role.Button
-                contentDescription = buildList {
-                    add(anime.title)
-                    metadata.joinToString(" • ").takeIf { it.isNotBlank() }?.let(::add)
-                    progress?.let { add(((it.coerceIn(0f, 1f) * 100f).toInt()).toString() + "% assistido") }
-                }.joinToString(", ").let { "Abrir " + it }
-            },
-        shape = ReiAnixTokens.Shapes.card,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(ReiAnixTokens.Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ReiAnixPoster(
-                localPath = anime.artwork?.localPath,
-                contentDescription = null,
-                identity = anime.stableKey,
-                modifier = Modifier
-                    .size(
-                        width = ReiAnixTokens.Dimensions.myListPosterWidth,
-                        height = ReiAnixTokens.Dimensions.myListPosterHeight,
-                    )
-                    .clip(ReiAnixTokens.Shapes.small),
                 maxDimensionPx = 320,
             )
-
-            Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = ReiAnixTokens.Spacing.xs)
-                    .clearAndSetSemantics {},
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = anime.title,
-                    style = ReiAnixTokens.TypographyTokens.cardTitle,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (metadata.isNotEmpty()) {
-                    ReiAnixSecondaryText(
-                        text = metadata.joinToString(" • "),
-                        modifier = Modifier.fillMaxWidth(),
-                        maxLines = 2,
-                    )
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = ReiAnixTokens.Dimensions.progressHeight),
-                ) {
-                    ReiAnixProgressIndicator(
-                        progress = progress ?: 0f,
-                        visible = progress != null,
-                        announceProgress = false,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
-
-            Icon(
-                imageVector = Icons.Filled.MoreVert,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SearchBrowseState(
-    animes: List<ReiAnixAnimeUiModel>,
-    onOpenDetails: (Long) -> Unit,
-) {
-    val suggestions = remember(animes) {
-        animes
-            .asSequence()
-            .sortedWith(
-                compareBy<ReiAnixAnimeUiModel> { it.title.lowercase(Locale.ROOT) }
-                    .thenBy { it.id },
-            )
-            .take(6)
-            .toList()
-    }
-    val recent = remember(animes) {
-        animes
-            .asSequence()
-            .sortedWith(
-                compareByDescending<ReiAnixAnimeUiModel> {
-                    it.lastPlayedAt ?: it.addedAt ?: Double.NEGATIVE_INFINITY
-                }.thenBy { it.title.lowercase(Locale.ROOT) }
-                    .thenBy { it.id },
-            )
-            .take(6)
-            .toList()
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth),
-        contentPadding = PaddingValues(
-            start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            top = ReiAnixTokens.Spacing.lg,
-            bottom = ReiAnixTokens.Spacing.huge,
-        ),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-    ) {
-        if (suggestions.isNotEmpty()) {
-            item(key = "search-suggestions-title") {
-                Text(
-                    text = "Sugestões",
-                    style = ReiAnixTokens.TypographyTokens.sectionTitle,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            item(key = "search-suggestions") {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                    contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
-                ) {
-                    items(
-                        items = suggestions,
-                        key = { anime -> "search-suggestion:" + anime.stableKey },
-                        contentType = { "search-suggestion" },
-                    ) { anime ->
-                        ReiAnixChip(
-                            text = anime.title,
-                            onClick = { onOpenDetails(anime.id) },
-                        )
-                    }
-                }
-            }
-       }
-
-        if (recent.isNotEmpty()) {
-            item(key = "search-library-title") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Sua biblioteca",
-                        style = ReiAnixTokens.TypographyTokens.sectionTitle,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "Ver tudo  ›",
-                        style = ReiAnixTokens.TypographyTokens.button,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-            items(
-                items = recent,
-                key = { anime -> "search-browse:" + anime.stableKey },
-                contentType = { "search-browse-row" },
-            ) { anime ->
-                SearchResultRow(
-                    anime = anime,
-                    onClick = { onOpenDetails(anime.id) },
-                )
-            }
-        } else if (suggestions.isEmpty()) {
-            item(key = "search-empty-query") {
-                SearchEmptyQueryState(librarySize = 0)
-            }
         }
     }
 }
@@ -654,9 +489,9 @@ private fun SearchEmptyQueryState(
     ReiAnixEmptyState(
         title = "Pesquise na biblioteca",
         message = if (librarySize == 0) {
-            "Digite o nome do anime, gênero ou estúdio para pesquisar no conteúdo local."
+            "Digite o nome do anime para pesquisar no conteúdo local."
         } else {
-            "Digite o nome do anime, gênero ou estúdio para pesquisar entre " +
+            "Digite o nome do anime para pesquisar entre " +
                 librarySize.toString() +
                 if (librarySize == 1) " título local." else " títulos locais."
         },
@@ -672,13 +507,13 @@ private fun SearchNoResultsState(
     filtersActive: Boolean,
 ) {
     ReiAnixEmptyState(
-        title = "Nenhum resultado encontrado",
+        title = "Nenhum anime encontrado",
         message = if (filtersActive) {
             "Nenhum conteúdo local corresponde à busca: " +
                 query.trim() +
                 " com os filtros atuais."
         } else {
-            "Tente pesquisar por outro nome, ano, gênero ou episódio."
+            "Nenhum conteúdo local corresponde à busca: " + query.trim()
         },
         modifier = Modifier
             .fillMaxSize()
