@@ -66,6 +66,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
+import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
@@ -149,7 +150,6 @@ private fun ReiAnixHomeObservedScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         HomeHeader(
-            sourceAvailable = state.sourceAvailable,
             onOpenCollector = onOpenCollector,
             onSearch = onSearch,
             onRefresh = onRefresh,
@@ -305,7 +305,6 @@ fun ReiAnixHomeScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         HomeHeader(
-            sourceAvailable = state.sourceAvailable,
             onSearch = onSearch,
             onRefresh = onRefresh,
         )
@@ -403,17 +402,11 @@ fun ReiAnixHomeScreen(
 
 @Composable
 private fun HomeHeader(
-    sourceAvailable: Boolean,
     onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     val menuExpanded = rememberSaveable { mutableStateOf(false) }
-    val statusColor = if (sourceAvailable) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
 
     Row(
         modifier = Modifier
@@ -427,44 +420,10 @@ private fun HomeHeader(
         Text(
             text = "ReiAnix",
             style = ReiAnixTokens.TypographyTokens.brandTitle,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
         )
-
-        Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
-
-        Surface(
-            shape = ReiAnixTokens.Shapes.button,
-            color = Color.Transparent,
-            contentColor = statusColor,
-            border = BorderStroke(
-                width = ReiAnixTokens.Dimensions.borderWidth,
-                color = statusColor.copy(alpha = 0.88f),
-            ),
-        ) {
-            Row(
-                modifier = Modifier.padding(
-                    horizontal = ReiAnixTokens.Spacing.md,
-                    vertical = ReiAnixTokens.Spacing.xs,
-                ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = "☁",
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                )
-                Text(
-                    text = if (sourceAvailable) "Offline" else "Indisponível",
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                )
-            }
-        }
-
         Spacer(modifier = Modifier.weight(1f))
-
         IconButton(
             onClick = onSearch,
             modifier = Modifier.semantics {
@@ -478,7 +437,6 @@ private fun HomeHeader(
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
-
         Box {
             IconButton(
                 onClick = { menuExpanded.value = true },
@@ -493,7 +451,6 @@ private fun HomeHeader(
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
-
             DropdownMenu(
                 expanded = menuExpanded.value,
                 onDismissRequest = { menuExpanded.value = false },
@@ -561,12 +518,11 @@ private fun ColumnScope.HomeReadyContent(
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val responsive = LocalReiAnixResponsiveMetrics.current
     val recentlyAdded = remember(animes) { buildRecentlyAddedItems(animes) }
-    val available = remember(animes) { buildAvailableItems(animes) }
+    val recentlyWatched = remember(animes) { buildRecentlyWatchedItems(animes) }
     val favorites = remember(animes) { animes.filter { it.favorite }.distinctBy { it.id } }
     val genreSections = remember(animes) { buildHomeGenreSections(animes) }
     val movies = remember(animes) {
-        animes
-            .asSequence()
+        animes.asSequence()
             .filter { it.mediaKind == ReiAnixMediaKind.MOVIE }
             .distinctBy { it.id }
             .toList()
@@ -578,96 +534,81 @@ private fun ColumnScope.HomeReadyContent(
             .widthIn(max = responsive.contentMaxWidth)
             .fillMaxWidth(),
         state = listState,
-        contentPadding = PaddingValues(
-            bottom = ReiAnixTokens.Spacing.huge,
-        ),
+        contentPadding = PaddingValues(bottom = ReiAnixTokens.Spacing.huge),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.section),
     ) {
-        if (continueWatching.isNotEmpty()) {
-            item(key = "home-section-continue") {
-                HomeContinueSection(
-                    items = continueWatching,
-                    showThumbnails = showThumbnails,
-                    onWatch = onWatch,
-                    onSeeAll = onOpenLibrary,
-                )
-            }
-        }
-
-        if (recentlyAdded.isNotEmpty()) {
-            item(key = "home-section-recently-added") {
-                HomeMediaSection(
-                    title = "Adicionados recentemente",
-                    items = recentlyAdded,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
-                    showThumbnails = showThumbnails,
-                    onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Adicionados recentemente",
-                    onSeeAll = onOpenLibrary,
-                )
-            }
-        }
-
-        if (available.isNotEmpty()) {
-            item(key = "home-section-available") {
-                HomeMediaSection(
-                    title = "Conteúdo disponível",
-                    items = available,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
-                    showThumbnails = showThumbnails,
-                    onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Conteúdo disponível",
-                    onSeeAll = onOpenLibrary,
-                )
-            }
-        }
-
         if (animes.isNotEmpty()) {
             item(key = "home-hero") {
                 HomeHero(
                     anime = selectFeaturedAnime(animes),
-                    showThumbnails = showThumbnails,
                     onWatch = onWatch,
                     onSecondaryAction = onHeroSecondaryAction,
                     secondaryLabel = heroSecondaryLabel,
                 )
             }
         }
-
+        if (continueWatching.isNotEmpty()) {
+            item(key = "home-section-continue") {
+                HomeContinueSection(
+                    items = continueWatching,
+                    onWatch = onWatch,
+                    onSeeAll = onOpenLibrary,
+                )
+            }
+        }
+        if (recentlyAdded.isNotEmpty()) {
+            item(key = "home-section-recently-added") {
+                HomeMediaSection(
+                    title = "Adicionados recentemente",
+                    items = recentlyAdded,
+                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Adicionados recentemente",
+                    onSeeAll = onOpenLibrary,
+                )
+            }
+        }
+        if (recentlyWatched.isNotEmpty()) {
+            item(key = "home-section-recently-watched") {
+                HomeMediaSection(
+                    title = "Recentemente assistidos",
+                    items = recentlyWatched,
+                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Recentemente assistidos",
+                    onSeeAll = onOpenLibrary,
+                )
+            }
+        }
         if (favorites.isNotEmpty()) {
             item(key = "home-section-my-list") {
                 HomeMediaSection(
                     title = "Minha lista",
                     items = favorites,
                     cardWidth = homeAnimeCardWidth(cardSize, responsive),
-                    showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
                     onSeeAll = onOpenMyList,
                 )
             }
         }
-
         genreSections.forEach { section ->
             item(key = "home-section-genre:" + section.key) {
                 HomeMediaSection(
                     title = section.title,
                     items = section.items,
                     cardWidth = homeAnimeCardWidth(cardSize, responsive),
-                    showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home " + section.title,
                 )
             }
         }
-
         if (movies.isNotEmpty()) {
             item(key = "home-section-movies") {
                 HomeMediaSection(
                     title = "Filmes",
                     items = movies,
                     cardWidth = homeAnimeCardWidth(cardSize, responsive),
-                    showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Filmes",
                 )
@@ -675,11 +616,9 @@ private fun ColumnScope.HomeReadyContent(
         }
     }
 }
-
 @Composable
 private fun HomeHero(
     anime: ReiAnixHomeAnimeUiModel,
-    showThumbnails: Boolean = true,
     onWatch: (Long, Long) -> Unit,
     onSecondaryAction: (ReiAnixHomeAnimeUiModel) -> Unit,
     secondaryLabel: (ReiAnixHomeAnimeUiModel) -> String,
@@ -696,14 +635,14 @@ private fun HomeHero(
                 .clip(ReiAnixTokens.Shapes.hero),
         ) {
             ReiAnixBackdrop(
-                localPath = anime.artwork?.backdropLocalPath.takeIf { showThumbnails },
-                fallbackLocalPath = anime.artwork?.localPath.takeIf { showThumbnails },
+                localPath = anime.artwork?.backdropLocalPath,
+                fallbackLocalPath = anime.artwork?.localPath,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 identity = anime.stableKey,
                 maxDimensionPx = 768,
-                externalUrl = anime.artwork?.backdropExternalUrl.takeIf { showThumbnails },
-                fallbackExternalUrl = anime.artwork?.externalUrl.takeIf { showThumbnails },
+                externalUrl = anime.artwork?.backdropExternalUrl,
+                fallbackExternalUrl = anime.artwork?.externalUrl,
             )
 
             Box(
@@ -994,7 +933,6 @@ private fun HomeMediaSection(
                 HomeMediaCard(
                     anime = anime,
                     cardWidth = cardWidth,
-                    showThumbnails = showThumbnails,
                     onClick = { onOpenDetails(anime.id) },
                 )
             }
@@ -1038,7 +976,6 @@ private fun HomeSectionHeader(
 private fun HomeMediaCard(
     anime: ReiAnixHomeAnimeUiModel,
     cardWidth: androidx.compose.ui.unit.Dp = ReiAnixTokens.Dimensions.homeCardWidth,
-    showThumbnails: Boolean = true,
     onClick: () -> Unit,
 ) {
     Card(
@@ -1050,31 +987,25 @@ private fun HomeMediaCard(
                 contentDescription = "Abrir " + anime.title
             },
         shape = ReiAnixTokens.Shapes.card,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.background,
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(ReiAnixTokens.Dimensions.homeLandscapeArtworkAspectRatio)
+                    .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
                     .clip(ReiAnixTokens.Shapes.artwork),
             ) {
-                ReiAnixBackdrop(
-                    localPath = anime.artwork?.backdropLocalPath.takeIf { showThumbnails },
-                    fallbackLocalPath = anime.artwork?.localPath.takeIf { showThumbnails },
+                ReiAnixPoster(
+                    localPath = anime.artwork?.localPath,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = anime.stableKey,
                     maxDimensionPx = 512,
-                    externalUrl = anime.artwork?.backdropExternalUrl,
-                    fallbackExternalUrl = anime.artwork?.externalUrl,
+                    externalUrl = anime.artwork?.externalUrl,
                 )
-
             }
-
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1092,7 +1023,6 @@ private fun HomeMediaCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-
                 val metadata = listOfNotNull(
                     anime.year?.toString(),
                     anime.availableContentCount.takeIf { it > 0 }?.let {
@@ -1106,7 +1036,6 @@ private fun HomeMediaCard(
         }
     }
 }
-
 private fun selectFeaturedAnime(items: List<ReiAnixHomeAnimeUiModel>): ReiAnixHomeAnimeUiModel =
     items.firstOrNull {
         it.playbackTargetEpisodeId != null && it.playbackActionLabel != "Indisponível"
@@ -1131,17 +1060,15 @@ private fun buildRecentlyAddedItems(
         .take(12)
         .toList()
 
-private fun buildAvailableItems(
+private fun buildRecentlyWatchedItems(
     items: List<ReiAnixHomeAnimeUiModel>,
 ): List<ReiAnixHomeAnimeUiModel> =
     items
         .asSequence()
-        .filter { it.availableContentCount > 0 }
+        .filter { it.lastPlayedAt?.isFinite() == true && (it.lastPlayedAt ?: 0.0) > 0.0 }
         .distinctBy { it.id }
         .sortedWith(
-            compareByDescending<ReiAnixHomeAnimeUiModel> { it.isWatching }
-                .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
-                .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
+            compareByDescending<ReiAnixHomeAnimeUiModel> { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
                 .thenBy { it.title.trim().lowercase() },
         )
         .take(12)
