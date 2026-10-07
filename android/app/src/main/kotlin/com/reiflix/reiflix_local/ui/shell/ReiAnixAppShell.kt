@@ -134,7 +134,7 @@ private fun ReiAnixBottomNavigation(
                     selectedTextColor = MaterialTheme.colorScheme.primary,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                 ),
             )
         }
