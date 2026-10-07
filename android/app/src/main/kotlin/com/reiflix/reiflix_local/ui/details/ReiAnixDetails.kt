@@ -562,6 +562,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
             ) { episode ->
                 DetailsEpisodeItem(
                     episode = episode,
+                    showThumbnail = showThumbnails,
                     isCurrent = episode.id == currentEpisode?.id,
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
