@@ -739,7 +739,11 @@ private fun DetailsHero(
             }
         }
         if (overallProgress > 0f) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, top = ReiAnixTokens.Spacing.md),
+            Column(modifier = Modifier.fillMaxWidth().padding(
+                start = responsive.horizontalPadding,
+                top = ReiAnixTokens.Spacing.md,
+                end = responsive.horizontalPadding,
+            ),
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "Progresso do anime", style = ReiAnixTokens.TypographyTokens.label, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
@@ -749,7 +753,11 @@ private fun DetailsHero(
             }
         }
         currentEpisode?.let { current ->
-            Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, top = ReiAnixTokens.Spacing.md),
+            Surface(modifier = Modifier.fillMaxWidth().padding(
+                start = responsive.horizontalPadding,
+                top = ReiAnixTokens.Spacing.md,
+                end = responsive.horizontalPadding,
+            ),
                 shape = ReiAnixTokens.Shapes.card, color = MaterialTheme.colorScheme.surfaceContainer) {
                 Column(modifier = Modifier.padding(ReiAnixTokens.Spacing.md), verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
                     Text(text = "Episódio atual • ${formatEpisodeNumber(current.number)}", style = ReiAnixTokens.TypographyTokens.label, color = MaterialTheme.colorScheme.onSurface)
@@ -802,7 +810,11 @@ private fun DetailsHeroIcon(
 @Composable
 private fun DetailsExpandableSynopsis(description: String) {
     var expanded by rememberSaveable(description) { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, bottom = ReiAnixTokens.Spacing.lg),
+    Column(modifier = Modifier.fillMaxWidth().padding(
+            start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+            end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+            bottom = ReiAnixTokens.Spacing.lg,
+        ),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
         Text(text = "Sinopse", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
         Text(text = description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
