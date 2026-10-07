@@ -80,6 +80,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             current: ReiAnixLibraryPagedUiState,
             canonicalAnimes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
             recountTotal: Boolean = false,
+            includeNewCandidates: Boolean = false,
         ): ReiAnixLibraryPagedUiState {
             if (current.generation <= 0L || current.animes.isEmpty()) return current
 
@@ -108,16 +109,20 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
 
             // Discover a bounded set of new candidates from the snapshot that is
             // already in memory. Never materialize another full catalog/page set.
-            val candidateLimit = maxOf(36, current.animes.size * 2)
-            val candidates = buildList(candidateLimit) {
-                for (anime in canonicalAnimes) {
-                    if (size >= candidateLimit) break
-                    if (anime.id !in loadedIds &&
-                        ReiAnixLibraryFilterEngine.matches(anime, filters)
-                    ) {
-                        add(anime)
+            val candidates = if (includeNewCandidates) {
+                val candidateLimit = maxOf(36, current.animes.size * 2)
+                buildList(candidateLimit) {
+                    for (anime in canonicalAnimes) {
+                        if (size >= candidateLimit) break
+                        if (anime.id !in loadedIds &&
+                            ReiAnixLibraryFilterEngine.matches(anime, filters)
+                        ) {
+                            add(anime)
+                        }
                     }
                 }
+            } else {
+                emptyList()
             }
 
             // Keep the same bounded window size. New compatible items enter in
@@ -456,6 +461,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                         current = currentPaged,
                         canonicalAnimes = _state.value.animes,
                         recountTotal = structuralChange,
+                        includeNewCandidates = structuralChange,
                     )
                     _pagedLibraryState.value = reconciled.copy(
                         status = when {
