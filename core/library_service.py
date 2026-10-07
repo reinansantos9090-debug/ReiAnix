@@ -811,7 +811,12 @@ class LibraryService:
         season_number = next(iter(seasons)) if len(seasons) == 1 else None
         return MatchContext(season_number=season_number, media_kind=media_kind)
 
-    def hydrate_catalog_metadata(self, catalog):
+    def hydrate_catalog_metadata(self, catalog, on_item=None):
+        """Hydrate local items through the existing metadata/artwork pipeline.
+
+        ``on_item`` is an optional completion callback used only to trigger an
+        incremental snapshot publication; LibraryStore remains the source of truth.
+        """
         """Hydrate local items that still need AniList metadata or poster artwork.
 
         The queue is intentionally sequential and reuses the existing AniListClient,
@@ -860,7 +865,13 @@ class LibraryService:
                     reason="hydrate_materialized",
                 )
             if status == 'manual' and not anilist_id:
-                hydrated.append({'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached})
+                result = {'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached}
+                hydrated.append(result)
+                if callable(on_item):
+                    try:
+                        on_item(result)
+                    except Exception:
+                        logger.debug('Metadata hydration callback failed', exc_info=True)
                 continue
             entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
             if cached.get('id'):
@@ -917,7 +928,13 @@ class LibraryService:
                     lookup_title=effective_lookup,
                     reason="materialized_no_artwork_work",
                 )
-                hydrated.append({'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached})
+                result = {'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached}
+                hydrated.append(result)
+                if callable(on_item):
+                    try:
+                        on_item(result)
+                    except Exception:
+                        logger.debug('Metadata hydration callback failed', exc_info=True)
                 continue
             try:
                 metadata_refreshed = False
@@ -994,7 +1011,13 @@ class LibraryService:
                         artwork_local=bool(self.artwork.resolve(entity_type, cached['id'], 'poster', allow_network=False)),
                         backdrop_local=bool(self.artwork.resolve(entity_type, cached['id'], 'backdrop', allow_network=False)),
                     )
-                hydrated.append({'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached})
+                result = {'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached}
+                hydrated.append(result)
+                if callable(on_item):
+                    try:
+                        on_item(result)
+                    except Exception:
+                        logger.debug('Metadata hydration callback failed', exc_info=True)
             except Exception:
                 logger.exception('Local metadata/artwork hydration failed', extra={'screen':'home','lookup_title':lookup_title,'library_items':len(catalog)})
         return hydrated
