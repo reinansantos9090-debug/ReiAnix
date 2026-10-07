@@ -53,8 +53,9 @@ class ReiAnixComposeLibraryHost(
         get() = composeView?.visibility == View.VISIBLE
 
     /**
-     * Shows the shell, using [startDestination] only when the Compose root is
-     * first attached. Subsequent calls navigate inside the existing back stack.
+     * Shows the single Compose shell. The first attach uses [startDestination];
+     * later calls reuse the same ComposeView/NavHostController rather than
+     * creating another root or another setContent tree.
      */
     fun show(
         startDestination: String = ReiAnixRoutes.LIBRARY,

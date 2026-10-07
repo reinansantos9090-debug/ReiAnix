@@ -167,6 +167,38 @@ async def main(page: ft.Page):
     compose_settings_setting_locks: dict[str, asyncio.Lock] = {}
     COMPOSE_SETTINGS_MAX_TASKS = 8
 
+    # Native Compose Library work is tracked independently so slow catalog,
+    # storage, refresh and player handoffs never execute inline in mailbox polling.
+    compose_library_tasks: set[asyncio.Task] = set()
+    COMPOSE_LIBRARY_MAX_TASKS = 8
+    compose_route_state = {
+        "route": None,
+        "anime_id": None,
+        "episode_id": None,
+        "origin": None,
+        "generation": 0,
+    }
+
+    def _track_compose_library_task(task: asyncio.Task) -> bool:
+        if len(compose_library_tasks) >= COMPOSE_LIBRARY_MAX_TASKS:
+            return False
+        compose_library_tasks.add(task)
+
+        def _done(completed):
+            compose_library_tasks.discard(completed)
+            try:
+                completed.exception()
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.error(
+                    "[COMPOSE_LIBRARY] background task failed unexpectedly: %s",
+                    exc,
+                )
+
+        task.add_done_callback(_done)
+        return True
+
     def _track_compose_settings_task(task: asyncio.Task) -> bool:
         if len(compose_settings_tasks) >= COMPOSE_SETTINGS_MAX_TASKS:
             return False
@@ -276,6 +308,12 @@ async def main(page: ft.Page):
                 logger.debug("[COMPOSE_SETTINGS] task cancellation failed: %s", exc)
         compose_settings_tasks.clear()
         compose_settings_setting_locks.clear()
+        for task in tuple(compose_library_tasks):
+            try:
+                task.cancel()
+            except Exception as exc:
+                logger.debug("[COMPOSE_LIBRARY] task cancellation failed: %s", exc)
+        compose_library_tasks.clear()
 
     try:
         page.on_disconnect = _handle_page_disconnect
@@ -3763,6 +3801,178 @@ async def main(page: ft.Page):
                 int((performance.now() - started) * 1000),
             )
 
+    async def _hydrate_compose_details_context(anime_id: int, generation: int):
+        """Hydrate compatibility state without taking over Compose navigation."""
+        try:
+            catalog = await asyncio.to_thread(library.catalog)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "[COMPOSE_NAV] background details hydration failed animeId=%s generation=%s",
+                anime_id,
+                generation,
+            )
+            return
+
+        if (
+            compose_route_state["generation"] != generation
+            or compose_route_state["route"] != "details"
+            or compose_route_state["anime_id"] != anime_id
+            or not ui_alive[0]
+        ):
+            logger.info(
+                "[COMPOSE_NAV] stale details hydration ignored animeId=%s generation=%s",
+                anime_id,
+                generation,
+            )
+            return
+
+        anime = next(
+            (item for item in (catalog or []) if int(item.get("id") or 0) == anime_id),
+            None,
+        )
+        current[0] = anime if anime is not None else {"id": anime_id}
+
+    async def _run_compose_library_command(action, payload, request_id):
+        """Execute one Compose Library command outside the mailbox polling loop."""
+        command_status = "COMPLETED"
+        command_error = None
+        try:
+            if action == "toggle_favorite":
+                anime_id = int(payload.get("animeId") or 0)
+                if anime_id <= 0:
+                    raise ValueError("animeId inválido.")
+                existing = await asyncio.to_thread(store.catalog, anime_ids=[anime_id])
+                if not existing:
+                    raise ValueError("Anime não encontrado.")
+                await asyncio.to_thread(store.toggle_favorite, anime_id)
+                on_catalog_changed(refresh_details=False)
+            elif action == "set_watched":
+                episode_id = int(payload.get("episodeId") or 0)
+                if episode_id <= 0:
+                    raise ValueError("episodeId inválido.")
+                watched = bool(payload.get("watched"))
+                updated = await asyncio.to_thread(
+                    store.set_watched,
+                    str(payload.get("uri") or "").strip(),
+                    watched,
+                    episode_id=episode_id,
+                )
+                if not updated:
+                    raise ValueError("Episódio não encontrado ou referência local incompatível.")
+                on_catalog_changed(refresh_details=False)
+            elif action == "select_saf":
+                started = await add_folder()
+                if not started:
+                    command_status = "BLOCKED"
+                    command_error = (
+                        "A seleção de pasta já está em andamento ou a biblioteca "
+                        "está sendo atualizada."
+                    )
+                else:
+                    command_status = "QUEUED"
+            elif action == "remove_saf":
+                reference = str(payload.get("source") or "").strip()
+                if not reference:
+                    raise ValueError("A pasta SAF não foi informada.")
+                folder = next(
+                    (
+                        item for item in store.folders()
+                        if item.get("path") == reference
+                        and str(item.get("kind") or "").strip().lower() == "saf"
+                    ),
+                    None,
+                )
+                if folder is None:
+                    raise ValueError("A pasta SAF não está configurada na biblioteca.")
+                started = await remove_folder(reference)
+                if not started:
+                    command_status = "BLOCKED"
+                    command_error = (
+                        "A remoção da pasta não pode acontecer enquanto outra "
+                        "operação de armazenamento está em andamento."
+                    )
+                else:
+                    command_status = "QUEUED"
+            elif action == "refresh":
+                source = str(payload.get("source") or "").strip() or None
+                transition = await scan_coordinator.request(
+                    ScanOrigin.USER_REFRESH,
+                    source=source,
+                    full=False,
+                    reason="compose_refresh",
+                    request_id=request_id or None,
+                )
+                if transition.kind == "blocked":
+                    command_status = "BLOCKED"
+                    command_error = str(transition.message or transition.kind)
+                elif not transition.accepted or transition.kind in {"failed", "error"}:
+                    command_status = "FAILED"
+                    command_error = str(transition.message or transition.kind)
+                else:
+                    command_status = "QUEUED"
+            elif action == "open_media":
+                episode_id = int(payload.get("episodeId") or 0)
+                if episode_id <= 0:
+                    raise ValueError("episodeId inválido.")
+                fresh_episode = await asyncio.to_thread(store.episode_by_id, episode_id)
+                if not fresh_episode:
+                    raise ValueError("Episódio não encontrado.")
+                path_ref = str(fresh_episode.get("path") or "").strip()
+                if not path_ref or bool(fresh_episode.get("missing")):
+                    raise ValueError("Este episódio não possui uma mídia local disponível.")
+                anime_id = fresh_episode.get("anime_id")
+                title = (
+                    str(fresh_episode.get("episode_title") or "").strip()
+                    or str(fresh_episode.get("file_name") or "").strip()
+                    or "Episódio"
+                )
+                try:
+                    progress_seconds = float(fresh_episode.get("progress") or 0.0)
+                except (TypeError, ValueError):
+                    progress_seconds = 0.0
+                command_status = "QUEUED"
+                play_episode(
+                    path_ref,
+                    title,
+                    progress_seconds=max(0.0, progress_seconds),
+                    episode_id=episode_id,
+                    anime_id=anime_id,
+                )
+            else:
+                command_status = "FAILED"
+                command_error = "Comando de biblioteca Compose desconhecido."
+        except asyncio.CancelledError:
+            compose_library_bridge.write_command_result(
+                request_id,
+                action,
+                "CANCELLED",
+                error="Operação da Biblioteca Compose cancelada.",
+            )
+            raise
+        except Exception as exc:
+            command_status = "FAILED"
+            command_error = str(exc)[:500]
+            logger.exception(
+                "[COMPOSE_LIBRARY] command worker failed action=%s requestId=%s",
+                action or "-",
+                request_id or "-",
+            )
+
+        compose_library_bridge.write_command_result(
+            request_id,
+            action,
+            command_status,
+            error=command_error,
+        )
+        logger.info(
+            "[COMPOSE_LIBRARY] command=%s requestId=%s status=%s",
+            action or "-",
+            request_id or "-",
+            command_status,
+        )
+
     async def poll_native_bridge():
         async def ingest_native_batch(event_type, payload, event_request_id):
             source_map = {
@@ -4006,9 +4216,23 @@ async def main(page: ft.Page):
                         if event_type == 'compose_navigation_changed':
                             destination = str(payload.get('route') or '').strip().lower()
                             anime_id_raw = str(payload.get('animeId') or '').strip()
+                            episode_id_raw = str(payload.get('episodeId') or '').strip()
+                            origin = str(payload.get('origin') or '').strip().lower() or None
+                            compose_route_state["generation"] += 1
+                            route_generation = compose_route_state["generation"]
+                            compose_route_state.update(
+                                route=destination or None,
+                                anime_id=None,
+                                episode_id=episode_id_raw or None,
+                                origin=origin,
+                            )
+
                             if destination in {'home', 'library', 'my_list', 'search', 'organize', 'settings'}:
                                 current[0] = None
                                 try:
+                                    # Compose is the visible navigation owner on Android;
+                                    # Python only mirrors the logical route for backend
+                                    # compatibility and must not render another stack.
                                     navigation.sync_top_level(destination)
                                 except ValueError:
                                     logger.warning(
@@ -4031,24 +4255,22 @@ async def main(page: ft.Page):
                                         anime_id_raw or '-',
                                     )
                                 else:
-                                    catalog = await asyncio.to_thread(library.catalog)
-                                    anime = next(
-                                        (item for item in (catalog or []) if int(item.get("id") or 0) == anime_id),
-                                        None,
+                                    compose_route_state["anime_id"] = anime_id
+                                    current[0] = {"id": anime_id}
+                                    if navigation.current != "details":
+                                        navigation.push("details")
+                                    task = asyncio.create_task(
+                                        _hydrate_compose_details_context(anime_id, route_generation)
                                     )
-                                    if anime is None:
+                                    if not _track_compose_library_task(task):
+                                        task.cancel()
                                         logger.warning(
-                                            "[COMPOSE_NAV] details route rejected; anime not found id=%s",
+                                            "[COMPOSE_NAV] details hydration skipped; task limit reached animeId=%s",
                                             anime_id,
                                         )
-                                    else:
-                                        current[0] = anime
-                                        if navigation.current != "details":
-                                            navigation.push("details")
                             elif destination == 'player':
-                                # Media3 owns the actual playback Activity. Keep the
-                                # existing Python Details context; do not create a
-                                # second navigation or playback authority.
+                                # Media3 owns the actual playback Activity. Do not
+                                # create a second Python playback/navigation authority.
                                 pass
                             else:
                                 logger.warning(
@@ -4062,6 +4284,12 @@ async def main(page: ft.Page):
                             if destination == 'back':
                                 navigate_back('compose_settings_back')
                             elif destination == 'category':
+                                if compose_primary_ui:
+                                    logger.info(
+                                        "[COMPOSE_SETTINGS] category navigation already owned by Compose category state category=%s",
+                                        category or "-",
+                                    )
+                                    continue
                                 valid_categories = {
                                     'Conta', 'Geral', 'Aparência', 'Biblioteca', 'Player',
                                     'Gestos', 'Áudio e Legendas', 'Metadata', 'Artwork',
@@ -4090,28 +4318,17 @@ async def main(page: ft.Page):
                                     try:
                                         await bridge.hide_library()
                                     except Exception:
-                                        logger.exception("[COMPOSE_COLLECTOR] failed to hide Compose shell before Collector")
+                                        logger.exception(
+                                            "[COMPOSE_COLLECTOR] failed to hide Compose shell before Collector"
+                                        )
                                 navigate_collector()
                             elif destination == 'details':
-                                try:
-                                    anime_id = int(payload.get('animeId') or 0)
-                                except (TypeError, ValueError):
-                                    anime_id = 0
-                                if anime_id > 0:
-                                    catalog = await asyncio.to_thread(library.catalog)
-                                    anime = next(
-                                        (item for item in (catalog or []) if int(item.get('id') or 0) == anime_id),
-                                        None,
-                                    )
-                                    if anime is not None:
-                                        navigate_details(anime)
-                                    else:
-                                        logger.warning(
-                                            "[COMPOSE_LIBRARY] details request ignored; anime not found id=%s",
-                                            anime_id,
-                                        )
-                                else:
-                                    logger.warning("[COMPOSE_LIBRARY] details request rejected; invalid animeId")
+                                # Compose NavHost already owns the Details transition.
+                                # This event is compatibility-only and must not push
+                                # a second visual destination through Python/Flet.
+                                logger.info(
+                                    "[COMPOSE_LIBRARY] details navigation acknowledged by Compose; no Python visual navigation"
+                                )
                             else:
                                 logger.warning(
                                     "[COMPOSE_LIBRARY] navigation event ignored destination=%s",
@@ -4123,130 +4340,69 @@ async def main(page: ft.Page):
                             command_request_id = str(
                                 event_request_id or payload.get('requestId') or ''
                             ).strip()
-                            command_status = 'COMPLETED'
-                            command_error = None
-                            try:
-                                if action == 'toggle_favorite':
-                                    anime_id = int(payload.get('animeId') or 0)
-                                    if anime_id <= 0:
-                                        raise ValueError('animeId inválido.')
-                                    existing = await asyncio.to_thread(store.catalog, anime_ids=[anime_id])
-                                    if not existing:
-                                        raise ValueError('Anime não encontrado.')
-                                    await asyncio.to_thread(store.toggle_favorite, anime_id)
-                                    on_catalog_changed(refresh_details=False)
-                                elif action == 'set_watched':
-                                    episode_id = int(payload.get('episodeId') or 0)
-                                    if episode_id <= 0:
-                                        raise ValueError('episodeId inválido.')
-                                    watched = bool(payload.get('watched'))
-                                    updated = await asyncio.to_thread(
-                                        store.set_watched,
-                                        str(payload.get('uri') or '').strip(),
-                                        watched,
-                                        episode_id=episode_id,
+                            supported_actions = {
+                                'toggle_favorite',
+                                'set_watched',
+                                'select_saf',
+                                'remove_saf',
+                                'refresh',
+                                'open_media',
+                            }
+                            if not command_request_id:
+                                logger.warning(
+                                    "[COMPOSE_LIBRARY] command rejected without requestId action=%s",
+                                    action or "-",
+                                )
+                            elif action not in supported_actions:
+                                compose_library_bridge.write_command_result(
+                                    command_request_id,
+                                    action,
+                                    "FAILED",
+                                    error="Comando de biblioteca Compose desconhecido.",
+                                )
+                            elif not store.claim_native_request(
+                                command_request_id,
+                                namespace="compose_library",
+                            ):
+                                logger.info(
+                                    "[COMPOSE_LIBRARY] duplicate request ignored requestId=%s action=%s",
+                                    command_request_id,
+                                    action,
+                                )
+                            else:
+                                task = asyncio.create_task(
+                                    _run_compose_library_command(
+                                        action,
+                                        dict(payload),
+                                        command_request_id,
                                     )
-                                    if not updated:
-                                        raise ValueError('Episódio não encontrado ou referência local incompatível.')
-                                    on_catalog_changed(refresh_details=False)
-                                elif action == 'select_saf':
-                                    started = await add_folder()
-                                    if not started:
-                                        command_status = 'BLOCKED'
-                                        command_error = (
-                                            'A seleção de pasta já está em andamento ou a biblioteca '
-                                            'está sendo atualizada.'
-                                        )
-                                    else:
-                                        command_status = 'QUEUED'
-                                elif action == 'remove_saf':
-                                    reference = str(payload.get('source') or '').strip()
-                                    if not reference:
-                                        raise ValueError('A pasta SAF não foi informada.')
-                                    folder = next(
-                                        (
-                                            item for item in store.folders()
-                                            if item.get('path') == reference
-                                            and str(item.get('kind') or '').strip().lower() == 'saf'
-                                        ),
-                                        None,
-                                    )
-                                    if folder is None:
-                                        raise ValueError('A pasta SAF não está configurada na biblioteca.')
-                                    started = await remove_folder(reference)
-                                    if not started:
-                                        command_status = 'BLOCKED'
-                                        command_error = 'A remoção da pasta não pode acontecer enquanto outra operação de armazenamento está em andamento.'
-                                    else:
-                                        command_status = 'QUEUED'
-                                elif action == 'refresh':
-                                    source = str(payload.get('source') or '').strip() or None
-                                    transition = await scan_coordinator.request(
-                                        ScanOrigin.USER_REFRESH,
-                                        source=source,
-                                        full=False,
-                                        reason='compose_refresh',
-                                        request_id=command_request_id or None,
-                                    )
-                                    if transition.kind == 'blocked':
-                                        command_status = 'BLOCKED'
-                                        command_error = str(transition.message or transition.kind)
-                                    elif not transition.accepted or transition.kind in {'failed', 'error'}:
-                                        command_status = 'FAILED'
-                                        command_error = str(transition.message or transition.kind)
-                                    else:
-                                        command_status = 'QUEUED'
-                                elif action == 'open_media':
-                                    episode_id = int(payload.get('episodeId') or 0)
-                                    if episode_id <= 0:
-                                        raise ValueError('episodeId inválido.')
-                                    fresh_episode = await asyncio.to_thread(store.episode_by_id, episode_id)
-                                    if not fresh_episode:
-                                        raise ValueError('Episódio não encontrado.')
-                                    path_ref = str(fresh_episode.get('path') or '').strip()
-                                    if not path_ref or bool(fresh_episode.get('missing')):
-                                        raise ValueError('Este episódio não possui uma mídia local disponível.')
-                                    anime_id = fresh_episode.get('anime_id')
-                                    title = (
-                                        str(fresh_episode.get('episode_title') or '').strip()
-                                        or str(fresh_episode.get('file_name') or '').strip()
-                                        or 'Episódio'
-                                    )
-                                    try:
-                                        progress_seconds = float(fresh_episode.get('progress') or 0.0)
-                                    except (TypeError, ValueError):
-                                        progress_seconds = 0.0
-                                    command_status = 'QUEUED'
-                                    play_episode(
-                                        path_ref,
-                                        title,
-                                        progress_seconds=max(0.0, progress_seconds),
-                                        episode_id=episode_id,
-                                        anime_id=anime_id,
+                                )
+                                if not _track_compose_library_task(task):
+                                    task.cancel()
+                                    compose_library_bridge.write_command_result(
+                                        command_request_id,
+                                        action,
+                                        "FAILED",
+                                        error="Limite de operações da Biblioteca Compose em andamento atingido.",
                                     )
                                 else:
-                                    command_status = 'FAILED'
-                                    command_error = 'Comando de biblioteca Compose desconhecido.'
-                            except Exception as exc:
-                                command_status = 'FAILED'
-                                command_error = str(exc)[:500]
-                                logger.exception(
-                                    "[COMPOSE_LIBRARY] command failed action=%s requestId=%s",
-                                    action or '-',
-                                    command_request_id or '-',
-                                )
-                            compose_library_bridge.write_command_result(
-                                command_request_id,
-                                action,
-                                command_status,
-                                error=command_error,
-                            )
-                            logger.info(
-                                "[COMPOSE_LIBRARY] command=%s requestId=%s status=%s",
-                                action or '-',
-                                command_request_id or '-',
-                                command_status,
-                            )
+                                    # QUEUED is the immediate ACK for this bridge.
+                                    compose_library_bridge.write_command_result(
+                                        command_request_id,
+                                        action,
+                                        "QUEUED",
+                                        message="Comando recebido e agendado.",
+                                    )
+                                    diagnostics.record(
+                                        "COMPOSE_LIBRARY_ACK",
+                                        request_id=command_request_id,
+                                        action=action,
+                                    )
+                                    performance.event(
+                                        "COMPOSE_LIBRARY_ACK",
+                                        request_id=command_request_id,
+                                        metadata={"action": action},
+                                    )
 
                         player_event_types = {
                             "player_progress",

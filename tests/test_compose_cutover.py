@@ -55,6 +55,7 @@ class ComposeCutoverTests(unittest.TestCase):
         self.assertIn("navigation.sync_top_level(destination)", main)
         self.assertIn('navigation.sync_top_level("settings")', main)
         self.assertIn('navigation.push("details")', main)
+        self.assertIn("Compose is the visible navigation owner", main)
 
         self.assertIn('"my_list"', navigation)
         self.assertIn('"search"', navigation)

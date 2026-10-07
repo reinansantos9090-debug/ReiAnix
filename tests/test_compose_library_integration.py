@@ -11,8 +11,27 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("ComposeLibraryBridge(", MAIN)
         self.assertIn('compose_library_bridge.request_publish("startup")', MAIN)
         self.assertIn("if event_type == 'compose_library_command':", MAIN)
+        self.assertIn("_track_compose_library_task", MAIN)
+        self.assertIn('namespace="compose_library"', MAIN)
         for action in ("toggle_favorite", "set_watched", "refresh", "open_media"):
             self.assertIn(f"action == '{action}'", MAIN)
+
+    def test_compose_library_commands_ack_before_slow_work(self):
+        start = MAIN.index("if event_type == 'compose_library_command':")
+        end = MAIN.index("player_event_types = {", start)
+        block = MAIN[start:end]
+        self.assertIn('"QUEUED"', block)
+        self.assertIn("_run_compose_library_command", block)
+        self.assertNotIn("await asyncio.to_thread(", block)
+        self.assertNotIn("await add_folder()", block)
+        self.assertNotIn("await remove_folder(", block)
+
+    def test_compose_library_request_ids_are_idempotent(self):
+        start = MAIN.index("if event_type == 'compose_library_command':")
+        end = MAIN.index("player_event_types = {", start)
+        block = MAIN[start:end]
+        self.assertIn("claim_native_request(", block)
+        self.assertIn('namespace="compose_library"', block)
 
     def test_favorite_command_does_not_treat_false_new_state_as_failure(self):
         start = MAIN.index("if action == 'toggle_favorite':")

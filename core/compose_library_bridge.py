@@ -458,16 +458,19 @@ class ComposeLibraryBridge:
                 "romaji": meta.get("romaji"),
                 "english": meta.get("english"),
                 "native": meta.get("native"),
-                "description": meta.get("description"),
-                "description_original": meta.get("description_original"),
-                "status": meta.get("status"),
-                "format": meta.get("format"),
-                "duration": meta.get("duration"),
-                "studio": meta.get("studio"),
-                "season": meta.get("season"),
-                "cover_cache": meta.get("cover_cache"),
-                "cover_url": meta.get("cover_url"),
-                "banner_url": meta.get("banner_url"),
+                "description": meta.get("description") or source.get("description"),
+                "description_original": (
+                    meta.get("description_original")
+                    or source.get("description_original")
+                ),
+                "status": meta.get("status") or source.get("status"),
+                "format": meta.get("format") or source.get("format"),
+                "duration": meta.get("duration") if meta.get("duration") is not None else source.get("duration"),
+                "studio": meta.get("studio") or source.get("studio"),
+                "season": meta.get("season") or source.get("season"),
+                "cover_cache": meta.get("cover_cache") or source.get("cover_cache"),
+                "cover_url": meta.get("cover_url") or source.get("cover_url"),
+                "banner_url": meta.get("banner_url") or source.get("banner_url"),
             },
             "seasons": [
                 {
