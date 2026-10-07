@@ -207,6 +207,7 @@ tree.write(manifest_path, encoding="utf-8", xml_declaration=True)
 
 dependencies = [
     "androidx.activity:activity-ktx:1.13.0",
+    "io.coil-kt:coil-compose:2.7.0",
     "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0",
     "androidx.documentfile:documentfile:1.0.1",
     "androidx.media3:media3-exoplayer:1.11.1",
