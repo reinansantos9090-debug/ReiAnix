@@ -1006,64 +1006,16 @@ private fun HomeMediaCard(
     cardWidth: androidx.compose.ui.unit.Dp = ReiAnixTokens.Dimensions.homeCardWidth,
     onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .width(cardWidth)
-            .clickable(onClick = onClick)
-            .semantics {
-                role = Role.Button
-                contentDescription = "Abrir " + anime.title
-            },
-        shape = ReiAnixTokens.Shapes.card,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-        elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
-                    .clip(ReiAnixTokens.Shapes.artwork),
-            ) {
-                ReiAnixPoster(
-                    localPath = anime.artwork?.localPath,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    identity = anime.stableKey,
-                    maxDimensionPx = 512,
-                    externalUrl = anime.artwork?.externalUrl,
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = ReiAnixTokens.Spacing.sm,
-                        vertical = ReiAnixTokens.Spacing.sm,
-                    )
-                    .clearAndSetSemantics {},
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = anime.title,
-                    style = ReiAnixTokens.TypographyTokens.cardTitle,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val metadata = listOfNotNull(
-                    anime.year?.toString(),
-                    anime.availableContentCount.takeIf { it > 0 }?.let {
-                        if (it == 1) "1 episódio" else it.toString() + " episódios"
-                    },
-                )
-                if (metadata.isNotEmpty()) {
-                    ReiAnixMetadata(text = metadata.joinToString(" • "))
-                }
-            }
-        }
-    }
+    // Home, Biblioteca, Search and Minha Lista deliberately share the same
+    // canonical anime card so artwork, state badges and progress never drift.
+    ReiAnixAnimeCard(
+        anime = anime,
+        modifier = Modifier.width(cardWidth),
+        onClick = onClick,
+        maxDimensionPx = 512,
+    )
 }
+
 private fun selectFeaturedAnime(items: List<ReiAnixHomeAnimeUiModel>): ReiAnixHomeAnimeUiModel =
     items.firstOrNull {
         it.playbackTargetEpisodeId != null && it.playbackActionLabel != "Indisponível"
