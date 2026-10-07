@@ -80,7 +80,7 @@ class ContinueWatchingTests(unittest.TestCase):
         publish_pos = block.index(publish)
         reason_pos = block.index(reason)
         self.assertIn("if updated:", block[max(0, reason_pos - 320):reason_pos + len(reason)])
-        self.assertEqual(block.count(publish), 2)  # progress callback + no second persistence source check
+        self.assertEqual(block.count(reason), 1)
 
     def test_progress_change_does_not_create_a_second_persistence_source(self):
         bridge = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")
