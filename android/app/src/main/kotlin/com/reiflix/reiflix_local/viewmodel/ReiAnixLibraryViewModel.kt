@@ -8,6 +8,7 @@ import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState
+import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryDataState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -162,9 +163,9 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     val libraryFilters: StateFlow<ReiAnixLibraryFilters> = _libraryFilters.asStateFlow()
 
-    val libraryGenres: StateFlow<List<ReiAnixGenreUiModel>> = pagedLibraryState
-        .map { page ->
-            page.animes
+    val libraryGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
+        .map { animes ->
+            animes
                 .flatMap { anime -> anime.genres }
                 .distinctBy(ReiAnixGenreUiModel::stableKey)
                 .sortedBy { it.name.lowercase() }
@@ -233,22 +234,54 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     val libraryPresentationState: StateFlow<ReiAnixLibraryPresentationUiState> = combine(
         libraryAvailabilitySource,
+        canonicalCatalog,
         pagedLibraryState,
-    ) { source, page ->
-        val availableEpisodes = page.animes.sumOf { it.availableContentCount }
-        val favorites = page.animes.count { it.favorite }
+    ) { source, canonical, page ->
+        val canonicalReady = canonical.isNotEmpty()
+        val dataState = when {
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ||
+                source.sourceState.uppercase() in setOf("UNAVAILABLE", "NOT_CONFIGURED") ->
+                ReiAnixLibraryDataState.SOURCE_UNAVAILABLE
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
+                !canonicalReady ->
+                ReiAnixLibraryDataState.CANONICAL_ERROR
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING &&
+                !canonicalReady ->
+                ReiAnixLibraryDataState.INITIAL_LOADING
+            !canonicalReady &&
+                source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY ->
+                ReiAnixLibraryDataState.CANONICAL_EMPTY
+            canonicalReady && page.error != null ->
+                ReiAnixLibraryDataState.CANONICAL_READY_PAGE_ERROR
+            canonicalReady && page.isLoading && page.animes.isEmpty() ->
+                ReiAnixLibraryDataState.CANONICAL_READY_PAGE_LOADING
+            canonicalReady && page.animes.isNotEmpty() ->
+                ReiAnixLibraryDataState.CANONICAL_READY_PAGE_READY
+            canonicalReady ->
+                ReiAnixLibraryDataState.CANONICAL_READY
+            else ->
+                ReiAnixLibraryDataState.INITIAL_LOADING
+        }
+        val status = when (dataState) {
+            ReiAnixLibraryDataState.CANONICAL_ERROR ->
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+            ReiAnixLibraryDataState.CANONICAL_EMPTY ->
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+            ReiAnixLibraryDataState.SOURCE_UNAVAILABLE ->
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE
+            else -> if (canonicalReady) {
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+            } else {
+                source.status
+            }
+        }
         source.copy(
-            status = when {
-                page.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR -> page.status
-                page.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> page.status
-                page.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY -> page.status
-                page.animes.isNotEmpty() -> com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
-                else -> com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
-            },
+            status = status,
+            dataState = dataState,
             error = page.error ?: source.error,
-            animeCount = page.totalCount.coerceAtLeast(page.animes.size),
-            availableEpisodeCount = availableEpisodes,
-            favoriteCount = favorites,
+            animeCount = canonical.size,
+            availableEpisodeCount = canonical.sumOf { it.availableContentCount },
+            favoriteCount = canonical.count { it.favorite },
         )
     }
         .distinctUntilChanged()
@@ -259,8 +292,24 @@ class ReiAnixLibraryViewModel(context: Context) :
         )
 
     val filteredLibraryAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
-        pagedLibraryState
-            .map { it.animes }
+        combine(
+            canonicalCatalog,
+            pagedLibraryState,
+            libraryFilters,
+        ) { canonical, page, filters ->
+            if (page.animes.isNotEmpty()) {
+                page.animes
+            } else if (canonical.isNotEmpty()) {
+                val requested = ReiAnixLibraryFilterEngine.filter(
+                    animes = canonical,
+                    filters = filters,
+                )
+                requested.take(page.pageSize.coerceIn(12, 48))
+            } else {
+                emptyList()
+            }
+        }
+            .flowOn(Dispatchers.Default)
             .distinctUntilChanged()
             .stateIn(
                 viewModelScope,
