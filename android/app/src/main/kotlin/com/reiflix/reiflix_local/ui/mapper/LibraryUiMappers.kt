@@ -134,24 +134,31 @@ object LibraryUiMappers {
                 .flatMap { map -> keys.asSequence().mapNotNull { map.stringOrNull(it) } }
                 .firstOrNull { it.isNotBlank() }
 
-        val localPath = firstNonBlank(
+        val posterLocalPath = firstNonBlank(
             listOf("artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"),
         )
-        val externalUrl = firstNonBlank(
-            listOf("artwork_external_url", "cover_url", "banner_url", "external_url"),
+        val posterExternalUrl = firstNonBlank(
+            listOf("artwork_external_url", "cover_url", "external_url"),
         )
-        return if (localPath == null && externalUrl == null) {
+        val backdropLocalPath = firstNonBlank(
+            listOf("backdrop_local_path", "artwork_backdrop_local_path"),
+        )
+        val backdropExternalUrl = firstNonBlank(
+            listOf("backdrop_external_url", "banner_url"),
+        )
+        return if (
+            posterLocalPath == null &&
+            posterExternalUrl == null &&
+            backdropLocalPath == null &&
+            backdropExternalUrl == null
+        ) {
             null
         } else {
             ReiAnixArtworkUiModel(
-                localPath = localPath,
-                externalUrl = externalUrl,
-                backdropLocalPath = firstNonBlank(
-                    listOf("backdrop_local_path", "artwork_backdrop_local_path"),
-                ),
-                backdropExternalUrl = firstNonBlank(
-                    listOf("backdrop_external_url", "banner_url"),
-                ),
+                localPath = posterLocalPath,
+                externalUrl = posterExternalUrl,
+                backdropLocalPath = backdropLocalPath,
+                backdropExternalUrl = backdropExternalUrl,
             )
         }
     }
