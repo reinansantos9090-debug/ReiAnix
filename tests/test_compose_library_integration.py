@@ -42,14 +42,14 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
 
     def test_compose_library_request_ids_are_idempotent(self):
         block = self._command_dispatch_block()
-        self.assertIn("claim_native_request(", block)
+        self.assertIn("store.claim_native_request", block)
         self.assertIn('namespace="compose_library"', block)
         self.assertIn("duplicate request ignored", block)
 
     def test_favorite_command_does_not_treat_false_new_state_as_failure(self):
         block = self._command_worker_block()
-        start = block.index("if action == 'toggle_favorite':")
-        end = block.index("elif action == 'set_watched':", start)
+        start = block.index('if action == "toggle_favorite":')
+        end = block.index('elif action == "set_watched":', start)
         favorite = block[start:end]
         self.assertIn("existing = await asyncio.to_thread(store.catalog, anime_ids=[anime_id])", favorite)
         self.assertIn("await asyncio.to_thread(store.toggle_favorite, anime_id)", favorite)
@@ -67,8 +67,8 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
 
     def test_existing_scanner_coordinator_remains_refresh_owner(self):
         block = self._command_worker_block()
-        start = block.index("elif action == 'refresh':")
-        end = block.index("elif action == 'open_media':", start)
+        start = block.index('elif action == "refresh":')
+        end = block.index('elif action == "open_media":', start)
         refresh = block[start:end]
         self.assertIn("ScanOrigin.USER_REFRESH", refresh)
         self.assertIn("scan_coordinator.request(", refresh)
@@ -77,7 +77,7 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
 
     def test_existing_player_bridge_owns_compose_media_open(self):
         block = self._command_worker_block()
-        start = block.index("elif action == 'open_media':")
+        start = block.index('elif action == "open_media":')
         end = block.index("else:", start)
         open_media = block[start:end]
         self.assertIn("play_episode(", open_media)
