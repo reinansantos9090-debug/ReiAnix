@@ -380,7 +380,7 @@ fun ReiAnixNativePlayerBottomControls(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(bufferedFraction)
-                            .height(ReiAnixTokens.PlayerDimensions.timelineBufferHeight)
+                            .height(3.dp)
                             .background(ReiAnixTokens.Colors.playerControl.copy(alpha = 0.22f)),
                     )
                 }
