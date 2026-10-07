@@ -47,7 +47,7 @@ class ThumbnailTests(unittest.TestCase):
             service = LibraryService(store)
             anime_id = store.upsert_anime(
                 "fixture_57-duration",
-                {"title": "Prompt 57 Duration", "genres": "[]", "media_kind": "series"},
+                {"title": "Duration Fixture", "genres": "[]", "media_kind": "series"},
             )
             episode_id = store.upsert_episode(
                 anime_id,
@@ -84,7 +84,7 @@ class ThumbnailTests(unittest.TestCase):
             service = LibraryService(store)
             anime_id = store.upsert_anime(
                 "fixture_57-repair",
-                {"title": "Prompt 57 Repair", "genres": "[]", "media_kind": "series"},
+                {"title": "Repair Fixture", "genres": "[]", "media_kind": "series"},
             )
             episode_id = store.upsert_episode(
                 anime_id,
