@@ -357,7 +357,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     }
     val currentEpisode = anime.playbackTargetEpisode
         ?.takeIf { it.consumptionState == ReiAnixConsumptionState.IN_PROGRESS }
-    val nextEpisode = remember(anime.seasons, currentEpisode?.id) {
+    val nextEpisode = remember(anime.seasons, currentEpisode?.id, anime.playbackTargetEpisode?.id) {
         currentEpisode?.let { current ->
             val currentIndex = regularEpisodes.indexOfFirst { it.id == current.id }
             if (currentIndex >= 0) {
@@ -368,6 +368,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
             } else {
                 null
             }
+        } ?: anime.playbackTargetEpisode?.takeIf {
+            it.isPlayable && !it.isCompleted
         }
     }
 
@@ -746,7 +748,7 @@ private fun DetailsHero(
                     Text(text = "${formatElapsedSeconds(current.progressSeconds)} / ${formatDurationLabel(current.durationSeconds ?: 0.0)}",
                         style = ReiAnixTokens.TypographyTokens.metadata, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     ReiAnixProgressIndicator(progress = current.progressFraction, visible = current.progressFraction > 0f, announceProgress = false)
-                    nextEpisode?.let { next -> Text(text = "Próximo: ${formatEpisodeNumber(next.number)} • ${next.displayTitle}",
+                    nextEpisode?.takeIf { it.id != current.id }?.let { next -> Text(text = "Próximo: ${formatEpisodeNumber(next.number)} • ${next.displayTitle}",
                         style = ReiAnixTokens.TypographyTokens.metadata, color = MaterialTheme.colorScheme.primary, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 }
             }
