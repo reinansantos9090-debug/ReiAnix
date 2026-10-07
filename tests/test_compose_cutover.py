@@ -56,6 +56,9 @@ class ComposeCutoverTests(unittest.TestCase):
         self.assertIn('navigation.sync_top_level("settings")', main)
         self.assertIn('navigation.push("details")', main)
         self.assertIn("Compose is the visible navigation owner", main)
+        self.assertIn("if compose_primary_ui:", main)
+        self.assertIn('return\n        _drop_screen_cache', main)
+
 
         self.assertIn('"my_list"', navigation)
         self.assertIn('"search"', navigation)

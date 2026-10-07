@@ -2372,10 +2372,15 @@ async def main(page: ft.Page):
             page.snack_bar.open = True
             safe_update()
     def on_catalog_changed(*, refresh_details=True, refresh_request_id=None):
+        # The canonical SQLite mutation is projected to Compose through the
+        # library snapshot. When Compose owns the Android surface, do not also
+        # rebuild or refresh the hidden Flet view tree.
         compose_library_bridge.request_publish("catalog_changed")
         catalog_started = performance.now()
         schedule_thumbnail_reconciliation("catalog_changed")
         diagnostics.record("UI_REFRESHED", result="catalog_changed", source=navigation.current)
+        if compose_primary_ui:
+            return
         # Home/Organize keep their cached control tree across Details/Player.
         # Refresh their current dataset in place instead of rebuilding the whole
         # screen and losing its viewport/window state.
@@ -3876,9 +3881,10 @@ async def main(page: ft.Page):
                 reference = str(payload.get("source") or "").strip()
                 if not reference:
                     raise ValueError("A pasta SAF não foi informada.")
+                folders = await asyncio.to_thread(store.folders)
                 folder = next(
                     (
-                        item for item in store.folders()
+                        item for item in folders
                         if item.get("path") == reference
                         and str(item.get("kind") or "").strip().lower() == "saf"
                     ),
@@ -4360,7 +4366,8 @@ async def main(page: ft.Page):
                                     "FAILED",
                                     error="Comando de biblioteca Compose desconhecido.",
                                 )
-                            elif not store.claim_native_request(
+                            elif not await asyncio.to_thread(
+                                store.claim_native_request,
                                 command_request_id,
                                 namespace="compose_library",
                             ):
