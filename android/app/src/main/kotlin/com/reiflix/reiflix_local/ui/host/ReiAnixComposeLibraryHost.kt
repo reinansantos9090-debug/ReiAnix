@@ -108,6 +108,7 @@ class ReiAnixComposeLibraryHost(
                             com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListRoute(
                                 navController = navController,
                                 viewModel = libraryViewModel,
+                                cardSize = appearanceCardSize,
                             )
                         },
                         organize = {
