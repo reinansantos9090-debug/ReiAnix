@@ -136,11 +136,19 @@ fun ReiAnixLibraryRoute(
     viewModel: ReiAnixLibraryViewModel,
     onOpenDetails: (Long) -> Unit,
 ) {
-    val state by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
+    val baseState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
+    val pageState by viewModel.pagedLibraryState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val state = baseState.copy(
+        status = pageState.status,
+        error = pageState.error ?: baseState.error,
+        animeCount = pageState.totalCount.coerceAtLeast(pageState.animes.size),
+        availableEpisodeCount = pageState.animes.sumOf { it.availableContentCount },
+        favoriteCount = pageState.animes.count { it.favorite },
+    )
 
     ReiAnixLibraryPresentationScreen(
         state = state,
@@ -158,6 +166,9 @@ fun ReiAnixLibraryRoute(
         onRefresh = viewModel::refresh,
         onOpenDetails = onOpenDetails,
         onToggleFavorite = viewModel::toggleFavorite,
+        hasMore = pageState.hasMore,
+        isLoadingMore = pageState.isLoading && pageState.animes.isNotEmpty(),
+        onLoadMore = viewModel::loadNextLibraryPage,
     )
 }
 
@@ -346,6 +357,9 @@ private fun ReiAnixLibraryPresentationScreen(
                 onOpenDetails = onOpenDetails,
                 onToggleFavorite = onToggleFavorite,
                 onRefresh = onRefresh,
+                hasMore = hasMore,
+                isLoadingMore = isLoadingMore,
+                onLoadMore = onLoadMore,
                 modifier = Modifier.weight(1f),
             )
         }
