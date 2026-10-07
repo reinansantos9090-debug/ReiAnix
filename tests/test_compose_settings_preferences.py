@@ -70,8 +70,8 @@ def test_theme_follows_flow_without_activity_restart():
     )
 
     assert "collectAsStateWithLifecycle" in library_host
-    assert 'settingsState.settings["appearance.theme"]' in library_host
-    assert 'themeMode = settingsState.settings["appearance.theme"]' in library_host
+    assert "settingsViewModel.themeMode.collectAsStateWithLifecycle()" in library_host
+    assert "themeMode = themeMode" in library_host
     assert "ReiAnixSettingsRoute" in library_host
     assert "ReiAnixStorageRoute" in library_host
     assert "ReiAnixComposeTheme(themeMode = themeMode)" in root
