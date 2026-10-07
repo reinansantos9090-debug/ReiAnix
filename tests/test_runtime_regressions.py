@@ -95,7 +95,7 @@ class RuntimeRegressionTests(unittest.TestCase):
         styles = self.read(STYLES)
         self.assertIn("systemUiController.applyApplicationImmersivePolicy(useContextAppearance = false)", activity)
         self.assertIn("WindowCompat.setDecorFitsSystemWindows(window, false)", self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt"))
-        self.assertIn('<item name="android:windowBackground">#050505</item>', styles)
+        self.assertIn('<item name="android:windowBackground">#000000</item>', styles)
 
 
 if __name__ == "__main__":
