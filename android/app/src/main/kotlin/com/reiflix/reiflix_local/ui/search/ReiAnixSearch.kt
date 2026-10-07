@@ -332,7 +332,7 @@ fun ReiAnixSearchScreen(
                                 onAction = onRefresh,
                                 modifier = Modifier.fillMaxSize(),
                             )
-                            else -> ReiAnixLoadingState(
+                            ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
                                 title = "Carregando pesquisa",
                                 message = if (libraryState.scanInProgress) {
                                     "Carregando enquanto a varredura continua…"
@@ -368,7 +368,7 @@ fun ReiAnixSearchScreen(
                         onAction = onRefresh,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    else -> ReiAnixLoadingState(
+                    ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
                         title = "Carregando pesquisa",
                         message = if (libraryState.scanInProgress) {
                             "Carregando enquanto a varredura continua…"

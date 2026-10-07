@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.ui.organize
 
+import android.net.Uri
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -448,23 +450,25 @@ private fun OrganizeSourcesAndScanPanel(
                     verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                     contentPadding = PaddingValues(vertical = ReiAnixTokens.Spacing.xs),
                 ) {
-                    items(
-                        items = sources,
-                        key = { it.stableKey },
-                    ) { source ->
-                        val sourceState = state.storage.sourceState(source)
-                        OrganizeSourceRow(
-                            sourceName = sourceDisplayName(source.name, source.reference),
-                            location = source.reference,
-                            stateLabel = organizeSourceStateLabel(sourceState),
-                            stateTone = organizeSourceStateTone(sourceState),
-                            available = sourceState == "available",
-                            removeEnabled = !state.scanInProgress &&
-                                !state.storage.safSelectionPending &&
-                                !state.lastCommandAction.equals("remove_saf", ignoreCase = true),
-                            onReauthorize = onAddFolder,
-                            onRemove = { onRemoveFolder(source.reference) },
-                        )
+                    sources.forEach { source ->
+                        item(
+                            key = source.stableKey,
+                            contentType = { "organize-source-row" },
+                        ) {
+                            val sourceState = state.storage.sourceState(source)
+                            OrganizeSourceRow(
+                                sourceName = sourceDisplayName(source.name, source.reference),
+                                location = source.reference,
+                                stateLabel = organizeSourceStateLabel(sourceState),
+                                stateTone = organizeSourceStateTone(sourceState),
+                                available = sourceState == "available",
+                                removeEnabled = !state.scanInProgress &&
+                                    !state.storage.safSelectionPending &&
+                                    !state.lastCommandAction.equals("remove_saf", ignoreCase = true),
+                                onReauthorize = onAddFolder,
+                                onRemove = { onRemoveFolder(source.reference) },
+                            )
+                        }
                     }
                 }
             } else {
@@ -588,10 +592,7 @@ private fun sourceDisplayName(name: String, reference: String): String {
         !normalized.startsWith("content://", ignoreCase = true) &&
         !normalized.startsWith("file://", ignoreCase = true)
     ) return normalized
-    val fallback = reference.substringAfterLast('/')
-        .replace("%3A", ":", ignoreCase = true)
-        .replace("%20", " ")
-        .trim()
+    val fallback = Uri.decode(reference.substringAfterLast('/')).trim()
     return fallback.ifBlank { "Pasta da biblioteca" }
 }
 

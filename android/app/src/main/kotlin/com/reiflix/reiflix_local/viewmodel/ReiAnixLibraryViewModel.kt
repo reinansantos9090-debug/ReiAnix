@@ -383,6 +383,20 @@ class ReiAnixLibraryViewModel(context: Context) :
         get() = canonicalCatalog
 
     /**
+     * Shared in-memory search index derived exclusively from the canonical
+     * library snapshot. It is not a second source of truth and performs no
+     * persistence or remote work.
+     */
+    private val searchIndex = canonicalCatalog
+        .map { animes -> ReiAnixSearchEngine.buildIndex(animes) }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
+            ReiAnixSearchEngine.buildIndex(canonicalCatalog.value),
+        )
+
+    /**
      * Search filters must see genres from the entire canonical catalog, not
      * only the currently paged Library window.
      */
