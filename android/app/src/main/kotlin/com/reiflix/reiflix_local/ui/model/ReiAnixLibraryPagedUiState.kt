@@ -19,5 +19,16 @@ data class ReiAnixLibraryPagedUiState(
     val loadedPage: Int = -1,
     val isLoading: Boolean = false,
     val generation: Long = 0L,
+    /**
+     * Exact paging inputs used for the current generation. Keeping them with
+     * the paged projection prevents snapshot reconciliation from ever
+     * falling back to a different filter/sort source.
+     */
+    val query: String = "",
+    val genreKey: String? = null,
+    val favoritesOnly: Boolean = false,
+    val watchingOnly: Boolean = false,
+    val completedOnly: Boolean = false,
+    val sort: String = "Mais recentes",
     val error: String? = null,
 )
