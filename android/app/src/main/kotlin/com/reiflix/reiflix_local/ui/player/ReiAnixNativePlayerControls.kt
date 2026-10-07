@@ -56,7 +56,7 @@ data class ReiAnixNativePlayerUiState(
     val episodeLabel: String = "Episódio",
     val technicalLine: String = "",
     val positionMs: Long = 0L,
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
     val bufferedPositionMs: Long = 0L,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
@@ -65,7 +65,7 @@ data class ReiAnixNativePlayerUiState(
     val controlsVisible: Boolean = true,
     val locked: Boolean = false,
     val canNext: Boolean = false,
-    val canPrevious: Boolean = false
+    val canPrevious: Boolean = false,
     val episodeTransitionInProgress: Boolean = false,
     val aspectLabel: String = "Ajustar",
     val playbackSpeed: Float = 1f,
