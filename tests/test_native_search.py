@@ -30,7 +30,7 @@ class NativeSearchTests(unittest.TestCase):
         source = SEARCH.read_text(encoding="utf-8")
         for state in ("LOADING", "ERROR", "SOURCE_UNAVAILABLE", "EMPTY", "READY"):
             self.assertIn("ReiAnixLibraryLoadStatus." + state, source)
-        self.assertIn("query.isBlank()", source)
+        self.assertIn("searchQuery.isBlank()", source)
         self.assertIn("results.isEmpty()", source)
         self.assertIn("key = { anime -> anime.stableKey }", source)
         self.assertIn("onOpenDetails(anime.id)", source)
