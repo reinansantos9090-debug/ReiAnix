@@ -16,7 +16,7 @@ internal object ReiAnixLibrarySnapshotCodec {
         require(schemaVersion == 1) { "Unsupported Compose library snapshot schema: $schemaVersion" }
 
         val revision = root.optLong("revision", 0L)
-        require(revision >= previousRevision) {
+        require(previousRevision == 0L || revision > previousRevision) {
             "Stale Compose library snapshot revision=$revision previous=$previousRevision"
         }
 
