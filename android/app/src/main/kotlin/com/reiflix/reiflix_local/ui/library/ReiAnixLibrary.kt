@@ -255,6 +255,9 @@ private fun ReiAnixLibraryPresentationScreen(
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     Column(
