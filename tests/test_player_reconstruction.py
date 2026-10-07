@@ -43,13 +43,15 @@ class PlayerReconstructionTests(unittest.TestCase):
         self.assertNotIn("GestureMode.HORIZONTAL_SEEK", self.player)
         self.assertIn("GESTURE_HORIZONTAL_IGNORED", self.player)
 
-    def test_double_tap_seek_is_enabled_by_default_and_uses_configured_delta(self):
+    def test_double_tap_seek_uses_canonical_intent_settings_and_configured_delta(self):
         self.assertIn("private var doubleTapEnabled = true", self.player)
-        self.assertIn("PREF_GESTURES_DOUBLE_TAP, true", self.player)
+        self.assertIn('intent.getBooleanExtra("setting_gestures_double_tap", false)', self.player)
+        self.assertIn('persistCanonicalPlayerSetting("gestures.double_tap"', self.player)
         self.assertIn("doubleTapSeekMs", self.player)
         self.assertIn("seekBy(-doubleTapSeekMs", self.player)
         self.assertIn("seekBy(doubleTapSeekMs", self.player)
         self.assertIn("showFeedback(feedbackText)", self.player)
+        self.assertNotIn("gesturePreferences", self.player)
 
     def test_zoom_is_bounded_symmetric_and_pan_is_clamped(self):
         self.assertIn("private const val MAX_ZOOM = 2f", self.player)
