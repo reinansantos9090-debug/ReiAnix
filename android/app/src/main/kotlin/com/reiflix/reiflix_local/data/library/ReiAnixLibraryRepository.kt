@@ -165,6 +165,8 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 hasMore = false,
                 loadedPage = -1,
                 isLoading = true,
+                pageSize = 36,
+                requestId = null,
                 generation = generation,
                 query = query.trim(),
                 genreKey = genre.takeIf { it != "Todos" }?.trim(),
