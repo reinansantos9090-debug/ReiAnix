@@ -286,17 +286,9 @@ class ReiAnixLibraryViewModel(context: Context) :
         val savedCount = animes.count { it.favorite }
         val status = when {
             source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR ->
-                if (savedCount > 0) {
-                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
-                } else {
-                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
-                }
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
             source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
-                if (savedCount > 0) {
-                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
-                } else {
-                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE
-                }
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE
             source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING &&
                 animes.isEmpty() ->
                 com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
