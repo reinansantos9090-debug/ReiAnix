@@ -210,7 +210,11 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("val published = NativeMailbox.write(", request_block)
         autoplay_idx = source.index('persistCanonicalPlayerSetting("player.autoplay_next"')
         autoplay_block = source[max(0, autoplay_idx - 240):autoplay_idx + 220]
-        self.assertIn('"compose_settings_set"', autoplay_block)
+        helper_start = source.index("private fun persistCanonicalPlayerSetting")
+        helper_end = source.index("private fun gestureSettingLabel", helper_start)
+        helper_block = source[helper_start:helper_end]
+        self.assertIn('persistCanonicalPlayerSetting("player.autoplay_next"', autoplay_block)
+        self.assertIn('"compose_settings_set"', helper_block)
         self.assertNotIn('"player_autoplay_changed"', save_block)
         self.assertNotIn("NativeMailbox.writeBestEffort(", autoplay_block)
 
