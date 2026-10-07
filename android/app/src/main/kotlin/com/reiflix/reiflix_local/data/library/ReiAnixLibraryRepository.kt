@@ -224,7 +224,12 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private val pageGeneration = AtomicLong(0L)
     private val refreshInFlight = AtomicBoolean(false)
     private val pageRequestGuard = Any()
-    private var inFlightPage: Pair<Long, Int>? = null
+    private data class InFlightPage(
+        val generation: Long,
+        val page: Int,
+        val requestId: String,
+    )
+    private var inFlightPage: InFlightPage? = null
     private data class RefreshPageRequest(
         val query: String,
         val genre: String,
