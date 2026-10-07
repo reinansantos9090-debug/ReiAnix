@@ -19,7 +19,6 @@ import android.content.Intent
 import android.view.KeyEvent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Matrix
@@ -118,7 +117,6 @@ class NativePlayerActivity : ComponentActivity() {
     private lateinit var errorPanel: LinearLayout
     private lateinit var preparingIndicator: ProgressBar
     private lateinit var lockButton: TextView
-    private lateinit var gesturePreferences: SharedPreferences
     private lateinit var systemUiController: SystemUiController
     private lateinit var localMetadataStore: PlayerLocalMetadataStore
 
@@ -681,16 +679,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         activityStartedAtMs = System.currentTimeMillis()
         sessionState = SessionState.ACTIVE
         MainActivity.notePlayerSession(requestId, playerSessionId, transitionGeneration)
-        gesturePreferences = getSharedPreferences("reiflix_player_preferences", Context.MODE_PRIVATE)
         localMetadataStore = PlayerLocalMetadataStore(this)
-        volumeGesturesEnabled = intent.getBooleanExtra("setting_gestures_volume",
-            gesturePreferences.getBoolean(PREF_GESTURES_VOLUME, false))
-        brightnessGesturesEnabled = intent.getBooleanExtra("setting_gestures_brightness",
-            gesturePreferences.getBoolean(PREF_GESTURES_BRIGHTNESS, false))
-        doubleTapEnabled = intent.getBooleanExtra("setting_gestures_double_tap",
-            gesturePreferences.getBoolean(PREF_GESTURES_DOUBLE_TAP, true))
-        longPressEnabled = intent.getBooleanExtra("setting_gestures_long_press",
-            gesturePreferences.getBoolean(PREF_GESTURES_LONG_PRESS, false))
+        volumeGesturesEnabled = intent.getBooleanExtra("setting_gestures_volume", false)
+        brightnessGesturesEnabled = intent.getBooleanExtra("setting_gestures_brightness", false)
+        doubleTapEnabled = intent.getBooleanExtra("setting_gestures_double_tap", false)
+        longPressEnabled = intent.getBooleanExtra("setting_gestures_long_press", false)
         immersiveSetting = intent.getStringExtra("setting_player_immersive") ?: "always"
         val interactionProfile = DeviceInteractionProfile.detect(this)
         isTelevision = interactionProfile.isTelevision
@@ -716,7 +709,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .coerceIn(0, 50)
         subtitleEmbeddedStyle = intent.getBooleanExtra("setting_audio_subtitle_embedded_style", true)
         locked = savedInstanceState?.getBoolean("lock_mode", false)
-            ?: gesturePreferences.getBoolean(PREF_LOCK_MODE, false)
+            ?: intent.getBooleanExtra("setting_player_lock_mode", false)
         controlsVisible = savedInstanceState?.getBoolean("controls_visible", true) ?: true
         controlsRestoredFromState = savedInstanceState?.containsKey("controls_visible") == true
         logPlayer(
@@ -1055,6 +1048,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         autoplayNext = newIntent.getBooleanExtra("autoplay", autoplayNext)
+        volumeGesturesEnabled = newIntent.getBooleanExtra("setting_gestures_volume", volumeGesturesEnabled)
+        brightnessGesturesEnabled = newIntent.getBooleanExtra("setting_gestures_brightness", brightnessGesturesEnabled)
+        doubleTapEnabled = newIntent.getBooleanExtra("setting_gestures_double_tap", doubleTapEnabled)
+        longPressEnabled = newIntent.getBooleanExtra("setting_gestures_long_press", longPressEnabled)
+        val incomingLockMode = newIntent.getBooleanExtra("setting_player_lock_mode", locked)
+        val incomingDefaultSpeed = newIntent.getFloatExtra("setting_player_default_speed", 1f)
+        if (incomingDefaultSpeed.isFinite() && incomingDefaultSpeed > 0f) {
+            if (::player.isInitialized) player.setPlaybackSpeed(incomingDefaultSpeed)
+        }
+        if (incomingLockMode != locked) {
+            setLocked(incomingLockMode, persist = false, announce = false)
+        }
         doubleTapSeekMs = newIntent.getLongExtra("setting_player_double_tap_seek_seconds", doubleTapSeekMs / 1000L)
         longPressSpeed = newIntent.getFloatExtra("setting_player_long_press_speed", longPressSpeed)
             .coerceIn(1f, 3f)
@@ -2577,18 +2582,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }, actionButton("Autoplay", 92) { button ->
             autoplayNext = !autoplayNext
             button.text = "Autoplay " + if (autoplayNext) "ON" else "OFF"
-            NativeMailbox.write(
-                this@NativePlayerActivity,
-                JSONObject().put("type", "player_autoplay_changed")
-                    .put("requestId", requestId)
-                    .put("payload", JSONObject().put("enabled", autoplayNext))
-            )
+            persistCanonicalPlayerSetting("player.autoplay_next", autoplayNext.toString())
             showFeedback(if (autoplayNext) "Autoplay ligado" else "Autoplay desligado")
         })
 
         val volumeGestureButton = actionButton(gestureSettingLabel("Volume", volumeGesturesEnabled), 120) { button ->
             volumeGesturesEnabled = !volumeGesturesEnabled
-            gesturePreferences.edit().putBoolean(PREF_GESTURES_VOLUME, volumeGesturesEnabled).apply()
+            persistCanonicalPlayerSetting("gestures.volume", volumeGesturesEnabled.toString())
             button.text = gestureSettingLabel("Volume", volumeGesturesEnabled)
             showFeedback(if (volumeGesturesEnabled) "Gesto de volume ligado" else "Gesto de volume desligado")
             touchControls()
@@ -2598,7 +2598,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         val brightnessGestureButton = actionButton(gestureSettingLabel("Brilho", brightnessGesturesEnabled), 120) { button ->
             brightnessGesturesEnabled = !brightnessGesturesEnabled
-            gesturePreferences.edit().putBoolean(PREF_GESTURES_BRIGHTNESS, brightnessGesturesEnabled).apply()
+            persistCanonicalPlayerSetting("gestures.brightness", brightnessGesturesEnabled.toString())
             button.text = gestureSettingLabel("Brilho", brightnessGesturesEnabled)
             showFeedback(if (brightnessGesturesEnabled) "Gesto de brilho ligado" else "Gesto de brilho desligado")
             touchControls()
@@ -2608,7 +2608,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         val doubleTapButton = actionButton(gestureSettingLabel("Double tap", doubleTapEnabled), 120) { button ->
             doubleTapEnabled = !doubleTapEnabled
-            gesturePreferences.edit().putBoolean(PREF_GESTURES_DOUBLE_TAP, doubleTapEnabled).apply()
+            persistCanonicalPlayerSetting("gestures.double_tap", doubleTapEnabled.toString())
             button.text = gestureSettingLabel("Double tap", doubleTapEnabled)
             showFeedback(if (doubleTapEnabled) "Double tap ligado" else "Double tap desligado")
             touchControls()
@@ -2618,7 +2618,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         val longPressButton = actionButton(gestureSettingLabel("Pressão", longPressEnabled), 120) { button ->
             longPressEnabled = !longPressEnabled
-            gesturePreferences.edit().putBoolean(PREF_GESTURES_LONG_PRESS, longPressEnabled).apply()
+            persistCanonicalPlayerSetting("gestures.long_press", longPressEnabled.toString())
             button.text = gestureSettingLabel("Pressão", longPressEnabled)
             showFeedback(if (longPressEnabled) "Pressão longa ligada" else "Pressão longa desligada")
             touchControls()
@@ -2731,7 +2731,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         controls.addView(
             composeCenterView,
             FrameLayout.LayoutParams(
-                dp(240),
+                FrameLayout.LayoutParams.MATCH_PARENT,
                 dp(110),
                 Gravity.CENTER,
             ),
@@ -2763,7 +2763,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         if (::composeCenterView.isInitialized) {
             composeCenterView.layoutParams = (composeCenterView.layoutParams as FrameLayout.LayoutParams).apply {
-                width = dp(240)
+                width = FrameLayout.LayoutParams.MATCH_PARENT
                 height = centerHeight
                 gravity = Gravity.CENTER
             }
@@ -2825,10 +2825,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             safeTopPx = gestureSafeTop,
             safeBottomPx = gestureSafeBottom,
         )
-        val overlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
-        if (::composeTopView.isInitialized) composeTopView.visibility = if (overlaysVisible) View.VISIBLE else View.INVISIBLE
-        if (::composeCenterView.isInitialized) composeCenterView.visibility = if (overlaysVisible) View.VISIBLE else View.INVISIBLE
-        if (::composeBottomView.isInitialized) composeBottomView.visibility = if (overlaysVisible) View.VISIBLE else View.INVISIBLE
+        val unlockedOverlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
+        val lockedAffordanceVisible = controlsVisible && locked && !errorVisible && !inPictureInPicture
+        if (::composeTopView.isInitialized) composeTopView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
+        if (::composeCenterView.isInitialized) composeCenterView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
+        if (::composeBottomView.isInitialized) composeBottomView.visibility =
+            if (unlockedOverlaysVisible || lockedAffordanceVisible) View.VISIBLE else View.INVISIBLE
     }
 
     private fun toggleMorePanel() {
@@ -3071,6 +3073,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .setTitle("Velocidade")
             .setSingleChoiceItems(labels, currentIndex) { dialog, which ->
                 player.setPlaybackSpeed(speeds[which])
+                persistCanonicalPlayerSetting("player.default_speed", speeds[which].toString())
                 button.text = labels[which]
                 button.isSelected = true
                 showFeedback(labels[which])
@@ -3111,6 +3114,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         button.text = if (mode == "Preencher") "Preencher" else "Ajustar"
         button.isSelected = mode == "Preencher"
         aspectModeLabel = button.text.toString()
+        persistCanonicalPlayerSetting(
+            "player.aspect_ratio",
+            if (mode == "Preencher") "fill" else "fit",
+        )
         showFeedback(button.text.toString())
         touchControls()
         playerView.requestLayout()
@@ -3485,7 +3492,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         if (locked) {
             controls.visibility = if (visible) View.VISIBLE else View.INVISIBLE
-            topBar.visibility = if (visible) View.VISIBLE else View.GONE
+            hideLegacyPrimaryControls()
+            topBar.visibility = View.GONE
             bottomBar.visibility = View.GONE
             centerControls.visibility = View.GONE
             findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
@@ -3544,7 +3552,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun setLocked(value: Boolean, persist: Boolean = true, announce: Boolean = true) {
         locked = value
         if (persist) {
-            gesturePreferences.edit().putBoolean(PREF_LOCK_MODE, locked).apply()
+            persistCanonicalPlayerSetting("player.lock_mode", locked.toString())
         }
         findViewByTag<View>("reiflix_gesture_layer")?.let {
             (it as? GestureLayer)?.cancelInteractions()
@@ -3556,7 +3564,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             findViewByTag<View>("reiflix_back_button")?.visibility = View.GONE
             findViewByTag<View>("reiflix_more_button")?.visibility = View.GONE
             controls.visibility = View.VISIBLE
-            topBar.visibility = View.VISIBLE
+            hideLegacyPrimaryControls()
+            topBar.visibility = View.GONE
             centerControls.visibility = View.GONE
             bottomBar.visibility = View.GONE
             if (::feedback.isInitialized) feedback.visibility = View.GONE
@@ -3577,6 +3586,37 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (!::lockButton.isInitialized) return
         lockButton.text = if (locked) "🔒" else "🔓"
         lockButton.contentDescription = if (locked) "Desbloquear controles" else "Bloquear controles"
+    }
+
+    private fun persistCanonicalPlayerSetting(key: String, value: String): Boolean {
+        val mutationRequestId = UUID.randomUUID().toString()
+        val payload = JSONObject()
+            .put("key", key)
+            .put("value", value)
+            .put("requestId", mutationRequestId)
+        val event = JSONObject()
+            .put("type", "compose_settings_set")
+            .put("requestId", mutationRequestId)
+            .put("payload", payload)
+        val published = NativeMailbox.writeBestEffort(this, event)
+        logPlayer(
+            "PLAYER_SETTING_CHANGED key=" + key +
+                " value=" + value +
+                " requestId=" + mutationRequestId +
+                " published=" + published,
+        )
+        if (!published) {
+            logPlayer(
+                "PLAYER_SETTING_PERSIST_FAILED key=" + key +
+                    " requestId=" + mutationRequestId,
+            )
+        } else {
+            logPlayer(
+                "PLAYER_SETTING_PERSIST_REQUESTED key=" + key +
+                    " requestId=" + mutationRequestId,
+            )
+        }
+        return published
     }
 
     private fun gestureSettingLabel(label: String, enabled: Boolean): String =
@@ -5918,11 +5958,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         private val PLAYER_EVENT_CLOCK_MS = AtomicLong(0L)
 
-        private const val PREF_GESTURES_VOLUME = "gesture_volume"
-        private const val PREF_GESTURES_BRIGHTNESS = "gesture_brightness"
-        private const val PREF_GESTURES_DOUBLE_TAP = "gesture_double_tap"
-        private const val PREF_GESTURES_LONG_PRESS = "gesture_long_press"
-        private const val PREF_LOCK_MODE = "player_lock_mode"
         private const val TAG = "[REIFLIX][PLAYER]"
         private const val PROGRESS_INTERVAL_MS = 250L
         private const val PROGRESS_PERSIST_INTERVAL_MS = 15_000L
