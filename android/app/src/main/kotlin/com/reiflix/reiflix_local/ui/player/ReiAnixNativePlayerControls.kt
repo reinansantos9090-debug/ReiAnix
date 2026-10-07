@@ -16,12 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
@@ -206,8 +203,7 @@ fun ReiAnixNativePlayerCenterControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlayerSeekIconButton(
-                icon = Icons.Filled.Replay10,
-                alternateIcon = Icons.Filled.FastRewind,
+                icon = Icons.Filled.FastRewind,
                 seconds = seekSeconds,
                 description = "Voltar $seekSeconds segundos",
                 onClick = { onSeekRelative(-seekSeconds * 1_000L) },
@@ -259,8 +255,7 @@ fun ReiAnixNativePlayerCenterControls(
             }
 
             PlayerSeekIconButton(
-                icon = Icons.Filled.Forward10,
-                alternateIcon = Icons.Filled.FastForward,
+                icon = Icons.Filled.FastForward,
                 seconds = seekSeconds,
                 description = "Avançar $seekSeconds segundos",
                 onClick = { onSeekRelative(seekSeconds * 1_000L) },
@@ -272,7 +267,6 @@ fun ReiAnixNativePlayerCenterControls(
 @Composable
 private fun PlayerSeekIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    alternateIcon: androidx.compose.ui.graphics.vector.ImageVector,
     seconds: Long,
     description: String,
     onClick: () -> Unit,
@@ -286,28 +280,19 @@ private fun PlayerSeekIconButton(
                 role = Role.Button
             },
     ) {
-        if (seconds == 10L) {
+        Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = ReiAnixTokens.Colors.playerControl,
                 modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
             )
-        } else {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = alternateIcon,
-                    contentDescription = null,
-                    tint = ReiAnixTokens.Colors.playerControl,
-                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
-                )
-                Text(
-                    text = seconds.toString(),
-                    style = ReiAnixTokens.TypographyTokens.chip,
-                    color = ReiAnixTokens.Colors.playerControl,
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                )
-            }
+            Text(
+                text = seconds.toString(),
+                style = ReiAnixTokens.TypographyTokens.chip,
+                color = ReiAnixTokens.Colors.playerControl,
+                modifier = Modifier.align(Alignment.BottomEnd),
+            )
         }
     }
 }
@@ -466,7 +451,7 @@ fun ReiAnixNativePlayerBottomControls(
                 enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
-                icon = Icons.Filled.Source,
+                glyph = "☷",
                 label = "Fonte",
                 contentDescription = buildString {
                     append("Fonte e opções do player")
