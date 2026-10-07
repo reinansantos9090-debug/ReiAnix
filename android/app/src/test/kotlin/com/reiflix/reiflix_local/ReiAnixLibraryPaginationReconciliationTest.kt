@@ -139,6 +139,20 @@ class ReiAnixLibraryPaginationReconciliationTest {
         assertEquals(36, loaded!!.animes.size)
         assertEquals(0, loaded.loadedPage)
         assertTrue(loaded.hasMore)
+
+        val page1 = com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec.LibraryPageResult(
+            generation = 11L,
+            page = 1,
+            pageSize = 36,
+            total = 72,
+            hasMore = false,
+            items = (37L..72L).map { anime(it, "Naruto ${it.toString().padStart(3, '0')}") },
+        )
+        val loadedAgain = ReiAnixLibraryRepository.applyLibraryPage(loaded, page1)
+        assertNotNull(loadedAgain)
+        assertEquals(72, loadedAgain!!.animes.size)
+        assertEquals(1, loadedAgain.loadedPage)
+        assertFalse(loadedAgain.hasMore)
     }
 
     @Test
