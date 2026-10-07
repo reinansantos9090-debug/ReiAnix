@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.FastForward
@@ -444,7 +443,7 @@ fun ReiAnixNativePlayerBottomControls(
                 enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
-                icon = Icons.Filled.Fullscreen,
+                glyph = "⛶",
                 label = "Redimensionar",
                 contentDescription = "Redimensionar vídeo",
                 onClick = onResize,
