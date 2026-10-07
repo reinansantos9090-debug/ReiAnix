@@ -770,6 +770,8 @@ fun ReiAnixEpisodeCard(
     modifier: Modifier = Modifier,
     onPlay: (() -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
+    isCurrent: Boolean = false,
+    isNext: Boolean = false,
 ) {
     val playable = episode.isPlayable && onPlay != null
     val episodeAccessibilityLabel = buildList {
@@ -783,10 +785,18 @@ fun ReiAnixEpisodeCard(
             )
         }
         add(episode.displayTitle)
-        episode.durationSeconds
-            ?.takeIf { it.isFinite() && it > 0.0 }
-            ?.let { add(formatDurationLabel(it)) }
+        add(
+            episode.durationSeconds
+                ?.takeIf { it.isFinite() && it > 0.0 }
+                ?.let(::formatDurationLabel)
+                ?: "—",
+        )
         episode.progressPercent?.let { add(it.toString() + "% assistido") }
+        if (isCurrent) {
+            add("Agora")
+        } else if (isNext) {
+            add("Próximo")
+        }
         if (episode.isCompleted) {
             add("Concluído")
         } else if (episode.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS) {
@@ -816,7 +826,11 @@ fun ReiAnixEpisodeCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = when {
+                isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
+                isNext -> MaterialTheme.colorScheme.surfaceContainer
+                else -> MaterialTheme.colorScheme.background
+            },
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
     ) {
@@ -871,6 +885,22 @@ fun ReiAnixEpisodeCard(
                     ReiAnixTokens.Spacing.xs,
                 ),
             ) {
+                if (isCurrent || isNext) {
+                    Surface(
+                        shape = ReiAnixTokens.Shapes.chip,
+                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Text(
+                            text = if (isCurrent) "Agora" else "Próximo",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isCurrent) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(
+                                horizontal = ReiAnixTokens.Spacing.xs,
+                                vertical = ReiAnixTokens.Spacing.xs / 2,
+                            ),
+                        )
+                    }
+                }
                 Text(
                     text = episode.displayTitle,
                     style = ReiAnixTokens.TypographyTokens.cardTitle,
@@ -889,12 +919,13 @@ fun ReiAnixEpisodeCard(
                                 },
                             )
                         }
-                        episode.durationSeconds
-                            ?.takeIf { it.isFinite() && it > 0.0 }
-                            ?.let {
-                                if (isNotEmpty()) append(" • ")
-                                append(formatDurationLabel(it))
-                            }
+                        if (isNotEmpty()) append(" • ")
+                        append(
+                            episode.durationSeconds
+                                ?.takeIf { it.isFinite() && it > 0.0 }
+                                ?.let(::formatDurationLabel)
+                                ?: "—",
+                        )
                         episode.progressPercent?.let {
                             if (isNotEmpty()) append(" • ")
                             append("$it%")
