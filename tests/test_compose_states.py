@@ -74,4 +74,6 @@ def test_artwork_does_not_silently_swallow_decode_errors():
     assert "catch (_: Exception)" not in artwork
     assert "Log.w(TAG" in artwork
     assert "ReiAnixArtworkMissingState(" in artwork
-    assert "LocalArtworkDecodeResult.Missing" in artwork
+    assert "SubcomposeAsyncImage(" in artwork
+    assert "externalUrl: String?" in artwork
+    assert "diskCachePolicy(CachePolicy.DISABLED)" in artwork
