@@ -216,7 +216,7 @@ class ArtworkEngineTests(unittest.TestCase):
         self.assertIn("ARTWORK_REQUESTED", names)
         self.assertIn("ARTWORK_DOWNLOAD_STARTED", names)
         self.assertIn("ARTWORK_DOWNLOAD_SUCCEEDED", names)
-        # Prompt-56 concise aliases are diagnostics, not listener event names.
+        # Concise aliases are diagnostics, not listener event names.
         diagnostic_names = [name for name, _ in diagnostics]
         self.assertIn("ARTWORK_DOWNLOAD_START", diagnostic_names)
         self.assertIn("ARTWORK_DOWNLOAD_SUCCESS", diagnostic_names)
