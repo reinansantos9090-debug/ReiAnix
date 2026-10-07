@@ -319,13 +319,34 @@ class ReiAnixLibraryViewModel(context: Context) :
      * Query changes operate against the in-memory index and never touch SQLite
      * or remote services from the UI layer.
      */
-    private val searchIndex: StateFlow<com.reiflix.reiflix_local.ui.search.ReiAnixSearchIndex> = canonicalCatalog
-        .map { animes -> ReiAnixSearchEngine.buildIndex(animes) }
+    /**
+     * Search consumes the same canonical catalog instance used by Home, Library,
+     * Details and Organize. Exposing this flow does not create a second source
+     * of truth or duplicate the catalog in memory.
+     */
+    val searchCatalog: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>>
+        get() = canonicalCatalog
+
+    /**
+     * Search filters must see genres from the entire canonical catalog, not
+     * only the currently paged Library window.
+     */
+    val searchGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
+        .map { animes ->
+            animes
+                .asSequence()
+                .flatMap { anime -> anime.genres.asSequence() }
+                .filter { it.name.isNotBlank() }
+                .distinctBy(ReiAnixGenreUiModel::stableKey)
+                .sortedBy { it.name.trim().lowercase() }
+                .toList()
+        }
         .flowOn(Dispatchers.Default)
+        .distinctUntilChanged()
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
-            ReiAnixSearchEngine.buildIndex(emptyList()),
+            emptyList(),
         )
 
     private val _organizeFilters = MutableStateFlow(ReiAnixOrganizeFilters())
