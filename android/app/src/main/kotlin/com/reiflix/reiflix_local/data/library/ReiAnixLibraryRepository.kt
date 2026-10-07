@@ -143,6 +143,33 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             )
         }
 
+        internal fun resetPagedState(
+            current: ReiAnixLibraryPagedUiState,
+            generation: Long,
+            query: String,
+            genre: String,
+            sort: String,
+            favoritesOnly: Boolean,
+            watchingOnly: Boolean,
+            completedOnly: Boolean,
+        ): ReiAnixLibraryPagedUiState =
+            current.copy(
+                status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+                animes = emptyList(),
+                totalCount = 0,
+                hasMore = false,
+                loadedPage = -1,
+                isLoading = true,
+                generation = generation,
+                query = query.trim(),
+                genreKey = genre.takeIf { it != "Todos" }?.trim(),
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                sort = sort.trim().ifEmpty { "Mais recentes" },
+                error = null,
+            )
+
         internal fun applyLibraryPage(
             current: ReiAnixLibraryPagedUiState,
             page: ReiAnixLibrarySnapshotCodec.LibraryPageResult,
@@ -271,21 +298,15 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             stateMutex.withLock {
                 val current = _pagedLibraryState.value
                 _pagedLibraryState.value = if (reset) {
-                    current.copy(
-                        status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
-                        animes = emptyList(),
-                        totalCount = 0,
-                        hasMore = false,
-                        loadedPage = -1,
-                        isLoading = true,
+                    resetPagedState(
+                        current = current,
                         generation = generation,
-                        query = query.trim(),
-                        genreKey = genre.takeIf { it != "Todos" }?.trim(),
+                        query = query,
+                        genre = genre,
+                        sort = sort,
                         favoritesOnly = favoritesOnly,
                         watchingOnly = watchingOnly,
                         completedOnly = completedOnly,
-                        sort = sort.trim().ifEmpty { "Mais recentes" },
-                        error = null,
                     )
                 } else if (current.generation == generation) {
                     current.copy(
