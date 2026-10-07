@@ -4042,6 +4042,20 @@ async def main(page: ft.Page):
                     "elapsedMs": result.get("elapsed_ms", 0),
                 },
             )
+
+            # Publish after each meaningful native scan batch so Compose can show
+            # newly discovered library items while the scan is still running.
+            # ComposeLibraryBridge coalesces rapid bursts and performs projection
+            # work off the event loop; the scanner remains the persistent backend.
+            if (
+                compose_library_bridge.enabled
+                and not result.get("ignored")
+                and (
+                    int(result.get("new") or 0) > 0
+                    or int(result.get("updated") or 0) > 0
+                )
+            ):
+                compose_library_bridge.request_publish("library_batch_ingested")
             return result
 
         poll_interval = 0.08
