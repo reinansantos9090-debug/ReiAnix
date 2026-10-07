@@ -586,7 +586,7 @@ async def main(page: ft.Page):
         _authorized_scan_targets,
         on_state=_scan_coordinator_state_changed,
     )
-    pending_folder_removals=set()
+    pending_folder_removals={}
     # View-local query/filter state survives Details/Player round-trips while
     # the catalog itself is still read afresh from SQLite on each view entry.
     home_state = {}
@@ -2485,7 +2485,7 @@ async def main(page: ft.Page):
         _clear_screen_cache()
         if not compose_primary_ui:
             render_current(force=True, reason="platform_brightness")
-    async def remove_folder(reference):
+    async def remove_folder(reference, request_id=None):
         if scan_coordinator.active or saf_selection.pending:
             page.snack_bar = ft.SnackBar(ft.Text("Aguarde a atualização ou a seleção de pasta terminar antes de remover uma pasta."))
             page.snack_bar.open = True
@@ -2494,14 +2494,21 @@ async def main(page: ft.Page):
         folder = next((item for item in store.folders() if item.get("path") == reference), None)
         if folder and folder.get("kind") == "saf" and bridge.available:
             try:
-                pending_folder_removals.add(reference)
+                pending_folder_removals[reference] = str(request_id or "").strip()
                 await bridge.release_tree(reference)
                 page.snack_bar = ft.SnackBar(ft.Text("Liberando a permissão da pasta…"))
                 page.snack_bar.open = True
                 safe_update()
                 return True
             except Exception as exc:
-                pending_folder_removals.discard(reference)
+                pending_folder_removals.pop(reference, None)
+                if request_id:
+                    compose_library_bridge.write_command_result(
+                        request_id,
+                        "remove_saf",
+                        "ERROR",
+                        error=str(exc),
+                    )
                 page.snack_bar = ft.SnackBar(ft.Text(f"Não foi possível liberar a pasta: {exc}"))
                 page.snack_bar.open = True
                 safe_update()
@@ -3994,7 +4001,7 @@ async def main(page: ft.Page):
                 )
                 if folder is None:
                     raise ValueError("A pasta SAF não está configurada na biblioteca.")
-                started = await remove_folder(reference)
+                started = await remove_folder(reference, request_id=request_id)
                 if not started:
                     command_status = "BLOCKED"
                     command_error = (
@@ -6742,6 +6749,13 @@ async def main(page: ft.Page):
                             maybe_show_storage_onboarding()
                         elif event_type == 'saf_cancelled':
                             saf_selection.finish()
+                            if event_request_id:
+                                compose_library_bridge.write_command_result(
+                                    event_request_id,
+                                    "select_saf",
+                                    "CANCELLED",
+                                    message="Seleção de pasta cancelada.",
+                                )
                             if compose_library_bridge.enabled:
                                 compose_library_bridge.request_publish("saf_selection_finished")
                             storage_onboarding["waiting_for_result"] = False
@@ -6777,6 +6791,13 @@ async def main(page: ft.Page):
                                 )
                             tree_uri = payload.get('treeUri')
                             if tree_uri:
+                                if payload.get('granted') and event_request_id:
+                                    compose_library_bridge.write_command_result(
+                                        event_request_id,
+                                        "select_saf",
+                                        "SUCCESS",
+                                        message="Pasta autorizada e configurada.",
+                                    )
                                 if payload.get('granted'):
                                     if payload.get('selected'):
                                         store.add_folder(
@@ -6838,9 +6859,16 @@ async def main(page: ft.Page):
                         elif event_type == 'saf_released':
                             tree_uri = payload.get('treeUri')
                             if tree_uri and tree_uri in pending_folder_removals:
-                                pending_folder_removals.discard(tree_uri)
+                                remove_request_id = pending_folder_removals.pop(tree_uri, None)
                                 store.remove_folder(tree_uri)
                                 on_catalog_changed()
+                                if remove_request_id:
+                                    compose_library_bridge.write_command_result(
+                                        remove_request_id,
+                                        "remove_saf",
+                                        "SUCCESS",
+                                        message="Pasta removida da biblioteca sem apagar a mídia física.",
+                                    )
                                 if compose_library_bridge.enabled:
                                     compose_library_bridge.request_publish("storage_event")
                                 page.snack_bar=ft.SnackBar(ft.Text('Pasta removida da biblioteca.')); page.snack_bar.open=True; safe_update()
@@ -6849,6 +6877,19 @@ async def main(page: ft.Page):
                             page.snack_bar=ft.SnackBar(ft.Text('Entrada com Google cancelada.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
                         elif event_type in {'saf_error','google_error'}:
                             if event_type == 'saf_error':
+                                if event_request_id and not (
+                                    payload.get('treeUri') and payload.get('treeUri') in pending_folder_removals
+                                ):
+                                    compose_library_bridge.write_command_result(
+                                        event_request_id,
+                                        "select_saf",
+                                        "ERROR",
+                                        error=str(
+                                            event.get('message')
+                                            or payload.get('error')
+                                            or "Não foi possível autorizar a pasta."
+                                        ),
+                                    )
                                 storage_onboarding["waiting_for_result"] = False
                                 if storage_onboarding["startup_gate"]:
                                     _set_storage_onboarding_state(
@@ -6884,7 +6925,14 @@ async def main(page: ft.Page):
                                     bool(tree_uri),
                                 )
                                 if tree_uri and tree_uri in pending_folder_removals:
-                                    pending_folder_removals.discard(tree_uri)
+                                    remove_request_id = pending_folder_removals.pop(tree_uri, None)
+                                    if remove_request_id:
+                                        compose_library_bridge.write_command_result(
+                                            remove_request_id,
+                                            "remove_saf",
+                                            "ERROR",
+                                            error=str(event.get('message') or payload.get('error') or "Não foi possível liberar a pasta."),
+                                        )
                                     page.snack_bar=ft.SnackBar(ft.Text(event.get('message', 'Não foi possível liberar a pasta.'))); page.snack_bar.open=True; safe_update()
                                     refresh_settings_if_active()
                                     continue
