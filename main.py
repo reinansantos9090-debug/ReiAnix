@@ -4100,13 +4100,21 @@ async def main(page: ft.Page):
                 request_id or "-",
             )
 
-        compose_library_bridge.write_command_result(
-            request_id,
-            action,
-            command_status,
-            error=command_error,
-            payload=command_payload,
-        )
+        # select_saf/remove_saf already ACK QUEUED at dispatch and finish through
+        # their real native saf_permission/saf_released/saf_error events. Do not
+        # write QUEUED a second time after delegation, or a fast terminal event
+        # could be followed by a stale non-terminal state.
+        if not (
+            action in {"select_saf", "remove_saf"}
+            and command_status == "QUEUED"
+        ):
+            compose_library_bridge.write_command_result(
+                request_id,
+                action,
+                command_status,
+                error=command_error,
+                payload=command_payload,
+            )
         logger.info(
             "[COMPOSE_LIBRARY] command=%s requestId=%s status=%s",
             action or "-",
