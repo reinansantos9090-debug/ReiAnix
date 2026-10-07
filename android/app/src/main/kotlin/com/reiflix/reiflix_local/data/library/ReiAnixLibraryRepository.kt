@@ -337,6 +337,9 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                         favoritesOnly = favoritesOnly,
                         watchingOnly = watchingOnly,
                         completedOnly = completedOnly,
+                    ).copy(
+                        pageSize = normalizedPageSize,
+                        requestId = requestId,
                     )
                 } else if (current.generation == generation) {
                     current.copy(
