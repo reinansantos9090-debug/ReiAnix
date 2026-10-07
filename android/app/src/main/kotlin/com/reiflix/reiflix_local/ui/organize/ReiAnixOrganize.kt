@@ -460,7 +460,7 @@ private fun OrganizeSourcesAndScanPanel(
                                 location = source.reference,
                                 stateLabel = organizeSourceStateLabel(sourceState),
                                 stateTone = organizeSourceStateTone(sourceState),
-                                available = sourceState == "available",
+                                available = sourceState in setOf("available", "granted", "full"),
                                 removeEnabled = !state.scanInProgress &&
                                     !state.storage.safSelectionPending &&
                                     !state.lastCommandAction.equals("remove_saf", ignoreCase = true),
