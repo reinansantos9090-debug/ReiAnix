@@ -541,6 +541,7 @@ private fun ColumnScope.HomeReadyContent(
             item(key = "home-section-continue") {
                 HomeContinueSection(
                     items = continueWatching,
+                    showThumbnails = showThumbnails,
                     onWatch = onWatch,
                     onSeeAll = onOpenLibrary,
                 )
