@@ -655,7 +655,7 @@ E: manifest
 
     def test_folder_removal_is_blocked_while_refresh_is_active(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("    async def remove_folder(reference):")
+        start = source.index("    async def remove_folder(reference, request_id=None):")
         end = source.index("    def account():", start)
         block = source[start:end]
         self.assertIn("if scan_coordinator.active or saf_selection.pending:", block)
