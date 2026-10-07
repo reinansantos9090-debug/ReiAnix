@@ -1518,46 +1518,6 @@ class LibraryStore:
                     incoming_confidence,
                 )
 
-            def record_source_observation(episode_id, uri_value):
-                source_reference = str(source_folder or "").strip()
-                uri_value = str(uri_value or "").strip()
-                if not source_reference or not uri_value:
-                    return
-                source_kind = self._infer_source_kind(source_reference)
-                scope_ref = self._scope_ref(source_reference)
-                now = time.time()
-                row = c.execute(
-                    """SELECT first_seen FROM episode_observations
-                       WHERE episode_id=? AND source_kind=? AND scope_kind=? AND scope_ref=? AND uri=?""",
-                    (episode_id, source_kind, "source", scope_ref, uri_value),
-                ).fetchone()
-                first_seen = float(row["first_seen"]) if row else now
-                c.execute(
-                    """INSERT INTO episode_observations(
-                         episode_id,source_kind,scope_kind,scope_ref,uri,volume_id,
-                         native_generation,fingerprint,first_seen,last_seen,last_checked_at,state,error)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-                       ON CONFLICT(episode_id,source_kind,scope_kind,scope_ref,uri)
-                       DO UPDATE SET last_seen=excluded.last_seen,
-                         last_checked_at=excluded.last_checked_at,state='available',error=NULL""",
-                    (
-                        episode_id,
-                        source_kind,
-                        "source",
-                        scope_ref,
-                        uri_value,
-                        None,
-                        None,
-                        effective_media_identity,
-                        first_seen,
-                        now,
-                        now,
-                        "available",
-                        None,
-                    ),
-                )
-                self._recompute_episode_availability_locked(c, episode_id)
-
             def update_existing(row_id, new_path=None):
                 existing = c.execute("SELECT * FROM episodes WHERE id=?", (row_id,)).fetchone()
                 effective_season, effective_number, effective_type, effective_title, effective_source, effective_confidence = effective_identification(existing)
@@ -1608,7 +1568,6 @@ class LibraryStore:
                         (effective_anime_id,new_path,file_name,effective_season,effective_number,effective_mime,effective_size,effective_modified,source_folder,
                          effective_media_identity,effective_absolute,effective_type,effective_title,effective_source,effective_confidence,row_id),
                     )
-                record_source_observation(row_id, new_path if new_path is not None else existing["path"])
                 return row_id
 
             if by_path and by_identity and by_path["id"] != by_identity["id"]:
@@ -1680,7 +1639,6 @@ class LibraryStore:
                 )
                 c.execute("DELETE FROM episodes WHERE id=?", (duplicate_id,))
                 self._recompute_episode_availability_locked(c, survivor_id)
-                record_source_observation(survivor_id, path)
                 return survivor_id
 
             if by_identity and int(by_identity["anime_id"]) != int(anime_id):
@@ -1706,7 +1664,6 @@ class LibraryStore:
                  effective_media_identity,absolute_number,episode_type,episode_title,
                  identification_source or "legacy", identification_confidence or "medium"),
             )
-            record_source_observation(cur.lastrowid, path)
             return cur.lastrowid
 
     def _merge_duplicate_media_identities_locked(self, c):
@@ -1912,7 +1869,7 @@ class LibraryStore:
     @staticmethod
     def _recompute_episode_availability_locked(c, episode_id):
         rows = c.execute(
-            """SELECT source_kind,scope_kind,scope_ref,volume_id,state,last_checked_at,id
+            """SELECT source_kind,scope_kind,scope_ref,state,last_checked_at,id
                FROM episode_observations
                WHERE episode_id=?
                ORDER BY last_checked_at DESC,id DESC""",
@@ -1922,13 +1879,10 @@ class LibraryStore:
             return
         latest_by_scope = {}
         for row in rows:
-            volume_id = str(row["volume_id"] or "").strip()
-            scope_kind = str(row["scope_kind"] or "source").casefold()
-            scope_ref = str(row["scope_ref"] or "").strip()
-            scope_identity = volume_id or f"{scope_kind}:{scope_ref}"
             source_key = (
                 str(row["source_kind"] or "unknown").casefold(),
-                scope_identity,
+                str(row["scope_kind"] or "source").casefold(),
+                str(row["scope_ref"] or "").strip(),
             )
             if source_key not in latest_by_scope:
                 latest_by_scope[source_key] = str(row["state"] or "").casefold()
