@@ -63,6 +63,7 @@ import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixHomeAnimeUiModel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import kotlin.math.roundToInt
 
@@ -583,6 +584,39 @@ fun ReiAnixAnimeCard(
         watched = anime.contentEpisodes.any { it.isWatched },
         watching = anime.isWatching,
         completed = anime.isCompleted,
+        modifier = modifier,
+        onClick = onClick,
+        onFavoriteClick = onFavoriteClick,
+        maxDimensionPx = maxDimensionPx,
+        artworkIdentity = anime.stableKey,
+        bottomBadgeText = bottomBadgeText,
+    )
+}
+
+@Composable
+fun ReiAnixAnimeCard(
+    anime: ReiAnixHomeAnimeUiModel,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    maxDimensionPx: Int = 512,
+    bottomBadgeText: String? = null,
+    onFavoriteClick: (() -> Unit)? = null,
+) {
+    ReiAnixAnimeCard(
+        title = anime.title,
+        artworkPath = anime.artwork?.localPath,
+        artworkExternalUrl = anime.artwork?.externalUrl,
+        metadata = buildList {
+            anime.year?.let { add(it.toString()) }
+            anime.availableContentCount.takeIf { it > 0 }?.let {
+                add(if (it == 1) "1 episódio" else "$it episódios")
+            }
+        },
+        progress = null,
+        favorite = anime.favorite,
+        watched = false,
+        watching = anime.isWatching,
+        completed = false,
         modifier = modifier,
         onClick = onClick,
         onFavoriteClick = onFavoriteClick,
