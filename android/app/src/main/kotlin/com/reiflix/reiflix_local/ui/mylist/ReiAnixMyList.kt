@@ -461,6 +461,7 @@ private fun ReiAnixMyListItem(
                 localPath = anime.artwork?.localPath,
                 contentDescription = null,
                 identity = anime.stableKey,
+                externalUrl = anime.artwork?.externalUrl,
                 modifier = Modifier
                     .size(
                         width = ReiAnixTokens.Dimensions.myListPosterWidth,
