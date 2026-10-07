@@ -109,6 +109,7 @@ private val ReiAnixFilterIcon: ImageVector = ImageVector.Builder(
 fun ReiAnixSearchRoute(
     navController: NavHostController,
     viewModel: ReiAnixLibraryViewModel,
+    cardSize: String = "medium",
 ) {
     val libraryState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
     val catalogAnimes by viewModel.searchCatalog.collectAsStateWithLifecycle()
@@ -148,6 +149,7 @@ fun ReiAnixSearchRoute(
         searchQuery = searchQuery,
         searchState = searchState,
         genres = genres,
+        cardSize = cardSize,
         showBackButton = showBackButton,
         onQueryChange = viewModel::setSearchQuery,
         onBack = { navController.popBackStack() },
@@ -170,6 +172,7 @@ fun ReiAnixSearchScreen(
     searchQuery: String,
     searchState: ReiAnixSearchUiState,
     genres: List<ReiAnixGenreUiModel> = emptyList(),
+    cardSize: String = "medium",
     showBackButton: Boolean = false,
     onQueryChange: (String) -> Unit,
     onBack: () -> Unit = {},
@@ -425,7 +428,7 @@ private fun SearchResults(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(
-            minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium"),
+            minSize = LocalReiAnixResponsiveMetrics.current.gridItemMinWidth(cardSize),
         ),
         state = listState,
         modifier = Modifier
