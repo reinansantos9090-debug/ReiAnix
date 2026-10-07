@@ -3849,6 +3849,7 @@ async def main(page: ft.Page):
         """Execute one Compose Library command outside the mailbox polling loop."""
         command_status = "COMPLETED"
         command_error = None
+        command_payload = None
         try:
             if action == "toggle_favorite":
                 anime_id = int(payload.get("animeId") or 0)
@@ -3924,6 +3925,25 @@ async def main(page: ft.Page):
                     command_error = str(transition.message or transition.kind)
                 else:
                     command_status = "QUEUED"
+            elif action == "load_library_page":
+                generation = int(payload.get("generation") or 0)
+                page = max(0, int(payload.get("page") or 0))
+                page_size = min(48, max(12, int(payload.get("pageSize") or 36)))
+                result = await asyncio.to_thread(
+                    library.catalog_page,
+                    page=page,
+                    page_size=page_size,
+                    query=str(payload.get("query") or ""),
+                    genre=str(payload.get("genre") or "Todos"),
+                    sort=str(payload.get("sort") or "Mais recentes"),
+                    favorites_only=bool(payload.get("favoritesOnly")),
+                    watching_only=bool(payload.get("watchingOnly")),
+                    completed_only=bool(payload.get("completedOnly")),
+                )
+                command_payload = ComposeLibraryBridge.project_library_page(
+                    result,
+                    generation=generation,
+                )
             elif action == "open_media":
                 episode_id = int(payload.get("episodeId") or 0)
                 if episode_id <= 0:
@@ -3977,6 +3997,7 @@ async def main(page: ft.Page):
             action,
             command_status,
             error=command_error,
+            payload=command_payload,
         )
         logger.info(
             "[COMPOSE_LIBRARY] command=%s requestId=%s status=%s",
@@ -4372,6 +4393,7 @@ async def main(page: ft.Page):
                                 'select_saf',
                                 'remove_saf',
                                 'refresh',
+                                'load_library_page',
                                 'open_media',
                             }
                             if not command_request_id:
