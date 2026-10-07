@@ -528,10 +528,33 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private suspend fun loadCommandResult(file: File) {
         val result = runCatching {
             ReiAnixLibrarySnapshotCodec.decodeCommandResult(file.readText(Charsets.UTF_8))
-        }.getOrNull() ?: run {
+        }.getOrElse { decodeError ->
+            val requestId = file.name
+                .removePrefix("command-")
+                .removeSuffix(".json")
+            stateMutex.withLock {
+                val current = _pagedLibraryState.value
+                if (current.requestId == requestId) {
+                    _state.value = _state.value.copy(
+                        lastCommandId = requestId,
+                        lastCommandAction = ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value,
+                        lastCommandStatus = "ERROR",
+                        lastCommandError = decodeError.message ?: "Resultado IPC inválido.",
+                    )
+                    _pagedLibraryState.value = current.copy(
+                        isLoading = false,
+                        requestId = null,
+                        error = "Não foi possível interpretar o resultado da Biblioteca.",
+                    )
+                }
+            }
+            synchronized(pageRequestGuard) {
+                if (inFlightPage?.requestId == requestId) inFlightPage = null
+            }
             file.delete()
             return
         }
+
         stateMutex.withLock {
             _state.value = _state.value.copy(
                 lastCommandId = result.requestId,
@@ -564,24 +587,45 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         }
 
         if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value) {
-            val page = result.libraryPage
+            val requestId = result.requestId.orEmpty()
             stateMutex.withLock {
                 val current = _pagedLibraryState.value
-                if (page != null && result.status == "COMPLETED") {
-                    applyLibraryPage(current, page)?.let { applied ->
-                        _pagedLibraryState.value = applied
+                if (current.requestId != requestId) {
+                    return@withLock
+                }
+
+                when {
+                    result.status == "COMPLETED" && result.libraryPage != null -> {
+                        val applied = applyLibraryPage(current, result.libraryPage)
+                        if (applied != null) {
+                            _pagedLibraryState.value = applied.copy(requestId = null)
+                        } else {
+                            _pagedLibraryState.value = current.copy(
+                                isLoading = false,
+                                requestId = null,
+                                error = "O resultado da página da Biblioteca está desatualizado.",
+                            )
+                        }
                     }
-                } else if (result.status in setOf("FAILED", "BLOCKED", "CANCELLED")) {
-                    _pagedLibraryState.value = current.copy(
-                        isLoading = false,
-                        error = result.error ?: "Não foi possível carregar a biblioteca.",
-                    )
+                    result.status in setOf("FAILED", "BLOCKED", "CANCELLED", "ERROR") -> {
+                        _pagedLibraryState.value = current.copy(
+                            isLoading = false,
+                            requestId = null,
+                            error = result.error ?: "Não foi possível carregar a biblioteca.",
+                        )
+                    }
+                    else -> {
+                        _pagedLibraryState.value = current.copy(
+                            isLoading = false,
+                            requestId = null,
+                            error = result.error
+                                ?: "A operação de página terminou com estado desconhecido.",
+                        )
+                    }
                 }
             }
             synchronized(pageRequestGuard) {
-                if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value) {
-                    inFlightPage = null
-                }
+                if (inFlightPage?.requestId == requestId) inFlightPage = null
             }
         } else if (result.status in setOf("COMPLETED", "QUEUED")) {
             loadSnapshot()
