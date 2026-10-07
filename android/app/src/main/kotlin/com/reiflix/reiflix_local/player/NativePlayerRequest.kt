@@ -144,7 +144,7 @@ data class NativePlayerRequest(
                 maxAudioChannels = get("setting_player_max_audio_channels")?.toIntOrNull()?.coerceAtLeast(0) ?: 0,
                 gesturesVolume = get("setting_gestures_volume")?.toBooleanStrictOrNull() ?: false,
                 gesturesBrightness = get("setting_gestures_brightness")?.toBooleanStrictOrNull() ?: false,
-                gesturesDoubleTap = get("setting_gestures_double_tap")?.toBooleanStrictOrNull() ?: true,
+                gesturesDoubleTap = get("setting_gestures_double_tap")?.toBooleanStrictOrNull() ?: false,
                 gesturesLongPress = get("setting_gestures_long_press")?.toBooleanStrictOrNull() ?: false,
                 audioPreferredLanguage = get("setting_audio_preferred_language").orEmpty(),
                 audioPreferredSubtitleLanguage = get("setting_audio_preferred_subtitle_language").orEmpty(),
