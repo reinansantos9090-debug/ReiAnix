@@ -402,18 +402,18 @@ private fun OrganizeSourcesAndScanPanel(
                     horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                 ) {
                     val icon = when (scanStatus.tone) {
-                        ReiAnixBadgeTone.Success -> Icons.Filled.CheckCircle,
-                        ReiAnixBadgeTone.Error, ReiAnixBadgeTone.Warning -> Icons.Filled.Warning,
-                        else -> Icons.Filled.Info,
+                        ReiAnixBadgeTone.Success -> Icons.Filled.CheckCircle
+                        ReiAnixBadgeTone.Error, ReiAnixBadgeTone.Warning -> Icons.Filled.Warning
+                        else -> Icons.Filled.Info
                     }
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
                         tint = when (scanStatus.tone) {
-                            ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success,
-                            ReiAnixBadgeTone.Error -> MaterialTheme.colorScheme.error,
-                            ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning,
-                            else -> MaterialTheme.colorScheme.primary,
+                            ReiAnixBadgeTone.Success -> ReiAnixTokens.Colors.success
+                            ReiAnixBadgeTone.Error -> MaterialTheme.colorScheme.error
+                            ReiAnixBadgeTone.Warning -> ReiAnixTokens.Colors.warning
+                            else -> MaterialTheme.colorScheme.primary
                         },
                     )
                     Column(modifier = Modifier.weight(1f)) {
