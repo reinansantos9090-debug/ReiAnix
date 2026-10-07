@@ -301,12 +301,30 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         val generation = if (reset) pageGeneration.incrementAndGet()
         else pageGeneration.get().coerceAtLeast(1L)
 
+        val normalizedPageSize = pageSize.coerceIn(12, 48)
+        val requestId = UUID.randomUUID().toString()
         synchronized(pageRequestGuard) {
-            if (!reset && inFlightPage?.first == generation) return
-            inFlightPage = generation to requestedPage
+            val existing = inFlightPage
+            if (!reset && existing != null &&
+                existing.generation == generation && existing.page == requestedPage
+            ) return
+            inFlightPage = InFlightPage(generation, requestedPage, requestId)
         }
 
         scope.launch {
+            val command = ReiAnixLibraryCommandCodec.create(
+                requestId = requestId,
+                action = ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE,
+                page = requestedPage,
+                pageSize = normalizedPageSize,
+                query = query,
+                genre = genre,
+                sort = sort,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                generation = generation,
+            )
             stateMutex.withLock {
                 val current = _pagedLibraryState.value
                 _pagedLibraryState.value = if (reset) {
@@ -323,6 +341,8 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 } else if (current.generation == generation) {
                     current.copy(
                         isLoading = true,
+                        pageSize = normalizedPageSize,
+                        requestId = requestId,
                         error = null,
                         query = query.trim(),
                         genreKey = genre.takeIf { it != "Todos" }?.trim(),
@@ -333,20 +353,31 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                     )
                 } else current
             }
-        }
 
-        send(
-            ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE,
-            page = requestedPage,
-            pageSize = pageSize.coerceIn(12, 48),
-            query = query,
-            genre = genre,
-            sort = sort,
-            favoritesOnly = favoritesOnly,
-            watchingOnly = watchingOnly,
-            completedOnly = completedOnly,
-            generation = generation,
-        )
+            val written = runCatching { NativeMailbox.write(appContext, command) }
+                .getOrElse { false }
+            if (!written) {
+                stateMutex.withLock {
+                    val current = _pagedLibraryState.value
+                    if (current.requestId == requestId && current.generation == generation) {
+                        _state.value = _state.value.copy(
+                            lastCommandId = requestId,
+                            lastCommandAction = command.action.value,
+                            lastCommandStatus = "FAILED",
+                            lastCommandError = "Não foi possível enviar o comando ao serviço local.",
+                        )
+                        _pagedLibraryState.value = current.copy(
+                            isLoading = false,
+                            requestId = null,
+                            error = "Não foi possível carregar a biblioteca.",
+                        )
+                    }
+                }
+                synchronized(pageRequestGuard) {
+                    if (inFlightPage?.requestId == requestId) inFlightPage = null
+                }
+            }
+        }
     }
 
     fun selectSafTree() {
