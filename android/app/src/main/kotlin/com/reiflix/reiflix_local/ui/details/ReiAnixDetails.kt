@@ -115,6 +115,7 @@ fun ReiAnixDetailsRoute(
     viewModel: ReiAnixLibraryViewModel,
     animeId: String,
     origin: String,
+    showThumbnails: Boolean = true,
 ) {
     val canonicalId = animeId.trim().toLongOrNull()
 
@@ -175,6 +176,7 @@ fun ReiAnixDetailsRoute(
 
     ReiAnixDetailsScreen(
         state = state,
+        showThumbnails = showThumbnails,
         onBack = { navController.popBackStack() },
         onRetry = viewModel::refresh,
         onWatch = { episodeId ->
@@ -195,6 +197,7 @@ fun ReiAnixDetailsRoute(
 @Composable
 fun ReiAnixDetailsScreen(
     state: ReiAnixDetailsUiState,
+    showThumbnails: Boolean = true,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onWatch: (Long) -> Unit,
@@ -212,6 +215,7 @@ fun ReiAnixDetailsScreen(
                 state.anime?.let { anime ->
                     ReiAnixDetailsReady(
                         anime = anime,
+                        showThumbnails = showThumbnails,
                         onBack = onBack,
                         onRefresh = onRetry,
                         onWatch = onWatch,
@@ -337,6 +341,7 @@ private fun DetailsSkeletonButton(modifier: Modifier = Modifier) {
 @Composable
 private fun ColumnScope.ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
+    showThumbnails: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onWatch: (Long) -> Unit,
@@ -459,6 +464,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
             ) {
                 DetailsSeasonsSection(
                     anime = anime,
+                    showThumbnails = showThumbnails,
                     selectedSeason = selectedSeason,
                     selectedSeasonKey = selectedSeasonKey,
                     onSeasonSelected = ::selectSeason,
@@ -504,6 +510,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
             ) { episode ->
                 DetailsEpisodeItem(
                     episode = episode,
+                    showThumbnail = showThumbnails,
                     isCurrent = episode.id == currentEpisode?.id,
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
@@ -529,6 +536,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
             ) { episode ->
                 DetailsEpisodeItem(
                     episode = episode,
+                    showThumbnail = showThumbnails,
                     isCurrent = episode.id == currentEpisode?.id,
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
@@ -897,6 +905,7 @@ private fun formatElapsedSeconds(seconds: Double?): String {
 @Composable
 private fun DetailsSeasonsSection(
     anime: ReiAnixDetailsAnimeUiModel,
+    showThumbnails: Boolean,
     selectedSeason: ReiAnixSeasonUiModel?,
     selectedSeasonKey: String?,
     onSeasonSelected: (String) -> Unit,
@@ -949,6 +958,7 @@ private fun DetailsSeasonsSection(
             ) { season ->
                 DetailsSeasonCard(
                     season = season,
+                    showThumbnail = showThumbnails,
                     selected = season.stableKey == selectedSeasonKey,
                     onClick = { onSeasonSelected(season.stableKey) },
                 )
@@ -960,6 +970,7 @@ private fun DetailsSeasonsSection(
 @Composable
 private fun DetailsSeasonCard(
     season: ReiAnixSeasonUiModel,
+    showThumbnail: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -1007,14 +1018,29 @@ private fun DetailsSeasonCard(
                     .height(ReiAnixTokens.Dimensions.detailsSeasonPreviewHeight)
                     .clip(ReiAnixTokens.Shapes.small),
             ) {
-                val previewExternal = season.episodes.firstOrNull()?.artwork?.externalUrl
-                ReiAnixEpisodeThumbnail(
-                    localPath = preview,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    identity = season.stableKey + ":preview",
-                    externalUrl = previewExternal,
-                )
+                if (showThumbnail) {
+                    val previewExternal = season.episodes.firstOrNull()?.artwork?.externalUrl
+                    ReiAnixEpisodeThumbnail(
+                        localPath = preview,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        identity = season.stableKey + ":preview",
+                        externalUrl = previewExternal,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
             Column(
@@ -1081,6 +1107,7 @@ private fun DetailsSectionHeader(
 @Composable
 private fun DetailsEpisodeItem(
     episode: ReiAnixEpisodeUiModel,
+    showThumbnail: Boolean,
     isCurrent: Boolean,
     isNext: Boolean,
     onWatch: (Long) -> Unit,
@@ -1088,7 +1115,7 @@ private fun DetailsEpisodeItem(
 ) {
     var menuExpanded by remember(episode.stableKey) { mutableStateOf(false) }
 
-    ReiAnixEpisodeCard(episode = episode, isCurrent = isCurrent, isNext = isNext,
+    ReiAnixEpisodeCard(episode = episode, showThumbnail = showThumbnail, isCurrent = isCurrent, isNext = isNext,
         modifier = Modifier.padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
         onPlay = { onWatch(episode.id) }, trailingContent = {
             Box {
