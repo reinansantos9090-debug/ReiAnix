@@ -702,8 +702,8 @@ private fun HomeHero(
                 modifier = Modifier.fillMaxSize(),
                 identity = anime.stableKey,
                 maxDimensionPx = 768,
-                externalUrl = anime.artwork?.backdropExternalUrl,
-                fallbackExternalUrl = anime.artwork?.externalUrl,
+                externalUrl = anime.artwork?.backdropExternalUrl.takeIf { showThumbnails },
+                fallbackExternalUrl = anime.artwork?.externalUrl.takeIf { showThumbnails },
             )
 
             Box(
@@ -910,7 +910,7 @@ private fun HomeContinueCard(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = item.stableKey,
-                    externalUrl = item.artwork?.externalUrl,
+                    externalUrl = item.artwork?.externalUrl.takeIf { showThumbnails },
                 )
 
                 ReiAnixProgressIndicator(
