@@ -776,6 +776,7 @@ fun ReiAnixEpisodeCard(
     trailingContent: (@Composable () -> Unit)? = null,
     isCurrent: Boolean = false,
     isNext: Boolean = false,
+    showThumbnail: Boolean = true,
 ) {
     val playable = episode.isPlayable && onPlay != null
     val episodeAccessibilityLabel = buildList {
@@ -851,13 +852,28 @@ fun ReiAnixEpisodeCard(
                     .clip(ReiAnixTokens.Shapes.small),
                 contentAlignment = Alignment.Center,
             ) {
-                ReiAnixEpisodeThumbnail(
-                    localPath = episode.artwork?.localPath,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    identity = episode.stableKey,
-                    externalUrl = episode.artwork?.externalUrl,
-                )
+                if (showThumbnail) {
+                    ReiAnixEpisodeThumbnail(
+                        localPath = episode.artwork?.localPath,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        identity = episode.stableKey,
+                        externalUrl = episode.artwork?.externalUrl,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 episode.durationSeconds
                     ?.takeIf { it.isFinite() && it > 0.0 }
                     ?.let { duration ->
