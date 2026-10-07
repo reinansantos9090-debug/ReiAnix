@@ -37,8 +37,21 @@ data class ReiAnixLibraryUiState(
 
 
 @Keep
+enum class ReiAnixLibraryDataState {
+    INITIAL_LOADING,
+    CANONICAL_READY,
+    CANONICAL_READY_PAGE_LOADING,
+    CANONICAL_READY_PAGE_ERROR,
+    CANONICAL_READY_PAGE_READY,
+    CANONICAL_EMPTY,
+    CANONICAL_ERROR,
+    SOURCE_UNAVAILABLE,
+}
+
+@Keep
 data class ReiAnixLibraryPresentationUiState(
     val status: ReiAnixLibraryLoadStatus = ReiAnixLibraryLoadStatus.LOADING,
+    val dataState: ReiAnixLibraryDataState = ReiAnixLibraryDataState.INITIAL_LOADING,
     val sourceAvailable: Boolean = false,
     val sourceState: String = "UNKNOWN",
     val scanInProgress: Boolean = false,
