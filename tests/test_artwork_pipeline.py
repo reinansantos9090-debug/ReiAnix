@@ -60,6 +60,7 @@ class ArtworkPipelineTests(unittest.TestCase):
         self.assertIn("diskCachePolicy(CachePolicy.DISABLED)", artwork)
         self.assertIn("externalUrl: String?", artwork)
         self.assertIn("fallbackExternalUrl: String?", artwork)
+        self.assertNotIn('listOf("artwork_external_url", "cover_url", "banner_url", "external_url")', mapper)
 
     def test_python_files_remain_syntactically_valid(self):
         for relative in ("main.py", "core/artwork.py", "core/library_service.py", "views/home_view.py", "views/details_view.py"):
