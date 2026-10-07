@@ -132,7 +132,7 @@ class ReiAnixLibraryPaginationReconciliationTest {
             pageSize = 36,
             total = 72,
             hasMore = true,
-            items = (1L..36L).map { anime(it, "Naruto \${it.toString().padStart(3, '0')}") },
+            items = (1L..36L).map { anime(it, "Naruto ${it.toString().padStart(3, '0')}") },
         )
         val loaded = ReiAnixLibraryRepository.applyLibraryPage(reset, page0)
         assertNotNull(loaded)
@@ -216,7 +216,7 @@ class ReiAnixLibraryPaginationReconciliationTest {
     ): ReiAnixLibraryPagedUiState {
         return ReiAnixLibraryPagedUiState(
             status = ReiAnixLibraryLoadStatus.READY,
-            animes = (1L..count.toLong()).map { anime(it, "Anime \${it.toString().padStart(3, '0')}") },
+            animes = (1L..count.toLong()).map { anime(it, "Anime ${it.toString().padStart(3, '0')}") },
             totalCount = total,
             hasMore = hasMore,
             loadedPage = loadedPage,
@@ -241,7 +241,7 @@ class ReiAnixLibraryPaginationReconciliationTest {
         id = id,
         title = title,
         year = 2026,
-        genres = genre?.let { listOf(ReiAnixGenreUiModel("genre:\${it}", it)) } ?: emptyList(),
+        genres = genre?.let { listOf(ReiAnixGenreUiModel("genre:${it}", it)) } ?: emptyList(),
         favorite = favorite,
         mediaKind = ReiAnixMediaKind.SERIES,
         artwork = ReiAnixArtworkUiModel(null, null),
@@ -260,10 +260,10 @@ class ReiAnixLibraryPaginationReconciliationTest {
                         title = "Episode 1",
                         fileName = "episode.mkv",
                         media = ReiAnixLocalMediaUiModel(
-                            reference = "content://example/\${id}",
-                            uri = "content://example/\${id}",
+                            reference = "content://example/${id}",
+                            uri = "content://example/${id}",
                             path = null,
-                            mediaIdentity = "identity-\${id}",
+                            mediaIdentity = "identity-${id}",
                             sourceAvailabilityState = "available",
                             availability = ReiAnixMediaAvailability.AVAILABLE,
                         ),
