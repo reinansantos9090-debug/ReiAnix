@@ -123,7 +123,7 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", host)
         self.assertIn("lastHomeBackAtElapsedRealtimeMs = 0L", host)
         self.assertIn("if (route != ReiAnixRoutes.HOME)", host)
-        self.assertIn("id = R.id.reianix_compose_app_shell", host)
+        self.assertIn("setId(R.id.reianix_compose_app_shell)", host)
 
     def test_compose_navigation_uses_stable_saveable_scoping(self):
         host = HOST.read_text(encoding="utf-8")
