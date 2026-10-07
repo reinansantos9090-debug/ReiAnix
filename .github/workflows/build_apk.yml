@@ -316,9 +316,15 @@ jobs:
         shell: bash
         env:
           SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/site-packages
+          # Isolate unit-test dependency metadata from the shared Gradle cache.
+          # The download-task plugin persists ETags as JSON and an interrupted
+          # cache write can leave invalid NUL bytes that break subsequent runs.
+          GRADLE_USER_HOME: ${{ runner.temp }}/reianix-gradle-unit
         run: |
           set -euo pipefail
           test -d "$SERIOUS_PYTHON_SITE_PACKAGES"
+          rm -rf "$GRADLE_USER_HOME"
+          mkdir -p "$GRADLE_USER_HOME"
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
