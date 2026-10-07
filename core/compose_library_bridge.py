@@ -118,8 +118,109 @@ class ComposeLibraryBridge:
     def _pending_reason(self) -> str:
         return self._pending_reason_text
 
+    def _incremental_target(self, reason: str) -> tuple[int, str] | None:
+        """Resolve an event reason to one anime without scanning the whole catalog."""
+        parts = str(reason or "").split(":")
+        kind = parts[0].strip().lower()
+        try:
+            if kind in {"artwork_ready", "artwork_cache_hit", "artwork_cache_invalid", "metadata_translation"}:
+                anime_id = int(parts[2] if kind.startswith("artwork_") else parts[1])
+                return anime_id, kind
+            if kind in {"player_progress", "player_mark_watched", "player_mark_unwatched", "thumbnail_ready"}:
+                token = ":".join(parts[1:]).strip()
+                if not token:
+                    return None
+                with self.store._conn() as con:
+                    try:
+                        episode_id = int(token)
+                    except ValueError:
+                        episode_id = 0
+                    if episode_id > 0:
+                        row = con.execute(
+                            "SELECT anime_id FROM episodes WHERE id=? LIMIT 1",
+                            (episode_id,),
+                        ).fetchone()
+                    else:
+                        row = con.execute(
+                            "SELECT anime_id FROM episodes "
+                            "WHERE path=? OR media_identity=? LIMIT 1",
+                            (token, token),
+                        ).fetchone()
+                if row and row["anime_id"] is not None:
+                    return int(row["anime_id"]), kind
+        except Exception:
+            return None
+        return None
+
+    def _build_and_write_incremental_snapshot(self, revision: int, reason: str) -> bool:
+        """Patch one canonical anime into the existing snapshot when an event is targeted."""
+        target = self._incremental_target(reason)
+        if target is None or not self.snapshot_path.is_file():
+            return False
+        anime_id, _kind = target
+        try:
+            current = json.loads(self.snapshot_path.read_text(encoding="utf-8"))
+            if not isinstance(current, dict) or int(current.get("schemaVersion", 0)) != self.SCHEMA_VERSION:
+                return False
+
+            catalog = self.library.catalog(anime_ids=[anime_id])
+            target_item = next((item for item in catalog if int(item.get("id") or 0) == anime_id), None)
+            projected = None
+            if isinstance(target_item, dict):
+                playback_target_method = getattr(self.library, "playback_target", None)
+                if callable(playback_target_method) and not isinstance(
+                    target_item.get("current_episode"), dict
+                ):
+                    target_episode = playback_target_method(anime_id)
+                    if isinstance(target_episode, dict):
+                        target_item = dict(target_item)
+                        target_item["playback_target_episode"] = target_episode
+                projected = self._project_anime(target_item)
+
+            existing = current.get("animes") if isinstance(current.get("animes"), list) else []
+            patched = []
+            found = False
+            for item in existing:
+                if not isinstance(item, dict):
+                    continue
+                if int(item.get("id") or 0) == anime_id:
+                    found = True
+                    if projected is not None:
+                        patched.append(projected)
+                else:
+                    patched.append(item)
+            if projected is not None and not found:
+                patched.append(projected)
+
+            current["revision"] = int(revision)
+            current["generatedAt"] = int(time.time() * 1000)
+            current["reason"] = str(reason)
+            current["animes"] = patched
+            continue_method = getattr(self.library, "continue_watching", None)
+            if callable(continue_method):
+                rows = continue_method(limit=12) or []
+                current["continue_watching"] = [
+                    self._project_continue_watching(item)
+                    for item in rows
+                    if isinstance(item, dict)
+                ]
+            current["status"] = "READY" if patched else "EMPTY"
+            current["error"] = None
+            self._atomic_write_json(self.snapshot_path, current)
+            return True
+        except Exception:
+            return False
+
     def _build_and_write_snapshot(self, revision: int, reason: str) -> None:
         generated_at = int(time.time() * 1000)
+
+        # Artwork/thumbnail/progress/metadata events identify one media item.
+        # Patch that item into the existing snapshot instead of projecting the
+        # complete catalog again. Broad catalog/source changes still use the
+        # canonical full snapshot path below.
+        if self._build_and_write_incremental_snapshot(revision, reason):
+            return
+
         try:
             catalog = self.library.catalog()
             folders = self.store.folders()
