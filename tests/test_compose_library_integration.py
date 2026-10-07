@@ -27,8 +27,9 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("if event_type == 'compose_library_command':", MAIN)
         self.assertIn("_track_compose_library_task", dispatch)
         self.assertIn('namespace="compose_library"', dispatch)
-        for action in ("toggle_favorite", "set_watched", "refresh", "open_media"):
+        for action in ("toggle_favorite", "set_watched", "refresh", "load_library_page", "open_media"):
             self.assertIn('action == "' + action + '":', worker)
+        self.assertIn("'load_library_page'", dispatch)
 
     def test_compose_library_commands_ack_before_slow_work(self):
         block = self._command_dispatch_block()
@@ -64,6 +65,22 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
             "store.episode_by_id",
         ):
             self.assertIn(token, worker)
+
+    def test_library_page_worker_is_bounded_and_runs_off_ui_thread(self):
+        worker = self._command_worker_block()
+        start = worker.index('elif action == "load_library_page":')
+        end = worker.index('elif action == "open_media":', start)
+        page = worker[start:end]
+        for token in (
+            "library.catalog_page",
+            "pageSize",
+            "favoritesOnly",
+            "watchingOnly",
+            "completedOnly",
+            "ComposeLibraryBridge.project_library_page",
+            "await asyncio.to_thread",
+        ):
+            self.assertIn(token, page)
 
     def test_existing_scanner_coordinator_remains_refresh_owner(self):
         block = self._command_worker_block()
