@@ -279,10 +279,25 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                         loadedPage = -1,
                         isLoading = true,
                         generation = generation,
+                        query = query.trim(),
+                        genreKey = genre.takeIf { it != "Todos" }?.trim(),
+                        favoritesOnly = favoritesOnly,
+                        watchingOnly = watchingOnly,
+                        completedOnly = completedOnly,
+                        sort = sort.trim().ifEmpty { "Mais recentes" },
                         error = null,
                     )
                 } else if (current.generation == generation) {
-                    current.copy(isLoading = true, error = null)
+                    current.copy(
+                        isLoading = true,
+                        error = null,
+                        query = query.trim(),
+                        genreKey = genre.takeIf { it != "Todos" }?.trim(),
+                        favoritesOnly = favoritesOnly,
+                        watchingOnly = watchingOnly,
+                        completedOnly = completedOnly,
+                        sort = sort.trim().ifEmpty { "Mais recentes" },
+                    )
                 } else current
             }
         }
@@ -411,34 +426,25 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             runCatching {
                 ReiAnixLibrarySnapshotCodec.decode(raw, _state.value.revision)
             }.onSuccess { decoded ->
-                _state.value = mergeSnapshotState(decoded, _state.value)
+                val previousState = _state.value
+                _state.value = mergeSnapshotState(decoded, previousState)
                 val currentPaged = _pagedLibraryState.value
-                if (currentPaged.generation == 1L) {
-                    // Generation 1 is the default unfiltered Library. Reuse the
-                    // newest canonical first page during scanner reconciliation so
-                    // newly discovered titles can appear without waiting for a
-                    // second manual refresh.
-                    val firstPage = _state.value.animes.take(36)
-                    _pagedLibraryState.value = currentPaged.copy(
-                        status = if (firstPage.isNotEmpty()) {
-                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
-                        } else {
-                            currentPaged.status
+                if (currentPaged.generation > 0L) {
+                    val structuralChange = decoded.animes.size != previousState.animes.size
+                    val reconciled = reconcilePagedState(
+                        current = currentPaged,
+                        canonicalAnimes = _state.value.animes,
+                        recountTotal = structuralChange,
+                    )
+                    _pagedLibraryState.value = reconciled.copy(
+                        status = when {
+                            reconciled.animes.isEmpty() &&
+                                _state.value.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY ->
+                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                            else -> reconciled.status
                         },
-                        animes = firstPage,
-                        totalCount = _state.value.animes.size,
-                        hasMore = _state.value.animes.size > firstPage.size,
-                        isLoading = currentPaged.isLoading,
                         error = null,
                     )
-                } else if (currentPaged.animes.isNotEmpty() && currentPaged.generation > 0L) {
-                    val latestById = _state.value.animes.associateBy { it.id }
-                    val patched = currentPaged.animes.mapNotNull { existing ->
-                        latestById[existing.id]
-                    }
-                    if (patched != currentPaged.animes) {
-                        _pagedLibraryState.value = currentPaged.copy(animes = patched)
-                    }
                 }
             }.onFailure { error ->
                 val message = error.message.orEmpty()
@@ -493,34 +499,10 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             val page = result.libraryPage
             stateMutex.withLock {
                 val current = _pagedLibraryState.value
-                if (page != null &&
-                    result.status == "COMPLETED" &&
-                    page.generation == current.generation
-                ) {
-                    val seenIds = current.animes.asSequence().map { it.id }.toHashSet()
-                    val merged = if (page.page == 0) {
-                        page.items
-                    } else {
-                        buildList(current.animes.size + page.items.size) {
-                            addAll(current.animes)
-                            page.items.forEach { item ->
-                                if (seenIds.add(item.id)) add(item)
-                            }
-                        }
+                if (page != null && result.status == "COMPLETED") {
+                    applyLibraryPage(current, page)?.let { applied ->
+                        _pagedLibraryState.value = applied
                     }
-                    _pagedLibraryState.value = current.copy(
-                        status = if (page.total > 0) {
-                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
-                        } else {
-                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
-                        },
-                        animes = merged,
-                        totalCount = page.total,
-                        hasMore = page.hasMore,
-                        loadedPage = maxOf(current.loadedPage, page.page),
-                        isLoading = false,
-                        error = null,
-                    )
                 } else if (result.status in setOf("FAILED", "BLOCKED", "CANCELLED")) {
                     _pagedLibraryState.value = current.copy(
                         isLoading = false,
