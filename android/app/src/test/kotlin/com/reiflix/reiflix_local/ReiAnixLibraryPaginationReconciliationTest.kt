@@ -78,7 +78,7 @@ class ReiAnixLibraryPaginationReconciliationTest {
         val newcomer = anime(1000L, "AAA - New Anime")
         val canonical = listOf(newcomer) + current.animes
 
-        val reconciled = reconcile(current, canonical)
+        val reconciled = reconcile(current, canonical, includeNewCandidates = true)
 
         assertEquals(108, reconciled.animes.size)
         assertEquals(1000L, reconciled.animes.first().id)
@@ -199,10 +199,12 @@ class ReiAnixLibraryPaginationReconciliationTest {
         current: ReiAnixLibraryPagedUiState,
         canonical: List<ReiAnixAnimeUiModel>,
         recountTotal: Boolean = false,
+        includeNewCandidates: Boolean = false,
     ) = ReiAnixLibraryRepository.reconcilePagedState(
         current = current,
         canonicalAnimes = canonical,
         recountTotal = recountTotal,
+        includeNewCandidates = includeNewCandidates,
     )
 
     private fun state(
