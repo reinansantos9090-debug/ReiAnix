@@ -449,6 +449,30 @@ class ComposeLibraryBridge:
             "banner_url": source.get("banner_url"),
         }
 
+    @classmethod
+    def project_library_page(
+        cls,
+        page_result: dict[str, Any] | None,
+        *,
+        generation: int = 0,
+    ) -> dict[str, Any]:
+        """Project one bounded Library page without touching the legacy full snapshot."""
+        page_result = dict(page_result or {})
+        items = page_result.get("items") or []
+        return {
+            "kind": "library_page",
+            "generation": int(generation or 0),
+            "page": int(page_result.get("page") or 0),
+            "page_size": int(page_result.get("page_size") or 0),
+            "total": int(page_result.get("total") or 0),
+            "has_more": bool(page_result.get("has_more")),
+            "items": [
+                cls._project_anime(item)
+                for item in items
+                if isinstance(item, dict)
+            ],
+        }
+
     @staticmethod
     def _project_continue_watching(source: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -489,11 +513,12 @@ class ComposeLibraryBridge:
         *,
         error: str | None = None,
         message: str | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> None:
         if not self.enabled:
             return
         normalized_id = str(request_id or "").strip() or uuid.uuid4().hex
-        payload = {
+        result_payload = {
             "schemaVersion": self.SCHEMA_VERSION,
             "requestId": normalized_id,
             "action": str(action or "").strip(),
@@ -502,9 +527,11 @@ class ComposeLibraryBridge:
             "error": str(error)[:500] if error else None,
             "message": str(message)[:500] if message else None,
         }
+        if isinstance(payload, dict):
+            result_payload["payload"] = payload
         self._atomic_write_json(
             self.command_result_dir / f"command-{normalized_id}.json",
-            payload,
+            result_payload,
         )
 
     @staticmethod
