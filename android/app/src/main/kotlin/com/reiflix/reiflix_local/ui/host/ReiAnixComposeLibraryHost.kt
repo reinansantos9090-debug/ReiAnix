@@ -410,7 +410,7 @@ class ReiAnixComposeLibraryHost(
         val view = ComposeView(activity).apply {
             // Stable ID lets Compose restore rememberSaveable/NavController
             // state when MainActivity is recreated for configuration changes.
-            id = R.id.reianix_compose_app_shell
+            setId(R.id.reianix_compose_app_shell)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
