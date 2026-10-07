@@ -249,6 +249,18 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                         lastCommandStatus = "FAILED",
                         lastCommandError = "Não foi possível enviar o comando ao serviço local.",
                     )
+                    if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE) {
+                        _pagedLibraryState.value = _pagedLibraryState.value.copy(
+                            isLoading = false,
+                            error = "Não foi possível carregar a biblioteca.",
+                        )
+                    }
+                }
+                if (action == ReiAnixLibraryCommandCodec.Action.REFRESH) {
+                    refreshInFlight.set(false)
+                }
+                if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE) {
+                    synchronized(pageRequestGuard) { inFlightPage = null }
                 }
             }
         }
