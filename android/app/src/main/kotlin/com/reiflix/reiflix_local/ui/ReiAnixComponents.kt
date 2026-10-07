@@ -563,6 +563,7 @@ fun ReiAnixAnimeCard(
     anime: ReiAnixAnimeUiModel,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onFavoriteClick: (() -> Unit)? = null,
     maxDimensionPx: Int = 512,
     bottomBadgeText: String? = null,
 ) {
@@ -583,6 +584,7 @@ fun ReiAnixAnimeCard(
         completed = anime.isCompleted,
         modifier = modifier,
         onClick = onClick,
+        onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
         bottomBadgeText = bottomBadgeText,
