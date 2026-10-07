@@ -297,6 +297,8 @@ async def main(page: ft.Page):
         thumbnail_dispatch_task = None
         thumbnail_reconciliation_task = None
         thumbnail_reconciliation_pending = False
+    metadata_hydration_task = None
+    metadata_hydration_pending = False
         home_refresh_context["active"] = False
         home_refresh_context["db_updated"] = False
         home_refresh_context["request_id"] = None
@@ -1760,6 +1762,7 @@ async def main(page: ft.Page):
                 "player.immersive": settings.get("player.immersive"),
                 "player.rotation": settings.get("player.rotation"),
                 "player.pip": settings.get("player.pip"),
+                "player.lock_mode": settings.get("player.lock_mode"),
                 "player.auto_hide_seconds": settings.get("player.auto_hide_seconds"),
                 "player.double_tap_seek_seconds": settings.get("player.double_tap_seek_seconds"),
                 "player.long_press_speed": settings.get("player.long_press_speed"),
@@ -2384,6 +2387,7 @@ async def main(page: ft.Page):
         compose_library_bridge.request_publish("catalog_changed")
         catalog_started = performance.now()
         schedule_thumbnail_reconciliation("catalog_changed")
+        schedule_catalog_metadata_hydration("catalog_changed")
         diagnostics.record("UI_REFRESHED", result="catalog_changed", source=navigation.current)
         if compose_primary_ui:
             return
@@ -2776,7 +2780,7 @@ async def main(page: ft.Page):
     async def add_folder(_=None):
         # A scan already running must not block the user from choosing another
         # folder. ScanCoordinator already queues/coalesces the follow-up rescan.
-        if scan_coordinator.exclusive or saf_selection.pending:
+        if saf_selection.pending:
             return False
         if not saf_selection.begin():
             return False
@@ -3025,6 +3029,12 @@ async def main(page: ft.Page):
         if not accepted:
             performance.counter("artwork.thumbnail.queue_deferred")
             return False
+        diagnostics.record(
+            "THUMBNAIL_REQUESTED",
+            source="thumbnail_reconciliation",
+            result=path_ref,
+            request_id=str(item.get("requestId") or ""),
+        )
         performance.event(
             "artwork.thumbnail",
             duration_ms=(performance.now()-thumbnail_started)*1000.0,
@@ -3034,6 +3044,64 @@ async def main(page: ft.Page):
         )
         _ensure_thumbnail_dispatcher()
         return True
+
+    async def reconcile_catalog_metadata(reason="catalog_changed"):
+        nonlocal metadata_hydration_pending, metadata_hydration_task
+        metadata_hydration_pending = True
+        if metadata_hydration_task is not None and not metadata_hydration_task.done():
+            return
+
+        async def worker():
+            nonlocal metadata_hydration_pending, metadata_hydration_task
+            try:
+                while metadata_hydration_pending and ui_alive[0]:
+                    metadata_hydration_pending = False
+                    catalog = await asyncio.to_thread(library.catalog)
+                    if not catalog:
+                        break
+                    loop = asyncio.get_running_loop()
+
+                    def publish_item(result):
+                        if not isinstance(result, dict):
+                            return
+                        item_id = result.get("id") or result.get("metadata", {}).get("id")
+                        request_reason = "metadata_ready:" + str(item_id or result.get("lookup_title") or "item")
+                        try:
+                            loop.call_soon_threadsafe(
+                                compose_library_bridge.request_publish,
+                                request_reason,
+                            )
+                            logger.info(
+                                "[METADATA] METADATA_SNAPSHOT_ITEM_READY id=%s reason=%s",
+                                item_id or "-",
+                                reason,
+                            )
+                        except RuntimeError:
+                            pass
+
+                    await asyncio.to_thread(
+                        library.hydrate_catalog_metadata,
+                        catalog,
+                        on_item=publish_item,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("[METADATA] catalog hydration failed reason=%s", reason)
+            finally:
+                metadata_hydration_task = None
+                if metadata_hydration_pending and ui_alive[0]:
+                    reconcile_catalog_metadata("pending")
+
+        metadata_hydration_task = asyncio.create_task(worker())
+
+    def schedule_catalog_metadata_hydration(reason="catalog_changed"):
+        if not ui_alive[0]:
+            return
+        try:
+            page.run_task(reconcile_catalog_metadata, reason)
+        except Exception:
+            logger.exception("[METADATA] failed to schedule catalog hydration reason=%s", reason)
 
     async def reconcile_missing_thumbnails(reason="catalog_changed"):
         nonlocal thumbnail_reconciliation_pending, thumbnail_reconciliation_task
@@ -6740,6 +6808,10 @@ async def main(page: ft.Page):
                                             diagnostic_event="STORAGE_READY",
                                             result="library_root_valid",
                                         )
+                                        schedule_thumbnail_reconciliation("storage_ready")
+                                        schedule_catalog_metadata_hydration("storage_ready")
+                                        if compose_library_bridge.enabled:
+                                            compose_library_bridge.request_publish("storage_ready")
                             refresh_settings_if_active()
                         elif event_type == 'saf_released':
                             tree_uri = payload.get('treeUri')
