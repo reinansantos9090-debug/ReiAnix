@@ -201,7 +201,11 @@ class ReiAnixLibraryPaginationReconciliationTest {
         val favoriteNew = anime(1001L, "Favorite New", favorite = true)
         val canonical = listOf(nonFavoriteNew, favoriteNew) + current.animes
 
-        val reconciled = reconcile(current, canonical)
+        val reconciled = reconcile(
+            current = current,
+            canonical = canonical,
+            includeNewCandidates = true,
+        )
 
         assertFalse(reconciled.animes.any { it.id == nonFavoriteNew.id })
         assertTrue(reconciled.animes.any { it.id == favoriteNew.id })
