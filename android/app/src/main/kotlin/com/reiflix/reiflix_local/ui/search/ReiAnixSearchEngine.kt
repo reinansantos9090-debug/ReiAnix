@@ -42,6 +42,7 @@ class ReiAnixSearchIndex private constructor(
     ): Int {
         val normalizedTitle = document.normalizedTitle
         val normalizedAliases = document.normalizedAliases
+        val normalizedAlternateTitles = document.normalizedAlternateTitles
         val normalizedGenres = document.normalizedGenres
         val normalizedStudio = document.normalizedStudio
 
@@ -54,10 +55,12 @@ class ReiAnixSearchIndex private constructor(
             result += 800
         } else if (normalizedTitle.contains(normalizedQuery)) {
             result += 600
-        } else if (normalizedAliases.any { it == normalizedQuery }) {
+        } else if (normalizedAlternateTitles.any { it == normalizedQuery }) {
             result += 520
-        } else if (normalizedAliases.any { it.startsWith(normalizedQuery) }) {
+        } else if (normalizedAlternateTitles.any { it.startsWith(normalizedQuery) }) {
             result += 420
+        } else if (normalizedAlternateTitles.any { it.contains(normalizedQuery) }) {
+            result += 320
         } else if (normalizedStudio == normalizedQuery) {
             result += 300
         }
@@ -66,8 +69,10 @@ class ReiAnixSearchIndex private constructor(
             when {
                 normalizedTitle == term -> result += 350
                 normalizedTitle.contains(term) -> result += 180
-                normalizedAliases.any { it == term } -> result += 150
-                normalizedAliases.any { it.contains(term) } -> result += 100
+                normalizedAlternateTitles.any { it == term } -> result += 150
+                normalizedAlternateTitles.any { it.contains(term) } -> result += 110
+                normalizedAliases.any { it == term } -> result += 140
+                normalizedAliases.any { it.contains(term) } -> result += 95
                 normalizedGenres.any { it == term } -> result += 120
                 normalizedGenres.any { it.contains(term) } -> result += 80
                 normalizedStudio == term -> result += 70
@@ -88,6 +93,7 @@ class ReiAnixSearchIndex private constructor(
         val anime: ReiAnixAnimeUiModel,
         val normalizedTitle: String,
         val normalizedAliases: List<String>,
+        val normalizedAlternateTitles: List<String>,
         val normalizedGenres: List<String>,
         val normalizedStudio: String,
         val normalizedSearchText: String,
@@ -96,9 +102,16 @@ class ReiAnixSearchIndex private constructor(
     companion object {
         fun build(animes: List<ReiAnixAnimeUiModel>): ReiAnixSearchIndex =
             ReiAnixSearchIndex(
-                animes.map { anime ->
+                animes
+                    .distinctBy(ReiAnixAnimeUiModel::id)
+                    .map { anime ->
                     val normalizedTitle = normalizeSearchText(anime.title)
                     val normalizedAliases = anime.aliases.map(::normalizeSearchText).filter(String::isNotBlank)
+                    val normalizedAlternateTitles = buildList {
+                        anime.romajiTitle?.let { add(normalizeSearchText(it)) }
+                        anime.englishTitle?.let { add(normalizeSearchText(it)) }
+                        anime.nativeTitle?.let { add(normalizeSearchText(it)) }
+                    }.filter(String::isNotBlank).distinct()
                     val normalizedGenres = anime.genres.map { normalizeSearchText(it.name) }
                     val normalizedStudio = normalizeSearchText(anime.studio.orEmpty())
                     val contentTerms = buildList {
@@ -158,6 +171,7 @@ class ReiAnixSearchIndex private constructor(
                         anime = anime,
                         normalizedTitle = normalizedTitle,
                         normalizedAliases = normalizedAliases,
+                        normalizedAlternateTitles = normalizedAlternateTitles,
                         normalizedGenres = normalizedGenres,
                         normalizedStudio = normalizedStudio,
                         normalizedSearchText = normalizeSearchText(searchableFields.joinToString(" ")),
