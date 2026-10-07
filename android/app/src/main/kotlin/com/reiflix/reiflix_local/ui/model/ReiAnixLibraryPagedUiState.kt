@@ -18,6 +18,8 @@ data class ReiAnixLibraryPagedUiState(
     val hasMore: Boolean = false,
     val loadedPage: Int = -1,
     val isLoading: Boolean = false,
+    val pageSize: Int = 36,
+    val requestId: String? = null,
     val generation: Long = 0L,
     /**
      * Exact paging inputs used for the current generation. Keeping them with
