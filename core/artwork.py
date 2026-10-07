@@ -156,7 +156,7 @@ class ArtworkEngine:
                 import json
                 diagnostic_names = [event_name]
                 # Keep the established event names for compatibility while
-                # also exposing the shorter Prompt-56 contract names.
+                # also exposing the shorter diagnostic contract names.
                 diagnostic_aliases = {
                     "ARTWORK_DOWNLOAD_STARTED": "ARTWORK_DOWNLOAD_START",
                     "ARTWORK_DOWNLOAD_SUCCEEDED": "ARTWORK_DOWNLOAD_SUCCESS",
