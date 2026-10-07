@@ -3654,7 +3654,18 @@ async def main(page: ft.Page):
                     setting_value,
                 )
             apply_settings_runtime(setting_key, normalized)
+            logger.info(
+                "SETTINGS_PERSISTED requestId=%s key=%s value=%s",
+                request_id,
+                setting_key,
+                normalized,
+            )
             compose_settings_bridge.request_publish("setting:" + setting_key)
+            logger.info(
+                "SETTINGS_SNAPSHOT_CONFIRMED requestId=%s key=%s",
+                request_id,
+                setting_key,
+            )
             await _write_compose_settings_result(
                 request_id,
                 "set:" + setting_key,
