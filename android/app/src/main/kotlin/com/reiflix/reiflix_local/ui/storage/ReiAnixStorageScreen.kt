@@ -253,8 +253,8 @@ fun ReiAnixStorageScreen(
                     stateLabel = mediaAccessLabel(mediaState),
                     stateTone = accessBadgeTone(mediaState, "full"),
                     icon = Icons.Filled.Info,
-                    actionLabel = if (mediaState == "denied") "Conceder acesso" else null,
-                    onAction = if (mediaState == "denied") onRequestMediaAccess else null,
+                    actionLabel = if (mediaNeedsAction) "Conceder acesso" else null,
+                    onAction = if (mediaNeedsAction) onRequestMediaAccess else null,
                 )
             }
 
