@@ -178,6 +178,10 @@ class ReiAnixLibraryPaginationReconciliationTest {
             total = 108,
             hasMore = false,
             filters = ReiAnixLibraryFilters(favoritesOnly = true),
+        ).copy(
+            animes = state(108, loadedPage = 2, total = 108, hasMore = false)
+                .animes
+                .map { it.copy(favorite = true) },
         )
         val nonFavoriteNew = anime(1000L, "Not A Favorite", favorite = false)
         val favoriteNew = anime(1001L, "Favorite New", favorite = true)
