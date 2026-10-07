@@ -185,6 +185,7 @@ fun ReiAnixNavigationHost(
         ReiAnixMyListRoute(
             navController = navController,
             viewModel = homeViewModel,
+            cardSize = appearanceCardSize,
         )
     },
     organize: @Composable () -> Unit = {},
@@ -232,6 +233,7 @@ fun ReiAnixNavigationHost(
             ReiAnixSearchRoute(
                 navController = navController,
                 viewModel = homeViewModel,
+                cardSize = appearanceCardSize,
             )
         },
         appearanceCardSize = appearanceCardSize,
