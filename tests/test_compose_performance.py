@@ -53,6 +53,45 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertIn("key = { it.stableKey }", media_block)
         self.assertIn('contentType = { "home-media-anime" }', media_block)
 
+    def test_home_sections_use_persisted_recency_and_available_content(self):
+        home = self.read(HOME)
+        self.assertIn('title = "Adicionados recentemente"', home)
+        self.assertIn("buildRecentlyAddedItems(animes)", home)
+        self.assertIn("it.addedAt?.isFinite() == true", home)
+        self.assertIn('title = "Conteúdo disponível"', home)
+        self.assertIn("it.availableContentCount > 0", home)
+        self.assertNotIn('title = "Em alta"', home)
+        self.assertNotIn("buildTrendingItems(", home)
+
+    def test_home_reuses_canonical_home_models_without_intermediate_render_projection(self):
+        home = self.read(HOME)
+        self.assertIn("animes = state.animes", home)
+        self.assertNotIn("HomeAnimeRenderData", home)
+        self.assertNotIn("toHomeRenderData", home)
+        self.assertIn("List<ReiAnixHomeAnimeUiModel>", home)
+
+    def test_home_keeps_usable_catalog_visible_during_incremental_loading(self):
+        home = self.read(HOME)
+        self.assertIn(
+            "ReiAnixLibraryLoadStatus.LOADING -> {\n                if (state.animes.isNotEmpty())",
+            home,
+        )
+        self.assertIn(
+            "ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> {\n                if (state.animes.isNotEmpty())",
+            home,
+        )
+        self.assertIn('state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)', home)
+        self.assertIn('"Configure sua biblioteca"', home)
+        self.assertIn('"Selecionar pasta"', home)
+
+    def test_home_continue_watching_displays_persisted_duration_without_new_progress_rules(self):
+        home = self.read(HOME)
+        self.assertIn("val durationText = item.durationSeconds", home)
+        self.assertIn("?.let(::formatDuration)", home)
+        self.assertIn("durationText,", home)
+        self.assertIn("item.episodeId, item.animeId", home)
+        self.assertNotIn("COMPLETION_RATIO", home)
+
     def test_existing_io_boundaries_remain_intact(self):
         repository = self.read(REPOSITORY)
         artwork = self.read(ARTWORK)
