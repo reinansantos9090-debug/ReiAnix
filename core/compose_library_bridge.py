@@ -15,8 +15,6 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from PIL import Image
-
 from core.storage_access import StorageCapabilities, saf_source_identity
 
 
@@ -25,19 +23,24 @@ class ComposeLibraryBridge:
 
     @staticmethod
     def _valid_local_artwork_path(path: Any) -> str | None:
-        """Return only a real, non-empty local filesystem artwork path."""
+        """Return a cheap local-artwork candidate without decoding image pixels.
+
+        Artwork validity is owned by ArtworkEngine when it persists/downloads the
+        cache and by the Compose decoder when the item enters the viewport. The
+        projection bridge must not open/verify every poster on every catalog
+        publish because that turns an otherwise cheap snapshot refresh into an
+        O(N) image-decoding pass.
+        """
         value = str(path or "").strip()
         if not value or value.startswith(("content://", "http://", "https://")):
             return None
         try:
             file_path = Path(value)
-            if not file_path.is_file() or file_path.stat().st_size <= 0:
-                return None
-            # Keep the bridge's fallback conservative: a non-empty file is not
-            # enough to claim an image cache is usable by Compose.
-            with Image.open(file_path) as image:
-                image.verify()
-            return str(file_path)
+            return (
+                str(file_path)
+                if file_path.is_file() and file_path.stat().st_size > 0
+                else None
+            )
         except (OSError, ValueError):
             return None
     SNAPSHOT_FILE_NAME = "library.json"
@@ -99,7 +102,13 @@ class ComposeLibraryBridge:
 
     async def _publish_loop(self) -> None:
         while True:
+            # Give bursts of scanner/artwork/metadata callbacks a short coalescing
+            # window. The newest revision remains authoritative, while a fast burst
+            # no longer forces one full snapshot write per callback.
             revision = self._requested_revision
+            await asyncio.sleep(0.06)
+            if revision != self._requested_revision:
+                continue
             reason = self._pending_reason()
             await asyncio.to_thread(self._build_and_write_snapshot, revision, reason)
             self._last_published_revision = revision
@@ -125,105 +134,19 @@ class ComposeLibraryBridge:
             # policy. Normal catalog rows already expose current_episode, so
             # only the special-only fallback needs the extra canonical lookup.
             playback_target_method = getattr(self.library, "playback_target", None)
-            artwork_batch_method = getattr(self.library, "resolve_artwork_batch", None)
             projected_animes = []
 
-            # Details needs both poster and backdrop from the existing ArtworkEngine.
-            # Resolution is batched here; Compose still consumes only the resulting
-            # local/cache references and never performs network work in composition.
-            artwork_by_entity = {"anime": {}, "movie": {}}
-            episode_artwork = {}
-
-            if callable(artwork_batch_method):
-                for entity_type in ("anime", "movie"):
-                    entity_ids = [
-                        item.get("id")
-                        for item in catalog
-                        if item.get("id") is not None
-                        and (
-                            entity_type == "movie"
-                            and str(item.get("media_kind") or item.get("meta", {}).get("media_kind") or "").strip().lower() == "movie"
-                            or entity_type == "anime"
-                            and str(item.get("media_kind") or item.get("meta", {}).get("media_kind") or "").strip().lower() != "movie"
-                        )
-                    ]
-                    entity_ids = list(dict.fromkeys(entity_ids))
-                    if entity_ids:
-                        poster_rows = artwork_batch_method(entity_type, entity_ids, ("poster",))
-                        backdrop_rows = artwork_batch_method(entity_type, entity_ids, ("backdrop",))
-                        for entity_id, row in (poster_rows or {}).items():
-                            artwork_by_entity[entity_type].setdefault(str(entity_id), {})["poster"] = row
-                        for entity_id, row in (backdrop_rows or {}).items():
-                            artwork_by_entity[entity_type].setdefault(str(entity_id), {})["backdrop"] = row
-
-                episode_ids = []
-                for item in catalog:
-                    for group_key in ("seasons", "specials"):
-                        for group in item.get(group_key) or []:
-                            if not isinstance(group, dict):
-                                continue
-                            for episode in group.get("episodes") or []:
-                                if isinstance(episode, dict) and episode.get("id") is not None:
-                                    episode_ids.append(episode.get("id"))
-                    for episode_key in (
-                        "media_files",
-                        "current_episode",
-                        "next_episode",
-                        "playback_target_episode",
-                    ):
-                        episode = item.get(episode_key)
-                        if isinstance(episode, dict) and episode.get("id") is not None:
-                            episode_ids.append(episode.get("id"))
-                episode_ids = list(dict.fromkeys(episode_ids))
-                if episode_ids:
-                    episode_rows = artwork_batch_method(
-                        "episode",
-                        episode_ids,
-                        ("episode_thumbnail",),
-                    )
-                    episode_artwork = {
-                        str(entity_id): row
-                        for entity_id, row in (episode_rows or {}).items()
-                        if isinstance(row, dict)
-                    }
-
-            def hydrate_episode(episode):
-                if not isinstance(episode, dict):
-                    return episode
-                artwork = episode_artwork.get(str(episode.get("id")))
-                if not isinstance(artwork, dict):
-                    return episode
-                hydrated = dict(episode)
-                hydrated["artwork"] = artwork
-                return hydrated
-
+            # Snapshot publication is projection-only. Do not resolve artwork for
+            # the complete catalog here. ArtworkEngine remains the canonical artwork
+            # owner and Compose decodes only the local/cache reference for items that
+            # are actually composed in the viewport.
+            #
+            # resolve_artwork_batch() used to run for every anime, movie and episode on
+            # every snapshot publish. A scanner batch or a single artwork event could
+            # therefore fan out into a full-library artwork pass. Removing that eager
+            # work establishes real lazy visual loading without a second cache.
             def hydrate_anime(item):
-                hydrated = dict(item)
-                for group_key in ("seasons", "specials"):
-                    groups = []
-                    for group in item.get(group_key) or []:
-                        if not isinstance(group, dict):
-                            groups.append(group)
-                            continue
-                        group_copy = dict(group)
-                        group_copy["episodes"] = [
-                            hydrate_episode(episode)
-                            for episode in group.get("episodes") or []
-                        ]
-                        groups.append(group_copy)
-                    hydrated[group_key] = groups
-                hydrated["media_files"] = [
-                    hydrate_episode(episode)
-                    for episode in item.get("media_files") or []
-                ]
-                for episode_key in (
-                    "current_episode",
-                    "next_episode",
-                    "playback_target_episode",
-                ):
-                    if isinstance(item.get(episode_key), dict):
-                        hydrated[episode_key] = hydrate_episode(item[episode_key])
-                return hydrated
+                return dict(item) if isinstance(item, dict) else item
 
             for item in catalog:
                 projected = hydrate_anime(item)
@@ -239,13 +162,8 @@ class ComposeLibraryBridge:
 
                 media_kind = str(projected.get("media_kind") or "").strip().lower()
                 entity_type = "movie" if media_kind == "movie" else "anime"
-                artwork_rows = artwork_by_entity[entity_type].get(str(projected.get("id")), {})
                 projected_animes.append(
-                    self._project_anime(
-                        projected,
-                        poster_artwork=artwork_rows.get("poster"),
-                        backdrop_artwork=artwork_rows.get("backdrop"),
-                    )
+                    self._project_anime(projected)
                 )
 
             payload = {
