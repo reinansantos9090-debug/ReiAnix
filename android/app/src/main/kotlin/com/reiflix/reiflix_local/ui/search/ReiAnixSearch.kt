@@ -307,7 +307,7 @@ fun ReiAnixSearchScreen(
         ) {
             val hasLocalCatalog = browseAnimes.isNotEmpty()
             when {
-                searchQuery.isBlank() -> {
+                searchQuery.isBlank() && !searchState.filters.hasAnyFilter -> {
                     if (hasLocalCatalog) {
                         SearchEmptyQueryState(librarySize = browseAnimes.size)
                     } else {
