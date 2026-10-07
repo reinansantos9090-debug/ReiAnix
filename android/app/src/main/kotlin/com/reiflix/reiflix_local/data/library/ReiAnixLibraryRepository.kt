@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.FileObserver
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
+import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,6 +17,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Kotlin boundary over the real Python/SQLite library.
@@ -79,9 +82,16 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(ReiAnixLibraryUiState())
     val state: StateFlow<ReiAnixLibraryUiState> = _state.asStateFlow()
-    /** Serializes snapshot/result application so an older observer callback cannot
-     * replace a newer canonical revision in the UI state. */
+
+    private val _pagedLibraryState = MutableStateFlow(ReiAnixLibraryPagedUiState())
+    val pagedLibraryState: StateFlow<ReiAnixLibraryPagedUiState> = _pagedLibraryState.asStateFlow()
+
+    /** Serializes snapshot/result application so stale callbacks cannot replace newer state. */
     private val stateMutex = Mutex()
+    private val pageGeneration = AtomicLong(0L)
+    private val refreshInFlight = AtomicBoolean(false)
+    private val pageRequestGuard = Any()
+    private var inFlightPage: Pair<Long, Int>? = null
 
     private val snapshotObserver = object : FileObserver(bridgeDirectory.path, FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.CREATE) {
         override fun onEvent(event: Int, path: String?) {
@@ -108,7 +118,62 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     }
 
     fun refresh() {
+        if (!refreshInFlight.compareAndSet(false, true)) return
         send(ReiAnixLibraryCommandCodec.Action.REFRESH)
+    }
+
+    fun loadLibraryPage(
+        page: Int = 0,
+        pageSize: Int = 36,
+        query: String = "",
+        genre: String = "Todos",
+        sort: String = "Mais recentes",
+        favoritesOnly: Boolean = false,
+        watchingOnly: Boolean = false,
+        completedOnly: Boolean = false,
+        reset: Boolean = page == 0,
+    ) {
+        val requestedPage = page.coerceAtLeast(0)
+        val generation = if (reset) pageGeneration.incrementAndGet()
+        else pageGeneration.get().coerceAtLeast(1L)
+
+        synchronized(pageRequestGuard) {
+            if (!reset && inFlightPage?.first == generation) return
+            inFlightPage = generation to requestedPage
+        }
+
+        scope.launch {
+            stateMutex.withLock {
+                val current = _pagedLibraryState.value
+                _pagedLibraryState.value = if (reset) {
+                    current.copy(
+                        status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+                        animes = emptyList(),
+                        totalCount = 0,
+                        hasMore = false,
+                        loadedPage = -1,
+                        isLoading = true,
+                        generation = generation,
+                        error = null,
+                    )
+                } else if (current.generation == generation) {
+                    current.copy(isLoading = true, error = null)
+                } else current
+            }
+        }
+
+        send(
+            ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE,
+            page = requestedPage,
+            pageSize = pageSize.coerceIn(12, 48),
+            query = query,
+            genre = genre,
+            sort = sort,
+            favoritesOnly = favoritesOnly,
+            watchingOnly = watchingOnly,
+            completedOnly = completedOnly,
+            generation = generation,
+        )
     }
 
     fun selectSafTree() {
@@ -145,6 +210,15 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         episodeId: Long? = null,
         watched: Boolean? = null,
         source: String? = null,
+        page: Int? = null,
+        pageSize: Int? = null,
+        query: String? = null,
+        genre: String? = null,
+        sort: String? = null,
+        favoritesOnly: Boolean? = null,
+        watchingOnly: Boolean? = null,
+        completedOnly: Boolean? = null,
+        generation: Long? = null,
     ): String {
         val requestId = UUID.randomUUID().toString()
         val command = ReiAnixLibraryCommandCodec.create(
@@ -154,6 +228,15 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             episodeId = episodeId,
             watched = watched,
             source = source,
+            page = page,
+            pageSize = pageSize,
+            query = query,
+            genre = genre,
+            sort = sort,
+            favoritesOnly = favoritesOnly,
+            watchingOnly = watchingOnly,
+            completedOnly = completedOnly,
+            generation = generation,
         )
         scope.launch {
             val written = runCatching { NativeMailbox.write(appContext, command) }
@@ -227,7 +310,59 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 lastCommandError = result.error,
             )
         }
-        if (result.status in setOf("COMPLETED", "QUEUED")) {
+
+        val action = result.action.orEmpty()
+        if (action == ReiAnixLibraryCommandCodec.Action.REFRESH.value &&
+            result.status !in setOf("QUEUED", "RUNNING")
+        ) {
+            refreshInFlight.set(false)
+        }
+
+        if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value) {
+            val page = result.libraryPage
+            stateMutex.withLock {
+                val current = _pagedLibraryState.value
+                if (page != null &&
+                    result.status == "COMPLETED" &&
+                    page.generation == current.generation
+                ) {
+                    val seenIds = current.animes.asSequence().map { it.id }.toHashSet()
+                    val merged = if (page.page == 0) {
+                        page.items
+                    } else {
+                        buildList(current.animes.size + page.items.size) {
+                            addAll(current.animes)
+                            page.items.forEach { item ->
+                                if (seenIds.add(item.id)) add(item)
+                            }
+                        }
+                    }
+                    _pagedLibraryState.value = current.copy(
+                        status = if (page.total > 0) {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                        } else {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                        },
+                        animes = merged,
+                        totalCount = page.total,
+                        hasMore = page.hasMore,
+                        loadedPage = maxOf(current.loadedPage, page.page),
+                        isLoading = false,
+                        error = null,
+                    )
+                } else if (result.status in setOf("FAILED", "BLOCKED", "CANCELLED")) {
+                    _pagedLibraryState.value = current.copy(
+                        isLoading = false,
+                        error = result.error ?: "Não foi possível carregar a biblioteca.",
+                    )
+                }
+            }
+            synchronized(pageRequestGuard) {
+                if (page != null && inFlightPage?.first == page.generation) {
+                    inFlightPage = null
+                }
+            }
+        } else if (result.status in setOf("COMPLETED", "QUEUED")) {
             loadSnapshot()
         }
         file.delete()
@@ -237,5 +372,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         snapshotObserver.stopWatching()
         commandResultObserver.stopWatching()
         scope.coroutineContext[Job]?.cancel()
+        refreshInFlight.set(false)
+        synchronized(pageRequestGuard) { inFlightPage = null }
     }
 }
