@@ -2473,7 +2473,8 @@ async def main(page: ft.Page):
         _invalidate_cached_view(home_state, "home")
         _invalidate_cached_view(organize_state, "organize")
         _clear_screen_cache()
-        render_current(force=True, reason="platform_brightness")
+        if not compose_primary_ui:
+            render_current(force=True, reason="platform_brightness")
     async def remove_folder(reference):
         if scan_coordinator.active or saf_selection.pending:
             page.snack_bar = ft.SnackBar(ft.Text("Aguarde a atualização ou a seleção de pasta terminar antes de remover uma pasta."))
@@ -2732,17 +2733,22 @@ async def main(page: ft.Page):
             # without triggering a scan or permission flow.
             if navigation.current == "organize":
                 _drop_screen_cache("organize")
+            if compose_primary_ui:
+                if navigation.current == "home" and route_before != "home":
+                    page.run_task(_show_compose_home)
+                elif navigation.current == "library" and route_before != "library":
+                    page.run_task(_show_compose_library)
+                elif navigation.current == "organize" and route_before != "organize":
+                    page.run_task(_show_compose_organize)
+                elif (
+                    navigation.current == "settings"
+                    and not navigation.settings_path
+                    and route_before == "settings"
+                ):
+                    page.run_task(_show_compose_settings)
+                persist_navigation_state()
+                return
             render_current(reason="back")
-            if navigation.current == "home" and route_before != "home":
-                page.run_task(_show_compose_home)
-            elif navigation.current == "library" and route_before != "library":
-                page.run_task(_show_compose_library)
-            elif (
-                navigation.current == "settings"
-                and not navigation.settings_path
-                and route_before == "settings"
-            ):
-                page.run_task(_show_compose_settings)
             persist_navigation_state()
         elif action == "exit_requested":
             persist_navigation_state()
@@ -2759,7 +2765,7 @@ async def main(page: ft.Page):
     except Exception as exc:
         logger.warning("[FLET] platform brightness callback unavailable: %s", exc)
     def refresh_settings_if_active():
-        if navigation.current == "settings":
+        if navigation.current == "settings" and not compose_primary_ui:
             render_current(force=True, reason="settings_refresh")
     async def add_folder(_=None):
         # A scan already running must not block the user from choosing another
