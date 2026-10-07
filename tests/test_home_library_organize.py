@@ -98,7 +98,7 @@ class HomeLibraryOrganizeTests(unittest.TestCase):
         host = self.read(COMPOSE_HOST)
         self.assertIn("state.storage.configuredSources", organize)
         self.assertIn("sources.forEach { source ->", organize)
-        self.assertIn("key(source.stableKey)", organize)
+        self.assertIn("key = { it.stableKey }", organize)
         self.assertIn("state.storage.sourceState(source)", organize)
         self.assertIn("onRemoveFolder: (String) -> Unit", organize)
         self.assertIn("Remover fonte da biblioteca?", organize)
