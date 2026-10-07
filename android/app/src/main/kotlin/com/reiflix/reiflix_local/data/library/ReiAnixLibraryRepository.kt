@@ -92,6 +92,15 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private val refreshInFlight = AtomicBoolean(false)
     private val pageRequestGuard = Any()
     private var inFlightPage: Pair<Long, Int>? = null
+    private data class RefreshPageRequest(
+        val query: String,
+        val genre: String,
+        val sort: String,
+        val favoritesOnly: Boolean,
+        val watchingOnly: Boolean,
+        val completedOnly: Boolean,
+    )
+    private var pendingRefreshPage: RefreshPageRequest? = null
 
     private val snapshotObserver = object : FileObserver(bridgeDirectory.path, FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.CREATE) {
         override fun onEvent(event: Int, path: String?) {
@@ -117,8 +126,23 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         scope.launch { loadSnapshot() }
     }
 
-    fun refresh() {
+    fun refresh(
+        query: String = "",
+        genre: String = "Todos",
+        sort: String = "Mais recentes",
+        favoritesOnly: Boolean = false,
+        watchingOnly: Boolean = false,
+        completedOnly: Boolean = false,
+    ) {
         if (!refreshInFlight.compareAndSet(false, true)) return
+        pendingRefreshPage = RefreshPageRequest(
+            query = query,
+            genre = genre,
+            sort = sort,
+            favoritesOnly = favoritesOnly,
+            watchingOnly = watchingOnly,
+            completedOnly = completedOnly,
+        )
         send(ReiAnixLibraryCommandCodec.Action.REFRESH)
     }
 
@@ -258,6 +282,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 }
                 if (action == ReiAnixLibraryCommandCodec.Action.REFRESH) {
                     refreshInFlight.set(false)
+                    pendingRefreshPage = null
                 }
                 if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE) {
                     synchronized(pageRequestGuard) { inFlightPage = null }
@@ -346,6 +371,21 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             result.status !in setOf("QUEUED", "RUNNING")
         ) {
             refreshInFlight.set(false)
+            val request = pendingRefreshPage
+            pendingRefreshPage = null
+            if (result.status == "COMPLETED" && request != null) {
+                loadLibraryPage(
+                    page = 0,
+                    pageSize = 36,
+                    query = request.query,
+                    genre = request.genre,
+                    sort = request.sort,
+                    favoritesOnly = request.favoritesOnly,
+                    watchingOnly = request.watchingOnly,
+                    completedOnly = request.completedOnly,
+                    reset = true,
+                )
+            }
         }
 
         if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value) {
@@ -403,6 +443,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         commandResultObserver.stopWatching()
         scope.coroutineContext[Job]?.cancel()
         refreshInFlight.set(false)
+        pendingRefreshPage = null
         synchronized(pageRequestGuard) { inFlightPage = null }
     }
 }
