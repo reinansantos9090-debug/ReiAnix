@@ -56,6 +56,10 @@ class FletTemplateManifestTests(unittest.TestCase):
             (overlay / "src/main/res/values/styles.xml").write_text(
                 "<resources/>", encoding="utf-8"
             )
+            (overlay / "src/main/res/values/reianix_ids.xml").write_text(
+                '<resources><item name="reianix_compose_app_shell" type="id" /></resources>',
+                encoding="utf-8",
+            )
             (overlay / "src/test/kotlin/com/reiflix/reiflix_local").mkdir(parents=True)
             (overlay / "src/test/kotlin/com/reiflix/reiflix_local/FixtureTest.kt").write_text(
                 "package com.reiflix.reiflix_local\nclass FixtureTest",
