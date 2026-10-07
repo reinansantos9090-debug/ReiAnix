@@ -28,7 +28,7 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("_track_compose_library_task", dispatch)
         self.assertIn('namespace="compose_library"', dispatch)
         for action in ("toggle_favorite", "set_watched", "refresh", "open_media"):
-            self.assertIn(f"action == '{action}'", worker)
+            self.assertIn('action == "' + action + '":', worker)
 
     def test_compose_library_commands_ack_before_slow_work(self):
         block = self._command_dispatch_block()
