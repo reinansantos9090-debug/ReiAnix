@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui.artwork
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import coil.size.Dimension
 import coil.size.Size
 import com.reiflix.reiflix_local.ui.ReiAnixArtworkMissingState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import java.io.File
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -156,7 +158,7 @@ fun ReiAnixLocalArtwork(
                 effectiveHeightPx,
             ) {
                 ImageRequest.Builder(context)
-                    .data(source)
+                    .data(coilData(source))
                     .size(
                         Size(
                             Dimension.Pixels(effectiveWidthPx),
@@ -210,6 +212,19 @@ fun ReiAnixLocalArtwork(
         }
     }
 }
+
+private fun coilData(source: String): Any =
+    when {
+        source.startsWith("http://", ignoreCase = true) ||
+            source.startsWith("https://", ignoreCase = true) ->
+            source
+        source.startsWith("content://", ignoreCase = true) ||
+            source.startsWith("file://", ignoreCase = true) ||
+            source.startsWith("android.resource://", ignoreCase = true) ->
+            Uri.parse(source)
+        else ->
+            File(source)
+    }
 
 private enum class ArtworkRequestState {
     LOADING,
