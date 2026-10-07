@@ -239,18 +239,6 @@ class ReiAnixLibraryViewModel(context: Context) :
     ) { source, canonical, page ->
         val canonicalReady = canonical.isNotEmpty()
         val dataState = when {
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ||
-                source.sourceState.uppercase() in setOf("UNAVAILABLE", "NOT_CONFIGURED") ->
-                ReiAnixLibraryDataState.SOURCE_UNAVAILABLE
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
-                !canonicalReady ->
-                ReiAnixLibraryDataState.CANONICAL_ERROR
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING &&
-                !canonicalReady ->
-                ReiAnixLibraryDataState.INITIAL_LOADING
-            !canonicalReady &&
-                source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY ->
-                ReiAnixLibraryDataState.CANONICAL_EMPTY
             canonicalReady && page.error != null ->
                 ReiAnixLibraryDataState.CANONICAL_READY_PAGE_ERROR
             canonicalReady && page.isLoading && page.animes.isEmpty() ->
@@ -259,6 +247,15 @@ class ReiAnixLibraryViewModel(context: Context) :
                 ReiAnixLibraryDataState.CANONICAL_READY_PAGE_READY
             canonicalReady ->
                 ReiAnixLibraryDataState.CANONICAL_READY
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ||
+                source.sourceState.uppercase() in setOf("UNAVAILABLE", "NOT_CONFIGURED") ->
+                ReiAnixLibraryDataState.SOURCE_UNAVAILABLE
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR ->
+                ReiAnixLibraryDataState.CANONICAL_ERROR
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING ->
+                ReiAnixLibraryDataState.INITIAL_LOADING
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY ->
+                ReiAnixLibraryDataState.CANONICAL_EMPTY
             else ->
                 ReiAnixLibraryDataState.INITIAL_LOADING
         }
