@@ -444,13 +444,9 @@ if sdk_marker not in existing:
         sdk_block = "\n// ReiAnix Android 16 SDK contract\nandroid {\n    compileSdk 36\n    defaultConfig {\n        targetSdk 36\n        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'\n    }\n}\n"
     gradle.write_text(existing + sdk_block, encoding="utf-8")
 
-# Validate the generated native host with its real Gradle project before Flet
-# assembles the APK. This runs JVM Kotlin tests only; instrumentation tests
-# remain separate because they require a connected Android device/emulator.
-gradlew = android_root / ("gradlew.bat" if os.name == "nt" else "gradlew")
-if gradlew.is_file():
-    command = [str(gradlew), ":app:testDebugUnitTest", "--no-daemon"]
-    subprocess.run(command, cwd=android_root, check=True)
+# The APK workflow deliberately does not execute Kotlin unit tests here.
+# Native JVM tests remain available to the dedicated validation workflows, but
+# this template-preparation step must stay focused on producing the real APK.
 '''
 
 
