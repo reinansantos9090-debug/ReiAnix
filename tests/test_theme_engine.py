@@ -68,15 +68,15 @@ class ThemeEngineTests(unittest.TestCase):
     def test_dark_palette_is_neutral_with_controlled_blue_accent(self):
         source = (ROOT / "core/ui.py").read_text(encoding="utf-8")
         expected = {
-            'background="#050505"',
-            'surface="#0B0B0B"',
-            'surface_variant="#111111"',
-            'surface_raised="#171717"',
-            'text="#F5F5F5"',
-            'text_muted="#B8B8B8"',
-            'primary="#3D8BFF"',
-            'border="#292929"',
-            'divider="#242424"',
+            'background="#000000"',
+            'surface="#0A0A0A"',
+            'surface_variant="#151515"',
+            'surface_raised="#111111"',
+            'text="#FFFFFF"',
+            'text_muted="#B3B3B3"',
+            'primary="#2579FF"',
+            'border="#202020"',
+            'divider="#202020"',
             'overlay="#000000D9"',
         }
         for value in expected:
