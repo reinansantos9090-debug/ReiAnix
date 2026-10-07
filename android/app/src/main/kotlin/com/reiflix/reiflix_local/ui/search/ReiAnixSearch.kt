@@ -364,7 +364,9 @@ fun ReiAnixSearchScreen(
                         onAction = onRefresh,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
+                    ReiAnixLibraryLoadStatus.EMPTY,
+                    ReiAnixLibraryLoadStatus.READY,
+                    -> ReiAnixEmptyLibraryState(
                         message = "Nenhum conteúdo local disponível para pesquisa.",
                         actionLabel = "Atualizar",
                         onAction = onRefresh,
