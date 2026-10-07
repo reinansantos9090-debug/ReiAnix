@@ -2678,6 +2678,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ReiAnixComposeTheme {
                     ReiAnixNativePlayerCenterControls(
                         state = composePlayerUiState.value,
+                        seekSeconds = (doubleTapSeekMs / 1_000L).coerceAtLeast(1L),
                         onPlayPause = { togglePlayPause() },
                         onSeekRelative = { deltaMs ->
                             val seconds = deltaMs / 1000L
@@ -2709,8 +2710,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             findViewByTag<TextView>("reiflix_aspect_button")?.let(::showAspectSelection)
                         },
                         onSource = { toggleMorePanel() },
+                        onPrevious = {
+                            if (!episodeChangePending && intent.getBooleanExtra("canPrevious", false)) {
+                                requestEpisode("player_previous_request")
+                            }
+                        },
                         onNext = {
-                            if (intent.getBooleanExtra("canNext", false)) {
+                            if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
                                 requestEpisode("player_next_request")
                             }
                         },
@@ -2805,6 +2811,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             technicalLine = buildPlayerTechnicalLine(),
             positionMs = currentPosition.coerceAtLeast(0L),
             durationMs = currentDuration.coerceAtLeast(0L),
+            bufferedPositionMs = if (::player.isInitialized && currentDuration > 0L) {
+                player.bufferedPosition.coerceIn(0L, currentDuration)
+            } else {
+                0L
+            },
             isPlaying = ::player.isInitialized && player.isPlaying,
             isBuffering = ::player.isInitialized && player.playbackState == Player.STATE_BUFFERING,
             ended = ::player.isInitialized && player.playbackState == Player.STATE_ENDED,
@@ -2813,6 +2824,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             locked = locked,
             canNext = intent.getBooleanExtra("canNext", false),
             canPrevious = intent.getBooleanExtra("canPrevious", false),
+            episodeTransitionInProgress = episodeChangePending,
             aspectLabel = aspectModeLabel,
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
             safeTopPx = gestureSafeTop,
@@ -3034,8 +3046,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (::seekBar.isInitialized && duration > 0L) {
             seekBar.progress = ((position.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
                 .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
+            seekBar.secondaryProgress = ((player.bufferedPosition.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
+                .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
         } else if (::seekBar.isInitialized) {
             seekBar.progress = 0
+            seekBar.secondaryProgress = 0
         }
         if (::positionLabel.isInitialized) positionLabel.text = formatTime(position)
         if (::durationLabel.isInitialized) {
@@ -3440,7 +3455,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             durationMs = player.duration,
         )
         player.seekTo(target)
-        saveProgress("player_progress", force = true)
+        // Relative seek gestures are frequent; the authoritative checkpoints remain
+        // pause/completion/exit plus the periodic progress reporter.
+        saveProgress("player_progress")
         showFeedback(feedbackText)
         touchControls()
     }
@@ -3557,6 +3574,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setControlsVisible(true)
         }
         updateLockUi()
+        syncComposePlayerUiState()
         if (announce) showFeedback(if (locked) "Player bloqueado" else "Player desbloqueado")
     }
 
@@ -4494,7 +4512,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
         if (sessionState != SessionState.EXITING || !exitProgressPublished) {
-            saveProgress("player_progress", force = true)
+            // onPause already emits the durable checkpoint; keep onStop lightweight
+            // to avoid duplicate mailbox/SQLite work during lifecycle transitions.
+            saveProgress("player_progress")
         }
         logPlayer("onStop finishing=" + isFinishing + " changingConfig=" + isChangingConfigurations)
         super.onStop()
