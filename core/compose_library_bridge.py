@@ -124,8 +124,25 @@ class ComposeLibraryBridge:
         kind = parts[0].strip().lower()
         try:
             if kind in {"artwork_ready", "artwork_cache_hit", "artwork_cache_invalid", "metadata_translation"}:
-                anime_id = int(parts[2] if kind.startswith("artwork_") else parts[1])
-                return anime_id, kind
+                if kind.startswith("artwork_"):
+                    entity_type = str(parts[1] if len(parts) > 1 else "").strip().lower()
+                    entity_id = int(parts[2] if len(parts) > 2 else 0)
+                    if entity_id <= 0:
+                        return None
+                    if entity_type in {"anime", "movie"}:
+                        return entity_id, kind
+                    if entity_type == "episode":
+                        with self.store._conn() as con:
+                            row = con.execute(
+                                "SELECT anime_id FROM episodes WHERE id=? LIMIT 1",
+                                (entity_id,),
+                            ).fetchone()
+                        if row and row["anime_id"] is not None:
+                            return int(row["anime_id"]), kind
+                        return None
+                    return None
+                anime_id = int(parts[1] if len(parts) > 1 else 0)
+                return (anime_id, kind) if anime_id > 0 else None
             if kind in {"player_progress", "player_mark_watched", "player_mark_unwatched", "thumbnail_ready"}:
                 token = ":".join(parts[1:]).strip()
                 if not token:
