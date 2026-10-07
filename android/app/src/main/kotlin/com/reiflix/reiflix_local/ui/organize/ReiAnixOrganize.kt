@@ -324,7 +324,6 @@ fun ReiAnixOrganizeScreen(
         }
 
     }
-    }
 }
 
 @Composable
