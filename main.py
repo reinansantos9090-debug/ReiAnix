@@ -3340,6 +3340,12 @@ async def main(page: ft.Page):
                 diagnostic_event="STORAGE_READY",
                 result="configured_library_root_valid",
             )
+            # A valid persisted SAF grant is enough to expose the library.
+            # Scanner, metadata and thumbnails continue asynchronously.
+            schedule_thumbnail_reconciliation("startup_ready")
+            schedule_catalog_metadata_hydration("startup_ready")
+            if compose_library_bridge.enabled:
+                compose_library_bridge.request_publish("startup_ready")
             return
 
         if saf_selection.pending or storage_onboarding["waiting_for_result"]:
