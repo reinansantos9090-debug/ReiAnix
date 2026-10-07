@@ -117,7 +117,7 @@ class StorageOnboardingTests(unittest.TestCase):
         end = source.index("    async def check_video_access", start)
         block = source[start:end]
         self.assertNotIn("scan_coordinator.active or not saf_selection.begin()", block)
-        self.assertIn("if scan_coordinator.exclusive or saf_selection.pending:", block)
+        self.assertIn("if saf_selection.pending:", block)
         self.assertIn("await bridge.select_tree()", block)
 
     def test_saf_picker_is_lifecycle_gated_and_single_shot(self):
