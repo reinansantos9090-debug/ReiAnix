@@ -2710,11 +2710,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             findViewByTag<TextView>("reiflix_aspect_button")?.let(::showAspectSelection)
                         },
                         onSource = { toggleMorePanel() },
-                        onPrevious = {
-                            if (!episodeChangePending && intent.getBooleanExtra("canPrevious", false)) {
-                                requestEpisode("player_previous_request")
-                            }
-                        },
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
                                 requestEpisode("player_next_request")
