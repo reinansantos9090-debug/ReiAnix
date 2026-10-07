@@ -568,6 +568,34 @@ private fun ColumnScope.HomeReadyContent(
                 )
             }
         }
+        val available = remember(animes) {
+            animes
+                .asSequence()
+                .filter { it.availableContentCount > 0 }
+                .distinctBy { it.id }
+                .sortedWith(
+                    compareByDescending<ReiAnixHomeAnimeUiModel> { it.isWatching }
+                        .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
+                        .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
+                        .thenBy { it.title.trim().lowercase() },
+                )
+                .take(12)
+                .toList()
+        }
+
+        if (available.isNotEmpty()) {
+            item(key = "home-section-available") {
+                HomeMediaSection(
+                    title = "Conteúdo disponível",
+                    items = available,
+                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Conteúdo disponível",
+                    onSeeAll = onOpenLibrary,
+                )
+            }
+        }
+
         if (recentlyWatched.isNotEmpty()) {
             item(key = "home-section-recently-watched") {
                 HomeMediaSection(
