@@ -141,8 +141,8 @@ class ComposeLibraryBridge:
             # owner and Compose decodes only the local/cache reference for items that
             # are actually composed in the viewport.
             #
-            # resolve_artwork_batch() used to run for every anime, movie and episode on
-            # every snapshot publish. A scanner batch or a single artwork event could
+            # The previous artwork-batch resolver used to run for every anime, movie and
+            # episode on every snapshot publish. A scanner batch or a single artwork event
             # therefore fan out into a full-library artwork pass. Removing that eager
             # work establishes real lazy visual loading without a second cache.
             def hydrate_episode(episode):
