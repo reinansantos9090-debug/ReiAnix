@@ -1470,6 +1470,45 @@ class LibraryStore:
             return f"{raw}#owner-conflict:{int(owner_id)}:{digest}"
 
         with self._conn() as c:
+            def remember_saf_source_observation(episode_id, source_folder, uri):
+                source_folder = str(source_folder or "").strip()
+                uri = str(uri or "").strip()
+                if not episode_id or not source_folder or not uri:
+                    return
+                if self._infer_source_kind(source_folder) != "saf":
+                    return
+                now = time.time()
+                row = c.execute(
+                    """SELECT first_seen FROM episode_observations
+                       WHERE episode_id=? AND source_kind='saf' AND scope_kind='source' AND scope_ref=? AND uri=?""",
+                    (episode_id, source_folder, uri),
+                ).fetchone()
+                first_seen = float(row["first_seen"]) if row else now
+                c.execute(
+                    """INSERT INTO episode_observations(
+                         episode_id,source_kind,scope_kind,scope_ref,uri,volume_id,
+                         native_generation,fingerprint,first_seen,last_seen,last_checked_at,state,error)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(episode_id,source_kind,scope_kind,scope_ref,uri)
+                       DO UPDATE SET last_seen=excluded.last_seen,
+                         last_checked_at=excluded.last_checked_at,state='available',error=NULL""",
+                    (
+                        episode_id,
+                        "saf",
+                        "source",
+                        source_folder,
+                        uri,
+                        None,
+                        None,
+                        effective_media_identity,
+                        first_seen,
+                        now,
+                        now,
+                        "available",
+                        None,
+                    ),
+                )
+
             by_path = c.execute("SELECT * FROM episodes WHERE path=?", (path,)).fetchone()
             by_identity = None
             if media_identity:
@@ -1552,6 +1591,18 @@ class LibraryStore:
                 # title change, metadata refresh, or weaker parser evidence may
                 # never transfer an existing episode to another anime.
                 effective_anime_id = existing["anime_id"]
+                existing_source_folder = str(existing["source_folder"] or "").strip() if existing else ""
+                incoming_source_folder = str(source_folder or "").strip()
+                if (
+                    existing
+                    and existing_source_folder
+                    and incoming_source_folder
+                    and existing_source_folder != incoming_source_folder
+                    and self._infer_source_kind(existing_source_folder) == "saf"
+                    and self._infer_source_kind(incoming_source_folder) == "saf"
+                ):
+                    remember_saf_source_observation(row_id, existing_source_folder, existing["path"])
+                    remember_saf_source_observation(row_id, incoming_source_folder, path)
                 if new_path is None:
                     c.execute(
                         """UPDATE episodes SET anime_id=?,file_name=?,season=?,number=?,mime_type=?,
@@ -2026,6 +2077,59 @@ class LibraryStore:
                    WHERE source_kind=? AND scope_kind=? AND scope_ref=?""",
                 (source_kind, scope_kind, scope_ref),
             ).fetchall()
+
+            # Native volume scans can carry complete/partial information per
+            # volume while the legacy row may only have a global observation.
+            # Materialize the trusted scope from the canonical episode fields
+            # before reconciling so a complete volume can mark only that volume
+            # missing without touching other volumes/sources.
+            if scope_kind == "volume" and scope_ref:
+                candidates = c.execute(
+                    """SELECT e.id,e.path,e.volume_id,e.media_identity
+                       FROM episodes e
+                       LEFT JOIN folders f ON f.path=e.source_folder
+                       WHERE e.volume_id=?
+                         AND (e.source_folder=? OR f.kind=?)""",
+                    (scope_ref, source_folder, source_kind),
+                ).fetchall()
+                now = time.time()
+                existing_keys = {
+                    (int(row["episode_id"]), str(row["uri"] or ""))
+                    for row in rows
+                }
+                for candidate in candidates:
+                    key = (int(candidate["id"]), str(candidate["path"] or ""))
+                    if key in existing_keys:
+                        continue
+                    c.execute(
+                        """INSERT OR IGNORE INTO episode_observations(
+                             episode_id,source_kind,scope_kind,scope_ref,uri,volume_id,
+                             native_generation,fingerprint,first_seen,last_seen,last_checked_at,state,error)
+                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            int(candidate["id"]),
+                            source_kind,
+                            scope_kind,
+                            scope_ref,
+                            candidate["path"],
+                            scope_ref,
+                            None,
+                            candidate["media_identity"],
+                            now,
+                            now,
+                            now,
+                            "available" if not int(c.execute(
+                                "SELECT missing FROM episodes WHERE id=?",
+                                (candidate["id"],),
+                            ).fetchone()["missing"] or 0) else "missing",
+                            None,
+                        ),
+                    )
+                rows = c.execute(
+                    """SELECT id,episode_id,uri FROM episode_observations
+                       WHERE source_kind=? AND scope_kind=? AND scope_ref=?""",
+                    (source_kind, scope_kind, scope_ref),
+                ).fetchall()
             affected = set()
             for row in rows:
                 state = "available" if row["uri"] in seen else "missing"
