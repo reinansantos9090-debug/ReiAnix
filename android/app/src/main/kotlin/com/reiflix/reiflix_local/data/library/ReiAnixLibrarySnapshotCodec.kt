@@ -133,11 +133,37 @@ internal object ReiAnixLibrarySnapshotCodec {
         require(root.optInt("schemaVersion", 0) == 1) {
             "Unsupported Compose command-result schema"
         }
+        val payload = root.optJSONObject("payload")
+        val libraryPage = payload
+            ?.takeIf { it.optString("kind").trim() == "library_page" }
+            ?.let { decodeLibraryPage(it) }
         return CommandResult(
             requestId = root.optString("requestId").trim().takeIf { it.isNotEmpty() },
             action = root.optString("action").trim().takeIf { it.isNotEmpty() },
             status = root.optString("status").trim().uppercase().ifEmpty { "UNKNOWN" },
             error = root.optString("error").trim().takeIf { it.isNotEmpty() && it != "null" },
+            message = root.optString("message").trim().takeIf { it.isNotEmpty() && it != "null" },
+            libraryPage = libraryPage,
+        )
+    }
+
+    private fun decodeLibraryPage(payload: JSONObject): LibraryPageResult {
+        val rawItems = payload.optJSONArray("items") ?: JSONArray()
+        val items = buildList(rawItems.length()) {
+            for (index in 0 until rawItems.length()) {
+                val item = rawItems.optJSONObject(index)
+                    ?: error("Malformed library page item at index=$index")
+                @Suppress("UNCHECKED_CAST")
+                add(LibraryUiMappers.anime(item.toMap()))
+            }
+        }
+        return LibraryPageResult(
+            generation = payload.optLong("generation", 0L),
+            page = payload.optInt("page", 0),
+            pageSize = payload.optInt("page_size", 0),
+            total = payload.optInt("total", 0),
+            hasMore = payload.optBoolean("has_more", false),
+            items = items,
         )
     }
 
@@ -146,6 +172,17 @@ internal object ReiAnixLibrarySnapshotCodec {
         val action: String?,
         val status: String,
         val error: String?,
+        val message: String? = null,
+        val libraryPage: LibraryPageResult? = null,
+    )
+
+    data class LibraryPageResult(
+        val generation: Long,
+        val page: Int,
+        val pageSize: Int,
+        val total: Int,
+        val hasMore: Boolean,
+        val items: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
     )
 }
 
