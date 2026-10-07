@@ -55,10 +55,11 @@ class ArtworkPipelineTests(unittest.TestCase):
         mapper = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mapper/LibraryUiMappers.kt")
         artwork = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt")
         self.assertIn('"artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"', mapper)
-        self.assertIn("External URLs are deliberately not fetched", artwork)
-        self.assertNotIn("Coil", artwork)
-        self.assertNotIn("Glide", artwork)
-        self.assertNotIn("Picasso", artwork)
+        self.assertIn('"artwork_external_url", "cover_url", "external_url"', mapper)
+        self.assertIn("SubcomposeAsyncImage", artwork)
+        self.assertIn("diskCachePolicy(CachePolicy.DISABLED)", artwork)
+        self.assertIn("externalUrl: String?", artwork)
+        self.assertIn("fallbackExternalUrl: String?", artwork)
 
     def test_python_files_remain_syntactically_valid(self):
         for relative in ("main.py", "core/artwork.py", "core/library_service.py", "views/home_view.py", "views/details_view.py"):
