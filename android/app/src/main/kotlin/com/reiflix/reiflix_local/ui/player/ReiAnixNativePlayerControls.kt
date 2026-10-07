@@ -484,7 +484,6 @@ fun ReiAnixNativePlayerBottomControls(
                 enabled = state.canNext && !state.episodeTransitionInProgress,
             )
         }
-        }
     }
 }
 
