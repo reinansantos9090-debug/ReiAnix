@@ -388,7 +388,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 }
             }
             synchronized(pageRequestGuard) {
-                if (page != null && inFlightPage?.first == page.generation) {
+                if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value) {
                     inFlightPage = null
                 }
             }
