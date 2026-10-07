@@ -68,8 +68,8 @@ class ComposePerformanceTests(unittest.TestCase):
     def test_native_scan_batches_publish_incrementally_to_compose(self):
         main = (ROOT / "main.py").read_text(encoding="utf-8")
         self.assertIn('compose_library_bridge.request_publish("library_batch_ingested")', main)
-        self.assertIn("int(result.get("new") or 0) > 0", main)
-        self.assertIn("int(result.get("updated") or 0) > 0", main)
+        self.assertIn('int(result.get("new") or 0) > 0', main)
+        self.assertIn('int(result.get("updated") or 0) > 0', main)
 
     def test_does_not_reintroduce_database_or_filesystem_access_to_compose_ui(self):
         sources = []
