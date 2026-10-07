@@ -208,9 +208,10 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("playbackWorker.submit", request_block)
         self.assertIn("NativeMailbox.write(", request_block)
         self.assertIn("val published = NativeMailbox.write(", request_block)
-        autoplay_idx = source.index('"type", "player_autoplay_changed"')
-        autoplay_block = source[max(0, autoplay_idx - 240):autoplay_idx]
-        self.assertIn("NativeMailbox.write(", autoplay_block)
+        autoplay_idx = source.index('persistCanonicalPlayerSetting("player.autoplay_next"')
+        autoplay_block = source[max(0, autoplay_idx - 240):autoplay_idx + 220]
+        self.assertIn('"compose_settings_set"', autoplay_block)
+        self.assertNotIn('"player_autoplay_changed"', save_block)
         self.assertNotIn("NativeMailbox.writeBestEffort(", autoplay_block)
 
     def test_mailbox_best_effort_is_background_only_and_command_diagnostics_remain_durable(self):
