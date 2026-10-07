@@ -697,6 +697,12 @@ class MainActivity : FlutterFragmentActivity() {
             }
             val flags = resultIntent.flags
             SafScanner.persistPermission(this, uri, flags)
+            publishNativeDiagnostic(
+                "STORAGE_PERMISSION_PERSISTED",
+                requestId,
+                action = "select_tree",
+                result = uri.toString(),
+            )
             val persistedInspection = SafScanner.inspectTree(this, uri, requirePersisted = true)
             val persistedStatus = persistedInspection.optString("status")
             if (persistedStatus != SafScanner.STATUS_COMPLETED) {
