@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -885,19 +886,32 @@ fun ReiAnixEpisodeCard(
                     ReiAnixTokens.Spacing.xs,
                 ),
             ) {
-                if (isCurrent || isNext) {
-                    Surface(
-                        shape = ReiAnixTokens.Shapes.chip,
-                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    ) {
-                        Text(
-                            text = if (isCurrent) "Agora" else "Próximo",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isCurrent) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(
-                                horizontal = ReiAnixTokens.Spacing.xs,
-                                vertical = ReiAnixTokens.Spacing.xs / 2,
-                            ),
+                Row(
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (isCurrent || isNext) {
+                        Surface(
+                            shape = ReiAnixTokens.Shapes.chip,
+                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Text(
+                                text = if (isCurrent) "Agora" else "Próximo",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isCurrent) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(
+                                    horizontal = ReiAnixTokens.Spacing.xs,
+                                    vertical = ReiAnixTokens.Spacing.xs / 2,
+                                ),
+                            )
+                        }
+                    }
+                    if (episode.isCompleted) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = "Concluído",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
                         )
                     }
                 }
