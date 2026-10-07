@@ -156,15 +156,29 @@ private fun ReiAnixHomeObservedScreen(
         )
 
         when (state.status) {
-            ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
-                title = "Carregando biblioteca",
-                message = "Lendo o catálogo local…",
-                modifier = Modifier.fillMaxSize(),
-            )
+            ReiAnixLibraryLoadStatus.LOADING -> {
+                if (state.animes.isNotEmpty()) {
+                    HomeObservedContent(
+                        state = state,
+                        continueWatching = continueWatching,
+                        cardSize = cardSize,
+                        showThumbnails = showThumbnails,
+                        onOpenDetails = onOpenDetails,
+                        onWatch = onWatch,
+                        onToggleFavorite = onToggleFavorite,
+                        onOpenMyList = onOpenMyList,
+                        onOpenLibrary = onOpenLibrary,
+                    )
+                } else {
+                    ReiAnixLoadingState(
+                        title = "Carregando biblioteca",
+                        message = "Os primeiros itens aparecerão assim que estiverem disponíveis.",
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
             ReiAnixLibraryLoadStatus.ERROR -> {
-                // A transient projection/IPC error must not hide a catalog that was
-                // already rendered successfully. Repository reconciliation preserves
-                // the last known-good catalog for exactly this case.
+                // Never discard a usable catalog because a later projection failed.
                 if (state.animes.isNotEmpty()) {
                     HomeObservedContent(
                         state = state,
@@ -186,19 +200,46 @@ private fun ReiAnixHomeObservedScreen(
                     )
                 }
             }
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
-                title = "Biblioteca local indisponível",
-                message = "A fonte local configurada não está disponível agora.",
-                actionLabel = "Selecionar pasta",
-                onAction = onSelectSource,
-                modifier = Modifier.fillMaxSize(),
-            )
-            ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
-                message = "Nenhum anime encontrado. A pasta foi configurada corretamente, mas nenhum vídeo compatível foi encontrado.",
-                actionLabel = "Escolher outra pasta",
-                onAction = onSelectSource,
-                modifier = Modifier.fillMaxSize(),
-            )
+            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> {
+                if (state.animes.isNotEmpty()) {
+                    HomeObservedContent(
+                        state = state,
+                        continueWatching = continueWatching,
+                        cardSize = cardSize,
+                        showThumbnails = showThumbnails,
+                        onOpenDetails = onOpenDetails,
+                        onWatch = onWatch,
+                        onToggleFavorite = onToggleFavorite,
+                        onOpenMyList = onOpenMyList,
+                        onOpenLibrary = onOpenLibrary,
+                    )
+                } else {
+                    ReiAnixSourceUnavailableState(
+                        title = "Biblioteca local indisponível",
+                        message = "A fonte local configurada não está disponível agora.",
+                        actionLabel = "Selecionar pasta",
+                        onAction = onSelectSource,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            ReiAnixLibraryLoadStatus.EMPTY -> {
+                if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    ReiAnixEmptyLibraryState(
+                        message = "Configure uma pasta da biblioteca para começar a usar a Home.",
+                        actionLabel = "Selecionar pasta",
+                        onAction = onSelectSource,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    ReiAnixEmptyLibraryState(
+                        message = "Nenhum vídeo compatível foi encontrado nas fontes configuradas.",
+                        actionLabel = "Selecionar pasta",
+                        onAction = onSelectSource,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
             ReiAnixLibraryLoadStatus.READY -> HomeObservedContent(
                 state = state,
                 continueWatching = continueWatching,
@@ -228,12 +269,8 @@ private fun ColumnScope.HomeObservedContent(
     onOpenMyList: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
-    val renderAnimes = remember(state.animes) {
-        state.animes.map(ReiAnixHomeAnimeUiModel::toHomeRenderData)
-    }
-
     HomeReadyContent(
-        animes = renderAnimes,
+        animes = state.animes,
         continueWatching = continueWatching,
         cardSize = cardSize,
         showThumbnails = showThumbnails,
@@ -274,21 +311,78 @@ fun ReiAnixHomeScreen(
         )
 
         when (state.status) {
-            ReiAnixLibraryLoadStatus.LOADING -> HomeLoading()
-            ReiAnixLibraryLoadStatus.ERROR -> HomeError(
-                message = state.error ?: "Não foi possível carregar a biblioteca local.",
-                onRefresh = onRefresh,
-            )
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> HomeMessage(
-                title = "Biblioteca local indisponível",
-                message = "A fonte local configurada não está disponível agora.",
-                actionLabel = "Atualizar",
-                onAction = onRefresh,
-            )
+            ReiAnixLibraryLoadStatus.LOADING -> {
+                if (state.animes.isNotEmpty()) {
+                    HomeContent(
+                        state = state,
+                        cardSize = cardSize,
+                        showThumbnails = showThumbnails,
+                        onOpenDetails = onOpenDetails,
+                        onWatch = onWatch,
+                        onToggleFavorite = onToggleFavorite,
+                        onOpenMyList = onOpenMyList,
+                        onOpenLibrary = onOpenLibrary,
+                    )
+                } else {
+                    HomeLoading()
+                }
+            }
+            ReiAnixLibraryLoadStatus.ERROR -> {
+                if (state.animes.isNotEmpty()) {
+                    HomeContent(
+                        state = state,
+                        cardSize = cardSize,
+                        showThumbnails = showThumbnails,
+                        onOpenDetails = onOpenDetails,
+                        onWatch = onWatch,
+                        onToggleFavorite = onToggleFavorite,
+                        onOpenMyList = onOpenMyList,
+                        onOpenLibrary = onOpenLibrary,
+                    )
+                } else {
+                    HomeError(
+                        message = state.error ?: "Não foi possível carregar a biblioteca local.",
+                        onRefresh = onRefresh,
+                    )
+                }
+            }
+            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> {
+                if (state.animes.isNotEmpty()) {
+                    HomeContent(
+                        state = state,
+                        cardSize = cardSize,
+                        showThumbnails = showThumbnails,
+                        onOpenDetails = onOpenDetails,
+                        onWatch = onWatch,
+                        onToggleFavorite = onToggleFavorite,
+                        onOpenMyList = onOpenMyList,
+                        onOpenLibrary = onOpenLibrary,
+                    )
+                } else {
+                    HomeMessage(
+                        title = "Biblioteca local indisponível",
+                        message = "A fonte local configurada não está disponível agora.",
+                        actionLabel = "Selecionar pasta",
+                        onAction = onRefresh,
+                    )
+                }
+            }
             ReiAnixLibraryLoadStatus.EMPTY -> HomeMessage(
-                title = "Nenhum anime encontrado",
-                message = "A pasta foi configurada corretamente, mas nenhum vídeo compatível foi encontrado.",
-                actionLabel = "Atualizar",
+                title = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    "Configure sua biblioteca"
+                } else {
+                    "Nenhum conteúdo disponível"
+                },
+                message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    "Selecione uma pasta da biblioteca para começar."
+                } else {
+                    "Nenhum vídeo compatível foi encontrado nas fontes configuradas."
+                },
+                actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    "Selecionar pasta"
+                } else {
+                    "Atualizar"
+                },
                 onAction = onRefresh,
             )
             ReiAnixLibraryLoadStatus.READY -> HomeContent(
@@ -433,12 +527,8 @@ private fun ColumnScope.HomeContent(
     onOpenMyList: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
-    val renderAnimes = remember(state.animes) {
-        state.animes.map(ReiAnixAnimeUiModel::toHomeRenderData)
-    }
-
     HomeReadyContent(
-        animes = renderAnimes,
+        animes = state.animes,
         continueWatching = state.continueWatching,
         cardSize = cardSize,
         showThumbnails = showThumbnails,
@@ -451,101 +541,32 @@ private fun ColumnScope.HomeContent(
     )
 }
 
-private data class HomeAnimeRenderData(
-    val id: Long,
-    val title: String,
-    val year: Int?,
-    val genres: List<com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel>,
-    val favorite: Boolean,
-    val mediaKind: ReiAnixMediaKind,
-    val artworkPath: String?,
-    val backdropLocalPath: String?,
-    val playbackEpisodeId: Long?,
-    val playbackActionLabel: String,
-    val isWatching: Boolean,
-    val availableContentCount: Int,
-    val score: Double?,
-    val addedAt: Double?,
-    val lastPlayedAt: Double?,
-    val pinned: Boolean,
-    val description: String?,
-    val status: String?,
-    val format: String?,
-    val studio: String?,
-) {
-    val stableKey: String
-        get() = "anime:" + id
-}
-
-private fun ReiAnixAnimeUiModel.toHomeRenderData(): HomeAnimeRenderData =
-    HomeAnimeRenderData(
-        id = id,
-        title = title,
-        year = year,
-        genres = genres,
-        favorite = favorite,
-        mediaKind = mediaKind,
-        artworkPath = artwork?.localPath,
-        backdropLocalPath = artwork?.backdropLocalPath,
-        playbackEpisodeId = playbackTargetEpisodeId,
-        playbackActionLabel = playbackTargetEpisodeId
-            ?.let { targetId -> contentEpisodes.firstOrNull { it.id == targetId }?.playbackActionLabel }
-            ?: "Assistir",
-        isWatching = isWatching,
-        availableContentCount = availableContentCount,
-        score = score,
-        addedAt = addedAt,
-        lastPlayedAt = lastPlayedAt,
-        pinned = pinned,
-        description = description,
-        status = status,
-        format = format,
-        studio = studio,
-    )
-
-private fun ReiAnixHomeAnimeUiModel.toHomeRenderData(): HomeAnimeRenderData =
-    HomeAnimeRenderData(
-        id = id,
-        title = title,
-        year = year,
-        genres = genres,
-        favorite = favorite,
-        mediaKind = mediaKind,
-        artworkPath = artwork?.localPath,
-        backdropLocalPath = artwork?.backdropLocalPath,
-        playbackEpisodeId = playbackTargetEpisodeId,
-        playbackActionLabel = playbackActionLabel,
-        isWatching = isWatching,
-        availableContentCount = availableContentCount,
-        score = score,
-        addedAt = addedAt,
-        lastPlayedAt = lastPlayedAt,
-        pinned = pinned,
-        description = description,
-        status = status,
-        format = format,
-        studio = studio,
-    )
-
 @Composable
 private fun ColumnScope.HomeReadyContent(
-    animes: List<HomeAnimeRenderData>,
+    animes: List<ReiAnixHomeAnimeUiModel>,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
-    onHeroSecondaryAction: (HomeAnimeRenderData) -> Unit,
-    heroSecondaryLabel: (HomeAnimeRenderData) -> String,
+    onHeroSecondaryAction: (ReiAnixHomeAnimeUiModel) -> Unit,
+    heroSecondaryLabel: (ReiAnixHomeAnimeUiModel) -> String,
     onOpenMyList: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val responsive = LocalReiAnixResponsiveMetrics.current
-    val trending = remember(animes) { buildTrendingItems(animes) }
-    val favorites = remember(animes) { animes.filter { it.favorite } }
+    val recentlyAdded = remember(animes) { buildRecentlyAddedItems(animes) }
+    val available = remember(animes) { buildAvailableItems(animes) }
+    val favorites = remember(animes) { animes.filter { it.favorite }.distinctBy { it.id } }
     val genreSections = remember(animes) { buildHomeGenreSections(animes) }
-    val movies = remember(animes) { animes.filter { it.mediaKind == ReiAnixMediaKind.MOVIE } }
+    val movies = remember(animes) {
+        animes
+            .asSequence()
+            .filter { it.mediaKind == ReiAnixMediaKind.MOVIE }
+            .distinctBy { it.id }
+            .toList()
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -558,18 +579,6 @@ private fun ColumnScope.HomeReadyContent(
         ),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.section),
     ) {
-        if (animes.isNotEmpty()) {
-            item(key = "home-hero") {
-                HomeHero(
-                    anime = selectFeaturedAnime(animes),
-                    showThumbnails = showThumbnails,
-                    onWatch = onWatch,
-                    onSecondaryAction = onHeroSecondaryAction,
-                    secondaryLabel = heroSecondaryLabel,
-                )
-            }
-        }
-
         if (continueWatching.isNotEmpty()) {
             item(key = "home-section-continue") {
                 HomeContinueSection(
@@ -581,16 +590,42 @@ private fun ColumnScope.HomeReadyContent(
             }
         }
 
-        if (trending.isNotEmpty()) {
-            item(key = "home-section-trending") {
+        if (recentlyAdded.isNotEmpty()) {
+            item(key = "home-section-recently-added") {
                 HomeMediaSection(
-                    title = "Em alta",
-                    items = trending,
-                    cardWidth = homeAnimeCardWidth(cardSize, LocalReiAnixResponsiveMetrics.current),
+                    title = "Adicionados recentemente",
+                    items = recentlyAdded,
+                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
                     showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Em Alta",
+                    contentDescription = "Home Adicionados recentemente",
                     onSeeAll = onOpenLibrary,
+                )
+            }
+        }
+
+        if (available.isNotEmpty()) {
+            item(key = "home-section-available") {
+                HomeMediaSection(
+                    title = "Conteúdo disponível",
+                    items = available,
+                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    showThumbnails = showThumbnails,
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Conteúdo disponível",
+                    onSeeAll = onOpenLibrary,
+                )
+            }
+        }
+
+        if (animes.isNotEmpty()) {
+            item(key = "home-hero") {
+                HomeHero(
+                    anime = selectFeaturedAnime(animes),
+                    showThumbnails = showThumbnails,
+                    onWatch = onWatch,
+                    onSecondaryAction = onHeroSecondaryAction,
+                    secondaryLabel = heroSecondaryLabel,
                 )
             }
         }
@@ -639,11 +674,11 @@ private fun ColumnScope.HomeReadyContent(
 
 @Composable
 private fun HomeHero(
-    anime: HomeAnimeRenderData,
+    anime: ReiAnixHomeAnimeUiModel,
     showThumbnails: Boolean = true,
     onWatch: (Long, Long) -> Unit,
-    onSecondaryAction: (HomeAnimeRenderData) -> Unit,
-    secondaryLabel: (HomeAnimeRenderData) -> String,
+    onSecondaryAction: (ReiAnixHomeAnimeUiModel) -> Unit,
+    secondaryLabel: (ReiAnixHomeAnimeUiModel) -> String,
 ) {
     BoxWithConstraints(
         modifier = Modifier.fillMaxWidth(),
@@ -822,9 +857,13 @@ private fun HomeContinueCard(
     val progress = progressFraction(item.progressSeconds, item.durationSeconds)
     val progressText = progress?.let(::formatProgressPercent)
     val episodeText = episodeLabel(item.seasonNumber, item.number)
+    val durationText = item.durationSeconds
+        ?.takeIf { it.isFinite() && it > 0.0 }
+        ?.let(::formatDuration)
     val detailText = listOfNotNull(
         episodeText.takeIf { it.isNotBlank() },
         item.displayTitle.takeIf { it.isNotBlank() },
+        durationText,
         progressText,
     ).joinToString(" • ")
 
@@ -839,6 +878,7 @@ private fun HomeContinueCard(
                         item.animeTitle,
                         episodeText.takeIf { it.isNotBlank() },
                         item.displayTitle.takeIf { it.isNotBlank() },
+                        durationText,
                         progressText,
                     ).joinToString(" — ")
             },
@@ -911,7 +951,7 @@ private fun homeAnimeCardWidth(
 @Composable
 private fun HomeMediaSection(
     title: String,
-    items: List<HomeAnimeRenderData>,
+    items: List<ReiAnixHomeAnimeUiModel>,
     cardWidth: androidx.compose.ui.unit.Dp = ReiAnixTokens.Dimensions.homeCardWidth,
     showThumbnails: Boolean = true,
     onOpenDetails: (Long) -> Unit,
@@ -985,7 +1025,7 @@ private fun HomeSectionHeader(
 
 @Composable
 private fun HomeMediaCard(
-    anime: HomeAnimeRenderData,
+    anime: ReiAnixHomeAnimeUiModel,
     cardWidth: androidx.compose.ui.unit.Dp = ReiAnixTokens.Dimensions.homeCardWidth,
     showThumbnails: Boolean = true,
     onClick: () -> Unit,
@@ -1054,7 +1094,7 @@ private fun HomeMediaCard(
     }
 }
 
-private fun selectFeaturedAnime(items: List<HomeAnimeRenderData>): HomeAnimeRenderData =
+private fun selectFeaturedAnime(items: List<ReiAnixHomeAnimeUiModel>): ReiAnixHomeAnimeUiModel =
     items.firstOrNull {
         it.playbackEpisodeId != null && it.playbackActionLabel != "Indisponível"
     }
@@ -1064,25 +1104,43 @@ private fun selectFeaturedAnime(items: List<HomeAnimeRenderData>): HomeAnimeRend
         ?: items.firstOrNull()
         ?: error("Home hero requested without library data")
 
-private fun buildTrendingItems(
-    items: List<HomeAnimeRenderData>,
-): List<HomeAnimeRenderData> =
-    items.sortedWith(
-        compareByDescending<HomeAnimeRenderData> { it.isWatching }
-            .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
-            .thenByDescending { it.favorite }
-            .thenByDescending { it.pinned }
-            .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
-            .thenBy { it.title.trim().lowercase() },
-    ).take(12)
+private fun buildRecentlyAddedItems(
+    items: List<ReiAnixHomeAnimeUiModel>,
+): List<ReiAnixHomeAnimeUiModel> =
+    items
+        .asSequence()
+        .filter { it.addedAt?.isFinite() == true }
+        .distinctBy { it.id }
+        .sortedWith(
+            compareByDescending<ReiAnixHomeAnimeUiModel> { it.addedAt ?: Double.NEGATIVE_INFINITY }
+                .thenBy { it.title.trim().lowercase() },
+        )
+        .take(12)
+        .toList()
+
+private fun buildAvailableItems(
+    items: List<ReiAnixHomeAnimeUiModel>,
+): List<ReiAnixHomeAnimeUiModel> =
+    items
+        .asSequence()
+        .filter { it.availableContentCount > 0 }
+        .distinctBy { it.id }
+        .sortedWith(
+            compareByDescending<ReiAnixHomeAnimeUiModel> { it.isWatching }
+                .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
+                .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
+                .thenBy { it.title.trim().lowercase() },
+        )
+        .take(12)
+        .toList()
 
 private fun buildHomeGenreSections(
-    items: List<HomeAnimeRenderData>,
+    items: List<ReiAnixHomeAnimeUiModel>,
 ): List<HomeGenreSection> {
     data class MutableSection(
         val key: String,
         val title: String,
-        val items: MutableList<HomeAnimeRenderData>,
+        val items: MutableList<ReiAnixHomeAnimeUiModel>,
     )
 
     val sections = linkedMapOf<String, MutableSection>()
@@ -1116,15 +1174,8 @@ private fun buildHomeGenreSections(
 private data class HomeGenreSection(
     val key: String,
     val title: String,
-    val items: List<HomeAnimeRenderData>,
+    val items: List<ReiAnixHomeAnimeUiModel>,
 )
-
-private fun formatScore(score: Double?): String? {
-    val value = score ?: return null
-    if (!value.isFinite()) return null
-    val normalized = if (value > 10.0) value / 10.0 else value
-    return String.format(Locale.getDefault(), "%.1f/10", normalized.coerceIn(0.0, 10.0))
-}
 
 @Composable
 private fun HomeLoading() {
@@ -1172,6 +1223,21 @@ private fun progressFraction(
     val total = duration ?: return null
     if (!value.isFinite() || !total.isFinite() || total <= 0.0) return null
     return (value.coerceAtLeast(0.0) / total).coerceIn(0.0, 1.0).toFloat()
+}
+
+private fun formatDuration(seconds: Double): String {
+    val totalSeconds = seconds
+        .coerceAtLeast(0.0)
+        .toLong()
+    val minutes = totalSeconds / 60
+    val remainingSeconds = totalSeconds % 60
+    return if (minutes >= 60) {
+        val hours = minutes / 60
+        val remainingMinutes = minutes % 60
+        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, remainingMinutes, remainingSeconds)
+    } else {
+        String.format(Locale.getDefault(), "%d:%02d", minutes, remainingSeconds)
+    }
 }
 
 private fun formatProgressPercent(progress: Float): String {
