@@ -510,6 +510,20 @@ private fun ColumnScope.HomeReadyContent(
     val recentlyAdded = remember(animes) { buildRecentlyAddedItems(animes) }
     val recentlyWatched = remember(animes) { buildRecentlyWatchedItems(animes) }
     val favorites = remember(animes) { animes.filter { it.favorite }.distinctBy { it.id } }
+    val available = remember(animes) {
+        animes
+            .asSequence()
+            .filter { it.availableContentCount > 0 }
+            .distinctBy { it.id }
+            .sortedWith(
+                compareByDescending<ReiAnixHomeAnimeUiModel> { it.isWatching }
+                    .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
+                    .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
+                    .thenBy { it.title.trim().lowercase() },
+            )
+            .take(12)
+            .toList()
+    }
     val genreSections = remember(animes) { buildHomeGenreSections(animes) }
     val movies = remember(animes) {
         animes.asSequence()
@@ -559,21 +573,6 @@ private fun ColumnScope.HomeReadyContent(
                 )
             }
         }
-        val available = remember(animes) {
-            animes
-                .asSequence()
-                .filter { it.availableContentCount > 0 }
-                .distinctBy { it.id }
-                .sortedWith(
-                    compareByDescending<ReiAnixHomeAnimeUiModel> { it.isWatching }
-                        .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
-                        .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
-                        .thenBy { it.title.trim().lowercase() },
-                )
-                .take(12)
-                .toList()
-        }
-
         if (available.isNotEmpty()) {
             item(key = "home-section-available") {
                 HomeMediaSection(
