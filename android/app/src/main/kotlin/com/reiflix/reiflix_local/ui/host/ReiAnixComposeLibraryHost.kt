@@ -124,6 +124,7 @@ class ReiAnixComposeLibraryHost(
                                     activity.requestNativeStorageAction("request_media_access")
                                 },
                                 onAddFolder = libraryViewModel::selectSafTree,
+                                onRemoveFolder = libraryViewModel::removeSafTree,
                                 onOpenSettings = {
                                     navController.navigate(
                                         ReiAnixRoutes.SETTINGS,
