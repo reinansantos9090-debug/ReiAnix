@@ -541,7 +541,17 @@ class ReiAnixLibraryViewModel(context: Context) :
         _searchFilters.value = ReiAnixSearchFilters()
     }
 
-    fun refresh() = repository.refresh()
+    fun refresh() {
+        val filters = libraryFilters.value
+        repository.refresh(
+            query = filters.query,
+            genre = filters.selectedGenreKey ?: "Todos",
+            sort = filters.sort,
+            favoritesOnly = filters.favoritesOnly,
+            watchingOnly = filters.watchingOnly,
+            completedOnly = filters.completedOnly,
+        )
+    }
 
     init {
         libraryFilterJob?.cancel()
