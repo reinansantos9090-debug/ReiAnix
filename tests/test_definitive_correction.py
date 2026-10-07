@@ -812,6 +812,67 @@ class DefinitiveCorrectionTests(unittest.TestCase):
         self.assertIn("PLAYER_FINISH_REQUEST", source)
         self.assertIn("PLAYER_EXIT_CLASSIFICATION=STALE_HANDOFF", source)
 
+    def test_runtime_correction_uses_canonical_player_settings_and_compose_lock_ui(self):
+        settings = self.read("core/settings.py")
+        main = self.read("main.py")
+        request = self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
+        )
+        player = self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
+        )
+        controls = self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixNativePlayerControls.kt"
+        )
+        tokens = self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt"
+        )
+
+        self.assertIn('SettingDefinition("player.lock_mode", "bool", False)', settings)
+        self.assertIn('"player.lock_mode"', main)
+        self.assertIn("hydrate_catalog_metadata", main)
+        self.assertIn("schedule_catalog_metadata_hydration", main)
+        self.assertIn('schedule_catalog_metadata_hydration("storage_ready")', main)
+        self.assertIn('tuple(dict.fromkeys', main)
+        self.assertIn('setting_player_lock_mode', request)
+
+        self.assertNotIn("SharedPreferences", player)
+        self.assertNotIn("gesturePreferences", player)
+        self.assertIn('persistCanonicalPlayerSetting("gestures.double_tap"', player)
+        self.assertIn('persistCanonicalPlayerSetting("player.autoplay_next"', player)
+        self.assertIn('persistCanonicalPlayerSetting("player.default_speed"', player)
+        self.assertIn('persistCanonicalPlayerSetting("player.aspect_ratio"', player)
+        self.assertIn('persistCanonicalPlayerSetting("player.lock_mode"', player)
+        self.assertIn("topBar.visibility = View.GONE", player)
+        self.assertIn("hideLegacyPrimaryControls()", player)
+
+        self.assertIn("modifier = Modifier.weight(1f)", controls)
+        self.assertIn("centerHorizontalPadding", controls)
+        self.assertIn("state.locked", controls)
+        self.assertIn("LockOpen", controls)
+        self.assertIn("externalUrl", self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt"
+        ))
+
+        self.assertIn("seekIconSize", tokens)
+        self.assertIn("lockAffordanceSize", tokens)
+
+    def test_saf_ready_and_metadata_pipeline_are_in_real_runtime_path(self):
+        main = self.read("main.py")
+        service = self.read("core/library_service.py")
+
+        on_catalog_start = main.index("def on_catalog_changed")
+        on_catalog_end = main.index("def apply_settings_runtime", on_catalog_start)
+        catalog_block = main[on_catalog_start:on_catalog_end]
+
+        self.assertIn('schedule_thumbnail_reconciliation("catalog_changed")', catalog_block)
+        self.assertIn('schedule_catalog_metadata_hydration("catalog_changed")', catalog_block)
+        self.assertIn("await asyncio.to_thread(", main)
+        self.assertIn("library.hydrate_catalog_metadata", main)
+        self.assertIn("on_item=publish_item", main)
+        self.assertIn("def hydrate_catalog_metadata(self, catalog, on_item=None):", service)
+        self.assertIn("on_item(result)", service)
+
     def test_source_files_parse(self):
         ast.parse(self.read("main.py"), filename="main.py")
         ast.parse(self.read("views/home_view.py"), filename="views/home_view.py")
