@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
@@ -198,67 +200,84 @@ fun ReiAnixNativePlayerCenterControls(
         contentAlignment = Alignment.Center,
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.PlayerDimensions.seekRowSpacing),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = ReiAnixTokens.PlayerDimensions.centerHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PlayerSeekIconButton(
-                icon = Icons.Filled.FastRewind,
-                seconds = seekSeconds,
-                description = "Voltar $seekSeconds segundos",
-                onClick = { onSeekRelative(-seekSeconds * 1_000L) },
-            )
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                PlayerSeekIconButton(
+                    icon = Icons.Filled.FastRewind,
+                    seconds = seekSeconds,
+                    description = "Voltar $seekSeconds segundos",
+                    onClick = { onSeekRelative(-seekSeconds * 1_000L) },
+                )
+            }
 
             Box(
-                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.centerButtonContainerSize),
+                modifier = Modifier.weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
-                IconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier
-                        .size(ReiAnixTokens.PlayerDimensions.centerButtonSize)
-                        .semantics {
-                            contentDescription = when {
-                                state.ended -> "Reproduzir novamente"
-                                state.isPlaying -> "Pausar"
-                                else -> "Reproduzir"
-                            }
-                            role = Role.Button
-                        },
+                Box(
+                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.centerButtonContainerSize),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    when {
-                        state.isBuffering -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.bufferingIndicatorSize),
-                                color = ReiAnixTokens.Colors.playerControl,
-                                strokeWidth = ReiAnixTokens.PlayerDimensions.bufferingStroke,
-                            )
-                        }
-                        state.isPlaying && !state.ended -> {
-                            Icon(
-                                imageVector = Icons.Filled.Pause,
-                                contentDescription = null,
-                                tint = ReiAnixTokens.Colors.playerControl,
-                                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
-                            )
-                        }
-                        else -> {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                tint = ReiAnixTokens.Colors.playerControl,
-                                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
-                            )
+                    IconButton(
+                        onClick = onPlayPause,
+                        modifier = Modifier
+                            .size(ReiAnixTokens.PlayerDimensions.centerButtonSize)
+                            .semantics {
+                                contentDescription = when {
+                                    state.ended -> "Reproduzir novamente"
+                                    state.isPlaying -> "Pausar"
+                                    else -> "Reproduzir"
+                                }
+                                role = Role.Button
+                            },
+                    ) {
+                        when {
+                            state.isBuffering -> {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.bufferingIndicatorSize),
+                                    color = ReiAnixTokens.Colors.playerControl,
+                                    strokeWidth = ReiAnixTokens.PlayerDimensions.bufferingStroke,
+                                )
+                            }
+                            state.isPlaying && !state.ended -> {
+                                Icon(
+                                    imageVector = Icons.Filled.Pause,
+                                    contentDescription = null,
+                                    tint = ReiAnixTokens.Colors.playerControl,
+                                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                                )
+                            }
+                            else -> {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = null,
+                                    tint = ReiAnixTokens.Colors.playerControl,
+                                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            PlayerSeekIconButton(
-                icon = Icons.Filled.FastForward,
-                seconds = seekSeconds,
-                description = "Avançar $seekSeconds segundos",
-                onClick = { onSeekRelative(seekSeconds * 1_000L) },
-            )
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                PlayerSeekIconButton(
+                    icon = Icons.Filled.FastForward,
+                    seconds = seekSeconds,
+                    description = "Avançar $seekSeconds segundos",
+                    onClick = { onSeekRelative(seekSeconds * 1_000L) },
+                )
+            }
         }
     }
 }
@@ -284,7 +303,7 @@ private fun PlayerSeekIconButton(
                 imageVector = icon,
                 contentDescription = null,
                 tint = ReiAnixTokens.Colors.playerControl,
-                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.seekIconSize),
             )
             Text(
                 text = seconds.toString(),
@@ -305,6 +324,39 @@ fun ReiAnixNativePlayerBottomControls(
     onSource: () -> Unit,
     onNext: () -> Unit,
 ) {
+    val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
+    if (state.locked) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    bottom = safeBottom + ReiAnixTokens.PlayerDimensions.lockAffordanceBottomPadding,
+                ),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            IconButton(
+                onClick = onToggleLock,
+                modifier = Modifier
+                    .size(ReiAnixTokens.PlayerDimensions.lockAffordanceSize)
+                    .background(
+                        Color.Black.copy(alpha = 0.48f),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                    )
+                    .semantics {
+                        contentDescription = "Desbloquear controles"
+                        role = Role.Button
+                    },
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.LockOpen,
+                    contentDescription = null,
+                    tint = ReiAnixTokens.Colors.playerControl,
+                )
+            }
+        }
+        return
+    }
+
     val duration = state.durationMs.takeIf { it > 0L } ?: 0L
     var sliderFraction by remember(duration) {
         mutableFloatStateOf(
@@ -332,8 +384,6 @@ fun ReiAnixNativePlayerBottomControls(
     } else {
         state.positionMs.coerceAtLeast(0L)
     }
-    val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
