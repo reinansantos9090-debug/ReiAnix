@@ -43,24 +43,41 @@ enum class ReiAnixLibrarySort(val label: String) {
 }
 
 object ReiAnixLibraryFilterEngine {
+    /**
+     * Reuses the exact Library filter semantics for incremental reconciliation.
+     * This is intentionally item-scoped; callers do not need to filter/sort the
+     * entire canonical catalog just to decide whether one newly discovered anime
+     * belongs in the already-loaded window.
+     */
+    fun matches(
+        anime: ReiAnixAnimeUiModel,
+        filters: ReiAnixLibraryFilters,
+    ): Boolean {
+        val query = filters.query.trim()
+        val matchesQuery = query.isBlank() ||
+            anime.title.contains(query, ignoreCase = true) ||
+            anime.genres.any { it.name.contains(query, ignoreCase = true) }
+        val matchesGenre = filters.selectedGenreKey == null ||
+            anime.genres.any { it.stableKey == filters.selectedGenreKey }
+        val matchesFavorite = !filters.favoritesOnly || anime.favorite
+        val matchesWatching = !filters.watchingOnly || anime.isWatching
+        val matchesCompleted = !filters.completedOnly || anime.isCompleted
+        return matchesQuery && matchesGenre && matchesFavorite && matchesWatching && matchesCompleted
+    }
+
     fun filter(
         animes: List<ReiAnixAnimeUiModel>,
         filters: ReiAnixLibraryFilters,
-    ): List<ReiAnixAnimeUiModel> {
-        val query = filters.query.trim()
-        val filtered = animes.filter { anime ->
-            val matchesQuery = query.isBlank() ||
-                anime.title.contains(query, ignoreCase = true) ||
-                anime.genres.any { it.name.contains(query, ignoreCase = true) }
-            val matchesGenre = filters.selectedGenreKey == null ||
-                anime.genres.any { it.stableKey == filters.selectedGenreKey }
-            val matchesFavorite = !filters.favoritesOnly || anime.favorite
-            val matchesWatching = !filters.watchingOnly || anime.isWatching
-            val matchesCompleted = !filters.completedOnly || anime.isCompleted
-            matchesQuery && matchesGenre && matchesFavorite && matchesWatching && matchesCompleted
-        }
-        return sort(filtered, filters.sort)
-    }
+    ): List<ReiAnixAnimeUiModel> =
+        sort(
+            animes.filter { anime -> matches(anime, filters) },
+            filters.sort,
+        )
+
+    fun sortForLibrary(
+        animes: List<ReiAnixAnimeUiModel>,
+        sortLabel: String,
+    ): List<ReiAnixAnimeUiModel> = sort(animes, sortLabel)
 
     private data class SortMetrics(
         val anime: ReiAnixAnimeUiModel,
