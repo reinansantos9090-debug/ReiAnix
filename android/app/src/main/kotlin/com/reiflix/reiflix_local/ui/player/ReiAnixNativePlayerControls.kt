@@ -43,7 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
@@ -91,18 +90,20 @@ fun ReiAnixNativePlayerControls(
     onSource: () -> Unit,
     onNext: () -> Unit,
 ) {
-    if (!state.controlsVisible || state.locked || state.errorVisible) return
+    if (!state.controlsVisible || state.errorVisible) return
 
     Box(modifier = Modifier.fillMaxSize()) {
-        ReiAnixNativePlayerTopControls(
-            state = state,
-            onBack = onBack,
-        )
-        ReiAnixNativePlayerCenterControls(
-            state = state,
-            onPlayPause = onPlayPause,
-            onSeekRelative = onSeekRelative,
-        )
+        if (!state.locked) {
+            ReiAnixNativePlayerTopControls(
+                state = state,
+                onBack = onBack,
+            )
+            ReiAnixNativePlayerCenterControls(
+                state = state,
+                onPlayPause = onPlayPause,
+                onSeekRelative = onSeekRelative,
+            )
+        }
         ReiAnixNativePlayerBottomControls(
             state = state,
             onSeekTo = onSeekTo,
