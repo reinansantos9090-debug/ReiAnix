@@ -219,7 +219,7 @@ fun ReiAnixOrganizeScreen(
                         message = state.error ?: state.lastCommandError
                             ?: "A biblioteca local retornou um erro.",
                         onRetry = onRefresh,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                 } else {
                     OrganizeCollectionContent(
