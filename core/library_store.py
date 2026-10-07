@@ -1920,6 +1920,55 @@ class LibraryStore:
     @staticmethod
     def _recompute_episode_availability_locked(c, episode_id):
         rows = c.execute(
+            """SELECT source_kind,scope_kind,scope_ref,volume_id,state,last_checked_at,id
+               FROM episode_observations
+               WHERE episode_id=?
+               ORDER BY last_checked_at DESC,id DESC""",
+            (episode_id,),
+        ).fetchall()
+        if not rows:
+            return
+
+        # Reduce observations per physical source location before aggregating.
+        # Volume observations are authoritative for that source+volume. When an
+        # observation has no volume, keep its configured scope independent so a
+        # second source can keep the logical episode available after another
+        # source is removed.
+        latest_by_location = {}
+        for row in rows:
+            source_kind = str(row["source_kind"] or "unknown").casefold()
+            volume_id = str(row["volume_id"] or "").strip()
+            if volume_id:
+                location_key = (source_kind, "volume", volume_id)
+            else:
+                location_key = (
+                    source_kind,
+                    str(row["scope_kind"] or "source").casefold(),
+                    str(row["scope_ref"] or "").strip(),
+                )
+            if location_key not in latest_by_location:
+                latest_by_location[location_key] = str(row["state"] or "").casefold()
+
+        states = set(latest_by_location.values())
+        if "available" in states:
+            missing, availability = 0, "available"
+        elif "volume_unavailable" in states:
+            missing, availability = 1, "volume_unavailable"
+        elif "scope_unavailable" in states:
+            missing, availability = 1, "scope_unavailable"
+        elif "unavailable" in states:
+            missing, availability = 1, "unavailable"
+        else:
+            missing, availability = 1, "missing"
+
+        c.execute(
+            "UPDATE episodes SET missing=?,availability_state=? WHERE id=? AND availability_state != 'scope_removed'",
+            (missing, availability, episode_id),
+        )
+
+
+    def _recompute_episode_availability_locked(c, episode_id):
+        rows = c.execute(
             """SELECT source_kind,scope_kind,scope_ref,state,last_checked_at,id
                FROM episode_observations
                WHERE episode_id=?
