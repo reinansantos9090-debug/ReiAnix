@@ -454,6 +454,47 @@ class SettingsPersistenceTests(unittest.TestCase):
             self.assertEqual(episode["progress"], 42)
             self.assertFalse(episode["watched"])
 
+    def test_remove_one_source_preserves_content_from_second_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = LibraryStore(d)
+            anime = store.upsert_anime("shared", {"title": "Shared Anime", "genres": "[]"})
+
+            source_a = "content://tree/source-a"
+            source_b = "content://tree/source-b"
+            store.add_folder(source_a, "Source A", kind="saf", authorization="granted")
+            store.add_folder(source_b, "Source B", kind="saf", authorization="granted")
+
+            store.upsert_episode(
+                anime,
+                "content://tree/source-a/doc-1",
+                "Shared - 01.mkv",
+                1,
+                1,
+                source_folder=source_a,
+                media_identity="shared:episode-1",
+            )
+            store.upsert_episode(
+                anime,
+                "content://tree/source-b/doc-1",
+                "Shared - 01.mkv",
+                1,
+                1,
+                source_folder=source_b,
+                media_identity="shared:episode-1",
+            )
+
+            store.remove_folder(source_b)
+
+            remaining = store.catalog()
+            self.assertEqual(1, len(remaining))
+            self.assertFalse(remaining[0]["seasons"][0]["episodes"][0]["missing"])
+            self.assertEqual([source_a], [folder["path"] for folder in store.folders()])
+
+            store.remove_folder(source_a)
+
+            self.assertEqual([], store.folders())
+            self.assertEqual([], store.catalog())
+
     def test_saf_folder_authorization_and_ownership_survive_database_reopen(self):
         with tempfile.TemporaryDirectory() as d:
             store = LibraryStore(d)
