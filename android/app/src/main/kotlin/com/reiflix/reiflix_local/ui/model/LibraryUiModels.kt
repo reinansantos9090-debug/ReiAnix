@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.ui.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Immutable presentation models for the existing local library projection.
  *
@@ -39,6 +41,7 @@ enum class ReiAnixMetadataAvailability {
     UNKNOWN,
 }
 
+@Immutable
 data class ReiAnixGenreUiModel(
     val id: String?,
     val name: String,
@@ -47,6 +50,7 @@ data class ReiAnixGenreUiModel(
         get() = id?.takeIf { it.isNotBlank() } ?: "name:" + name.trim().lowercase()
 }
 
+@Immutable
 data class ReiAnixArtworkUiModel(
     val localPath: String?,
     val externalUrl: String?,
@@ -65,6 +69,7 @@ data class ReiAnixArtworkUiModel(
         get() = !backdropLocalPath.isNullOrBlank()
 }
 
+@Immutable
 data class ReiAnixLocalMediaUiModel(
     /** The original local reference exactly as supplied by the source projection. */
     val reference: String?,
@@ -79,6 +84,7 @@ data class ReiAnixLocalMediaUiModel(
     val availability: ReiAnixMediaAvailability,
 )
 
+@Immutable
 data class ReiAnixEpisodeUiModel(
     val id: Long,
     val animeId: Long,
@@ -151,6 +157,7 @@ data class ReiAnixEpisodeUiModel(
         get() = title?.takeIf { it.isNotBlank() } ?: fileName
 }
 
+@Immutable
 data class ReiAnixContinueWatchingUiModel(
     val episodeId: Long,
     val animeId: Long,
@@ -170,6 +177,7 @@ data class ReiAnixContinueWatchingUiModel(
         get() = title?.takeIf { it.isNotBlank() } ?: fileName
 }
 
+@Immutable
 data class ReiAnixSeasonUiModel(
     /** Seasons have no independent SQLite ID in the current source projection. */
     val animeId: Long,
@@ -231,6 +239,7 @@ data class ReiAnixSeasonUiModel(
         }
 }
 
+@Immutable
 data class ReiAnixAnimeUiModel(
     val id: Long,
     val title: String,
@@ -302,6 +311,7 @@ data class ReiAnixAnimeUiModel(
             }
 }
 
+@Immutable
 data class ReiAnixHomeAnimeUiModel(
     val id: Long,
     val title: String,
