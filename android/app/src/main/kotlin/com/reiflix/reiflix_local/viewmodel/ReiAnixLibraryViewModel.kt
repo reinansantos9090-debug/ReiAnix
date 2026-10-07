@@ -241,7 +241,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         val dataState = when {
             canonicalReady && page.error != null ->
                 ReiAnixLibraryDataState.CANONICAL_READY_PAGE_ERROR
-            canonicalReady && page.isLoading && page.animes.isEmpty() ->
+            canonicalReady && page.isLoading ->
                 ReiAnixLibraryDataState.CANONICAL_READY_PAGE_LOADING
             canonicalReady && page.animes.isNotEmpty() ->
                 ReiAnixLibraryDataState.CANONICAL_READY_PAGE_READY
