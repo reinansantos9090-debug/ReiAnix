@@ -56,19 +56,19 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         expected_tokens = {
-            "val background = Color(0xFF050505)",
-            "val surface = Color(0xFF0B0B0B)",
-            "val surfaceVariant = Color(0xFF111111)",
-            "val surfaceRaised = Color(0xFF171717)",
-            "val surfaceDialog = Color(0xFF141414)",
-            "val surfaceNavigation = Color(0xFF080808)",
-            "val divider = Color(0xFF242424)",
-            "val border = Color(0xFF292929)",
-            "val text = Color(0xFFF5F5F5)",
-            "val textMuted = Color(0xFFB8B8B8)",
-            "val textTertiary = Color(0xFF858585)",
-            "val textDisabled = Color(0xFF5F5F5F)",
-            "val primary = Color(0xFF3D8BFF)",
+            "val background = Color(0xFF000000)",
+            "val surface = Color(0xFF0A0A0A)",
+            "val surfaceVariant = Color(0xFF151515)",
+            "val surfaceRaised = Color(0xFF111111)",
+            "val surfaceDialog = Color(0xFF151515)",
+            "val surfaceNavigation = Color(0xFF000000)",
+            "val divider = Color(0xFF202020)",
+            "val border = Color(0xFF202020)",
+            "val text = Color(0xFFFFFFFF)",
+            "val textMuted = Color(0xFFB3B3B3)",
+            "val textTertiary = Color(0xFF777777)",
+            "val textDisabled = Color(0xFF666666)",
+            "val primary = Color(0xFF2579FF)",
         }
         for token in expected_tokens:
             self.assertIn(token, tokens)
