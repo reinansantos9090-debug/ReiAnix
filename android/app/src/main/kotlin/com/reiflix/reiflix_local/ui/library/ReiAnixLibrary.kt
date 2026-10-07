@@ -1049,6 +1049,7 @@ private fun LibraryAnimeCard(
     ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
+        artworkExternalUrl = anime.artwork?.externalUrl,
         metadata = renderData.metadata,
         progress = renderData.progress,
         favorite = renderData.favorite,
