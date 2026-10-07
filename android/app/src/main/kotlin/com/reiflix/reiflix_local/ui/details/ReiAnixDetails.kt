@@ -82,6 +82,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixEpisodeCard
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
+import com.reiflix.reiflix_local.ui.formatDurationLabel
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
@@ -676,9 +677,18 @@ private fun DetailsHero(
         Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
             ReiAnixBackdrop(localPath = backdropPath, contentDescription = null, modifier = Modifier.fillMaxSize(),
                 identity = anime.stableKey + ":backdrop", fallbackLocalPath = posterPath, maxDimensionPx = 1024)
-            Box(modifier = Modifier.matchParentSize().background(Brush.verticalGradient(colors = listOf(
-                Color.Transparent, MaterialTheme.colorScheme.background.copy(alpha = 0.06f),
-                MaterialTheme.colorScheme.background.copy(alpha = 0.70f), MaterialTheme.colorScheme.background)))
+            Box(
+                modifier = Modifier.matchParentSize().background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.06f),
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.70f),
+                            MaterialTheme.colorScheme.background,
+                        ),
+                    ),
+                ),
+            )
         }
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding)) {
             val stacked = maxWidth < ReiAnixResponsiveBreakpoints.mediumWidth
