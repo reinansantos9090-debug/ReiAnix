@@ -1007,11 +1007,13 @@ private fun DetailsSeasonCard(
                     .height(ReiAnixTokens.Dimensions.detailsSeasonPreviewHeight)
                     .clip(ReiAnixTokens.Shapes.small),
             ) {
+                val previewExternal = season.episodes.firstOrNull()?.artwork?.externalUrl
                 ReiAnixEpisodeThumbnail(
                     localPath = preview,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = season.stableKey + ":preview",
+                    externalUrl = previewExternal,
                 )
             }
 
