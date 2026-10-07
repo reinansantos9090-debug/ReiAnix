@@ -55,6 +55,10 @@ res_destination = app / "src" / "main" / "res"
 values = res_destination / "values"
 values.mkdir(parents=True, exist_ok=True)
 shutil.copy2(res_source / "values" / "styles.xml", values / "reiflix_styles.xml")
+ids_source = res_source / "values" / "reianix_ids.xml"
+if not ids_source.is_file():
+    raise RuntimeError(f"Missing ReiAnix resource ID contract: {ids_source}")
+shutil.copy2(ids_source, values / "reianix_ids.xml")
 
 # Native PlayerView XML belongs to the rendered Android resource tree. Copy the
 # overlay resource subtree instead of relying on the source project existing
