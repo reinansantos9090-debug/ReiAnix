@@ -185,7 +185,7 @@ fun ReiAnixNavigationHost(
         ReiAnixMyListRoute(
             navController = navController,
             viewModel = homeViewModel,
-            cardSize = appearanceCardSize,
+            cardSize = "medium",
         )
     },
     organize: @Composable () -> Unit = {},
@@ -247,6 +247,7 @@ fun ReiAnixNavigationHost(
                 viewModel = homeViewModel,
                 animeId = args.animeId,
                 origin = args.origin,
+                showThumbnails = appearanceShowThumbnails,
             )
         },
         player = player,
