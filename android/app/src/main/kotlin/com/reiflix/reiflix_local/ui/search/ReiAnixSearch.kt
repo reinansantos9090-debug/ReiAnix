@@ -434,7 +434,8 @@ private fun SearchResults(
                 LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium")
             } else {
                 LocalReiAnixResponsiveMetrics.current.gridItemMinWidth(cardSize)
-            ),
+            },
+        ),
         state = listState,
         modifier = Modifier
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
