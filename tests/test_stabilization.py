@@ -334,9 +334,14 @@ class StabilizationTests(unittest.TestCase):
                 service.shutdown()
 
     def test_details_and_main_use_canonical_localized_description_pipeline(self):
+        mapper = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mapper/LibraryUiMappers.kt").read_text(encoding="utf-8")
+        details_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixDetailsUiModels.kt").read_text(encoding="utf-8")
         self.assertIn('metadata.get("description") or metadata.get("description_original")', DETAILS)
         self.assertIn("library.set_metadata_change_listener(_dispatch_metadata_change)", MAIN)
-        self.assertIn('compose_library_bridge.request_publish("metadata_translation")', MAIN)
+        self.assertIn('f"metadata_translation:{payload.get('anime_id') or 0}"', MAIN)
+        self.assertIn('description = metadata.stringOrNull("description")', mapper)
+        self.assertIn('?: metadata.stringOrNull("description_original")', mapper)
+        self.assertIn("description = anime.description", details_model)
         self.assertIn("description_original", ANILIST)
 
 if __name__ == "__main__":

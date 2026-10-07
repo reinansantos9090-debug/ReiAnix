@@ -297,7 +297,7 @@ class ThumbnailTests(unittest.TestCase):
         self.assertIn("duration_known", main)
         self.assertIn('float(row.get("duration") or 0) <= 0.0', service_source)
         self.assertIn('"THUMBNAIL_DURATION_REPAIRED"', extractor)
-        self.assertIn('compose_library_bridge.request_publish("thumbnail_ready")', main)
+        self.assertIn('f"thumbnail_ready:{payload.get('episodeId') or media_identity or uri}"', main)
         self.assertIn('"THUMBNAIL_PUBLISHED"', main)
         self.assertIn('put("mediaIdentity", mediaIdentity)', activity)
         self.assertIn("count < 2", main)

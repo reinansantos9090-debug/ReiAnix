@@ -73,11 +73,14 @@ class ContinueWatchingTests(unittest.TestCase):
         start = MAIN.index("elif event_type in {'player_progress', 'player_paused', 'player_completed'}:")
         end = MAIN.index("elif event_type == 'player_error':", start)
         block = MAIN[start:end]
-        publish = "compose_library_bridge.request_publish('player_progress')"
+        publish = "compose_library_bridge.request_publish("
+        reason = 'f"player_progress:{payload.get('episodeId') or 0}"'
         self.assertIn(publish, block)
+        self.assertIn(reason, block)
         publish_pos = block.index(publish)
-        self.assertIn("if updated:", block[max(0, publish_pos - 240):publish_pos + len(publish)])
-        self.assertEqual(block.count(publish), 1)
+        reason_pos = block.index(reason)
+        self.assertIn("if updated:", block[max(0, reason_pos - 320):reason_pos + len(reason)])
+        self.assertEqual(block.count(publish), 2)  # progress callback + no second persistence source check
 
     def test_progress_change_does_not_create_a_second_persistence_source(self):
         bridge = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")
