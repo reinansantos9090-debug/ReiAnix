@@ -482,13 +482,23 @@ class ReiAnixLibraryViewModel(context: Context) :
     }
         .mapLatest { (index, query, filters) ->
             runCatching {
-                val indexedResults = index.search(query)
-                val filteredResults = if (query.isBlank()) {
+                val indexedResults = if (query.isBlank()) {
+                    index.all()
+                } else {
+                    index.search(query)
+                }
+                val hasSearchRefinement = query.isNotBlank() || filters.hasAnyFilter
+                val filteredResults = if (!hasSearchRefinement) {
                     emptyList()
                 } else {
+                    // Text matching has already been normalized and ranked by
+                    // ReiAnixSearchEngine. Do not feed the raw query back into
+                    // the generic Library matcher, otherwise aliases and
+                    // accent-insensitive matches would be rejected again.
                     ReiAnixLibraryFilterEngine.filter(
                         animes = indexedResults,
                         filters = ReiAnixLibraryFilters(
+                            query = "",
                             selectedGenreKey = filters.selectedGenreKey,
                             favoritesOnly = filters.favoritesOnly,
                             watchingOnly = filters.watchingOnly,
