@@ -63,6 +63,33 @@ class StorePaginationTests(unittest.TestCase):
             self.assertEqual(len(result["items"]), 1)
             self.assertEqual(result["items"][0]["main_title"], "Title 002")
 
+    def test_catalog_page_supports_combined_compose_filters_in_sql(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = LibraryStore(directory)
+            first = store.upsert_anime("favorite-active", {"title": "Favorite Active", "genres": "[]"})
+            store.upsert_episode(first, "/library/favorite-active.mkv", "Favorite Active", 1, 1)
+            store.toggle_favorite(first)
+            store.save_progress("/library/favorite-active.mkv", 50, 100)
+
+            second = store.upsert_anime("complete", {"title": "Complete", "genres": "[]"})
+            store.upsert_episode(second, "/library/complete.mkv", "Complete", 1, 1)
+            store.save_progress("/library/complete.mkv", 100, 100)
+
+            favorite = store.catalog_page(page=0, page_size=12, favorites_only=True)
+            watching = store.catalog_page(page=0, page_size=12, watching_only=True)
+            completed = store.catalog_page(page=0, page_size=12, completed_only=True)
+            combined = store.catalog_page(
+                page=0,
+                page_size=12,
+                favorites_only=True,
+                watching_only=True,
+            )
+
+            self.assertEqual(["Favorite Active"], [item["main_title"] for item in favorite["items"]])
+            self.assertEqual(["Favorite Active"], [item["main_title"] for item in watching["items"]])
+            self.assertEqual(["Complete"], [item["main_title"] for item in completed["items"]])
+            self.assertEqual(["Favorite Active"], [item["main_title"] for item in combined["items"]])
+
     def test_paged_states_follow_consumption_completion_ratio(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
