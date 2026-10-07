@@ -1966,42 +1966,6 @@ class LibraryStore:
             (missing, availability, episode_id),
         )
 
-
-    def _recompute_episode_availability_locked(c, episode_id):
-        rows = c.execute(
-            """SELECT source_kind,scope_kind,scope_ref,state,last_checked_at,id
-               FROM episode_observations
-               WHERE episode_id=?
-               ORDER BY last_checked_at DESC,id DESC""",
-            (episode_id,),
-        ).fetchall()
-        if not rows:
-            return
-        latest_by_scope = {}
-        for row in rows:
-            source_key = (
-                str(row["source_kind"] or "unknown").casefold(),
-                str(row["scope_kind"] or "source").casefold(),
-                str(row["scope_ref"] or "").strip(),
-            )
-            if source_key not in latest_by_scope:
-                latest_by_scope[source_key] = str(row["state"] or "").casefold()
-        states = set(latest_by_scope.values())
-        if "available" in states:
-            missing, availability = 0, "available"
-        elif "volume_unavailable" in states:
-            missing, availability = 1, "volume_unavailable"
-        elif "scope_unavailable" in states:
-            missing, availability = 1, "scope_unavailable"
-        elif "unavailable" in states:
-            missing, availability = 1, "unavailable"
-        else:
-            missing, availability = 1, "missing"
-        c.execute(
-            "UPDATE episodes SET missing=?,availability_state=? WHERE id=? AND availability_state != 'scope_removed'",
-            (missing, availability, episode_id),
-        )
-
     def record_observation(
         self, episode_id, *, source_kind, scope_kind, scope_ref=None, uri,
         volume_id=None, native_generation=None, fingerprint=None, state="available", error=None
