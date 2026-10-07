@@ -33,10 +33,11 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
 
     def test_compose_library_commands_ack_before_slow_work(self):
         block = self._command_dispatch_block()
+        worker = self._command_worker_block()
         self.assertIn('"QUEUED"', block)
         self.assertIn("_run_compose_library_command", block)
-        self.assertIn("await add_folder()", block)
-        self.assertIn("await remove_folder(reference, request_id=request_id)", block)
+        self.assertIn("started = await add_folder()", worker)
+        self.assertIn("started = await remove_folder(reference, request_id=request_id)", worker)
         self.assertNotIn("store.toggle_favorite", block)
         self.assertNotIn("store.set_watched", block)
         self.assertNotIn("store.episode_by_id", block)
