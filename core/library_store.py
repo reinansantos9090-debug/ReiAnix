@@ -2329,20 +2329,17 @@ class LibraryStore:
             else:
                 episode_rows = c.execute(
                     """SELECT e.* FROM episodes e
-                       WHERE NOT EXISTS (
-                           SELECT 1 FROM episode_observations o
-                           WHERE o.episode_id=e.id AND o.state != 'scope_removed'
+                       WHERE (
+                           NOT EXISTS (
+                               SELECT 1 FROM episode_observations o
+                               WHERE o.episode_id=e.id
+                           )
+                           OR EXISTS (
+                               SELECT 1 FROM episode_observations o
+                               WHERE o.episode_id=e.id AND o.state != 'scope_removed'
+                           )
                        )
-                       AND EXISTS (
-                           SELECT 1 FROM episode_observations o
-                           WHERE o.episode_id=e.id
-                       )
-                       UNION ALL
-                       SELECT e.* FROM episodes e
-                       WHERE NOT EXISTS (
-                           SELECT 1 FROM episode_observations o WHERE o.episode_id=e.id
-                       )
-                       ORDER BY anime_id, season, number, absolute_number, file_name"""
+                       ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name"""
                 ).fetchall()
             folder_kinds = {
                 row["path"]: row["kind"]
