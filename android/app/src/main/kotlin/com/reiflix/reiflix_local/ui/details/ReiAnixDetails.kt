@@ -676,18 +676,9 @@ private fun DetailsHero(
         Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
             ReiAnixBackdrop(localPath = backdropPath, contentDescription = null, modifier = Modifier.fillMaxSize(),
                 identity = anime.stableKey + ":backdrop", fallbackLocalPath = posterPath, maxDimensionPx = 1024)
-            Box(
-                modifier = Modifier.matchParentSize().background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.06f),
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.70f),
-                            MaterialTheme.colorScheme.background,
-                        ),
-                    ),
-                ),
-            )
+            Box(modifier = Modifier.matchParentSize().background(Brush.verticalGradient(colors = listOf(
+                Color.Transparent, MaterialTheme.colorScheme.background.copy(alpha = 0.06f),
+                MaterialTheme.colorScheme.background.copy(alpha = 0.70f), MaterialTheme.colorScheme.background)))
         }
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding)) {
             val stacked = maxWidth < ReiAnixResponsiveBreakpoints.mediumWidth

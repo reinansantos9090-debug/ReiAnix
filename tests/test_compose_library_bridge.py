@@ -97,7 +97,6 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
                     "duration": 100.0,
                     "watched": False,
                     "consumption_state": "in_progress",
-                    "artwork_local_path": "/cache/episode-71.jpg",
                     "cover_cache": "/cache/episode-71.jpg",
                 }],
             }],

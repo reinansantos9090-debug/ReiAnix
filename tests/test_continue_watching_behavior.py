@@ -74,7 +74,7 @@ class ContinueWatchingTests(unittest.TestCase):
         end = MAIN.index("elif event_type == 'player_error':", start)
         block = MAIN[start:end]
         publish = "compose_library_bridge.request_publish("
-        reason = 'f"player_progress:{payload.get('episodeId') or 0}"'
+        reason = "f\"player_progress:{payload.get('episodeId') or 0}\""
         self.assertIn(publish, block)
         self.assertIn(reason, block)
         publish_pos = block.index(publish)

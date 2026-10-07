@@ -338,7 +338,7 @@ class StabilizationTests(unittest.TestCase):
         details_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixDetailsUiModels.kt").read_text(encoding="utf-8")
         self.assertIn('metadata.get("description") or metadata.get("description_original")', DETAILS)
         self.assertIn("library.set_metadata_change_listener(_dispatch_metadata_change)", MAIN)
-        self.assertIn('f"metadata_translation:{payload.get('anime_id') or 0}"', MAIN)
+        self.assertIn("f\"metadata_translation:{payload.get('anime_id') or 0}\"", MAIN)
         self.assertIn('description = metadata.stringOrNull("description")', mapper)
         self.assertIn('?: metadata.stringOrNull("description_original")', mapper)
         self.assertIn("description = anime.description", details_model)
