@@ -2322,6 +2322,11 @@ class LibraryStore:
                                   SELECT 1 FROM episode_observations o
                                   WHERE o.episode_id=e.id AND o.state != 'scope_removed'
                               )
+                              OR (
+                                  SELECT COUNT(DISTINCT o.source_kind || '|' || COALESCE(o.scope_ref, ''))
+                                  FROM episode_observations o
+                                  WHERE o.episode_id=e.id
+                              ) < 2
                           )
                         ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name""",
                     tuple(normalized_ids),
@@ -2338,6 +2343,11 @@ class LibraryStore:
                                SELECT 1 FROM episode_observations o
                                WHERE o.episode_id=e.id AND o.state != 'scope_removed'
                            )
+                           OR (
+                               SELECT COUNT(DISTINCT o.source_kind || '|' || COALESCE(o.scope_ref, ''))
+                               FROM episode_observations o
+                               WHERE o.episode_id=e.id
+                           ) < 2
                        )
                        ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name"""
                 ).fetchall()
