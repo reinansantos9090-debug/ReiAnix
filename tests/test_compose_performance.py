@@ -119,7 +119,10 @@ class ComposePerformanceTests(unittest.TestCase):
         repository = self.read(REPOSITORY)
         artwork = self.read(ARTWORK)
         self.assertIn("SupervisorJob() + Dispatchers.IO", repository)
-        self.assertIn("withContext(Dispatchers.IO)", artwork)
+        self.assertIn("AsyncImage(", artwork)
+        self.assertIn("ImageLoader.Builder", artwork)
+        self.assertIn("diskCachePolicy(CachePolicy.DISABLED)", artwork)
+        self.assertNotIn("BitmapFactory.decodeFile(", artwork)
         self.assertIn("collectAsStateWithLifecycle()", self.read(SEARCH))
 
     def test_library_projection_does_not_eagerly_resolve_artwork(self):
