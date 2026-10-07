@@ -364,7 +364,7 @@ private fun OrganizeSourcesAndScanPanel(
                         text = when (sources.size) {
                             0 -> "Nenhuma pasta configurada"
                             1 -> "1 pasta configurada"
-                            else -> "\${sources.size} pastas configuradas"
+                            else -> sources.size.toString() + " pastas configuradas"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
