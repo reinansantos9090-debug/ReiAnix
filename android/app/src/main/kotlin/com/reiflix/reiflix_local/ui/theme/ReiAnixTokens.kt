@@ -34,22 +34,22 @@ object ReiAnixTokens {
         val playerScrim = Color(0xFF000000)
 
         val primary = Color(0xFF2579FF)
-        val primaryContainer = Color(0xFF171717)
+        val primaryContainer = surfaceRaised
         val onPrimary = Color(0xFFFFFFFF)
-        val onPrimaryContainer = Color(0xFFF5F5F5)
+        val onPrimaryContainer = Color(0xFFFFFFFF)
         val active = primary
         val focus = Color(0xFF6AA3FF)
         val pressed = Color(0xFF1E61C7)
 
         val secondary = Color(0xFFB3B3B3)
-        val secondaryContainer = Color(0xFF171717)
-        val onSecondary = Color(0xFF0B0B0B)
-        val onSecondaryContainer = Color(0xFFF5F5F5)
+        val secondaryContainer = surfaceVariant
+        val onSecondary = background
+        val onSecondaryContainer = Color(0xFFFFFFFF)
 
         val tertiary = Color(0xFF777777)
-        val tertiaryContainer = Color(0xFF171717)
-        val onTertiary = Color(0xFF0B0B0B)
-        val onTertiaryContainer = Color(0xFFF5F5F5)
+        val tertiaryContainer = surfaceVariant
+        val onTertiary = background
+        val onTertiaryContainer = Color(0xFFFFFFFF)
 
         val text = Color(0xFFFFFFFF)
         val textMuted = Color(0xFFB3B3B3)
