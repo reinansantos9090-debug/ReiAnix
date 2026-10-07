@@ -158,6 +158,8 @@ async def main(page: ft.Page):
     ui_alive = [True]
     native_poll_task = [None]
     account_action_task = [None]
+    metadata_hydration_task = None
+    metadata_hydration_pending = False
     player_transition_task = {"task": None}
     settings_tasks = SettingsTaskRegistry()
     # Native Compose Settings work is tracked separately from the legacy Flet
@@ -266,7 +268,7 @@ async def main(page: ft.Page):
             )
 
     def _handle_page_disconnect(_event=None):
-        nonlocal thumbnail_dispatch_task, thumbnail_reconciliation_task, thumbnail_reconciliation_pending
+        nonlocal thumbnail_dispatch_task, thumbnail_reconciliation_task, thumbnail_reconciliation_pending, metadata_hydration_task, metadata_hydration_pending
         ui_alive[0] = False
         task = native_poll_task[0]
         if task is not None:
@@ -297,8 +299,13 @@ async def main(page: ft.Page):
         thumbnail_dispatch_task = None
         thumbnail_reconciliation_task = None
         thumbnail_reconciliation_pending = False
-    metadata_hydration_task = None
-    metadata_hydration_pending = False
+        if metadata_hydration_task is not None:
+            try:
+                metadata_hydration_task.cancel()
+            except Exception as exc:
+                logger.debug("[FLET] metadata hydration task cancellation failed: %s", exc)
+        metadata_hydration_task = None
+        metadata_hydration_pending = False
         home_refresh_context["active"] = False
         home_refresh_context["db_updated"] = False
         home_refresh_context["request_id"] = None
