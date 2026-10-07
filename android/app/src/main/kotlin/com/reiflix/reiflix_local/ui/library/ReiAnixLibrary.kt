@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.List
@@ -36,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import kotlinx.coroutines.flow.collect
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
@@ -82,11 +85,19 @@ fun ReiAnixLibraryRoute(
     cardSize: String = "medium",
     gridDensity: String = "medium",
 ) {
-    val state by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
+    val baseState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
+    val pageState by viewModel.pagedLibraryState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val state = baseState.copy(
+        status = pageState.status,
+        error = pageState.error ?: baseState.error,
+        animeCount = pageState.totalCount.coerceAtLeast(pageState.animes.size),
+        availableEpisodeCount = pageState.animes.sumOf { it.availableContentCount },
+        favoriteCount = pageState.animes.count { it.favorite },
+    )
 
     ReiAnixLibraryPresentationScreen(
         state = state,
@@ -114,6 +125,9 @@ fun ReiAnixLibraryRoute(
             )
         },
         onToggleFavorite = viewModel::toggleFavorite,
+        hasMore = pageState.hasMore,
+        isLoadingMore = pageState.isLoading && pageState.animes.isNotEmpty(),
+        onLoadMore = viewModel::loadNextLibraryPage,
     )
 }
 
@@ -173,6 +187,9 @@ fun ReiAnixLibraryScreen(
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
 ) {
     val presentation = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState(
         status = state.status,
@@ -276,6 +293,9 @@ private fun ReiAnixLibraryPresentationScreen(
                         onOpenDetails = onOpenDetails,
                         onToggleFavorite = onToggleFavorite,
                         onRefresh = onRefresh,
+                        hasMore = hasMore,
+                        isLoadingMore = isLoadingMore,
+                        onLoadMore = onLoadMore,
                         errorMessage = state.error
                             ?: "Não foi possível atualizar a biblioteca local.",
                         modifier = Modifier.weight(1f),
@@ -440,6 +460,9 @@ private fun ColumnScope.LibraryReadyContent(
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onRefresh: () -> Unit,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
     errorMessage: String? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -451,6 +474,23 @@ private fun ColumnScope.LibraryReadyContent(
         saver = LazyGridState.Saver,
     ) {
         LazyGridState()
+    }
+
+    LaunchedEffect(gridState, visibleAnimes.size, hasMore, isLoadingMore) {
+        snapshotFlow {
+            gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+        }.collect { lastVisibleIndex ->
+            val total = gridState.layoutInfo.totalItemsCount
+            if (
+                hasMore &&
+                !isLoadingMore &&
+                lastVisibleIndex != null &&
+                total > 0 &&
+                lastVisibleIndex >= total - 6
+            ) {
+                onLoadMore()
+            }
+        }
     }
 
     PullToRefreshBox(
@@ -769,6 +809,25 @@ private fun ColumnScope.LibraryReadyContent(
                                 .fillMaxWidth()
                                 .widthIn(max = ReiAnixTokens.Dimensions.libraryGridMaxItemWidth),
                         )
+                    }
+                }
+                if (isLoadingMore && visibleAnimes.isNotEmpty()) {
+                    item(
+                        key = "library-loading-more",
+                        span = { GridItemSpan(maxLineSpan) },
+                        contentType = "library-loading-more",
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = ReiAnixTokens.Spacing.lg),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+                                strokeWidth = 2.dp,
+                            )
+                        }
                     }
                 }
             }
