@@ -47,6 +47,7 @@ dependencies {
     // Compose line compatible with the existing compileSdk 36 / AGP 8.9.1 toolchain.
     implementation(platform("androidx.compose:compose-bom:2026.06.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
