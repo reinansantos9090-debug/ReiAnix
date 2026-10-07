@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -189,6 +188,7 @@ fun ReiAnixMyListRoute(
 
             ReiAnixLibraryLoadStatus.READY -> ReiAnixMyListReadyContent(
                 visibleAnimes = visibleAnimes,
+                cardSize = cardSize,
                 totalSaved = totalSaved,
                 filter = filter,
                 isRefreshing = isRefreshing,
@@ -375,6 +375,20 @@ private fun ReiAnixMyListItem(
         modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
         onClick = onOpenDetails,
         onFavoriteClick = onToggleFavorite,
+    )
+}
+
+@Composable
+private fun MyListInlineError(
+    message: String,
+    onRetry: () -> Unit,
+) {
+    ReiAnixRecoverableErrorState(
+        title = "Minha Lista carregada com erro",
+        message = message,
+        onRetry = onRetry,
+        modifier = Modifier.fillMaxWidth(),
+        retryLabel = "Tentar novamente",
     )
 }
 

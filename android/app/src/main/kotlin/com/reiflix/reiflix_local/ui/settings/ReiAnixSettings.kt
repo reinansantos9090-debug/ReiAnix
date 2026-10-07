@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -285,7 +286,8 @@ fun ReiAnixSettingsScreen(
                     .fillMaxWidth(),
                 state = listState,
                 contentPadding = PaddingValues(
-                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                    start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                    end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                     top = ReiAnixTokens.Spacing.xxl,
                     bottom = ReiAnixTokens.Spacing.huge,
                 ),

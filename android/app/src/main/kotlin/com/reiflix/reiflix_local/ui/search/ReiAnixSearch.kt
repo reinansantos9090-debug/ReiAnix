@@ -402,6 +402,7 @@ fun ReiAnixSearchScreen(
                 else -> SearchResults(
                     results = searchState.results,
                     listState = listState,
+                    cardSize = cardSize,
                     onOpenDetails = onOpenDetails,
                 )
             }
@@ -424,6 +425,7 @@ private fun SearchQueryLoadingState() {
 private fun SearchResults(
     results: List<ReiAnixAnimeUiModel>,
     listState: androidx.compose.foundation.lazy.grid.LazyGridState,
+    cardSize: String,
     onOpenDetails: (Long) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -432,7 +434,7 @@ private fun SearchResults(
                 LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium")
             } else {
                 LocalReiAnixResponsiveMetrics.current.gridItemMinWidth(cardSize)
-            },
+            ),
         state = listState,
         modifier = Modifier
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
