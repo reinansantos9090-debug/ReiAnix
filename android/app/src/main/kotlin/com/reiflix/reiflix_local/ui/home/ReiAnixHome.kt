@@ -161,12 +161,31 @@ private fun ReiAnixHomeObservedScreen(
                 message = "Lendo o catálogo local…",
                 modifier = Modifier.fillMaxSize(),
             )
-            ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
-                title = "Não foi possível carregar a biblioteca",
-                message = state.error ?: "A biblioteca local retornou um erro.",
-                onRetry = onRefresh,
-                modifier = Modifier.fillMaxSize(),
-            )
+            ReiAnixLibraryLoadStatus.ERROR -> {
+                // A transient projection/IPC error must not hide a catalog that was
+                // already rendered successfully. Repository reconciliation preserves
+                // the last known-good catalog for exactly this case.
+                if (state.animes.isNotEmpty()) {
+                    HomeObservedContent(
+                        state = state,
+                        continueWatching = continueWatching,
+                        cardSize = cardSize,
+                        showThumbnails = showThumbnails,
+                        onOpenDetails = onOpenDetails,
+                        onWatch = onWatch,
+                        onToggleFavorite = onToggleFavorite,
+                        onOpenMyList = onOpenMyList,
+                        onOpenLibrary = onOpenLibrary,
+                    )
+                } else {
+                    ReiAnixRecoverableErrorState(
+                        title = "Não foi possível carregar a biblioteca",
+                        message = state.error ?: "A biblioteca local retornou um erro.",
+                        onRetry = onRefresh,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
             ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = "Biblioteca local indisponível",
                 message = "A fonte local configurada não está disponível agora.",
