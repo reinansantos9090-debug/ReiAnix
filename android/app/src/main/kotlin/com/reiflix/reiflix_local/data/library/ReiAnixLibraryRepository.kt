@@ -365,7 +365,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                     if (current.requestId == requestId && current.generation == generation) {
                         _state.value = _state.value.copy(
                             lastCommandId = requestId,
-                            lastCommandAction = command.action.value,
+                            lastCommandAction = ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value,
                             lastCommandStatus = "FAILED",
                             lastCommandError = "Não foi possível enviar o comando ao serviço local.",
                         )
