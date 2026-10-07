@@ -55,6 +55,29 @@ class ReiAnixLibraryViewModel(context: Context) :
             animeId: Long,
         ): ReiAnixDetailsUiState =
             ReiAnixDetailsUiStateProjection.from(state, animeId)
+
+        internal fun projectMyListAnimes(
+            animes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
+            selectedFilter: ReiAnixMyListFilter,
+        ): List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel> {
+            val saved = animes.asSequence().filter { it.favorite }
+            val filtered = when (selectedFilter) {
+                ReiAnixMyListFilter.ALL,
+                ReiAnixMyListFilter.FAVORITES,
+                -> saved
+                ReiAnixMyListFilter.WATCHING ->
+                    saved.filter { it.isWatching }
+                ReiAnixMyListFilter.COMPLETED ->
+                    saved.filter { it.isCompleted }
+            }
+            return filtered
+                .sortedWith(
+                    compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel> {
+                        it.title.trim().lowercase()
+                    }.thenBy { it.id },
+                )
+                .toList()
+        }
     }
 
     private val repository = ReiAnixLibraryRepository(context)
@@ -250,6 +273,57 @@ class ReiAnixLibraryViewModel(context: Context) :
     val myListFilter: StateFlow<ReiAnixMyListFilter> = _myListFilter.asStateFlow()
 
     /**
+     * Minha Lista derives its presentation state from the canonical local
+     * snapshot instead of the paged Biblioteca window. This keeps opening the
+     * screen independent from page loading and lets already-materialized local
+     * favorites appear immediately, including while the source is offline or
+     * temporarily unavailable.
+     */
+    val myListPresentationState: StateFlow<ReiAnixLibraryPresentationUiState> = combine(
+        libraryAvailabilitySource,
+        canonicalCatalog,
+    ) { source, animes ->
+        val savedCount = animes.count { it.favorite }
+        val status = when {
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR ->
+                if (savedCount > 0) {
+                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                } else {
+                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                }
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
+                if (savedCount > 0) {
+                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                } else {
+                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE
+                }
+            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING &&
+                animes.isEmpty() ->
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
+            savedCount > 0 ->
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+            else ->
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+        }
+        source.copy(
+            status = status,
+            animeCount = savedCount,
+            availableEpisodeCount = animes
+                .asSequence()
+                .filter { it.favorite }
+                .sumOf { it.availableContentCount },
+            favoriteCount = savedCount,
+        )
+    }
+        .flowOn(Dispatchers.Default)
+        .distinctUntilChanged()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
+            ReiAnixLibraryPresentationUiState(),
+        )
+
+    /**
      * Minha Lista is a presentation projection over the canonical library.
      * Membership remains the existing favorite flag; the remaining filters
      * only derive subsets from that same immutable snapshot.
@@ -259,18 +333,7 @@ class ReiAnixLibraryViewModel(context: Context) :
             canonicalCatalog,
             myListFilter,
         ) { animes, selectedFilter ->
-            val saved = animes.asSequence().filter { it.favorite }
-            when (selectedFilter) {
-                ReiAnixMyListFilter.ALL,
-                ReiAnixMyListFilter.FAVORITES,
-                -> saved
-                ReiAnixMyListFilter.WATCHING ->
-                    saved.filter { it.isWatching }
-                ReiAnixMyListFilter.COMPLETED ->
-                    saved.filter { it.isCompleted }
-            }
-                .sortedBy { it.title.trim().lowercase() }
-                .toList()
+            projectMyListAnimes(animes, selectedFilter)
         }
             .flowOn(Dispatchers.Default)
             .distinctUntilChanged()

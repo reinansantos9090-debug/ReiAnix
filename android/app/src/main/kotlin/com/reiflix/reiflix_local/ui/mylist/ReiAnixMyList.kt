@@ -79,7 +79,7 @@ fun ReiAnixMyListRoute(
     viewModel: ReiAnixLibraryViewModel,
 ) {
     ReiAnixResponsiveRoot {
-    val state by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
+    val state by viewModel.myListPresentationState.collectAsStateWithLifecycle()
     val filter by viewModel.myListFilter.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.myListAnimes.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -109,7 +109,7 @@ fun ReiAnixMyListRoute(
                     .weight(1f),
             )
 
-            ReiAnixLibraryLoadStatus.ERROR -> if (state.animeCount > 0) {
+            ReiAnixLibraryLoadStatus.ERROR -> if (state.favoriteCount > 0) {
                 ReiAnixMyListReadyContent(
                     visibleAnimes = visibleAnimes,
                     totalSaved = totalSaved,
@@ -141,7 +141,7 @@ fun ReiAnixMyListRoute(
                 )
             }
 
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> if (state.animeCount > 0) {
+            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> if (state.favoriteCount > 0) {
                 ReiAnixMyListReadyContent(
                     visibleAnimes = visibleAnimes,
                     totalSaved = totalSaved,
@@ -364,14 +364,35 @@ private fun ReiAnixMyListItem(
 ) {
     val renderData = remember(anime) {
         val episodes = anime.contentEpisodes
-        val progressEpisode = anime.playbackTargetEpisodeId
+        val currentEpisode = anime.playbackTargetEpisodeId
             ?.let { targetId -> episodes.firstOrNull { it.id == targetId } }
+            ?: episodes.firstOrNull {
+                it.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
+            }
+        val progressEpisode = currentEpisode
+            ?.takeIf { !it.isCompleted && it.progressFraction > 0f }
             ?: episodes.firstOrNull {
                 it.progressFraction > 0f && !it.isCompleted
             }
         val progress = progressEpisode
             ?.progressFraction
             ?.takeIf { it > 0f && it < 1f }
+        val currentEpisodeLabel = currentEpisode?.let { episode ->
+            val number = episode.number?.let { value ->
+                if (value % 1.0 == 0.0) {
+                    "E" + value.toInt().toString().padStart(2, '0')
+                } else {
+                    "E" + value.toString()
+                }
+            }
+            val title = episode.displayTitle.trim().takeIf { it.isNotEmpty() }
+            when {
+                number != null && title != null -> "Atual: $number • $title"
+                number != null -> "Atual: $number"
+                title != null -> "Atual: $title"
+                else -> null
+            }
+        }
         val isWatching = episodes.any {
             it.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
         }
@@ -383,6 +404,7 @@ private fun ReiAnixMyListItem(
             ) && episode.isCompleted
         }
         MyListCardRenderData(
+            currentEpisodeLabel = currentEpisodeLabel,
             availableCount = episodes.count {
                 it.media.availability == com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE
             },
@@ -478,6 +500,16 @@ private fun ReiAnixMyListItem(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
 
+                renderData.currentEpisodeLabel?.let { currentEpisode ->
+                    androidx.compose.material3.Text(
+                        text = currentEpisode,
+                        style = ReiAnixTokens.TypographyTokens.metadata,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+
                 if (renderData.progress != null) {
                     ReiAnixProgressIndicator(
                         progress = renderData.progress,
@@ -527,6 +559,7 @@ private fun ReiAnixMyListItem(
 }
 
 private data class MyListCardRenderData(
+    val currentEpisodeLabel: String?,
     val availableCount: Int,
     val progress: Float?,
     val status: MyListStatus,
