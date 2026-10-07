@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
+import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,7 +18,10 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -55,6 +59,11 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     private val repository = ReiAnixLibraryRepository(context)
     override val uiState: StateFlow<ReiAnixLibraryUiState> = repository.state
+
+    /** Bounded Library pages; the canonical domain remains owned by the repository/SQLite. */
+    val pagedLibraryState: StateFlow<ReiAnixLibraryPagedUiState> = repository.pagedLibraryState
+
+    private var libraryFilterJob: Job? = null
 
     /**
      * Canonical immutable catalog projection.
@@ -130,9 +139,9 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     val libraryFilters: StateFlow<ReiAnixLibraryFilters> = _libraryFilters.asStateFlow()
 
-    val libraryGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
-        .map { animes ->
-            animes
+    val libraryGenres: StateFlow<List<ReiAnixGenreUiModel>> = pagedLibraryState
+        .map { page ->
+            page.animes
                 .flatMap { anime -> anime.genres }
                 .distinctBy(ReiAnixGenreUiModel::stableKey)
                 .sortedBy { it.name.lowercase() }
@@ -201,12 +210,22 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     val libraryPresentationState: StateFlow<ReiAnixLibraryPresentationUiState> = combine(
         libraryAvailabilitySource,
-        catalogCounts,
-    ) { source, counts ->
+        pagedLibraryState,
+    ) { source, page ->
+        val availableEpisodes = page.animes.sumOf { it.availableContentCount }
+        val favorites = page.animes.count { it.favorite }
         source.copy(
-            animeCount = counts.animeCount,
-            availableEpisodeCount = counts.availableEpisodeCount,
-            favoriteCount = counts.favoriteCount,
+            status = when {
+                page.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR -> page.status
+                page.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> page.status
+                page.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY -> page.status
+                page.animes.isNotEmpty() -> com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                else -> com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
+            },
+            error = page.error ?: source.error,
+            animeCount = page.totalCount.coerceAtLeast(page.animes.size),
+            availableEpisodeCount = availableEpisodes,
+            favoriteCount = favorites,
         )
     }
         .distinctUntilChanged()
@@ -217,18 +236,14 @@ class ReiAnixLibraryViewModel(context: Context) :
         )
 
     val filteredLibraryAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
-        combine(
-            canonicalCatalog,
-            libraryFilters,
-        ) { animes, filters ->
-            ReiAnixLibraryFilterEngine.filter(animes, filters)
-        }
-        .flowOn(Dispatchers.Default)
-        .stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
-            emptyList(),
-        )
+        pagedLibraryState
+            .map { it.animes }
+            .distinctUntilChanged()
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
+                emptyList(),
+            )
 
     private val _myListFilter = MutableStateFlow(ReiAnixMyListFilter.ALL)
 
@@ -527,6 +542,45 @@ class ReiAnixLibraryViewModel(context: Context) :
     }
 
     fun refresh() = repository.refresh()
+
+    init {
+        libraryFilterJob?.cancel()
+        libraryFilterJob = viewModelScope.launch {
+            libraryFilters
+                .debounce(SEARCH_DEBOUNCE_MS)
+                .distinctUntilChanged()
+                .collectLatest { filters ->
+                    repository.loadLibraryPage(
+                        page = 0,
+                        pageSize = 36,
+                        query = filters.query,
+                        genre = filters.selectedGenreKey ?: "Todos",
+                        sort = filters.sort,
+                        favoritesOnly = filters.favoritesOnly,
+                        watchingOnly = filters.watchingOnly,
+                        completedOnly = filters.completedOnly,
+                        reset = true,
+                    )
+                }
+        }
+    }
+
+    fun loadNextLibraryPage() {
+        val page = pagedLibraryState.value
+        if (!page.hasMore || page.isLoading || page.loadedPage < 0) return
+        val filters = libraryFilters.value
+        repository.loadLibraryPage(
+            page = page.loadedPage + 1,
+            pageSize = 36,
+            query = filters.query,
+            genre = filters.selectedGenreKey ?: "Todos",
+            sort = filters.sort,
+            favoritesOnly = filters.favoritesOnly,
+            watchingOnly = filters.watchingOnly,
+            completedOnly = filters.completedOnly,
+            reset = false,
+        )
+    }
 
     fun selectSafTree() = repository.selectSafTree()
 
