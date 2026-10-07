@@ -36,6 +36,7 @@ data class NativePlayerRequest(
     val immersive: String,
     val rotation: String,
     val pip: Boolean,
+    val lockMode: Boolean,
     val autoHideSeconds: Int,
     val doubleTapSeekSeconds: Long,
     val longPressSpeed: Float,
@@ -79,6 +80,7 @@ data class NativePlayerRequest(
             .putExtra("setting_player_immersive", immersive)
             .putExtra("setting_player_rotation", rotation)
             .putExtra("setting_player_pip", pip)
+            .putExtra("setting_player_lock_mode", lockMode)
             .putExtra("setting_player_auto_hide_seconds", autoHideSeconds)
             .putExtra("setting_player_double_tap_seek_seconds", doubleTapSeekSeconds)
             .putExtra("setting_player_long_press_speed", longPressSpeed)
@@ -133,6 +135,7 @@ data class NativePlayerRequest(
                 immersive = get("setting_player_immersive") ?: "always",
                 rotation = get("setting_player_rotation") ?: "auto",
                 pip = get("setting_player_pip")?.toBooleanStrictOrNull() ?: true,
+                lockMode = get("setting_player_lock_mode")?.toBooleanStrictOrNull() ?: false,
                 autoHideSeconds = get("setting_player_auto_hide_seconds")?.toIntOrNull()?.coerceIn(0, 300) ?: 5,
                 doubleTapSeekSeconds = get("setting_player_double_tap_seek_seconds")?.toLongOrNull()?.coerceIn(1L, 120L) ?: 10L,
                 longPressSpeed = get("setting_player_long_press_speed")?.toFloatOrNull()?.coerceIn(1f, 3f) ?: 2f,
