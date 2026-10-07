@@ -2314,12 +2314,12 @@ class LibraryStore:
             if normalized_ids:
                 placeholders = ",".join("?" for _ in normalized_ids)
                 episode_rows = c.execute(
-                    f"SELECT * FROM episodes WHERE anime_id IN ({placeholders}) ORDER BY anime_id, season, number, absolute_number, file_name",
+                    f"SELECT * FROM episodes WHERE anime_id IN ({placeholders}) AND availability_state != 'scope_removed' ORDER BY anime_id, season, number, absolute_number, file_name",
                     tuple(normalized_ids),
                 ).fetchall()
             else:
                 episode_rows = c.execute(
-                    "SELECT * FROM episodes ORDER BY anime_id, season, number, absolute_number, file_name"
+                    "SELECT * FROM episodes WHERE availability_state != 'scope_removed' ORDER BY anime_id, season, number, absolute_number, file_name"
                 ).fetchall()
             folder_kinds = {
                 row["path"]: row["kind"]
