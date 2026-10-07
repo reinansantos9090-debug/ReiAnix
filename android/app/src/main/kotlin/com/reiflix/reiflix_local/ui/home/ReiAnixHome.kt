@@ -692,8 +692,8 @@ private fun HomeHero(
                 .clip(ReiAnixTokens.Shapes.hero),
         ) {
             ReiAnixBackdrop(
-                localPath = anime.backdropLocalPath.takeIf { showThumbnails },
-                fallbackLocalPath = anime.artworkPath.takeIf { showThumbnails },
+                localPath = anime.artwork?.backdropLocalPath.takeIf { showThumbnails },
+                fallbackLocalPath = anime.artwork?.localPath.takeIf { showThumbnails },
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 identity = anime.stableKey,
@@ -791,7 +791,7 @@ private fun HomeHero(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                 ) {
-                    anime.playbackEpisodeId?.let { episodeId ->
+                    anime.playbackTargetEpisodeId?.let { episodeId ->
                         ReiAnixPrimaryButton(
                             text = anime.playbackActionLabel,
                             enabled = anime.playbackActionLabel != "Indisponível",
@@ -1056,8 +1056,8 @@ private fun HomeMediaCard(
                     .clip(ReiAnixTokens.Shapes.artwork),
             ) {
                 ReiAnixBackdrop(
-                    localPath = anime.backdropLocalPath.takeIf { showThumbnails },
-                    fallbackLocalPath = anime.artworkPath.takeIf { showThumbnails },
+                    localPath = anime.artwork?.backdropLocalPath.takeIf { showThumbnails },
+                    fallbackLocalPath = anime.artwork?.localPath.takeIf { showThumbnails },
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     identity = anime.stableKey,
