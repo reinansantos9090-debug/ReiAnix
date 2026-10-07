@@ -2314,12 +2314,35 @@ class LibraryStore:
             if normalized_ids:
                 placeholders = ",".join("?" for _ in normalized_ids)
                 episode_rows = c.execute(
-                    f"SELECT * FROM episodes WHERE anime_id IN ({placeholders}) AND availability_state != 'scope_removed' ORDER BY anime_id, season, number, absolute_number, file_name",
+                    f"""SELECT e.* FROM episodes e
+                        WHERE e.anime_id IN ({placeholders})
+                          AND (
+                              NOT EXISTS (SELECT 1 FROM episode_observations o WHERE o.episode_id=e.id)
+                              OR EXISTS (
+                                  SELECT 1 FROM episode_observations o
+                                  WHERE o.episode_id=e.id AND o.state != 'scope_removed'
+                              )
+                          )
+                        ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name""",
                     tuple(normalized_ids),
                 ).fetchall()
             else:
                 episode_rows = c.execute(
-                    "SELECT * FROM episodes WHERE availability_state != 'scope_removed' ORDER BY anime_id, season, number, absolute_number, file_name"
+                    """SELECT e.* FROM episodes e
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM episode_observations o
+                           WHERE o.episode_id=e.id AND o.state != 'scope_removed'
+                       )
+                       AND EXISTS (
+                           SELECT 1 FROM episode_observations o
+                           WHERE o.episode_id=e.id
+                       )
+                       UNION ALL
+                       SELECT e.* FROM episodes e
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM episode_observations o WHERE o.episode_id=e.id
+                       )
+                       ORDER BY anime_id, season, number, absolute_number, file_name"""
                 ).fetchall()
             folder_kinds = {
                 row["path"]: row["kind"]
