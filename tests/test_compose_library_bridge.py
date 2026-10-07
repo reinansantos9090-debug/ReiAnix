@@ -19,9 +19,14 @@ class FakeLibrary:
     def __init__(self, catalog, continue_watching=None):
         self._catalog = catalog
         self._continue_watching = list(continue_watching or [])
+        self.catalog_calls = []
 
-    def catalog(self):
-        return list(self._catalog)
+    def catalog(self, anime_ids=None):
+        self.catalog_calls.append(None if anime_ids is None else tuple(anime_ids))
+        if anime_ids is None:
+            return list(self._catalog)
+        selected = {int(value) for value in anime_ids}
+        return [item for item in self._catalog if int(item.get("id") or 0) in selected]
 
     def continue_watching(self, limit=12):
         return list(self._continue_watching)[:limit]
@@ -175,6 +180,28 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
         # A missing path is rejected cheaply at the projection boundary. Pixel
         # verification belongs to ArtworkEngine/Compose viewport decoding.
         self.assertIsNone(ComposeLibraryBridge._valid_local_artwork_path("/cache/missing.jpg"))
+
+    async def test_targeted_artwork_update_does_not_reproject_full_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = self.anime_fixture()
+            library = FakeLibrary([source])
+            bridge = ComposeLibraryBridge(directory, library, FakeStore())
+            bridge.request_publish("startup")
+            await bridge.wait_for_idle()
+            self.assertEqual([None], library.catalog_calls)
+
+            updated = dict(source)
+            updated["meta"] = dict(source["meta"])
+            updated["meta"]["cover_cache"] = "/cache/new-poster.jpg"
+            library._catalog = [updated]
+
+            bridge.request_publish("artwork_ready:anime:7:poster")
+            await bridge.wait_for_idle()
+
+            self.assertEqual([None, (7,)], library.catalog_calls)
+            payload = json.loads((Path(directory) / "reianix-compose/library.json").read_text())
+            self.assertEqual("artwork_ready:anime:7:poster", payload["reason"])
+            self.assertEqual("/cache/new-poster.jpg", payload["animes"][0]["meta"]["cover_cache"])
 
     async def test_empty_and_unavailable_states_are_distinct(self):
         with tempfile.TemporaryDirectory() as directory:
