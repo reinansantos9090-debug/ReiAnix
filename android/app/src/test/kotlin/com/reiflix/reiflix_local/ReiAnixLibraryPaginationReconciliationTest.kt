@@ -198,7 +198,7 @@ class ReiAnixLibraryPaginationReconciliationTest {
                 .map { it.copy(favorite = true) },
         )
         val nonFavoriteNew = anime(1000L, "Not A Favorite", favorite = false)
-        val favoriteNew = anime(1001L, "Favorite New", favorite = true)
+        val favoriteNew = anime(1001L, "AAA Favorite New", favorite = true)
         val canonical = listOf(nonFavoriteNew, favoriteNew) + current.animes
 
         val reconciled = reconcile(
