@@ -60,6 +60,17 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertIn("withContext(Dispatchers.IO)", artwork)
         self.assertIn("collectAsStateWithLifecycle()", self.read(SEARCH))
 
+    def test_library_projection_does_not_eagerly_resolve_artwork(self):
+        bridge = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")
+        self.assertNotIn("resolve_artwork_batch(", bridge)
+        self.assertNotIn("from PIL import Image", bridge)
+
+    def test_native_scan_batches_publish_incrementally_to_compose(self):
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertIn('compose_library_bridge.request_publish("library_batch_ingested")', main)
+        self.assertIn("int(result.get("new") or 0) > 0", main)
+        self.assertIn("int(result.get("updated") or 0) > 0", main)
+
     def test_does_not_reintroduce_database_or_filesystem_access_to_compose_ui(self):
         sources = []
         for path in (HOME, DETAILS, SEARCH):
