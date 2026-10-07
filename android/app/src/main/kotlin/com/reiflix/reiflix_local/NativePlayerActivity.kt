@@ -3991,6 +3991,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             enabled && intent.getBooleanExtra("canNext", false)
         findViewByTag<TextView>("reiflix_previous_episode")?.isEnabled =
             enabled && intent.getBooleanExtra("canPrevious", false)
+        syncComposePlayerUiState()
     }
 
     private fun publishNavigationTransitionDiagnostic(
