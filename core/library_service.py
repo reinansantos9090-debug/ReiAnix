@@ -865,13 +865,7 @@ class LibraryService:
                     reason="hydrate_materialized",
                 )
             if status == 'manual' and not anilist_id:
-                result = {'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached}
-                hydrated.append(result)
-                if callable(on_item):
-                    try:
-                        on_item(result)
-                    except Exception:
-                        logger.debug('Metadata hydration callback failed', exc_info=True)
+                hydrated.append({'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached})
                 continue
             entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
             if cached.get('id'):
