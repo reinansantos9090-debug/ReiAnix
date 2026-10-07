@@ -21,6 +21,7 @@ class NativeSearchTests(unittest.TestCase):
         self.assertIn("val searchCatalog", source)
         self.assertIn("val searchGenres", source)
         self.assertIn("ReiAnixSearchEngine.buildIndex(animes)", source)
+        self.assertIn("val searchCatalog", source)
         self.assertIn("combine(", source)
         self.assertIn("fun setSearchQuery", source)
         self.assertNotIn("LibraryStore(", source)
@@ -80,6 +81,7 @@ class NativeSearchTests(unittest.TestCase):
         self.assertIn("val hasLocalCatalog = browseAnimes.isNotEmpty()", source)
         self.assertIn("searchState.query != searchQuery", source)
         self.assertIn("SearchQueryLoadingState", source)
+        self.assertIn("!searchState.filters.hasAnyFilter", source)
         self.assertIn("FocusRequester", source)
         self.assertIn("focusRequester.requestFocus()", source)
 
@@ -100,6 +102,7 @@ class NativeSearchTests(unittest.TestCase):
         self.assertIn("anime.nativeTitle", source)
         self.assertIn("anime.englishTitle", source)
         self.assertIn("normalizedAlternateTitles.any { it == normalizedQuery }", source)
+        self.assertIn("fun all(): List<ReiAnixAnimeUiModel>", source)
 
     def test_search_field_uses_shared_component(self):
         source = SEARCH.read_text(encoding="utf-8")
