@@ -428,8 +428,11 @@ private fun SearchResults(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(
-            minSize = LocalReiAnixResponsiveMetrics.current.gridItemMinWidth(cardSize),
-        ),
+            minSize = if (cardSize.equals("medium", ignoreCase = true)) {
+                LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium")
+            } else {
+                LocalReiAnixResponsiveMetrics.current.gridItemMinWidth(cardSize)
+            },
         state = listState,
         modifier = Modifier
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
