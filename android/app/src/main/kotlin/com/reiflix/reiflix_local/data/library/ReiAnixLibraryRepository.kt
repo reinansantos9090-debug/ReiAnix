@@ -5,6 +5,8 @@ import android.os.FileObserver
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
+import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilterEngine
+import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -71,6 +73,105 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 lastCommandAction = previous.lastCommandAction,
                 lastCommandStatus = previous.lastCommandStatus,
                 lastCommandError = previous.lastCommandError,
+            )
+        }
+
+        internal fun reconcilePagedState(
+            current: ReiAnixLibraryPagedUiState,
+            canonicalAnimes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
+            recountTotal: Boolean = false,
+        ): ReiAnixLibraryPagedUiState {
+            if (current.generation <= 0L || current.animes.isEmpty()) return current
+
+            val filters = ReiAnixLibraryFilters(
+                query = current.query,
+                selectedGenreKey = current.genreKey,
+                favoritesOnly = current.favoritesOnly,
+                watchingOnly = current.watchingOnly,
+                completedOnly = current.completedOnly,
+                sort = current.sort,
+            )
+            val loadedIds = current.animes.asSequence().map { it.id }.toHashSet()
+
+            // Replace only already-loaded entries. Items removed from canonical
+            // state disappear; items outside the window are not materialized.
+            val retained = buildList(current.animes.size) {
+                for (anime in canonicalAnimes) {
+                    if (anime.id in loadedIds &&
+                        ReiAnixLibraryFilterEngine.matches(anime, filters)
+                    ) {
+                        add(anime)
+                    }
+                }
+            }
+            val retainedIds = retained.asSequence().map { it.id }.toHashSet()
+
+            // Discover a bounded set of new candidates from the snapshot that is
+            // already in memory. Never materialize another full catalog/page set.
+            val candidateLimit = maxOf(36, current.animes.size * 2)
+            val candidates = buildList(candidateLimit) {
+                for (anime in canonicalAnimes) {
+                    if (size >= candidateLimit) break
+                    if (anime.id !in loadedIds &&
+                        ReiAnixLibraryFilterEngine.matches(anime, filters)
+                    ) {
+                        add(anime)
+                    }
+                }
+            }
+
+            // Keep the same bounded window size. New compatible items enter in
+            // the selected order while the oldest tail item is displaced.
+            val merged = ReiAnixLibraryFilterEngine
+                .sortForLibrary(retained + candidates, current.sort)
+                .distinctBy { it.id }
+                .take(current.animes.size)
+
+            val removedLoaded = current.animes.size - retained.size
+            val admittedNew = merged.count { it.id !in retainedIds }
+            val nextTotal = if (recountTotal) {
+                canonicalAnimes.count { ReiAnixLibraryFilterEngine.matches(it, filters) }
+            } else {
+                (current.totalCount - removedLoaded + admittedNew).coerceAtLeast(merged.size)
+            }
+
+            return current.copy(
+                animes = merged,
+                totalCount = nextTotal,
+                loadedPage = current.loadedPage,
+                hasMore = current.hasMore || nextTotal > merged.size,
+            )
+        }
+
+        internal fun applyLibraryPage(
+            current: ReiAnixLibraryPagedUiState,
+            page: ReiAnixLibrarySnapshotCodec.LibraryPageResult,
+        ): ReiAnixLibraryPagedUiState? {
+            if (page.generation != current.generation) return null
+            val currentDistinct = current.animes.distinctBy { it.id }
+            val seenIds = currentDistinct.asSequence().map { it.id }.toHashSet()
+            val merged = if (page.page == 0) {
+                page.items.distinctBy { it.id }
+            } else {
+                buildList(currentDistinct.size + page.items.size) {
+                    addAll(currentDistinct)
+                    page.items.forEach { item ->
+                        if (seenIds.add(item.id)) add(item)
+                    }
+                }
+            }
+            return current.copy(
+                status = if (page.total > 0) {
+                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                } else {
+                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                },
+                animes = merged,
+                totalCount = page.total,
+                hasMore = page.hasMore,
+                loadedPage = maxOf(current.loadedPage, page.page),
+                isLoading = false,
+                error = null,
             )
         }
     }
