@@ -247,6 +247,23 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(3, payload["revision"])
             self.assertEqual("third", payload["reason"])
 
+    def test_bounded_library_page_projection_is_incremental(self):
+        source = self.anime_fixture()
+        page = {
+            "page": 2,
+            "page_size": 36,
+            "total": 91,
+            "has_more": True,
+            "items": [source],
+        }
+        projected = ComposeLibraryBridge.project_library_page(page, generation=7)
+        self.assertEqual("library_page", projected["kind"])
+        self.assertEqual(7, projected["generation"])
+        self.assertEqual(2, projected["page"])
+        self.assertEqual(91, projected["total"])
+        self.assertTrue(projected["has_more"])
+        self.assertEqual([7], [item["id"] for item in projected["items"]])
+
     def test_command_results_are_small_and_atomic(self):
         with tempfile.TemporaryDirectory() as directory:
             bridge = ComposeLibraryBridge(directory, FakeLibrary([]), FakeStore())
