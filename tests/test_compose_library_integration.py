@@ -66,6 +66,14 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         ):
             self.assertIn(token, worker)
 
+    def test_repository_snapshot_reconciliation_does_not_reset_to_first_page(self):
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
+        self.assertIn("reconcilePagedState", repository)
+        self.assertIn("loadedPage = current.loadedPage", repository)
+        self.assertIn("hasMore = current.hasMore ||", repository)
+        self.assertNotIn("animes = firstPage", repository)
+        self.assertNotIn("animes.take(36)", repository)
+
     def test_library_page_worker_is_bounded_and_runs_off_ui_thread(self):
         worker = self._command_worker_block()
         start = worker.index('elif action == "load_library_page":')
