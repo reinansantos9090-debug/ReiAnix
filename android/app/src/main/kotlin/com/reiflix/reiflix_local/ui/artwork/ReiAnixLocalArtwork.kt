@@ -1,14 +1,7 @@
 package com.reiflix.reiflix_local.ui.artwork
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
-import android.provider.DocumentsContract
-import android.provider.OpenableColumns
 import android.util.Log
-import android.util.LruCache
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -17,63 +10,67 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.platform.LocalDensity
+import coil.ImageLoader
+import coil.compose.SubcomposeAsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import coil.size.Dimension
+import coil.size.Size
 import com.reiflix.reiflix_local.ui.ReiAnixArtworkMissingState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.InputStream
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private sealed interface LocalArtworkLoadState {
-    data object Loading : LocalArtworkLoadState
-    data class Ready(val bitmap: ImageBitmap) : LocalArtworkLoadState
-    data object Missing : LocalArtworkLoadState
-    data object Error : LocalArtworkLoadState
-}
-
-private sealed interface LocalArtworkDecodeResult {
-    data class Ready(val bitmap: ImageBitmap) : LocalArtworkDecodeResult
-    data object Missing : LocalArtworkDecodeResult
-    data object Error : LocalArtworkDecodeResult
-}
-
-private data class LocalArtworkRequestKey(
-    val identity: String,
-    val localPath: String?,
-    val fallbackLocalPath: String?,
-    val targetMaxDimensionPx: Int,
-)
-
 private const val TAG = "ReiAnixLocalArtwork"
 
 /**
- * Offline artwork renderer for Compose.
+ * One process-wide Coil loader for Compose artwork.
  *
- * The source is the existing local/cache path from the ReiAnix projection.
- * External URLs are deliberately not fetched by the Home UI.
+ * ArtworkEngine remains responsible for persistent artwork discovery and
+ * materialization. Coil is the asynchronous renderer/transport for the current
+ * viewport and keeps its disk cache disabled, so there is no second persistent
+ * artwork cache/source of truth.
+ */
+private object ReiAnixArtworkImageLoader {
+    @Volatile
+    private var instance: ImageLoader? = null
+
+    fun get(context: Context): ImageLoader {
+        instance?.let { return it }
+        return synchronized(this) {
+            instance ?: ImageLoader.Builder(context.applicationContext)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.DISABLED)
+                .build()
+                .also { instance = it }
+        }
+    }
+}
+
+/**
+ * Artwork resolution order:
+ * 1. materialized/local path
+ * 2. cache/fallback local path
+ * 3. external URL
+ * 4. external fallback URL
  *
- * ArtworkEngine remains the owner of persistent artwork discovery/cache.
- * This composable only decodes the already-resolved local/cache reference for
- * the pixels actually needed by its measured layout; it does not introduce a
- * second disk cache or a second artwork source of truth.
+ * A failed candidate advances once. There is no retry loop and no permanent
+ * "missing" state while a viable later candidate exists.
  */
 @Composable
 fun ReiAnixLocalArtwork(
@@ -86,6 +83,8 @@ fun ReiAnixLocalArtwork(
     shape: Shape = ReiAnixTokens.Shapes.artwork,
     identity: String? = null,
     fallbackLocalPath: String? = null,
+    externalUrl: String? = null,
+    fallbackExternalUrl: String? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -106,108 +105,106 @@ fun ReiAnixLocalArtwork(
         } else {
             0
         }
-        val targetMaxDimensionPx = resolveTargetDimensionPx(
+
+        val requestWidthPx = requestDimension(
+            measured = measuredWidthPx,
+            maxDimensionPx = maxDimensionPx,
+        )
+        val requestHeightPx = requestDimension(
+            measured = measuredHeightPx,
+            maxDimensionPx = maxDimensionPx,
+        )
+        val fallbackDimensionPx = resolveTargetDimensionPx(
             widthPx = measuredWidthPx,
             heightPx = measuredHeightPx,
             maxDimensionPx = maxDimensionPx,
         )
+        val effectiveWidthPx = if (requestWidthPx > 0) requestWidthPx else fallbackDimensionPx
+        val effectiveHeightPx = if (requestHeightPx > 0) requestHeightPx else fallbackDimensionPx
 
-        val stableIdentity = identity?.trim().takeUnless { it.isNullOrEmpty() }
-            ?: localPath?.trim().orEmpty()
-        val imageState by produceState<LocalArtworkLoadState>(
-            initialValue = if (
-                (localPath.isNullOrBlank() && fallbackLocalPath.isNullOrBlank()) ||
-                targetMaxDimensionPx <= 0
-            ) {
-                LocalArtworkLoadState.Missing
-            } else {
-                LocalArtworkLoadState.Loading
-            },
-            key1 = LocalArtworkRequestKey(
-                identity = stableIdentity,
-                localPath = localPath,
-                fallbackLocalPath = fallbackLocalPath,
-                targetMaxDimensionPx = targetMaxDimensionPx,
-            ),
+        val candidates = remember(
+            localPath,
+            fallbackLocalPath,
+            externalUrl,
+            fallbackExternalUrl,
         ) {
-            val candidates = listOf(localPath, fallbackLocalPath)
+            listOf(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl)
                 .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
                 .distinct()
-
-            if (candidates.isEmpty() || targetMaxDimensionPx <= 0) {
-                value = LocalArtworkLoadState.Missing
-                return@produceState
-            }
-
-            val decoded = try {
-                withContext(Dispatchers.IO) {
-                    var sawError = false
-                    var resolved: LocalArtworkDecodeResult? = null
-                    for (candidate in candidates) {
-                        when (val result = decodeLocalArtwork(
-                            context = context,
-                            rawPath = candidate,
-                            maxDimensionPx = targetMaxDimensionPx,
-                            identity = stableIdentity,
-                        )) {
-                            is LocalArtworkDecodeResult.Ready -> {
-                                resolved = result
-                                break
-                            }
-                            LocalArtworkDecodeResult.Error -> sawError = true
-                            LocalArtworkDecodeResult.Missing -> Unit
-                        }
-                    }
-                    resolved ?: if (sawError) {
-                        LocalArtworkDecodeResult.Error
-                    } else {
-                        LocalArtworkDecodeResult.Missing
-                    }
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (exception: Exception) {
-                Log.w(TAG, "Artwork decode failed for local reference(s)", exception)
-                LocalArtworkDecodeResult.Error
-            }
-
-            value = when (decoded) {
-                is LocalArtworkDecodeResult.Ready -> LocalArtworkLoadState.Ready(decoded.bitmap)
-                LocalArtworkDecodeResult.Missing -> LocalArtworkLoadState.Missing
-                LocalArtworkDecodeResult.Error -> LocalArtworkLoadState.Error
-            }
+        }
+        val stableIdentity = remember(
+            identity,
+            localPath,
+            fallbackLocalPath,
+            externalUrl,
+            fallbackExternalUrl,
+        ) {
+            identity?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: candidates.firstOrNull().orEmpty()
         }
 
-        when (val state = imageState) {
-            LocalArtworkLoadState.Loading -> {
-                ArtworkLoadingPlaceholder(label = placeholder)
+        var candidateIndex by remember(stableIdentity, candidates) {
+            mutableIntStateOf(0)
+        }
+        val source = candidates.getOrNull(candidateIndex)
+
+        if (source == null || effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
+            ReiAnixArtworkMissingState(label = placeholder)
+        } else {
+            val request = remember(
+                stableIdentity,
+                source,
+                effectiveWidthPx,
+                effectiveHeightPx,
+            ) {
+                ImageRequest.Builder(context)
+                    .data(source)
+                    .size(
+                        Size(
+                            Dimension.Pixels(effectiveWidthPx),
+                            Dimension.Pixels(effectiveHeightPx),
+                        ),
+                    )
+                    .crossfade(false)
+                    .memoryCacheKey(
+                        stableIdentity + "|" +
+                            source + "|" +
+                            effectiveWidthPx + "x" + effectiveHeightPx,
+                    )
+                    .build()
             }
 
-            is LocalArtworkLoadState.Ready -> {
-                Image(
-                    bitmap = state.bitmap,
-                    contentDescription = contentDescription,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = contentScale,
-                )
-            }
-
-            LocalArtworkLoadState.Missing -> {
-                ReiAnixArtworkMissingState(label = placeholder)
-            }
-
-            LocalArtworkLoadState.Error -> {
-                ReiAnixArtworkMissingState(label = "Não foi possível carregar a arte")
-            }
+            SubcomposeAsyncImage(
+                model = request,
+                imageLoader = ReiAnixArtworkImageLoader.get(context),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale,
+                loading = {
+                    ArtworkLoadingPlaceholder(label = placeholder)
+                },
+                error = {
+                    if (candidateIndex < candidates.lastIndex) {
+                        ArtworkLoadingPlaceholder(label = placeholder)
+                    } else {
+                        ReiAnixArtworkMissingState(label = placeholder)
+                    }
+                },
+                onError = { state ->
+                    Log.w(
+                        TAG,
+                        "Artwork candidate failed for " + stableIdentity,
+                        state.result.throwable,
+                    )
+                    if (candidateIndex < candidates.lastIndex) {
+                        candidateIndex += 1
+                    }
+                },
+            )
         }
     }
 }
 
-/**
- * Caps decoding by both the real measured layout and the existing caller
- * safety limit. This preserves the historical 320 px thumbnail cap while
- * avoiding unnecessary poster resolution when the actual slot is smaller.
- */
 @Composable
 private fun ArtworkLoadingPlaceholder(
     label: String,
@@ -231,90 +228,6 @@ private fun ArtworkLoadingPlaceholder(
     }
 }
 
-private val ARTWORK_MEMORY_CACHE: LruCache<String, ImageBitmap> by lazy {
-    object : LruCache<String, ImageBitmap>(artworkMemoryCacheKb()) {
-        override fun sizeOf(key: String, value: ImageBitmap): Int {
-            return ((value.width.toLong() * value.height.toLong() * 4L) / 1024L)
-                .coerceAtLeast(1L)
-                .coerceAtMost(Int.MAX_VALUE.toLong())
-                .toInt()
-        }
-    }
-}
-
-private fun artworkMemoryCacheKb(): Int {
-    val maxMemoryKb = Runtime.getRuntime().maxMemory()
-        .div(1024L)
-        .coerceAtLeast(16_384L)
-    return (maxMemoryKb / 32L)
-        .coerceIn(4_096L, 16_384L)
-        .toInt()
-}
-
-private fun buildDecodeCacheKey(
-    identity: String,
-    rawPath: String,
-    sourceVersion: String,
-    maxDimensionPx: Int,
-    config: String,
-): String =
-    identity.trim() + "|" +
-        rawPath.trim() + "|" +
-        sourceVersion + "|" +
-        maxDimensionPx + "|" +
-        config
-
-private fun localArtworkSourceVersion(
-    context: Context,
-    rawPath: String,
-): String {
-    if (rawPath.startsWith("content://")) {
-        return runCatching {
-            context.contentResolver.query(
-                Uri.parse(rawPath),
-                arrayOf(OpenableColumns.SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    val modifiedIndex = cursor.getColumnIndex(
-                        DocumentsContract.Document.COLUMN_LAST_MODIFIED,
-                    )
-                    val size = if (sizeIndex >= 0) cursor.getLong(sizeIndex) else -1L
-                    val modified = if (modifiedIndex >= 0) cursor.getLong(modifiedIndex) else -1L
-                    "$size:$modified"
-                } else {
-                    "unresolved"
-                }
-            } ?: "unresolved"
-        }.getOrElse { "unresolved" }
-    }
-
-    return runCatching {
-        val file = File(rawPath)
-        file.length().toString() + ":" + file.lastModified()
-    }.getOrElse { "unresolved" }
-}
-
-private fun preferredBitmapConfig(context: Context, rawPath: String): Bitmap.Config {
-    val lower = rawPath.lowercase()
-    val isJpegByPath = lower.endsWith(".jpg") || lower.endsWith(".jpeg")
-    val isJpegByMime = if (lower.startsWith("content://")) {
-        runCatching {
-            context.contentResolver.getType(Uri.parse(rawPath))
-        }.getOrNull()?.equals("image/jpeg", ignoreCase = true) == true
-    } else {
-        false
-    }
-    return if (isJpegByPath || isJpegByMime) {
-        Bitmap.Config.RGB_565
-    } else {
-        Bitmap.Config.ARGB_8888
-    }
-}
-
 @Composable
 fun ReiAnixPoster(
     localPath: String?,
@@ -323,6 +236,8 @@ fun ReiAnixPoster(
     identity: String? = null,
     fallbackLocalPath: String? = null,
     maxDimensionPx: Int = 512,
+    externalUrl: String? = null,
+    fallbackExternalUrl: String? = null,
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -334,6 +249,8 @@ fun ReiAnixPoster(
         shape = ReiAnixTokens.Shapes.artwork,
         identity = identity,
         fallbackLocalPath = fallbackLocalPath,
+        externalUrl = externalUrl,
+        fallbackExternalUrl = fallbackExternalUrl,
     )
 }
 
@@ -345,6 +262,8 @@ fun ReiAnixBackdrop(
     identity: String? = null,
     fallbackLocalPath: String? = null,
     maxDimensionPx: Int = 1024,
+    externalUrl: String? = null,
+    fallbackExternalUrl: String? = null,
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -356,6 +275,8 @@ fun ReiAnixBackdrop(
         shape = ReiAnixTokens.Shapes.hero,
         identity = identity,
         fallbackLocalPath = fallbackLocalPath,
+        externalUrl = externalUrl,
+        fallbackExternalUrl = fallbackExternalUrl,
     )
 }
 
@@ -366,6 +287,8 @@ fun ReiAnixEpisodeThumbnail(
     modifier: Modifier = Modifier,
     identity: String? = null,
     fallbackLocalPath: String? = null,
+    externalUrl: String? = null,
+    fallbackExternalUrl: String? = null,
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -377,7 +300,14 @@ fun ReiAnixEpisodeThumbnail(
         shape = ReiAnixTokens.Shapes.small,
         identity = identity,
         fallbackLocalPath = fallbackLocalPath,
+        externalUrl = externalUrl,
+        fallbackExternalUrl = fallbackExternalUrl,
     )
+}
+
+private fun requestDimension(measured: Int, maxDimensionPx: Int): Int {
+    if (maxDimensionPx <= 0) return 0
+    return if (measured > 0) min(measured, maxDimensionPx) else 0
 }
 
 internal fun resolveTargetDimensionPx(
@@ -388,63 +318,6 @@ internal fun resolveTargetDimensionPx(
     if (maxDimensionPx <= 0) return 0
     val measured = max(widthPx, heightPx)
     return if (measured > 0) min(measured, maxDimensionPx) else maxDimensionPx
-}
-
-private fun decodeLocalArtwork(
-    context: Context,
-    rawPath: String?,
-    maxDimensionPx: Int,
-    identity: String,
-): LocalArtworkDecodeResult {
-    val path = rawPath?.trim().orEmpty()
-    if (path.isEmpty() || maxDimensionPx <= 0) {
-        return LocalArtworkDecodeResult.Missing
-    }
-
-    val bounds = try {
-        openArtworkStream(context, path)?.use { stream ->
-            BitmapFactory.Options().also { options ->
-                options.inJustDecodeBounds = true
-                BitmapFactory.decodeStream(stream, null, options)
-            }
-        }
-    } catch (exception: Exception) {
-        Log.w(TAG, "Artwork source could not be inspected", exception)
-        return LocalArtworkDecodeResult.Error
-    } ?: return LocalArtworkDecodeResult.Missing
-
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-        return LocalArtworkDecodeResult.Error
-    }
-
-    val preferredConfig = preferredBitmapConfig(context, path)
-    val cacheKey = buildDecodeCacheKey(
-        identity = identity,
-        rawPath = path,
-        sourceVersion = localArtworkSourceVersion(context, path),
-        maxDimensionPx = maxDimensionPx,
-        config = preferredConfig.name,
-    )
-    ARTWORK_MEMORY_CACHE.get(cacheKey)?.let { cached ->
-        return LocalArtworkDecodeResult.Ready(cached)
-    }
-
-    val sample = calculateSampleSize(bounds.outWidth, bounds.outHeight, maxDimensionPx)
-    val bitmap = try {
-        openArtworkStream(context, path)?.use { stream ->
-            val options = BitmapFactory.Options().apply {
-                inSampleSize = sample
-                inPreferredConfig = preferredConfig
-            }
-            BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
-        }
-    } catch (exception: Exception) {
-        Log.w(TAG, "Artwork pixels could not be decoded", exception)
-        return LocalArtworkDecodeResult.Error
-    } ?: return LocalArtworkDecodeResult.Error
-
-    ARTWORK_MEMORY_CACHE.put(cacheKey, bitmap)
-    return LocalArtworkDecodeResult.Ready(bitmap)
 }
 
 internal fun calculateSampleSize(width: Int, height: Int, maxDimensionPx: Int): Int {
@@ -458,10 +331,3 @@ internal fun calculateSampleSize(width: Int, height: Int, maxDimensionPx: Int): 
     }
     return sample
 }
-
-private fun openArtworkStream(context: Context, path: String): InputStream? =
-    if (path.startsWith("content://", ignoreCase = true)) {
-        context.contentResolver.openInputStream(Uri.parse(path))
-    } else {
-        File(path).takeIf { it.isFile && it.canRead() }?.inputStream()
-    }
