@@ -191,13 +191,13 @@ fun ReiAnixOrganizeScreen(
                 if (state.scanInProgress) {
                     ReiAnixScannerInProgressState(
                         scanState = state.scanState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                 } else {
                     ReiAnixLoadingState(
                         title = "Carregando Organizar",
                         message = "Lendo o catálogo local…",
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                 }
             }
@@ -208,7 +208,7 @@ fun ReiAnixOrganizeScreen(
                     message = "O acesso configurado ao armazenamento não está disponível agora. Isso não significa que a biblioteca esteja vazia.",
                     actionLabel = "Gerenciar armazenamento",
                     onAction = onOpenStorageAccess,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             }
 
