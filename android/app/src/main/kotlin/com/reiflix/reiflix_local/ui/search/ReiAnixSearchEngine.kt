@@ -13,6 +13,12 @@ import java.util.Locale
 class ReiAnixSearchIndex private constructor(
     private val documents: List<SearchDocument>,
 ) {
+    /**
+     * Returns the canonical, already-deduplicated documents in index order.
+     * Used only when the user activates search filters without entering text.
+     */
+    fun all(): List<ReiAnixAnimeUiModel> = documents.map { it.anime }
+
     fun search(rawQuery: String): List<ReiAnixAnimeUiModel> {
         val terms = normalizeSearchText(rawQuery)
             .split(' ')
