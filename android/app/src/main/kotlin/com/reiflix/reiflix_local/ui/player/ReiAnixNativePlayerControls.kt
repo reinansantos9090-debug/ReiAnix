@@ -16,13 +16,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -203,7 +206,8 @@ fun ReiAnixNativePlayerCenterControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlayerSeekIconButton(
-                icon = Icons.Filled.FastRewind,
+                icon = Icons.Filled.Replay10,
+                alternateIcon = Icons.Filled.FastRewind,
                 seconds = seekSeconds,
                 description = "Voltar $seekSeconds segundos",
                 onClick = { onSeekRelative(-seekSeconds * 1_000L) },
@@ -255,7 +259,8 @@ fun ReiAnixNativePlayerCenterControls(
             }
 
             PlayerSeekIconButton(
-                icon = Icons.Filled.FastForward,
+                icon = Icons.Filled.Forward10,
+                alternateIcon = Icons.Filled.FastForward,
                 seconds = seekSeconds,
                 description = "Avançar $seekSeconds segundos",
                 onClick = { onSeekRelative(seekSeconds * 1_000L) },
@@ -267,6 +272,7 @@ fun ReiAnixNativePlayerCenterControls(
 @Composable
 private fun PlayerSeekIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    alternateIcon: androidx.compose.ui.graphics.vector.ImageVector,
     seconds: Long,
     description: String,
     onClick: () -> Unit,
@@ -280,19 +286,28 @@ private fun PlayerSeekIconButton(
                 role = Role.Button
             },
     ) {
-        Box(contentAlignment = Alignment.Center) {
+        if (seconds == 10L) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = ReiAnixTokens.Colors.playerControl,
                 modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
             )
-            Text(
-                text = seconds.toString(),
-                style = ReiAnixTokens.TypographyTokens.chip,
-                color = ReiAnixTokens.Colors.playerControl,
-                modifier = Modifier.align(Alignment.BottomEnd),
-            )
+        } else {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = alternateIcon,
+                    contentDescription = null,
+                    tint = ReiAnixTokens.Colors.playerControl,
+                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                )
+                Text(
+                    text = seconds.toString(),
+                    style = ReiAnixTokens.TypographyTokens.chip,
+                    color = ReiAnixTokens.Colors.playerControl,
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                )
+            }
         }
     }
 }
@@ -304,7 +319,6 @@ fun ReiAnixNativePlayerBottomControls(
     onToggleLock: () -> Unit,
     onResize: () -> Unit,
     onSource: () -> Unit,
-    onPrevious: () -> Unit,
     onNext: () -> Unit,
 ) {
     val duration = state.durationMs.takeIf { it > 0L } ?: 0L
@@ -438,28 +452,21 @@ fun ReiAnixNativePlayerBottomControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlayerBottomAction(
-                icon = Icons.Filled.SkipPrevious,
-                label = "Anterior",
-                contentDescription = "Episódio anterior",
-                onClick = onPrevious,
-                enabled = state.canPrevious && !state.episodeTransitionInProgress,
-            )
-            PlayerBottomAction(
                 icon = Icons.Filled.Lock,
-                label = "Bloquear",
+                label = "Bloquear toques",
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
                 enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
-                glyph = "⛶",
+                icon = Icons.Filled.Fullscreen,
                 label = "Redimensionar",
                 contentDescription = "Redimensionar vídeo",
                 onClick = onResize,
                 enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
-                glyph = "☷",
+                icon = Icons.Filled.Source,
                 label = "Fonte",
                 contentDescription = buildString {
                     append("Fonte e opções do player")
@@ -478,11 +485,12 @@ fun ReiAnixNativePlayerBottomControls(
             )
             PlayerBottomAction(
                 icon = Icons.Filled.SkipNext,
-                label = "Próximo",
+                label = "Próximo episódio",
                 contentDescription = "Próximo episódio",
                 onClick = onNext,
                 enabled = state.canNext && !state.episodeTransitionInProgress,
             )
+        }
         }
     }
 }
