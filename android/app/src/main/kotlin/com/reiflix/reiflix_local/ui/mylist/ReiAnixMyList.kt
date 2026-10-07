@@ -366,69 +366,16 @@ private fun ReiAnixMyListItem(
     onOpenDetails: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
-    val episodes = anime.contentEpisodes
-    val currentEpisode = anime.playbackTargetEpisodeId
-        ?.let { targetId -> episodes.firstOrNull { it.id == targetId } }
-        ?: episodes.firstOrNull {
-            it.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
-        }
-    val progress = currentEpisode
-        ?.takeIf { !it.isCompleted && it.progressFraction > 0f }
-        ?.progressFraction
-        ?: episodes.firstOrNull {
-            it.progressFraction > 0f && !it.isCompleted
-        }?.progressFraction
-    val isWatching = episodes.any {
-        it.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
-    }
-    val isCompleted = episodes.isNotEmpty() && episodes.all { episode ->
-        episode.media.availability !in setOf(
-            com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.MISSING,
-            com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.SCOPE_UNAVAILABLE,
-            com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.VOLUME_UNAVAILABLE,
-        ) && episode.isCompleted
-    }
-    val availableCount = episodes.count {
-        it.media.availability == com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE
-    }
-    val currentEpisodeLabel = currentEpisode?.let { episode ->
-        val number = episode.number?.let { value ->
-            if (value % 1.0 == 0.0) {
-                "E" + value.toInt().toString().padStart(2, '0')
-            } else {
-                "E" + value.toString()
-            }
-        }
-        val title = episode.displayTitle.trim().takeIf { it.isNotEmpty() }
-        listOfNotNull(number, title).joinToString(" • ").takeIf { it.isNotBlank() }
-    }
-
-    val metadata = buildList {
-        anime.year?.let { add(it.toString()) }
-        if (availableCount > 0) {
-            add(
-                if (availableCount == 1) "1 episódio"
-                else "$availableCount episódios",
-            )
-        }
-        currentEpisodeLabel?.let { add(it) }
-    }
-
+    // Minha Lista intentionally reuses the canonical anime card used by
+    // Biblioteca/Home/Search. Favorite, progress and consumption state remain
+    // driven by the same persisted catalog projection.
     ReiAnixAnimeCard(
         anime = anime,
         modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
         onClick = onOpenDetails,
-        bottomBadgeText = when {
-            isWatching -> "Assistindo"
-            isCompleted -> "Concluído"
-            else -> null
-        },
         onFavoriteClick = onToggleFavorite,
     )
 }
-
-private fun myListCountLabel(count: Int): String =
-    if (count == 1) "1 título salvo" else count.toString() + " títulos salvos"
 
 private fun myListCountLabel(count: Int): String =
     if (count == 1) "1 título salvo" else count.toString() + " títulos salvos"
