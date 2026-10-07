@@ -99,6 +99,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
 import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveBreakpoints
 import com.reiflix.reiflix_local.ui.theme.ReiAnixWindowWidthClass
 import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
