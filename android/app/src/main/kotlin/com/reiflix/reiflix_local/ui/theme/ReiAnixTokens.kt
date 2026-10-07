@@ -167,17 +167,7 @@ object ReiAnixTokens {
         val continueCardWidth = 250.dp
         val continuePosterWidth = 76.dp
         val continuePosterHeight = 108.dp
-        // Minha Lista follows the reference's compact landscape thumbnail rather than
-        // the portrait poster used by the generic card grid.
-        val myListPosterWidth = 96.dp
-        val myListPosterHeight = 64.dp
-        val myListRowMinHeight = 86.dp
         val posterAspectRatio = 0.7f
-        // Three-column phone layouts stay viable while Adaptive still scales the grid
-        // on wider/landscape surfaces. A separate cap prevents tablet posters from
-        // growing indefinitely.
-        val libraryGridMinWidth = 96.dp
-        val searchGridMinWidth = 150.dp
         val episodeThumbnailWidth = 120.dp
         val episodeThumbnailHeight = 68.dp
         val detailsEpisodeThumbnailFraction = 0.27f
