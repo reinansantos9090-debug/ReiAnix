@@ -191,6 +191,16 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 ReiAnixLibrarySnapshotCodec.decode(raw, _state.value.revision)
             }.onSuccess { decoded ->
                 _state.value = mergeSnapshotState(decoded, _state.value)
+                val currentPaged = _pagedLibraryState.value
+                if (currentPaged.animes.isNotEmpty() && currentPaged.generation > 0L) {
+                    val latestById = _state.value.animes.associateBy { it.id }
+                    val patched = currentPaged.animes.mapNotNull { existing ->
+                        latestById[existing.id]
+                    }
+                    if (patched != currentPaged.animes) {
+                        _pagedLibraryState.value = currentPaged.copy(animes = patched)
+                    }
+                }
             }.onFailure { error ->
                 val message = error.message.orEmpty()
                 if (message.startsWith("Stale Compose library snapshot")) return@onFailure
