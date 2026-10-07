@@ -2347,7 +2347,8 @@ class LibraryStore:
         self, *, page=0, page_size=36, query="", state="Todos", genre="Todos",
         sort="Mais recentes", tag="Todos", media_type="Todos", season=None,
         episode_type="Todos", source_kind="Todos", availability="Todos",
-        metadata="Todos", artwork="Todos", _hydrate=True, _include_total=True,
+        metadata="Todos", artwork="Todos", favorites_only=False,
+        watching_only=False, completed_only=False, _hydrate=True, _include_total=True,
     ):
         """Return one bounded catalog page directly from SQLite."""
         started = time.perf_counter()
@@ -2377,6 +2378,18 @@ class LibraryStore:
             where.append(state_sql[state])
         elif state == "Sem capa":
             where.append("NULLIF(TRIM(COALESCE(a.cover_cache,'')),'') IS NULL AND NULLIF(TRIM(COALESCE(a.cover_url,'')),'') IS NULL AND NULLIF(TRIM(COALESCE(a.banner_url,'')),'') IS NULL AND NOT EXISTS (SELECT 1 FROM artwork ar WHERE ar.entity_id=CAST(a.id AS TEXT) AND ar.status='ready' AND NULLIF(TRIM(COALESCE(ar.local_path,'')),'') IS NOT NULL)")
+        # Compose Library may combine the three boolean filters. Keep the
+        # SQL-side filtering bounded so pagination remains complete instead of
+        # filtering only the already-loaded client page.
+        if favorites_only:
+            where.append("a.favorite=1")
+        if watching_only:
+            where.append(f"EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND {in_progress_sql})")
+        if completed_only:
+            where.append(
+                f"EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND e.missing=0) "
+                f"AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND e.missing=0 AND NOT {completed_sql})"
+            )
         media = str(media_type or "Todos")
         if media in {"Série/Anime", "Série", "Anime"}:
             where.append("a.media_kind!='movie' AND EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND LOWER(COALESCE(e.episode_type,'regular')) NOT IN ('special','ova','oad','ona','extra','movie'))")
