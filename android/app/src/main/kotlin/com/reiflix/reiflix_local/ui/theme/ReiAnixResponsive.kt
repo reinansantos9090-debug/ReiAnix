@@ -52,11 +52,18 @@ data class ReiAnixResponsiveMetrics(
     val settingsMaxWidth: Dp,
     val textMaxWidth: Dp,
 ) {
+    private fun preferredCardWidth(preference: String): Dp =
+        when (preference.trim().lowercase()) {
+            "small" -> ReiAnixTokens.Dimensions.cardWidthSmall
+            "large" -> ReiAnixTokens.Dimensions.cardWidthLarge
+            else -> ReiAnixTokens.Dimensions.cardWidthMedium
+        }
+
     fun libraryGridMinWidth(preference: String): Dp {
         val base = when (preference.trim().lowercase()) {
-            "small" -> 88.dp
-            "large" -> 128.dp
-            else -> 96.dp
+            "small" -> ReiAnixTokens.Dimensions.gridMinWidthSmall
+            "large" -> ReiAnixTokens.Dimensions.gridMinWidthLarge
+            else -> ReiAnixTokens.Dimensions.gridMinWidthMedium
         }
         return when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> base
@@ -66,16 +73,12 @@ data class ReiAnixResponsiveMetrics(
     }
 
     fun homeCardWidth(preference: String): Dp {
-        val base = when (preference.trim().lowercase()) {
-            "small" -> 92.dp
-            "large" -> 120.dp
-            else -> 100.dp
-        }
+        val base = preferredCardWidth(preference)
         return when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> base
             ReiAnixWindowWidthClass.MEDIUM -> maxOf(base, 146.dp)
             ReiAnixWindowWidthClass.EXPANDED -> maxOf(base, 160.dp)
-        }.coerceAtMost(184.dp)
+        }.coerceAtMost(ReiAnixTokens.Dimensions.gridMaxItemWidth)
     }
 
     val homeContinueCardWidth: Dp
@@ -92,12 +95,10 @@ data class ReiAnixResponsiveMetrics(
             ReiAnixWindowWidthClass.EXPANDED -> 320.dp
         }
 
+    fun gridItemMinWidth(preference: String): Dp = libraryGridMinWidth(preference)
+
     val myListGridMinWidth: Dp
-        get() = when (widthClass) {
-            ReiAnixWindowWidthClass.COMPACT -> 300.dp
-            ReiAnixWindowWidthClass.MEDIUM -> 320.dp
-            ReiAnixWindowWidthClass.EXPANDED -> 360.dp
-        }
+        get() = libraryGridMinWidth("medium")
 
     fun homeHeroHeight(): Dp {
         if (isLandscape || heightClass == ReiAnixWindowHeightClass.COMPACT) {
