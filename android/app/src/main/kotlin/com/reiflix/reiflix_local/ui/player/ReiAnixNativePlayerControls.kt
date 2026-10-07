@@ -18,6 +18,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,7 +56,8 @@ data class ReiAnixNativePlayerUiState(
     val episodeLabel: String = "Episódio",
     val technicalLine: String = "",
     val positionMs: Long = 0L,
-    val durationMs: Long = 0L,
+    val durationMs: Long = 0L
+    val bufferedPositionMs: Long = 0L,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
     val ended: Boolean = false,
@@ -59,7 +65,8 @@ data class ReiAnixNativePlayerUiState(
     val controlsVisible: Boolean = true,
     val locked: Boolean = false,
     val canNext: Boolean = false,
-    val canPrevious: Boolean = false,
+    val canPrevious: Boolean = false
+    val episodeTransitionInProgress: Boolean = false,
     val aspectLabel: String = "Ajustar",
     val playbackSpeed: Float = 1f,
     val safeTopPx: Int = 0,
@@ -183,6 +190,7 @@ fun ReiAnixNativePlayerTopControls(
 @Composable
 fun ReiAnixNativePlayerCenterControls(
     state: ReiAnixNativePlayerUiState,
+    seekSeconds: Long = 10L,
     onPlayPause: () -> Unit,
     onSeekRelative: (Long) -> Unit,
 ) {
@@ -194,11 +202,11 @@ fun ReiAnixNativePlayerCenterControls(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.PlayerDimensions.seekRowSpacing),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PlayerSeekGlyphButton(
-                glyph = "↶",
-                seconds = "10",
-                description = "Voltar 10 segundos",
-                onClick = { onSeekRelative(-10_000L) },
+            PlayerSeekIconButton(
+                icon = Icons.Filled.FastRewind,
+                seconds = seekSeconds,
+                description = "Voltar $seekSeconds segundos",
+                onClick = { onSeekRelative(-seekSeconds * 1_000L) },
             )
 
             Box(
@@ -218,43 +226,48 @@ fun ReiAnixNativePlayerCenterControls(
                             role = Role.Button
                         },
                 ) {
-                    if (state.isBuffering) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.bufferingIndicatorSize),
-                            color = ReiAnixTokens.Colors.playerControl,
-                            strokeWidth = ReiAnixTokens.PlayerDimensions.bufferingStroke,
-                        )
-                    } else if (state.isPlaying && !state.ended) {
-                        Text(
-                            text = "Ⅱ",
-                            style = ReiAnixTokens.TypographyTokens.playerPauseGlyph,
-                            color = ReiAnixTokens.Colors.playerControl,
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = null,
-                            tint = ReiAnixTokens.Colors.playerControl,
-                            modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
-                        )
+                    when {
+                        state.isBuffering -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.bufferingIndicatorSize),
+                                color = ReiAnixTokens.Colors.playerControl,
+                                strokeWidth = ReiAnixTokens.PlayerDimensions.bufferingStroke,
+                            )
+                        }
+                        state.isPlaying && !state.ended -> {
+                            Icon(
+                                imageVector = Icons.Filled.Pause,
+                                contentDescription = null,
+                                tint = ReiAnixTokens.Colors.playerControl,
+                                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                imageVector = Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = ReiAnixTokens.Colors.playerControl,
+                                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                            )
+                        }
                     }
                 }
             }
 
-            PlayerSeekGlyphButton(
-                glyph = "↷",
-                seconds = "10",
-                description = "Avançar 10 segundos",
-                onClick = { onSeekRelative(10_000L) },
+            PlayerSeekIconButton(
+                icon = Icons.Filled.FastForward,
+                seconds = seekSeconds,
+                description = "Avançar $seekSeconds segundos",
+                onClick = { onSeekRelative(seekSeconds * 1_000L) },
             )
         }
     }
 }
 
 @Composable
-private fun PlayerSeekGlyphButton(
-    glyph: String,
-    seconds: String,
+private fun PlayerSeekIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    seconds: Long,
     description: String,
     onClick: () -> Unit,
 ) {
@@ -268,16 +281,17 @@ private fun PlayerSeekGlyphButton(
             },
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = seconds,
-                style = ReiAnixTokens.TypographyTokens.chip,
-                color = ReiAnixTokens.Colors.playerControl,
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = ReiAnixTokens.Colors.playerControl,
+                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
             )
             Text(
-                text = glyph,
-                style = ReiAnixTokens.TypographyTokens.playerGlyph,
+                text = seconds.toString(),
+                style = ReiAnixTokens.TypographyTokens.chip,
                 color = ReiAnixTokens.Colors.playerControl,
-                modifier = Modifier.align(Alignment.TopStart),
+                modifier = Modifier.align(Alignment.BottomEnd),
             )
         }
     }
@@ -290,6 +304,7 @@ fun ReiAnixNativePlayerBottomControls(
     onToggleLock: () -> Unit,
     onResize: () -> Unit,
     onSource: () -> Unit,
+    onPrevious: () -> Unit,
     onNext: () -> Unit,
 ) {
     val duration = state.durationMs.takeIf { it > 0L } ?: 0L
@@ -350,42 +365,61 @@ fun ReiAnixNativePlayerBottomControls(
                 color = ReiAnixTokens.Colors.playerControl,
                 modifier = Modifier.widthIn(min = ReiAnixTokens.PlayerDimensions.timelineTimeWidth),
             )
-            Slider(
-                value = sliderFraction,
-                onValueChange = {
-                    userDragging = true
-                    sliderFraction = it.coerceIn(0f, 1f)
-                },
-                onValueChangeFinished = {
-                    if (duration > 0L) {
-                        onSeekTo(
-                            (sliderFraction * duration.toFloat())
-                                .toLong()
-                                .coerceIn(0L, duration),
-                        )
-                    }
-                    userDragging = false
-                },
-                enabled = duration > 0L,
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = ReiAnixTokens.PlayerDimensions.timelineHeight)
-                    .semantics {
-                        contentDescription = "Barra de progresso do vídeo"
-                        stateDescription = if (duration > 0L) {
-                            PlayerTimeFormatter.format(displayPosition) +
-                                " de " + PlayerTimeFormatter.format(duration)
-                        } else {
-                            "Duração indisponível"
-                        }
+                    .heightIn(min = ReiAnixTokens.PlayerDimensions.timelineHeight),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                val bufferedFraction = if (duration > 0L) {
+                    (state.bufferedPositionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+                if (bufferedFraction > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(bufferedFraction)
+                            .height(ReiAnixTokens.PlayerDimensions.timelineBufferHeight)
+                            .background(ReiAnixTokens.Colors.playerControl.copy(alpha = 0.22f)),
+                    )
+                }
+                Slider(
+                    value = sliderFraction,
+                    onValueChange = {
+                        userDragging = true
+                        sliderFraction = it.coerceIn(0f, 1f)
                     },
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = MaterialTheme.colorScheme.outline,
-                ),
-                steps = 0,
-            )
+                    onValueChangeFinished = {
+                        if (duration > 0L) {
+                            onSeekTo(
+                                (sliderFraction * duration.toFloat())
+                                    .toLong()
+                                    .coerceIn(0L, duration),
+                            )
+                        }
+                        userDragging = false
+                    },
+                    enabled = duration > 0L,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            contentDescription = "Barra de progresso do vídeo"
+                            stateDescription = if (duration > 0L) {
+                                PlayerTimeFormatter.format(displayPosition) +
+                                    " de " + PlayerTimeFormatter.format(duration)
+                            } else {
+                                "Duração indisponível"
+                            }
+                        },
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.outline,
+                    ),
+                    steps = 0,
+                )
+            }
             Text(
                 text = if (duration > 0L) PlayerTimeFormatter.format(duration) else "--:--",
                 style = ReiAnixTokens.TypographyTokens.playerTime,
@@ -404,16 +438,25 @@ fun ReiAnixNativePlayerBottomControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlayerBottomAction(
+                icon = Icons.Filled.SkipPrevious,
+                label = "Anterior",
+                contentDescription = "Episódio anterior",
+                onClick = onPrevious,
+                enabled = state.canPrevious && !state.episodeTransitionInProgress,
+            )
+            PlayerBottomAction(
                 icon = Icons.Filled.Lock,
-                label = "Bloquear toques",
+                label = "Bloquear",
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
+                enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
                 glyph = "⛶",
                 label = "Redimensionar",
                 contentDescription = "Redimensionar vídeo",
                 onClick = onResize,
+                enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
                 glyph = "☷",
@@ -431,14 +474,16 @@ fun ReiAnixNativePlayerBottomControls(
                     }
                 },
                 onClick = onSource,
+                enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
-                glyph = "»",
-                label = "Próximo episódio",
+                icon = Icons.Filled.SkipNext,
+                label = "Próximo",
                 contentDescription = "Próximo episódio",
                 onClick = onNext,
-                enabled = state.canNext,
+                enabled = state.canNext && !state.episodeTransitionInProgress,
             )
+        }
         }
     }
 }
