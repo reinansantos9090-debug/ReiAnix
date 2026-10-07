@@ -18,6 +18,8 @@ class NativeSearchTests(unittest.TestCase):
     def test_search_uses_canonical_viewmodel_projection(self):
         source = VM.read_text(encoding="utf-8")
         self.assertIn("canonicalCatalog", source)
+        self.assertIn("val searchCatalog", source)
+        self.assertIn("val searchGenres", source)
         self.assertIn("ReiAnixSearchEngine.buildIndex(animes)", source)
         self.assertIn("combine(", source)
         self.assertIn("fun setSearchQuery", source)
@@ -63,10 +65,46 @@ class NativeSearchTests(unittest.TestCase):
             self.assertIn(token, source)
         self.assertNotIn("anilist", source.lower())
 
-    def test_search_query_has_no_artificial_debounce(self):
-        source = SEARCH.read_text(encoding="utf-8") + ENGINE.read_text(encoding="utf-8")
+    def test_search_query_is_debounced_and_cancelable_off_main(self):
+        source = SEARCH.read_text(encoding="utf-8") + VM.read_text(encoding="utf-8")
+        self.assertIn(".debounce(", source)
+        self.assertIn(".mapLatest", source)
+        self.assertIn("flowOn(Dispatchers.Default)", source)
         self.assertNotIn("delay(", source)
-        self.assertNotIn("debounce(", source)
+        self.assertNotIn("http://", source.lower())
+        self.assertNotIn("https://", source.lower())
+        self.assertNotIn("anilist", source.lower())
+
+    def test_search_opens_immediately_from_canonical_catalog(self):
+        source = SEARCH.read_text(encoding="utf-8")
+        self.assertIn("val hasLocalCatalog = browseAnimes.isNotEmpty()", source)
+        self.assertIn("searchState.query != searchQuery", source)
+        self.assertIn("SearchQueryLoadingState", source)
+        self.assertIn("FocusRequester", source)
+        self.assertIn("focusRequester.requestFocus()", source)
+
+    def test_search_reuses_library_cards_and_stable_grid_keys(self):
+        source = SEARCH.read_text(encoding="utf-8")
+        self.assertIn("ReiAnixAnimeCard(", source)
+        self.assertIn('libraryGridMinWidth("medium")', source)
+        self.assertIn('key = { anime -> anime.stableKey }', source)
+        self.assertIn('contentType = { "search-result-anime-card" }', source)
+        self.assertNotIn("SearchResultRow(", source)
+        self.assertNotIn("LazyColumn(", source)
+
+    def test_search_index_deduplicates_canonical_anime_and_scores_alternate_titles(self):
+        source = ENGINE.read_text(encoding="utf-8")
+        self.assertIn("distinctBy(ReiAnixAnimeUiModel::id)", source)
+        self.assertIn("normalizedAlternateTitles", source)
+        self.assertIn("anime.romajiTitle", source)
+        self.assertIn("anime.nativeTitle", source)
+        self.assertIn("anime.englishTitle", source)
+        self.assertIn("normalizedAlternateTitles.any { it == normalizedQuery }", source)
+
+    def test_search_field_uses_shared_component(self):
+        source = SEARCH.read_text(encoding="utf-8")
+        self.assertIn("ReiAnixSearchField(", source)
+        self.assertNotIn("OutlinedTextField(", source)
 
 
 if __name__ == "__main__":
