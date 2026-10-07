@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "main.py"
 HOME = ROOT / "views" / "home_view.py"
 ORGANIZE = ROOT / "views" / "organize_view.py"
+COMPOSE_ORGANIZE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt"
+COMPOSE_HOST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
 STORE = ROOT / "core" / "library_store.py"
 
 
@@ -90,6 +92,26 @@ class HomeLibraryOrganizeTests(unittest.TestCase):
         organize = self.read(ORGANIZE)
         self.assertIn("await load_overview()", organize)
         self.assertNotIn("render_overview()\n                page.update()", organize)
+
+    def test_compose_organize_renders_all_configured_sources_from_canonical_storage_state(self):
+        organize = self.read(COMPOSE_ORGANIZE)
+        host = self.read(COMPOSE_HOST)
+        self.assertIn("state.storage.configuredSources", organize)
+        self.assertIn("sources.forEach { source ->", organize)
+        self.assertIn("key(source.stableKey)", organize)
+        self.assertIn("state.storage.sourceState(source)", organize)
+        self.assertIn("onRemoveFolder: (String) -> Unit", organize)
+        self.assertIn("Remover fonte da biblioteca?", organize)
+        self.assertIn("Os arquivos e vídeos físicos não serão apagados.", organize)
+        self.assertIn("onRemoveFolder = libraryViewModel::removeSafTree", host)
+        self.assertNotIn("remember { mutableStateOf(listOf<", organize)
+
+    def test_compose_organize_exposes_real_scan_states_without_fake_percentages(self):
+        organize = self.read(COMPOSE_ORGANIZE)
+        for label in ("Permissão necessária", "Processando", "Concluído", "Concluído parcialmente", "Erro", "Aguardando"):
+            self.assertIn(label, organize)
+        self.assertNotIn("%", organize)
+        self.assertIn("availableContentCount", organize)
 
     def test_store_instruments_bounded_home_sections_and_organize_summary(self):
         store = self.read(STORE)
