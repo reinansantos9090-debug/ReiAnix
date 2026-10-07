@@ -118,6 +118,21 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("fun handleBack(): Boolean", host)
         self.assertIn("controller.previousBackStackEntry != null", host)
         self.assertIn("navigateToRequestedDestination", host)
+        self.assertIn("private fun handleHomeBack()", host)
+        self.assertIn("activity.finishAndRemoveTask()", host)
+        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", host)
+        self.assertIn("id = R.id.reianix_compose_app_shell", host)
+
+    def test_compose_navigation_uses_stable_saveable_scoping(self):
+        host = HOST.read_text(encoding="utf-8")
+        search = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("rememberNavController()", host)
+        self.assertIn("rememberSaveable", search)
+        self.assertIn("LaunchedEffect(focusRequester)", search)
+        self.assertNotIn("LaunchedEffect(Unit)", search)
 
     def test_main_activity_does_not_replace_flutter_host(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")

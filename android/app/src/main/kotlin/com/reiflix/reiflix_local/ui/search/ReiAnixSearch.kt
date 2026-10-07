@@ -184,7 +184,7 @@ fun ReiAnixSearchScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(focusRequester) {
         focusRequester.requestFocus()
     }
 
