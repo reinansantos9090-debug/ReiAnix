@@ -179,6 +179,12 @@ class ReiAnixLibrarySnapshotCodecTest {
                 previousRevision = 3,
             )
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            ReiAnixLibrarySnapshotCodec.decode(
+                """{"schemaVersion":1,"revision":3,"status":"EMPTY","sourceState":"UNKNOWN","animes":[]}""",
+                previousRevision = 3,
+            )
+        }
     }
 
     @Test
