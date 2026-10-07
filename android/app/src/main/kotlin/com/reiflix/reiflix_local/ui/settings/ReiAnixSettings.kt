@@ -28,6 +28,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -285,18 +286,11 @@ fun ReiAnixSettingsScreen(
                 state = listState,
                 contentPadding = PaddingValues(
                     horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                    vertical = ReiAnixTokens.Spacing.sm,
+                    top = ReiAnixTokens.Spacing.xxl,
+                    bottom = ReiAnixTokens.Spacing.huge,
                 ),
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
-                item(key = "settings:header") {
-                    SettingsHeader(
-                        title = "Configurações",
-                        subtitle = "Preferências do ReiAnix",
-                        onBack = onBack,
-                    )
-                }
-
                 when (state.status) {
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
                         item(key = "settings:loading") {
@@ -321,29 +315,47 @@ fun ReiAnixSettingsScreen(
                     }
 
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
-                        items(
-                            items = state.categories,
-                            key = { category -> "settings:${category.label}" },
-                        ) { category ->
-                            when (category.label) {
-                                "Conta" -> {
-                                    ReiAnixSettingsAccountCard(
-                                        state = state.account,
-                                        onClick = { onOpenCategory(category.label) },
-                                    )
-                                }
+                        item(key = "settings:account-profile") {
+                            SettingsProfileRow(
+                                state = state,
+                                onClick = {
+                                    if (state.categories.any { it.label == "Conta" }) {
+                                        onOpenCategory("Conta")
+                                    }
+                                },
+                            )
+                        }
 
-                                else -> {
-                                    ReiAnixSettingsCategoryCard(
-                                        category = category,
-                                        valueSummary = if (category.label == "Armazenamento") {
-                                            storageSummary(state)
-                                        } else {
-                                            categorySummary(category.label, state.settings)
-                                        },
-                                        onClick = { onOpenCategory(category.label) },
-                                    )
-                                }
+                        items(
+                            items = state.categories.filter { it.label != "Conta" },
+                            key = { category -> "settings-flat:${category.label}" },
+                        ) { category ->
+                            SettingsFlatCategoryRow(
+                                title = category.label,
+                                onClick = { onOpenCategory(category.label) },
+                            )
+                        }
+
+                        item(key = "settings:footer") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        top = ReiAnixTokens.Spacing.xxl,
+                                        bottom = ReiAnixTokens.Spacing.md,
+                                    ),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    text = "ReiAnix",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "v${BuildConfig.VERSION_NAME}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }
@@ -353,6 +365,114 @@ fun ReiAnixSettingsScreen(
     }
 }
 
+@Composable
+private fun SettingsProfileRow(
+    state: ReiAnixSettingsUiState,
+    onClick: () -> Unit,
+) {
+    val identity = state.account.name.trim().ifBlank { state.account.email.trim() }
+    val title = identity.ifBlank { "ReiAnix" }
+    val subtitle = when {
+        state.account.connected -> state.account.email.trim().takeIf { it.isNotBlank() } ?: "Conta conectada"
+        state.account.integrationAvailable -> "Conta Google não conectada"
+        else -> "Conta local"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clickable(
+                enabled = state.categories.any { it.label == "Conta" },
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics {
+                contentDescription = "Conta. ${title}. ${subtitle}"
+            }
+            .padding(
+                horizontal = ReiAnixTokens.Spacing.xs,
+                vertical = ReiAnixTokens.Spacing.sm,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+    ) {
+        Box(
+            modifier = Modifier.size(44.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.AccountCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(44.dp),
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsFlatCategoryRow(
+    title: String,
+    onClick: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
+                .clickable(
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .semantics {
+                    contentDescription = title
+                }
+                .padding(horizontal = ReiAnixTokens.Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Icon(
+                imageVector = Icons.Filled.ArrowBack,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(ReiAnixTokens.Dimensions.iconSmall)
+                    .rotate(180f),
+            )
+        }
+        HorizontalDivider(
+            thickness = ReiAnixTokens.Dimensions.dividerHeight,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+        )
+    }
+}
 @Composable
 private fun ReiAnixComposeSettingsCategoryScreen(
     category: String,
@@ -1552,8 +1672,8 @@ fun ReiAnixSettingsSurface(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = ReiAnixTokens.Shapes.card,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        color = MaterialTheme.colorScheme.background,
         tonalElevation = ReiAnixTokens.Elevation.none,
         content = content,
     )
@@ -1569,25 +1689,24 @@ fun ReiAnixSettingsRow(
     enabled: Boolean = true,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
-    ReiAnixSettingsSurface(
+    Column(
         modifier = modifier
-            .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
-            .clip(ReiAnixTokens.Shapes.card)
-            .clickable(
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
+            .fillMaxWidth()
             .semantics(mergeDescendants = true) {
                 contentDescription = if (description.isBlank()) title else "$title. $description"
-
             },
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
+                .clickable(
+                    enabled = enabled,
+                    role = Role.Button,
+                    onClick = onClick,
+                )
                 .padding(
-                    horizontal = ReiAnixTokens.Spacing.lg,
+                    horizontal = ReiAnixTokens.Spacing.xs,
                     vertical = ReiAnixTokens.Spacing.sm,
                 ),
             verticalAlignment = Alignment.CenterVertically,
@@ -1601,9 +1720,9 @@ fun ReiAnixSettingsRow(
                     imageVector = icon,
                     contentDescription = null,
                     tint = if (enabled) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha)
                     },
                     modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
                 )
@@ -1614,7 +1733,7 @@ fun ReiAnixSettingsRow(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = if (enabled) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -1623,13 +1742,15 @@ fun ReiAnixSettingsRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (description.isNotBlank()) {
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             trailingContent?.let {
                 Box(
@@ -1640,9 +1761,12 @@ fun ReiAnixSettingsRow(
                 }
             }
         }
+        HorizontalDivider(
+            thickness = ReiAnixTokens.Dimensions.dividerHeight,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+        )
     }
 }
-
 @Composable
 fun SettingsHeader(
     title: String,
