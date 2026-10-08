@@ -31,6 +31,22 @@ enum class ReiAnixMediaAvailability {
     UNKNOWN,
 }
 
+enum class ReiAnixPresentationState {
+    METADATA_MISSING,
+    METADATA_READY_ARTWORK_PENDING,
+    READY,
+    ARTWORK_FAILED,
+}
+
+/** Canonical artwork readiness labels used only by presentation surfaces. */
+val ReiAnixPresentationState.label: String?
+    get() = when (this) {
+        ReiAnixPresentationState.METADATA_MISSING -> "Metadata pendente"
+        ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING -> "Capa pendente"
+        ReiAnixPresentationState.READY -> null
+        ReiAnixPresentationState.ARTWORK_FAILED -> "Falha na capa"
+    }
+
 enum class ReiAnixMetadataAvailability {
     AVAILABLE,
     STALE,
@@ -249,6 +265,7 @@ data class ReiAnixAnimeUiModel(
     val mediaKind: ReiAnixMediaKind,
     val artwork: ReiAnixArtworkUiModel?,
     val metadataAvailability: ReiAnixMetadataAvailability,
+    val presentationState: ReiAnixPresentationState = ReiAnixPresentationState.METADATA_MISSING,
     val seasons: List<ReiAnixSeasonUiModel>,
     val specials: List<ReiAnixEpisodeUiModel>,
     val mediaFiles: List<ReiAnixEpisodeUiModel>,
@@ -328,6 +345,7 @@ data class ReiAnixHomeAnimeUiModel(
     val favorite: Boolean,
     val mediaKind: ReiAnixMediaKind,
     val artwork: ReiAnixArtworkUiModel?,
+    val presentationState: ReiAnixPresentationState = ReiAnixPresentationState.METADATA_MISSING,
     val playbackTargetEpisodeId: Long?,
     val availableContentCount: Int,
     val playbackActionLabel: String = "Assistir",
