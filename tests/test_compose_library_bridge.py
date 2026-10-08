@@ -226,6 +226,105 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("UNAVAILABLE", payload["sourceState"])
             self.assertFalse(payload["sourceAvailable"])
 
+    async def test_scan_projection_keeps_previous_catalog_when_canonical_read_is_empty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            anime = self.anime_fixture()
+            library = FakeLibrary([anime])
+            scan = {"state": "IDLE"}
+            bridge = ComposeLibraryBridge(directory, library, FakeStore())
+            bridge.set_scan_state_provider(lambda: scan)
+
+            bridge.request_publish("initial")
+            await bridge.wait_for_idle()
+
+            library._catalog = []
+            scan["state"] = "SCANNING"
+            bridge.request_publish("scan_state_changed")
+            await bridge.wait_for_idle()
+
+            payload = json.loads((Path(directory) / "reianix-compose/library.json").read_text())
+            self.assertEqual("READY", payload["status"])
+            self.assertTrue(payload["scanInProgress"])
+            self.assertEqual("SCANNING", payload["scanState"])
+            self.assertEqual([anime["id"]], [item["id"] for item in payload["animes"]])
+
+    async def test_projection_error_keeps_last_catalog_after_scan_failure(self):
+        class FlakyLibrary(FakeLibrary):
+            def __init__(self, catalog):
+                super().__init__(catalog)
+                self.fail = False
+
+            def catalog(self, anime_ids=None):
+                if self.fail:
+                    raise RuntimeError("sqlite temporarily unavailable")
+                return super().catalog(anime_ids=anime_ids)
+
+        with tempfile.TemporaryDirectory() as directory:
+            anime = self.anime_fixture()
+            library = FlakyLibrary([anime])
+            scan = {"state": "IDLE"}
+            bridge = ComposeLibraryBridge(directory, library, FakeStore())
+            bridge.set_scan_state_provider(lambda: scan)
+
+            bridge.request_publish("initial")
+            await bridge.wait_for_idle()
+
+            library.fail = True
+            scan["state"] = "FAILED"
+            bridge.request_publish("scan_failed")
+            await bridge.wait_for_idle()
+
+            payload = json.loads((Path(directory) / "reianix-compose/library.json").read_text())
+            self.assertEqual("ERROR", payload["status"])
+            self.assertEqual("FAILED", payload["scanState"])
+            self.assertEqual([anime["id"]], [item["id"] for item in payload["animes"]])
+            self.assertEqual("sqlite temporarily unavailable", payload["error"])
+
+    async def test_scan_reconciliation_publishes_new_media_without_clearing_existing_media(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.anime_fixture()
+            second = dict(self.anime_fixture())
+            second["id"] = 8
+            second["main_title"] = "Jujutsu Kaisen"
+            library = FakeLibrary([first])
+            scan = {"state": "SCANNING"}
+            bridge = ComposeLibraryBridge(directory, library, FakeStore())
+            bridge.set_scan_state_provider(lambda: scan)
+
+            bridge.request_publish("initial")
+            await bridge.wait_for_idle()
+
+            library._catalog = [first, second]
+            bridge.request_publish("library_batch_ingested")
+            await bridge.wait_for_idle()
+
+            payload = json.loads((Path(directory) / "reianix-compose/library.json").read_text())
+            self.assertEqual([7, 8], [item["id"] for item in payload["animes"]])
+            self.assertEqual("READY", payload["status"])
+            self.assertTrue(payload["scanInProgress"])
+
+    async def test_scan_reconciliation_removes_only_media_already_absent_from_canonical_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.anime_fixture()
+            second = dict(self.anime_fixture())
+            second["id"] = 8
+            second["main_title"] = "Jujutsu Kaisen"
+            library = FakeLibrary([first, second])
+            scan = {"state": "SCANNING"}
+            bridge = ComposeLibraryBridge(directory, library, FakeStore())
+            bridge.set_scan_state_provider(lambda: scan)
+
+            bridge.request_publish("initial")
+            await bridge.wait_for_idle()
+
+            library._catalog = [first]
+            bridge.request_publish("reconciled")
+            await bridge.wait_for_idle()
+
+            payload = json.loads((Path(directory) / "reianix-compose/library.json").read_text())
+            self.assertEqual([7], [item["id"] for item in payload["animes"]])
+            self.assertEqual("READY", payload["status"])
+
     async def test_scanner_state_is_published_from_real_state_provider(self):
         with tempfile.TemporaryDirectory() as directory:
             scan = {"state": "SCANNING"}
