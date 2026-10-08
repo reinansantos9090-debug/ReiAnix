@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local
 
 import android.content.Intent
+import com.reiflix.reiflix_local.bridge.NativeRequestState
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.test.ext.junit.runners.AndroidJUnit4
