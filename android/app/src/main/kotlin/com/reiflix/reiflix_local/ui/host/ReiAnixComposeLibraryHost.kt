@@ -183,13 +183,18 @@ class ReiAnixComposeLibraryHost(
                     val onboardingState = libraryState.storage.onboardingState.trim().lowercase()
                     if (
                         onboardingAllowed &&
+                        !libraryState.storage.onboardingDismissed &&
                         onboardingState in setOf("checking", "needs_folder", "folder_picker_open", "error")
                     ) {
                         ReiAnixLibraryFolderOnboarding(
                             state = onboardingState,
                             message = libraryState.storage.onboardingMessage,
                             error = libraryState.storage.onboardingError,
+                            onCancel = libraryViewModel::dismissStorageOnboarding,
                             onSelectFolder = libraryViewModel::selectSafTree,
+                            onRequestMediaAccess = {
+                                activity.requestNativeStorageAction("request_media_access")
+                            },
                         )
                     }
                 }
