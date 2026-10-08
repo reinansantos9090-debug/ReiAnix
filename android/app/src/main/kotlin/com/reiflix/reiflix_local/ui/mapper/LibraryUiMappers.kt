@@ -10,6 +10,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLocalMediaUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
+import com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
 import org.json.JSONArray
 
@@ -40,6 +41,18 @@ object LibraryUiMappers {
             metadataAvailability = metadataAvailability(
                 metadata.stringOrNull("metadata_status")
                     ?: source.stringOrNull("metadata_status"),
+            ),
+            presentationState = presentationState(
+                value = source.stringOrNull("presentation_state")
+                    ?: metadata.stringOrNull("presentation_state"),
+                artworkAvailable = source.booleanOrNull("artwork_available"),
+                metadataAvailable = source.stringOrNull("anilist_id") != null
+                    || metadata.stringOrNull("anilist_id") != null
+                    || metadata.stringOrNull("metadata_status") != null
+                    || source.stringOrNull("metadata_status") != null,
+                hasLocalArtwork = artwork(source, metadata).isAvailable,
+                hasCoverUrl = metadata.stringOrNull("cover_url") != null
+                    || source.stringOrNull("cover_url") != null,
             ),
             seasons = source.listOfMaps("seasons").map { season(it, id) },
             specials = source.listOfMaps("specials")
@@ -201,6 +214,27 @@ object LibraryUiMappers {
         "watched" -> ReiAnixConsumptionState.WATCHED
         null, "" -> null
         else -> ReiAnixConsumptionState.UNKNOWN
+    }
+
+    private fun presentationState(
+        value: String?,
+        artworkAvailable: Boolean?,
+        metadataAvailable: Boolean,
+        hasLocalArtwork: Boolean,
+        hasCoverUrl: Boolean,
+    ): ReiAnixPresentationState = when (value?.lowercase()) {
+        "metadata_missing" -> ReiAnixPresentationState.METADATA_MISSING
+        "metadata_ready_artwork_pending", "pending", "not_requested", "queued", "downloading", "retry_wait" ->
+            ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING
+        "ready" -> ReiAnixPresentationState.READY
+        "artwork_failed", "failed", "invalid" -> ReiAnixPresentationState.ARTWORK_FAILED
+        null, "" -> when {
+            !metadataAvailable -> ReiAnixPresentationState.METADATA_MISSING
+            artworkAvailable == true || (hasLocalArtwork && !hasCoverUrl) -> ReiAnixPresentationState.READY
+            hasCoverUrl -> ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING
+            else -> ReiAnixPresentationState.READY
+        }
+        else -> ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING
     }
 
     private fun metadataAvailability(value: String?): ReiAnixMetadataAvailability = when (value?.lowercase()) {
