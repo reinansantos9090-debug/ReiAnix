@@ -16,19 +16,19 @@ import androidx.compose.ui.unit.sp
  */
 object ReiAnixTokens {
     object Colors {
-        // ReiAnix visual language: neutral near-black canvas, layered dark-gray surfaces,
+        // ReiAnix visual language: true AMOLED black canvas, minimal near-black surfaces,
         // and one controlled electric-blue interaction accent. Keep semantic aliases here
         // so Compose screens never need ad-hoc hex/RGB values.
         val background = Color(0xFF000000)
-        val backgroundSecondary = Color(0xFF050505)
-        val surface = Color(0xFF0A0A0A)
-        val surfaceVariant = Color(0xFF151515)
-        val surfaceRaised = Color(0xFF111111)
-        val surfaceCard = Color(0xFF0A0A0A)
-        val surfaceDialog = Color(0xFF151515)
-        val surfaceSheet = Color(0xFF151515)
+        val backgroundSecondary = Color(0xFF030303)
+        val surface = Color(0xFF050505)
+        val surfaceVariant = Color(0xFF080808)
+        val surfaceRaised = Color(0xFF0A0A0A)
+        val surfaceCard = Color(0xFF050505)
+        val surfaceDialog = Color(0xFF0A0A0A)
+        val surfaceSheet = Color(0xFF080808)
         val surfacePlayer = Color(0xFF000000)
-        val surfaceSelected = Color(0xFF111111)
+        val surfaceSelected = Color(0xFF080808)
         val surfaceNavigation = Color(0xFF000000)
         val playerControl = Color(0xFFFFFFFF)
         val playerScrim = Color(0xFF000000)
@@ -68,7 +68,7 @@ object ReiAnixTokens {
 
         val success = Color(0xFF4ADE80)
         val warning = Color(0xFFF6C85F)
-        val disabledSurface = Color(0xFF111111)
+        val disabledSurface = Color(0xFF080808)
         val overlay = Color(0xB3000000)
         val overlayStrong = Color(0xCC000000)
         // Canonical semantic aliases used by shared components. Keep these as aliases
@@ -78,14 +78,14 @@ object ReiAnixTokens {
         val textSecondary = textMuted
         val accent = primary
         val accentPressed = pressed
-        val accentDisabled = primary.copy(alpha = 0.38f)
+        val accentDisabled = primary.copy(alpha = 0.16f)
 
         val statusContainerAlpha = 0.16f
         val disabledContentAlpha = 0.55f
         val disabledTextAlpha = 0.60f
         val subtleBorderAlpha = 0.55f
         val surfaceOverlayAlpha = 0.84f
-        val disabledContainerAlpha = 0.45f
+        val disabledContainerAlpha = 0.18f
 
         val inverseSurface = Color(0xFFECECEC)
         val inverseOnSurface = Color(0xFF1A1A1A)
