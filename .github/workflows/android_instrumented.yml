@@ -281,7 +281,9 @@ jobs:
               cat "$out/adb_devices.txt"
             fi
             echo "--- command exit markers ---"
-            grep -h "COMMAND_EXIT=" "$out"/*.txt || true
+            if compgen -G "$out/*.txt" > /dev/null; then
+              grep -h "COMMAND_EXIT=" "$out"/*.txt
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
           set -e
 
