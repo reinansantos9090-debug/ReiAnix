@@ -753,6 +753,23 @@ private fun DetailsHero(
                 }
             }
         }
+        anime.presentationState.label?.let { stateLabel ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            ) {
+                ReiAnixBadge(
+                    text = stateLabel,
+                    tone = when (anime.presentationState) {
+                        com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState.ARTWORK_FAILED ->
+                            ReiAnixBadgeTone.Warning
+                        com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState.METADATA_MISSING ->
+                            ReiAnixBadgeTone.Warning
+                        else -> ReiAnixBadgeTone.Primary
+                    },
+                )
+            }
+        }
         if (anime.genres.isNotEmpty()) {
             Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = responsive.horizontalPadding),
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
