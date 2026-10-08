@@ -203,8 +203,10 @@ fun ReiAnixNativePlayerCenterControls(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = ReiAnixTokens.PlayerDimensions.centerHorizontalPadding),
+                .padding(horizontal = ReiAnixTokens.PlayerDimensions.centerHorizontalPadding)
+                .widthIn(max = ReiAnixTokens.PlayerDimensions.centerControlsMaxWidth),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             Box(
                 modifier = Modifier.weight(1f),
