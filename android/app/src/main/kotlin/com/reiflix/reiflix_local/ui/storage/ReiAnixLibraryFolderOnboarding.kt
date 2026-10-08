@@ -123,9 +123,11 @@ fun ReiAnixLibraryFolderOnboarding(
 
                 if (pickerOpen) {
                     ReiAnixProgressIndicator(
+                        progress = 0f,
                         modifier = Modifier
                             .align(Alignment.CenterHorizontally)
                             .padding(bottom = ReiAnixTokens.Spacing.lg),
+                        announceProgress = false,
                     )
                 }
 
