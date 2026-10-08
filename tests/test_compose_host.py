@@ -160,6 +160,19 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("onBack = { navController.popBackStack() }", details)
         self.assertNotIn("onBack = { navController.popBackStack(); navController.popBackStack() }", details)
 
+    def test_player_return_pops_handoff_route_once_after_native_activity_resume(self):
+        player = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixPlayer.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("hostStoppedAfterLaunch", player)
+        self.assertIn("Lifecycle.Event.ON_STOP", player)
+        self.assertIn("Lifecycle.Event.ON_RESUME", player)
+        self.assertIn("hostStoppedAfterLaunch = false", player)
+        self.assertIn("navController.popBackStack()", player)
+        self.assertIn("BackHandler", player)
+        self.assertIn("rememberSaveable(args.episodeId, args.animeId)", player)
+
     def test_search_details_preserves_search_as_navigation_origin(self):
         search = (
             ROOT
