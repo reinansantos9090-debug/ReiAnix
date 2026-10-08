@@ -64,14 +64,19 @@ class ThemeEngineTests(unittest.TestCase):
         self.assertNotEqual(DARK_THEME.surface, LIGHT_THEME.surface)
         self.assertNotEqual(DARK_THEME.text, LIGHT_THEME.text)
         self.assertNotEqual(DARK_THEME.text_muted, LIGHT_THEME.text_muted)
+        self.assertEqual(DARK_THEME.background, "#000000")
+        self.assertEqual(DARK_THEME.surface, "#050505")
+        self.assertEqual(DARK_THEME.surface_variant, "#080808")
+        self.assertEqual(DARK_THEME.surface_raised, "#0A0A0A")
+        self.assertEqual(DARK_THEME.primary, "#2579FF")
 
     def test_dark_palette_is_neutral_with_controlled_blue_accent(self):
         source = (ROOT / "core/ui.py").read_text(encoding="utf-8")
         expected = {
             'background="#000000"',
-            'surface="#0A0A0A"',
-            'surface_variant="#151515"',
-            'surface_raised="#111111"',
+            'surface="#050505"',
+            'surface_variant="#080808"',
+            'surface_raised="#0A0A0A"',
             'text="#FFFFFF"',
             'text_muted="#B3B3B3"',
             'primary="#2579FF"',
@@ -81,7 +86,7 @@ class ThemeEngineTests(unittest.TestCase):
         }
         for value in expected:
             self.assertIn(value, source)
-        for legacy in ("#16151F", "#252331", "#302D3E", "#2D2A3B", "#39364B", "#3C394C"):
+        for legacy in ("#151515", "#111111", "#16151F", "#252331", "#302D3E", "#2D2A3B", "#39364B", "#3C394C"):
             self.assertNotIn(legacy, source)
 
     def test_theme_tokens_resolve_without_parallel_theme_store(self):
