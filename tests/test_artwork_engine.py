@@ -136,7 +136,9 @@ class ArtworkEngineTests(unittest.TestCase):
 
         self.engine._downloader = downloader
         self.engine.request("anime", failing, "poster", blocking=True)
-        result = self.engine.request("anime", healthy, "poster", blocking=True)
+        self.engine.request("anime", healthy, "poster", blocking=True, force=True)
+        result = self.engine.resolve("anime", healthy, "poster", allow_network=False)
+        self.assertIsNotNone(result)
         self.assertEqual(result["status"], STATUS_READY)
         self.assertEqual(self.engine.get_status("anime", failing, "poster"), STATUS_FAILED)
 
@@ -396,10 +398,12 @@ class ArtworkEngineTests(unittest.TestCase):
         self.engine.sync_anime_metadata(
             anime,
             {"anilist_id": 16498, "cover_url": "https://example/old.jpg", "cover_cache": str(old)},
+            request_download=False,
         )
         self.engine.sync_anime_metadata(
             anime,
             {"anilist_id": 16498, "cover_url": "https://example/new.jpg"},
+            request_download=False,
         )
         before = self.engine.resolve("anime", anime, "poster", allow_network=False)
         self.assertEqual(before["local_path"], str(old))
