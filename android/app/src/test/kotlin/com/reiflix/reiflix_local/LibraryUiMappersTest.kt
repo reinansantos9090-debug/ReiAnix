@@ -7,6 +7,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
+import com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -38,6 +39,7 @@ class LibraryUiMappersTest {
 
         assertEquals(10L, model.id)
         assertEquals("Example Anime", model.title)
+        assertEquals(ReiAnixPresentationState.READY, model.presentationState)
         assertEquals(101L, model.playbackTargetEpisodeId)
         assertEquals(2026, model.year)
         assertTrue(model.favorite)
@@ -62,6 +64,29 @@ class LibraryUiMappersTest {
         assertNull(episodes[1].media.path)
         assertEquals("identity-102", episodes[1].media.mediaIdentity)
         assertEquals("anime:10:season:number:1", model.seasons.single().stableKey)
+    }
+
+    @Test
+    fun presentationStateDistinguishesPendingAndFailedArtwork() {
+        val pending = animeSource(
+            id = 18L,
+            meta = mapOf(
+                "anilist_id" to 16498,
+                "metadata_status" to "available",
+                "cover_url" to "https://example/cover.jpg",
+                "cover_cache" to null,
+            ),
+        )
+        val failed = pending.toMutableMap().apply { this["presentation_state"] = "artwork_failed" }
+
+        assertEquals(
+            ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING,
+            LibraryUiMappers.anime(pending).presentationState,
+        )
+        assertEquals(
+            ReiAnixPresentationState.ARTWORK_FAILED,
+            LibraryUiMappers.anime(failed).presentationState,
+        )
     }
 
     @Test
