@@ -89,6 +89,24 @@ class ThemeEngineTests(unittest.TestCase):
         for legacy in ("#151515", "#111111", "#16151F", "#252331", "#302D3E", "#2D2A3B", "#39364B", "#3C394C"):
             self.assertNotIn(legacy, source)
 
+    def test_flet_material_fallbacks_are_bound_to_active_theme_tokens(self):
+        source = (ROOT / "core/ui.py").read_text(encoding="utf-8")
+        for marker in (
+            "def _flet_material_theme(tokens: ThemeTokens)",
+            "color_scheme=",
+            "surface=tokens.surface",
+            "surface_variant=tokens.surface_variant",
+            "surface_container=tokens.surface",
+            "surface_container_high=tokens.surface_raised",
+            "canvas_color=tokens.background",
+            "card_bgcolor=tokens.surface",
+            "dialog_theme=ft.DialogTheme",
+            "bottom_sheet_theme=ft.BottomSheetTheme",
+            "disabled_color=tokens.text_muted",
+            "divider_color=tokens.divider",
+        ):
+            self.assertIn(marker, source)
+
     def test_theme_tokens_resolve_without_parallel_theme_store(self):
         self.assertIs(theme_tokens("dark"), DARK_THEME)
         self.assertIs(theme_tokens("light"), LIGHT_THEME)
