@@ -123,7 +123,7 @@ class ComposeLibraryBridge:
         parts = str(reason or "").split(":")
         kind = parts[0].strip().lower()
         try:
-            if kind in {"artwork_ready", "artwork_cache_hit", "artwork_cache_invalid", "metadata_translation"}:
+            if kind in {"artwork_ready", "artwork_cache_hit", "artwork_cache_invalid", "artwork_state", "metadata_translation"}:
                 if kind.startswith("artwork_"):
                     entity_type = str(parts[1] if len(parts) > 1 else "").strip().lower()
                     entity_id = int(parts[2] if len(parts) > 2 else 0)
@@ -514,6 +514,7 @@ class ComposeLibraryBridge:
             "last_played_at": source.get("last_played_at"),
             "media_kind": source.get("media_kind") or meta.get("media_kind"),
             "year": source.get("year"),
+            "presentation_state": source.get("presentation_state") or meta.get("presentation_state"),
             "playback_target_episode_id": (
                 (source.get("playback_target_episode") or {}).get("id")
                 if isinstance(source.get("playback_target_episode"), dict)
@@ -547,6 +548,7 @@ class ComposeLibraryBridge:
                 "added_at": meta.get("added_at", source.get("added_at")),
                 "year": meta.get("year", source.get("year")),
                 "metadata_status": meta.get("metadata_status") or source.get("metadata_status"),
+                "presentation_state": meta.get("presentation_state") or source.get("presentation_state"),
                 "score": meta.get("score", source.get("score")),
                 "title": meta.get("title") or source.get("main_title") or source.get("title"),
                 "aliases": meta.get("aliases", source.get("aliases")),
