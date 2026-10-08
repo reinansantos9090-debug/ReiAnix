@@ -31,9 +31,9 @@ class ThemeTokens:
 DARK_THEME = ThemeTokens(
     mode="dark",
     background="#000000",
-    surface="#0A0A0A",
-    surface_variant="#151515",
-    surface_raised="#111111",
+    surface="#050505",
+    surface_variant="#080808",
+    surface_raised="#0A0A0A",
     text="#FFFFFF",
     text_muted="#B3B3B3",
     text_on_accent="#FFFFFF",
