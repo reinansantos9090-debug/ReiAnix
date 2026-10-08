@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -46,8 +47,8 @@ private const val TAG = "ReiAnixLocalArtwork"
  *
  * ArtworkEngine remains responsible for persistent artwork discovery and
  * materialization. Coil is the asynchronous renderer/transport for the current
- * viewport and keeps its disk cache disabled, so there is no second persistent
- * artwork cache/source of truth.
+ * viewport; its memory/disk caches only optimize presentation and do not replace
+ * the ReiAnix artwork persistence source of truth.
  */
 private object ReiAnixArtworkImageLoader {
     @Volatile
@@ -58,7 +59,8 @@ private object ReiAnixArtworkImageLoader {
         return synchronized(this) {
             instance ?: ImageLoader.Builder(context.applicationContext)
                 .memoryCachePolicy(CachePolicy.ENABLED)
-                .diskCachePolicy(CachePolicy.DISABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .networkCachePolicy(CachePolicy.ENABLED)
                 .build()
                 .also { instance = it }
         }
@@ -144,20 +146,39 @@ fun ReiAnixLocalArtwork(
             mutableIntStateOf(0)
         }
         val source = candidates.getOrNull(candidateIndex)
-        var requestState by remember(stableIdentity, source) {
-            mutableStateOf(ArtworkRequestState.LOADING)
+        var isMissing by remember(stableIdentity, candidates) {
+            mutableStateOf(false)
         }
+        val imageLoader = ReiAnixArtworkImageLoader.get(context)
 
         if (source == null) {
             ReiAnixArtworkMissingState(label = placeholder)
         } else if (effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
-            ArtworkLoadingPlaceholder()
+            ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
         } else {
-            val request = remember(
+            val memoryCacheKey = remember(
                 stableIdentity,
                 source,
                 effectiveWidthPx,
                 effectiveHeightPx,
+            ) {
+                buildArtworkMemoryCacheKey(
+                    stableIdentity = stableIdentity,
+                    source = source,
+                    widthPx = effectiveWidthPx,
+                    heightPx = effectiveHeightPx,
+                )
+            }
+            val diskCacheKey = remember(stableIdentity, source) {
+                buildArtworkDiskCacheKey(source)
+            }
+            val placeholderPainter = remember(MaterialTheme.colorScheme.surfaceVariant) {
+                ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+            }
+            val request = remember(
+                context,
+                memoryCacheKey,
+                diskCacheKey,
             ) {
                 ImageRequest.Builder(context)
                     .data(coilData(source))
@@ -168,26 +189,19 @@ fun ReiAnixLocalArtwork(
                         ),
                     )
                     .crossfade(false)
-                    .memoryCacheKey(
-                        stableIdentity + "|" +
-                            source + "|" +
-                            effectiveWidthPx + "x" + effectiveHeightPx,
-                    )
+                    .memoryCacheKey(memoryCacheKey)
+                    .diskCacheKey(diskCacheKey)
+                    .placeholderMemoryCacheKey(memoryCacheKey)
                     .build()
             }
 
             AsyncImage(
                 model = request,
-                imageLoader = ReiAnixArtworkImageLoader.get(context),
+                imageLoader = imageLoader,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
-                onLoading = {
-                    requestState = ArtworkRequestState.LOADING
-                },
-                onSuccess = {
-                    requestState = ArtworkRequestState.READY
-                },
+                placeholder = placeholderPainter,
                 onError = { state ->
                     Log.w(
                         TAG,
@@ -195,21 +209,16 @@ fun ReiAnixLocalArtwork(
                         state.result.throwable,
                     )
                     if (candidateIndex < candidates.lastIndex) {
+                        isMissing = false
                         candidateIndex += 1
                     } else {
-                        requestState = ArtworkRequestState.MISSING
+                        isMissing = true
                     }
                 },
             )
 
-            when (requestState) {
-                ArtworkRequestState.LOADING -> {
-                    ArtworkLoadingPlaceholder()
-                }
-                ArtworkRequestState.READY -> Unit
-                ArtworkRequestState.MISSING -> {
-                    ReiAnixArtworkMissingState(label = placeholder)
-                }
+            if (isMissing) {
+                ReiAnixArtworkMissingState(label = placeholder)
             }
         }
     }
@@ -227,32 +236,6 @@ private fun coilData(source: String): Any =
         else ->
             File(source)
     }
-
-private enum class ArtworkRequestState {
-    LOADING,
-    READY,
-    MISSING,
-}
-
-@Composable
-private fun ArtworkLoadingPlaceholder() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .semantics(mergeDescendants = true) {
-                contentDescription = "Carregando arte"
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "Carregando…",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-    }
-}
 
 @Composable
 fun ReiAnixPoster(

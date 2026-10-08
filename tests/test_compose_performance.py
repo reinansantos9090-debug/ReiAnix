@@ -121,7 +121,11 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertIn("SupervisorJob() + Dispatchers.IO", repository)
         self.assertIn("AsyncImage(", artwork)
         self.assertIn("ImageLoader.Builder", artwork)
-        self.assertIn("diskCachePolicy(CachePolicy.DISABLED)", artwork)
+        self.assertIn("diskCachePolicy(CachePolicy.ENABLED)", artwork)
+        self.assertIn("networkCachePolicy(CachePolicy.ENABLED)", artwork)
+        self.assertIn(".diskCacheKey(", artwork)
+        self.assertIn(".placeholderMemoryCacheKey(", artwork)
+        self.assertNotIn("CachePolicy.DISABLED", artwork)
         self.assertNotIn("BitmapFactory.decodeFile(", artwork)
         self.assertIn("collectAsStateWithLifecycle()", self.read(SEARCH))
 

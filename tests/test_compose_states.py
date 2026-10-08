@@ -77,4 +77,8 @@ def test_artwork_does_not_silently_swallow_decode_errors():
     assert "AsyncImage(" in artwork
     assert "SubcomposeAsyncImage(" not in artwork
     assert "externalUrl: String?" in artwork
-    assert "diskCachePolicy(CachePolicy.DISABLED)" in artwork
+    assert "diskCachePolicy(CachePolicy.ENABLED)" in artwork
+    assert "networkCachePolicy(CachePolicy.ENABLED)" in artwork
+    assert ".diskCacheKey(" in artwork
+    assert ".placeholderMemoryCacheKey(" in artwork
+    assert "CachePolicy.DISABLED" not in artwork
