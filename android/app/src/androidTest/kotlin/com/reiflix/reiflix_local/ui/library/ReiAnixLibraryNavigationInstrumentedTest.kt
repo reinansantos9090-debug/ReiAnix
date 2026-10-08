@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
+import com.reiflix.reiflix_local.ui.details.ReiAnixDetailsScreen
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsLoadStatus
