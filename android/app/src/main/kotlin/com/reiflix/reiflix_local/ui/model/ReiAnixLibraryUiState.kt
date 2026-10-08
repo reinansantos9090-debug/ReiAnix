@@ -99,6 +99,7 @@ data class ReiAnixHomeLibraryUiState(
                         favorite = anime.favorite,
                         mediaKind = anime.mediaKind,
                         artwork = anime.artwork,
+                        presentationState = anime.presentationState,
                         playbackTargetEpisodeId = anime.playbackTargetEpisodeId,
                         availableContentCount = anime.contentEpisodes.count { episode ->
                             episode.media.availability == ReiAnixMediaAvailability.AVAILABLE
