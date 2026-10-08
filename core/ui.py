@@ -157,7 +157,6 @@ def _flet_material_theme(tokens: ThemeTokens) -> ft.Theme:
         on_error_container=tokens.text,
         surface=tokens.surface,
         on_surface=tokens.text,
-        surface_variant=tokens.surface_variant,
         on_surface_variant=tokens.text_muted,
         surface_dim=tokens.background,
         surface_bright=tokens.surface_raised,
