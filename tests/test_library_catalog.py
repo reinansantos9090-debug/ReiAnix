@@ -117,7 +117,7 @@ class LibraryCatalogTests(unittest.TestCase):
             "movie-art", {"title": "Movie Art", "genres": "[]", "media_kind": "movie"},
         )
         engine = ArtworkEngine(self.store)
-        engine.sync_anime_metadata(movie, {"cover_url": "https://example.invalid/movie.jpg"})
+        engine.sync_anime_metadata(movie, {"cover_url": "https://example.invalid/movie.jpg"}, request_download=False)
         rows = engine.list_for("movie", movie, "poster")
         self.assertEqual(1, len(rows))
         self.assertEqual("anilist", rows[0]["source"])
