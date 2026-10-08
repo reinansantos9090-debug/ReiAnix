@@ -80,8 +80,6 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
         self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceRaised", theme)
         self.assertIn("surfaceContainerHighest = ReiAnixTokens.Colors.surfaceDialog", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.primary", theme)
-        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceRaised", theme)
-        self.assertIn("surfaceContainerHighest = ReiAnixTokens.Colors.surfaceDialog", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.lightPrimary", theme)
         forbidden_blue_surfaces = (
             "02070D",
