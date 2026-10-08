@@ -154,7 +154,11 @@ fun ReiAnixLocalArtwork(
         if (source == null) {
             ReiAnixArtworkMissingState(label = placeholder)
         } else if (effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
-            ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
         } else {
             val memoryCacheKey = remember(
                 stableIdentity,
