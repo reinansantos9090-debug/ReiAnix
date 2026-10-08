@@ -1764,7 +1764,11 @@ async def main(page: ft.Page):
             origin_monotonic_ns=origin_monotonic_ns,
             transition_direction=direction_label or None,
             player_settings=(
-                {
+                lambda base: (
+                    base.update({
+                        str(key): value for key, value in (player_settings or {}).items()
+                    }) or base
+                )({
                     "player.default_speed": settings.get("player.default_speed"),
                     "player.aspect_ratio": settings.get("player.aspect_ratio"),
                     "player.zoom_enabled": settings.get("player.zoom_enabled"),
@@ -1788,12 +1792,7 @@ async def main(page: ft.Page):
                     "audio.subtitle_scale": settings.get("audio.subtitle_scale"),
                     "audio.subtitle_bottom_padding": settings.get("audio.subtitle_bottom_padding"),
                     "audio.subtitle_embedded_style": settings.get("audio.subtitle_embedded_style"),
-                }
-                | (
-                    {str(key): value for key, value in player_settings.items()}
-                    if isinstance(player_settings, dict)
-                    else {}
-                )
+                })
             ),
         )
         if not transition_is_valid():
