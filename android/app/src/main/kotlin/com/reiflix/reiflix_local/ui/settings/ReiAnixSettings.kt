@@ -2053,10 +2053,8 @@ private fun LanguageSettingCard(
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    horizontal = ReiAnixTokens.Spacing.xs,
-                    bottom = ReiAnixTokens.Spacing.sm,
-                )
+                .padding(horizontal = ReiAnixTokens.Spacing.xs)
+                .padding(bottom = ReiAnixTokens.Spacing.sm)
                 .semantics { contentDescription = title },
         )
         HorizontalDivider(
