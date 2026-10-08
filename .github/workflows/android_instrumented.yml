@@ -139,14 +139,6 @@ jobs:
           test -f build/flutter/android/settings.gradle.kts
           test -f build/flutter/android/app/build.gradle.kts
           test -d build/flutter/android/app/src/androidTest
-      - name: Cache rendered Android test project
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            build/flutter
-            build/site-packages
-          key: reianix-android-test-project-v4-${{ github.sha }}
-
 
 
       - name: Restore Flutter pub dependencies
