@@ -18,7 +18,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -153,7 +153,7 @@ class ReiAnixNavigationInstrumentedTest {
         navController.navigateToPlayer("episode-7", "42", ReiAnixRoutes.DETAILS_ORIGIN)
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertDoesNotExist()
+            .assertIsNotDisplayed()
     }
 
     @Test
@@ -361,7 +361,7 @@ class ReiAnixNavigationInstrumentedTest {
 
         composeRule.onNodeWithText("episodeId=episode-7").assertExists()
         composeRule.onNodeWithText("animeId=42").assertExists()
-        composeRule.onNodeWithText("Biblioteca").assertDoesNotExist()
+        composeRule.onNodeWithText("Biblioteca").assertIsNotDisplayed()
 
         composeRule.activity.onBackPressedDispatcher.onBackPressed()
         composeRule.waitForIdle()
