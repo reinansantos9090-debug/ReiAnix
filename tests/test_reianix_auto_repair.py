@@ -9,7 +9,7 @@ class AutoRepairEngineTests(unittest.TestCase):
     def test_only_allowlisted_fixes_exist(self):
         self.assertEqual(
             [fix.fix_id for fix in FIXES],
-            ["FIX-001", "FIX-002", "FIX-003"],
+            ["FIX-001", "FIX-003", "FIX-002"],
         )
 
     def test_fixture_path_fix_requires_both_log_markers(self):
