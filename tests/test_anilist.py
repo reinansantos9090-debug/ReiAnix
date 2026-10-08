@@ -107,18 +107,19 @@ class AniListClientTests(unittest.TestCase):
         self.assertEqual(metadata["description_original"], "The original description stays intact.")
 
     def test_foreign_metadata_defers_description_until_pt_br_translation_exists(self):
-        client = AniListClient("/tmp/cache")
-        media = {
-            "id": 100,
-            "title": {"english": "Example", "romaji": "Example", "native": "例"},
-            "description": "The story follows a young hero who protects their people.",
-        }
-        metadata = client.metadata_from_media("Example", media, localize_description=False)
-        self.assertIsNone(metadata["description"])
-        self.assertEqual(
-            metadata["description_original"],
-            "The story follows a young hero who protects their people.",
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            client = AniListClient(directory)
+            media = {
+                "id": 100,
+                "title": {"english": "Example", "romaji": "Example", "native": "例"},
+                "description": "The story follows a young hero who protects their people.",
+            }
+            metadata = client.metadata_from_media("Example", media, localize_description=False)
+            self.assertIsNone(metadata["description"])
+            self.assertEqual(
+                metadata["description_original"],
+                "The story follows a young hero who protects their people.",
+            )
 
     def test_metadata_maps_anilist_fields(self):
         with tempfile.TemporaryDirectory() as directory:
