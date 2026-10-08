@@ -449,11 +449,6 @@ private fun SettingsProfileRow(
             modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
         )
     }
-    HorizontalDivider(
-        thickness = ReiAnixTokens.Dimensions.dividerHeight,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-    )
-    }
 }
 
 @Composable
