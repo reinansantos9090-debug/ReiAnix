@@ -66,6 +66,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixSearchField
 import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.presentationStateLabel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
@@ -981,7 +982,7 @@ private fun LibraryAnimeCard(
         completed = renderData.completed,
         modifier = modifier,
         onClick = onClick,
-        bottomBadgeText = anime.presentationState.label ?: when {
+        bottomBadgeText = presentationStateLabel(anime.presentationState) ?: when {
             anime.mediaKind == com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind.MOVIE -> "Filme"
             renderData.availableCount > 0 -> renderData.availableCount.toString() + if (renderData.availableCount == 1) " episódio" else " episódios"
             else -> null
