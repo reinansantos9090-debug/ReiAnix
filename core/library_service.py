@@ -12,7 +12,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from core.anilist import AniListClient
 from core.consumption import consumption_state
-from core.artwork import ArtworkEngine
+from core.artwork import ArtworkEngine, PRESENTATION_READY
 from core.library_parser import VIDEO_EXTENSIONS, parse_video_path
 from core.media_identity import identity_from_document
 from core.storage_access import saf_source_identity
@@ -2267,17 +2267,43 @@ class LibraryService:
         self.store.clear_anilist_match(lookup_title)
         logger.info("ANILIST_MATCH_UNLINK title=%s", lookup_title)
         return True
+    def _decorate_catalog_artwork_state(self, items):
+        """Attach canonical artwork readiness without replacing persisted rows."""
+        enriched = []
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            item = dict(item)
+            meta = dict(item.get("meta") or {})
+            media_kind = str(item.get("media_kind") or meta.get("media_kind") or "series").casefold()
+            entity_type = "movie" if media_kind == "movie" else "anime"
+            try:
+                anime_id = int(item.get("id"))
+                state = self.artwork.presentation_state(entity_type, anime_id, meta)
+            except (TypeError, ValueError):
+                state = PRESENTATION_READY if item.get("artwork_available") else "metadata_missing"
+            item["presentation_state"] = state
+            item["artwork_available"] = state == PRESENTATION_READY
+            meta["presentation_state"] = state
+            item["meta"] = meta
+            enriched.append(item)
+        return enriched
+
     def catalog(self, favorites_only=False):
-        return self.genre_registry.enrich_catalog(self.store.catalog(favorites_only))
+        items = self.genre_registry.enrich_catalog(self.store.catalog(favorites_only))
+        return self._decorate_catalog_artwork_state(items)
 
     def catalog_by_ids(self, anime_ids):
         """Return a bounded projection for selected anime IDs using the canonical store."""
-        return self.genre_registry.enrich_catalog(self.store.catalog(anime_ids=anime_ids))
+        items = self.genre_registry.enrich_catalog(self.store.catalog(anime_ids=anime_ids))
+        return self._decorate_catalog_artwork_state(items)
 
     def catalog_page(self, **filters):
         """Return a bounded local catalog page while preserving GenreRegistry enrichment."""
         result = self.store.catalog_page(**filters)
-        result["items"] = self.genre_registry.enrich_catalog(result.get("items") or [])
+        result["items"] = self._decorate_catalog_artwork_state(
+            self.genre_registry.enrich_catalog(result.get("items") or [])
+        )
         return result
     def create_backup(self, destination=None): return self.store.create_backup(destination)
 
