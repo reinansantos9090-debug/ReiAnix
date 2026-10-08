@@ -140,7 +140,12 @@ class ArtworkEngineTests(unittest.TestCase):
         result = self.engine.resolve("anime", healthy, "poster", allow_network=False)
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], STATUS_READY)
-        self.assertEqual(self.engine.get_status("anime", failing, "poster"), STATUS_FAILED)
+        self.assertEqual(
+            self.engine.presentation_state(
+                "anime", failing, {"anilist_id": 16498, "cover_url": "https://example/fail.jpg"}
+            ),
+            PRESENTATION_ARTWORK_FAILED,
+        )
 
     def test_schema_and_persistence(self):
         self.assertEqual(self.store.SCHEMA_VERSION, 29)
