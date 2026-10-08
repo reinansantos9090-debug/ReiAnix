@@ -2,7 +2,7 @@ package com.reiflix.reiflix_local
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -52,6 +52,6 @@ class ReiAnixMainActivityLibraryHostInstrumentedTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Biblioteca", useUnmergedTree = true)
-            .assertDoesNotExist()
+            .assertIsNotDisplayed()
     }
 }
