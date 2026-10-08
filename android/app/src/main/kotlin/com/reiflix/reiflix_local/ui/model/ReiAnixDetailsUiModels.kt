@@ -38,6 +38,7 @@ data class ReiAnixDetailsAnimeUiModel(
     val studio: String? = null,
     val seasonLabel: String? = null,
     val metadataAvailability: ReiAnixMetadataAvailability = ReiAnixMetadataAvailability.UNRESOLVED,
+    val presentationState: ReiAnixPresentationState = ReiAnixPresentationState.METADATA_MISSING,
     val pinned: Boolean = false,
     val playbackTargetEpisode: ReiAnixEpisodeUiModel? = null,
 ) {
@@ -98,6 +99,7 @@ object ReiAnixDetailsUiStateProjection {
                     studio = anime.studio,
                     seasonLabel = anime.seasonLabel,
                     metadataAvailability = anime.metadataAvailability,
+                    presentationState = anime.presentationState,
                     pinned = anime.pinned,
                     playbackTargetEpisode = playableTarget,
                 ),
