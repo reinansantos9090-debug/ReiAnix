@@ -6900,7 +6900,7 @@ async def main(page: ft.Page):
                                         )
                                     valid_after_selection = bool(_configured_valid_library_saf_roots())
                                     if valid_after_selection:
-                                                                    if storage_onboarding["startup_gate"]:
+                                        if storage_onboarding["startup_gate"]:
                                             storage_onboarding["startup_gate"] = False
                                         diagnostics.record(
                                             "STORAGE_ROOT_VALIDATED",
