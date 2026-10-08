@@ -644,7 +644,6 @@ private fun ReiAnixSearchFilterSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(
