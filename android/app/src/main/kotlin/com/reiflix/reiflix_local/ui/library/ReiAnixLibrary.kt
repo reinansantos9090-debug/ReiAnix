@@ -551,6 +551,7 @@ private fun ColumnScope.LibraryReadyContent(
                                 DropdownMenu(
                                     expanded = genreMenuExpanded,
                                     onDismissRequest = { genreMenuExpanded = false },
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 ) {
                                     DropdownMenuItem(
                                         text = { Text("Todos os gêneros") },
@@ -628,6 +629,7 @@ private fun ColumnScope.LibraryReadyContent(
                         DropdownMenu(
                             expanded = sortMenuExpanded,
                             onDismissRequest = { sortMenuExpanded = false },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
                             ReiAnixLibrarySort.OPTIONS.forEach { option ->
                                 DropdownMenuItem(
