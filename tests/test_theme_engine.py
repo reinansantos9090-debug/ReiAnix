@@ -96,7 +96,8 @@ class ThemeEngineTests(unittest.TestCase):
 
         for theme, expected in ((dark, DARK_THEME), (light, LIGHT_THEME)):
             self.assertEqual(theme.color_scheme.surface, expected.surface)
-            self.assertEqual(theme.color_scheme.surface_variant, expected.surface_variant)
+            self.assertEqual(theme.color_scheme.secondary_container, expected.surface_variant)
+            self.assertEqual(theme.color_scheme.tertiary_container, expected.surface_variant)
             self.assertEqual(theme.color_scheme.surface_container, expected.surface)
             self.assertEqual(theme.color_scheme.surface_container_high, expected.surface_raised)
             self.assertEqual(theme.canvas_color, expected.background)
