@@ -3,6 +3,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.library_store import LibraryStore
 from core.settings import SettingsStore
