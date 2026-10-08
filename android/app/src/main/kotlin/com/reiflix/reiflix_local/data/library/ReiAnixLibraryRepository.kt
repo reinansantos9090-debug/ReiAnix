@@ -385,6 +385,10 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         send(ReiAnixLibraryCommandCodec.Action.SELECT_SAF)
     }
 
+    fun dismissStorageOnboarding() {
+        send(ReiAnixLibraryCommandCodec.Action.DISMISS_STORAGE_ONBOARDING)
+    }
+
     fun removeSafTree(reference: String) {
         val normalized = reference.trim()
         if (normalized.isBlank()) return
