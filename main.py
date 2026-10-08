@@ -1747,6 +1747,36 @@ async def main(page: ft.Page):
                 )
             raise asyncio.CancelledError()
 
+        effective_player_settings = {
+            "player.default_speed": settings.get("player.default_speed"),
+            "player.aspect_ratio": settings.get("player.aspect_ratio"),
+            "player.zoom_enabled": settings.get("player.zoom_enabled"),
+            "player.immersive": settings.get("player.immersive"),
+            "player.rotation": settings.get("player.rotation"),
+            "player.pip": settings.get("player.pip"),
+            "player.lock_mode": settings.get("player.lock_mode"),
+            "player.auto_hide_seconds": settings.get("player.auto_hide_seconds"),
+            "player.double_tap_seek_seconds": settings.get("player.double_tap_seek_seconds"),
+            "player.long_press_speed": settings.get("player.long_press_speed"),
+            "player.max_video_resolution": settings.get("player.max_video_resolution"),
+            "player.max_video_frame_rate": settings.get("player.max_video_frame_rate"),
+            "player.max_audio_channels": settings.get("player.max_audio_channels"),
+            "gestures.volume": settings.get("gestures.volume"),
+            "gestures.brightness": settings.get("gestures.brightness"),
+            "gestures.double_tap": settings.get("gestures.double_tap"),
+            "gestures.long_press": settings.get("gestures.long_press"),
+            "audio.preferred_language": settings.get("audio.preferred_language"),
+            "audio.preferred_subtitle_language": settings.get("audio.preferred_subtitle_language"),
+            "audio.subtitles": settings.get("audio.subtitles"),
+            "audio.subtitle_scale": settings.get("audio.subtitle_scale"),
+            "audio.subtitle_bottom_padding": settings.get("audio.subtitle_bottom_padding"),
+            "audio.subtitle_embedded_style": settings.get("audio.subtitle_embedded_style"),
+        }
+        if isinstance(player_settings, dict):
+            effective_player_settings.update(
+                {str(key): value for key, value in player_settings.items()}
+            )
+
         request_id = await bridge.play(
             path,
             title,
@@ -1763,39 +1793,9 @@ async def main(page: ft.Page):
             origin_player_session_id=origin_player_session_id,
             origin_monotonic_ns=origin_monotonic_ns,
             transition_direction=direction_label or None,
-            player_settings=(
-                lambda base: (
-                    base.update({
-                        str(key): value for key, value in (player_settings or {}).items()
-                    }) or base
-                )({
-                    "player.default_speed": settings.get("player.default_speed"),
-                    "player.aspect_ratio": settings.get("player.aspect_ratio"),
-                    "player.zoom_enabled": settings.get("player.zoom_enabled"),
-                    "player.immersive": settings.get("player.immersive"),
-                    "player.rotation": settings.get("player.rotation"),
-                    "player.pip": settings.get("player.pip"),
-                    "player.lock_mode": settings.get("player.lock_mode"),
-                    "player.auto_hide_seconds": settings.get("player.auto_hide_seconds"),
-                    "player.double_tap_seek_seconds": settings.get("player.double_tap_seek_seconds"),
-                    "player.long_press_speed": settings.get("player.long_press_speed"),
-                    "player.max_video_resolution": settings.get("player.max_video_resolution"),
-                    "player.max_video_frame_rate": settings.get("player.max_video_frame_rate"),
-                    "player.max_audio_channels": settings.get("player.max_audio_channels"),
-                    "gestures.volume": settings.get("gestures.volume"),
-                    "gestures.brightness": settings.get("gestures.brightness"),
-                    "gestures.double_tap": settings.get("gestures.double_tap"),
-                    "gestures.long_press": settings.get("gestures.long_press"),
-                    "audio.preferred_language": settings.get("audio.preferred_language"),
-                    "audio.preferred_subtitle_language": settings.get("audio.preferred_subtitle_language"),
-                    "audio.subtitles": settings.get("audio.subtitles"),
-                    "audio.subtitle_scale": settings.get("audio.subtitle_scale"),
-                    "audio.subtitle_bottom_padding": settings.get("audio.subtitle_bottom_padding"),
-                    "audio.subtitle_embedded_style": settings.get("audio.subtitle_embedded_style"),
-                })
-            ),
+            player_settings=effective_player_settings,
         )
-        if not transition_is_valid():
+        if not transition_is_valid():        if not transition_is_valid():
             if origin_request_id:
                 performance.event(
                     invalidated_event,
