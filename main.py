@@ -521,6 +521,7 @@ async def main(page: ft.Page):
                 "safSelectionPending": saf_selection.pending,
                 "onboardingState": storage_onboarding["state"],
                 "onboardingMessage": storage_onboarding["message"],
+                "onboardingDismissed": storage_onboarding["dismissed"],
                 "onboardingError": storage_onboarding["error"],
             }
         )
@@ -2806,7 +2807,7 @@ async def main(page: ft.Page):
         if navigation.current == "settings" and not compose_primary_ui:
             render_current(force=True, reason="settings_refresh")
     async def add_folder(_=None):
-        # Explicit user action is the only path that may open the SAF picker.
+        # Only an explicit user action may open the SAF picker.
         storage_onboarding["dismissed"] = False
         # A scan already running must not block the user from choosing another
         # folder. ScanCoordinator already queues/coalesces the follow-up rescan.
@@ -3336,9 +3337,8 @@ async def main(page: ft.Page):
         """Coordinate first-access SAF onboarding; Android uses only DocumentsUI."""
         if not bridge.available or not storage_onboarding["startup_gate"]:
             return
-        # First access must render the ReiAnix onboarding immediately after the
-        # native capability snapshot is known. Do not block the visible UI on
-        # SAF inventory/scanner completion.
+        # A known native capability snapshot is enough to render first-access
+        # onboarding. SAF inventory/scanning must never gate the visible Compose UI.
         if not storage_capabilities[0].known:
             return
 
