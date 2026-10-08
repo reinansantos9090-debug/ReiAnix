@@ -1053,7 +1053,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         doubleTapEnabled = newIntent.getBooleanExtra("setting_gestures_double_tap", doubleTapEnabled)
         longPressEnabled = newIntent.getBooleanExtra("setting_gestures_long_press", longPressEnabled)
         val incomingLockMode = newIntent.getBooleanExtra("setting_player_lock_mode", locked)
-        val incomingDefaultSpeed = newIntent.getFloatExtra("setting_player_default_speed", 1f)
+        val incomingDefaultSpeed = newIntent.getFloatExtra(
+            "setting_player_default_speed",
+            if (::player.isInitialized) player.playbackParameters.speed else 1f,
+        )
         if (incomingDefaultSpeed.isFinite() && incomingDefaultSpeed > 0f) {
             if (::player.isInitialized) player.setPlaybackSpeed(incomingDefaultSpeed)
         }
@@ -1069,18 +1072,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
         subtitleScale = newIntent.getFloatExtra("setting_audio_subtitle_scale", subtitleScale).coerceIn(0.5f, 2f)
         subtitleBottomPaddingPercent = newIntent.getIntExtra("setting_audio_subtitle_bottom_padding", subtitleBottomPaddingPercent).coerceIn(0, 50)
         subtitleEmbeddedStyle = newIntent.getBooleanExtra("setting_audio_subtitle_embedded_style", subtitleEmbeddedStyle)
-        preferredAudioLanguage = newIntent.getStringExtra("setting_audio_preferred_language")?.trim().orEmpty()
-        preferredSubtitleLanguage = newIntent.getStringExtra("setting_audio_preferred_subtitle_language")?.trim().orEmpty()
+        preferredAudioLanguage = newIntent.getStringExtra("setting_audio_preferred_language")?.trim() ?: preferredAudioLanguage
+        preferredSubtitleLanguage = newIntent.getStringExtra("setting_audio_preferred_subtitle_language")?.trim() ?: preferredSubtitleLanguage
         subtitleMode = newIntent.getStringExtra("setting_audio_subtitles") ?: subtitleMode
         immersiveSetting = newIntent.getStringExtra("setting_player_immersive") ?: immersiveSetting
         applyImmersiveAfterLayout()
         applyGlobalTrackPreferences()
         applyAdvancedTrackConstraints()
         applySubtitlePreferences()
-        zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", false)
+        zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", zoomEnabled)
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.resetZoomToFit()
-        playerView.resizeMode = resizeModeFromSetting(newIntent.getStringExtra("setting_player_aspect_ratio"))
-        aspectModeLabel = aspectLabelFromSetting(newIntent.getStringExtra("setting_player_aspect_ratio"))
+        val incomingAspectRatio = newIntent.getStringExtra("setting_player_aspect_ratio") ?: aspectModeLabel
+        playerView.resizeMode = resizeModeFromSetting(incomingAspectRatio)
+        aspectModeLabel = aspectLabelFromSetting(incomingAspectRatio)
         findViewByTag<TextView>("reiflix_aspect_button")?.apply {
             text = aspectModeLabel
             isSelected = aspectModeLabel == "Preencher"
@@ -1106,6 +1110,32 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
     }
+
+    private fun currentPlayerSettingsSnapshot(): JSONObject =
+        JSONObject()
+            .put("player.autoplay_next", autoplayNext)
+            .put("player.default_speed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
+            .put("player.aspect_ratio", aspectModeLabel)
+            .put("player.zoom_enabled", zoomEnabled)
+            .put("player.immersive", immersiveSetting)
+            .put("player.lock_mode", locked)
+            .put("player.auto_hide_seconds", (autoHideTimeoutMs / 1000L).coerceAtLeast(1L))
+            .put("player.double_tap_seek_seconds", (doubleTapSeekMs / 1000L).coerceAtLeast(1L))
+            .put("player.long_press_speed", longPressSpeed)
+            .put("player.max_video_resolution", maxVideoResolution)
+            .put("player.max_video_frame_rate", maxVideoFrameRate)
+            .put("player.max_audio_channels", maxAudioChannels)
+            .put("player.pip", pipEnabled)
+            .put("gestures.volume", volumeGesturesEnabled)
+            .put("gestures.brightness", brightnessGesturesEnabled)
+            .put("gestures.double_tap", doubleTapEnabled)
+            .put("gestures.long_press", longPressEnabled)
+            .put("audio.preferred_language", preferredAudioLanguage)
+            .put("audio.preferred_subtitle_language", preferredSubtitleLanguage)
+            .put("audio.subtitles", subtitleMode)
+            .put("audio.subtitle_scale", subtitleScale)
+            .put("audio.subtitle_bottom_padding", subtitleBottomPaddingPercent)
+            .put("audio.subtitle_embedded_style", subtitleEmbeddedStyle)
 
     private fun currentEpisodeId(): String = intent.getStringExtra("episodeId")?.trim().orEmpty()
 
@@ -4273,6 +4303,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("transitionGeneration", generation)
             .put("playerGeneration", playerGeneration)
             .put("playerSessionId", playerSessionId)
+            // Carry the effective session settings with the transition. The
+            // SettingsStore remains the durable source of truth, while this
+            // handoff removes the race where Python reads the old value before
+            // the canonical mailbox mutation is consumed.
+            .put("playerSettings", currentPlayerSettingsSnapshot())
 
         if (commandSequence < lastPlayerCommandSequence) {
             NativeMailbox.writeBestEffort(
