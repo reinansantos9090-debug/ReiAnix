@@ -714,6 +714,13 @@ async def main(page: ft.Page):
                 compose_library_bridge.request_publish(
                     f"artwork_cache_invalid:{entity_type}:{entity_id}:{artwork_type}"
                 )
+            if event_name in {
+                "ARTWORK_DOWNLOAD_FAILED",
+                "ARTWORK_RETRY",
+            } and entity_id > 0 and compose_library_bridge.enabled:
+                compose_library_bridge.request_publish(
+                    f"artwork_state:{entity_type}:{entity_id}:{artwork_type}"
+                )
 
         try:
             artwork_event_loop.call_soon_threadsafe(apply_event)
