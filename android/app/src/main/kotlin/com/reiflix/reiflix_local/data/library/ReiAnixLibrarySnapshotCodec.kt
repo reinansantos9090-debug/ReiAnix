@@ -114,6 +114,7 @@ internal object ReiAnixLibrarySnapshotCodec {
             onboardingState = raw.optString("onboardingState", "checking").trim().lowercase(),
             onboardingMessage = raw.optString("onboardingMessage").trim()
                 .takeIf { it.isNotEmpty() && it != "null" },
+            onboardingDismissed = raw.optBoolean("onboardingDismissed", false),
             onboardingError = raw.optString("onboardingError").trim()
                 .takeIf { it.isNotEmpty() && it != "null" },
             safRoots = capabilities.stringList("safRoots"),
