@@ -49,12 +49,14 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -79,8 +81,11 @@ jobs:
           "$sdkmanager_path" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator"
       - name: Install Flet build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt "flet[cli]==0.86.5"
       - name: Generate deterministic player fixture
@@ -145,6 +150,14 @@ jobs:
         working-directory: build/flutter
         run: flutter pub get
 
+      - name: Precompile Android app and instrumentation APKs
+        working-directory: build/flutter/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          timeout --signal=TERM --kill-after=10s 10m             ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest             --no-daemon --stacktrace --max-workers=2
+
       - name: Enable KVM for Android emulator
         shell: bash
         run: |
@@ -162,7 +175,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           force-avd-creation: true
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 360
           disable-animations: true
           disable-linux-hw-accel: false
           emulator-options: "-no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-save -gpu swiftshader_indirect -camera-back none -camera-front none"
