@@ -213,7 +213,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("Analyze ReiAnix runtime Logcat", workflow)
         self.assertIn("scripts/analyze_android_runtime_log.py", workflow)
         self.assertIn('--package "com.reiflix.reiflix_local"', workflow)
-        self.assertNotIn("SERIOUS_PYTHON_SITE_PACKAGES:", workflow)
+        self.assertIn("SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/site-packages", workflow)
+        self.assertIn("Verify Serious Python staging", workflow)
         self.assertNotIn("ReiAnix Android No-Emulator Contract Checks", workflow)
 
     def test_android_build_declares_runtime_python_dependencies(self):
