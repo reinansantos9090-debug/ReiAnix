@@ -64,6 +64,7 @@ import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.label
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import kotlin.math.roundToInt
 
@@ -589,7 +590,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
-        bottomBadgeText = bottomBadgeText,
+        bottomBadgeText = bottomBadgeText ?: anime.presentationState.label,
     )
 }
 
@@ -622,7 +623,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
-        bottomBadgeText = bottomBadgeText,
+        bottomBadgeText = bottomBadgeText ?: anime.presentationState.label,
     )
 }
 
