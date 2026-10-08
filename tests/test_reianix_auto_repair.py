@@ -87,15 +87,11 @@ class AutoRepairEngineTests(unittest.TestCase):
             / "workflows"
             / "reianix_auto_repair.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("workflow_run:", workflow)
+        self.assertNotIn("workflow_run:", workflow)
         self.assertIn("Build ReiAnix Android APK", workflow)
         self.assertIn("ReiAnix Android Instrumented Runtime Matrix", workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("actions: read", workflow)
-        self.assertIn("github.event.workflow_run.head_branch == 'main'", workflow)
-        self.assertIn("github.event.workflow_run.head_repository.full_name == github.repository", workflow)
-        self.assertIn('gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"', workflow)
-        self.assertNotIn("--json conclusion,headBranch,headSha,name,headRepository", workflow)
         self.assertNotIn("pull_request:", workflow)
         self.assertNotIn("pull_request_target:", workflow)
 
