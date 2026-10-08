@@ -85,7 +85,7 @@ jobs:
         run: |
           python scripts/create_player_fixture.py
           test -s android/app/src/androidTest/assets/player_fixture.mp4
-          python scripts/create_library_fixture_fixture.py
+          python scripts/create_library_fixture.py
           test -s android/app/src/androidTest/assets/library_fixture.sqlite3
       - name: Prepare Flet template with ReiAnix Android host
         shell: bash
