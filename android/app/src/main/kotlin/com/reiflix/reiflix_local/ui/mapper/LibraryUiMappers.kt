@@ -50,7 +50,7 @@ object LibraryUiMappers {
                     || metadata.stringOrNull("anilist_id") != null
                     || metadata.stringOrNull("metadata_status") != null
                     || source.stringOrNull("metadata_status") != null,
-                hasLocalArtwork = artwork(source, metadata).isAvailable,
+                hasLocalArtwork = artwork(source, metadata)?.isAvailable == true,
                 hasCoverUrl = metadata.stringOrNull("cover_url") != null
                     || source.stringOrNull("cover_url") != null,
             ),
