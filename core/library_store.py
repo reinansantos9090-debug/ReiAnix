@@ -2628,11 +2628,19 @@ class LibraryStore:
             where.append("(a.anilist_id IS NOT NULL OR COALESCE(a.metadata_source,'local') NOT IN ('local','unresolved','unknown',''))")
         elif metadata == "Ausente":
             where.append("(a.anilist_id IS NULL AND COALESCE(a.metadata_source,'local') IN ('local','unresolved','unknown',''))")
-        artwork_ready = "EXISTS (SELECT 1 FROM artwork ar WHERE ar.entity_id=CAST(a.id AS TEXT) AND ar.status='ready' AND NULLIF(TRIM(COALESCE(ar.local_path,'')),'') IS NOT NULL)"
+        artwork_ready = (
+            "EXISTS (SELECT 1 FROM artwork ar WHERE ar.entity_id=CAST(a.id AS TEXT) "
+            "AND ar.entity_type=CASE WHEN a.media_kind='movie' THEN 'movie' ELSE 'anime' END "
+            "AND ar.artwork_type='poster' AND ar.status='ready' "
+            "AND NULLIF(TRIM(COALESCE(ar.local_path,'')),'') IS NOT NULL "
+            "AND (NULLIF(TRIM(COALESCE(a.cover_url,'')),'') IS NULL "
+            "OR NULLIF(TRIM(COALESCE(ar.external_url,'')),'')=NULLIF(TRIM(COALESCE(a.cover_url,'')),'') "
+            "OR LOWER(COALESCE(ar.source,'')) IN ('local','manual')))"
+        )
         if artwork == "Disponível":
-            where.append("(NULLIF(TRIM(COALESCE(a.cover_cache,'')),'') IS NOT NULL OR NULLIF(TRIM(COALESCE(a.cover_url,'')),'') IS NOT NULL OR " + artwork_ready + ")")
+            where.append(artwork_ready)
         elif artwork == "Ausente":
-            where.append("NULLIF(TRIM(COALESCE(a.cover_cache,'')),'') IS NULL AND NULLIF(TRIM(COALESCE(a.cover_url,'')),'') IS NULL AND NOT " + artwork_ready)
+            where.append("NOT " + artwork_ready)
         raw = str(query or "").strip()
         compact = re.sub(r'\s+', '', raw.casefold())
         m = re.fullmatch(r's(\d{1,3})e(\d{1,5})', compact)
