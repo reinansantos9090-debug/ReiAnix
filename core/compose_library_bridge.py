@@ -515,6 +515,7 @@ class ComposeLibraryBridge:
             "media_kind": source.get("media_kind") or meta.get("media_kind"),
             "year": source.get("year"),
             "presentation_state": source.get("presentation_state") or meta.get("presentation_state"),
+            "presentation_state": source.get("presentation_state") or meta.get("presentation_state"),
             "playback_target_episode_id": (
                 (source.get("playback_target_episode") or {}).get("id")
                 if isinstance(source.get("playback_target_episode"), dict)
@@ -548,6 +549,7 @@ class ComposeLibraryBridge:
                 "added_at": meta.get("added_at", source.get("added_at")),
                 "year": meta.get("year", source.get("year")),
                 "metadata_status": meta.get("metadata_status") or source.get("metadata_status"),
+                "presentation_state": meta.get("presentation_state") or source.get("presentation_state"),
                 "presentation_state": meta.get("presentation_state") or source.get("presentation_state"),
                 "score": meta.get("score", source.get("score")),
                 "title": meta.get("title") or source.get("main_title") or source.get("title"),
