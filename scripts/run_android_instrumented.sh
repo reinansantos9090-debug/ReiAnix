@@ -35,7 +35,7 @@ echo "Emulator screen-off timeout configured: $configured_timeout ms"
 # below restarts the host and then waits for the same emulator transport.
 ready=0
 offline_streak=0
-for attempt in $(seq 1 180); do
+for attempt in $(seq 1 60); do
   if ! adb start-server >/dev/null 2>&1; then
     echo "adb start-server failed on readiness attempt $attempt; retrying."
     sleep 2
@@ -77,7 +77,7 @@ for attempt in $(seq 1 180); do
   fi
 
   if [ "$((attempt % 15))" -eq 0 ]; then
-    echo "ADB readiness attempt $attempt/180"
+    echo "ADB readiness attempt $attempt/60"
     adb devices -l || echo "adb devices diagnostic failed."
   fi
   sleep 2
