@@ -57,10 +57,10 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
 
         expected_tokens = {
             "val background = Color(0xFF000000)",
-            "val surface = Color(0xFF0A0A0A)",
-            "val surfaceVariant = Color(0xFF151515)",
-            "val surfaceRaised = Color(0xFF111111)",
-            "val surfaceDialog = Color(0xFF151515)",
+            "val surface = Color(0xFF050505)",
+            "val surfaceVariant = Color(0xFF080808)",
+            "val surfaceRaised = Color(0xFF0A0A0A)",
+            "val surfaceDialog = Color(0xFF0A0A0A)",
             "val surfaceNavigation = Color(0xFF000000)",
             "val divider = Color(0xFF202020)",
             "val border = Color(0xFF202020)",
@@ -75,10 +75,13 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
         self.assertIn("val lightPrimary = Color(0xFF2563C7)", tokens)
         self.assertIn("background = ReiAnixTokens.Colors.background", theme)
         self.assertIn("surface = ReiAnixTokens.Colors.surface", theme)
-        self.assertIn("surfaceContainer = ReiAnixTokens.Colors.surfaceVariant", theme)
+        self.assertIn("surfaceContainerLow = ReiAnixTokens.Colors.backgroundSecondary", theme)
+        self.assertIn("surfaceContainer = ReiAnixTokens.Colors.surface", theme)
         self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceRaised", theme)
         self.assertIn("surfaceContainerHighest = ReiAnixTokens.Colors.surfaceDialog", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.primary", theme)
+        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceRaised", theme)
+        self.assertIn("surfaceContainerHighest = ReiAnixTokens.Colors.surfaceDialog", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.lightPrimary", theme)
         forbidden_blue_surfaces = (
             "02070D",
@@ -94,6 +97,17 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
         for color in forbidden_blue_surfaces:
             self.assertNotIn(color, tokens)
             self.assertNotIn(color, theme)
+
+    def test_legacy_gray_surface_palette_is_absent_from_compose_design_tokens(self):
+        tokens = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt").read_text(encoding="utf-8")
+        theme = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt").read_text(encoding="utf-8")
+        for legacy in ("0xFF151515", "0xFF111111"):
+            self.assertNotIn(legacy, tokens)
+            self.assertNotIn(legacy, theme)
+        self.assertIn("surfaceContainerLowest = ReiAnixTokens.Colors.background", theme)
+        self.assertIn("surfaceContainerLow = ReiAnixTokens.Colors.backgroundSecondary", theme)
+        self.assertIn("surfaceContainer = ReiAnixTokens.Colors.surface", theme)
+        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceRaised", theme)
 
 
 if __name__ == "__main__":
