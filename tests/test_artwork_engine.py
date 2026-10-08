@@ -13,6 +13,9 @@ from core.artwork import (
     STATUS_FAILED,
     STATUS_READY,
     STATUS_RETRY_WAIT,
+    PRESENTATION_ARTWORK_FAILED,
+    PRESENTATION_ARTWORK_PENDING,
+    PRESENTATION_READY,
 )
 from core.library_service import LibraryService
 from PIL import Image
@@ -58,7 +61,84 @@ class ArtworkEngineTests(unittest.TestCase):
             {"anilist_id": 16498, "cover_url": url, "banner_url": "https://example/banner.jpg"}
             if artwork_type == "poster"
             else {"cover_url": url},
+            request_download=False,
         )
+
+    def test_cover_url_requires_materialized_current_artwork_for_ready_state(self):
+        anime = self._media("Pending cover")
+        self._remote(anime)
+        metadata = {"anilist_id": 16498, "cover_url": "https://example/cover.jpg"}
+        self.assertEqual(
+            self.engine.presentation_state("anime", anime, metadata),
+            PRESENTATION_ARTWORK_PENDING,
+        )
+        self.engine._downloader = lambda url: (_ for _ in ()).throw(
+            HTTPError(url, 404, "missing", {}, None)
+        )
+        self.engine.request("anime", anime, "poster", blocking=True)
+        self.assertEqual(
+            self.engine.presentation_state("anime", anime, metadata),
+            PRESENTATION_ARTWORK_FAILED,
+        )
+
+    def test_metadata_sync_queues_missing_cover_without_waiting_for_scanner(self):
+        anime = self._media("Auto cover")
+        calls = []
+        self.engine._downloader = lambda url: (calls.append(url) or (JPEG, "image/jpeg", 200))
+        self.engine.sync_anime_metadata(
+            anime,
+            {"anilist_id": 16498, "cover_url": "https://example/auto.jpg"},
+        )
+        self.engine.request("anime", anime, "poster", blocking=True)
+        self.assertEqual(calls, ["https://example/auto.jpg"])
+        self.assertEqual(
+            self.engine.presentation_state(
+                "anime", anime, {"anilist_id": 16498, "cover_url": "https://example/auto.jpg"}
+            ),
+            PRESENTATION_READY,
+        )
+
+    def test_valid_old_cover_survives_failed_new_cover_identity(self):
+        anime = self._media("Old cover preservation")
+        old = Path(self.tmp.name) / "old.jpg"
+        old.write_bytes(JPEG)
+        self.engine.sync_anime_metadata(
+            anime,
+            {"anilist_id": 16498, "cover_url": "https://example/old.jpg", "cover_cache": str(old)},
+        )
+        self.engine._downloader = lambda url: (_ for _ in ()).throw(
+            HTTPError(url, 404, "missing", {}, None)
+        )
+        self.engine.sync_anime_metadata(
+            anime,
+            {"anilist_id": 16498, "cover_url": "https://example/new.jpg"},
+        )
+        self.engine.request("anime", anime, "poster", blocking=True)
+        self.assertTrue(old.is_file())
+        self.assertEqual(self.store.anime_metadata("local")["cover_cache"], str(old))
+        self.assertEqual(
+            self.engine.presentation_state(
+                "anime", anime, {"anilist_id": 16498, "cover_url": "https://example/new.jpg"}
+            ),
+            PRESENTATION_ARTWORK_FAILED,
+        )
+
+    def test_failed_cover_does_not_block_other_artwork(self):
+        failing = self._media("Failing")
+        healthy = self._media("Healthy")
+        self._remote(failing, "https://example/fail.jpg")
+        self._remote(healthy, "https://example/ok.jpg")
+
+        def downloader(url):
+            if url.endswith("fail.jpg"):
+                raise HTTPError(url, 404, "missing", {}, None)
+            return JPEG, "image/jpeg", 200
+
+        self.engine._downloader = downloader
+        self.engine.request("anime", failing, "poster", blocking=True)
+        result = self.engine.request("anime", healthy, "poster", blocking=True)
+        self.assertEqual(result["status"], STATUS_READY)
+        self.assertEqual(self.engine.get_status("anime", failing, "poster"), STATUS_FAILED)
 
     def test_schema_and_persistence(self):
         self.assertEqual(self.store.SCHEMA_VERSION, 29)
