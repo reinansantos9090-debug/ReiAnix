@@ -173,7 +173,21 @@ def _flet_material_theme(tokens: ThemeTokens) -> ft.Theme:
         color_scheme=color_scheme,
         color_scheme_seed=tokens.primary,
         canvas_color=tokens.background,
+        scaffold_bgcolor=tokens.background,
         card_bgcolor=tokens.surface,
+        appbar_theme=ft.AppBarTheme(
+            bgcolor=tokens.background,
+            color=tokens.text,
+            elevation=0,
+            elevation_on_scroll=0,
+            shadow_color=tokens.background,
+        ),
+        navigation_bar_theme=ft.NavigationBarTheme(
+            bgcolor=tokens.background,
+            indicator_color=ft.Colors.TRANSPARENT,
+            elevation=0,
+            shadow_color=tokens.background,
+        ),
         dialog_theme=ft.DialogTheme(
             bgcolor=tokens.surface_raised,
             barrier_color=tokens.overlay,
