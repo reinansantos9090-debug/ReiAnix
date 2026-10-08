@@ -45,6 +45,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -61,7 +66,7 @@ jobs:
           set -euo pipefail
           flutter --version
           test -d "$FLUTTER_ROOT/packages/flutter_tools/gradle"
-      - name: Accept Android SDK licenses and install emulator dependencies
+      - name: Accept Android SDK licenses and install platform
         shell: bash
         run: |
           set -euo pipefail
@@ -72,6 +77,78 @@ jobs:
           yes | "$sdkmanager_path" --licenses >/dev/null
           set -o pipefail
           "$sdkmanager_path" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator"
+      - name: Install Flet build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt "flet[cli]==0.86.5"
+      - name: Generate deterministic player fixture
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python scripts/create_player_fixture.py
+          test -s android/app/src/androidTest/assets/player_fixture.mp4
+          python scripts/create_library_fixture.py
+          test -s android/app/src/androidTest/assets/library_fixture.sqlite3
+      - name: Prepare Flet template with ReiAnix Android host
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          curl -sSL -o build/flet-build-template.zip https://github.com/flet-dev/flet/releases/download/v0.86.5/flet-build-template.zip
+          mkdir -p build/temp_tmpl build/flet-build-template
+          unzip -q build/flet-build-template.zip -d build/temp_tmpl
+          cp -a build/temp_tmpl/build/. build/flet-build-template/
+          rm -rf build/temp_tmpl build/flet-build-template.zip
+          python scripts/prepare_flet_template.py             --template "$GITHUB_WORKSPACE/build/flet-build-template"             --overlay "$GITHUB_WORKSPACE/android"
+      - name: Render Android Gradle project
+        shell: bash
+        run: |
+          set -euo pipefail
+          git_backup_root="$(mktemp -d)"
+          git_backup="$git_backup_root/.git"
+          mv .git "$git_backup"
+          restore_git() {
+            if [ -d "$git_backup" ] && [ ! -e .git ]; then
+              mv "$git_backup" .git
+            fi
+            rmdir "$git_backup_root"
+          }
+          trap restore_git EXIT
+          flet build apk             --template build/flet-build-template             --build-number "$GITHUB_RUN_NUMBER"             --build-version "0.2.1"             --python-version "3.12"             --yes
+      - name: Verify rendered Android test project
+        run: |
+          test -f build/flutter/android/gradlew
+          test -f build/flutter/android/app/build.gradle.kts
+          for test_file in \
+            NativePlayerPlaybackInstrumentedTest.kt \
+            BackAndSettingsReturnInstrumentedTest.kt \
+            DeviceFlowInstrumentedTest.kt \
+            NativeIndexInstrumentedTest.kt \
+            NativeMailboxInstrumentedTest.kt \
+            MetadataOwnerInstrumentedTest.kt; do
+            test -f "build/flutter/android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/$test_file"
+          done
+      - name: Verify rendered Android project integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f build/flutter/pubspec.yaml
+          test -f build/flutter/android/gradlew
+          test -f build/flutter/android/settings.gradle.kts
+          test -f build/flutter/android/app/build.gradle.kts
+          test -d build/flutter/android/app/src/androidTest
+      - name: Cache rendered Android test project
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/flutter
+            build/site-packages
+          key: reianix-android-test-project-v4-${{ github.sha }}
+
+
+
       - name: Restore Flutter pub dependencies
         working-directory: build/flutter
         run: flutter pub get
