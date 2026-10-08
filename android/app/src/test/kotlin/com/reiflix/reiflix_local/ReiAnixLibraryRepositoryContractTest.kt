@@ -49,6 +49,51 @@ class ReiAnixLibraryRepositoryContractTest {
     }
 
     @Test
+    fun scanSnapshotPreservesKnownCatalogWhileScanIsInProgress() {
+        val previous = ReiAnixLibrarySnapshotCodec.decode(
+            """{"schemaVersion":1,"revision":1,"status":"READY","sourceState":"AVAILABLE","sourceAvailable":true,
+               "animes":[{"id":7,"main_title":"Local","media_kind":"series",
+               "favorite":true,"year":2026,"genres":[],"genre_ids":[],"meta":{},
+               "seasons":[],"specials":[],"media_files":[]}],"continue_watching":[]}""".trimIndent(),
+        )
+
+        val decoded = ReiAnixLibrarySnapshotCodec.decode(
+            """{"schemaVersion":1,"revision":2,"status":"EMPTY","sourceState":"ERROR","sourceAvailable":false,
+               "scanInProgress":true,"scanState":"SCANNING","animes":[],"continue_watching":[]}""".trimIndent(),
+        )
+
+        val merged = ReiAnixLibraryRepository.mergeSnapshotState(decoded, previous)
+
+        assertEquals("READY", merged.status.name)
+        assertEquals(listOf(7L), merged.animes.map { it.id })
+        assertEquals(true, merged.scanInProgress)
+        assertEquals("SCANNING", merged.scanState)
+    }
+
+    @Test
+    fun scanFailurePreservesKnownCatalogWhileSurfacingError() {
+        val previous = ReiAnixLibrarySnapshotCodec.decode(
+            """{"schemaVersion":1,"revision":1,"status":"READY","sourceState":"AVAILABLE","sourceAvailable":true,
+               "animes":[{"id":7,"main_title":"Local","media_kind":"series",
+               "favorite":false,"year":2026,"genres":[],"genre_ids":[],"meta":{},
+               "seasons":[],"specials":[],"media_files":[]}],"continue_watching":[]}""".trimIndent(),
+        )
+
+        val decoded = ReiAnixLibrarySnapshotCodec.decode(
+            """{"schemaVersion":1,"revision":2,"status":"ERROR","sourceState":"UNKNOWN","sourceAvailable":false,
+               "scanInProgress":false,"scanState":"FAILED","error":"scan failed",
+               "animes":[],"continue_watching":[]}""".trimIndent(),
+        )
+
+        val merged = ReiAnixLibraryRepository.mergeSnapshotState(decoded, previous)
+
+        assertEquals("ERROR", merged.status.name)
+        assertEquals("scan failed", merged.error)
+        assertEquals(listOf(7L), merged.animes.map { it.id })
+        assertEquals(false, merged.animes.isEmpty())
+    }
+
+    @Test
     fun snapshotReplacementPreservesOnlyCommandTransportState() {
         val previous = ReiAnixLibrarySnapshotCodec.decode(
             """{"schemaVersion":1,"revision":1,"status":"READY","sourceState":"AVAILABLE","sourceAvailable":true,
