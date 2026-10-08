@@ -185,6 +185,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertNotIn("Cancel legacy Android workflow runs", workflow)
         self.assertNotIn("gh run cancel", workflow)
         self.assertNotIn("|| true", workflow)
+        self.assertNotIn('flet build "${build_args[@]}"\n          exit 1', workflow)
         self.assertNotIn("Run release evidence certification (no emulator)", workflow)
     def test_android_certification_is_manual_and_keeps_one_real_emulator(self):
         workflow = (ROOT / ".github/workflows/android_instrumented.yml").read_text(encoding="utf-8")
