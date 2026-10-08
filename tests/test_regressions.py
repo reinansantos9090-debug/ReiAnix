@@ -122,8 +122,8 @@ class RegressionTests(unittest.TestCase):
             client = AniListClient(directory)
             source = "This is the story of a young girl in a new town."
             with patch.object(client, "_translate_chunk_to_pt_br", return_value=None) as translate:
-                self.assertEqual(source, client.localize_description_to_pt_br(source))
-                self.assertEqual(source, client.localize_description_to_pt_br(source))
+                self.assertIsNone(client.localize_description_to_pt_br(source))
+                self.assertIsNone(client.localize_description_to_pt_br(source))
             self.assertEqual(1, translate.call_count)
 
     def test_metadata_localization_is_opt_in_and_uses_translated_cache(self):
