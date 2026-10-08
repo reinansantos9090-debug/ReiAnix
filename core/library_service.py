@@ -889,7 +889,7 @@ class LibraryService:
                     not anilist_id
                     or status in {'unresolved', 'error', 'ambiguous'}
                 )
-                and match_status not in {'not_found', 'network_error', 'rate_limited'}
+                and match_status != 'not_found'
             )
             if status == 'ambiguous' and not anilist_id:
                 if pending_cache is None: pending_cache = self.store.pending_matches()
