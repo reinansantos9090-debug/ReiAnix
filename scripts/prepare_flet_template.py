@@ -443,9 +443,9 @@ if sdk_marker not in existing:
         sdk_block = "\n// ReiAnix Android 16 SDK contract\nandroid {\n    compileSdk 36\n    defaultConfig {\n        targetSdk 36\n        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'\n    }\n}\n"
     gradle.write_text(existing + sdk_block, encoding="utf-8")
 
-# The APK workflow deliberately does not execute Kotlin unit tests here.
-# Native JVM tests remain available to the dedicated validation workflows, but
-# this template-preparation step must stay focused on producing the real APK.
+# The APK workflow executes the existing Kotlin JVM unit tests after the real
+# Flet/Gradle Android project has been rendered. This template-preparation step
+# itself remains focused on producing the Android host.
 '''
 
 
