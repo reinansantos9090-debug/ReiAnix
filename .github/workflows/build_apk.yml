@@ -294,21 +294,10 @@ jobs:
           }
           trap restore_git EXIT
 
-          # Flet/Gradle downloads native artifacts from GitHub Releases.
-          # A transient HTTP 5xx from that service must not make an otherwise
-          # reproducible APK build fail before the APK exists.
-          for attempt in 1 2 3; do
-            echo "APK build attempt $attempt/3"
-            if flet build "${build_args[@]}"; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "::warning::APK build attempt $attempt failed; retrying after transient dependency/download failure."
-              sleep 10
-            fi
-          done
-
-          echo "::error::APK build failed after 3 attempts."
+          # Build failures are deterministic code/toolchain failures in most cases.
+          # Do not rebuild the entire APK up to three times: that can consume
+          # most of the job timeout before reporting the real error.
+          flet build "${build_args[@]}"
           exit 1
 
       - name: Preserve build identity evidence
