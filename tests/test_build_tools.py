@@ -1008,14 +1008,16 @@ class BuildIdentityContractTests(unittest.TestCase):
         self.assertIn('python-version "3.12"', workflow)
         self.assertIn('versionName=\'0.2.1\'', workflow)
 
-    def test_fast_apk_workflow_does_not_run_kotlin_unit_tests(self):
+    def test_apk_workflow_runs_kotlin_unit_tests_without_emulator_infrastructure(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
         prepare = (ROOT / "scripts/prepare_flet_template.py").read_text(encoding="utf-8")
         certification = (ROOT / "scripts/release_certification.py").read_text(encoding="utf-8")
         self.assertIn("flet-build-template.zip", workflow)
         self.assertIn("assets/app.zip", workflow)
         self.assertNotIn("flet clear-cache", workflow)
-        self.assertNotIn("Run Kotlin unit tests", workflow)
+        self.assertIn("Run Kotlin unit tests", workflow)
+        self.assertIn(":app:testDebugUnitTest", workflow)
+        self.assertNotIn(":app:connectedDebugAndroidTest", workflow)
         self.assertNotIn(":app:testDebugUnitTest", prepare)
         self.assertIn(":app:testDebugUnitTest", certification)
         self.assertIn("SERIOUS_PYTHON_SITE_PACKAGES", certification)
