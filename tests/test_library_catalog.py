@@ -46,6 +46,27 @@ class LibraryCatalogTests(unittest.TestCase):
         self.assertEqual(2, row["available_count"])
         self.assertEqual(1, row["missing_count"])
 
+    def test_catalog_exposes_generated_episode_thumbnail(self):
+        self.store.upsert_episode(self.series, "content://p15/thumb", "E01.mkv", 1, 1)
+        episode = self.store.catalog()[0]["seasons"][0]["episodes"][0]
+        thumbnail = Path(self.tmp.name) / "episode-thumb.jpg"
+        thumbnail.write_bytes(VALID_JPEG)
+        engine = ArtworkEngine(self.store)
+        try:
+            self.assertTrue(
+                engine.register_generated_thumbnail(
+                    episode["path"],
+                    thumbnail,
+                    size=123,
+                    modified_at=456,
+                )
+            )
+            refreshed = self.store.catalog()[0]["seasons"][0]["episodes"][0]
+            self.assertEqual(str(thumbnail), refreshed["artwork_local_path"])
+            self.assertIsNone(refreshed["artwork_external_url"])
+        finally:
+            engine.shutdown()
+
     def test_movie_catalog_has_file_bucket_and_no_season_bucket(self):
         movie = self.store.upsert_anime(
             "movie",
