@@ -259,80 +259,8 @@ private fun ReiAnixLibraryPresentationScreen(
             onSearch = onSearch,
         )
 
-        when (state.status) {
-            ReiAnixLibraryLoadStatus.LOADING -> {
-                if (state.scanInProgress) {
-                    ReiAnixScannerInProgressState(
-                        scanState = state.scanState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                    )
-                } else {
-                    LibraryLoadingGrid(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                    )
-                }
-            }
-
-            ReiAnixLibraryLoadStatus.ERROR -> {
-                if (state.animeCount > 0) {
-                    LibraryReadyContent(
-                        state = state,
-                        filters = filters,
-                        visibleAnimes = visibleAnimes,
-                        genres = genres,
-                        isRefreshing = isRefreshing,
-                        onQueryChange = onQueryChange,
-                        onGenreSelected = onGenreSelected,
-                        onToggleFavorites = onToggleFavorites,
-                        onToggleWatching = onToggleWatching,
-                        onToggleCompleted = onToggleCompleted,
-                        onSortSelected = onSortSelected,
-                        onClearFilters = onClearFilters,
-                        onOpenDetails = onOpenDetails,
-                        onToggleFavorite = onToggleFavorite,
-                        onRefresh = onRefresh,
-                        hasMore = hasMore,
-                        isLoadingMore = isLoadingMore,
-                        onLoadMore = onLoadMore,
-                        errorMessage = state.error
-                            ?: "Não foi possível atualizar a biblioteca local.",
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
-                    ReiAnixRecoverableErrorState(
-                        title = "Erro na biblioteca",
-                        message = state.error ?: "Não foi possível carregar a biblioteca local.",
-                        onRetry = onRefresh,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                    )
-                }
-            }
-
-            ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
-                title = "Biblioteca local indisponível",
-                message = "A fonte local configurada não está disponível agora.",
-                onAction = onRefresh,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            )
-
-            ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
-                message = "Nenhum conteúdo local está disponível.",
-                actionLabel = "Atualizar",
-                onAction = onRefresh,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            )
-
-            ReiAnixLibraryLoadStatus.READY -> LibraryReadyContent(
+        val renderReadyContent: @Composable () -> Unit = {
+            LibraryReadyContent(
                 state = state,
                 filters = filters,
                 visibleAnimes = visibleAnimes,
@@ -351,8 +279,64 @@ private fun ReiAnixLibraryPresentationScreen(
                 hasMore = hasMore,
                 isLoadingMore = isLoadingMore,
                 onLoadMore = onLoadMore,
+                errorMessage = state.error,
                 modifier = Modifier.weight(1f),
             )
+        }
+
+        // A non-empty canonical snapshot is usable even while the source is
+        // being checked or the scanner is reconciling it. Never replace that
+        // catalog with a full-screen loading state.
+        if (state.animeCount > 0) {
+            renderReadyContent()
+        } else {
+            when (state.status) {
+                ReiAnixLibraryLoadStatus.LOADING -> {
+                    if (state.scanInProgress) {
+                        ReiAnixScannerInProgressState(
+                            scanState = state.scanState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                        )
+                    } else {
+                        LibraryLoadingGrid(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                        )
+                    }
+                }
+
+                ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
+                    title = "Erro na biblioteca",
+                    message = state.error ?: "Não foi possível carregar a biblioteca local.",
+                    onRetry = onRefresh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
+
+                ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
+                    title = "Biblioteca local indisponível",
+                    message = "A fonte local configurada não está disponível agora.",
+                    onAction = onRefresh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
+
+                ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
+                    message = "Nenhum conteúdo local está disponível.",
+                    actionLabel = "Atualizar",
+                    onAction = onRefresh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
+
+                ReiAnixLibraryLoadStatus.READY -> renderReadyContent()
+            }
         }
     }
 
