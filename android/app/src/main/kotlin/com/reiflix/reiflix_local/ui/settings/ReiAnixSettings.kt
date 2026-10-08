@@ -356,7 +356,7 @@ fun ReiAnixSettingsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(
-                                        top = ReiAnixTokens.Spacing.xxl,
+                                        top = ReiAnixTokens.Spacing.lg,
                                         bottom = ReiAnixTokens.Spacing.md,
                                     ),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -396,7 +396,7 @@ private fun SettingsProfileRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
+            .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
             .clickable(
                 enabled = state.categories.any { it.label == "Conta" },
                 role = Role.Button,
@@ -413,14 +413,14 @@ private fun SettingsProfileRow(
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
         Box(
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(ReiAnixTokens.Dimensions.settingsIconContainerSize),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Filled.AccountCircle,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
             )
         }
         Column(

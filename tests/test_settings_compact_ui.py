@@ -125,3 +125,17 @@ def test_settings_respects_theme_surfaces_without_gray_literals():
     assert "Color.Gray" not in compact_rows
     assert "Surface(" in root
     assert "tonalElevation = ReiAnixTokens.Elevation.none" in source
+
+def test_settings_profile_row_reuses_compact_design_tokens():
+    source = read()
+    profile = block(
+        source,
+        "@Composable\nprivate fun SettingsProfileRow(",
+        "@Composable\nprivate fun SettingsFlatCategoryRow(",
+    )
+
+    assert "heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)" in profile
+    assert "ReiAnixTokens.Dimensions.settingsIconContainerSize" in profile
+    assert "ReiAnixTokens.Dimensions.iconMedium" in profile
+    assert "heightIn(min = 64.dp)" not in profile
+    assert "size(44.dp)" not in profile
