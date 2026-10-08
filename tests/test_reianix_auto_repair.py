@@ -88,6 +88,11 @@ class AutoRepairEngineTests(unittest.TestCase):
             / "reianix_auto_repair.yml"
         ).read_text(encoding="utf-8")
         self.assertNotIn("workflow_run:", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("Resolve latest failed run", workflow)
+        self.assertIn('"Build ReiAnix Android APK"', workflow)
+        self.assertIn('"ReiAnix Android Instrumented Runtime Matrix"', workflow)
+        self.assertNotIn("inputs:", workflow)
         self.assertIn("Build ReiAnix Android APK", workflow)
         self.assertIn("ReiAnix Android Instrumented Runtime Matrix", workflow)
         self.assertIn("contents: write", workflow)
