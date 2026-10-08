@@ -298,7 +298,6 @@ jobs:
           # Do not rebuild the entire APK up to three times: that can consume
           # most of the job timeout before reporting the real error.
           flet build "${build_args[@]}"
-          exit 1
 
       - name: Preserve build identity evidence
         shell: bash
