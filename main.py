@@ -494,7 +494,6 @@ async def main(page: ft.Page):
         "waiting_for_result": False,
         "startup_gate": True,
         "inventory_complete": False,
-        "auto_launch_requested": False,
         "state": "CHECKING",
         "message": None,
         "error": None,
@@ -510,6 +509,7 @@ async def main(page: ft.Page):
                 "safSelectionPending": saf_selection.pending,
                 "onboardingState": storage_onboarding["state"],
                 "onboardingMessage": storage_onboarding["message"],
+                "onboardingDismissed": storage_onboarding["dismissed"],
                 "onboardingError": storage_onboarding["error"],
             }
         )
@@ -2806,6 +2806,8 @@ async def main(page: ft.Page):
         if navigation.current == "settings" and not compose_primary_ui:
             render_current(force=True, reason="settings_refresh")
     async def add_folder(_=None):
+        # Explicit user action is the only path that may open the SAF picker.
+        storage_onboarding["dismissed"] = False
         # A scan already running must not block the user from choosing another
         # folder. ScanCoordinator already queues/coalesces the follow-up rescan.
         if saf_selection.pending:
@@ -3206,6 +3208,9 @@ async def main(page: ft.Page):
         storage_onboarding["state"] = normalized
         storage_onboarding["message"] = message
         storage_onboarding["error"] = error
+        storage_onboarding["dialog_open"] = normalized in {"NEEDS_FOLDER", "ERROR"} and not storage_onboarding["dismissed"]
+        if normalized == "READY":
+            storage_onboarding["dialog_open"] = False
         if diagnostic_event:
             try:
                 diagnostics.record(
@@ -3327,46 +3332,18 @@ async def main(page: ft.Page):
             api=current.api,
         )
 
-    async def _auto_launch_storage_onboarding():
-        if not storage_onboarding["startup_gate"]:
-            return
-        if not bridge.available or not storage_capabilities[0].known or not storage_onboarding["inventory_complete"]:
-            return
-        if _configured_valid_library_saf_roots() or saf_selection.pending:
-            return
-        _set_storage_onboarding_state(
-            "NEEDS_FOLDER",
-            message=(
-                "Selecione a pasta onde estão armazenados seus animes.\n\n"
-                "O ReiAnix usará essa pasta para encontrar e organizar seus vídeos."
-            ),
-            error=None,
-            diagnostic_event="STORAGE_PERMISSION_MISSING",
-            result="library_root_missing",
-        )
-        try:
-            started = await add_folder()
-            if not started:
-                storage_onboarding["auto_launch_requested"] = False
-                _set_storage_onboarding_state(
-                    "ERROR",
-                    error="Não foi possível abrir a seleção da pasta agora. Tente novamente.",
-                    diagnostic_event="STORAGE_ERROR",
-                    result="picker_not_started",
-                )
-        except Exception:
-            storage_onboarding["auto_launch_requested"] = False
-
     def maybe_show_storage_onboarding():
         """Coordinate first-access SAF onboarding; Android uses only DocumentsUI."""
         if not bridge.available or not storage_onboarding["startup_gate"]:
             return
-        if not storage_capabilities[0].known or not storage_onboarding["inventory_complete"]:
+        # First access must render the ReiAnix onboarding immediately after the
+        # native capability snapshot is known. Do not block the visible UI on
+        # SAF inventory/scanner completion.
+        if not storage_capabilities[0].known:
             return
 
         valid_roots = _configured_valid_library_saf_roots()
         if valid_roots:
-            storage_onboarding["auto_launch_requested"] = False
             storage_onboarding["startup_gate"] = False
             _set_storage_onboarding_state(
                 "READY",
@@ -3409,9 +3386,8 @@ async def main(page: ft.Page):
             diagnostic_event=diagnostic_event,
             result=result,
         )
-        if not storage_onboarding["auto_launch_requested"]:
-            storage_onboarding["auto_launch_requested"] = True
-            page.run_task(_auto_launch_storage_onboarding)
+        if not storage_onboarding["dismissed"]:
+            diagnostics.record("STORAGE_ONBOARDING_SHOWN", source="saf", result=result)
 
     async def refresh_library(_=None, *, _home_refresh_context=None):
         if saf_selection.pending:
@@ -4037,7 +4013,27 @@ async def main(page: ft.Page):
                         "está sendo atualizada."
                     )
                 else:
+                    diagnostics.record(
+                        "STORAGE_PERMISSION_REQUESTED",
+                        request_id=request_id,
+                        source="saf",
+                        result="user_selected_folder",
+                    )
                     command_status = "QUEUED"
+            elif action == "dismiss_storage_onboarding":
+                storage_onboarding["dismissed"] = True
+                storage_onboarding["waiting_for_result"] = False
+                storage_onboarding["dialog_open"] = False
+                _set_storage_onboarding_state(
+                    "NEEDS_FOLDER",
+                    message="O ReiAnix precisa de acesso aos seus vídeos locais.",
+                    error=None,
+                    diagnostic_event="STORAGE_CANCELLED",
+                    result="user_cancelled_onboarding",
+                )
+                if compose_library_bridge.enabled:
+                    compose_library_bridge.request_publish("storage_onboarding_dismissed")
+                command_status = "COMPLETED"
             elif action == "remove_saf":
                 reference = str(payload.get("source") or "").strip()
                 if not reference:
@@ -4553,6 +4549,7 @@ async def main(page: ft.Page):
                                 'toggle_favorite',
                                 'set_watched',
                                 'select_saf',
+                                'dismiss_storage_onboarding',
                                 'remove_saf',
                                 'refresh',
                                 'load_library_page',
@@ -6825,6 +6822,7 @@ async def main(page: ft.Page):
                             if compose_library_bridge.enabled:
                                 compose_library_bridge.request_publish("saf_selection_finished")
                             storage_onboarding["waiting_for_result"] = False
+                            storage_onboarding["dismissed"] = True
                             if storage_onboarding["startup_gate"]:
                                 _set_storage_onboarding_state(
                                     "NEEDS_FOLDER",
@@ -6838,6 +6836,7 @@ async def main(page: ft.Page):
                             refresh_settings_if_active()
                         elif event_type == 'saf_permission':
                             storage_onboarding["waiting_for_result"] = False
+                            storage_onboarding["dismissed"] = False
                             try:
                                 saf_mutation_at_ms = int(
                                     event.get("createdAt")
@@ -6901,8 +6900,7 @@ async def main(page: ft.Page):
                                         )
                                     valid_after_selection = bool(_configured_valid_library_saf_roots())
                                     if valid_after_selection:
-                                        storage_onboarding["auto_launch_requested"] = False
-                                        if storage_onboarding["startup_gate"]:
+                                                                    if storage_onboarding["startup_gate"]:
                                             storage_onboarding["startup_gate"] = False
                                         diagnostics.record(
                                             "STORAGE_ROOT_VALIDATED",
