@@ -1,0 +1,166 @@
+name: ReiAnix Auto Repair
+
+on:
+  workflow_run:
+    workflows:
+      - Build ReiAnix Android APK
+      - ReiAnix Android Instrumented Runtime Matrix
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Failed GitHub Actions run ID to analyze"
+        required: true
+        type: string
+
+concurrency:
+  group: reianix-auto-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    name: Conservative CI repair
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'failure' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Resolve failed run
+        id: run
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="$INPUT_RUN_ID"
+          else
+            run_id="$EVENT_RUN_ID"
+          fi
+          case "$run_id" in
+            ''|*[!0-9]*)
+              echo "Invalid workflow run id: $run_id"
+              exit 1
+              ;;
+          esac
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect failed run metadata
+        id: metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ steps.run.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion,headBranch,headSha,name,headRepository > "$RUNNER_TEMP/run.json"
+          cat "$RUNNER_TEMP/run.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          data = json.loads(Path(os.environ["RUNNER_TEMP"], "run.json").read_text())
+          if data.get("conclusion") != "failure":
+              raise SystemExit(f"Auto repair only accepts failed runs; got {data.get('conclusion')!r}.")
+          if data.get("headBranch") != "main":
+              raise SystemExit(f"Auto repair only accepts main; got {data.get('headBranch')!r}.")
+          repo = data.get("headRepository") or {}
+          full_name = repo.get("fullName")
+          if full_name and full_name != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit(f"Refusing non-origin run repository: {full_name}")
+          Path(os.environ["GITHUB_OUTPUT"]).write_text(
+              "head_sha=" + data["headSha"] + "\n",
+              encoding="utf-8",
+              errors="strict",
+          )
+          PY
+
+      - name: Checkout exact failed main commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.metadata.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Verify failed commit is still current main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAILED_SHA: ${{ steps.metadata.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          test "$current" = "$FAILED_SHA" || {
+            echo "main moved since the failed run; refusing to patch a newer commit"
+            echo "failed=$FAILED_SHA current=$current"
+            exit 0
+          }
+
+      - name: Download failed workflow log
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ steps.run.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > "$RUNNER_TEMP/failed.log"
+          test -s "$RUNNER_TEMP/failed.log"
+
+      - name: Apply one known repair and validate it
+        env:
+          FAILED_LOG: ${{ runner.temp }}/failed.log
+        run: |
+          set -euo pipefail
+          python scripts/reianix_auto_repair.py --log "$FAILED_LOG"
+
+      - name: Run full Python regression suite after repair
+        run: python -m pytest -q
+
+      - name: Check final diff
+        run: git diff --check
+
+      - name: Commit and push validated repair
+        env:
+          FAILED_RUN_ID: ${{ steps.run.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No repair was produced."
+            exit 0
+          fi
+
+          git status --short
+          git diff --stat
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .github/workflows/android_instrumented.yml
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No allowlisted changes staged."
+            exit 0
+          fi
+
+          git commit -m "fix(ci): automatic known issue repair (run $FAILED_RUN_ID)"
+          git push origin HEAD:main
+
+      - name: Publish repair summary
+        if: always()
+        run: |
+          {
+            echo "## ReiAnix Auto Repair"
+            echo
+            echo "- Mode: conservative allow-list"
+            echo "- Source run: ${{ steps.run.outputs.run_id }}"
+            echo "- Only main-origin failures are eligible."
+            echo "- Changes are committed only after focused validation and the full Python suite pass."
+          } >> "$GITHUB_STEP_SUMMARY"
