@@ -52,9 +52,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 decoded.animes.isEmpty() &&
                 previous.animes.isNotEmpty()
             val preserveCatalogDuringScan = decoded.scanInProgress &&
-                decoded.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY &&
                 decoded.animes.isEmpty() &&
-                decoded.sourceState !in setOf("UNAVAILABLE", "ERROR") &&
                 previous.animes.isNotEmpty()
             val preserveCatalog = preserveCatalogOnError || preserveCatalogDuringScan
             return decoded.copy(
