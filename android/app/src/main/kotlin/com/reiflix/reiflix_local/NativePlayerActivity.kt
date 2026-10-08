@@ -1082,9 +1082,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         applySubtitlePreferences()
         zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", zoomEnabled)
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.resetZoomToFit()
-        val incomingAspectRatio = newIntent.getStringExtra("setting_player_aspect_ratio") ?: aspectModeLabel
-        playerView.resizeMode = resizeModeFromSetting(incomingAspectRatio)
-        aspectModeLabel = aspectLabelFromSetting(incomingAspectRatio)
+        val incomingAspectRatio = newIntent.getStringExtra("setting_player_aspect_ratio")
+        playerView.resizeMode = if (incomingAspectRatio != null) {
+            resizeModeFromSetting(newIntent.getStringExtra("setting_player_aspect_ratio"))
+        } else {
+            resizeModeFromSetting(aspectModeLabel)
+        }
+        aspectModeLabel = aspectLabelFromSetting(incomingAspectRatio ?: aspectModeLabel)
         findViewByTag<TextView>("reiflix_aspect_button")?.apply {
             text = aspectModeLabel
             isSelected = aspectModeLabel == "Preencher"
