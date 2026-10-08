@@ -6,7 +6,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -87,8 +87,8 @@ class ReiAnixHomeInstrumentedTest {
             }
         }
         composeRule.onNodeWithText("Example Anime").assertIsDisplayed()
-        composeRule.onNodeWithText("MINHA LISTA").assertDoesNotExist()
-        composeRule.onNodeWithText("CONTINUAR ASSISTINDO").assertDoesNotExist()
+        composeRule.onNodeWithText("MINHA LISTA").assertIsNotDisplayed()
+        composeRule.onNodeWithText("CONTINUAR ASSISTINDO").assertIsNotDisplayed()
     }
 
     @Test
