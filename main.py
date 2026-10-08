@@ -1795,7 +1795,7 @@ async def main(page: ft.Page):
             transition_direction=direction_label or None,
             player_settings=effective_player_settings,
         )
-        if not transition_is_valid():        if not transition_is_valid():
+        if not transition_is_valid():
             if origin_request_id:
                 performance.event(
                     invalidated_event,
