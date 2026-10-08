@@ -699,7 +699,25 @@ class ArtworkEngine:
                 byte_size=os.path.getsize(cover_cache),
                 content_type=_mime_from_path(cover_cache),
             )
+            # Keep the materialized legacy cover pointer so a later remote
+            # failure never destroys the last valid offline presentation.
+            with self.store._conn() as con:
+                con.execute(
+                    "UPDATE anime SET cover_cache=? WHERE id=?",
+                    (cover_cache, int(anime_id)),
+                )
         elif cover_url:
+            # A new remote identity must win request selection, while an older
+            # valid remote cache remains available as a safe fallback on failure.
+            with self.store._conn() as con:
+                con.execute(
+                    """UPDATE artwork SET priority=350,updated_at=?
+                       WHERE entity_type=? AND entity_id=? AND artwork_type='poster'
+                         AND external_url IS NOT NULL
+                         AND external_url != ?
+                         AND LOWER(COALESCE(source,'')) NOT IN ('manual','local')""",
+                    (time.time(), entity_type, str(anime_id), cover_url),
+                )
             key = self._make_key("anilist" if anilist_id else "url",
                                  f"{anilist_id or cover_url}|{cover_url}", "poster", "large")
             self._upsert(
