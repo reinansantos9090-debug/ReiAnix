@@ -2279,7 +2279,7 @@ class LibraryService:
                 request_id=request_id,
             )
             self._sync_genres(row["id"], row, source="anilist")
-            self.artwork.sync_anime_metadata(row["id"], row, request_download=request_artwork)
+            self.artwork.sync_anime_metadata(row["id"], row)
         logger.info(
             "METADATA_ACTION_UI_COMMIT requestId=%s animeId=%s lookupTitle=%s anilistId=%s screen=manual_match",
             request_id, owner_id or "-", local_lookup, anilist_id,
