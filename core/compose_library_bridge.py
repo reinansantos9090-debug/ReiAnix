@@ -553,7 +553,7 @@ class ComposeLibraryBridge:
                 "romaji": meta.get("romaji"),
                 "english": meta.get("english"),
                 "native": meta.get("native"),
-                "description": meta.get("description") or source.get("description"),
+                "description": meta.get("description"),
                 "description_original": (
                     meta.get("description_original")
                     or source.get("description_original")

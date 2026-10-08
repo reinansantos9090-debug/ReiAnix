@@ -51,10 +51,9 @@ object LibraryUiMappers {
             addedAt = metadata.doubleOrNull("added_at") ?: source.doubleOrNull("added_at"),
             lastPlayedAt = source.doubleOrNull("last_played_at"),
             pinned = source.booleanOrNull("is_pinned") ?: metadata.booleanOrNull("is_pinned") ?: false,
-            // description is already the localized/presented value persisted by
-            // LibraryService. The original is a safe offline fallback only.
-            description = metadata.stringOrNull("description")
-                ?: metadata.stringOrNull("description_original"),
+            // description is the canonical presentation value persisted by
+            // LibraryService. A missing value means the pt-BR synopsis is not ready.
+            description = metadata.stringOrNull("description"),
             romajiTitle = metadata.stringOrNull("romaji"),
             englishTitle = metadata.stringOrNull("english"),
             nativeTitle = metadata.stringOrNull("native"),

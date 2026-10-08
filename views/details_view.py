@@ -230,7 +230,7 @@ class DetailView:
             for genre in genres if genre
         ]
 
-        description_source = metadata.get("description") or metadata.get("description_original") or ""
+        description_source = metadata.get("description") or ""
         description = html.unescape(re.sub(r"<[^>]+>", "", str(description_source))).strip()
         description_text = ft.Text(description, size=13, color=theme.secondary, max_lines=5,
                                    overflow=ft.TextOverflow.ELLIPSIS, visible=bool(description))

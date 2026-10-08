@@ -106,6 +106,20 @@ class AniListClientTests(unittest.TestCase):
         self.assertEqual(metadata["description"], "A descrição traduzida.")
         self.assertEqual(metadata["description_original"], "The original description stays intact.")
 
+    def test_foreign_metadata_defers_description_until_pt_br_translation_exists(self):
+        client = AniListClient("/tmp/cache")
+        media = {
+            "id": 100,
+            "title": {"english": "Example", "romaji": "Example", "native": "例"},
+            "description": "The story follows a young hero who protects their people.",
+        }
+        metadata = client.metadata_from_media("Example", media, localize_description=False)
+        self.assertIsNone(metadata["description"])
+        self.assertEqual(
+            metadata["description_original"],
+            "The story follows a young hero who protects their people.",
+        )
+
     def test_metadata_maps_anilist_fields(self):
         with tempfile.TemporaryDirectory() as directory:
             client = AniListClient(directory)
@@ -214,12 +228,24 @@ class AniListClientTests(unittest.TestCase):
                 self.assertEqual("", client.localize_description_to_pt_br(""))
             translate.assert_not_called()
 
-    def test_invalid_translation_response_falls_back_to_original(self):
+    def test_invalid_translation_response_does_not_fallback_to_original(self):
         with tempfile.TemporaryDirectory() as directory:
             client = AniListClient(directory)
             source = "This is the story of a young hero who protects their town."
             with patch.object(client, "_translate_chunk_to_pt_br", return_value='{"error":"rate limit"}') as translate:
-                self.assertEqual(source, client.localize_description_to_pt_br(source))
+                self.assertIsNone(client.localize_description_to_pt_br(source))
+            translate.assert_called_once()
+
+    def test_foreign_translation_is_rejected_when_output_is_not_portuguese(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client = AniListClient(directory)
+            source = "The story follows a young hero who protects their town."
+            with patch.object(
+                client,
+                "_translate_chunk_to_pt_br",
+                return_value="The translated result is still English.",
+            ) as translate:
+                self.assertIsNone(client.localize_description_to_pt_br(source))
             translate.assert_called_once()
 
     def test_description_change_invalidates_previous_translation_cache(self):

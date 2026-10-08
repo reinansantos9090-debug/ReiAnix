@@ -249,6 +249,69 @@ class StabilizationTests(unittest.TestCase):
                 "Original description.",
             )
 
+    def test_legacy_foreign_description_is_cleared_before_translation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = LibraryStore(directory)
+            anime_id = store.upsert_anime(
+                "legacy",
+                {
+                    "title": "Legacy",
+                    "description": "The old English synopsis.",
+                    "description_original": "The old English synopsis.",
+                    "anilist_id": 77,
+                    "genres": "[]",
+                },
+                source="anilist",
+            )
+            from core.library_service import LibraryService
+            service = LibraryService(store)
+            try:
+                sanitized = service._ensure_cached_description_pt_br(
+                    "legacy",
+                    store.anime_metadata_by_id(anime_id),
+                    local_anime_id=anime_id,
+                    schedule=False,
+                )
+                self.assertIsNone(sanitized["description"])
+                self.assertEqual(
+                    sanitized["description_original"],
+                    "The old English synopsis.",
+                )
+            finally:
+                service.shutdown()
+
+    def test_existing_pt_br_description_survives_translation_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = LibraryStore(directory)
+            anime_id = store.upsert_anime(
+                "stable",
+                {
+                    "title": "Stable",
+                    "description": "A história acompanha um jovem herói.",
+                    "description_original": "The story follows a young hero.",
+                    "anilist_id": 88,
+                    "genres": "[]",
+                },
+                source="anilist",
+            )
+            from core.library_service import LibraryService
+            service = LibraryService(store)
+            try:
+                with patch.object(service.anilist, "localize_description_to_pt_br", return_value=None):
+                    result = service._run_description_localization(
+                        "stable",
+                        "The story follows a young hero.",
+                        local_anime_id=anime_id,
+                        request_id="failure-preservation",
+                    )
+                self.assertIsNone(result)
+                self.assertEqual(
+                    "A história acompanha um jovem herói.",
+                    store.anime_metadata_by_id(anime_id)["description"],
+                )
+            finally:
+                service.shutdown()
+
     def test_anilist_translation_does_not_hold_the_rate_limit_lock(self):
         start = ANILIST.index("def localize_description_to_pt_br")
         end = ANILIST.index("    @staticmethod\n    def _header", start)
@@ -288,7 +351,7 @@ class StabilizationTests(unittest.TestCase):
                 "localized",
                 {
                     "title": "Localized",
-                    "description": source,
+                    "description": None,
                     "description_original": source,
                     "anilist_id": 123,
                     "genres": "[]",
@@ -318,7 +381,7 @@ class StabilizationTests(unittest.TestCase):
                     )
                     self.assertTrue(scheduled)
                     self.assertTrue(started.wait(1.0))
-                    self.assertEqual(source, store.anime_metadata_by_id(anime_id)["description"])
+                    self.assertIsNone(store.anime_metadata_by_id(anime_id)["description"])
                     release.set()
                     self.assertTrue(changed.wait(2.0))
                 self.assertEqual(
@@ -336,11 +399,12 @@ class StabilizationTests(unittest.TestCase):
     def test_details_and_main_use_canonical_localized_description_pipeline(self):
         mapper = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mapper/LibraryUiMappers.kt").read_text(encoding="utf-8")
         details_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixDetailsUiModels.kt").read_text(encoding="utf-8")
-        self.assertIn('metadata.get("description") or metadata.get("description_original")', DETAILS)
+        self.assertIn('metadata.get("description") or ""', DETAILS)
+        self.assertNotIn('metadata.get("description_original")', DETAILS)
         self.assertIn("library.set_metadata_change_listener(_dispatch_metadata_change)", MAIN)
         self.assertIn("f\"metadata_translation:{payload.get('anime_id') or 0}\"", MAIN)
         self.assertIn('description = metadata.stringOrNull("description")', mapper)
-        self.assertIn('?: metadata.stringOrNull("description_original")', mapper)
+        self.assertNotIn('?: metadata.stringOrNull("description_original")', mapper)
         self.assertIn("description = anime.description", details_model)
         self.assertIn("description_original", ANILIST)
 

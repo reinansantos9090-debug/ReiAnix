@@ -507,7 +507,7 @@ class LibraryUiMappersTest {
     }
 
     @Test
-    fun detailsFallsBackToOriginalDescriptionWhenLocalizedValueIsAbsent() {
+    fun detailsDoesNotFallbackToOriginalDescriptionWhenLocalizedValueIsAbsent() {
         val source = animeSource(
             id = 501L,
             meta = mapOf(
@@ -521,7 +521,7 @@ class LibraryUiMappersTest {
 
         val model = LibraryUiMappers.anime(source)
 
-        assertEquals("The story follows a young hero.", model.description)
+        assertNull(model.description)
     }
 
     private fun animeSource(
