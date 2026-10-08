@@ -987,6 +987,7 @@ private fun OrganizeCollectionContent(
                     DropdownMenu(
                         expanded = genreMenuExpanded,
                         onDismissRequest = { genreMenuExpanded = false },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
                         DropdownMenuItem(
                             text = { Text("Todos") },
@@ -1024,6 +1025,7 @@ private fun OrganizeCollectionContent(
                     DropdownMenu(
                         expanded = sortMenuExpanded,
                         onDismissRequest = { sortMenuExpanded = false },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
                         com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort.OPTIONS.forEach { sort ->
                             DropdownMenuItem(
