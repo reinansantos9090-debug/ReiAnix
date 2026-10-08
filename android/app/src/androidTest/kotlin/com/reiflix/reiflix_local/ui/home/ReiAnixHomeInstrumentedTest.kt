@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui.home
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
