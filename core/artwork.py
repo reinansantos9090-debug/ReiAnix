@@ -53,6 +53,11 @@ STATUS_FAILED = "failed"
 STATUS_RETRY_WAIT = "retry_wait"
 STATUS_INVALID = "invalid"
 
+PRESENTATION_METADATA_MISSING = "metadata_missing"
+PRESENTATION_ARTWORK_PENDING = "metadata_ready_artwork_pending"
+PRESENTATION_READY = "ready"
+PRESENTATION_ARTWORK_FAILED = "artwork_failed"
+
 _EVENT_NAMES = {
     "request": "ARTWORK_REQUEST",
     "hit": "ARTWORK_CACHE_HIT",
@@ -646,7 +651,7 @@ class ArtworkEngine:
                     found.append(candidate)
         return found
 
-    def sync_anime_metadata(self, anime_id, metadata):
+    def sync_anime_metadata(self, anime_id, metadata, *, request_download=True)
         if not metadata:
             return
         cover_cache = str(metadata.get("cover_cache") or "").strip()
@@ -667,7 +672,22 @@ class ArtworkEngine:
                     (int(anime_id), cover_cache),
                 )
             cover_cache = ""
+        trusted_cover_cache = False
         if cover_cache and self._is_valid_image_file(cover_cache):
+            with self.store._conn() as con:
+                existing_local_rows = con.execute(
+                    """SELECT source, external_url, status FROM artwork
+                       WHERE entity_type=? AND entity_id=? AND artwork_type='poster'
+                         AND local_path=?""",
+                    (entity_type, str(anime_id), cover_cache),
+                ).fetchall()
+            trusted_cover_cache = not existing_local_rows or any(
+                str(local_row["source"] or "").casefold() in {"manual", "local"}
+                or self._normalize_url(local_row["external_url"]) == cover_url
+                for local_row in existing_local_rows
+                if str(local_row["status"] or "").casefold() == STATUS_READY
+            )
+        if cover_cache and self._is_valid_image_file(cover_cache) and trusted_cover_cache:
             key = self._make_key("anilist" if anilist_id else "cache",
                                  f"{anilist_id or cover_url or cover_cache}|{cover_url}",
                                  "poster", "large")
@@ -687,6 +707,8 @@ class ArtworkEngine:
                 source="anilist", source_ref=cover_url, external_url=cover_url,
                 status=STATUS_NOT_REQUESTED, artwork_key=key, variant="large",
             )
+            if request_download and not trusted_cover_cache:
+                self.request(entity_type, anime_id, "poster", priority=400, blocking=False)
         if banner_url:
             key = self._make_key("anilist" if anilist_id else "url",
                                  f"{anilist_id or banner_url}|{banner_url}", "backdrop", "large")
@@ -1383,6 +1405,47 @@ class ArtworkEngine:
                        WHERE entity_type=? AND entity_id=? AND artwork_type=?""",
                     (STATUS_INVALID, time.time(), entity_type, str(entity_id), artwork_type),
                 )
+
+    def presentation_state(self, entity_type, entity_id, metadata=None):
+        """Return canonical readiness for the current poster identity."""
+        metadata = dict(metadata or {})
+        metadata_ready = bool(
+            metadata.get("anilist_id")
+            or str(metadata.get("metadata_source") or "").strip().casefold()
+            not in {"", "local", "unresolved", "unknown"}
+        )
+        if not metadata_ready:
+            return PRESENTATION_METADATA_MISSING
+        cover_url = self._normalize_url(metadata.get("cover_url"))
+        if not cover_url:
+            return PRESENTATION_READY
+        rows = self.list_for(entity_type, entity_id, "poster")
+        current_rows = [
+            row for row in rows
+            if self._normalize_url(row.get("external_url")) == cover_url
+            or self._normalize_url(row.get("source_ref")) == cover_url
+        ]
+        if any(
+            row.get("local_path")
+            and self._is_valid_image_file(row.get("local_path"))
+            and str(row.get("status") or "").casefold() == STATUS_READY
+            for row in current_rows
+        ):
+            return PRESENTATION_READY
+        if any(
+            row.get("local_path")
+            and self._is_valid_image_file(row.get("local_path"))
+            and str(row.get("status") or "").casefold() == STATUS_READY
+            and str(row.get("source") or "").casefold() in {"local", "manual"}
+            for row in rows
+        ):
+            return PRESENTATION_READY
+        if any(
+            str(row.get("status") or "").casefold() in {STATUS_FAILED, STATUS_INVALID}
+            for row in current_rows
+        ):
+            return PRESENTATION_ARTWORK_FAILED
+        return PRESENTATION_ARTWORK_PENDING
 
     def get_status(self, entity_type, entity_id, artwork_type):
         rows = self.list_for(entity_type, entity_id, artwork_type)
