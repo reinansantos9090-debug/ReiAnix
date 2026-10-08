@@ -1,33 +1,16 @@
 name: ReiAnix Auto Repair
 
 on:
-  workflow_run:
-    workflows:
-      - Build ReiAnix Android APK
-      - ReiAnix Android Instrumented Runtime Matrix
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       run_id:
-        description: "Failed GitHub Actions run ID to analyze"
+        description: "ID da execução do GitHub Actions que falhou"
         required: true
         type: string
-
-concurrency:
-  group: reianix-auto-repair
-  cancel-in-progress: true
-
 jobs:
   repair:
     name: Conservative CI repair
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.workflow_run.conclusion == 'failure' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.head_repository.full_name == github.repository
-      )
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
