@@ -26,7 +26,7 @@ jobs:
 
           payload = subprocess.check_output(
               [
-                  "gh", "api",
+                  "gh", "api", "--method", "GET",
                   f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs",
                   "-f", "branch=main",
                   "-f", "status=failure",
