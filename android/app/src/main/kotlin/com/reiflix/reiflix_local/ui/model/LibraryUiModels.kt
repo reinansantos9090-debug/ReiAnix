@@ -39,13 +39,12 @@ enum class ReiAnixPresentationState {
 }
 
 /** Canonical artwork readiness labels used only by presentation surfaces. */
-val ReiAnixPresentationState.label: String?
-    get() = when (this) {
-        ReiAnixPresentationState.METADATA_MISSING -> "Metadata pendente"
-        ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING -> "Capa pendente"
-        ReiAnixPresentationState.READY -> null
-        ReiAnixPresentationState.ARTWORK_FAILED -> "Falha na capa"
-    }
+fun presentationStateLabel(state: ReiAnixPresentationState): String? = when (state) {
+    ReiAnixPresentationState.METADATA_MISSING -> "Metadata pendente"
+    ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING -> "Capa pendente"
+    ReiAnixPresentationState.READY -> null
+    ReiAnixPresentationState.ARTWORK_FAILED -> "Falha na capa"
+}
 
 enum class ReiAnixMetadataAvailability {
     AVAILABLE,
