@@ -447,6 +447,7 @@ private fun HomeHeader(
             DropdownMenu(
                 expanded = menuExpanded.value,
                 onDismissRequest = { menuExpanded.value = false },
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 DropdownMenuItem(
                     text = { Text("Atualizar biblioteca") },
