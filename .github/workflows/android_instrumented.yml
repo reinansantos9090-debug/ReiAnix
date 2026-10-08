@@ -38,113 +38,8 @@ jobs:
       - name: Check diff whitespace
         run: git diff --check
 
-  prepare-android-test-project:
-    name: Render Android test project
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.44.8"
-          channel: stable
-          cache: true
-      - name: Accept Android SDK licenses and install platform
-        shell: bash
-        run: |
-          set -euo pipefail
-          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          sdkmanager_path="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -print -quit)"
-          test -n "$sdkmanager_path"
-          set +o pipefail
-          yes | "$sdkmanager_path" --licenses >/dev/null
-          set -o pipefail
-          "$sdkmanager_path" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator"
-      - name: Install Flet build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt "flet[cli]==0.86.5"
-      - name: Generate deterministic player fixture
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: |
-          python scripts/create_player_fixture.py
-          test -s android/app/src/androidTest/assets/player_fixture.mp4
-          python scripts/create_library_fixture.py
-          test -s android/app/src/androidTest/assets/library_fixture.sqlite3
-      - name: Prepare Flet template with ReiAnix Android host
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build
-          curl -sSL -o build/flet-build-template.zip https://github.com/flet-dev/flet/releases/download/v0.86.5/flet-build-template.zip
-          mkdir -p build/temp_tmpl build/flet-build-template
-          unzip -q build/flet-build-template.zip -d build/temp_tmpl
-          cp -a build/temp_tmpl/build/. build/flet-build-template/
-          rm -rf build/temp_tmpl build/flet-build-template.zip
-          python scripts/prepare_flet_template.py             --template "$GITHUB_WORKSPACE/build/flet-build-template"             --overlay "$GITHUB_WORKSPACE/android"
-      - name: Render Android Gradle project
-        shell: bash
-        run: |
-          set -euo pipefail
-          git_backup_root="$(mktemp -d)"
-          git_backup="$git_backup_root/.git"
-          mv .git "$git_backup"
-          restore_git() {
-            if [ -d "$git_backup" ] && [ ! -e .git ]; then
-              mv "$git_backup" .git
-            fi
-            rmdir "$git_backup_root"
-          }
-          trap restore_git EXIT
-          flet build apk             --template build/flet-build-template             --build-number "$GITHUB_RUN_NUMBER"             --build-version "0.2.1"             --python-version "3.12"             --yes
-      - name: Verify rendered Android test project
-        run: |
-          test -f build/flutter/android/gradlew
-          test -f build/flutter/android/app/build.gradle.kts
-          for test_file in \
-            NativePlayerPlaybackInstrumentedTest.kt \
-            BackAndSettingsReturnInstrumentedTest.kt \
-            DeviceFlowInstrumentedTest.kt \
-            NativeIndexInstrumentedTest.kt \
-            NativeMailboxInstrumentedTest.kt \
-            MetadataOwnerInstrumentedTest.kt; do
-            test -f "build/flutter/android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/$test_file"
-          done
-      - name: Verify rendered Android project integrity
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f build/flutter/pubspec.yaml
-          test -f build/flutter/android/gradlew
-          test -f build/flutter/android/settings.gradle.kts
-          test -f build/flutter/android/app/build.gradle.kts
-          test -d build/flutter/android/app/src/androidTest
-      - name: Cache rendered Android test project
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            build/flutter
-            build/site-packages
-          key: reianix-android-test-project-v4-${{ github.sha }}
-
-
   instrumented:
     name: Android API 36
-    needs: prepare-android-test-project
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -177,25 +72,10 @@ jobs:
           yes | "$sdkmanager_path" --licenses >/dev/null
           set -o pipefail
           "$sdkmanager_path" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator"
-      - name: Restore rendered Android test project
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            build/flutter
-            build/site-packages
-          key: reianix-android-test-project-v4-${{ github.sha }}
       - name: Restore Flutter pub dependencies
         working-directory: build/flutter
         run: flutter pub get
-      - name: Verify restored Android test project
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f build/flutter/android/gradlew
-          test -f build/flutter/android/settings.gradle.kts
-          test -f build/flutter/android/app/build.gradle.kts
-          test -d build/flutter/android/app/src/androidTest
-          chmod +x build/flutter/android/gradlew
+
       - name: Enable KVM for Android emulator
         shell: bash
         run: |
