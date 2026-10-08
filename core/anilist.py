@@ -160,6 +160,7 @@ class AniListClient:
             alias = {
                 "TRANSLATION_STARTED": "DESCRIPTION_TRANSLATION_START",
                 "TRANSLATION_SUCCEEDED": "DESCRIPTION_TRANSLATION_SUCCESS",
+                "TRANSLATION_UNAVAILABLE": "TRANSLATION_FALLBACK_ORIGINAL",
             }.get(name)
             if alias:
                 recorder(
@@ -314,6 +315,14 @@ class AniListClient:
             return False
         return True
 
+    @classmethod
+    def _is_pt_br_description(cls, text: str) -> bool:
+        normalized = cls.normalize_description(text)
+        if not normalized:
+            return False
+        language, _ = cls.detect_description_language(normalized)
+        return language == "pt"
+
     @staticmethod
     def _paragraph_chunks(text: str, max_bytes: int = 480) -> list[list[str]]:
         sections = []
@@ -363,7 +372,7 @@ class AniListClient:
             entry = self._load_translation_cache().get(key)
         if isinstance(entry, dict) and entry.get("status") == "ok":
             translated = self.normalize_description(entry.get("translated") or "")
-            if self._is_valid_translation(original, translated):
+            if self._is_valid_translation(original, translated) and self._is_pt_br_description(translated):
                 return translated
         return None
 
@@ -438,7 +447,7 @@ class AniListClient:
         source_language: str | None = None,
         *,
         request_id=None,
-    ) -> str:
+    ) -> str | None:
         original = self.normalize_description(description)
         if not original:
             self._record_translation_event(
@@ -453,11 +462,11 @@ class AniListClient:
             source, confidence = self.detect_description_language(original)
             if source == "unknown":
                 self._record_translation_event(
-                    "TRANSLATION_FALLBACK_ORIGINAL",
+                    "TRANSLATION_UNAVAILABLE",
                     request_id=request_id,
                     result="source_language_unknown",
                 )
-                return original
+                return None
         else:
             confidence = 1.0
 
@@ -502,12 +511,12 @@ class AniListClient:
                     retry_after = 0
                 if time.time() < retry_after:
                     self._record_translation_event(
-                        "TRANSLATION_FALLBACK_ORIGINAL",
+                        "TRANSLATION_UNAVAILABLE",
                         request_id=request_id,
                         source_language=source,
                         result="cached_failure",
                     )
-                    return original
+                    return None
             inflight = getattr(self, "_translation_inflight", {})
             if not hasattr(self, "_translation_inflight"):
                 self._translation_inflight = inflight
@@ -531,12 +540,12 @@ class AniListClient:
                 )
                 return cached
             self._record_translation_event(
-                "TRANSLATION_FALLBACK_ORIGINAL",
+                "TRANSLATION_UNAVAILABLE",
                 request_id=request_id,
                 source_language=source,
                 result="inflight_failed",
             )
-            return original
+            return None
 
         started = time.monotonic()
         self._record_translation_event(
@@ -575,16 +584,16 @@ class AniListClient:
                             result="invalid_response",
                         )
                         self._record_translation_event(
-                            "TRANSLATION_FALLBACK_ORIGINAL",
+                            "TRANSLATION_UNAVAILABLE",
                             request_id=request_id,
                             source_language=source,
                             result="translation_failed",
                         )
-                        return original
+                        return None
                     section_translations.append(translated)
                 translated_sections.append(" ".join(section_translations))
             localized = "\n\n".join(translated_sections).strip()
-            if not self._is_valid_translation(original, localized):
+            if not self._is_valid_translation(original, localized) or not self._is_pt_br_description(localized):
                 with self._translation_lock:
                     cache = self._load_translation_cache()
                     cache[key] = {
@@ -602,12 +611,12 @@ class AniListClient:
                     result="validation_failed",
                 )
                 self._record_translation_event(
-                    "TRANSLATION_FALLBACK_ORIGINAL",
+                    "TRANSLATION_UNAVAILABLE",
                     request_id=request_id,
                     source_language=source,
                     result="translation_invalid",
                 )
-                return original
+                return None
 
             with self._translation_lock:
                 cache = self._load_translation_cache()
@@ -807,11 +816,23 @@ class AniListClient:
         t=media.get('title') or {}; studios=((media.get('studios') or {}).get('nodes') or [])
         studios = [studio for studio in studios if isinstance(studio, dict)]
         original_description = self.normalize_description(media.get('description') or '')
-        description = (
-            self.localize_description_to_pt_br(original_description)
-            if localize_description and original_description
-            else original_description
-        )
+        source_language, _ = self.detect_description_language(original_description)
+        description = None
+        if original_description:
+            if source_language == "pt":
+                description = original_description
+            else:
+                cached_localized = self.get_cached_description_pt_br(
+                    original_description,
+                    source_language if source_language != "unknown" else None,
+                )
+                if cached_localized:
+                    description = cached_localized
+                elif localize_description:
+                    description = self.localize_description_to_pt_br(
+                        original_description,
+                        source_language=source_language if source_language != "unknown" else None,
+                    )
         metadata = {'title':t.get('english') or t.get('romaji') or title,'romaji':t.get('romaji'),'english':t.get('english'),'native':t.get('native'),'aliases':json.dumps(media.get('synonyms') or [],ensure_ascii=False),'description':description,'cover_url':cover,'cover_cache':cache,'banner_url':media.get('bannerImage') or '','genres':json.dumps(media.get('genres') or [],ensure_ascii=False),'year':media.get('seasonYear'),'season':media.get('season'),'status':media.get('status'),'episodes_count':media.get('episodes'),'duration':media.get('duration'),'score':media.get('averageScore'),'format':media.get('format'),'studio':', '.join(x.get('name','') for x in studios)}
         if original_description:
             metadata['description_original'] = original_description

@@ -286,7 +286,11 @@ class LibraryService:
     ):
         original = self.anilist.normalize_description(original)
         localized = self.anilist.normalize_description(localized)
-        if not original or not self.anilist._is_valid_translation(original, localized):
+        if (
+            not original
+            or not self.anilist._is_valid_translation(original, localized)
+            or not self.anilist._is_pt_br_description(localized)
+        ):
             return False
         current = (
             self.store.anime_metadata_by_id(local_anime_id)
@@ -361,7 +365,12 @@ class LibraryService:
             source_language=source_language,
             request_id=request_id,
         )
-        if localized and localized != original and self.anilist._is_valid_translation(original, localized):
+        if (
+            localized
+            and localized != original
+            and self.anilist._is_valid_translation(original, localized)
+            and self.anilist._is_pt_br_description(localized)
+        ):
             from_cache = self.anilist.get_cached_description_pt_br(original, source_language) == localized
             self._persist_localized_description(
                 lookup_title,
@@ -487,7 +496,36 @@ class LibraryService:
                 ) or self.store.anime_metadata(lookup_title) or cached
             return cached
 
-        if schedule and description == original and source_language != "unknown":
+        canonical = False
+        if source_language == "pt":
+            canonical = description == original
+        elif source_language != "unknown":
+            if cached_localized and description == cached_localized:
+                canonical = True
+            elif (
+                description
+                and self.anilist._is_valid_translation(original, description)
+                and self.anilist._is_pt_br_description(description)
+            ):
+                canonical = True
+
+        if not canonical and description:
+            self.store.upsert_anime(
+                lookup_title,
+                {"description": None},
+                source="anilist",
+                confidence=cached.get("metadata_confidence") or "medium",
+                status=cached.get("metadata_status") or "available",
+                local_anime_id=local_anime_id,
+                replace_fields={"description"},
+            )
+
+        if (
+            schedule
+            and source_language != "pt"
+            and source_language != "unknown"
+            and not canonical
+        ):
             self._schedule_description_localization(
                 lookup_title,
                 original,
@@ -499,6 +537,49 @@ class LibraryService:
             if local_anime_id
             else None
         ) or self.store.anime_metadata(lookup_title) or cached
+
+    def _prepare_anilist_description_metadata(self, refreshed, current):
+        refreshed = dict(refreshed or {})
+        remote_original = self.anilist.normalize_description(
+            refreshed.get("description_original") or refreshed.get("description") or ""
+        )
+        if not remote_original:
+            return refreshed, set()
+
+        source_language, _ = self.anilist.detect_description_language(remote_original)
+        if source_language == "pt":
+            refreshed["description"] = remote_original
+            refreshed["description_original"] = remote_original
+            return refreshed, set()
+
+        cached_localized = self.anilist.get_cached_description_pt_br(
+            remote_original,
+            source_language if source_language != "unknown" else None,
+        )
+        if cached_localized:
+            refreshed["description"] = cached_localized
+            refreshed["description_original"] = remote_original
+            return refreshed, set()
+
+        current = current or {}
+        current_original = self.anilist.normalize_description(
+            current.get("description_original") or ""
+        )
+        current_description = self.anilist.normalize_description(
+            current.get("description") or ""
+        )
+        if current_original == remote_original and current_description:
+            if (
+                self.anilist._is_valid_translation(remote_original, current_description)
+                and self.anilist._is_pt_br_description(current_description)
+            ):
+                refreshed["description"] = current_description
+                refreshed["description_original"] = remote_original
+                return refreshed, set()
+
+        refreshed["description"] = None
+        refreshed["description_original"] = remote_original
+        return refreshed, {"description"}
 
     def refresh_metadata(
         self,
@@ -566,6 +647,15 @@ class LibraryService:
                     if media:
                         refreshed = self.anilist.metadata_from_media(display_title, media, localize_description=False)
                         refreshed["anilist_id"] = refresh_id
+                        existing_for_description = (
+                            self.store.anime_metadata_by_id(owner_id)
+                            if owner_id
+                            else None
+                        ) or self.store.anime_metadata(local_lookup)
+                        refreshed, description_replace_fields = self._prepare_anilist_description_metadata(
+                            refreshed,
+                            existing_for_description,
+                        )
                         logger.info(
                             "METADATA_ACTION_DB_WRITE requestId=%s animeId=%s lookupTitle=%s anilistId=%s screen=library_service",
                             request_id, owner_id or "-", local_lookup, refresh_id,
@@ -578,6 +668,7 @@ class LibraryService:
                             status="available",
                             fetched_at=time.time(),
                             local_anime_id=owner_id,
+                            replace_fields=description_replace_fields,
                         )
                         row = self.store.anime_metadata_by_id(owner_id) if owner_id else self.store.anime_metadata(local_lookup)
                         if row:
@@ -654,6 +745,15 @@ class LibraryService:
                     margin = round(score - second, 3)
                     refreshed = self.anilist.metadata_from_media(display_title, selected, localize_description=False)
                     refreshed["anilist_id"] = selected["id"]
+                    existing_for_description = (
+                        self.store.anime_metadata_by_id(owner_id)
+                        if owner_id
+                        else None
+                    ) or self.store.anime_metadata(local_lookup)
+                    refreshed, description_replace_fields = self._prepare_anilist_description_metadata(
+                        refreshed,
+                        existing_for_description,
+                    )
                     confidence = "high" if score >= 0.9 else "medium"
                     logger.info(
                         "METADATA_ACTION_DB_WRITE requestId=%s animeId=%s lookupTitle=%s anilistId=%s screen=library_service",
@@ -667,6 +767,7 @@ class LibraryService:
                         status="available",
                         fetched_at=time.time(),
                         local_anime_id=owner_id,
+                        replace_fields=description_replace_fields,
                     )
                     self.store.set_anilist_match(
                         local_lookup,

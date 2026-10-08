@@ -1283,7 +1283,7 @@ class LibraryStore:
                 raise ValueError("Anime local não encontrado.")
         return normalized
 
-    def upsert_anime(self, lookup, metadata, *, source=None, confidence=None, status=None, fetched_at=None, local_anime_id=None):
+    def upsert_anime(self, lookup, metadata, *, source=None, confidence=None, status=None, fetched_at=None, local_anime_id=None, replace_fields=None):
         """Upsert editorial metadata with source-aware, field-level merge safety.
 
         User metadata (favorites, tags, pins, notes) is stored in separate columns.
@@ -1302,6 +1302,11 @@ class LibraryStore:
         now = time.time()
         metadata_updated_at = metadata.get("metadata_updated_at", now)
         editorial = ("title", "romaji", "english", "native", "aliases", "description", "cover_url", "cover_cache", "banner_url", "genres", "year", "season", "status", "episodes_count", "duration", "score", "format", "studio")
+        replace_fields = {
+            str(field)
+            for field in (replace_fields or ())
+            if str(field) in editorial
+        }
         description_original = metadata.get("description_original")
         if source == "anilist" and description_original in (None, ""):
             description_original = metadata.get("description")
@@ -1352,7 +1357,11 @@ class LibraryStore:
                     # Preserve previously known values when an API response is partial.
                     for key in editorial:
                         incoming = values.get(key)
-                        if key not in manual_fields and (key not in metadata or incoming is None or incoming == "" or incoming == "[]"):
+                        if (
+                            key not in manual_fields
+                            and key not in replace_fields
+                            and (key not in metadata or incoming is None or incoming == "" or incoming == "[]")
+                        ):
                             values[key] = row[key]
                     # Keep a previously cached cover if the network returned none.
                     values["cover_cache"] = values.get("cover_cache") or row["cover_cache"] or ""
