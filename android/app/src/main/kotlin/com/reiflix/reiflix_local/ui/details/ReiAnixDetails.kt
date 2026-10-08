@@ -90,6 +90,7 @@ import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
+import com.reiflix.reiflix_local.ui.model.presentationStateLabel
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
@@ -753,7 +754,7 @@ private fun DetailsHero(
                 }
             }
         }
-        anime.presentationState.label?.let { stateLabel ->
+        presentationStateLabel(anime.presentationState)?.let { stateLabel ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding),
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
