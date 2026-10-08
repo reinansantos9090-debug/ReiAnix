@@ -677,7 +677,7 @@ private fun DetailsHero(
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Box {
                 ReiAnixIconActionButton(icon = Icons.Filled.MoreVert, contentDescription = "Mais opções", onClick = { menuExpanded.value = true })
-                DropdownMenu(expanded = menuExpanded.value, onDismissRequest = { menuExpanded.value = false }) {
+                DropdownMenu(expanded = menuExpanded.value, onDismissRequest = { menuExpanded.value = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     DropdownMenuItem(text = { Text("Atualizar detalhes") }, leadingIcon = {
                         Icon(imageVector = Icons.Filled.Refresh, contentDescription = null)
                     }, onClick = { menuExpanded.value = false; onRefresh() })
@@ -1141,7 +1141,7 @@ private fun DetailsEpisodeItem(
                 IconButton(onClick = { menuExpanded = true }, modifier = Modifier.semantics { contentDescription = "Ações do episódio " + episode.displayTitle }) {
                     Icon(imageVector = Icons.Filled.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     DropdownMenuItem(text = { Text(if (episode.isWatched) "Marcar como não visto" else "Marcar como visto") },
                         onClick = { menuExpanded = false; onSetEpisodeWatched(episode.id, !episode.isWatched) })
                 }
