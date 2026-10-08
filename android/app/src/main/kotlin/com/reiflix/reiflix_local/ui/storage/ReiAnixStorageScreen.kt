@@ -308,6 +308,7 @@ fun ReiAnixStorageScreen(
         val sourceName = friendlySourceName(source.name).ifBlank { "esta pasta" }
         AlertDialog(
             onDismissRequest = { pendingRemoval = null },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = { Text("Remover pasta da biblioteca?") },
             text = {
                 Text(
