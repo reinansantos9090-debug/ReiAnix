@@ -1,6 +1,6 @@
 package com.reiflix.reiflix_local.ui.library
 
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -119,7 +119,7 @@ class ReiAnixLibraryInstrumentedTest {
 
         composeRule.onNodeWithText("Assistindo").assertIsDisplayed()
         composeRule.onNodeWithText("Na lista").assertIsDisplayed()
-        composeRule.onNodeWithText("Concluído").assertDoesNotExist()
+        composeRule.onNodeWithText("Concluído").assertIsNotDisplayed()
         composeRule.onNodeWithContentDescription("Remover da Minha Lista").performClick()
         assertEquals(7L, toggledId)
     }
@@ -153,8 +153,8 @@ class ReiAnixLibraryInstrumentedTest {
         }
 
         composeRule.onNodeWithText("Concluído").assertIsDisplayed()
-        composeRule.onNodeWithText("Assistindo").assertDoesNotExist()
-        composeRule.onNodeWithText("Na lista").assertDoesNotExist()
+        composeRule.onNodeWithText("Assistindo").assertIsNotDisplayed()
+        composeRule.onNodeWithText("Na lista").assertIsNotDisplayed()
     }
 
     @Test
@@ -188,8 +188,8 @@ class ReiAnixLibraryInstrumentedTest {
 
         composeRule.onNodeWithText("Sem arte").assertIsDisplayed()
         composeRule.onNodeWithText("Na lista").assertIsDisplayed()
-        composeRule.onNodeWithText("Assistindo").assertDoesNotExist()
-        composeRule.onNodeWithText("Concluído").assertDoesNotExist()
+        composeRule.onNodeWithText("Assistindo").assertIsNotDisplayed()
+        composeRule.onNodeWithText("Concluído").assertIsNotDisplayed()
     }
 
     @Test
