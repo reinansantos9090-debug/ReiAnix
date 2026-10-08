@@ -31,8 +31,22 @@ class ReiAnixLibraryCommandCodecTest {
     @Test
     fun actionsAreExactlyTheExistingLibraryOperations() {
         assertEquals(
-            setOf("toggle_favorite", "set_watched", "refresh", "load_library_page", "open_media", "select_saf", "remove_saf"),
+            setOf("toggle_favorite", "set_watched", "refresh", "load_library_page", "open_media", "select_saf", "dismiss_storage_onboarding", "remove_saf"),
             ReiAnixLibraryCommandCodec.Action.entries.map { it.value }.toSet(),
+        )
+    }
+    
+    @Test
+    fun onboardingDismissalUsesTheExistingComposeLibraryCommandChannel() {
+        val command = ReiAnixLibraryCommandCodec.create(
+            requestId = "req-dismiss",
+            action = ReiAnixLibraryCommandCodec.Action.DISMISS_STORAGE_ONBOARDING,
+        )
+        assertEquals("compose_library_command", command.getString("type"))
+        assertEquals("req-dismiss", command.getString("requestId"))
+        assertEquals(
+            "dismiss_storage_onboarding",
+            command.getJSONObject("payload").getString("action"),
         )
     }
 
