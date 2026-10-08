@@ -1,6 +1,6 @@
 package com.reiflix.reiflix_local.ui.details
 
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.hasText
@@ -184,7 +184,7 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithText("E01 • Episode 1").assertIsDisplayed()
         composeRule.onNodeWithText("E02 • Episode 2").assertIsDisplayed()
         composeRule.onNodeWithText("E03 • Episode 3").assertIsDisplayed()
-        composeRule.onNodeWithText("E11 • Episode 11").assertDoesNotExist()
+        composeRule.onNodeWithText("E11 • Episode 11").assertIsNotDisplayed()
 
         composeRule.onNodeWithContentDescription("Selecionar Temporada 2").performClick()
         composeRule.waitForIdle()
@@ -192,7 +192,7 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithText("E11 • Episode 11").assertIsDisplayed()
         composeRule.onNodeWithText("E12 • Episode 12").assertIsDisplayed()
         composeRule.onNodeWithText("E13 • Episode 13").assertIsDisplayed()
-        composeRule.onNodeWithText("E01 • Episode 1").assertDoesNotExist()
+        composeRule.onNodeWithText("E01 • Episode 1").assertIsNotDisplayed()
     }
 
     @Test
@@ -250,10 +250,10 @@ class ReiAnixDetailsInstrumentedTest {
         }
 
         composeRule.onNodeWithText("Local Only").assertIsDisplayed()
-        composeRule.onNodeWithText("Assistir").assertDoesNotExist()
-        composeRule.onNodeWithText("2026").assertDoesNotExist()
-        composeRule.onNodeWithText("Nota 8.6/10").assertDoesNotExist()
-        composeRule.onNodeWithText("episódios").assertDoesNotExist()
+        composeRule.onNodeWithText("Assistir").assertIsNotDisplayed()
+        composeRule.onNodeWithText("2026").assertIsNotDisplayed()
+        composeRule.onNodeWithText("Nota 8.6/10").assertIsNotDisplayed()
+        composeRule.onNodeWithText("episódios").assertIsNotDisplayed()
         composeRule.onNodeWithContentDescription("Adicionar à Minha Lista").assertIsDisplayed()
         composeRule.onNodeWithText("Nenhuma mídia local disponível para reprodução.").assertIsDisplayed()
     }
