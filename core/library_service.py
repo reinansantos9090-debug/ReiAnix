@@ -1065,7 +1065,29 @@ class LibraryService:
                 if anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
                     entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
                     self.artwork.sync_anime_metadata(cached['id'], cached)
-                    if cover_url and (needs_cover or metadata_refreshed):
+                    # refresh_metadata() already reconciles AniList artwork and
+                    # may queue the poster download. Recompute readiness here
+                    # instead of unconditionally requesting the poster again;
+                    # otherwise a fast first download can be followed by a
+                    # second physical HTTP download during the same hydration.
+                    poster_rows = self.artwork.list_for(entity_type, cached['id'], 'poster')
+                    backdrop_rows = self.artwork.list_for(entity_type, cached['id'], 'backdrop')
+                    needs_cover = bool(
+                        cover_url
+                        and not any(
+                            row.get('local_path') and self.artwork._is_valid_image_file(row.get('local_path'))
+                            for row in poster_rows
+                        )
+                    )
+                    banner_url = str(cached.get('banner_url') or '').strip()
+                    needs_backdrop = bool(
+                        banner_url
+                        and not any(
+                            row.get('local_path') and self.artwork._is_valid_image_file(row.get('local_path'))
+                            for row in backdrop_rows
+                        )
+                    )
+                    if cover_url and needs_cover:
                         resolved = self.artwork.request(
                             entity_type,
                             cached['id'],
@@ -1084,8 +1106,7 @@ class LibraryService:
                             and resolved.get('local_path')
                             and self.artwork._is_valid_image_file(resolved.get('local_path'))
                         )
-                    banner_url = str(cached.get('banner_url') or '').strip()
-                    if banner_url and (needs_backdrop or metadata_refreshed):
+                    if banner_url and needs_backdrop:
                         self.artwork.request(
                             entity_type,
                             cached['id'],
