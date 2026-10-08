@@ -24,6 +24,7 @@ data class ReiAnixStorageUiState(
     val safRoots: List<String> = emptyList(),
     val onboardingState: String = "checking",
     val onboardingMessage: String? = null,
+    val onboardingDismissed: Boolean = false,
     val onboardingError: String? = null,
     val safSelectionPending: Boolean = false,
     val safRootIdentities: List<String> = emptyList(),
