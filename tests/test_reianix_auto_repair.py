@@ -72,6 +72,37 @@ class AutoRepairEngineTests(unittest.TestCase):
             self.assertIn('echo "before"', result)
             self.assertIn('echo "after"', result)
 
+    def test_workflow_is_privileged_only_for_trusted_main_failures(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "reianix_auto_repair.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("workflow_run:", workflow)
+        self.assertIn("Build ReiAnix Android APK", workflow)
+        self.assertIn("ReiAnix Android Instrumented Runtime Matrix", workflow)
+        self.assertIn("contents: write", workflow)
+        self.assertIn("actions: read", workflow)
+        self.assertIn("github.event.workflow_run.head_branch == 'main'", workflow)
+        self.assertIn("github.event.workflow_run.head_repository.full_name == github.repository", workflow)
+        self.assertNotIn("pull_request:", workflow)
+        self.assertNotIn("pull_request_target:", workflow)
+
+    def test_workflow_commits_only_allowlisted_android_workflow_file(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "reianix_auto_repair.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('git config user.name "github-actions[bot]"', workflow)
+        self.assertIn('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"', workflow)
+        self.assertIn("git add .github/workflows/android_instrumented.yml", workflow)
+        self.assertIn("git diff --cached --check", workflow)
+        self.assertIn("git push origin HEAD:main", workflow)
+
+
 
 if __name__ == "__main__":
     unittest.main()
