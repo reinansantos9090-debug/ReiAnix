@@ -42,6 +42,8 @@ jobs:
     name: Android API 36
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/site-packages
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -122,6 +124,14 @@ jobs:
           }
           trap restore_git EXIT
           flet build apk             --template build/flet-build-template             --build-number "$GITHUB_RUN_NUMBER"             --build-version "0.2.1"             --python-version "3.12"             --yes
+      - name: Verify Serious Python staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$SERIOUS_PYTHON_SITE_PACKAGES"
+          test -n "$(find "$SERIOUS_PYTHON_SITE_PACKAGES" -type f -print -quit)"
+          echo "Serious Python site-packages: $SERIOUS_PYTHON_SITE_PACKAGES"
+
       - name: Verify rendered Android test project
         run: |
           test -f build/flutter/android/gradlew
