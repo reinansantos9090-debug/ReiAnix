@@ -332,10 +332,14 @@ jobs:
           capture "$out/sdk.txt" adb shell getprop ro.build.version.sdk
           capture "$out/activity_top.txt" adb shell dumpsys activity top
           capture "$out/window.txt" adb shell dumpsys window
-          capture "$out/logcat.txt" adb logcat -d -v threadtime
+          capture "$out/package.txt" adb shell dumpsys package com.reiflix.reiflix_local
+          capture "$out/logcat.txt" adb logcat -d -b all -v threadtime
+          capture "$out/screenshot.png" adb exec-out screencap -p
+          capture "$out/ui_dump.txt" adb shell uiautomator dump /sdcard/window.xml
+          capture "$out/ui.xml" adb shell cat /sdcard/window.xml
           {
             echo "## Android runtime diagnostics"
-            echo '```'
+            echo "SDK:"
             if [ -f "$out/sdk.txt" ]; then
               cat "$out/sdk.txt"
             fi
@@ -344,10 +348,21 @@ jobs:
               cat "$out/adb_devices.txt"
             fi
             echo "--- command exit markers ---"
-            grep -h "COMMAND_EXIT=" "$out"/*.txt
-            echo '```'
+            grep -h "COMMAND_EXIT=" "$out"/*.txt || true
           } >> "$GITHUB_STEP_SUMMARY"
           set -e
+
+      - name: Analyze ReiAnix runtime Logcat
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$GITHUB_WORKSPACE/build/android-api36/logcat.txt"
+          report="$GITHUB_WORKSPACE/build/android-api36/reianix-logcat-analysis.json"
+          python scripts/analyze_android_runtime_log.py \
+            --logcat "$log" \
+            --output "$report" \
+            --package "com.reiflix.reiflix_local"
 
       - name: Upload Android instrumentation diagnostics
         if: always()
