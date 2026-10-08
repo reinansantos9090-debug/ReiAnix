@@ -7,6 +7,7 @@ from core.library_store import LibraryStore
 from core.settings import SettingsStore
 from core.ui import (
     DARK_THEME,
+    _flet_material_theme,
     LIGHT_THEME,
     ThemeTokens,
     effective_theme_mode,
@@ -88,6 +89,23 @@ class ThemeEngineTests(unittest.TestCase):
             self.assertIn(value, source)
         for legacy in ("#151515", "#111111", "#16151F", "#252331", "#302D3E", "#2D2A3B", "#39364B", "#3C394C"):
             self.assertNotIn(legacy, source)
+
+    def test_flet_material_theme_constructs_with_active_surface_roles(self):
+        dark = _flet_material_theme(DARK_THEME)
+        light = _flet_material_theme(LIGHT_THEME)
+
+        for theme, expected in ((dark, DARK_THEME), (light, LIGHT_THEME)):
+            self.assertEqual(theme.color_scheme.surface, expected.surface)
+            self.assertEqual(theme.color_scheme.surface_variant, expected.surface_variant)
+            self.assertEqual(theme.color_scheme.surface_container, expected.surface)
+            self.assertEqual(theme.color_scheme.surface_container_high, expected.surface_raised)
+            self.assertEqual(theme.canvas_color, expected.background)
+            self.assertEqual(theme.scaffold_bgcolor, expected.background)
+            self.assertEqual(theme.card_bgcolor, expected.surface)
+            self.assertEqual(theme.dialog_theme.bgcolor, expected.surface_raised)
+            self.assertEqual(theme.bottom_sheet_theme.bgcolor, expected.surface_raised)
+            self.assertEqual(theme.navigation_bar_theme.bgcolor, expected.background)
+            self.assertEqual(theme.appbar_theme.bgcolor, expected.background)
 
     def test_flet_material_fallbacks_are_bound_to_active_theme_tokens(self):
         source = (ROOT / "core/ui.py").read_text(encoding="utf-8")
