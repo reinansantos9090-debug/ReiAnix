@@ -228,6 +228,17 @@ fun ReiAnixLocalArtwork(
     }
 }
 
+internal fun buildArtworkMemoryCacheKey(
+    stableIdentity: String,
+    source: String,
+    widthPx: Int,
+    heightPx: Int,
+): String =
+    "reianix-artwork|" + stableIdentity + "|" + source + "|" + widthPx + "x" + heightPx
+
+internal fun buildArtworkDiskCacheKey(source: String): String =
+    "reianix-artwork-disk|" + source
+
 private fun coilData(source: String): Any =
     when {
         source.startsWith("http://", ignoreCase = true) ||
