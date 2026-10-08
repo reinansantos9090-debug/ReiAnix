@@ -131,18 +131,69 @@ def _system_overlay_style(icon_brightness):
     )
 
 
+def _flet_material_theme(tokens: ThemeTokens) -> ft.Theme:
+    """Build the fallback Material theme from the same ReiAnix surface tokens.
+
+    Individual controls may still override these values, but Flet-native
+    surfaces such as cards, dialogs, sheets and disabled states must not fall
+    back to a generated Material surface that contradicts the active palette.
+    """
+    color_scheme = ft.ColorScheme(
+        primary=tokens.primary,
+        on_primary=tokens.text_on_accent,
+        primary_container=tokens.surface_raised,
+        on_primary_container=tokens.text,
+        secondary=tokens.secondary,
+        on_secondary=tokens.text,
+        secondary_container=tokens.surface_variant,
+        on_secondary_container=tokens.text,
+        tertiary=tokens.secondary,
+        on_tertiary=tokens.text,
+        tertiary_container=tokens.surface_variant,
+        on_tertiary_container=tokens.text,
+        error=tokens.error,
+        on_error=tokens.text_on_accent,
+        error_container=tokens.surface_variant,
+        on_error_container=tokens.text,
+        surface=tokens.surface,
+        on_surface=tokens.text,
+        surface_variant=tokens.surface_variant,
+        on_surface_variant=tokens.text_muted,
+        surface_dim=tokens.background,
+        surface_bright=tokens.surface_raised,
+        surface_container_low=tokens.background,
+        surface_container=tokens.surface,
+        surface_container_high=tokens.surface_raised,
+        surface_container_highest=tokens.surface_raised,
+        outline=tokens.border,
+        outline_variant=tokens.divider,
+        scrim=tokens.overlay,
+    )
+    return ft.Theme(
+        color_scheme=color_scheme,
+        color_scheme_seed=tokens.primary,
+        canvas_color=tokens.background,
+        card_bgcolor=tokens.surface,
+        dialog_theme=ft.DialogTheme(
+            bgcolor=tokens.surface_raised,
+            barrier_color=tokens.overlay,
+        ),
+        bottom_sheet_theme=ft.BottomSheetTheme(
+            bgcolor=tokens.surface_raised,
+            barrier_color=tokens.overlay,
+        ),
+        disabled_color=tokens.text_muted,
+        divider_color=tokens.divider,
+        font_family="Roboto",
+        system_overlay_style=_system_overlay_style(
+            ft.Brightness.DARK if tokens.mode == "dark" else ft.Brightness.LIGHT,
+        ),
+    )
+
 def apply_page_theme(page, mode) -> ThemeTokens:
     selected = normalize_theme_mode(mode)
-    page.theme = ft.Theme(
-        color_scheme_seed=LIGHT_THEME.primary,
-        font_family="Roboto",
-        system_overlay_style=_system_overlay_style(ft.Brightness.DARK),
-    )
-    page.dark_theme = ft.Theme(
-        color_scheme_seed=DARK_THEME.primary,
-        font_family="Roboto",
-        system_overlay_style=_system_overlay_style(ft.Brightness.LIGHT),
-    )
+    page.theme = _flet_material_theme(LIGHT_THEME)
+    page.dark_theme = _flet_material_theme(DARK_THEME)
     page.theme_animation_style = ft.AnimationStyle.no_animation()
     page.theme_mode = {
         "system": ft.ThemeMode.SYSTEM,
