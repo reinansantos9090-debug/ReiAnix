@@ -651,7 +651,7 @@ class ArtworkEngine:
                     found.append(candidate)
         return found
 
-    def sync_anime_metadata(self, anime_id, metadata, *, request_download=True)
+    def sync_anime_metadata(self, anime_id, metadata, *, request_download=True):
         if not metadata:
             return
         cover_cache = str(metadata.get("cover_cache") or "").strip()
