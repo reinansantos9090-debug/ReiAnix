@@ -1115,7 +1115,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         JSONObject()
             .put("player.autoplay_next", autoplayNext)
             .put("player.default_speed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
-            .put("player.aspect_ratio", aspectModeLabel)
+            .put("player.aspect_ratio", if (aspectModeLabel == "Preencher") "fill" else "fit")
             .put("player.zoom_enabled", zoomEnabled)
             .put("player.immersive", immersiveSetting)
             .put("player.lock_mode", locked)
