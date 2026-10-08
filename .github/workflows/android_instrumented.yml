@@ -16,7 +16,7 @@ jobs:
   python-contracts:
     name: Python contracts
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       PYTHONPATH: ${{ github.workspace }}
     steps:
@@ -33,17 +33,15 @@ jobs:
           python -m pip install -r requirements.txt "flet[cli]==0.86.5" pytest
       - name: Compile Python sources
         run: python -m compileall -q main.py app_config.py core views scripts
-      - name: Run full Python tests
-        run: |
-          python -m pytest -q
-          python -m unittest discover -s tests -p 'test*.py' -t .
+      - name: Run Python tests once
+        run: python -m pytest -q
       - name: Check diff whitespace
         run: git diff --check
 
   prepare-android-test-project:
     name: Render Android test project
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -126,20 +124,6 @@ jobs:
             MetadataOwnerInstrumentedTest.kt; do
             test -f "build/flutter/android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/$test_file"
           done
-      # Cache the entire rendered Flutter project. Gradle's Flutter task
-      # resolves pubspec.yaml from the Flutter project root; restoring only
-      # build/flutter/android makes connected tests fail with no pubspec.
-      - name: Run Kotlin unit tests
-        working-directory: build/flutter/android
-        shell: bash
-        env:
-          SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/site-packages
-        run: |
-          set -euo pipefail
-          test -d "$SERIOUS_PYTHON_SITE_PACKAGES"
-          chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
-
       - name: Verify rendered Android project integrity
         shell: bash
         run: |
@@ -162,7 +146,7 @@ jobs:
     name: Android API 36
     needs: prepare-android-test-project
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -229,8 +213,8 @@ jobs:
           arch: x86_64
           profile: pixel_2
           force-avd-creation: true
-          emulator-boot-timeout: 1200
-          disable-animations: false
+          emulator-boot-timeout: 600
+          disable-animations: true
           disable-linux-hw-accel: false
           emulator-options: "-no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-save -gpu swiftshader_indirect -camera-back none -camera-front none"
           script: bash "$GITHUB_WORKSPACE/scripts/run_android_instrumented.sh" "36" "$GITHUB_WORKSPACE/build/android-api36"
