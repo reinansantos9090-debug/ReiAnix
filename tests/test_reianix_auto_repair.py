@@ -9,7 +9,7 @@ class AutoRepairEngineTests(unittest.TestCase):
     def test_only_allowlisted_fixes_exist(self):
         self.assertEqual(
             [fix.fix_id for fix in FIXES],
-            ["FIX-001", "FIX-002"],
+            ["FIX-001", "FIX-002", "FIX-003"],
         )
 
     def test_fixture_path_fix_requires_both_log_markers(self):
@@ -32,6 +32,14 @@ class AutoRepairEngineTests(unittest.TestCase):
     def test_unrelated_failure_does_not_match(self):
         log = "AssertionError: synopsis mismatch in tests/test_metadata_engine.py"
         self.assertEqual(matching_fixes(log), [])
+
+    def test_successful_flet_build_watcher_failure_matches_build_fix(self):
+        log = (
+            "Caught exception: Already watching path: "
+            "/home/runner/work/ReiAnix/ReiAnix/build/flutter/android"
+            "\nBuilt .apk for Android"
+        )
+        self.assertEqual([f.fix_id for f in matching_fixes(log)], ["FIX-003"])
 
     def test_fixture_fix_changes_exactly_one_occurrence(self):
         fix = FIXES[0]
@@ -86,6 +94,8 @@ class AutoRepairEngineTests(unittest.TestCase):
         self.assertIn("actions: read", workflow)
         self.assertIn("github.event.workflow_run.head_branch == 'main'", workflow)
         self.assertIn("github.event.workflow_run.head_repository.full_name == github.repository", workflow)
+        self.assertIn('gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"', workflow)
+        self.assertNotIn("--json conclusion,headBranch,headSha,name,headRepository", workflow)
         self.assertNotIn("pull_request:", workflow)
         self.assertNotIn("pull_request_target:", workflow)
 
@@ -98,7 +108,7 @@ class AutoRepairEngineTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('git config user.name "github-actions[bot]"', workflow)
         self.assertIn('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"', workflow)
-        self.assertIn("git add .github/workflows/android_instrumented.yml", workflow)
+        self.assertIn("git add .github/workflows/android_instrumented.yml .github/workflows/build_apk.yml", workflow)
         self.assertIn("git diff --cached --check", workflow)
         self.assertIn("git push origin HEAD:main", workflow)
 
