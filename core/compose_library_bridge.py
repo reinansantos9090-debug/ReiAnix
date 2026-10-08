@@ -169,6 +169,21 @@ class ComposeLibraryBridge:
             return None
         return None
 
+    def _read_persisted_snapshot(self) -> dict[str, Any] | None:
+        """Read the last atomically published Compose snapshot without making it authoritative."""
+        try:
+            if not self.snapshot_path.is_file():
+                return None
+            snapshot = json.loads(self.snapshot_path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(snapshot, dict)
+                or int(snapshot.get("schemaVersion", 0)) != self.SCHEMA_VERSION
+            ):
+                return None
+            return snapshot
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return None
+
     def _build_and_write_incremental_snapshot(self, revision: int, reason: str) -> bool:
         """Patch one canonical anime into the existing snapshot when an event is targeted."""
         target = self._incremental_target(reason)
@@ -176,8 +191,8 @@ class ComposeLibraryBridge:
             return False
         anime_id, _kind = target
         try:
-            current = json.loads(self.snapshot_path.read_text(encoding="utf-8"))
-            if not isinstance(current, dict) or int(current.get("schemaVersion", 0)) != self.SCHEMA_VERSION:
+            current = self._read_persisted_snapshot()
+            if current is None:
                 return False
 
             catalog = self.library.catalog(anime_ids=[anime_id])
@@ -238,21 +253,50 @@ class ComposeLibraryBridge:
         if self._build_and_write_incremental_snapshot(revision, reason):
             return
 
+        previous_snapshot = self._read_persisted_snapshot()
+        scan_snapshot = self._scan_snapshot()
+        previous_animes = (
+            previous_snapshot.get("animes")
+            if isinstance(previous_snapshot, dict)
+            and isinstance(previous_snapshot.get("animes"), list)
+            else []
+        )
+        previous_continue = (
+            previous_snapshot.get("continue_watching")
+            if isinstance(previous_snapshot, dict)
+            and isinstance(previous_snapshot.get("continue_watching"), list)
+            else []
+        )
+
         try:
             catalog = self.library.catalog()
             folders = self.store.folders()
             source_state = self._source_state(folders)
-            scan_snapshot = self._scan_snapshot()
             storage_snapshot = self._storage_snapshot(folders)
             continue_method = getattr(self.library, "continue_watching", None)
             continue_rows = continue_method(limit=12) if callable(continue_method) else []
-            status = "READY" if catalog else "EMPTY"
+
+            # A scan is allowed to report a transiently empty canonical read.
+            # Never project that transient state over an already committed
+            # persisted catalog while the scan is still in progress.
+            reuse_previous_catalog = bool(
+                scan_snapshot["in_progress"]
+                and not catalog
+                and previous_animes
+            )
+            if reuse_previous_catalog:
+                projected_animes = list(previous_animes)
+                if not continue_rows and previous_continue:
+                    continue_rows = list(previous_continue)
+            else:
+                projected_animes = []
+
+            status = "READY" if (catalog or projected_animes) else "EMPTY"
 
             # Details must consume the existing canonical playback_target()
             # policy. Normal catalog rows already expose current_episode, so
             # only the special-only fallback needs the extra canonical lookup.
             playback_target_method = getattr(self.library, "playback_target", None)
-            projected_animes = []
 
             # Snapshot publication is projection-only. Do not resolve artwork for
             # the complete catalog here. ArtworkEngine remains the canonical artwork
@@ -269,21 +313,22 @@ class ComposeLibraryBridge:
             def hydrate_anime(item):
                 return dict(item) if isinstance(item, dict) else item
 
-            for item in catalog:
-                projected = hydrate_anime(item)
-                if callable(playback_target_method) and not isinstance(
-                    item.get("current_episode"), dict
-                ):
-                    anime_id = item.get("id")
-                    if anime_id is not None:
-                        target = playback_target_method(anime_id)
-                        if isinstance(target, dict):
-                            projected = dict(projected)
-                            projected["playback_target_episode"] = hydrate_episode(target)
+            if not projected_animes:
+                for item in catalog:
+                    projected = hydrate_anime(item)
+                    if callable(playback_target_method) and not isinstance(
+                        item.get("current_episode"), dict
+                    ):
+                        anime_id = item.get("id")
+                        if anime_id is not None:
+                            target = playback_target_method(anime_id)
+                            if isinstance(target, dict):
+                                projected = dict(projected)
+                                projected["playback_target_episode"] = hydrate_episode(target)
 
-                projected_animes.append(
-                    self._project_anime(projected)
-                )
+                    projected_animes.append(
+                        self._project_anime(projected)
+                    )
 
             payload = {
                 "schemaVersion": self.SCHEMA_VERSION,
@@ -311,14 +356,27 @@ class ComposeLibraryBridge:
                 "generatedAt": generated_at,
                 "reason": str(reason),
                 "status": "ERROR",
-                "sourceState": "UNKNOWN",
-                "sourceAvailable": False,
-                "scanInProgress": False,
-                "scanState": "UNKNOWN",
-                "storage": self._storage_snapshot([]),
+                "sourceState": (
+                    str(previous_snapshot.get("sourceState") or "UNKNOWN")
+                    if isinstance(previous_snapshot, dict)
+                    else "UNKNOWN"
+                ),
+                "sourceAvailable": (
+                    bool(previous_snapshot.get("sourceAvailable"))
+                    if isinstance(previous_snapshot, dict)
+                    else False
+                ),
+                "scanInProgress": scan_snapshot["in_progress"],
+                "scanState": scan_snapshot["state"],
+                "storage": (
+                    previous_snapshot.get("storage")
+                    if isinstance(previous_snapshot, dict)
+                    and isinstance(previous_snapshot.get("storage"), dict)
+                    else self._storage_snapshot([])
+                ),
                 "error": str(exc)[:500],
-                "animes": [],
-                "continue_watching": [],
+                "animes": list(previous_animes),
+                "continue_watching": list(previous_continue),
             }
         self._atomic_write_json(self.snapshot_path, payload)
 
