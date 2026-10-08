@@ -623,7 +623,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
-        bottomBadgeText = bottomBadgeText ?: anime.presentationState.label,
+        bottomBadgeText = bottomBadgeText ?: presentationStateLabel(anime.presentationState),
     )
 }
 
