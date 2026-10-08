@@ -44,6 +44,21 @@ FIXES = (
         commit_message="fix(ci): correct library fixture generator path",
     ),
     KnownFix(
+        fix_id="FIX-003",
+        description="Do not force a successful Flet APK build to fail after the APK was produced.",
+        log_markers=(
+            "Already watching path:",
+            "Built .apk for Android",
+        ),
+        path=".github/workflows/build_apk.yml",
+        old='          flet build "${build_args[@]}"\\n          exit 1',
+        new='          flet build "${build_args[@]}"',
+        tests=(
+            ("python", "-m", "pytest", "-q", "tests/test_build_tools.py"),
+        ),
+        commit_message="fix(ci): do not fail successful APK build after Flet packaging",
+    ),
+    KnownFix(
         fix_id="FIX-002",
         description="Remove forbidden success suppression from Android diagnostics.",
         log_markers=(
