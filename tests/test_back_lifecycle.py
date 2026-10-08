@@ -77,6 +77,15 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertNotIn("finishAndRemoveTask", host)
         self.assertIn("ReiAnixRoutes.HOME -> false", host)
 
+    def test_player_finish_is_idempotent_while_exiting(self):
+        source = self.read(PLAYER_ACTIVITY)
+        start = source.index("private fun finishPlayer")
+        end = source.index("private fun updateEpisodeNavigationButtons", start)
+        finish = source[start:end]
+        self.assertIn("sessionState == SessionState.EXITING || sessionState == SessionState.DESTROYED", finish)
+        self.assertIn("sessionState = SessionState.EXITING", finish)
+        self.assertEqual(finish.count("finish()"), 1)
+
     def test_player_keeps_native_back_dispatch_and_finishes_itself(self):
         source = self.read(PLAYER_ACTIVITY)
         self.assertIn("onBackPressedDispatcher.addCallback(", source)

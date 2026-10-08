@@ -4013,7 +4013,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun finishPlayer(reason: String) {
-        if (sessionState == SessionState.DESTROYED) return
+        // A player Back/finish request is a single terminal transition. Ignore
+        // re-entrant requests while EXITING or after destruction so one Android
+        // Back event can never enqueue two exits or two Activity finishes.
+        if (sessionState == SessionState.EXITING || sessionState == SessionState.DESTROYED) return
         val exitClassification = classifyPlayerExit(reason)
         logPlayer(
             "PLAYER_FINISH_REQUEST reason=" + reason +
