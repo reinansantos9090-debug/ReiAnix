@@ -72,6 +72,7 @@ import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.presentationStateLabel
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
@@ -1003,7 +1004,7 @@ private fun HomeMediaCard(
         modifier = Modifier.width(cardWidth),
         onClick = onClick,
         maxDimensionPx = 512,
-        bottomBadgeText = anime.presentationState.label,
+        bottomBadgeText = presentationStateLabel(anime.presentationState),
     )
 }
 
