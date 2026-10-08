@@ -453,6 +453,8 @@ private fun SettingsProfileRow(
         thickness = ReiAnixTokens.Dimensions.dividerHeight,
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
     )
+    }
+}
 
 @Composable
 private fun SettingsFlatCategoryRow(
