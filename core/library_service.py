@@ -2283,7 +2283,9 @@ class LibraryService:
             except (TypeError, ValueError):
                 state = PRESENTATION_READY if item.get("artwork_available") else "metadata_missing"
             item["presentation_state"] = state
-            item["artwork_available"] = state == PRESENTATION_READY
+            # artwork_available remains a materialization signal, separate from
+            # presentation readiness, so local/catalog/search behavior is preserved.
+            item["artwork_available"] = bool(item.get("artwork_available"))
             meta["presentation_state"] = state
             item["meta"] = meta
             enriched.append(item)
