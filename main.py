@@ -3183,6 +3183,20 @@ async def main(page: ft.Page):
         result=None,
     ):
         normalized = str(state or "CHECKING").strip().upper()
+        current_state = str(storage_onboarding.get("state") or "CHECKING").strip().upper()
+        # Once Android has delivered a valid persisted SAF grant, transient
+        # scanner/inventory lifecycle states must never put the app back behind
+        # the first-run "Verificando biblioteca" gate. A real loss/revocation is
+        # still allowed through the terminal states below because the canonical
+        # root validation then returns false.
+        if (
+            current_state == "READY"
+            and normalized in {"CHECKING", "FOLDER_PICKER_OPEN", "NEEDS_FOLDER"}
+            and _configured_valid_library_saf_roots()
+        ):
+            normalized = "READY"
+            message = None
+            error = None
         storage_onboarding["state"] = normalized
         storage_onboarding["message"] = message
         storage_onboarding["error"] = error
