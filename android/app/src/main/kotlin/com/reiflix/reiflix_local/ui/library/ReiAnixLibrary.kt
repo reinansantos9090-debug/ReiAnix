@@ -981,7 +981,7 @@ private fun LibraryAnimeCard(
         completed = renderData.completed,
         modifier = modifier,
         onClick = onClick,
-        bottomBadgeText = when {
+        bottomBadgeText = anime.presentationState.label ?: when {
             anime.mediaKind == com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind.MOVIE -> "Filme"
             renderData.availableCount > 0 -> renderData.availableCount.toString() + if (renderData.availableCount == 1) " episódio" else " episódios"
             else -> null
