@@ -591,6 +591,7 @@ class LibraryService:
         match_context=None,
         local_anime_id=None,
         request_id=None,
+        request_artwork=True,
     ):
         """Refresh editorial metadata without changing the canonical local owner."""
         request_id = str(request_id or uuid.uuid4())
@@ -679,7 +680,7 @@ class LibraryService:
                                 request_id=request_id,
                             )
                             self._sync_genres(row["id"], row, source="anilist")
-                            self.artwork.sync_anime_metadata(row["id"], row)
+                            self.artwork.sync_anime_metadata(row["id"], row, request_download=request_artwork)
                         return row or refreshed
                     if cached:
                         self.store.set_metadata_status(
@@ -786,7 +787,7 @@ class LibraryService:
                             request_id=request_id,
                         )
                         self._sync_genres(row["id"], row, source="anilist")
-                        self.artwork.sync_anime_metadata(row["id"], row)
+                        self.artwork.sync_anime_metadata(row["id"], row, request_download=request_artwork)
                     logger.info(
                         "ANILIST_MATCH_RESULT title=%s id=%s score=%.3f margin=%.3f",
                         display_title,
@@ -836,7 +837,7 @@ class LibraryService:
                     )
                     row = self.store.anime_metadata_by_id(owner_id) if owner_id else self.store.anime_metadata(local_lookup)
                     if row:
-                        self.artwork.sync_anime_metadata(row["id"], row)
+                        self.artwork.sync_anime_metadata(row["id"], row, request_download=request_artwork)
                     return row or local
 
                 if cached:
@@ -863,7 +864,7 @@ class LibraryService:
                 self.store.set_anilist_match(local_lookup, None, status="not_found")
                 row = self.store.anime_metadata_by_id(owner_id) if owner_id else self.store.anime_metadata(local_lookup)
                 if row:
-                    self.artwork.sync_anime_metadata(row["id"], row)
+                    self.artwork.sync_anime_metadata(row["id"], row, request_download=request_artwork)
                 logger.info("ANILIST_MATCH_NOT_FOUND title=%s", display_title)
                 return row or local
             except Exception as exc:
@@ -896,7 +897,7 @@ class LibraryService:
                 )
                 row = self.store.anime_metadata_by_id(owner_id) if owner_id else self.store.anime_metadata(local_lookup)
                 if row:
-                    self.artwork.sync_anime_metadata(row["id"], row)
+                    self.artwork.sync_anime_metadata(row["id"], row, request_download=request_artwork)
                 return row or local
     @staticmethod
     def _match_context_from_catalog(item):
@@ -975,7 +976,7 @@ class LibraryService:
                     # deciding whether a network request is needed. The
                     # ArtworkEngine itself is cache-hit aware and deduplicates
                     # identical requests.
-                    self.artwork.sync_anime_metadata(cached['id'], cached)
+                    self.artwork.sync_anime_metadata(cached['id'], cached, request_download=False)
                 except Exception:
                     logger.debug(
                         'Artwork metadata reconciliation failed during hydration',
@@ -1051,6 +1052,7 @@ class LibraryService:
                         match_context=self._match_context_from_catalog(item),
                         local_anime_id=local_anime_id,
                         request_id=str(uuid.uuid4()),
+                        request_artwork=False,
                     )
                     cached = (
                         self.store.anime_metadata_by_id(local_anime_id)
@@ -1064,10 +1066,12 @@ class LibraryService:
                 cover_url = str(cached.get('cover_url') or '').strip()
                 if anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
                     entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
-                    self.artwork.sync_anime_metadata(cached['id'], cached)
-                    # refresh_metadata() already reconciles AniList artwork and
-                    # may queue the poster download. Recompute readiness here
-                    # instead of unconditionally requesting the poster again;
+                    self.artwork.sync_anime_metadata(cached['id'], cached, request_download=False)
+                    # Hydration uses a blocking request as the single artwork
+                    # download owner. Keep refresh/reconciliation metadata-only here
+                    # to avoid racing a background artwork worker against the
+                    # blocking request and physically downloading the same asset twice.
+                    # Recompute readiness after metadata reconciliation;
                     # otherwise a fast first download can be followed by a
                     # second physical HTTP download during the same hydration.
                     poster_rows = self.artwork.list_for(entity_type, cached['id'], 'poster')
@@ -1116,7 +1120,7 @@ class LibraryService:
                             blocking=True,
                         )
                 if cached.get('id'):
-                    self.artwork.sync_anime_metadata(cached['id'], cached)
+                    self.artwork.sync_anime_metadata(cached['id'], cached, request_download=False)
                     if cover_attempt_failed:
                         self.artwork.mark_download_failure(entity_type, cached['id'], 'poster', cover_url)
                     self._record_diagnostic(
@@ -2275,7 +2279,7 @@ class LibraryService:
                 request_id=request_id,
             )
             self._sync_genres(row["id"], row, source="anilist")
-            self.artwork.sync_anime_metadata(row["id"], row)
+            self.artwork.sync_anime_metadata(row["id"], row, request_download=request_artwork)
         logger.info(
             "METADATA_ACTION_UI_COMMIT requestId=%s animeId=%s lookupTitle=%s anilistId=%s screen=manual_match",
             request_id, owner_id or "-", local_lookup, anilist_id,
