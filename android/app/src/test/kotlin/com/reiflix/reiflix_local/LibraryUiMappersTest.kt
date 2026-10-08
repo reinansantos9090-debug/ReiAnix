@@ -558,7 +558,7 @@ class LibraryUiMappersTest {
         ),
         genres: List<String> = listOf("Ação", "Drama"),
         genreIds: List<String> = listOf("action", "drama"),
-        seasons: List<Map<String, Any?>>,
+        seasons: List<Map<String, Any?>> = emptyList(),
     ): Map<String, Any?> = mapOf(
         "id" to id,
         "main_title" to "Example Anime",
