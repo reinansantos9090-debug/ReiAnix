@@ -2371,15 +2371,26 @@ class LibraryStore:
                 genres_by_anime.setdefault(int(genre_row["anime_id"]), []).append(
                     (str(genre_row["id"]), str(genre_row["canonical_name"]))
                 )
+            episode_ids = [
+                str(row["id"]).strip()
+                for row in episode_rows
+                if row["id"] is not None
+            ]
             if normalized_ids:
-                placeholders = ",".join("?" for _ in normalized_ids)
+                anime_placeholders = ",".join("?" for _ in normalized_ids)
+                episode_placeholders = ",".join("?" for _ in episode_ids) or "NULL"
                 artwork_rows = c.execute(
                     f"""SELECT entity_type, entity_id, artwork_type, source, local_path, external_url,
                                status, priority, updated_at
                         FROM artwork
-                        WHERE status != 'failed' AND entity_id IN ({placeholders})
+                        WHERE status != 'failed'
+                          AND (
+                              (entity_type IN ('anime', 'movie') AND entity_id IN ({anime_placeholders}))
+                              OR
+                              (entity_type = 'episode' AND entity_id IN ({episode_placeholders}))
+                          )
                         ORDER BY priority DESC, updated_at DESC, id DESC""",
-                    tuple(str(value) for value in normalized_ids),
+                    tuple(str(value) for value in normalized_ids) + tuple(episode_ids),
                 ).fetchall()
             else:
                 artwork_rows = c.execute(
