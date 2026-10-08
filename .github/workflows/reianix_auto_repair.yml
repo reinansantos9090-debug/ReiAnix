@@ -2,11 +2,6 @@ name: ReiAnix Auto Repair
 
 on:
   workflow_dispatch:
-    inputs:
-      run_id:
-        description: "ID da execução do GitHub Actions que falhou"
-        required: true
-        type: string
 jobs:
   repair:
     name: Conservative CI repair
@@ -18,26 +13,41 @@ jobs:
       actions: read
 
     steps:
-      - name: Resolve failed run
+      - name: Resolve latest failed run
         id: run
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
-          INPUT_RUN_ID: ${{ inputs.run_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            run_id="$INPUT_RUN_ID"
-          else
-            run_id="$EVENT_RUN_ID"
-          fi
-          case "$run_id" in
-            ''|*[!0-9]*)
-              echo "Invalid workflow run id: $run_id"
-              exit 1
-              ;;
-          esac
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          payload = subprocess.check_output(
+              [
+                  "gh", "api",
+                  f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs",
+                  "-f", "branch=main",
+                  "-f", "status=failure",
+                  "-f", "per_page=20",
+              ],
+              text=True,
+          )
+          data = json.loads(payload)
+          allowed = {
+              "Build ReiAnix Android APK",
+              "ReiAnix Android Instrumented Runtime Matrix",
+          }
+          for run in data.get("workflow_runs", []):
+              if run.get("name") in allowed and run.get("head_branch") == "main":
+                  print(f"Using latest failed run: {run['id']} ({run['name']})")
+                  with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+                      fh.write(f"run_id={run['id']}\n")
+                  break
+          else:
+              raise SystemExit("No failed ReiAnix Build/Instrumented run was found on main.")
+          PY
 
       - name: Inspect failed run metadata
         id: metadata
