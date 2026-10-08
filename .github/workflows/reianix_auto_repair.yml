@@ -93,19 +93,23 @@ jobs:
           fetch-depth: 0
 
       - name: Verify failed commit is still current main
+        id: guard
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FAILED_SHA: ${{ steps.metadata.outputs.head_sha }}
         run: |
           set -euo pipefail
           current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
-          test "$current" = "$FAILED_SHA" || {
+          if [ "$current" = "$FAILED_SHA" ]; then
+            echo "safe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "safe=false" >> "$GITHUB_OUTPUT"
             echo "main moved since the failed run; refusing to patch a newer commit"
             echo "failed=$FAILED_SHA current=$current"
-            exit 0
-          }
+          fi
 
       - name: Download failed workflow log
+        if: ${{ steps.guard.outputs.safe == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ steps.run.outputs.run_id }}
@@ -115,26 +119,40 @@ jobs:
           test -s "$RUNNER_TEMP/failed.log"
 
       - name: Apply one known repair and validate it
+        id: repair
+        if: ${{ steps.guard.outputs.safe == 'true' }}
         env:
           FAILED_LOG: ${{ runner.temp }}/failed.log
         run: |
           set -euo pipefail
-          python scripts/reianix_auto_repair.py --log "$FAILED_LOG"
+          result="$(python scripts/reianix_auto_repair.py --log "$FAILED_LOG")"
+          printf '%s\n' "$result"
+          case "$result" in
+            *"REIANIX_AUTO_REPAIR=PASS"*)
+              echo "repaired=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "repaired=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       - name: Run full Python regression suite after repair
+        if: ${{ steps.repair.outputs.repaired == 'true' }}
         run: python -m pytest -q
 
       - name: Check final diff
+        if: ${{ steps.repair.outputs.repaired == 'true' }}
         run: git diff --check
 
       - name: Commit and push validated repair
+        if: ${{ steps.repair.outputs.repaired == 'true' }}
         env:
           FAILED_RUN_ID: ${{ steps.run.outputs.run_id }}
         run: |
           set -euo pipefail
           if git diff --quiet; then
             echo "No repair was produced."
-            exit 0
+            exit 1
           fi
 
           git status --short
@@ -147,7 +165,7 @@ jobs:
           git diff --cached --check
           if git diff --cached --quiet; then
             echo "No allowlisted changes staged."
-            exit 0
+            exit 1
           fi
 
           git commit -m "fix(ci): automatic known issue repair (run $FAILED_RUN_ID)"
