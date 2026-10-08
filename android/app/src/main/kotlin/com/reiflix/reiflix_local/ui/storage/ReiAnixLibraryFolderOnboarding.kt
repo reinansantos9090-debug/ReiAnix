@@ -2,38 +2,54 @@ package com.reiflix.reiflix_local.ui.storage
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import com.reiflix.reiflix_local.ui.ReiAnixCard
+import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
+import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
+import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 /**
- * Native first-access library-folder gate.
+ * First-access surface for a library without an authorized source.
  *
- * This surface is presentation-only. Persistence and authorization remain owned
- * by the existing Python LibraryStore + Android SAF flow.
+ * The surface is intentionally presentation-only. Storage authorization,
+ * persistence, scan coordination and navigation remain owned by the existing
+ * Python LibraryStore + Android SAF/native bridge.
  */
 @Composable
 fun ReiAnixLibraryFolderOnboarding(
     state: String,
     message: String?,
     error: String?,
+    onCancel: () -> Unit,
     onSelectFolder: () -> Unit,
+    onRequestMediaAccess: () -> Unit,
 ) {
     val normalizedState = state.trim().lowercase()
-    val checking = normalizedState == "checking"
     val pickerOpen = normalizedState == "folder_picker_open"
+    val errorMessage = error?.takeIf { it.isNotBlank() }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -42,63 +58,106 @@ fun ReiAnixLibraryFolderOnboarding(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(ReiAnixTokens.Spacing.xxxl),
+                .padding(
+                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                    vertical = ReiAnixTokens.Spacing.xxxl,
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(
-                text = "📁",
-                modifier = Modifier.size(64.dp),
-                style = MaterialTheme.typography.displaySmall,
-                textAlign = TextAlign.Center,
-            )
+            ReiAnixCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 560.dp),
+            ) {
+                Icon(
+                    imageVector = if (pickerOpen) Icons.Filled.Folder else Icons.Filled.VideoLibrary,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
 
-            Text(
-                text = if (checking) "Verificando biblioteca" else "Sua biblioteca",
-                modifier = Modifier.padding(top = ReiAnixTokens.Spacing.xl),
-                style = MaterialTheme.typography.headlineMedium,
-                color = ReiAnixTokens.Colors.text,
-                textAlign = TextAlign.Center,
-            )
+                Text(
+                    text = "Permissão necessária",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = ReiAnixTokens.Spacing.lg),
+                    style = ReiAnixTokens.TypographyTokens.display,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
 
-            Text(
-                text = when {
-                    !error.isNullOrBlank() -> error
-                    !message.isNullOrBlank() -> message
-                    else -> "Selecione a pasta onde estão armazenados seus animes.\n\nO ReiAnix usará essa pasta para encontrar e organizar seus vídeos."
-                },
-                modifier = Modifier.padding(
-                    top = ReiAnixTokens.Spacing.md,
-                    bottom = ReiAnixTokens.Spacing.xxl,
-                ),
-                style = MaterialTheme.typography.bodyLarge,
-                color = ReiAnixTokens.Colors.textMuted,
-                textAlign = TextAlign.Center,
-            )
+                Text(
+                    text = when {
+                        errorMessage != null -> errorMessage
+                        pickerOpen -> "Aguardando a escolha da pasta no Android…"
+                        else -> "O ReiAnix precisa de acesso aos seus vídeos locais. " +
+                            "Você pode permitir o acesso aos vídeos do dispositivo " +
+                            "ou escolher uma pasta específica para a biblioteca."
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            top = ReiAnixTokens.Spacing.md,
+                            bottom = ReiAnixTokens.Spacing.xl,
+                        ),
+                    style = ReiAnixTokens.TypographyTokens.body,
+                    color = ReiAnixTokens.Colors.textMuted,
+                    textAlign = TextAlign.Center,
+                )
 
-            when {
-                checking || pickerOpen -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(ReiAnixTokens.Dimensions.loadingIndicatorSize),
-                        strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
-                        color = ReiAnixTokens.Colors.primary,
+                if (errorMessage != null) {
+                    Text(
+                        text = "Você pode tentar novamente sem fechar o aplicativo.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = ReiAnixTokens.Spacing.lg),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ReiAnixTokens.Colors.error,
+                        textAlign = TextAlign.Center,
                     )
                 }
-                normalizedState == "error" -> {
-                    Button(
-                        onClick = onSelectFolder,
-                        contentPadding = PaddingValues(horizontal = ReiAnixTokens.Spacing.xl),
-                    ) {
-                        Text("Tentar novamente")
-                    }
+
+                if (pickerOpen) {
+                    ReiAnixProgressIndicator(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(bottom = ReiAnixTokens.Spacing.lg),
+                    )
                 }
-                else -> {
-                    Button(
-                        onClick = onSelectFolder,
-                        contentPadding = PaddingValues(horizontal = ReiAnixTokens.Spacing.xl),
-                    ) {
-                        Text("Selecionar pasta")
-                    }
+
+                ReiAnixPrimaryButton(
+                    text = "ESCOLHER PASTA",
+                    onClick = onSelectFolder,
+                    enabled = !pickerOpen,
+                    leadingIcon = Icons.Filled.Folder,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
+
+                ReiAnixSecondaryButton(
+                    text = "PERMITIR",
+                    onClick = onRequestMediaAccess,
+                    enabled = !pickerOpen,
+                    leadingIcon = Icons.Filled.VideoLibrary,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.xs))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    ReiAnixSecondaryButton(
+                        text = "CANCELAR",
+                        onClick = onCancel,
+                        enabled = !pickerOpen,
+                        modifier = Modifier.semantics { role = Role.Button },
+                    )
                 }
             }
         }
