@@ -63,7 +63,7 @@ jobs:
           RUN_ID: ${{ steps.run.outputs.run_id }}
         run: |
           set -euo pipefail
-          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion,headBranch,headSha,name,headRepository > "$RUNNER_TEMP/run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > "$RUNNER_TEMP/run.json"
           cat "$RUNNER_TEMP/run.json"
           python - <<'PY'
           import json
@@ -73,14 +73,14 @@ jobs:
           data = json.loads(Path(os.environ["RUNNER_TEMP"], "run.json").read_text())
           if data.get("conclusion") != "failure":
               raise SystemExit(f"Auto repair only accepts failed runs; got {data.get('conclusion')!r}.")
-          if data.get("headBranch") != "main":
-              raise SystemExit(f"Auto repair only accepts main; got {data.get('headBranch')!r}.")
-          repo = data.get("headRepository") or {}
-          full_name = repo.get("fullName")
-          if full_name and full_name != os.environ["GITHUB_REPOSITORY"]:
-              raise SystemExit(f"Refusing non-origin run repository: {full_name}")
+          if data.get("head_branch") != "main":
+              raise SystemExit(f"Auto repair only accepts main; got {data.get('head_branch')!r}.")
+          repo = data.get("head_repository") or {}
+          full_name = repo.get("full_name")
+          if full_name != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit(f"Refusing non-origin run repository: {full_name!r}")
           Path(os.environ["GITHUB_OUTPUT"]).write_text(
-              "head_sha=" + data["headSha"] + "\n",
+              "head_sha=" + data["head_sha"] + "\n",
               encoding="utf-8",
               errors="strict",
           )
@@ -161,7 +161,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add .github/workflows/android_instrumented.yml
+          git add .github/workflows/android_instrumented.yml .github/workflows/build_apk.yml
           git diff --cached --check
           if git diff --cached --quiet; then
             echo "No allowlisted changes staged."
