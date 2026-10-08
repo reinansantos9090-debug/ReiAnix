@@ -93,23 +93,15 @@ fi
 
 cd "$GITHUB_WORKSPACE/build/flutter/android"
 
-# flet build stages Python dependencies at the repository-level build/site-packages.
-# The instrumented jobs restore this directory together with build/flutter so
-# Gradle receives the same Serious Python dependency tree used by the build.
-site_packages="$GITHUB_WORKSPACE/build/site-packages"
-if [ ! -d "$site_packages" ]; then
-  echo "Missing staged Serious Python site-packages: $site_packages"
-  echo "The rendered-project cache must include build/site-packages."
-  exit 1
-fi
-export SERIOUS_PYTHON_SITE_PACKAGES="$site_packages"
-echo "Using Serious Python site-packages: $site_packages"
-
+# The APK and androidTest APK are compiled before the emulator starts.
+# Keep this phase out of the emulator runner so heavy Kotlin/Dex work cannot
+# starve QEMU and trigger the known 'QEMU2 main loop' hang.
 chmod +x gradlew
 
 log="$output_dir/connectedDebugAndroidTest.log"
 set +e
-./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace 2>&1 | tee "$log"
+timeout --signal=TERM --kill-after=10s 12m \
+  ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace --max-workers=2 2>&1 | tee "$log"
 status=${PIPESTATUS[0]}
 set -e
 
