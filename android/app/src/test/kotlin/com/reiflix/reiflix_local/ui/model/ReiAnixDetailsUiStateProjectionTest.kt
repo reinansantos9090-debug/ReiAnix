@@ -42,6 +42,38 @@ class ReiAnixDetailsUiStateProjectionTest {
     }
 
     @Test
+    fun projectionPreservesArtworkPresentationState() {
+        val anime = ReiAnixAnimeUiModel(
+            id = 701L,
+            title = "Artwork pending",
+            year = null,
+            genres = emptyList(),
+            favorite = false,
+            mediaKind = ReiAnixMediaKind.SERIES,
+            artwork = null,
+            metadataAvailability = ReiAnixMetadataAvailability.AVAILABLE,
+            presentationState = ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING,
+            seasons = emptyList(),
+            specials = emptyList(),
+            mediaFiles = emptyList(),
+            playbackTargetEpisodeId = null,
+        )
+        val state = ReiAnixLibraryUiState(
+            status = ReiAnixLibraryLoadStatus.READY,
+            sourceAvailable = true,
+            sourceState = "AVAILABLE",
+            animes = listOf(anime),
+        )
+
+        val details = ReiAnixDetailsUiStateProjection.from(state, 701L)
+
+        assertEquals(
+            ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING,
+            details.anime?.presentationState,
+        )
+    }
+
+    @Test
     fun repeatedProjectionUsesTheSameCanonicalEpisodeIds() {
         val state = libraryState(
             playbackTargetEpisodeId = 7L,
