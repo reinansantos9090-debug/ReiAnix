@@ -321,7 +321,19 @@ class AniListClient:
         if not normalized:
             return False
         language, _ = cls.detect_description_language(normalized)
-        return language == "pt"
+        if language == "pt":
+            return True
+
+        tokens = re.findall(r"[^W\d_]+", normalized.casefold(), flags=re.UNICODE)
+        pt_profile = cls._LANGUAGE_PROFILES["pt"]
+        pt_hits = len(set(tokens) & pt_profile)
+        if pt_hits >= 2:
+            return True
+
+        # Very short Portuguese descriptions may be classified as unknown by
+        # the conservative detector. "ç", "ã" and "õ" are strong PT signals
+        # that do not appear in the common Spanish/English profiles.
+        return any(char in normalized.casefold() for char in "çãõ")
 
     @staticmethod
     def _paragraph_chunks(text: str, max_bytes: int = 480) -> list[list[str]]:
