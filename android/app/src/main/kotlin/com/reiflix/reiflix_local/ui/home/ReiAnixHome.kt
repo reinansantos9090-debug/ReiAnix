@@ -1003,6 +1003,7 @@ private fun HomeMediaCard(
         modifier = Modifier.width(cardWidth),
         onClick = onClick,
         maxDimensionPx = 512,
+        bottomBadgeText = anime.presentationState.label,
     )
 }
 
