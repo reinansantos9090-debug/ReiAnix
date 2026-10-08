@@ -24,6 +24,18 @@ class NavigationControllerTests(unittest.TestCase):
         self.now[0] += 2.1
         self.assertEqual(self.navigation.back(), "exit_requested")
 
+    def test_library_details_back_returns_to_library(self):
+        self.navigation.push("library")
+        self.navigation.push("details")
+        self.assertEqual(self.navigation.back(), "previous")
+        self.assertEqual(self.navigation.current, "library")
+
+    def test_search_details_back_returns_to_search(self):
+        self.navigation.push("search")
+        self.navigation.push("details")
+        self.assertEqual(self.navigation.back(), "previous")
+        self.assertEqual(self.navigation.current, "search")
+
     def test_details_back_returns_to_real_origin(self):
         self.navigation.push("details")
         self.assertEqual(self.navigation.back(), "previous")

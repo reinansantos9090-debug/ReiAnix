@@ -1,10 +1,8 @@
 package com.reiflix.reiflix_local.ui.host
 
-import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
@@ -50,13 +48,6 @@ class ReiAnixComposeLibraryHost(
 
     @Volatile
     private var composeNavController: NavHostController? = null
-
-    /**
-     * Timestamp of the most recent Back press received at the Compose shell's
-     * Home root. Only this single shell-level boundary owns the double-back
-     * exit contract.
-     */
-    private var lastHomeBackAtElapsedRealtimeMs: Long = 0L
 
     val isVisible: Boolean
         get() = composeView?.visibility == View.VISIBLE
@@ -219,63 +210,36 @@ class ReiAnixComposeLibraryHost(
     }
 
     /**
-     * Back is consumed by the Compose stack first. At a root destination the
-     * existing logical navigation authority receives the legacy back contract.
-     * The separate Settings/Storage host classes are not used as visual siblings.
+     * Back is consumed by the Compose stack only when Compose owns a non-root route.
+     * At the real Home root the Activity falls through to the canonical Flet popRoute
+     * bridge, so exit confirmation/exit remain owned by NavigationController.
      */
     fun handleBack(): Boolean {
         val controller = composeNavController ?: return false
         if (controller.previousBackStackEntry != null) {
-            lastHomeBackAtElapsedRealtimeMs = 0L
             return controller.popBackStack()
         }
 
         val route = controller.currentBackStackEntry?.destination?.route
         return when (route) {
-            ReiAnixRoutes.HOME -> handleHomeBack()
+            // Home is the canonical application root. Do not create a second native
+            // exit policy here; MainActivity forwards the same Back to Flet.
+            ReiAnixRoutes.HOME -> false
             ReiAnixRoutes.LIBRARY,
             ReiAnixRoutes.SEARCH,
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.MY_LIST,
             ReiAnixRoutes.ORGANIZE,
             -> {
-                // Keep root Back inside the single Compose navigation owner.
-                lastHomeBackAtElapsedRealtimeMs = 0L
                 controller.navigateToTopLevel(ReiAnixRoutes.HOME)
                 true
             }
             ReiAnixRoutes.STORAGE -> {
-                lastHomeBackAtElapsedRealtimeMs = 0L
                 controller.navigateToTopLevel(ReiAnixRoutes.SETTINGS)
                 true
             }
-            else -> {
-                lastHomeBackAtElapsedRealtimeMs = 0L
-                hideAndPublishLegacyBack()
-                true
-            }
+            else -> false
         }
-    }
-
-    private fun handleHomeBack(): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        val withinDoubleBackWindow =
-            lastHomeBackAtElapsedRealtimeMs > 0L &&
-                now - lastHomeBackAtElapsedRealtimeMs <= HOME_DOUBLE_BACK_WINDOW_MS
-
-        if (withinDoubleBackWindow) {
-            lastHomeBackAtElapsedRealtimeMs = 0L
-            activity.finishAndRemoveTask()
-            return true
-        }
-
-        lastHomeBackAtElapsedRealtimeMs = now
-        Toast.makeText(
-            activity,
-            "Pressione voltar novamente para sair",
-            Toast.LENGTH_SHORT,
-        ).show()
-        return true
     }
 
     fun dispose() {
@@ -352,11 +316,6 @@ class ReiAnixComposeLibraryHost(
         episodeId: String?,
         origin: String?,
     ) {
-        // A first Back on Home is only valid while the user remains on Home.
-        // Any logical route transition invalidates the pending double-back window.
-        if (route != ReiAnixRoutes.HOME) {
-            lastHomeBackAtElapsedRealtimeMs = 0L
-        }
         val payload = JSONObject()
             .put("route", route)
             .put("animeId", animeId ?: "")
@@ -429,7 +388,6 @@ class ReiAnixComposeLibraryHost(
     }
 
     private companion object {
-        const val HOME_DOUBLE_BACK_WINDOW_MS = 2_000L
         const val CONTENT_TAG = "reianix_compose_app_shell_content"
         const val TAG = "[REIANIX][COMPOSE_SHELL]"
     }

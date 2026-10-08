@@ -24,6 +24,9 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertNotIn('put("type", "android_back")', source)
         handler = source[source.index("private fun installSystemBackHandler"):source.index("private fun persistedSafTreeUris")]
         self.assertNotIn("finish()", handler)
+        self.assertLess(handler.index("systemBackDispatchPosted = true"), handler.index("composeLibraryHost.handleBack()"))
+        self.assertIn("try {", handler)
+        self.assertIn("finally {", handler)
 
     def test_flet_view_pop_dispatches_exactly_one_logical_back_operation(self):
         source = self.read(MAIN)
@@ -66,6 +69,13 @@ class BackLifecycleTests(unittest.TestCase):
         exit_end = player.index("private fun applyImmersiveAfterLayout", exit_start)
         self.assertIn("systemUiController.applyNormal(useContextAppearance = false)", player[exit_start:exit_end])
         self.assertIn("systemUiController.applyImmersive()", player)
+
+    def test_compose_root_does_not_own_a_second_exit_confirmation_policy(self):
+        host = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
+        self.assertNotIn("Pressione voltar novamente para sair", host)
+        self.assertNotIn("Toast.makeText", host)
+        self.assertNotIn("finishAndRemoveTask", host)
+        self.assertIn("ReiAnixRoutes.HOME -> false", host)
 
     def test_player_keeps_native_back_dispatch_and_finishes_itself(self):
         source = self.read(PLAYER_ACTIVITY)

@@ -118,11 +118,13 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("fun handleBack(): Boolean", host)
         self.assertIn("controller.previousBackStackEntry != null", host)
         self.assertIn("navigateToRequestedDestination", host)
-        self.assertIn("private fun handleHomeBack()", host)
-        self.assertIn("activity.finishAndRemoveTask()", host)
-        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", host)
-        self.assertIn("lastHomeBackAtElapsedRealtimeMs = 0L", host)
-        self.assertIn("if (route != ReiAnixRoutes.HOME)", host)
+        self.assertIn("ReiAnixRoutes.HOME -> false", host)
+        self.assertNotIn("private fun handleHomeBack()", host)
+        self.assertNotIn("activity.finishAndRemoveTask()", host)
+        self.assertNotIn("HOME_DOUBLE_BACK_WINDOW_MS", host)
+        self.assertNotIn("lastHomeBackAtElapsedRealtimeMs", host)
+        self.assertNotIn("Toast", host)
+        self.assertIn("engine.navigationChannel.popRoute()", source)
         self.assertIn("setId(R.id.reianix_compose_app_shell)", host)
 
     def test_compose_navigation_uses_stable_saveable_scoping(self):
@@ -140,6 +142,31 @@ class ComposeHostTests(unittest.TestCase):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         self.assertIn("class MainActivity : FlutterFragmentActivity()", source)
         self.assertNotIn("class MainActivity : ComponentActivity()", source)
+
+    def test_compose_root_back_delegates_to_the_canonical_flet_exit_policy(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        host = HOST.read_text(encoding="utf-8")
+        root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
+        self.assertIn("ReiAnixRoutes.HOME -> false", root)
+        self.assertIn("engine.navigationChannel.popRoute()", source)
+        self.assertNotIn("finishAndRemoveTask", root)
+        self.assertNotIn("Toast", root)
+
+    def test_compose_details_back_is_a_single_navcontroller_pop(self):
+        details = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("onBack = { navController.popBackStack() }", details)
+        self.assertNotIn("onBack = { navController.popBackStack(); navController.popBackStack() }", details)
+
+    def test_search_details_preserves_search_as_navigation_origin(self):
+        search = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("origin = ReiAnixRoutes.SEARCH", search)
+        self.assertIn("onBack = { navController.popBackStack() }", search)
 
 
 if __name__ == "__main__":

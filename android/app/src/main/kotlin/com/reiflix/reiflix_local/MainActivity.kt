@@ -1107,15 +1107,6 @@ class MainActivity : FlutterFragmentActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    // The unified Compose host owns the complete secondary
-                    // navigation stack. Settings and Storage are regular shell
-                    // destinations, so Back is handled uniformly by this host.
-                    if (::composeLibraryHost.isInitialized && composeLibraryHost.isVisible) {
-                        if (composeLibraryHost.handleBack()) {
-                            Log.i(tag, "BACK_COMPOSE_SHELL_HANDLED")
-                            return
-                        }
-                    }
                     systemBackEventCount += 1
                     val backId = systemBackEventCount
                     Log.i(tag, "BACK_PHYSICAL_RECEIVED id=" + backId)
@@ -1124,19 +1115,33 @@ class MainActivity : FlutterFragmentActivity() {
                         Log.i(tag, "SYSTEM_BACK duplicate_dispatch_suppressed")
                         return
                     }
+                    // Guard the complete Android Back dispatch, including the Compose
+                    // branch. This prevents a re-entrant/same-loop dispatch from
+                    // producing a second pop before the first event settles.
                     systemBackDispatchPosted = true
-                    val engine = flutterEngine
-                    if (engine == null) {
-                        systemBackDispatchPosted = false
-                        Log.w(tag, "SYSTEM_BACK ignored reason=flutter_engine_unavailable")
-                        return
+                    try {
+                        // Compose owns Back while the visible route is an internal
+                        // destination. At the true Home root, handleBack() returns
+                        // false and the canonical Flet navigation bridge below runs.
+                        if (::composeLibraryHost.isInitialized && composeLibraryHost.isVisible) {
+                            if (composeLibraryHost.handleBack()) {
+                                Log.i(tag, "BACK_COMPOSE_SHELL_HANDLED id=" + backId)
+                                return
+                            }
+                        }
+
+                        val engine = flutterEngine
+                        if (engine == null) {
+                            Log.w(tag, "SYSTEM_BACK ignored reason=flutter_engine_unavailable")
+                            return
+                        }
+                        Log.i(tag, "BACK_FLUTTER_POP_SENT id=" + backId)
+                        engine.navigationChannel.popRoute()
+                    } finally {
+                        // Reset only after the current dispatcher turn has returned so
+                        // the same Android Back event cannot enter the handler twice.
+                        window.decorView.post { systemBackDispatchPosted = false }
                     }
-                    Log.i(tag, "BACK_FLUTTER_POP_SENT id=" + backId)
-                    engine.navigationChannel.popRoute()
-                    // Keep the native guard only for same-loop/re-entrant dispatch.
-                    // The longer human-visible debounce remains in Python's
-                    // NavigationController boundary.
-                    window.decorView.post { systemBackDispatchPosted = false }
                 }
             },
         )
