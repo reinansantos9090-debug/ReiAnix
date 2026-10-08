@@ -653,6 +653,12 @@ class MainActivity : FlutterFragmentActivity() {
         Log.i(tag, "SAF_PICKER_ACTIVITY_RESULT requestId=" + (requestId ?: "-") +
             " resultCode=" + result.resultCode + " hasUri=" + (uri != null) +
             " timestamp=" + System.currentTimeMillis())
+        publishNativeDiagnostic(
+            "SAF_PICKER_RESULT",
+            requestId,
+            action = "select_tree",
+            result = if (result.resultCode == RESULT_OK && uri != null) "RESULT_OK" else "RESULT_CANCELED",
+        )
 
         if (result.resultCode != RESULT_OK || uri == null) {
             publishNativeDiagnostic(
@@ -660,6 +666,12 @@ class MainActivity : FlutterFragmentActivity() {
                 requestId,
                 action = "select_tree",
                 result = "picker_cancelled",
+            )
+            publishNativeDiagnostic(
+                "STORAGE_CANCELLED",
+                requestId,
+                action = "select_tree",
+                result = "user_cancelled_picker",
             )
             clearSafPickerPending(requestId, SafPickerPhase.CANCELLED)
             Log.i(tag, "SAF selection cancelled resultCode=" + result.resultCode)
@@ -703,6 +715,12 @@ class MainActivity : FlutterFragmentActivity() {
                 action = "select_tree",
                 result = uri.toString(),
             )
+            publishNativeDiagnostic(
+                "STORAGE_READY",
+                requestId,
+                action = "select_tree",
+                result = "persisted_and_validated",
+            )
             val persistedInspection = SafScanner.inspectTree(this, uri, requirePersisted = true)
             val persistedStatus = persistedInspection.optString("status")
             if (persistedStatus != SafScanner.STATUS_COMPLETED) {
@@ -729,6 +747,18 @@ class MainActivity : FlutterFragmentActivity() {
             NativeMailbox.write(this, JSONObject().put("type", "saf_permission")
                 .put("requestId", requestId ?: "").put("payload", payload))
             try {
+                publishNativeDiagnostic(
+                    "PERMISSION_CHANGE",
+                    requestId,
+                    action = "select_tree",
+                    result = "saf_granted",
+                )
+                publishNativeDiagnostic(
+                    "STARTUP_SCAN_REQUESTED",
+                    requestId,
+                    action = "scan",
+                    result = "permission_change",
+                )
                 publishNativeDiagnostic(
                     "STORAGE_SCAN_STARTED",
                     requestId,
@@ -2692,6 +2722,13 @@ class MainActivity : FlutterFragmentActivity() {
         safPickerFocusRegainedAtMs = 0L
         setSafPickerPhase(correlationId, SafPickerPhase.REQUESTED)
         setSafPickerPhase(correlationId, SafPickerPhase.LAUNCHING)
+        publishNativeDiagnostic(
+            "SAF_PICKER_REQUESTED",
+            correlationId,
+            action = "select_tree",
+            state = "REQUESTED",
+            result = "user_action",
+        )
         NativeMailbox.write(this, JSONObject().put("type", "saf_permission_request")
             .put("requestId", correlationId).put("payload", JSONObject().put("source", "saf")
                 .put("state", "requesting").put("status", "REQUESTED")
