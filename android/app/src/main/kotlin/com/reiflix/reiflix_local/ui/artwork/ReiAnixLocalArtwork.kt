@@ -176,8 +176,9 @@ fun ReiAnixLocalArtwork(
             val diskCacheKey = remember(stableIdentity, source) {
                 buildArtworkDiskCacheKey(source)
             }
-            val placeholderPainter = remember(MaterialTheme.colorScheme.surfaceVariant) {
-                ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+            val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
+            val placeholderPainter = remember(placeholderColor) {
+                ColorPainter(placeholderColor)
             }
             val request = remember(
                 context,
