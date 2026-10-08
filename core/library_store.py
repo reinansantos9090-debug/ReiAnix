@@ -2374,18 +2374,43 @@ class LibraryStore:
             if normalized_ids:
                 placeholders = ",".join("?" for _ in normalized_ids)
                 artwork_rows = c.execute(
-                    f"SELECT entity_type, entity_id, local_path FROM artwork WHERE status != 'failed' AND entity_id IN ({placeholders})",
+                    f"""SELECT entity_type, entity_id, artwork_type, source, local_path, external_url,
+                               status, priority, updated_at
+                        FROM artwork
+                        WHERE status != 'failed' AND entity_id IN ({placeholders})
+                        ORDER BY priority DESC, updated_at DESC, id DESC""",
                     tuple(str(value) for value in normalized_ids),
                 ).fetchall()
             else:
                 artwork_rows = c.execute(
-                    "SELECT entity_type, entity_id, local_path FROM artwork WHERE status != 'failed'"
+                    """SELECT entity_type, entity_id, artwork_type, source, local_path, external_url,
+                              status, priority, updated_at
+                       FROM artwork
+                       WHERE status != 'failed'
+                       ORDER BY priority DESC, updated_at DESC, id DESC"""
                 ).fetchall()
             local_artwork_anime = {
                 str(row["entity_id"])
                 for row in artwork_rows
                 if row["local_path"] and str(row["entity_type"]) in {"anime", "movie"}
             }
+            episode_artwork = {}
+            for row in artwork_rows:
+                if str(row["entity_type"]) != "episode":
+                    continue
+                if str(row["artwork_type"] or "") != "episode_thumbnail":
+                    continue
+                episode_id = str(row["entity_id"] or "").strip()
+                if not episode_id or episode_id in episode_artwork:
+                    continue
+                local_path = str(row["local_path"] or "").strip()
+                external_url = str(row["external_url"] or "").strip()
+                if not local_path and not external_url:
+                    continue
+                episode_artwork[episode_id] = {
+                    "local_path": local_path or None,
+                    "external_url": external_url or None,
+                }
             history_sql = "SELECT anime_id, MAX(last_played_at) AS last_played_at FROM episodes WHERE last_played_at IS NOT NULL"
             history_params = []
             if normalized_ids:
@@ -2410,6 +2435,8 @@ class LibraryStore:
                     "source_folder": e["source_folder"], "source_kind": folder_kinds.get(e["source_folder"]),
                     "relative_path": e["relative_path"], "media_identity": e["media_identity"],
                     "volume_id": e["volume_id"], "volume_uuid": e["volume_uuid"],
+                    "artwork_local_path": episode_artwork.get(str(e["id"]), {}).get("local_path"),
+                    "artwork_external_url": episode_artwork.get(str(e["id"]), {}).get("external_url"),
                 }
 
             by_anime = {}
