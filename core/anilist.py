@@ -324,7 +324,7 @@ class AniListClient:
         if language == "pt":
             return True
 
-        tokens = re.findall(r"[^W\d_]+", normalized.casefold(), flags=re.UNICODE)
+        tokens = re.findall(r"[^\W\d_]+", normalized.casefold(), flags=re.UNICODE)
         pt_profile = cls._LANGUAGE_PROFILES["pt"]
         pt_hits = len(set(tokens) & pt_profile)
         if pt_hits >= 2:
