@@ -1,0 +1,4 @@
+# APIs usadas no código foram verificadas contra esta versão.
+flet==0.86.5
+certifi>=2024.8.30
+Pillow>=11.0,<13

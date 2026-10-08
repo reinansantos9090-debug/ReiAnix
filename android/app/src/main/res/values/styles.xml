@@ -1,0 +1,25 @@
+<resources>
+  <!-- ReiAnix application surfaces are edge-to-edge and immersive; SystemUiController reapplies the policy after lifecycle/focus boundaries. -->
+  <style name="ReiAnixTheme" parent="android:style/Theme.Material.NoActionBar">
+    <item name="android:fontFamily">sans</item>
+    <item name="android:windowActionModeOverlay">true</item>
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:colorAccent">#2579FF</item>
+    <item name="android:windowBackground">#000000</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:windowLightNavigationBar">false</item>
+  </style>
+
+  <!-- Native Media3 player system bars are controlled exclusively by SystemUiController. -->
+  <style name="ReiAnixPlayerTheme" parent="android:style/Theme.Material.NoActionBar">
+    <item name="android:fontFamily">sans</item>
+    <item name="android:windowActionModeOverlay">true</item>
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:windowLightNavigationBar">false</item>
+  </style>
+</resources>

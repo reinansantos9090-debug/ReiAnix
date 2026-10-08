@@ -1,0 +1,100 @@
+name: Cleanup old GitHub Actions runs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Keep newest 50 runs and remove Actions artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep newest 50 workflow runs and delete all Actions artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          KEEP_RUNS: "50"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          runs_api="https://api.github.com/repos/${REPOSITORY}/actions/runs"
+          artifacts_api="https://api.github.com/repos/${REPOSITORY}/actions/artifacts"
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+
+          echo "Collecting workflow runs..."
+          page=1
+          while :; do
+            response="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "${runs_api}?per_page=100&page=${page}")"
+
+            count="$(jq '.workflow_runs | length' <<<"${response}")"
+            [ "${count}" -eq 0 ] && break
+
+            jq -c '.workflow_runs[] | {id, run_number, name, created_at, status}' <<<"${response}" >> "${tmp}"
+
+            echo "Collected page ${page}: ${count} runs"
+            [ "${count}" -lt 100 ] && break
+            page=$((page + 1))
+          done
+
+          total="$(wc -l < "${tmp}" | tr -d ' ')"
+          echo "Total workflow runs found: ${total}"
+
+          if [ "${total}" -le "${KEEP_RUNS}" ]; then
+            echo "There are already ${total} runs; no old runs need deletion."
+          else
+            delete_count=$((total - KEEP_RUNS))
+            echo "Keeping newest ${KEEP_RUNS} workflow runs and deleting ${delete_count} older runs."
+
+            jq -s -r 'sort_by(.created_at) | reverse | .['"${KEEP_RUNS}"':] | .[] | [.id, .run_number, .name, .created_at, .status] | @tsv' "${tmp}" |
+            while IFS=$'\t' read -r run_id run_number run_name created_at status; do
+              echo "Deleting run #${run_number} (${run_id}) - ${run_name} - ${created_at} - ${status}"
+              curl -fsSL -X DELETE \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "X-GitHub-Api-Version: 2026-03-10" \
+                "${runs_api}/${run_id}"
+            done
+          fi
+
+          echo "Deleting all remaining Actions artifacts without deleting their workflow runs..."
+          artifact_page=1
+          deleted_artifacts=0
+
+          while :; do
+            response="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "${artifacts_api}?per_page=100&page=${artifact_page}")"
+
+            artifact_count="$(jq '.artifacts | length' <<<"${response}")"
+            [ "${artifact_count}" -eq 0 ] && break
+
+            mapfile -t artifact_ids < <(jq -r '.artifacts[].id' <<<"${response}")
+
+            for artifact_id in "${artifact_ids[@]}"; do
+              echo "Deleting Actions artifact ${artifact_id}"
+              curl -fsSL -X DELETE \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "X-GitHub-Api-Version: 2026-03-10" \
+                "${artifacts_api}/${artifact_id}"
+              deleted_artifacts=$((deleted_artifacts + 1))
+            done
+
+            [ "${artifact_count}" -lt 100 ] && break
+            artifact_page=$((artifact_page + 1))
+          done
+
+          echo "Deleted ${deleted_artifacts} Actions artifacts."
+          echo "Newest ${KEEP_RUNS} workflow runs are preserved (unless fewer existed)."
+          echo "Release assets are not affected."
