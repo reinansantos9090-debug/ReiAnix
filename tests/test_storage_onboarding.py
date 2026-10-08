@@ -162,7 +162,7 @@ class StorageOnboardingTests(unittest.TestCase):
             StorageAccessState.READY,
         )
 
-    def test_startup_onboarding_launches_native_picker_without_flet_dialog(self):
+    def test_startup_onboarding_renders_reianix_ui_without_auto_launching_picker(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         functions = {
@@ -170,33 +170,96 @@ class StorageOnboardingTests(unittest.TestCase):
             for node in ast.walk(tree)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        auto = functions.get("_auto_launch_storage_onboarding")
+        self.assertNotIn("_auto_launch_storage_onboarding", functions)
         maybe = functions.get("maybe_show_storage_onboarding")
-        self.assertIsNotNone(auto)
         self.assertIsNotNone(maybe)
-
-        auto_source = ast.get_source_segment(source, auto) or ""
         maybe_source = ast.get_source_segment(source, maybe) or ""
-
-        self.assertTrue(isinstance(auto, ast.AsyncFunctionDef))
-        self.assertIn("await add_folder()", auto_source)
-        self.assertIn('storage_onboarding["startup_gate"]', auto_source)
-        self.assertIn("page.run_task(_auto_launch_storage_onboarding)", maybe_source)
         self.assertIn('storage_onboarding["startup_gate"]', maybe_source)
+        self.assertNotIn("page.run_task(", maybe_source)
+        self.assertNotIn("bridge.select_tree()", maybe_source)
+        self.assertNotIn("await add_folder()", maybe_source)
 
-        for segment in (auto_source, maybe_source):
-            self.assertNotIn("ft.AlertDialog(", segment)
-            self.assertNotIn("page.show_dialog(", segment)
+        host = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+        ).read_text(encoding="utf-8")
+        screen = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixLibraryFolderOnboarding.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("onboardingDismissed", host)
+        self.assertIn('onboardingState in setOf("checking", "needs_folder", "folder_picker_open", "error")', host)
+        self.assertIn('text = "ESCOLHER PASTA"', screen)
+        self.assertIn('text = "PERMITIR"', screen)
+        self.assertIn('text = "CANCELAR"', screen)
+        self.assertIn("ReiAnixPrimaryButton", screen)
+        self.assertIn("ReiAnixSecondaryButton", screen)
+        self.assertNotIn("Verificando biblioteca", screen)
+        self.assertNotIn("CircularProgressIndicator", screen)
 
         main_activity = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
         ).read_text(encoding="utf-8")
-        saf_scanner = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt"
-        ).read_text(encoding="utf-8")
         self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", main_activity)
         self.assertIn("SafScanner.persistPermission(this, uri, flags)", main_activity)
-        self.assertIn("takePersistableUriPermission", saf_scanner)
+        self.assertIn("takePersistableUriPermission", (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt"
+        ).read_text(encoding="utf-8"))
+
+    def test_onboarding_cancel_uses_canonical_dismissal_without_faking_ready(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertIn('action == "dismiss_storage_onboarding"', source)
+        block = source[source.index('action == "dismiss_storage_onboarding"'):source.index('elif action == "remove_saf"', source.index('action == "dismiss_storage_onboarding"'))]
+        self.assertIn('storage_onboarding["dismissed"] = True', block)
+        self.assertIn('_set_storage_onboarding_state(', block)
+        self.assertIn('"NEEDS_FOLDER"', block)
+        self.assertNotIn('"READY"', block)
+
+        model = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixStorageUiModels.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("val onboardingDismissed: Boolean = false", model)
+
+    def test_compose_onboarding_updates_in_place_after_saf_permission(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        granted = source[source.index("event_type == 'saf_permission'"):source.index("event_type == 'saf_released'")]
+        self.assertIn('storage_onboarding["waiting_for_result"] = False', granted)
+        self.assertIn('storage_onboarding["dismissed"] = False', granted)
+        self.assertIn('apply_storage_capabilities(', granted)
+        self.assertIn('storage_onboarding["startup_gate"] = False', granted)
+        self.assertIn('_set_storage_onboarding_state(', granted)
+        self.assertIn('"READY"', granted)
+        self.assertNotIn("finish()", granted)
+
+        host = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("collectAsStateWithLifecycle()", host)
+        self.assertIn("libraryState.storage.onboardingState", host)
+
+    def test_native_saf_result_emits_persist_ready_and_scan_diagnostics(self):
+        source = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"SAF_PICKER_REQUESTED"', source)
+        self.assertIn('"SAF_PICKER_RESULT"', source)
+        self.assertIn('"STORAGE_PERMISSION_PERSISTED"', source)
+        self.assertIn('"STORAGE_READY"', source)
+        self.assertIn('"PERMISSION_CHANGE"', source)
+        self.assertIn('"STARTUP_SCAN_REQUESTED"', source)
+        self.assertIn('publishScanRequest("PERMISSION_CHANGE"', source)
+
+    def test_snapshot_preserves_previous_catalog_during_scan(self):
+        bridge = (ROOT / "core" / "compose_library_bridge.py").read_text(encoding="utf-8")
+        repository = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("reuse_previous_catalog", bridge)
+        self.assertIn("previous_animes", bridge)
+        self.assertIn("preserveCatalogDuringScan", repository)
+        self.assertIn("previous.animes", repository)
+
 
 
     def test_native_scan_publication_uses_failing_mailbox_contract(self):
@@ -244,8 +307,10 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("libraryState.storage.onboardingState", host)
         self.assertIn("ReiAnixLibraryFolderOnboarding(", host)
         self.assertNotIn("views/settings_view.py", host)
-        self.assertIn('Text("Selecionar pasta")', screen)
-        self.assertIn('Text("Tentar novamente")', screen)
+        self.assertIn('text = "ESCOLHER PASTA"', screen)
+        self.assertIn('text = "CANCELAR"', screen)
+        self.assertIn('text = "PERMITIR"', screen)
+        self.assertIn("onboardingDismissed", host)
         self.assertIn("ACTION_OPEN_DOCUMENT_TREE", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8"))
 
     def test_storage_onboarding_cannot_overlay_settings_navigation(self):
