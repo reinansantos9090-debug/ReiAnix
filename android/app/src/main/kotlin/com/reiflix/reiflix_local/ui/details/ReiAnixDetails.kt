@@ -79,6 +79,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixEpisodeCard
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
+import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.formatDurationLabel
@@ -698,21 +699,35 @@ private fun DetailsHero(
     val overallProgress = remember(allEpisodes) { detailsProgressFraction(allEpisodes) }
 
     Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
-        Row(modifier = Modifier.fillMaxWidth().height(ReiAnixTokens.Dimensions.topBarMinHeight).padding(horizontal = responsive.horizontalPadding),
-            verticalAlignment = Alignment.CenterVertically) {
-            ReiAnixIconActionButton(icon = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", onClick = onBack)
-            Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
-            Text(text = "Detalhes", style = ReiAnixTokens.TypographyTokens.screenTitle, color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            Box {
-                ReiAnixIconActionButton(icon = Icons.Filled.MoreVert, contentDescription = "Mais opções", onClick = { menuExpanded.value = true })
-                DropdownMenu(expanded = menuExpanded.value, onDismissRequest = { menuExpanded.value = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    DropdownMenuItem(text = { Text("Atualizar detalhes") }, leadingIcon = {
-                        Icon(imageVector = Icons.Filled.Refresh, contentDescription = null)
-                    }, onClick = { menuExpanded.value = false; onRefresh() })
+        ReiAnixTopBar(
+            title = "Detalhes",
+            navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+            navigationContentDescription = "Voltar",
+            onNavigationClick = onBack,
+            actions = {
+                Box {
+                    ReiAnixIconActionButton(
+                        icon = Icons.Filled.MoreVert,
+                        contentDescription = "Mais opções",
+                        onClick = { menuExpanded.value = true },
+                    )
+                    DropdownMenu(
+                        expanded = menuExpanded.value,
+                        onDismissRequest = { menuExpanded.value = false },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Atualizar detalhes") },
+                            leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                            onClick = {
+                                menuExpanded.value = false
+                                onRefresh()
+                            },
+                        )
+                    }
                 }
-            }
-        }
+            },
+        )
         Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
             ReiAnixBackdrop(
                 localPath = backdropPath,

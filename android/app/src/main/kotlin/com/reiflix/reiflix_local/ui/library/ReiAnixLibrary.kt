@@ -63,6 +63,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
+import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
@@ -388,6 +389,8 @@ private fun ReiAnixLibraryPresentationScreen(
 }
 
 @Composable
+
+@Composable
 private fun LibraryHeader(
     sourceAvailable: Boolean,
     onSearch: (() -> Unit)?,
@@ -396,68 +399,58 @@ private fun LibraryHeader(
     onOpenStorage: (() -> Unit)?,
 ) {
     var actionsExpanded by rememberSaveable { mutableStateOf(false) }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
-            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "Biblioteca",
-            style = ReiAnixTokens.TypographyTokens.screenTitle,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        if (onSearch != null) {
-            ReiAnixIconActionButton(
-                icon = Icons.Filled.Search,
-                contentDescription = "Pesquisar na biblioteca",
-                onClick = onSearch,
-            )
-        }
-        Box {
-            ReiAnixIconActionButton(
-                icon = Icons.Filled.MoreVert,
-                contentDescription = "Mais ações da biblioteca",
-                onClick = { actionsExpanded = true },
-            )
-            DropdownMenu(
-                expanded = actionsExpanded,
-                onDismissRequest = { actionsExpanded = false },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            if (isRefreshing) "Atualizando biblioteca…" else "Atualizar biblioteca",
-                        )
-                    },
-                    enabled = !isRefreshing,
-                    onClick = {
-                        actionsExpanded = false
-                        onRefresh()
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = null,
-                        )
-                    },
+    ReiAnixTopBar(
+        title = "Biblioteca",
+        actions = {
+            if (onSearch != null) {
+                ReiAnixIconActionButton(
+                    icon = Icons.Filled.Search,
+                    contentDescription = "Pesquisar na biblioteca",
+                    onClick = onSearch,
                 )
-                if (onOpenStorage != null) {
+            }
+            Box {
+                ReiAnixIconActionButton(
+                    icon = Icons.Filled.MoreVert,
+                    contentDescription = "Mais ações da biblioteca",
+                    onClick = { actionsExpanded = true },
+                )
+                DropdownMenu(
+                    expanded = actionsExpanded,
+                    onDismissRequest = { actionsExpanded = false },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
                     DropdownMenuItem(
-                        text = { Text("Adicionar ou alterar pasta") },
+                        text = {
+                            Text(
+                                if (isRefreshing) "Atualizando biblioteca…" else "Atualizar biblioteca",
+                            )
+                        },
+                        enabled = !isRefreshing,
                         onClick = {
                             actionsExpanded = false
-                            onOpenStorage()
+                            onRefresh()
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = null,
+                            )
                         },
                     )
+                    if (onOpenStorage != null) {
+                        DropdownMenuItem(
+                            text = { Text("Adicionar ou alterar pasta") },
+                            onClick = {
+                                actionsExpanded = false
+                                onOpenStorage()
+                            },
+                        )
+                    }
                 }
             }
-        }
-    }
+        },
+    )
     Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
 }
 

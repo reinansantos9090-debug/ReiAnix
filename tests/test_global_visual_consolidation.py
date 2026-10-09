@@ -146,21 +146,22 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertIn("val organizeFilterMaxHeight = 260.dp", tokens)
         self.assertIn("ReiAnixTokens.Dimensions.organizeFilterMaxHeight", organize)
 
-    def test_content_headers_share_height_and_icon_action_component(self):
+    def test_content_headers_share_canonical_top_bar_component(self):
         home = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt")
         library = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt")
         search = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt")
         details = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
         organize = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt")
         settings = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt")
-        token = "ReiAnixTokens.Dimensions.topBarMinHeight"
-        for screen in (home, library, search, organize):
-            self.assertIn(token, screen)
-        self.assertIn(".height(ReiAnixTokens.Dimensions.topBarMinHeight)", details)
+        components = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixComponents.kt")
+        self.assertIn("fun ReiAnixTopBar(", components)
+        self.assertIn("ReiAnixTokens.Dimensions.topBarMinHeight", components)
+        self.assertIn("LocalReiAnixResponsiveMetrics.current.horizontalPadding", components)
         for screen in (home, library, search, details, organize, settings):
-            self.assertIn("ReiAnixIconActionButton(", screen)
+            self.assertIn("ReiAnixTopBar(", screen)
+        self.assertIn("actions: @Composable RowScope.() -> Unit", components)
+        self.assertIn("navigationContentDescription", components)
         self.assertIn("ReiAnixTokens.TypographyTokens.screenTitle", settings)
-        self.assertIn("ReiAnixTokens.Dimensions.topBarMinHeight", settings)
 
 
 if __name__ == "__main__":

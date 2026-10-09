@@ -69,6 +69,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
+import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixTextField
@@ -1676,54 +1677,25 @@ fun ReiAnixSettingsRow(
     }
 }
 @Composable
+
+@Composable
 fun SettingsHeader(
     title: String,
     subtitle: String,
     onBack: () -> Unit,
     backContentDescription: String = "Voltar das configurações",
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
-            .padding(bottom = ReiAnixTokens.Spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-    ) {
-        ReiAnixIconActionButton(
-            icon = Icons.Filled.ArrowBack,
-            contentDescription = backContentDescription,
-            onClick = onBack,
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-        ) {
-            Text(
-                text = title,
-                style = ReiAnixTokens.TypographyTokens.screenTitle,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    ReiAnixTopBar(
+        title = title,
+        subtitle = subtitle,
+        navigationIcon = Icons.Filled.ArrowBack,
+        navigationContentDescription = backContentDescription,
+        onNavigationClick = onBack,
+        modifier = Modifier.padding(bottom = ReiAnixTokens.Spacing.xs),
+        titleStyle = ReiAnixTokens.TypographyTokens.screenTitle,
+        titleColor = MaterialTheme.colorScheme.onSurface,
+    )
 }
-
-private fun settingsCategoryDescription(category: String): String =
-    ReiAnixSettingsCategoryUiModel.defaultCategories()
-        .firstOrNull { it.label == category }
-        ?.description
-        .orEmpty()
-        .ifBlank { "Preferências do ReiAnix" }
 
 @Composable
 private fun BooleanSettingCard(

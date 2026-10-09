@@ -62,6 +62,7 @@ import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
+import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
@@ -622,6 +623,8 @@ private fun organizeSourceStateTone(state: String): ReiAnixBadgeTone = when (sta
 }
 
 @Composable
+
+@Composable
 private fun OrganizeTopBar(
     sourceAvailable: Boolean,
     isRefreshing: Boolean,
@@ -630,54 +633,43 @@ private fun OrganizeTopBar(
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
-            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ReiAnixIconActionButton(
-            icon = Icons.Filled.ArrowBack,
-            contentDescription = "Voltar",
-            onClick = onBack,
-        )
-        Text(
-            text = "Organizar",
-            style = ReiAnixTokens.TypographyTokens.screenTitle,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-        )
-        ReiAnixIconActionButton(
-            icon = Icons.Filled.Info,
-            contentDescription = "Gerenciar acesso ao armazenamento",
-            onClick = onOpenStorageAccess,
-        )
-        IconButton(
-            onClick = onRefresh,
-            enabled = !isRefreshing,
-            modifier = Modifier.semantics {
-                contentDescription = if (isRefreshing) {
-                    "Atualizando biblioteca"
+    ReiAnixTopBar(
+        title = "Organizar",
+        navigationIcon = Icons.Filled.ArrowBack,
+        navigationContentDescription = "Voltar",
+        onNavigationClick = onBack,
+        actions = {
+            ReiAnixIconActionButton(
+                icon = Icons.Filled.Info,
+                contentDescription = "Gerenciar acesso ao armazenamento",
+                onClick = onOpenStorageAccess,
+            )
+            IconButton(
+                onClick = onRefresh,
+                enabled = !isRefreshing,
+                modifier = Modifier.semantics {
+                    contentDescription = if (isRefreshing) {
+                        "Atualizando biblioteca"
+                    } else {
+                        "Atualizar biblioteca"
+                    }
+                },
+            ) {
+                if (isRefreshing) {
+                    com.reiflix.reiflix_local.ui.ReiAnixLoadingIndicator()
                 } else {
-                    "Atualizar biblioteca"
+                    Icon(Icons.Filled.Refresh, contentDescription = null)
                 }
-            },
-        ) {
-            if (isRefreshing) {
-                com.reiflix.reiflix_local.ui.ReiAnixLoadingIndicator()
-            } else {
-                Icon(Icons.Filled.Refresh, contentDescription = null)
             }
-        }
-        ReiAnixIconActionButton(
-            icon = Icons.Filled.Settings,
-            contentDescription = "Abrir configurações",
-            onClick = onOpenSettings,
-        )
-    }
+            ReiAnixIconActionButton(
+                icon = Icons.Filled.Settings,
+                contentDescription = "Abrir configurações",
+                onClick = onOpenSettings,
+            )
+        },
+    )
 }
+
 @Composable
 private fun OrganizeOverview(
     state: ReiAnixLibraryUiState,

@@ -62,6 +62,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
+import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSearchField
@@ -201,28 +202,12 @@ fun ReiAnixSearchScreen(
             .imePadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
-                .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (showBackButton) {
-                ReiAnixIconActionButton(
-                    icon = Icons.Filled.ArrowBack,
-                    contentDescription = "Voltar da busca",
-                    onClick = onBack,
-                )
-                Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
-            }
-
-            ReiAnixScreenTitle(
-                title = "Buscar",
-                modifier = Modifier.weight(1f),
-            )
-
-        }
+        ReiAnixTopBar(
+            title = "Buscar",
+            navigationIcon = if (showBackButton) Icons.Filled.ArrowBack else null,
+            navigationContentDescription = "Voltar da busca",
+            onNavigationClick = if (showBackButton) onBack else null,
+        )
 
         Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
 

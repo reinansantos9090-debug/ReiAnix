@@ -58,6 +58,7 @@ import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
+import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixMetadata
@@ -401,6 +402,8 @@ fun ReiAnixHomeScreen(
 }
 
 @Composable
+
+@Composable
 private fun HomeHeader(
     onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,
@@ -408,53 +411,44 @@ private fun HomeHeader(
 ) {
     val menuExpanded = rememberSaveable { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
-            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "ReiAnix",
-            style = ReiAnixTokens.TypographyTokens.brandTitle,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        ReiAnixIconActionButton(
-            icon = Icons.Filled.Search,
-            contentDescription = "Pesquisar na biblioteca",
-            onClick = onSearch,
-        )
-        Box {
+    ReiAnixTopBar(
+        title = "ReiAnix",
+        titleStyle = ReiAnixTokens.TypographyTokens.brandTitle,
+        actions = {
             ReiAnixIconActionButton(
-                icon = Icons.Filled.MoreVert,
-                contentDescription = "Mais opções da Home",
-                onClick = { menuExpanded.value = true },
+                icon = Icons.Filled.Search,
+                contentDescription = "Pesquisar na biblioteca",
+                onClick = onSearch,
             )
-            DropdownMenu(
-                expanded = menuExpanded.value,
-                onDismissRequest = { menuExpanded.value = false },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Atualizar biblioteca") },
-                    onClick = {
-                        menuExpanded.value = false
-                        onRefresh()
-                    },
+            Box {
+                ReiAnixIconActionButton(
+                    icon = Icons.Filled.MoreVert,
+                    contentDescription = "Mais opções da Home",
+                    onClick = { menuExpanded.value = true },
                 )
-                DropdownMenuItem(
-                    text = { Text("Abrir Collector") },
-                    onClick = {
-                        menuExpanded.value = false
-                        onOpenCollector()
-                    },
-                )
+                DropdownMenu(
+                    expanded = menuExpanded.value,
+                    onDismissRequest = { menuExpanded.value = false },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Atualizar biblioteca") },
+                        onClick = {
+                            menuExpanded.value = false
+                            onRefresh()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Abrir Collector") },
+                        onClick = {
+                            menuExpanded.value = false
+                            onOpenCollector()
+                        },
+                    )
+                }
             }
-        }
-    }
+        },
+    )
     Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
 }
 
