@@ -42,7 +42,8 @@ def test_settings_root_is_compact_and_keeps_all_categories():
     assert "category.description" in row
     assert "category.icon" in row
     assert "Icons.Filled.ChevronRight" in row
-    assert "HorizontalDivider(" in row
+    assert "ReiAnixSettingsRow(" in row
+    assert "showDivider = false" in row
     assert "Arrangement.spacedBy(ReiAnixTokens.Spacing.none)" in root
     assert "ReiAnixTokens.Spacing.huge" not in root
 
@@ -66,24 +67,27 @@ def test_settings_rows_are_flat_and_choices_are_on_demand():
     )
 
     assert "ReiAnixSettingsSurface(" not in boolean_row
+    assert "HorizontalDivider(" not in boolean_row
     assert "SwitchDefaults.colors(" in boolean_row
     assert "MaterialTheme.colorScheme.primary" in boolean_row
     assert "ReiAnixSettingsSurface(" not in choice_row
+    assert "HorizontalDivider(" not in choice_row
     assert "dialogOpen" in choice_row
     assert "heightIn(max = 420.dp)" in choice_row
     assert "RadioButton(" in choice_row
     assert "Icons.Filled.ChevronRight" in choice_row
     assert "ReiAnixSettingsSurface(" not in language_row
+    assert "HorizontalDivider(" not in language_row
     assert "ReiAnixTextField(" in language_row
 
 
 def test_settings_internal_sections_and_back_contract_are_present():
     source = read()
     for section in (
-        "COMPORTAMENTO", "VISUAL", "ORGANIZAÇÃO", "REPRODUÇÃO",
-        "VÍDEO", "CONTROLES", "TELA", "GESTOS", "LEGENDAS",
-        "IDIOMAS", "ANILIST", "ACESSO", "DADOS LOCAIS", "BACKUP",
-        "TÉCNICO", "REIANIX", "SCANNER", "PRIVACIDADE",
+        "Comportamento", "Visual", "Organização", "Reprodução",
+        "Vídeo", "Controles", "Tela", "Gestos", "Legendas",
+        "Idiomas", "AniList", "Acesso", "Dados locais", "Backup",
+        "Técnico", "ReiAnix", "Scanner", "Privacidade",
     ):
         assert 'SettingsSectionLabel("' + section + '")' in source
     assert "BackHandler(enabled = selectedCategory != null)" in source
@@ -152,3 +156,55 @@ def test_category_dispatch_has_one_branch_for_every_visible_category():
     }
     assert len(branches) == len(set(branches))
     assert set(branches) == expected
+
+def test_settings_rows_share_compact_spacing_and_group_dividers():
+    source = read()
+    reusable_row = block(
+        source,
+        "@Composable\nfun ReiAnixSettingsRow(",
+        "@Composable\nfun SettingsHeader(",
+    )
+    category_row = block(
+        source,
+        "@Composable\nprivate fun SettingsFlatCategoryRow(",
+        "@Composable\nprivate fun ReiAnixComposeSettingsCategoryScreen(",
+    )
+    boolean_row = block(
+        source,
+        "@Composable\nprivate fun BooleanSettingCard(",
+        "@Composable\nprivate fun LanguageSettingCard(",
+    )
+    choice_row = block(
+        source,
+        "@Composable\nprivate fun ChoiceSettingCard(",
+        "@Composable\nprivate fun ReiAnixSettingsAccountContent(",
+    )
+    language_row = block(
+        source,
+        "@Composable\nprivate fun LanguageSettingCard(",
+        "@Composable\nprivate fun ChoiceSettingCard(",
+    )
+    section = block(
+        source,
+        "@Composable\nprivate fun SettingsSectionLabel(",
+        "@Composable\nfun ReiAnixSettingsSurface(",
+    )
+    header = block(
+        source,
+        "@Composable\nfun SettingsHeader(",
+        "private fun settingsCategoryDescription(",
+    )
+
+    assert "showDivider: Boolean = true" in reusable_row
+    assert "if (showDivider)" in reusable_row
+    assert "ReiAnixTokens.TypographyTokens.settingsCategory" in reusable_row
+    assert "ReiAnixTokens.TypographyTokens.settingsDescription" in reusable_row
+    assert "showDivider = false" in category_row
+    assert "HorizontalDivider(" not in boolean_row
+    assert "HorizontalDivider(" not in choice_row
+    assert "HorizontalDivider(" not in language_row
+    assert "heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)" in boolean_row
+    assert "heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)" in choice_row
+    assert "text = title," in section
+    assert "title.uppercase()" not in section
+    assert "MaterialTheme.typography.titleMedium" in header

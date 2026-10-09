@@ -408,7 +408,7 @@ private fun SettingsProfileRow(
             }
             .padding(
                 horizontal = ReiAnixTokens.Spacing.xs,
-                vertical = ReiAnixTokens.Spacing.sm,
+                vertical = ReiAnixTokens.Spacing.xs,
             ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -457,71 +457,18 @@ private fun SettingsFlatCategoryRow(
     category: ReiAnixSettingsCategoryUiModel,
     onClick: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
-                .clickable(
-                    role = Role.Button,
-                    onClick = onClick,
-                )
-                .semantics(mergeDescendants = true) {
-                    contentDescription = if (category.description.isBlank()) {
-                        category.label
-                    } else {
-                        category.label + ". " + category.description
-                    }
-                }
-                .padding(
-                    horizontal = ReiAnixTokens.Spacing.xs,
-                    vertical = ReiAnixTokens.Spacing.sm,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-        ) {
-            Box(
-                modifier = Modifier.size(ReiAnixTokens.Dimensions.settingsIconContainerSize),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = category.icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = category.label,
-                    style = ReiAnixTokens.TypographyTokens.settingsCategory,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = category.description,
-                    style = ReiAnixTokens.TypographyTokens.settingsDescription,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(
-                imageVector = Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
-            )
-        }
-        HorizontalDivider(
-            thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.dividerAlpha,
-            ),
+    ReiAnixSettingsRow(
+        icon = category.icon,
+        title = category.label,
+        description = category.description,
+        onClick = onClick,
+        showDivider = false,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
         )
     }
 }
@@ -685,7 +632,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Geral" -> {
-                    item(key = "section:general:behavior") { SettingsSectionLabel("COMPORTAMENTO") }
+                    item(key = "section:general:behavior") { SettingsSectionLabel("Comportamento") }
                     item(key = "setting:app.confirm_destructive") {
                         BooleanSettingCard(
                             keyName = "app.confirm_destructive",
@@ -697,7 +644,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "Aparência" -> {
-                    item(key = "section:appearance:visual") { SettingsSectionLabel("VISUAL") }
+                    item(key = "section:appearance:visual") { SettingsSectionLabel("Visual") }
                     item(key = "setting:appearance.theme") {
                         ChoiceSettingCard(
                             keyName = "appearance.theme",
@@ -730,7 +677,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Biblioteca" -> {
-                    item(key = "section:library:organization") { SettingsSectionLabel("ORGANIZAÇÃO") }
+                    item(key = "section:library:organization") { SettingsSectionLabel("Organização") }
                     item(key = "setting:library.sort_default") {
                         ChoiceSettingCard(
                             keyName = "library.sort_default",
@@ -802,7 +749,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Player" -> {
-                    item(key = "section:player:playback") { SettingsSectionLabel("REPRODUÇÃO") }
+                    item(key = "section:player:playback") { SettingsSectionLabel("Reprodução") }
                     item(key = "setting:player.autoplay_next") {
                         BooleanSettingCard(
                             keyName = "player.autoplay_next",
@@ -821,7 +768,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.resume", it.toString()) },
                         )
                     }
-                    item(key = "section:player:video") { SettingsSectionLabel("VÍDEO") }
+                    item(key = "section:player:video") { SettingsSectionLabel("Vídeo") }
                     item(key = "setting:player.default_speed") {
                         ChoiceSettingCard(
                             keyName = "player.default_speed",
@@ -842,7 +789,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.aspect_ratio", it) },
                         )
                     }
-                    item(key = "section:player:controls") { SettingsSectionLabel("CONTROLES") }
+                    item(key = "section:player:controls") { SettingsSectionLabel("Controles") }
                     item(key = "setting:player.zoom_enabled") {
                         BooleanSettingCard(
                             keyName = "player.zoom_enabled",
@@ -911,7 +858,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.max_audio_channels", it) },
                         )
                     }
-                    item(key = "section:player:display") { SettingsSectionLabel("TELA") }
+                    item(key = "section:player:display") { SettingsSectionLabel("Tela") }
                     item(key = "setting:player.immersive") {
                         ChoiceSettingCard(
                             keyName = "player.immersive",
@@ -985,7 +932,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "Gestos" -> {
-                    item(key = "section:gestures:gestures") { SettingsSectionLabel("GESTOS") }
+                    item(key = "section:gestures:gestures") { SettingsSectionLabel("Gestos") }
                     item(key = "setting:gestures.volume") {
                         BooleanSettingCard(
                             keyName = "gestures.volume",
@@ -1024,7 +971,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "Metadata" -> {
-                    item(key = "section:metadata:matching") { SettingsSectionLabel("ANILIST") }
+                    item(key = "section:metadata:matching") { SettingsSectionLabel("AniList") }
                     item(key = "setting:metadata.anilist_enabled") {
                         BooleanSettingCard(
                             keyName = "metadata.anilist_enabled",
@@ -1101,7 +1048,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
                 "Armazenamento" -> {
                     val storage = state.storage
-                    item(key = "section:storage:access") { SettingsSectionLabel("ACESSO") }
+                    item(key = "section:storage:access") { SettingsSectionLabel("Acesso") }
                     item(key = "storage:status") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1193,7 +1140,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Dados e Cache" -> {
-                    item(key = "section:data:maintenance") { SettingsSectionLabel("DADOS LOCAIS") }
+                    item(key = "section:data:maintenance") { SettingsSectionLabel("Dados locais") }
                     item(key = "data-cache:info") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1257,7 +1204,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Backup e Restauração" -> {
-                    item(key = "section:backup:operations") { SettingsSectionLabel("BACKUP") }
+                    item(key = "section:backup:operations") { SettingsSectionLabel("Backup") }
                     item(key = "backup:info") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1318,7 +1265,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
                 "Diagnóstico" -> {
                     val diagnosticStorage = state.storage
-                    item(key = "section:diagnostic:technical") { SettingsSectionLabel("TÉCNICO") }
+                    item(key = "section:diagnostic:technical") { SettingsSectionLabel("Técnico") }
                     item(key = "diagnostic:info") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1380,7 +1327,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Áudio e Legendas" -> {
-                    item(key = "section:audio:subtitles") { SettingsSectionLabel("LEGENDAS") }
+                    item(key = "section:audio:subtitles") { SettingsSectionLabel("Legendas") }
                     item(key = "setting:audio.subtitle_scale") {
                         ChoiceSettingCard(
                             keyName = "audio.subtitle_scale",
@@ -1410,7 +1357,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("audio.subtitle_embedded_style", it.toString()) },
                         )
                     }
-                    item(key = "section:audio:languages") { SettingsSectionLabel("IDIOMAS") }
+                    item(key = "section:audio:languages") { SettingsSectionLabel("Idiomas") }
                     item(key = "setting:audio.preferred_language") {
                         LanguageSettingCard(
                             keyName = "audio.preferred_language",
@@ -1429,7 +1376,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSave = { onUpdateSetting("audio.preferred_subtitle_language", it) },
                         )
                     }
-                    item(key = "section:audio:behavior") { SettingsSectionLabel("COMPORTAMENTO") }
+                    item(key = "section:audio:behavior") { SettingsSectionLabel("Comportamento") }
                     item(key = "setting:audio.subtitles") {
                         ChoiceSettingCard(
                             keyName = "audio.subtitles",
@@ -1443,7 +1390,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Sobre" -> {
-                    item(key = "section:about:identity") { SettingsSectionLabel("REIANIX") }
+                    item(key = "section:about:identity") { SettingsSectionLabel("ReiAnix") }
                     item(key = "about:app") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
@@ -1484,7 +1431,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Varredura" -> {
-                    item(key = "section:scan:state") { SettingsSectionLabel("SCANNER") }
+                    item(key = "section:scan:state") { SettingsSectionLabel("Scanner") }
                     item(key = "scan:existing") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
@@ -1541,7 +1488,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Privacidade" -> {
-                    item(key = "section:privacy:local") { SettingsSectionLabel("PRIVACIDADE") }
+                    item(key = "section:privacy:local") { SettingsSectionLabel("Privacidade") }
                     item(key = "privacy:local") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
@@ -1606,9 +1553,9 @@ private fun SettingsSectionLabel(
     title: String,
 ) {
     Text(
-        text = title.uppercase(),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
             .fillMaxWidth()
             .padding(
@@ -1642,6 +1589,7 @@ fun ReiAnixSettingsRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    showDivider: Boolean = true,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     Column(
@@ -1662,7 +1610,7 @@ fun ReiAnixSettingsRow(
                 )
                 .padding(
                     horizontal = ReiAnixTokens.Spacing.xs,
-                    vertical = ReiAnixTokens.Spacing.sm,
+                    vertical = ReiAnixTokens.Spacing.xs,
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -1688,7 +1636,7 @@ fun ReiAnixSettingsRow(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = ReiAnixTokens.TypographyTokens.settingsCategory,
                     color = if (enabled) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -1700,7 +1648,7 @@ fun ReiAnixSettingsRow(
                 if (description.isNotBlank()) {
                     Text(
                         text = description,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = ReiAnixTokens.TypographyTokens.settingsDescription,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -1716,12 +1664,14 @@ fun ReiAnixSettingsRow(
                 }
             }
         }
-        HorizontalDivider(
-            thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.dividerAlpha,
-            ),
-        )
+        if (showDivider) {
+            HorizontalDivider(
+                thickness = ReiAnixTokens.Dimensions.dividerHeight,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(
+                    alpha = ReiAnixTokens.Colors.dividerAlpha,
+                ),
+            )
+        }
     }
 }
 @Composable
@@ -1762,7 +1712,7 @@ fun SettingsHeader(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1812,7 +1762,7 @@ private fun BooleanSettingCard(
                 )
                 .padding(
                     horizontal = ReiAnixTokens.Spacing.xs,
-                    vertical = ReiAnixTokens.Spacing.sm,
+                    vertical = ReiAnixTokens.Spacing.xs,
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -1854,12 +1804,7 @@ private fun BooleanSettingCard(
                     },
             )
         }
-        HorizontalDivider(
-            thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.dividerAlpha,
-            ),
-        )
+
     }
 }
 
@@ -1927,12 +1872,7 @@ private fun LanguageSettingCard(
                 .padding(bottom = ReiAnixTokens.Spacing.sm)
                 .semantics { contentDescription = title },
         )
-        HorizontalDivider(
-            thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.dividerAlpha,
-            ),
-        )
+
     }
 }
 
@@ -2027,7 +1967,7 @@ private fun ChoiceSettingCard(
                 )
                 .padding(
                     horizontal = ReiAnixTokens.Spacing.xs,
-                    vertical = ReiAnixTokens.Spacing.sm,
+                    vertical = ReiAnixTokens.Spacing.xs,
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -2074,12 +2014,7 @@ private fun ChoiceSettingCard(
                 )
             }
         }
-        HorizontalDivider(
-            thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.dividerAlpha,
-            ),
-        )
+
     }
 }
 
