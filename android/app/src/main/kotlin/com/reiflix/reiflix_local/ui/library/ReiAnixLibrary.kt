@@ -67,6 +67,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
+import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSearchField
@@ -674,11 +675,10 @@ private fun ColumnScope.LibraryReadyContent(
                                             }
                                         },
                                         confirmButton = {
-                                            androidx.compose.material3.TextButton(
+                                            ReiAnixCompactButton(
+                                                text = "Fechar",
                                                 onClick = { genreMenuExpanded = false },
-                                            ) {
-                                                Text("Fechar")
-                                            }
+                                            )
                                         },
                                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     )

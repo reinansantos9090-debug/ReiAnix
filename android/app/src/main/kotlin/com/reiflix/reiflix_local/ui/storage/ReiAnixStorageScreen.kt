@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +35,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
+import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixCard
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
@@ -317,7 +317,8 @@ fun ReiAnixStorageScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                ReiAnixCompactButton(
+                    text = "Remover",
                     onClick = {
                         pendingRemoval = null
                         onRemoveSaf(source.reference)
@@ -326,14 +327,13 @@ fun ReiAnixStorageScreen(
                     modifier = Modifier.semantics {
                         contentDescription = "Confirmar remoção de $sourceName"
                     },
-                ) {
-                    Text("Remover")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { pendingRemoval = null }) {
-                    Text("Cancelar")
-                }
+                ReiAnixCompactButton(
+                    text = "Cancelar",
+                    onClick = { pendingRemoval = null },
+                )
             },
         )
     }

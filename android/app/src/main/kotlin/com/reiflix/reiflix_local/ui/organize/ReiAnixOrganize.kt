@@ -41,7 +41,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -65,6 +64,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
+import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
@@ -310,19 +310,19 @@ fun ReiAnixOrganizeScreen(
                     )
                 },
                 confirmButton = {
-                    TextButton(
+                    ReiAnixCompactButton(
+                        text = "Remover",
                         onClick = {
                             pendingSourceRemoval = null
                             onRemoveFolder(reference)
                         },
-                    ) {
-                        Text("Remover")
-                    }
+                    )
                 },
                 dismissButton = {
-                    TextButton(onClick = { pendingSourceRemoval = null }) {
-                        Text("Cancelar")
-                    }
+                    ReiAnixCompactButton(
+                        text = "Cancelar",
+                        onClick = { pendingSourceRemoval = null },
+                    )
                 },
             )
         }

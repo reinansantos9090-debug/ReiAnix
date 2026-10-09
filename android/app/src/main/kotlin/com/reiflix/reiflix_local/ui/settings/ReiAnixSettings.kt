@@ -44,7 +44,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -545,20 +544,20 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 title = { Text(title) },
                 text = { Text(message) },
                 confirmButton = {
-                    TextButton(
+                    ReiAnixCompactButton(
+                        text = confirmLabel,
                         onClick = {
                             pendingConfirmationAction = null
                             onAction(action)
                         },
                         enabled = !actionBusy(action),
-                    ) {
-                        Text(confirmLabel)
-                    }
+                    )
                 },
                 dismissButton = {
-                    TextButton(onClick = { pendingConfirmationAction = null }) {
-                        Text("Cancelar")
-                    }
+                    ReiAnixCompactButton(
+                        text = "Cancelar",
+                        onClick = { pendingConfirmationAction = null },
+                    )
                 },
             )
         }
@@ -1907,9 +1906,10 @@ private fun ChoiceSettingCard(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { dialogOpen = false }) {
-                    Text("Fechar")
-                }
+                ReiAnixCompactButton(
+                    text = "Fechar",
+                    onClick = { dialogOpen = false },
+                )
             },
         )
     }

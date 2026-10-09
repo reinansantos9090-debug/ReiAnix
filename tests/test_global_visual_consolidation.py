@@ -233,5 +233,17 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
             self.assertNotRegex(source, r"(?<![A-Za-z0-9_])AssistChip\s*\(", msg=name)
 
 
+    def test_alert_dialog_actions_reuse_the_shared_compact_button(self):
+        screens = {
+            "Library": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt"),
+            "Organize": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt"),
+            "Storage": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixStorageScreen.kt"),
+            "Settings": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"),
+        }
+        for name, source in screens.items():
+            self.assertIn("ReiAnixCompactButton(", source, msg=name)
+            self.assertNotRegex(source, r"(?<![A-Za-z0-9_])TextButton\s*\(", msg=name)
+
+
 if __name__ == "__main__":
     unittest.main()
