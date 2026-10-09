@@ -702,7 +702,7 @@ private fun DetailsHero(
             verticalAlignment = Alignment.CenterVertically) {
             ReiAnixIconActionButton(icon = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", onClick = onBack)
             Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
-            Text(text = "Detalhes", style = ReiAnixTokens.TypographyTokens.brandTitle, color = MaterialTheme.colorScheme.onBackground,
+            Text(text = "Detalhes", style = ReiAnixTokens.TypographyTokens.screenTitle, color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Box {
                 ReiAnixIconActionButton(icon = Icons.Filled.MoreVert, contentDescription = "Mais opções", onClick = { menuExpanded.value = true })

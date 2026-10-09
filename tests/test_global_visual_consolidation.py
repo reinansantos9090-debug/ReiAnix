@@ -152,12 +152,15 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         search = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt")
         details = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
         organize = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt")
+        settings = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt")
         token = "ReiAnixTokens.Dimensions.topBarMinHeight"
         for screen in (home, library, search, organize):
             self.assertIn(token, screen)
         self.assertIn(".height(ReiAnixTokens.Dimensions.topBarMinHeight)", details)
-        for screen in (home, library, search, details, organize):
+        for screen in (home, library, search, details, organize, settings):
             self.assertIn("ReiAnixIconActionButton(", screen)
+        self.assertIn("ReiAnixTokens.TypographyTokens.screenTitle", settings)
+        self.assertIn("ReiAnixTokens.Dimensions.topBarMinHeight", settings)
 
 
 if __name__ == "__main__":

@@ -68,6 +68,7 @@ import com.reiflix.reiflix_local.BuildConfig
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixTextField
@@ -1684,35 +1685,23 @@ fun SettingsHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(
-                top = ReiAnixTokens.Spacing.none,
-                bottom = ReiAnixTokens.Spacing.xs,
-            ),
+            .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
+            .padding(bottom = ReiAnixTokens.Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
     ) {
-        IconButton(
+        ReiAnixIconActionButton(
+            icon = Icons.Filled.ArrowBack,
+            contentDescription = backContentDescription,
             onClick = onBack,
-            modifier = Modifier
-                .size(ReiAnixTokens.Dimensions.touchTarget)
-                .semantics {
-                    contentDescription = backContentDescription
-                },
-        ) {
-            Icon(
-                imageVector = Icons.Filled.ArrowBack,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-            )
-        }
+        )
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = ReiAnixTokens.TypographyTokens.screenTitle,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
