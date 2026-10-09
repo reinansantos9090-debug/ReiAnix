@@ -126,27 +126,29 @@ object ReiAnixTokens {
         val xxl = 24.dp
         val xxxl = 32.dp
         val huge = 40.dp
-        val section = 20.dp
-        val screen = 20.dp
+        val section = 16.dp
+        val screen = 16.dp
     }
 
     object Dimensions {
         val screenHorizontalPadding = 16.dp
         val screenTopPadding = 8.dp
         val screenBottomPadding = 24.dp
-        val sectionGap = 20.dp
+        val sectionGap = 16.dp
         val sectionTitleGap = 8.dp
         val cardMinHeight = 88.dp
         // Compact Settings rows follow the reference density while keeping the
         // complete Compose accessibility touch target.
-        val settingsRowMinHeight = 60.dp
-        val settingsIconContainerSize = 36.dp
+        val settingsRowMinHeight = 56.dp
+        val settingsIconContainerSize = 32.dp
         val settingsTrailingSize = 48.dp
         val buttonMinHeight = 40.dp
-        val chipMinHeight = 34.dp
+        val chipMinHeight = 32.dp
         val touchTarget = 48.dp
         val iconSmall = 18.dp
+        val iconSecondary = 20.dp
         val iconMedium = 22.dp
+        val iconLarge = 26.dp
         val loadingIndicatorSize = 20.dp
         val loadingIndicatorStroke = 2.dp
         val accountAvatarSize = 72.dp
@@ -164,6 +166,10 @@ object ReiAnixTokens {
         val gridMinWidthMedium = 108.dp
         val gridMinWidthLarge = 144.dp
         val gridMaxItemWidth = 184.dp
+        // Grid gaps are expressed as density presets, not screen-local magic values.
+        val libraryGridSpacingDense = 6.dp
+        val libraryGridSpacingBalanced = 8.dp
+        val libraryGridSpacingRelaxed = 12.dp
         val continueCardWidth = 250.dp
         val continuePosterWidth = 76.dp
         val continuePosterHeight = 108.dp
@@ -178,7 +184,7 @@ object ReiAnixTokens {
         val detailsHeroPosterWidth = 112.dp
         val detailsHeroPosterOverlap = 64.dp
         val detailsHeroPosterHeight = 160.dp
-        val emptyStateMinHeight = 280.dp
+        val emptyStateMinHeight = 240.dp
         val organizeGenreCardWidth = 170.dp
         val organizeCategoryCardWidth = 156.dp
         val detailsSeasonCardWidth = 340.dp
