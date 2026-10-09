@@ -405,7 +405,7 @@ fun ReiAnixChip(
         label = {
             Text(
                 text = text,
-                style = MaterialTheme.typography.labelMedium,
+                style = ReiAnixTokens.TypographyTokens.chip,
                 color = when {
                     !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha)
                     selected -> MaterialTheme.colorScheme.onPrimary
