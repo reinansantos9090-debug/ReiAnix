@@ -84,6 +84,7 @@ object ReiAnixTokens {
         val disabledContentAlpha = 0.55f
         val disabledTextAlpha = 0.60f
         val subtleBorderAlpha = 0.55f
+        val dividerAlpha = 0.8f
         val surfaceOverlayAlpha = 0.84f
         val disabledContainerAlpha = 0.18f
 
