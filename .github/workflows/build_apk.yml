@@ -130,7 +130,7 @@ jobs:
           # Run the suite exactly once: the previous workflow launched two
           # identical pytest processes plus unittest discover concurrently,
           # tripling CPU/memory contention and making this step unnecessarily slow.
-          python -m pytest -q --ignore=tests/test_certification_runner.py | tee build/pytest.txt
+          python -m pytest -q | tee build/pytest.txt
 
       - name: Validate Python application
         run: |
