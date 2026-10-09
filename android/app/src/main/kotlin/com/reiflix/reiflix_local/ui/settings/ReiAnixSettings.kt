@@ -1705,6 +1705,35 @@ private fun settingsCategoryDescription(category: String): String =
         .ifBlank { "Preferências do ReiAnix" }
 
 @Composable
+private fun SettingsPreferenceText(
+    title: String,
+    description: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+    ) {
+        Text(
+            text = title,
+            style = ReiAnixTokens.TypographyTokens.bodySecondary,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (description.isNotBlank()) {
+            Text(
+                text = description,
+                style = ReiAnixTokens.TypographyTokens.metadata,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
 private fun BooleanSettingCard(
     keyName: String,
     title: String,
@@ -1735,27 +1764,11 @@ private fun BooleanSettingCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
-            Column(
+            SettingsPreferenceText(
+                title = title,
+                description = description,
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (description.isNotBlank()) {
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            )
             Switch(
                 checked = checked,
                 onCheckedChange = null,
@@ -1802,25 +1815,11 @@ private fun LanguageSettingCard(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
+            SettingsPreferenceText(
+                title = title,
+                description = description,
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            )
             TextButton(
                 onClick = { onSave(draftValue.trim()) },
                 modifier = Modifier
@@ -1940,27 +1939,11 @@ private fun ChoiceSettingCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
-            Column(
+            SettingsPreferenceText(
+                title = title,
+                description = description,
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (description.isNotBlank()) {
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            )
             Column(
                 modifier = Modifier
                     .widthIn(
