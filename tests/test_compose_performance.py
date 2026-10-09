@@ -58,10 +58,33 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertIn('title = "Adicionados recentemente"', home)
         self.assertIn("buildRecentlyAddedItems(animes)", home)
         self.assertIn("it.addedAt?.isFinite() == true", home)
+        self.assertIn('title = "Recentemente assistidos"', home)
+        self.assertIn("buildRecentlyWatchedItems(animes)", home)
+        self.assertIn("it.lastPlayedAt?.isFinite() == true", home)
+        self.assertIn("(it.lastPlayedAt ?: 0.0) > 0.0", home)
         self.assertIn('title = "Conteúdo disponível"', home)
         self.assertIn("it.availableContentCount > 0", home)
         self.assertNotIn('title = "Em alta"', home)
         self.assertNotIn("buildTrendingItems(", home)
+
+    def test_favorites_and_progress_reuse_the_canonical_library_projection(self):
+        home = self.read(HOME)
+        library = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt")
+        details = self.read(DETAILS)
+        state = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixLibraryUiState.kt")
+        view_model = self.read(VM)
+
+        self.assertIn(
+            "val favorites = remember(animes) { animes.filter { it.favorite }.distinctBy { it.id } }",
+            home,
+        )
+        self.assertIn("onToggleFavorite = viewModel::toggleFavorite", library)
+        self.assertIn("onToggleFavorite = viewModel::toggleFavorite", details)
+        self.assertIn("fun toggleFavorite(animeId: Long) = repository.toggleFavorite(animeId)", view_model)
+        self.assertIn("val continueWatching: StateFlow<List<ReiAnixContinueWatchingUiModel>>", view_model)
+        self.assertIn("it.continueWatching", view_model)
+        self.assertIn("addedAt = anime.addedAt", state)
+        self.assertIn("lastPlayedAt = anime.lastPlayedAt", state)
 
     def test_home_reuses_canonical_home_models_without_intermediate_render_projection(self):
         home = self.read(HOME)
