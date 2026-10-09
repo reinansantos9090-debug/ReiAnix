@@ -12,11 +12,14 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -28,6 +31,8 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -113,6 +118,9 @@ fun ReiAnixLibraryRoute(
         onSearch = {
             navController.navigateToTopLevel(ReiAnixRoutes.SEARCH)
         },
+        onOpenStorage = {
+            navController.navigateToTopLevel(ReiAnixRoutes.SETTINGS)
+        },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
                 animeId = animeId.toString(),
@@ -187,6 +195,7 @@ fun ReiAnixLibraryScreen(
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
+    onOpenStorage: (() -> Unit)? = null,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
@@ -221,6 +230,7 @@ fun ReiAnixLibraryScreen(
         onOpenDetails = onOpenDetails,
         onToggleFavorite = onToggleFavorite,
         onSearch = onSearch,
+        onOpenStorage = onOpenStorage,
     )
 }
 
@@ -244,6 +254,7 @@ private fun ReiAnixLibraryPresentationScreen(
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
+    onOpenStorage: (() -> Unit)? = null,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
@@ -258,6 +269,9 @@ private fun ReiAnixLibraryPresentationScreen(
         LibraryHeader(
             sourceAvailable = state.sourceAvailable,
             onSearch = onSearch,
+            onRefresh = onRefresh,
+            isRefreshing = isRefreshing,
+            onOpenStorage = onOpenStorage,
         )
 
         val renderReadyContent: @Composable () -> Unit = {
@@ -290,24 +304,22 @@ private fun ReiAnixLibraryPresentationScreen(
         // catalog with a full-screen loading state.
         if (state.animeCount > 0) {
             renderReadyContent()
+        } else if (state.scanInProgress) {
+            // An initial scan is not an empty library. Keep the state compact
+            // and never claim the catalog is empty until reconciliation settles.
+            ReiAnixScannerInProgressState(
+                scanState = state.scanState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            )
         } else {
             when (state.status) {
-                ReiAnixLibraryLoadStatus.LOADING -> {
-                    if (state.scanInProgress) {
-                        ReiAnixScannerInProgressState(
-                            scanState = state.scanState,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                        )
-                    } else {
-                        LibraryLoadingGrid(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                        )
-                    }
-                }
+                ReiAnixLibraryLoadStatus.LOADING -> LibraryLoadingGrid(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
 
                 ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
                     title = "Erro na biblioteca",
@@ -328,9 +340,10 @@ private fun ReiAnixLibraryPresentationScreen(
                 )
 
                 ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
-                    message = "Nenhum conteúdo local está disponível.",
-                    actionLabel = "Atualizar",
-                    onAction = onRefresh,
+                    title = "Biblioteca vazia",
+                    message = "Adicione uma pasta de mídia para começar.",
+                    actionLabel = if (onOpenStorage != null) "Adicionar pasta" else "Atualizar biblioteca",
+                    onAction = onOpenStorage ?: onRefresh,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -348,7 +361,11 @@ private fun ReiAnixLibraryPresentationScreen(
 private fun LibraryHeader(
     sourceAvailable: Boolean,
     onSearch: (() -> Unit)?,
+    onRefresh: () -> Unit,
+    isRefreshing: Boolean,
+    onOpenStorage: (() -> Unit)?,
 ) {
+    var actionsExpanded by rememberSaveable { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -378,6 +395,54 @@ private fun LibraryHeader(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
+            }
+        }
+        Box {
+            IconButton(
+                onClick = { actionsExpanded = true },
+                modifier = Modifier.semantics {
+                    contentDescription = "Mais ações da biblioteca"
+                    role = androidx.compose.ui.semantics.Role.Button
+                },
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            DropdownMenu(
+                expanded = actionsExpanded,
+                onDismissRequest = { actionsExpanded = false },
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (isRefreshing) "Atualizando biblioteca…" else "Atualizar biblioteca",
+                        )
+                    },
+                    enabled = !isRefreshing,
+                    onClick = {
+                        actionsExpanded = false
+                        onRefresh()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = null,
+                        )
+                    },
+                )
+                if (onOpenStorage != null) {
+                    DropdownMenuItem(
+                        text = { Text("Adicionar ou alterar pasta") },
+                        onClick = {
+                            actionsExpanded = false
+                            onOpenStorage()
+                        },
+                    )
+                }
             }
         }
     }
@@ -548,49 +613,70 @@ private fun ColumnScope.LibraryReadyContent(
                                         }
                                     },
                                 )
-                                DropdownMenu(
-                                    expanded = genreMenuExpanded,
-                                    onDismissRequest = { genreMenuExpanded = false },
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Todos os gêneros") },
-                                        onClick = {
-                                            genreMenuExpanded = false
-                                            onGenreSelected(null)
-                                        },
-                                        trailingIcon = if (filters.selectedGenreKey == null) {
-                                            {
-                                                Text(
-                                                    text = "✓",
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                )
-                                            }
-                                        } else {
-                                            null
-                                        },
-                                    )
-                                    genres.forEach { genre ->
-                                        DropdownMenuItem(
-                                            text = { Text(genre.name) },
-                                            onClick = {
-                                                genreMenuExpanded = false
-                                                onGenreSelected(genre.stableKey)
-                                            },
-                                            trailingIcon = if (filters.selectedGenreKey == genre.stableKey) {
-                                                {
-                                                    Text(
-                                                        text = "✓",
-                                                        color = MaterialTheme.colorScheme.primary,
-                                                        style = MaterialTheme.typography.labelLarge,
+                                if (genreMenuExpanded) {
+                                    androidx.compose.material3.AlertDialog(
+                                        onDismissRequest = { genreMenuExpanded = false },
+                                        title = { Text("Filtrar por gênero") },
+                                        text = {
+                                            androidx.compose.foundation.lazy.LazyColumn(
+                                                modifier = Modifier.heightIn(
+                                                    max = ReiAnixTokens.Dimensions.libraryGenrePickerMaxHeight,
+                                                ),
+                                            ) {
+                                                item(key = "genre-all") {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Todos os gêneros") },
+                                                        onClick = {
+                                                            genreMenuExpanded = false
+                                                            onGenreSelected(null)
+                                                        },
+                                                        trailingIcon = if (filters.selectedGenreKey == null) {
+                                                            {
+                                                                Text(
+                                                                    text = "✓",
+                                                                    color = MaterialTheme.colorScheme.primary,
+                                                                    style = MaterialTheme.typography.labelLarge,
+                                                                )
+                                                            }
+                                                        } else {
+                                                            null
+                                                        },
                                                     )
                                                 }
-                                            } else {
-                                                null
-                                            },
-                                        )
-                                    }
+                                                items(
+                                                    items = genres,
+                                                    key = { genre -> genre.stableKey },
+                                                ) { genre ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(genre.name) },
+                                                        onClick = {
+                                                            genreMenuExpanded = false
+                                                            onGenreSelected(genre.stableKey)
+                                                        },
+                                                        trailingIcon = if (filters.selectedGenreKey == genre.stableKey) {
+                                                            {
+                                                                Text(
+                                                                    text = "✓",
+                                                                    color = MaterialTheme.colorScheme.primary,
+                                                                    style = MaterialTheme.typography.labelLarge,
+                                                                )
+                                                            }
+                                                        } else {
+                                                            null
+                                                        },
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        confirmButton = {
+                                            androidx.compose.material3.TextButton(
+                                                onClick = { genreMenuExpanded = false },
+                                            ) {
+                                                Text("Fechar")
+                                            }
+                                        },
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    )
                                 }
                             }
                         }
