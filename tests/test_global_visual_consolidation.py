@@ -195,5 +195,23 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertIn("onSelected(choice.value)", settings)
 
 
+    def test_primary_inline_text_actions_reuse_the_shared_compact_button(self):
+        components = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixComponents.kt")
+        screens = {
+            "Home": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt"),
+            "Search": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt"),
+            "Details": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"),
+            "Settings": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"),
+        }
+        self.assertIn("contentPadding: androidx.compose.foundation.layout.PaddingValues", components)
+        self.assertIn("style = ReiAnixTokens.TypographyTokens.button", components)
+        for name, source in screens.items():
+            self.assertIn("ReiAnixCompactButton(", source, msg=name)
+        self.assertNotIn("TextButton(", screens["Home"])
+        self.assertNotIn("TextButton(", screens["Search"])
+        self.assertNotIn("TextButton(", screens["Details"])
+        self.assertIn('text = "Salvar"', screens["Settings"])
+
+
 if __name__ == "__main__":
     unittest.main()
