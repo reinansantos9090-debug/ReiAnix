@@ -143,7 +143,7 @@ def test_settings_profile_row_reuses_compact_design_tokens():
 
 def test_category_dispatch_has_one_branch_for_every_visible_category():
     source = read()
-    branches = re.findall(r'^\\s{16}"([^"]+)" -> \\{', source, re.MULTILINE)
+    branches = re.findall(r'^\s{16}"([^"]+)" -> \{', source, re.MULTILINE)
     expected = {
         "Conta", "Geral", "Aparência", "Biblioteca", "Player", "Gestos",
         "Áudio e Legendas", "Metadata", "Artwork", "Armazenamento",
