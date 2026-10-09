@@ -23,8 +23,6 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
-    env:
-      GRADLE_USER_HOME: ${{ runner.temp }}/reianix-kotlin-gradle-home
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -146,6 +144,7 @@ jobs:
       - name: Render Android project with Flet
         shell: bash
         env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/reianix-kotlin-gradle-home
           GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=false"
         run: |
           set -euo pipefail
@@ -176,6 +175,7 @@ jobs:
         shell: bash
         env:
           SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/flutter/site-packages
+          GRADLE_USER_HOME: ${{ runner.temp }}/reianix-kotlin-gradle-home
           GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=false"
         run: |
           set -euo pipefail
