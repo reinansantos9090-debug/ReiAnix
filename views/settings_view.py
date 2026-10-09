@@ -340,7 +340,7 @@ class SettingsView:
                 content=ft.Row([
                     ft.Icon(icon, color=TEXT, size=24),
                     ft.Column([
-                        ft.Text(label, color=TEXT, size=14, weight=ft.FontWeight.BOLD),
+                        ft.Text(label, color=TEXT, size=15, weight=ft.FontWeight.BOLD),
                         ft.Text(description, color=TEXT_MUTED, size=10),
                     ], spacing=2, expand=True),
                     ft.Icon(ft.Icons.CHEVRON_RIGHT, color=TEXT_MUTED),

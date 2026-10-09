@@ -429,14 +429,14 @@ private fun SettingsProfileRow(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = ReiAnixTokens.TypographyTokens.settingsCategory,
                 color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                style = ReiAnixTokens.TypographyTokens.settingsDescription,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -496,14 +496,14 @@ private fun SettingsFlatCategoryRow(
             ) {
                 Text(
                     text = category.label,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.settingsCategory,
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = category.description,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = ReiAnixTokens.TypographyTokens.settingsDescription,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

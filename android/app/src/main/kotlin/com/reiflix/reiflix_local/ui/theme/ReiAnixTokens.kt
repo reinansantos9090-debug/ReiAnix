@@ -247,9 +247,11 @@ object ReiAnixTokens {
     }
 
     object TypographyTokens {
+        // Canonical roles shared by all Compose screens. Values stay in sp so system
+        // font scaling and accessibility settings continue to apply.
         val display = TextStyle(
-            fontSize = 28.sp,
-            lineHeight = 34.sp,
+            fontSize = 26.sp,
+            lineHeight = 32.sp,
             fontWeight = FontWeight.Bold,
         )
         val brandTitle = TextStyle(
@@ -259,17 +261,17 @@ object ReiAnixTokens {
         )
         val heroTitle = TextStyle(
             fontSize = 22.sp,
-            lineHeight = 26.sp,
+            lineHeight = 27.sp,
             fontWeight = FontWeight.Bold,
         )
         val screenTitle = TextStyle(
-            fontSize = 24.sp,
-            lineHeight = 29.sp,
+            fontSize = 22.sp,
+            lineHeight = 27.sp,
             fontWeight = FontWeight.Bold,
         )
         val emptyStateTitle = TextStyle(
-            fontSize = 20.sp,
-            lineHeight = 26.sp,
+            fontSize = 18.sp,
+            lineHeight = 23.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val sectionTitle = TextStyle(
@@ -277,29 +279,36 @@ object ReiAnixTokens {
             lineHeight = 22.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        val cardTitle = TextStyle(
+        val itemTitle = TextStyle(
             fontSize = 14.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold,
         )
+        // Keep the previous semantic alias for existing call sites.
+        val cardTitle = itemTitle
         val subtitle = TextStyle(
             fontSize = 13.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.Normal,
         )
         val body = TextStyle(
-            fontSize = 13.sp,
-            lineHeight = 19.sp,
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
             fontWeight = FontWeight.Normal,
         )
         val bodySecondary = TextStyle(
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
             fontWeight = FontWeight.Normal,
         )
         val metadata = TextStyle(
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.Normal,
+        )
+        val caption = TextStyle(
             fontSize = 11.sp,
-            lineHeight = 15.sp,
+            lineHeight = 14.sp,
             fontWeight = FontWeight.Normal,
         )
         val episode = TextStyle(
@@ -327,6 +336,17 @@ object ReiAnixTokens {
             lineHeight = 14.sp,
             fontWeight = FontWeight.Medium,
         )
+        val settingsCategory = TextStyle(
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        val settingsDescription = TextStyle(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Normal,
+        )
+        // Player-specific roles intentionally remain unchanged by the compact UI pass.
         val playerTopLabel = TextStyle(
             fontSize = 13.sp,
             lineHeight = 16.sp,
@@ -366,16 +386,20 @@ object ReiAnixTokens {
 
     val typography = Typography(
         displayLarge = TypographyTokens.display,
+        displayMedium = TypographyTokens.heroTitle,
+        displaySmall = TypographyTokens.screenTitle,
         headlineLarge = TypographyTokens.screenTitle,
         headlineMedium = TypographyTokens.heroTitle,
         headlineSmall = TypographyTokens.emptyStateTitle,
         titleLarge = TypographyTokens.sectionTitle,
-        titleMedium = TypographyTokens.cardTitle,
+        titleMedium = TypographyTokens.itemTitle,
+        titleSmall = TypographyTokens.label,
         bodyLarge = TypographyTokens.body,
         bodyMedium = TypographyTokens.bodySecondary,
         bodySmall = TypographyTokens.metadata,
         labelLarge = TypographyTokens.button,
         labelMedium = TypographyTokens.chip,
+        labelSmall = TypographyTokens.caption,
     )
 
     val shapes = androidx.compose.material3.Shapes(

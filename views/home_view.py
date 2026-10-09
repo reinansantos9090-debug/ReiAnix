@@ -1269,7 +1269,7 @@ class HomeView:
                 content = [
                     ft.Text("Resultado local", size=11, color=TEXT_MUTED),
                     media_artwork(cover, 210, width=140, icon_size=28, label="Sem capa", theme=theme),
-                    ft.Text(title, size=18, weight=ft.FontWeight.BOLD, color=TEXT, text_align=ft.TextAlign.CENTER),
+                    ft.Text(title, size=15, weight=ft.FontWeight.BOLD, color=TEXT, text_align=ft.TextAlign.CENTER),
                 ]
                 if episode:
                     number = episode.get("number")

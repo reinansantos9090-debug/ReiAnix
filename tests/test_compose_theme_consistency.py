@@ -121,3 +121,88 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+TYPOGRAPHY_SCREEN_FILES = {
+    "Home": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt",
+    "Library": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt",
+    "Details": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt",
+    "Search": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt",
+    "Settings": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt",
+}
+
+
+class ReiAnixTypographyConsistencyTests(unittest.TestCase):
+    def test_canonical_typography_is_compact_and_keeps_a_clear_hierarchy(self):
+        token_source = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt"
+        ).read_text(encoding="utf-8")
+
+        def font_size(role):
+            match = re.search(
+                rf"val {re.escape(role)} = TextStyle\(\s*fontSize = ([0-9]+)\.sp",
+                token_source,
+            )
+            self.assertIsNotNone(match, msg=f"Missing typography role: {role}")
+            return int(match.group(1))
+
+        self.assertEqual(font_size("display"), 26)
+        self.assertEqual(font_size("screenTitle"), 22)
+        self.assertEqual(font_size("sectionTitle"), 17)
+        self.assertEqual(font_size("itemTitle"), 14)
+        self.assertEqual(font_size("body"), 14)
+        self.assertEqual(font_size("bodySecondary"), 13)
+        self.assertEqual(font_size("metadata"), 12)
+        self.assertEqual(font_size("caption"), 11)
+        self.assertEqual(font_size("settingsCategory"), 15)
+        self.assertEqual(font_size("settingsDescription"), 13)
+        self.assertGreater(font_size("screenTitle"), font_size("sectionTitle"))
+        self.assertGreater(font_size("sectionTitle"), font_size("itemTitle"))
+        self.assertIn("val cardTitle = itemTitle", token_source)
+        self.assertIn("displayLarge = TypographyTokens.display", token_source)
+        self.assertIn("headlineLarge = TypographyTokens.screenTitle", token_source)
+        self.assertIn("titleLarge = TypographyTokens.sectionTitle", token_source)
+        self.assertIn("titleMedium = TypographyTokens.itemTitle", token_source)
+        self.assertIn("bodyLarge = TypographyTokens.body", token_source)
+        self.assertIn("bodyMedium = TypographyTokens.bodySecondary", token_source)
+        self.assertIn("bodySmall = TypographyTokens.metadata", token_source)
+        self.assertIn("labelSmall = TypographyTokens.caption", token_source)
+        # The token styles use sp; do not override the user's system font scale.
+        self.assertNotRegex(token_source, r"fontScale\s*=|\.copy\(\s*fontSize\s*=")
+
+    def test_primary_compose_screens_share_semantic_theme_roles(self):
+        for screen, relative in TYPOGRAPHY_SCREEN_FILES.items():
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertTrue(
+                "MaterialTheme.typography" in source
+                or "ReiAnixTokens.TypographyTokens" in source,
+                msg=f"{screen} must use the shared typography hierarchy",
+            )
+            self.assertNotRegex(
+                source,
+                r"fontSize\s*=",
+                msg=f"{screen} must not introduce unreviewed hardcoded font sizes",
+            )
+
+        settings = (
+            ROOT / TYPOGRAPHY_SCREEN_FILES["Settings"]
+        ).read_text(encoding="utf-8")
+        self.assertIn("ReiAnixTokens.TypographyTokens.settingsCategory", settings)
+        self.assertIn("ReiAnixTokens.TypographyTokens.settingsDescription", settings)
+
+    def test_navigation_labels_keep_the_canonical_compact_role(self):
+        shell = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/shell/ReiAnixAppShell.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ReiAnixTokens.TypographyTokens.navigationLabel", shell)
+        self.assertIn("ReiAnixTokens.Dimensions.bottomNavigationMinHeight", shell)
+        self.assertIn("NavigationBarItem(", shell)
+        self.assertIn("onDestinationClick(destination.route)", shell)
+
+    def test_coexisting_flet_titles_stay_close_to_compose_scale(self):
+        home = (ROOT / "views/home_view.py").read_text(encoding="utf-8")
+        settings = (ROOT / "views/settings_view.py").read_text(encoding="utf-8")
+        self.assertIn('ft.Text(title, size=15, weight=ft.FontWeight.BOLD', home)
+        self.assertIn('ft.Text(label, color=TEXT, size=15, weight=ft.FontWeight.BOLD)', settings)
