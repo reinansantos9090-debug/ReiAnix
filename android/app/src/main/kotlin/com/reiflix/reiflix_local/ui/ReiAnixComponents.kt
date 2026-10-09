@@ -103,7 +103,9 @@ fun ReiAnixDivider(
     HorizontalDivider(
         modifier = modifier,
         thickness = ReiAnixTokens.Dimensions.dividerHeight,
-        color = MaterialTheme.colorScheme.outlineVariant,
+        color = MaterialTheme.colorScheme.outlineVariant.copy(
+            alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+        ),
     )
 }
 
