@@ -191,7 +191,7 @@ jobs:
         shell: bash
         run: |
           if [ -e .git ]; then
-            git checkout -- core/build_identity.py || true
+            git checkout -- core/build_identity.py
           fi
           rm -f .reiflix-build-identity.json build/flet-version.txt
           if [ -e .git ]; then
