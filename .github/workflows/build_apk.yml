@@ -299,6 +299,18 @@ jobs:
           # most of the job timeout before reporting the real error.
           flet build "${build_args[@]}"
 
+      - name: Run Kotlin JVM unit tests (no emulator)
+        shell: bash
+        run: |
+          gradle_root="$GITHUB_WORKSPACE/build/flutter/android"
+          test -x "$gradle_root/gradlew"
+          "$gradle_root/gradlew" \
+            --project-dir "$gradle_root" \
+            :app:testDebugUnitTest \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
       - name: Preserve build identity evidence
         shell: bash
         run: |
