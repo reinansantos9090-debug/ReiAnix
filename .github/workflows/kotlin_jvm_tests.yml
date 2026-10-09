@@ -1,15 +1,6 @@
 name: ReiAnix Kotlin JVM Validation
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'android/**'
-      - '.github/workflows/kotlin_jvm_tests.yml'
-      - 'scripts/prepare_flet_template.py'
-      - 'scripts/generate_build_identity.py'
-      - 'requirements.txt'
-      - 'pyproject.toml'
   workflow_dispatch:
 
 concurrency:
