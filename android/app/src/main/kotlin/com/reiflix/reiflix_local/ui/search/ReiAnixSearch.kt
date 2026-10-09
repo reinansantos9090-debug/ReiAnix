@@ -444,7 +444,7 @@ private fun SearchResults(
             start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             top = ReiAnixTokens.Spacing.sm,
-            bottom = ReiAnixTokens.Spacing.huge,
+            bottom = ReiAnixTokens.Spacing.xxl,
         ),
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
@@ -652,7 +652,7 @@ private fun ReiAnixSearchFilterSheet(
                 .padding(
                     start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                     end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                    bottom = ReiAnixTokens.Spacing.huge,
+                    bottom = ReiAnixTokens.Spacing.xxl,
                 ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
