@@ -195,3 +195,24 @@ def test_shell_observes_only_narrow_settings_projections():
     assert "settingsViewModel.libraryGridDensity.collectAsStateWithLifecycle()" in host
     assert 'settingsState.settings["appearance.theme"]' not in host
     assert 'settingsState.settings["appearance.card_size"]' not in host
+
+def test_settings_storage_and_scanner_reuse_the_canonical_storage_route():
+    compose = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
+    )
+    host = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    )
+    storage = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixStorageScreen.kt"
+    )
+
+    assert "onOpenStorage: () -> Unit" in compose
+    assert 'text = "Gerenciar fontes e atualização"' in compose
+    assert 'text = "Ver estado e atualizar biblioteca"' in compose
+    assert "onClick = onOpenStorage" in compose
+    assert "onOpenStorage = {" in host
+    assert "ReiAnixRoutes.STORAGE" in host
+    assert "onRemoveSaf = onRemoveSaf" in storage
+    assert "pendingRemoval = source" in storage
+    assert "onRefreshLibrary = viewModel::refresh" in storage
