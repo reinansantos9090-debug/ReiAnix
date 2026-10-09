@@ -519,7 +519,7 @@ private fun SettingsFlatCategoryRow(
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
             color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+                alpha = ReiAnixTokens.Colors.dividerAlpha,
             ),
         )
     }
@@ -1855,7 +1855,7 @@ fun ReiAnixSettingsRow(
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
             color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+                alpha = ReiAnixTokens.Colors.dividerAlpha,
             ),
         )
     }
@@ -1993,7 +1993,7 @@ private fun BooleanSettingCard(
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
             color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+                alpha = ReiAnixTokens.Colors.dividerAlpha,
             ),
         )
     }
@@ -2066,7 +2066,7 @@ private fun LanguageSettingCard(
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
             color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+                alpha = ReiAnixTokens.Colors.dividerAlpha,
             ),
         )
     }
@@ -2213,7 +2213,7 @@ private fun ChoiceSettingCard(
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
             color = MaterialTheme.colorScheme.outlineVariant.copy(
-                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+                alpha = ReiAnixTokens.Colors.dividerAlpha,
             ),
         )
     }
