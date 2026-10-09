@@ -67,6 +67,24 @@ class ArtworkPipelineTests(unittest.TestCase):
         self.assertIn("fallbackExternalUrl: String?", artwork)
         self.assertNotIn('listOf("artwork_external_url", "cover_url", "banner_url", "external_url")', mapper)
 
+    def test_compose_artwork_consumes_materialized_local_paths_only(self):
+        artwork = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt")
+        self.assertIn("fun localArtworkCandidates", artwork)
+        self.assertIn('scheme.equals("http", ignoreCase = true)', artwork)
+        self.assertIn('scheme.equals("https", ignoreCase = true)', artwork)
+        coil_data = artwork[artwork.index("private fun coilData"):artwork.index("@Composable\nfun ReiAnixPoster")]
+        self.assertNotIn('source.startsWith("http://"', coil_data)
+        self.assertNotIn('source.startsWith("https://"', coil_data)
+
+    def test_metadata_hydration_never_waits_for_artwork_download(self):
+        service = self.read("core/library_service.py")
+        start = service.index("    def hydrate_catalog_metadata(")
+        end = service.index("    def set_manual_metadata(", start)
+        hydration = service[start:end]
+        self.assertNotIn("blocking=True", hydration)
+        self.assertIn("request_download=True", hydration)
+        self.assertNotIn("cover_attempt_failed", hydration)
+
     def test_python_files_remain_syntactically_valid(self):
         for relative in ("main.py", "core/artwork.py", "core/library_service.py", "views/home_view.py", "views/details_view.py"):
             ast.parse(self.read(relative), filename=relative)

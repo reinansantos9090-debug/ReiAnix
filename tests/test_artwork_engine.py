@@ -418,6 +418,71 @@ class ArtworkEngineTests(unittest.TestCase):
         self.assertNotEqual(after["local_path"], str(old))
         self.assertTrue(Path(after["local_path"]).is_file())
 
+    def test_stale_in_flight_cover_cannot_replace_newer_metadata(self):
+        anime = self._media("Stale cover race")
+        old_url = "https://example/old-in-flight.jpg"
+        new_url = "https://example/current.jpg"
+        with self.store._conn() as con:
+            con.execute("UPDATE anime SET cover_url=? WHERE id=?", (old_url, anime))
+        self.engine.sync_anime_metadata(
+            anime, {"anilist_id": 16498, "cover_url": old_url}, request_download=False
+        )
+
+        started = threading.Event()
+        release = threading.Event()
+        published = threading.Event()
+        self.engine.set_change_listener(
+            lambda name, payload: published.set()
+            if name == "ARTWORK_PUBLISHED" and payload.get("external_url") == old_url
+            else None
+        )
+
+        def downloader(url):
+            if url == old_url:
+                started.set()
+                if not release.wait(timeout=3):
+                    raise TimeoutError("test did not release stale artwork request")
+            return JPEG, "image/jpeg", 200
+
+        self.engine._downloader = downloader
+        try:
+            self.engine.request("anime", anime, "poster", blocking=False)
+            self.assertTrue(started.wait(timeout=2), "old artwork request did not start")
+            with self.store._conn() as con:
+                con.execute("UPDATE anime SET cover_url=? WHERE id=?", (new_url, anime))
+            self.engine.sync_anime_metadata(
+                anime, {"anilist_id": 16498, "cover_url": new_url}, request_download=False
+            )
+        finally:
+            release.set()
+
+        self.assertTrue(published.wait(timeout=3), "stale artwork completion was not published")
+        metadata = self.store.anime_metadata_by_id(anime)
+        rows = {row.get("external_url"): row for row in self.engine.list_for("anime", anime, "poster")}
+        self.assertLess(rows[old_url]["priority"], rows[new_url]["priority"])
+        self.assertNotEqual(metadata.get("cover_cache"), rows[old_url].get("local_path"))
+
+    def test_terminal_artwork_failure_requires_explicit_retry(self):
+        anime = self._media("Explicit artwork retry")
+        url = "https://example/terminal-failure.jpg"
+        self._remote(anime, url)
+        calls = []
+
+        def fail_once(_url):
+            calls.append("failed")
+            raise HTTPError(url, 404, "missing", {}, None)
+
+        self.engine._downloader = fail_once
+        self.engine.request("anime", anime, "poster", blocking=True)
+        self.assertEqual(calls, ["failed"])
+        failed = self.engine.request("anime", anime, "poster", blocking=True)
+        self.assertEqual(failed["status"], STATUS_FAILED)
+        self.assertEqual(calls, ["failed"])
+
+        self.engine._downloader = lambda _url: (JPEG, "image/jpeg", 200)
+        recovered = self.engine.request("anime", anime, "poster", blocking=True, force=True)
+        self.assertEqual(recovered["status"], STATUS_READY)
+
     def test_corrupt_cache_is_repaired(self):
         anime = self._media()
         bad = Path(self.tmp.name) / "bad.jpg"

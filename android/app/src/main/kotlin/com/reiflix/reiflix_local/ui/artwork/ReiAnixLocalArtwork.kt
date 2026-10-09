@@ -121,15 +121,8 @@ fun ReiAnixLocalArtwork(
         val effectiveWidthPx = if (requestWidthPx > 0) requestWidthPx else fallbackDimensionPx
         val effectiveHeightPx = if (requestHeightPx > 0) requestHeightPx else fallbackDimensionPx
 
-        val candidates = remember(
-            localPath,
-            fallbackLocalPath,
-            externalUrl,
-            fallbackExternalUrl,
-        ) {
-            listOf(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl)
-                .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-                .distinct()
+        val candidates = remember(localPath, fallbackLocalPath) {
+            localArtworkCandidates(localPath, fallbackLocalPath)
         }
         val stableIdentity = remember(
             identity,
@@ -240,11 +233,21 @@ internal fun buildArtworkMemoryCacheKey(
 internal fun buildArtworkDiskCacheKey(source: String): String =
     "reianix-artwork-disk|" + source
 
+internal fun localArtworkCandidates(
+    localPath: String?,
+    fallbackLocalPath: String?,
+): List<String> =
+    listOf(localPath, fallbackLocalPath)
+        .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+        .filterNot { candidate ->
+            val scheme = Uri.parse(candidate).scheme
+            scheme.equals("http", ignoreCase = true) ||
+                scheme.equals("https", ignoreCase = true)
+        }
+        .distinct()
+
 private fun coilData(source: String): Any =
     when {
-        source.startsWith("http://", ignoreCase = true) ||
-            source.startsWith("https://", ignoreCase = true) ->
-            source
         source.startsWith("content://", ignoreCase = true) ||
             source.startsWith("file://", ignoreCase = true) ||
             source.startsWith("android.resource://", ignoreCase = true) ->

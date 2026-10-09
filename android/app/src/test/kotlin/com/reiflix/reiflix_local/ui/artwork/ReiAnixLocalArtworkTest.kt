@@ -34,4 +34,20 @@ class ReiAnixLocalArtworkTest {
         assertEquals(diskA, diskB)
         assertNotEquals(memoryA, memoryDifferentSize)
     }
+
+    @Test
+    fun composeArtworkUsesOnlyMaterializedLocalCandidates() {
+        assertEquals(
+            listOf("/cache/poster.jpg"),
+            localArtworkCandidates("https://img/a.jpg", "/cache/poster.jpg"),
+        )
+        assertEquals(
+            emptyList<String>(),
+            localArtworkCandidates("https://img/a.jpg", "https://img/b.jpg"),
+        )
+        assertEquals(
+            listOf("content://media/poster/10"),
+            localArtworkCandidates("content://media/poster/10", null),
+        )
+    }
 }

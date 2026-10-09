@@ -976,7 +976,7 @@ class LibraryService:
                     # deciding whether a network request is needed. The
                     # ArtworkEngine itself is cache-hit aware and deduplicates
                     # identical requests.
-                    self.artwork.sync_anime_metadata(cached['id'], cached, request_download=False)
+                    self.artwork.sync_anime_metadata(cached['id'], cached, request_download=True)
                 except Exception:
                     logger.debug(
                         'Artwork metadata reconciliation failed during hydration',
@@ -1034,7 +1034,6 @@ class LibraryService:
                 continue
             try:
                 metadata_refreshed = False
-                cover_attempt_failed = False
                 self._record_diagnostic(
                     "METADATA_MATERIALIZATION_START",
                     anime_id=cached.get("id") if isinstance(cached, dict) else local_anime_id,
@@ -1066,63 +1065,13 @@ class LibraryService:
                 cover_url = str(cached.get('cover_url') or '').strip()
                 if anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
                     entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
-                    self.artwork.sync_anime_metadata(cached['id'], cached, request_download=False)
-                    # Hydration uses a blocking request as the single artwork
-                    # download owner. Keep refresh/reconciliation metadata-only here
-                    # to avoid racing a background artwork worker against the
-                    # blocking request and physically downloading the same asset twice.
-                    # Recompute readiness after metadata reconciliation;
-                    # otherwise a fast first download can be followed by a
-                    # second physical HTTP download during the same hydration.
-                    poster_rows = self.artwork.list_for(entity_type, cached['id'], 'poster')
-                    backdrop_rows = self.artwork.list_for(entity_type, cached['id'], 'backdrop')
-                    needs_cover = bool(
-                        cover_url
-                        and not any(
-                            row.get('local_path') and self.artwork._is_valid_image_file(row.get('local_path'))
-                            for row in poster_rows
-                        )
-                    )
-                    banner_url = str(cached.get('banner_url') or '').strip()
-                    needs_backdrop = bool(
-                        banner_url
-                        and not any(
-                            row.get('local_path') and self.artwork._is_valid_image_file(row.get('local_path'))
-                            for row in backdrop_rows
-                        )
-                    )
-                    if cover_url and needs_cover:
-                        resolved = self.artwork.request(
-                            entity_type,
-                            cached['id'],
-                            'poster',
-                            priority=100,
-                            allow_network=True,
-                            blocking=True,
-                        )
-                        cached = (
-                            self.store.anime_metadata_by_id(local_anime_id)
-                            if local_anime_id
-                            else None
-                        ) or self.store.anime_metadata(effective_lookup) or cached
-                        cover_attempt_failed = not bool(
-                            resolved
-                            and resolved.get('local_path')
-                            and self.artwork._is_valid_image_file(resolved.get('local_path'))
-                        )
-                    if banner_url and needs_backdrop:
-                        self.artwork.request(
-                            entity_type,
-                            cached['id'],
-                            'backdrop',
-                            priority=90,
-                            allow_network=True,
-                            blocking=True,
-                        )
+                    # ArtworkEngine owns local/cache checks, URL identity,
+                    # in-flight deduplication and bounded asynchronous downloads.
+                    # Hydration must not wait for poster/backdrop bytes: the
+                    # completion event publishes the incremental snapshot later.
+                    self.artwork.sync_anime_metadata(cached['id'], cached, request_download=True)
                 if cached.get('id'):
                     self.artwork.sync_anime_metadata(cached['id'], cached, request_download=False)
-                    if cover_attempt_failed:
-                        self.artwork.mark_download_failure(entity_type, cached['id'], 'poster', cover_url)
                     self._record_diagnostic(
                         "METADATA_MATERIALIZATION_SUCCESS",
                         anime_id=cached.get("id"),

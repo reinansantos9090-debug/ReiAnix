@@ -1066,6 +1066,11 @@ class ArtworkEngine:
         if row is None:
             self._log("miss", entity_type=entity_type, entity_id=entity_id, artwork_type=artwork_type)
             return None
+        current_status = str(row.get("status") or "").casefold()
+        # Terminal failures require an explicit retry; screen/scan requests
+        # must not restart failed downloads indefinitely.
+        if not force and current_status in {STATUS_FAILED, STATUS_INVALID}:
+            return row
         now = time.time()
         retry_at = float(row.get("next_retry_at") or 0)
         if not force and retry_at > now:
@@ -1216,17 +1221,43 @@ class ArtworkEngine:
                 os.replace(temporary, target)
                 now = time.time()
                 with self.store._conn() as con:
+                    current_artwork = con.execute(
+                        "SELECT priority,manual FROM artwork WHERE id=?",
+                        (row_id,),
+                    ).fetchone()
+                    is_media_poster = (
+                        row["entity_type"] in {"anime", "movie"}
+                        and row["artwork_type"] == "poster"
+                    )
+                    current_cover_url = ""
+                    if is_media_poster:
+                        current_anime = con.execute(
+                            "SELECT cover_url FROM anime WHERE id=?",
+                            (int(row["entity_id"]),),
+                        ).fetchone()
+                        current_cover_url = self._normalize_url(
+                            current_anime["cover_url"] if current_anime else ""
+                        )
+                    # Persist stale results under their own URL identity, but do
+                    # not let them replace a newer cover or regain poster priority.
+                    same_cover_identity = not current_cover_url or current_cover_url == url
+                    cache_priority = _SOURCE_PRIORITY["cache"]
+                    if current_artwork and bool(current_artwork["manual"]):
+                        cache_priority = _SOURCE_PRIORITY["manual"]
+                    elif not same_cover_identity and current_artwork:
+                        cache_priority = min(int(current_artwork["priority"] or 350), 350)
                     con.execute(
                         """UPDATE artwork SET source='cache',local_path=?,status=?,priority=?,
                            updated_at=?,last_access=?,byte_size=?,width=?,height=?,checksum=?,content_type=?,
                            next_retry_at=NULL,http_status=?,failure_count=0 WHERE id=?""",
-                        (str(target), STATUS_READY, _SOURCE_PRIORITY["cache"], now, now, len(payload), width, height, checksum,
+                        (str(target), STATUS_READY, cache_priority, now, now, len(payload), width, height, checksum,
                          content_type or _mime_from_path(str(target)), http_status, row_id),
                     )
-                    if row["entity_type"] in {"anime", "movie"} and row["artwork_type"] == "poster":
+                    if is_media_poster and same_cover_identity:
                         con.execute(
-                            "UPDATE anime SET cover_cache=? WHERE id=?",
-                            (str(target), int(row["entity_id"])),
+                            """UPDATE anime SET cover_cache=? WHERE id=?
+                               AND (COALESCE(cover_url,'')='' OR cover_url=?)""",
+                            (str(target), int(row["entity_id"]), url),
                         )
             duration_ms = int((time.perf_counter() - download_started) * 1000)
             self._log(
