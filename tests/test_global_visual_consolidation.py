@@ -245,5 +245,21 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
             self.assertNotRegex(source, r"(?<![A-Za-z0-9_])TextButton\s*\(", msg=name)
 
 
+    def test_content_screens_use_semantic_section_and_item_typography_roles(self):
+        screens = {
+            "Details": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"),
+            "Search": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt"),
+            "Library": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt"),
+            "Organize": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt"),
+        }
+        for name, source in screens.items():
+            self.assertIn("ReiAnixTokens.TypographyTokens.sectionTitle", source, msg=name)
+            self.assertNotIn("MaterialTheme.typography.titleLarge", source, msg=name)
+            self.assertNotIn("MaterialTheme.typography.titleMedium", source, msg=name)
+        tokens = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt")
+        self.assertIn("val sectionTitle = TextStyle(", tokens)
+        self.assertIn("val itemTitle = TextStyle(", tokens)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -359,7 +359,7 @@ private fun OrganizeSourcesAndScanPanel(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Fontes",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = ReiAnixTokens.TypographyTokens.itemTitle,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
@@ -789,7 +789,7 @@ private fun OrganizeOverview(
                             ) {
                                 Text(
                                     text = genre.name,
-                                    style = MaterialTheme.typography.titleMedium,
+                                    style = ReiAnixTokens.TypographyTokens.itemTitle,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
@@ -826,7 +826,7 @@ private fun OrganizeOverview(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Catálogo local",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = ReiAnixTokens.TypographyTokens.itemTitle,
                         )
                         Text(
                             text = categories
@@ -1254,7 +1254,7 @@ private fun OrganizeCategoryCard(
         ) {
             Text(
                 text = category.label,
-                style = MaterialTheme.typography.titleMedium,
+                style = ReiAnixTokens.TypographyTokens.itemTitle,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1287,7 +1287,7 @@ private fun OrganizeSectionHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleLarge,
+                style = ReiAnixTokens.TypographyTokens.sectionTitle,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(

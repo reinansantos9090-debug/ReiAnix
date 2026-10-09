@@ -501,7 +501,7 @@ private fun SearchResults(
             ) {
                 Text(
                     text = "Resultados",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = ReiAnixTokens.TypographyTokens.sectionTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
@@ -739,7 +739,7 @@ private fun ReiAnixSearchFilterSheet(
             if (genres.isNotEmpty()) {
                 Text(
                     text = "Gêneros",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.itemTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 LazyRow(

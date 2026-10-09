@@ -1021,7 +1021,7 @@ private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
         }
         if (details.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                Text(text = "Informações", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
+                Text(text = "Informações", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
                 details.forEach { (label, value) ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
                         Text(text = label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(ReiAnixTokens.Dimensions.detailsInfoLabelWidth))
@@ -1076,7 +1076,7 @@ private fun DetailsSeasonsSection(
         ) {
             Text(
                 text = "Temporadas",
-                style = MaterialTheme.typography.titleLarge,
+                style = ReiAnixTokens.TypographyTokens.sectionTitle,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f),
             )
@@ -1196,7 +1196,7 @@ private fun DetailsSeasonCard(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.itemTitle,
                     color = if (selected) {
                         MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
@@ -1235,7 +1235,7 @@ private fun DetailsSectionHeader(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = ReiAnixTokens.TypographyTokens.sectionTitle,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier
                 .weight(1f)

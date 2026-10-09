@@ -903,7 +903,7 @@ private fun LibrarySourceSummaryCard(
             ) {
                 Text(
                     text = "Capas sincronizadas",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = ReiAnixTokens.TypographyTokens.sectionTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
