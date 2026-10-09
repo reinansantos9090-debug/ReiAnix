@@ -1,6 +1,7 @@
 from pathlib import Path
 import tempfile
 import time
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -332,9 +333,29 @@ class ProfessionalMetadataTests(unittest.TestCase):
         def downloader(url):
             return VALID_JPEG, "image/jpeg", 200
 
+        materialized = set()
+        materialized_lock = threading.Lock()
+        both_materialized = threading.Event()
+
+        def on_artwork_change(event_name, payload):
+            if event_name != "ARTWORK_PUBLISHED":
+                return
+            artwork_type = payload.get("artwork_type")
+            if artwork_type not in {"poster", "backdrop"}:
+                return
+            with materialized_lock:
+                materialized.add(artwork_type)
+                if len(materialized) == 2:
+                    both_materialized.set()
+
+        self.service.artwork.set_change_listener(on_artwork_change)
         with patch.object(self.service.anilist, "search", return_value=[media]),              patch.object(self.service.anilist, "localize_description_to_pt_br", return_value="Original synopsis."),              patch.object(self.service.artwork, "_downloader", side_effect=downloader) as download:
             self.service.hydrate_catalog_metadata(self.service.catalog())
-        self.assertEqual(download.call_count, 2)
+            self.assertTrue(
+                both_materialized.wait(timeout=5),
+                "poster and backdrop should finish asynchronously through ArtworkEngine",
+            )
+            self.assertEqual(download.call_count, 2)
 
         reopened = LibraryStore(self.tmp.name)
         reopened_service = LibraryService(reopened)

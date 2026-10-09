@@ -240,7 +240,7 @@ internal fun localArtworkCandidates(
     listOf(localPath, fallbackLocalPath)
         .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
         .filterNot { candidate ->
-            val scheme = Uri.parse(candidate).scheme
+            val scheme = candidate.substringBefore(':')
             scheme.equals("http", ignoreCase = true) ||
                 scheme.equals("https", ignoreCase = true)
         }
