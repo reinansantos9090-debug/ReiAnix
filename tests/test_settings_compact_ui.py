@@ -205,9 +205,35 @@ def test_settings_rows_share_compact_spacing_and_group_dividers():
     assert "HorizontalDivider(" not in boolean_row
     assert "HorizontalDivider(" not in choice_row
     assert "HorizontalDivider(" not in language_row
+    assert "SettingsPreferenceText(" in boolean_row
+    assert "SettingsPreferenceText(" in choice_row
+    assert "SettingsPreferenceText(" in language_row
+    assert "ReiAnixTokens.TypographyTokens.bodySecondary" in source
+    assert "ReiAnixTokens.TypographyTokens.metadata" in source
     assert "heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)" in boolean_row
     assert "heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)" in choice_row
     assert "text = title," in section
     assert "title.uppercase()" not in section
     assert "ReiAnixTopBar(" in header
     assert "titleStyle = ReiAnixTokens.TypographyTokens.screenTitle" in header
+
+
+def test_preference_text_presentation_is_shared_without_changing_persistence_rows():
+    source = read()
+    helper = block(
+        source,
+        "@Composable\nprivate fun SettingsPreferenceText(",
+        "@Composable\nprivate fun BooleanSettingCard(",
+    )
+    assert "ReiAnixTokens.TypographyTokens.bodySecondary" in helper
+    assert "ReiAnixTokens.TypographyTokens.metadata" in helper
+    assert "maxLines = 1" in helper
+    assert "maxLines = 2" in helper
+    assert "Text(" not in block(
+        source,
+        "@Composable\nprivate fun BooleanSettingCard(",
+        "@Composable\nprivate fun LanguageSettingCard(",
+    )
+    assert "onSave(draftValue.trim())" in source
+    assert "onCheckedChange(!checked)" in source
+    assert "onSelected(choice.value)" in source
