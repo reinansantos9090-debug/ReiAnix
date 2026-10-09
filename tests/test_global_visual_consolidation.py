@@ -140,7 +140,7 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         settings = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt")
         tokens = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt")
         self.assertNotIn("RoundedCornerShape(0.dp)", components + organize + settings)
-        self.assertIn("shape: androidx.compose.ui.graphics.Shape = androidx.compose.ui.graphics.RectangleShape", components)
+        self.assertIn("shape = if (continuous) androidx.compose.ui.graphics.RectangleShape else ReiAnixTokens.Shapes.card", components)
         self.assertEqual(organize.count("shape = androidx.compose.ui.graphics.RectangleShape"), 2)
         self.assertIn("shape = androidx.compose.ui.graphics.RectangleShape", settings)
         self.assertIn("val organizeFilterMaxHeight = 260.dp", tokens)
