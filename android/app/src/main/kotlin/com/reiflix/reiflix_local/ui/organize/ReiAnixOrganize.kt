@@ -61,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
+import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
@@ -636,15 +637,11 @@ private fun OrganizeTopBar(
             .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(
+        ReiAnixIconActionButton(
+            icon = Icons.Filled.ArrowBack,
+            contentDescription = "Voltar",
             onClick = onBack,
-            modifier = Modifier.semantics {
-                contentDescription = "Voltar"
-                role = Role.Button
-            },
-        ) {
-            Icon(Icons.Filled.ArrowBack, contentDescription = null)
-        }
+        )
         Text(
             text = "Organizar",
             style = ReiAnixTokens.TypographyTokens.screenTitle,
@@ -652,14 +649,11 @@ private fun OrganizeTopBar(
             modifier = Modifier.weight(1f),
             maxLines = 1,
         )
-        IconButton(
+        ReiAnixIconActionButton(
+            icon = Icons.Filled.Info,
+            contentDescription = "Gerenciar acesso ao armazenamento",
             onClick = onOpenStorageAccess,
-            modifier = Modifier.semantics {
-                contentDescription = "Gerenciar acesso ao armazenamento"
-            },
-        ) {
-            Icon(Icons.Filled.Info, contentDescription = null)
-        }
+        )
         IconButton(
             onClick = onRefresh,
             enabled = !isRefreshing,
@@ -677,14 +671,11 @@ private fun OrganizeTopBar(
                 Icon(Icons.Filled.Refresh, contentDescription = null)
             }
         }
-        IconButton(
+        ReiAnixIconActionButton(
+            icon = Icons.Filled.Settings,
+            contentDescription = "Abrir configurações",
             onClick = onOpenSettings,
-            modifier = Modifier.semantics {
-                contentDescription = "Abrir configurações"
-            },
-        ) {
-            Icon(Icons.Filled.Settings, contentDescription = null)
-        }
+        )
     }
 }
 @Composable

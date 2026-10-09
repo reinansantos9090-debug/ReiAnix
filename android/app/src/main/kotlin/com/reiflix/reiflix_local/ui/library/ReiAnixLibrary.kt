@@ -62,6 +62,7 @@ import kotlinx.coroutines.flow.collect
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
+import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
@@ -398,10 +399,8 @@ private fun LibraryHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(
-                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                vertical = ReiAnixTokens.Spacing.sm,
-            ),
+            .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -412,34 +411,18 @@ private fun LibraryHeader(
         )
         Spacer(modifier = Modifier.weight(1f))
         if (onSearch != null) {
-            IconButton(
+            ReiAnixIconActionButton(
+                icon = Icons.Filled.Search,
+                contentDescription = "Pesquisar na biblioteca",
                 onClick = onSearch,
-                modifier = Modifier.semantics {
-                    contentDescription = "Pesquisar na biblioteca"
-                    role = androidx.compose.ui.semantics.Role.Button
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            )
         }
         Box {
-            IconButton(
+            ReiAnixIconActionButton(
+                icon = Icons.Filled.MoreVert,
+                contentDescription = "Mais ações da biblioteca",
                 onClick = { actionsExpanded = true },
-                modifier = Modifier.semantics {
-                    contentDescription = "Mais ações da biblioteca"
-                    role = androidx.compose.ui.semantics.Role.Button
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            )
             DropdownMenu(
                 expanded = actionsExpanded,
                 onDismissRequest = { actionsExpanded = false },
@@ -475,7 +458,9 @@ private fun LibraryHeader(
             }
         }
     }
+    Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
 }
+
 @Composable
 private fun ColumnScope.LibraryReadyContent(
     state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,

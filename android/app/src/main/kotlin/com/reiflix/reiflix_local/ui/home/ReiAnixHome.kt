@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
+import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixMetadata
@@ -409,10 +411,8 @@ private fun HomeHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(
-                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                vertical = ReiAnixTokens.Spacing.sm,
-            ),
+            .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -422,33 +422,17 @@ private fun HomeHeader(
             maxLines = 1,
         )
         Spacer(modifier = Modifier.weight(1f))
-        IconButton(
+        ReiAnixIconActionButton(
+            icon = Icons.Filled.Search,
+            contentDescription = "Pesquisar na biblioteca",
             onClick = onSearch,
-            modifier = Modifier.semantics {
-                contentDescription = "Pesquisar na biblioteca"
-                role = Role.Button
-            },
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-            )
-        }
+        )
         Box {
-            IconButton(
+            ReiAnixIconActionButton(
+                icon = Icons.Filled.MoreVert,
+                contentDescription = "Mais opções da Home",
                 onClick = { menuExpanded.value = true },
-                modifier = Modifier.semantics {
-                    contentDescription = "Mais opções da Home"
-                    role = Role.Button
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            )
             DropdownMenu(
                 expanded = menuExpanded.value,
                 onDismissRequest = { menuExpanded.value = false },
@@ -471,7 +455,9 @@ private fun HomeHeader(
             }
         }
     }
+    Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
 }
+
 @Composable
 private fun ColumnScope.HomeContent(
     state: ReiAnixLibraryUiState,

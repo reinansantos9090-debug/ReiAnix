@@ -146,6 +146,19 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertIn("val organizeFilterMaxHeight = 260.dp", tokens)
         self.assertIn("ReiAnixTokens.Dimensions.organizeFilterMaxHeight", organize)
 
+    def test_content_headers_share_height_and_icon_action_component(self):
+        home = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt")
+        library = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt")
+        search = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt")
+        details = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
+        organize = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt")
+        token = "ReiAnixTokens.Dimensions.topBarMinHeight"
+        for screen in (home, library, search, organize):
+            self.assertIn(token, screen)
+        self.assertIn(".height(ReiAnixTokens.Dimensions.topBarMinHeight)", details)
+        for screen in (home, library, search, details, organize):
+            self.assertIn("ReiAnixIconActionButton(", screen)
+
 
 if __name__ == "__main__":
     unittest.main()

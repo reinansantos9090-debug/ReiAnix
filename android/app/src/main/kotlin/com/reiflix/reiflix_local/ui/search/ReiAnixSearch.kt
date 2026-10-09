@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -202,12 +204,8 @@ fun ReiAnixSearchScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                    top = ReiAnixTokens.Dimensions.screenTopPadding,
-                    end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                    bottom = ReiAnixTokens.Spacing.sm,
-                ),
+                .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
+                .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (showBackButton) {
@@ -225,6 +223,8 @@ fun ReiAnixSearchScreen(
             )
 
         }
+
+        Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
 
         ReiAnixSearchField(
             value = searchQuery,
