@@ -28,7 +28,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +57,7 @@ import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
+import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
@@ -701,9 +701,10 @@ private fun ReiAnixSearchFilterSheet(
                     modifier = Modifier.weight(1f),
                 )
                 if (filters.hasAnyFilter) {
-                    TextButton(onClick = onClear) {
-                        Text("Limpar")
-                    }
+                    ReiAnixCompactButton(
+                        text = "Limpar",
+                        onClick = onClear,
+                    )
                 }
             }
 
