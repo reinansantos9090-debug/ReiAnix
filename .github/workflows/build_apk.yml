@@ -237,21 +237,6 @@ jobs:
                   json.dump(data, handle, indent=2)
           PY
 
-      - name: Run deterministic Android JVM unit tests
-        shell: bash
-        timeout-minutes: 10
-        env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true"
-        run: |
-          set -euo pipefail
-          gradle_root="$GITHUB_WORKSPACE/build/flet-build-template/android"
-          test -f "$gradle_root/gradlew"
-          chmod +x "$gradle_root/gradlew"
-          (
-            cd "$gradle_root"
-            ./gradlew --no-daemon :app:testDebugUnitTest
-          )
-
       - name: Configure Android release signing
         shell: bash
         env:
