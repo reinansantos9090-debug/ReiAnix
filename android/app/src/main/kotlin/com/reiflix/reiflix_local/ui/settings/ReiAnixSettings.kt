@@ -240,6 +240,7 @@ fun ReiAnixSettingsRoute(
     viewModel: ReiAnixSettingsViewModel,
     onBack: () -> Unit,
     onOpenCategory: (String) -> Unit,
+    onOpenStorage: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedCategory by androidx.compose.runtime.saveable.rememberSaveable {
@@ -260,6 +261,7 @@ fun ReiAnixSettingsRoute(
             onUpdateSetting = viewModel::setSetting,
             onAccountAction = viewModel::requestAccountAction,
             onAction = viewModel::requestAction,
+            onOpenStorage = onOpenStorage,
             onRetry = viewModel::refresh,
         )
     } else {
@@ -532,6 +534,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onUpdateSetting: (String, String) -> Unit,
     onAccountAction: (String) -> Unit,
     onAction: (String) -> Unit,
+    onOpenStorage: () -> Unit,
     onRetry: () -> Unit,
 ) {
     fun actionBusy(action: String): Boolean =
@@ -1151,6 +1154,11 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     .padding(ReiAnixTokens.Spacing.lg),
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
+                                ReiAnixSecondaryButton(
+                                    text = "Gerenciar fontes e atualização",
+                                    onClick = onOpenStorage,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                                 ReiAnixPrimaryButton(
                                     text = "Adicionar pasta",
                                     onClick = { onAction("select_saf") },
@@ -1522,6 +1530,11 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 ReiAnixBadge(text = "Sem scan", tone = ReiAnixBadgeTone.Neutral)
+                                ReiAnixSecondaryButton(
+                                    text = "Ver estado e atualizar biblioteca",
+                                    onClick = onOpenStorage,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                         }
                     }
