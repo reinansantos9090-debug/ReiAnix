@@ -292,6 +292,7 @@ fun ReiAnixHomeScreen(
     onWatch: (episodeId: Long, animeId: Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onRefresh: () -> Unit,
+    onSelectSource: () -> Unit = onRefresh,
     onOpenMyList: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
 ) {
@@ -356,7 +357,7 @@ fun ReiAnixHomeScreen(
                         title = "Biblioteca local indisponível",
                         message = "A fonte local configurada não está disponível agora.",
                         actionLabel = "Selecionar pasta",
-                        onAction = onRefresh,
+                        onAction = onSelectSource,
                     )
                 }
             }
@@ -376,7 +377,11 @@ fun ReiAnixHomeScreen(
                 } else {
                     "Atualizar"
                 },
-                onAction = onRefresh,
+                onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    onSelectSource
+                } else {
+                    onRefresh
+                },
             )
             ReiAnixLibraryLoadStatus.READY -> HomeContent(
                 state = state,
