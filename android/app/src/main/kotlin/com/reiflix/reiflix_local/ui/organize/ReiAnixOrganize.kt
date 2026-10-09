@@ -672,11 +672,7 @@ private fun OrganizeTopBar(
             },
         ) {
             if (isRefreshing) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    modifier = Modifier.size(ReiAnixTokens.Dimensions.loadingIndicatorSize),
-                    strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                com.reiflix.reiflix_local.ui.ReiAnixLoadingIndicator()
             } else {
                 Icon(Icons.Filled.Refresh, contentDescription = null)
             }

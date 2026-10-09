@@ -524,7 +524,7 @@ fun ReiAnixSecondaryText(
 ) {
     Text(
         text = text,
-        style = ReiAnixTokens.TypographyTokens.bodySecondary,
+        style = ReiAnixTokens.TypographyTokens.secondary,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
         maxLines = maxLines,

@@ -754,10 +754,7 @@ private fun ColumnScope.LibraryReadyContent(
                                 .padding(vertical = ReiAnixTokens.Spacing.lg),
                             contentAlignment = Alignment.Center,
                         ) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-                                strokeWidth = 2.dp,
-                            )
+                            com.reiflix.reiflix_local.ui.ReiAnixLoadingIndicator()
                         }
                     }
                 }

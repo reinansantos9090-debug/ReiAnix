@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -2336,11 +2335,10 @@ private fun ReiAnixSettingsAccountContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (busy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(ReiAnixTokens.Dimensions.loadingIndicatorSize)
-                            .semantics { contentDescription = "Operação da conta Google em andamento" },
-                        strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
+                    com.reiflix.reiflix_local.ui.ReiAnixLoadingIndicator(
+                        modifier = Modifier.semantics {
+                            contentDescription = "Operação da conta Google em andamento"
+                        },
                     )
                 } else if (state.state == "error") {
                     ReiAnixPrimaryButton(

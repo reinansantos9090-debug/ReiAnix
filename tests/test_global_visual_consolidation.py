@@ -1,0 +1,111 @@
+from pathlib import Path
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+UI = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui"
+
+
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+class GlobalVisualConsolidationTests(unittest.TestCase):
+    def test_existing_reianix_design_system_remains_the_only_theme(self):
+        tokens = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt")
+        theme = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt")
+        self.assertIn("object ReiAnixTokens", tokens)
+        self.assertIn("fun ReiAnixComposeTheme(", theme)
+        all_ui_source = "\n".join(path.read_text(encoding="utf-8") for path in UI.rglob("*.kt"))
+        for forbidden in ("NewTheme", "NewDesignSystem", "CloudStreamTheme", "LegacyTheme2"):
+            self.assertNotIn(forbidden, all_ui_source)
+
+    def test_theme_semantic_aliases_resolve_to_the_canonical_palette(self):
+        tokens = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt")
+        theme = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt")
+        for token in (
+            "val background = Color(0xFF000000)",
+            "val primary = Color(0xFF2579FF)",
+            "val onBackground = text",
+            "val onSurface = text",
+            "val muted = textMuted",
+            "val lightOnBackground = lightText",
+            "val lightOnSurface = lightText",
+            "val lightMuted = lightTextMuted",
+            "val divider = Color(0xFF202020)",
+            "val error = Color(0xFFFF5B61)",
+            "val success = Color(0xFF4ADE80)",
+            "val secondary = bodySecondary",
+            "val cornerRadius = 12.dp",
+        ):
+            self.assertIn(token, tokens)
+        self.assertIn("background = ReiAnixTokens.Colors.background", theme)
+        self.assertIn("onBackground = ReiAnixTokens.Colors.onBackground", theme)
+        self.assertIn("onSurface = ReiAnixTokens.Colors.onSurface", theme)
+        self.assertIn("onSurfaceVariant = ReiAnixTokens.Colors.muted", theme)
+        self.assertIn("background = ReiAnixTokens.Colors.lightBackground", theme)
+        self.assertIn("onBackground = ReiAnixTokens.Colors.lightOnBackground", theme)
+        self.assertIn("onSurfaceVariant = ReiAnixTokens.Colors.lightMuted", theme)
+        self.assertIn("primary = ReiAnixTokens.Colors.lightPrimary", theme)
+
+    def test_primary_screens_share_the_canonical_typography_and_surface_scheme(self):
+        screens = {
+            "Home": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt",
+            "Library": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt",
+            "Search": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt",
+            "Details": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt",
+            "Settings": "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt",
+        }
+        for screen, relative in screens.items():
+            source = read(relative)
+            self.assertIn("MaterialTheme.colorScheme.background", source, msg=screen)
+            self.assertTrue(
+                "ReiAnixTokens.TypographyTokens" in source or "MaterialTheme.typography" in source,
+                msg=f"{screen} must use the shared typography roles",
+            )
+            self.assertNotIn("fontSize =", source, msg=screen)
+
+    def test_loading_empty_and_error_states_share_visual_tokens(self):
+        states = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixStateComponents.kt")
+        self.assertIn("fun ReiAnixLoadingIndicator(", states)
+        self.assertEqual(states.count("CircularProgressIndicator("), 1)
+        self.assertIn("ReiAnixTokens.Dimensions.loadingIndicatorSize", states)
+        self.assertIn("ReiAnixTokens.Dimensions.loadingIndicatorStroke", states)
+        self.assertIn("ReiAnixTokens.TypographyTokens.emptyStateTitle", states)
+        self.assertIn("ReiAnixTokens.TypographyTokens.secondary", states)
+        self.assertIn("ReiAnixTokens.TypographyTokens.body", states)
+        library = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt")
+        organize = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt")
+        settings = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt")
+        self.assertIn("ReiAnixLoadingIndicator()", library)
+        self.assertIn("ReiAnixLoadingIndicator()", organize)
+        self.assertIn("ReiAnixLoadingIndicator(", settings)
+
+    def test_shared_controls_artwork_lazy_lists_and_accessible_navigation_are_preserved(self):
+        home = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt")
+        library = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt")
+        search = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt")
+        details = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
+        settings = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt")
+        components = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixComponents.kt")
+        navigation = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
+        player = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixPlayer.kt")
+        self.assertIn("ReiAnixAnimeCard(", home)
+        self.assertIn("ReiAnixAnimeCard(", library)
+        self.assertIn("ReiAnixAnimeCard(", search)
+        self.assertIn("key = { anime -> anime.stableKey }", library)
+        self.assertIn("key = { anime -> anime.stableKey }", search)
+        self.assertIn("key = { episode -> episode.stableKey }", details)
+        self.assertIn("fun ReiAnixSearchField(", components)
+        self.assertIn("fun ReiAnixChip(", components)
+        self.assertIn("fun ReiAnixProgressIndicator(", components)
+        self.assertIn("ReiAnixTokens.Dimensions.settingsRowMinHeight", settings)
+        self.assertIn("BOTTOM_NAV_CONTENT_DESCRIPTION", navigation)
+        self.assertIn("BackHandler", player)
+        artwork = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt")
+        self.assertIn("ReiAnixLocalArtwork", artwork)
+        self.assertTrue("ReiAnixPoster" in components or "ReiAnixPoster" in home)
+
+
+if __name__ == "__main__":
+    unittest.main()

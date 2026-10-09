@@ -30,6 +30,17 @@ import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
  */
 
 @Composable
+fun ReiAnixLoadingIndicator(
+    modifier: Modifier = Modifier,
+) {
+    CircularProgressIndicator(
+        modifier = modifier.size(ReiAnixTokens.Dimensions.loadingIndicatorSize),
+        strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+
+@Composable
 fun ReiAnixLoadingState(
     title: String = "Carregando",
     message: String = "Carregando…",
@@ -42,15 +53,15 @@ fun ReiAnixLoadingState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
-        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        ReiAnixLoadingIndicator()
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = ReiAnixTokens.TypographyTokens.sectionTitle,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
             text = message,
-            style = MaterialTheme.typography.bodyMedium,
+            style = ReiAnixTokens.TypographyTokens.secondary,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -87,13 +98,13 @@ fun ReiAnixEmptyState(
         }
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineSmall,
+            style = ReiAnixTokens.TypographyTokens.emptyStateTitle,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.semantics { heading() },
         )
         Text(
             text = message,
-            style = MaterialTheme.typography.bodyLarge,
+            style = ReiAnixTokens.TypographyTokens.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (actionLabel != null && onAction != null) {
@@ -138,20 +149,16 @@ fun ReiAnixScannerInProgressState(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(ReiAnixTokens.Dimensions.loadingIndicatorSize),
-                strokeWidth = ReiAnixTokens.Dimensions.loadingIndicatorStroke,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            ReiAnixLoadingIndicator()
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Varredura em andamento",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = ReiAnixTokens.TypographyTokens.itemTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = normalizedState,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = ReiAnixTokens.TypographyTokens.metadata,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -274,13 +281,13 @@ fun ReiAnixRecoverableErrorState(
         }
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineSmall,
+            style = ReiAnixTokens.TypographyTokens.emptyStateTitle,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.semantics { heading() },
         )
         Text(
             text = message,
-            style = MaterialTheme.typography.bodyLarge,
+            style = ReiAnixTokens.TypographyTokens.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         ReiAnixPrimaryButton(

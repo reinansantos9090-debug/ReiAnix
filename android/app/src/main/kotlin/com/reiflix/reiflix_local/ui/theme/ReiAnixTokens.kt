@@ -53,6 +53,10 @@ object ReiAnixTokens {
 
         val text = Color(0xFFFFFFFF)
         val textMuted = Color(0xFFB3B3B3)
+        // Semantic roles used by shared UI components; values remain owned by this palette.
+        val onBackground = text
+        val onSurface = text
+        val muted = textMuted
         val textTertiary = Color(0xFF777777)
         val textDisabled = Color(0xFF666666)
         val textOnPrimary = onPrimary
@@ -113,6 +117,9 @@ object ReiAnixTokens {
         val lightSurfaceDialog = Color(0xFFE7E7EA)
         val lightText = Color(0xFF141414)
         val lightTextMuted = Color(0xFF5F5F5F)
+        val lightOnBackground = lightText
+        val lightOnSurface = lightText
+        val lightMuted = lightTextMuted
         val lightBorder = Color(0xFFD0D0D0)
         val lightDivider = Color(0xFFDEDEDE)
     }
@@ -199,13 +206,14 @@ object ReiAnixTokens {
         val progressHeight = 4.dp
         val dividerHeight = 1.dp
         val borderWidth = 1.dp
+        val cornerRadius = 12.dp
     }
 
     object Shapes {
         val chip = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
         val button = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)
-        val card = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        val card = androidx.compose.foundation.shape.RoundedCornerShape(Dimensions.cornerRadius)
         val large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val artwork = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
         val hero = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
@@ -308,6 +316,8 @@ object ReiAnixTokens {
             lineHeight = 18.sp,
             fontWeight = FontWeight.Normal,
         )
+        // Semantic alias for screen descriptions and other secondary copy.
+        val secondary = bodySecondary
         val metadata = TextStyle(
             fontSize = 12.sp,
             lineHeight = 16.sp,
