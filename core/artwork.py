@@ -1034,68 +1034,73 @@ class ArtworkEngine:
             return future
 
     def request(self, entity_type, entity_id, artwork_type, *, priority=100,
-                allow_network=True, blocking=False, force=False):
+                 allow_network=True, blocking=False, force=False):
         """Request one artwork; concurrent requests for the same key coalesce."""
         entity_type = self._entity(entity_type, entity_id)
         artwork_type = self._type(artwork_type)
         self._log("request", entity_type=entity_type, entity_id=entity_id, artwork_type=artwork_type)
         self._notify("request", entity_type=entity_type, entity_id=entity_id, artwork_type=artwork_type)
 
-        rows = self.list_for(entity_type, entity_id, artwork_type)
-        pending_remote = next(
-            (item for item in rows
-             if item.get("external_url")
-             and not (item.get("local_path") and self._is_valid_image_file(item.get("local_path")))
-             and item.get("status") != STATUS_INVALID),
-            None,
-        )
-        cached = self.get(entity_type, entity_id, artwork_type, allow_network=False)
-        if cached and not pending_remote:
-            self._notify("hit", row=cached)
-            return cached
-        if cached and pending_remote and cached.get("external_url") == pending_remote.get("external_url"):
-            self._notify("hit", row=cached)
-            return cached
-        external_rows = [item for item in rows if item.get("external_url")]
-        row = next(
-            (item for item in external_rows
-             if not (item.get("local_path") and self._is_valid_image_file(item.get("local_path")))),
-            None,
-        )
-        row = row or (external_rows[0] if external_rows else None)
-        if row is None:
-            self._log("miss", entity_type=entity_type, entity_id=entity_id, artwork_type=artwork_type)
-            return None
-        current_status = str(row.get("status") or "").casefold()
-        # Terminal failures require an explicit retry; screen/scan requests
-        # must not restart failed downloads indefinitely.
-        if not force and current_status in {STATUS_FAILED, STATUS_INVALID}:
-            return row
-        now = time.time()
-        retry_at = float(row.get("next_retry_at") or 0)
-        if not force and retry_at > now:
-            return row
-        if not allow_network:
-            return row
-
-        key = row.get("artwork_key") or self._make_key(
-            row.get("source") or "url", row.get("source_ref") or row.get("external_url"),
-            artwork_type, row.get("variant") or _VARIANT_PRIORITY.get(artwork_type, "default"),
-        )
-        variant = row.get("variant") or _VARIANT_PRIORITY.get(artwork_type, "default")
-        self._set_status(row["id"], STATUS_QUEUED)
+        # Serialize the cache/status check with queue insertion and the worker's
+        # cache commit. Without this lock, a download can finish after the cache
+        # check but before _enqueue(), so a second caller queues the same URL
+        # again using a stale row snapshot.
         with self._lock:
-            generation = self._generation
-        try:
-            future = self._enqueue(
-                key,
-                lambda generation=generation: self._download_row(row, force=force, generation=generation),
-                priority=priority,
+            rows = self.list_for(entity_type, entity_id, artwork_type)
+            pending_remote = next(
+                (item for item in rows
+                 if item.get("external_url")
+                 and not (item.get("local_path") and self._is_valid_image_file(item.get("local_path")))
+                 and item.get("status") != STATUS_INVALID),
+                None,
             )
-        except queue.Full:
-            self._set_status(row["id"], STATUS_NOT_REQUESTED)
-            self._log("cancel", key=key, reason="pending_limit")
-            return row
+            cached = self.get(entity_type, entity_id, artwork_type, allow_network=False)
+            if cached and not pending_remote:
+                self._notify("hit", row=cached)
+                return cached
+            if cached and pending_remote and cached.get("external_url") == pending_remote.get("external_url"):
+                self._notify("hit", row=cached)
+                return cached
+            external_rows = [item for item in rows if item.get("external_url")]
+            row = next(
+                (item for item in external_rows
+                 if not (item.get("local_path") and self._is_valid_image_file(item.get("local_path")))),
+                None,
+            )
+            row = row or (external_rows[0] if external_rows else None)
+            if row is None:
+                self._log("miss", entity_type=entity_type, entity_id=entity_id, artwork_type=artwork_type)
+                return None
+            current_status = str(row.get("status") or "").casefold()
+            # Terminal failures require an explicit retry; screen/scan requests
+            # must not restart failed downloads indefinitely.
+            if not force and current_status in {STATUS_FAILED, STATUS_INVALID}:
+                return row
+            now = time.time()
+            retry_at = float(row.get("next_retry_at") or 0)
+            if not force and retry_at > now:
+                return row
+            if not allow_network:
+                return row
+
+            key = row.get("artwork_key") or self._make_key(
+                row.get("source") or "url", row.get("source_ref") or row.get("external_url"),
+                artwork_type, row.get("variant") or _VARIANT_PRIORITY.get(artwork_type, "default"),
+            )
+            generation = self._generation
+            self._set_status(row["id"], STATUS_QUEUED)
+            try:
+                future = self._enqueue(
+                    key,
+                    lambda generation=generation: self._download_row(row, force=force, generation=generation),
+                    priority=priority,
+                )
+            except queue.Full:
+                self._set_status(row["id"], STATUS_NOT_REQUESTED)
+                self._log("cancel", key=key, reason="pending_limit")
+                return row
+        # Never wait for a worker while holding _lock: the worker needs that
+        # same lock to atomically publish its file and database row.
         if blocking:
             return future.result()
         return dict(row, status=STATUS_QUEUED)
