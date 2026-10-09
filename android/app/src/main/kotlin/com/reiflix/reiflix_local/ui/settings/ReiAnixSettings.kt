@@ -66,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.BuildConfig
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
+import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
@@ -1820,14 +1821,11 @@ private fun LanguageSettingCard(
                 description = description,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
+            ReiAnixCompactButton(
+                text = "Salvar",
                 onClick = { onSave(draftValue.trim()) },
-                modifier = Modifier
-                    .heightIn(min = ReiAnixTokens.Dimensions.touchTarget)
-                    .semantics { contentDescription = "Salvar " + title },
-            ) {
-                Text("Salvar")
-            }
+                modifier = Modifier.semantics { contentDescription = "Salvar " + title },
+            )
         }
         ReiAnixTextField(
             value = draftValue,
