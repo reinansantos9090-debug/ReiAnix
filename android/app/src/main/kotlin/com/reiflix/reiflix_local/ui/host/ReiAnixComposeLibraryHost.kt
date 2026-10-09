@@ -151,6 +151,14 @@ class ReiAnixComposeLibraryHost(
                                         "Ignoring unsupported Compose Settings category=" + label,
                                     )
                                 },
+                                onOpenStorage = {
+                                    navController.navigate(
+                                        ReiAnixRoutes.STORAGE,
+                                        navOptions {
+                                            launchSingleTop = true
+                                        },
+                                    )
+                                },
                             )
                         },
                         storage = {
