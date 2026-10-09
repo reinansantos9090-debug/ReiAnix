@@ -1081,17 +1081,12 @@ private fun DetailsSeasonsSection(
                 modifier = Modifier.weight(1f),
             )
             if (selectedSeason != null && anime.seasons.size > 1) {
-                Text(
+                ReiAnixCompactButton(
                     text = "Ver todas  ›",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clickable(onClick = onViewEpisodes)
-                        .semantics {
-                            role = Role.Button
-                            contentDescription = "Ver todos os episódios"
-                        }
-                        .padding(ReiAnixTokens.Spacing.sm),
+                    onClick = onViewEpisodes,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Ver todos os episódios"
+                    },
                 )
             }
         }
