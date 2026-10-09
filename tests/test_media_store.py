@@ -186,6 +186,25 @@ class TestFinalStorageHardening(unittest.TestCase):
         self.assertIn("reconciliationCapabilities", source)
         self.assertIn("WAITING_FOR_MEDIASTORE", runner)
 
+    def test_native_index_rejects_invalid_empty_snapshots_and_reaps_orphans(self):
+        index = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "storage" / "NativeIndex.kt").read_text(encoding="utf-8")
+        self.assertIn("private fun committedSnapshotCount(", index)
+        self.assertIn("private fun legacySnapshotCount(", index)
+        self.assertIn("count.takeIf { it > 0 }", index)
+        self.assertIn("count.takeIf { it == 0 }", index)
+        self.assertNotIn("legacyItems.length() >= 0", index)
+        self.assertIn("committedGenerationId != currentGenerationId", index)
+        self.assertIn("cleanupUnreferencedBatchFiles(context, state)", index)
+        self.assertIn('candidate.name.endsWith(".ndjson.tmp")', index)
+        self.assertIn("committedPaths.contains(path)", index)
+        self.assertIn("activeStagingPaths.contains(path)", index)
+        self.assertIn('state.has("recovery")', index)
+        self.assertIn('put("legacyItemsStatus", normalizedStatus)', index)
+        start = index[index.index("fun startGeneration"):index.index("fun markGenerationRunning")]
+        finish = index[index.index("fun finishGeneration"):index.index("fun prepare(")]
+        self.assertLess(start.index("write(context, state)"), start.index("cleanupUnreferencedBatchFiles(context, state)"))
+        self.assertLess(finish.index("write(context, state)"), finish.index("cleanupUnreferencedBatchFiles(context, state)"))
+
 
 class TestNovaFormatCompatibility(unittest.TestCase):
     def test_media_store_and_saf_use_extended_video_extension_fallback(self):

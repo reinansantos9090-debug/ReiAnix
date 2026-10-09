@@ -8,8 +8,11 @@ import android.provider.MediaStore
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedReader
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStreamReader
 import java.security.MessageDigest
 
 /**
@@ -70,6 +73,134 @@ object NativeIndex {
     private fun committedFileFromScope(context: Context, scope: JSONObject): File? {
         val path = scope.optString("committedFile").trim()
         return path.takeIf { it.isNotEmpty() }?.let(::File)?.takeIf { it.isFile }
+    }
+
+    private fun isCompleteStatus(status: String): Boolean =
+        status.equals(STATUS_COMPLETED, ignoreCase = true) ||
+            status.equals(STATUS_EMPTY_COMPLETE, ignoreCase = true)
+
+    /**
+     * Returns the number of documents only when the committed snapshot is
+     * readable, contained in the native batch directory, and consistent with
+     * the completion status that published it. A completed snapshot cannot be
+     * empty; an empty snapshot is valid only for an explicit EMPTY_COMPLETE.
+     */
+    private fun committedSnapshotCount(
+        context: Context,
+        scope: JSONObject,
+        expectedStatus: String,
+        requireCurrentGenerationMatch: Boolean = true,
+    ): Int? {
+        val committed = committedFileFromScope(context, scope) ?: return null
+        val batchDir = runCatching { batchDirectory(context).canonicalFile }.getOrNull() ?: return null
+        val target = runCatching { committed.canonicalFile }.getOrNull() ?: return null
+        if (target.parentFile != batchDir || !target.name.endsWith(".ndjson")) return null
+
+        val recordedStatus = scope.optString("committedStatus").trim().ifBlank { expectedStatus }
+        if (!recordedStatus.equals(expectedStatus, ignoreCase = true)) return null
+        if (requireCurrentGenerationMatch) {
+            val committedGenerationId = scope.optString("committedGenerationId").trim()
+            val currentGenerationId = scope.optString("generationId").trim()
+            if (committedGenerationId.isNotEmpty() && currentGenerationId.isNotEmpty() &&
+                committedGenerationId != currentGenerationId
+            ) return null
+        }
+
+        var count = 0
+        val readable = runCatching {
+            BufferedReader(InputStreamReader(FileInputStream(target), Charsets.UTF_8)).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isBlank()) continue
+                    JSONObject(line)
+                    count++
+                }
+            }
+        }.isSuccess
+        if (!readable) return null
+
+        return when {
+            recordedStatus.equals(STATUS_COMPLETED, ignoreCase = true) -> count.takeIf { it > 0 }
+            recordedStatus.equals(STATUS_EMPTY_COMPLETE, ignoreCase = true) -> count.takeIf { it == 0 }
+            else -> null
+        }
+    }
+
+    /**
+     * Legacy item maps are reusable only when every value is a document and
+     * their count agrees with the persisted completion status.
+     */
+    private fun legacySnapshotCount(items: JSONObject?, status: String): Int? {
+        if (items == null) return null
+        var count = 0
+        val keys = items.keys()
+        while (keys.hasNext()) {
+            if (items.optJSONObject(keys.next()) == null) return null
+            count++
+        }
+        return when {
+            status.equals(STATUS_COMPLETED, ignoreCase = true) -> count.takeIf { it > 0 }
+            status.equals(STATUS_EMPTY_COMPLETE, ignoreCase = true) -> count.takeIf { it == 0 }
+            else -> null
+        }
+    }
+
+    /**
+     * Removes only native batch files no longer referenced by a committed
+     * scope or an in-flight generation. The metadata snapshot is written first,
+     * so the last committed file remains protected if publication fails.
+     */
+    private fun cleanupUnreferencedBatchFiles(context: Context, state: JSONObject) {
+        try {
+            // If the index is missing/corrupt or belongs to a newer version, its
+            // references cannot be trusted enough to delete any existing snapshot.
+            if (!file(context).isFile || state.has("recovery") || state.optInt("version", VERSION) > VERSION) return
+            val scopeMap = state.optJSONObject("scopes") ?: return
+            val batchDir = batchDirectory(context)
+            val canonicalBatchDir = runCatching { batchDir.canonicalFile }.getOrNull() ?: return
+            val entries = batchDir.listFiles() ?: return
+            val committedPaths = HashSet<String>()
+            val activeStagingPaths = HashSet<String>()
+            val keys = scopeMap.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val scope = scopeMap.optJSONObject(key) ?: continue
+                val committedPath = scope.optString("committedFile").trim()
+                if (committedPath.isNotEmpty()) {
+                    runCatching { File(committedPath).canonicalPath }.getOrNull()?.let(committedPaths::add)
+                }
+                val status = scope.optString("status")
+                if (status != STATUS_STARTED && status != STATUS_RUNNING) continue
+                val source = scope.optString("source").trim()
+                val scopeKey = scope.optString("scopeKey").trim().ifBlank { key }
+                val generation = scope.optLong("generation", 0L)
+                if (source.isBlank() || generation <= 0L) continue
+                runCatching { stagingFile(context, source, scopeKey, generation).canonicalPath }
+                    .getOrNull()?.let(activeStagingPaths::add)
+            }
+
+            var deleted = 0
+            for (candidate in entries) {
+                if (!candidate.isFile) continue
+                val committed = candidate.name.endsWith(".ndjson")
+                val staging = candidate.name.endsWith(".ndjson.tmp")
+                if (!committed && !staging) continue
+                val canonical = runCatching { candidate.canonicalFile }.getOrNull() ?: continue
+                if (canonical.parentFile != canonicalBatchDir) continue
+                val path = canonical.path
+                val referenced = if (committed) committedPaths.contains(path) else activeStagingPaths.contains(path)
+                if (referenced) continue
+                if (candidate.delete()) {
+                    deleted++
+                } else {
+                    Log.w("NativeIndex", "Could not remove unreferenced native batch file: " + candidate.name)
+                }
+            }
+            if (deleted > 0) Log.d("NativeIndex", "Removed " + deleted + " unreferenced native batch file(s)")
+        } catch (error: Exception) {
+            // Cleanup is best-effort and must never fail or abort a scan.
+            Log.w("NativeIndex", "Could not clean unreferenced native batch files", error)
+        }
     }
 
     private fun read(context: Context): JSONObject {
@@ -157,6 +288,24 @@ object NativeIndex {
         val state = read(context)
         val scopeMap = scopes(state)
         val scope = scopeMap.optJSONObject(scopeKey) ?: JSONObject().also { scopeMap.put(scopeKey, it) }
+        val previousStatus = scope.optString("status")
+        val previousGenerationId = scope.optString("generationId").trim()
+        if (scope.optString("committedFile").isNotBlank()) {
+            if (scope.optString("committedStatus").isBlank() && isCompleteStatus(previousStatus)) {
+                scope.put("committedStatus", previousStatus)
+            }
+            if (scope.optString("committedGenerationId").isBlank() && previousGenerationId.isNotEmpty()) {
+                scope.put("committedGenerationId", previousGenerationId)
+            }
+        }
+        if (scope.optJSONObject("items") != null) {
+            if (scope.optString("legacyItemsStatus").isBlank() && isCompleteStatus(previousStatus)) {
+                scope.put("legacyItemsStatus", previousStatus)
+            }
+            if (scope.optString("legacyItemsGenerationId").isBlank() && previousGenerationId.isNotEmpty()) {
+                scope.put("legacyItemsGenerationId", previousGenerationId)
+            }
+        }
         val generation = nextGeneration(state, scopeKey)
         val now = System.currentTimeMillis()
         scope.put("generation", generation)
@@ -183,6 +332,7 @@ object NativeIndex {
             .put("duplicates", 0)
             .put("removed", 0)
         write(context, state)
+        cleanupUnreferencedBatchFiles(context, state)
         val staging = stagingFile(context, source, scopeKey, generation)
         check(staging.parentFile?.isDirectory == true || staging.parentFile?.mkdirs() == true)
         if (!staging.exists()) staging.writeText("", Charsets.UTF_8)
@@ -352,7 +502,12 @@ object NativeIndex {
             .put("committedFile", if (published) committed.absolutePath else committedFileFromScope(context, scope)?.absolutePath ?: "")
             .put("metadata", JSONObject(metadata.toString()))
             .put("counts", counts.put("finishedAt", now))
+        if (published) {
+            scope.put("committedStatus", normalizedStatus)
+                .put("committedGenerationId", sourceKey)
+        }
         write(context, state)
+        cleanupUnreferencedBatchFiles(context, state)
         JSONObject()
             .put("generation", effectiveGeneration)
             .put("generationId", sourceKey)
@@ -447,7 +602,10 @@ object NativeIndex {
                 val doc = output.getJSONObject(i)
                 items.put(doc.getString("stableId"), JSONObject(doc.toString()).put("fingerprint", doc.getString("nativeFingerprint")))
             }
-            scope.put("updatedAt", now).put("items", items)
+            scope.put("updatedAt", now)
+                .put("items", items)
+                .put("legacyItemsStatus", normalizedStatus)
+                .put("legacyItemsGenerationId", generationIdentifier)
         }
         write(context, state)
         NativePrepared(output, effectiveGeneration, newItems, changedItems, unchangedItems, duplicates, removedItems, normalizedStatus, scopeKey)
@@ -475,6 +633,7 @@ object NativeIndex {
             }
         }
         write(context, state)
+        cleanupUnreferencedBatchFiles(context, state)
     }
 
     fun failGeneration(context: Context, source: String, scopeKey: String, generation: Long, error: String, metadata: JSONObject = JSONObject()) = synchronized(this) {
@@ -489,6 +648,7 @@ object NativeIndex {
             .put("error", error)
             .put("metadata", JSONObject(metadata.toString()))
         write(context, state)
+        cleanupUnreferencedBatchFiles(context, state)
     }
 
     fun forEachCachedBatch(
@@ -498,8 +658,13 @@ object NativeIndex {
         onBatch: (JSONArray, Int) -> Unit,
     ): Int = synchronized(this) {
         val scope = scopes(read(context)).optJSONObject(scopeKey) ?: return@synchronized 0
+        val currentStatus = scope.optString("status")
+        val committedStatus = scope.optString("committedStatus").trim().ifBlank { currentStatus }
         val committed = committedFileFromScope(context, scope)
-        if (committed != null) {
+        if (committed != null && committedSnapshotCount(
+                context, scope, committedStatus, requireCurrentGenerationMatch = true
+            ) != null
+        ) {
             var sequence = 0
             return@synchronized NativeBatch.readNdjsonBatches(committed, batchSize) {
                 sequence += 1
@@ -507,6 +672,8 @@ object NativeIndex {
             }
         }
         val items = scope.optJSONObject("items") ?: return@synchronized 0
+        val legacyStatus = scope.optString("legacyItemsStatus").trim().ifBlank { currentStatus }
+        if (legacySnapshotCount(items, legacyStatus) == null) return@synchronized 0
         var sequence = 0
         var batch = JSONArray()
         var total = 0
@@ -553,14 +720,23 @@ object NativeIndex {
                                  currentVersion: String, currentGeneration: Long): Boolean = synchronized(this) {
         if (Build.VERSION.SDK_INT < 30 || accessLevel != "full" || currentVersion.isBlank() || currentGeneration <= 0L) return@synchronized false
         val scope = scopes(read(context)).optJSONObject("mediastore:" + volumeName) ?: return@synchronized false
-        if (scope.optString("status") !in setOf(STATUS_COMPLETED, STATUS_EMPTY_COMPLETE)) return@synchronized false
+        val status = scope.optString("status")
+        if (!isCompleteStatus(status)) return@synchronized false
         val meta = scope.optJSONObject("metadata") ?: return@synchronized false
-        val committed = committedFileFromScope(context, scope)
-        val legacyItems = scope.optJSONObject("items")
-        val snapshotAvailable = committed != null || (legacyItems != null && legacyItems.length() >= 0)
-        meta.optString("mediaStoreVersion") == currentVersion &&
+        val metadataMatches = meta.optString("mediaStoreVersion") == currentVersion &&
             meta.optLong("mediaStoreGeneration", -1L) == currentGeneration &&
-            meta.optString("accessLevel") == "full" && snapshotAvailable
+            meta.optString("accessLevel") == "full"
+        if (!metadataMatches) return@synchronized false
+
+        val committedValid = committedSnapshotCount(context, scope, status, requireCurrentGenerationMatch = true) != null
+        val legacyStatus = scope.optString("legacyItemsStatus").trim().ifBlank { status }
+        val legacyGenerationId = scope.optString("legacyItemsGenerationId").trim()
+        val currentGenerationId = scope.optString("generationId").trim()
+        val legacyGenerationMatches = legacyGenerationId.isEmpty() || currentGenerationId.isEmpty() ||
+            legacyGenerationId == currentGenerationId
+        val legacyValid = legacyStatus.equals(status, ignoreCase = true) && legacyGenerationMatches &&
+            legacySnapshotCount(scope.optJSONObject("items"), legacyStatus) != null
+        committedValid || legacyValid
     }
 
     fun volumeSnapshot(context: Context): JSONArray {
