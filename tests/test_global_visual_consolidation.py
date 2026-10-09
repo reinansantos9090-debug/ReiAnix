@@ -130,8 +130,8 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         ):
             self.assertIn("val " + token + " =", tokens)
             self.assertIn("ReiAnixTokens.Responsive." + token, responsive)
-        self.assertNotRegex(responsive, r"\\b\\d+(?:\\.\\d+)?\\.dp\\b")
-        self.assertIn("ReiAnixTokens.Dimensions.detailsHeroWideBreakpoint", tokens)
+        self.assertNotRegex(responsive, r"\b\d+(?:\.\d+)?\.dp\b")
+        self.assertIn("val mediumWidth = Dimensions.detailsHeroWideBreakpoint", tokens)
         self.assertIn("val mediumWidth = ReiAnixTokens.Responsive.mediumWidth", responsive)
 
 
