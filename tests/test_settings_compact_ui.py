@@ -229,11 +229,14 @@ def test_preference_text_presentation_is_shared_without_changing_persistence_row
     assert "ReiAnixTokens.TypographyTokens.metadata" in helper
     assert "maxLines = 1" in helper
     assert "maxLines = 2" in helper
-    assert "Text(" not in block(
+    boolean_row = block(
         source,
         "@Composable\nprivate fun BooleanSettingCard(",
         "@Composable\nprivate fun LanguageSettingCard(",
     )
+    assert "SettingsPreferenceText(" in boolean_row
+    assert "text = title," not in boolean_row
+    assert "text = description," not in boolean_row
     assert "onSave(draftValue.trim())" in source
     assert "onCheckedChange(!checked)" in source
     assert "onSelected(choice.value)" in source
