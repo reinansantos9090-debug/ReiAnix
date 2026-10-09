@@ -40,5 +40,15 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertIn('performScrollToNode(hasText("E300 • Episode 300"))', tests)
 
 
+    def test_details_scroll_state_is_keyed_by_anime_and_selector_uses_compact_tokens(self):
+        source = DETAILS.read_text(encoding="utf-8")
+        tokens = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt").read_text(encoding="utf-8")
+        self.assertIn(".background(MaterialTheme.colorScheme.background)", source)
+        self.assertIn("val listState = rememberSaveable(\n        anime.id,", source)
+        self.assertIn("MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)", source)
+        self.assertIn("val detailsSeasonCardWidth = 236.dp", tokens)
+        self.assertIn("val detailsSeasonPreviewWidth = 80.dp", tokens)
+        self.assertIn("val detailsSeasonPreviewHeight = 54.dp", tokens)
+
 if __name__ == "__main__":
     unittest.main()

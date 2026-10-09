@@ -197,9 +197,9 @@ object ReiAnixTokens {
         val emptyStateMinHeight = 240.dp
         val organizeGenreCardWidth = 170.dp
         val organizeCategoryCardWidth = 156.dp
-        val detailsSeasonCardWidth = 340.dp
-        val detailsSeasonPreviewWidth = 108.dp
-        val detailsSeasonPreviewHeight = 72.dp
+        val detailsSeasonCardWidth = 236.dp
+        val detailsSeasonPreviewWidth = 80.dp
+        val detailsSeasonPreviewHeight = 54.dp
         val detailsInfoLabelWidth = 96.dp
         val homeHeroHeight = 220.dp
         val homeCardWidth = 100.dp

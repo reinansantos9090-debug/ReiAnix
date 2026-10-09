@@ -207,7 +207,9 @@ fun ReiAnixDetailsScreen(
 ) {
     ReiAnixResponsiveRoot {
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         when (state.status) {
@@ -384,6 +386,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
         mutableStateOf(DetailsSection.ABOUT)
     }
     val listState = rememberSaveable(
+        anime.id,
         saver = LazyListState.Saver,
     ) {
         LazyListState()
@@ -673,7 +676,7 @@ private fun DetailsHero(
             verticalAlignment = Alignment.CenterVertically) {
             ReiAnixIconActionButton(icon = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", onClick = onBack)
             Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
-            Text(text = anime.title, style = ReiAnixTokens.TypographyTokens.screenTitle, color = MaterialTheme.colorScheme.onBackground,
+            Text(text = "Detalhes", style = ReiAnixTokens.TypographyTokens.brandTitle, color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Box {
                 ReiAnixIconActionButton(icon = Icons.Filled.MoreVert, contentDescription = "Mais opções", onClick = { menuExpanded.value = true })
@@ -1021,9 +1024,9 @@ private fun DetailsSeasonCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
         } else {
-            MaterialTheme.colorScheme.surfaceContainer
+            MaterialTheme.colorScheme.surface
         },
     ) {
         Row(
