@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -56,6 +57,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -560,6 +562,69 @@ fun ReiAnixIconActionButton(
             },
             modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
         )
+    }
+}
+
+
+/**
+ * Canonical compact header for ReiAnix screens.
+ * Screen-specific actions stay in the caller, while sizing, title hierarchy,
+ * horizontal spacing, navigation affordance and accessibility remain shared.
+ */
+@Composable
+fun ReiAnixTopBar(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    navigationIcon: ImageVector? = null,
+    navigationContentDescription: String = "Voltar",
+    onNavigationClick: (() -> Unit)? = null,
+    titleStyle: TextStyle = ReiAnixTokens.TypographyTokens.screenTitle,
+    titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
+            ReiAnixTokens.Spacing.xs,
+        ),
+    ) {
+        if (navigationIcon != null && onNavigationClick != null) {
+            ReiAnixIconActionButton(
+                icon = navigationIcon,
+                contentDescription = navigationContentDescription,
+                onClick = onNavigationClick,
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
+                if (subtitle.isNullOrBlank()) ReiAnixTokens.Spacing.none else ReiAnixTokens.Spacing.xs,
+            ),
+        ) {
+            Text(
+                text = title,
+                style = titleStyle,
+                color = titleColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.semantics { heading() },
+            )
+            subtitle?.takeIf { it.isNotBlank() }?.let { detail ->
+                Text(
+                    text = detail,
+                    style = ReiAnixTokens.TypographyTokens.secondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        actions()
     }
 }
 
