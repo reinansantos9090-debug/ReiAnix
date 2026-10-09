@@ -170,7 +170,8 @@ def test_all_settings_categories_are_compose_owned_and_actionable():
     settings_callback_end = host.index("storage = {", settings_callback_start)
     settings_callback = host[settings_callback_start:settings_callback_end]
     assert "publishSettingsNavigation(" not in settings_callback
-    assert "ReiAnixRoutes.STORAGE" not in settings_callback
+    assert "onOpenStorage = {" in settings_callback
+    assert "ReiAnixRoutes.STORAGE" in settings_callback
 
 
 def test_shell_observes_only_narrow_settings_projections():
