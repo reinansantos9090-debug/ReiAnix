@@ -289,6 +289,12 @@ object ReiAnixTokens {
     object PlayerDimensions {
         val topHorizontalPadding = 8.dp
         val topBottomPadding = 20.dp
+        val topOverlayPortraitHeight = 132.dp
+        val topOverlayLandscapeHeight = 108.dp
+        val centerOverlayPortraitHeight = 110.dp
+        val centerOverlayLandscapeHeight = 100.dp
+        val bottomOverlayPortraitHeight = 154.dp
+        val bottomOverlayLandscapeHeight = 128.dp
         val topTitleWidthFraction = 0.84f
         val seekButtonSize = 60.dp
         val seekIconSize = 32.dp

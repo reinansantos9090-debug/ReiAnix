@@ -52,12 +52,14 @@ import android.view.WindowManager
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.Dp
 import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerTopControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerCenterControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerBottomControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerUiState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
+import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -2331,7 +2333,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         ).apply { gravity = Gravity.TOP }
         controls.addView(topBar, topParams)
 
-        val back = actionButton("‹", 44) {
+        val back = actionButton("Voltar", 44) {
             logPlayer("PLAYER_BACK BACK_BUTTON_TOUCH requestId=" + requestId.ifEmpty { "-" })
             finishPlayer("back_button")
         }
@@ -2352,7 +2354,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         topBar.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
 
-        lockButton = actionButton(if (locked) "🔒" else "🔓", 48) {
+        lockButton = actionButton(if (locked) "Desbloquear" else "Bloquear", 48) {
             setLocked(!locked)
         }.apply {
             tag = "reiflix_lock_button"
@@ -2360,7 +2362,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         topBar.addView(lockButton, weightParams(48))
 
-        val moreButton = actionButton("⋮", 48) {
+        val moreButton = actionButton("Opções", 48) {
             toggleMorePanel()
         }
         moreButton.contentDescription = "Mais opções"
@@ -2458,7 +2460,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         previousButton.tag = "reiflix_seek_back"
         centerControls.addView(previousButton, weightParams(70))
 
-        playPauseButton = actionButton("▶", 84) { togglePlayPause() }.apply {
+        playPauseButton = actionButton("Reproduzir", 84) { togglePlayPause() }.apply {
             contentDescription = "Reproduzir ou pausar"
             textSize = 26f
             tag = "reiflix_play_pause"
@@ -2758,7 +2760,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             composeTopView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(132),
+                dp(ReiAnixTokens.PlayerDimensions.topOverlayPortraitHeight),
                 Gravity.TOP,
             ),
         )
@@ -2766,7 +2768,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             composeCenterView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(110),
+                dp(ReiAnixTokens.PlayerDimensions.centerOverlayPortraitHeight),
                 Gravity.CENTER,
             ),
         )
@@ -2774,7 +2776,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             composeBottomView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(154),
+                dp(ReiAnixTokens.PlayerDimensions.bottomOverlayPortraitHeight),
                 Gravity.BOTTOM,
             ),
         )
@@ -2785,9 +2787,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun updateComposeOverlayBounds() {
         if (!composeControlsEnabled) return
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val topHeight = dp(if (landscape) 108 else 132)
-        val centerHeight = dp(if (landscape) 100 else 110)
-        val bottomHeight = dp(if (landscape) 128 else 154)
+        val topHeight = dp(
+            if (landscape) ReiAnixTokens.PlayerDimensions.topOverlayLandscapeHeight
+            else ReiAnixTokens.PlayerDimensions.topOverlayPortraitHeight,
+        )
+        val centerHeight = dp(
+            if (landscape) ReiAnixTokens.PlayerDimensions.centerOverlayLandscapeHeight
+            else ReiAnixTokens.PlayerDimensions.centerOverlayPortraitHeight,
+        )
+        val bottomHeight = dp(
+            if (landscape) ReiAnixTokens.PlayerDimensions.bottomOverlayLandscapeHeight
+            else ReiAnixTokens.PlayerDimensions.bottomOverlayPortraitHeight,
+        )
         if (::composeTopView.isInitialized) {
             composeTopView.layoutParams = (composeTopView.layoutParams as FrameLayout.LayoutParams).apply {
                 width = FrameLayout.LayoutParams.MATCH_PARENT
@@ -3013,8 +3024,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (!::player.isInitialized || errorVisible) return
         when {
             player.playbackState == Player.STATE_ENDED -> {
-                // The UI already exposes the replay affordance (↻) for an ended
-                // item, so tapping it must explicitly rewind before playback.
+                // The UI exposes a replay affordance for an ended item, so tapping
+                // it must explicitly rewind before playback.
                 player.seekTo(0L)
                 player.play()
                 logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
@@ -3036,10 +3047,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun updatePlayPauseButton() {
         if (::playPauseButton.isInitialized) {
             playPauseButton.text = when {
-                !::player.isInitialized -> "▶"
-                player.isPlaying -> "❚❚"
-                player.playbackState == Player.STATE_ENDED -> "↻"
-                else -> "▶"
+                !::player.isInitialized -> "Reproduzir"
+                player.playbackState == Player.STATE_ENDED -> "Repetir"
+                player.playbackState == Player.STATE_BUFFERING -> "Carregando"
+                player.isPlaying -> "Pausar"
+                else -> "Reproduzir"
             }
         }
         syncComposePlayerUiState()
@@ -3618,7 +3630,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun updateLockUi() {
         if (!::lockButton.isInitialized) return
-        lockButton.text = if (locked) "🔒" else "🔓"
+        lockButton.text = if (locked) "Desbloquear" else "Bloquear"
         lockButton.contentDescription = if (locked) "Desbloquear controles" else "Bloquear controles"
     }
 
@@ -4995,6 +5007,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
+
+    private fun dp(value: Dp): Int =
+        (value.value * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
 
     private fun sourceFor(localUri: Uri): String {
         return when {

@@ -262,8 +262,21 @@ class RuntimeAndroidContractTests(unittest.TestCase):
         controls = source[source.index("private fun installControls()"):source.index("private fun installBackHandler()")]
         top = controls[:controls.index("centerControls =")]
         bottom = controls[controls.index("bottomBar ="):]
-        self.assertIn('actionButton("‹", 44)', top)
-        self.assertIn('actionButton("⋮", 48)', top)
+        self.assertIn('actionButton("Voltar", 44)', top)
+        self.assertIn('actionButton("Opções", 48)', top)
+        self.assertNotIn('actionButton("‹", 44)', source)
+        self.assertNotIn('actionButton("⋮", 48)', source)
+        compose_controls = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixNativePlayerControls.kt"
+        ).read_text(encoding="utf-8")
+        for token in (
+            "Icons.Filled.ArrowBack",
+            "Icons.Filled.AspectRatio",
+            "Icons.Filled.MoreVert",
+            "Icons.Filled.Replay",
+            'onBack = { finishPlayer("back_button") }',
+        ):
+            self.assertIn(token, compose_controls + source)
         for label in ('"Áudio"', '"Legenda"', '"Velocidade"', '"Ajuste"', '"PIP"'):
             self.assertNotIn("actionButton("+label, top)
         self.assertNotIn('"Visto"', bottom)

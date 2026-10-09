@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -249,7 +252,15 @@ fun ReiAnixNativePlayerCenterControls(
                                     strokeWidth = ReiAnixTokens.PlayerDimensions.bufferingStroke,
                                 )
                             }
-                            state.isPlaying && !state.ended -> {
+                            state.ended -> {
+                                Icon(
+                                    imageVector = Icons.Filled.Replay,
+                                    contentDescription = null,
+                                    tint = ReiAnixTokens.Colors.playerControl,
+                                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                                )
+                            }
+                            state.isPlaying -> {
                                 Icon(
                                     imageVector = Icons.Filled.Pause,
                                     contentDescription = null,
@@ -496,17 +507,17 @@ fun ReiAnixNativePlayerBottomControls(
                 enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
-                glyph = "⛶",
-                label = "Redimensionar",
-                contentDescription = "Redimensionar vídeo",
+                icon = Icons.Filled.AspectRatio,
+                label = "Proporção",
+                contentDescription = "Alterar proporção do vídeo",
                 onClick = onResize,
                 enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
-                glyph = "☷",
-                label = "Fonte",
+                icon = Icons.Filled.MoreVert,
+                label = "Opções",
                 contentDescription = buildString {
-                    append("Fonte e opções do player")
+                    append("Mais opções do player")
                     val speed = state.playbackSpeed.takeIf { it.isFinite() && it > 0f }
                     speed?.let {
                         append(". Velocidade ")
@@ -533,8 +544,7 @@ fun ReiAnixNativePlayerBottomControls(
 
 @Composable
 private fun RowScope.PlayerBottomAction(
-    glyph: String? = null,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     contentDescription: String,
     onClick: () -> Unit,
@@ -554,20 +564,12 @@ private fun RowScope.PlayerBottomAction(
                     role = Role.Button
                 },
         ) {
-            if (glyph != null) {
-                Text(
-                    text = glyph,
-                    color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
-                    style = ReiAnixTokens.TypographyTokens.playerActionGlyph,
-                )
-            } else if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
-                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
+                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
+            )
         }
         Text(
             text = label,
