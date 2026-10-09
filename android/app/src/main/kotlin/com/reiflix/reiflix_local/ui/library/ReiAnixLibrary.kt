@@ -464,7 +464,7 @@ private fun ColumnScope.LibraryReadyContent(
                 start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 top = ReiAnixTokens.Spacing.xs,
-                bottom = ReiAnixTokens.Spacing.huge,
+                bottom = ReiAnixTokens.Spacing.xxl,
             ),
             verticalArrangement = Arrangement.spacedBy(libraryGridSpacing(gridDensity)),
             horizontalArrangement = Arrangement.spacedBy(libraryGridSpacing(gridDensity)),
@@ -772,9 +772,9 @@ private fun libraryGridMinWidth(preference: String): androidx.compose.ui.unit.Dp
 
 private fun libraryGridSpacing(preference: String): androidx.compose.ui.unit.Dp =
     when (preference.trim().lowercase()) {
-        "small" -> 14.dp
-        "large" -> 6.dp
-        else -> 10.dp
+        "small" -> ReiAnixTokens.Dimensions.libraryGridSpacingRelaxed
+        "large" -> ReiAnixTokens.Dimensions.libraryGridSpacingDense
+        else -> ReiAnixTokens.Dimensions.libraryGridSpacingBalanced
     }
 
 @Composable
@@ -791,9 +791,9 @@ private fun LibrarySourceSummaryCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(ReiAnixTokens.Spacing.xxl),
+                .padding(ReiAnixTokens.Spacing.lg),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
             Surface(
                 shape = ReiAnixTokens.Shapes.card,
@@ -864,10 +864,10 @@ private fun LibraryLoadingGrid(
             start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
             top = ReiAnixTokens.Spacing.sm,
-            bottom = ReiAnixTokens.Spacing.huge,
+            bottom = ReiAnixTokens.Spacing.xxl,
         ),
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         items(
             count = 6,
