@@ -342,7 +342,7 @@ private fun OrganizeSourcesAndScanPanel(
 
     Surface(
         modifier = modifier,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        shape = androidx.compose.ui.graphics.RectangleShape,
         color = MaterialTheme.colorScheme.background,
     ) {
         Column(
@@ -395,7 +395,7 @@ private fun OrganizeSourcesAndScanPanel(
             }
 
             Surface(
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                shape = androidx.compose.ui.graphics.RectangleShape,
                 color = MaterialTheme.colorScheme.background,
             ) {
                 Row(
@@ -452,7 +452,7 @@ private fun OrganizeSourcesAndScanPanel(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 260.dp),
+                        .heightIn(max = ReiAnixTokens.Dimensions.organizeFilterMaxHeight),
                     verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                     contentPadding = PaddingValues(vertical = ReiAnixTokens.Spacing.xs),
                 ) {

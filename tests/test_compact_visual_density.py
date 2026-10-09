@@ -31,6 +31,7 @@ class CompactVisualDensityTests(unittest.TestCase):
             "val settingsChoiceValueMinWidth = 64.dp",
             "val settingsChoiceValueMaxWidth = 120.dp",
             "val detailsSeasonCardMinWidth = 240.dp",
+            "val organizeFilterMaxHeight = 260.dp",
             "val dividerHeight = 1.dp",
         ):
             self.assertIn(token, tokens)

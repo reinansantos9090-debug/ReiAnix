@@ -134,6 +134,18 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertIn("val mediumWidth = Dimensions.detailsHeroWideBreakpoint", tokens)
         self.assertIn("val mediumWidth = ReiAnixTokens.Responsive.mediumWidth", responsive)
 
+    def test_rectangular_surfaces_use_semantic_shape_and_organize_filter_is_tokenized(self):
+        components = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixComponents.kt")
+        organize = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt")
+        settings = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt")
+        tokens = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt")
+        self.assertNotIn("RoundedCornerShape(0.dp)", components + organize + settings)
+        self.assertIn("shape = androidx.compose.ui.graphics.RectangleShape", components)
+        self.assertEqual(organize.count("shape = androidx.compose.ui.graphics.RectangleShape"), 2)
+        self.assertIn("shape = androidx.compose.ui.graphics.RectangleShape", settings)
+        self.assertIn("val organizeFilterMaxHeight = 260.dp", tokens)
+        self.assertIn("ReiAnixTokens.Dimensions.organizeFilterMaxHeight", organize)
+
 
 if __name__ == "__main__":
     unittest.main()

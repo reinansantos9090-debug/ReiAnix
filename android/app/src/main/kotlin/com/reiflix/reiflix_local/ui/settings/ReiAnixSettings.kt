@@ -1574,7 +1574,7 @@ fun ReiAnixSettingsSurface(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        shape = androidx.compose.ui.graphics.RectangleShape,
         color = MaterialTheme.colorScheme.background,
         tonalElevation = ReiAnixTokens.Elevation.none,
         content = content,

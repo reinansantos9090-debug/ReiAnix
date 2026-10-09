@@ -153,6 +153,7 @@ object ReiAnixTokens {
         val settingsChoiceDialogMaxHeight = 420.dp
         val settingsChoiceValueMinWidth = 64.dp
         val settingsChoiceValueMaxWidth = 120.dp
+        val organizeFilterMaxHeight = 260.dp
         val buttonMinHeight = 40.dp
         val chipMinHeight = 32.dp
         val touchTarget = 48.dp
