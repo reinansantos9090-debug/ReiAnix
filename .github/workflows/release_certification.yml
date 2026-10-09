@@ -1,0 +1,53 @@
+name: ReiAnix Release Evidence Certification
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: reianix-release-certification-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  source-certification:
+    name: Source and regression evidence (no emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout official repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install application and certification dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt "flet[cli]==0.86.5" pytest
+
+      - name: Run release evidence certification and 201-row matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/release_certification.py --skip-gradle
+
+      - name: Upload certification report and requirement matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-release-certification-${{ github.run_number }}
+          path: |
+            build/release-certification.json
+            build/release-certification.md
+            build/release-certification-matrix.json
+          retention-days: 14
+          if-no-files-found: error
