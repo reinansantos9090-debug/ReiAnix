@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
+    env:
+      GRADLE_USER_HOME: ${{ runner.temp }}/reianix-kotlin-gradle-home
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,7 +40,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -145,7 +146,7 @@ jobs:
       - name: Render Android project with Flet
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true"
+          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=false"
         run: |
           set -euo pipefail
           build_args=(
@@ -175,6 +176,7 @@ jobs:
         shell: bash
         env:
           SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/flutter/site-packages
+          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=false"
         run: |
           set -euo pipefail
           gradle_root="$GITHUB_WORKSPACE/build/flutter/android"
@@ -183,6 +185,7 @@ jobs:
             --project-dir "$gradle_root" \
             :app:testDebugUnitTest \
             --no-daemon \
+            --max-workers=1 \
             --console=plain \
             --stacktrace
 
