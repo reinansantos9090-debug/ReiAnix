@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui.library
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -133,7 +134,7 @@ class ReiAnixLibraryNavigationInstrumentedTest {
         )
         composeRule.onNodeWithText("Integration Anime").assertIsDisplayed()
         composeRule.onNodeWithText("Detalhes").assertIsDisplayed()
-        composeRule.onNodeWithText("Biblioteca").assertDoesNotExist()
+        composeRule.onNodeWithText("Biblioteca").assertIsNotDisplayed()
 
         composeRule.onNodeWithContentDescription("Voltar").performClick()
         composeRule.waitForIdle()
