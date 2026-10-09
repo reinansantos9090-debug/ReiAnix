@@ -209,4 +209,5 @@ def test_settings_rows_share_compact_spacing_and_group_dividers():
     assert "heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)" in choice_row
     assert "text = title," in section
     assert "title.uppercase()" not in section
-    assert "MaterialTheme.typography.titleMedium" in header
+    assert "ReiAnixTopBar(" in header
+    assert "titleStyle = ReiAnixTokens.TypographyTokens.screenTitle" in header
