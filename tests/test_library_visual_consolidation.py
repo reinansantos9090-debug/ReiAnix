@@ -88,7 +88,7 @@ class LibraryVisualConsolidationTests(unittest.TestCase):
         self.assertIn('title = "Biblioteca vazia"', library)
         self.assertIn('"Adicione uma pasta de mídia para começar."', library)
         self.assertIn('state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)', library)
-        self.assertIn('actionLabel = if (onOpenStorage != null) "Adicionar pasta"', library)
+        self.assertIn('onOpenStorage != null -> "Adicionar pasta"', library)
 
     def test_initial_scan_and_transient_snapshot_failures_do_not_show_false_empty_library(self):
         library = self.read(LIBRARY)
