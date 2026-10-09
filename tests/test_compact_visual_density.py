@@ -109,7 +109,9 @@ class CompactVisualDensityTests(unittest.TestCase):
         self.assertIn("ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION", navigation)
         self.assertIn("val touchTarget = 48.dp", tokens)
         self.assertIn("PlayerDimensions", tokens)
-        self.assertIn("track", player_ui.lower())
+        self.assertIn("BackHandler", player_ui)
+        self.assertIn("launchRequestId", player_ui)
+        self.assertIn("popBackStack()", player_ui)
         self.assertIn("PictureInPicture", player_activity)
         self.assertIn("enterImmersiveMode()", player_activity)
 
