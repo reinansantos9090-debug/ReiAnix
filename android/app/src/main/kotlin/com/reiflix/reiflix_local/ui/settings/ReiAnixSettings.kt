@@ -849,6 +849,15 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.zoom_enabled", it.toString()) },
                         )
                     }
+                    item(key = "setting:player.lock_mode") {
+                        BooleanSettingCard(
+                            keyName = "player.lock_mode",
+                            title = "Bloqueio dos controles",
+                            description = "Define o estado persistido de bloqueio dos controles ao abrir o player.",
+                            checked = state.settings["player.lock_mode"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.lock_mode", it.toString()) },
+                        )
+                    }
                     item(key = "setting:player.double_tap_seek_seconds") {
                         ChoiceSettingCard(
                             keyName = "player.double_tap_seek_seconds",
@@ -1422,163 +1431,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             choices = subtitleModeChoices,
                             onSelected = { onUpdateSetting("audio.subtitles", it) },
                         )
-                    }
-                }
-
-                "Artwork" -> {
-                    item(key = "setting:artwork.enabled") {
-                        BooleanSettingCard(
-                            keyName = "artwork.enabled",
-                            title = "Artwork remoto",
-                            description = "Permite que o Artwork Engine faça download de capas remotas. Artwork local e manual continuam utilizáveis.",
-                            checked = state.settings["artwork.enabled"] == "true",
-                            onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:artwork.cache_limit_mb") {
-                        ChoiceSettingCard(
-                            keyName = "artwork.cache_limit_mb",
-                            title = "Limite do cache de artwork",
-                            description = "Limite aplicado ao único Artwork Engine existente.",
-                            selectedValue = state.settings["artwork.cache_limit_mb"],
-                            choices = listOf(
-                                SettingChoice("64", "64 MB"),
-                                SettingChoice("128", "128 MB"),
-                                SettingChoice("256", "256 MB"),
-                                SettingChoice("512", "512 MB"),
-                            ),
-                            onSelected = { onUpdateSetting("artwork.cache_limit_mb", it) },
-                        )
-                    }
-                }
-
-                "Armazenamento" -> {
-                    item(key = "storage:route") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                            ) {
-                                Text(
-                                    text = "Armazenamento",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = storageSummary(state),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                "Dados e Cache" -> {
-                    item(key = "data-cache:overview") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Dados e Cache",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Configurações, importação, exportação e cache",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "As preferências exibidas aqui continuam sendo lidas da fonte canônica existente.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                "Backup e Restauração" -> {
-                    item(key = "backup:overview") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Backup e Restauração",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Backup v1 guarda o estado lógico do SQLite, preferências suportadas e referências de mídia. Vídeos, autenticação, tokens, credenciais e identificadores do dispositivo não entram no arquivo.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Restore valida formato, schema, SHA-256, tabelas, referências e foreign keys antes de alterar o banco.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 4,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                "Diagnóstico" -> {
-                    item(key = "diagnostic:overview") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Diagnóstico",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Versão ${BuildConfig.VERSION_NAME} • Android target 36",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Armazenamento: ${storageSummary(state)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = "Player, scanner e storage mantêm logs técnicos separados da mensagem exibida ao usuário.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
                     }
                 }
 
