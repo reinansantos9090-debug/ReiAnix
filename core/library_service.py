@@ -1063,6 +1063,7 @@ class LibraryService:
                     anilist_id = cached.get('anilist_id') or self.store.association(effective_lookup)
                     metadata_refreshed = True
                 cover_url = str(cached.get('cover_url') or '').strip()
+                banner_url = str(cached.get('banner_url') or '').strip()
                 if anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
                     entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
                     # ArtworkEngine owns local/cache checks, URL identity,
@@ -1070,6 +1071,11 @@ class LibraryService:
                     # Hydration must not wait for poster/backdrop bytes: the
                     # completion event publishes the incremental snapshot later.
                     self.artwork.sync_anime_metadata(cached['id'], cached, request_download=True)
+                    if banner_url:
+                        self.artwork.request(
+                            entity_type, cached['id'], 'backdrop',
+                            priority=90, allow_network=True, blocking=False,
+                        )
                 if cached.get('id'):
                     self.artwork.sync_anime_metadata(cached['id'], cached, request_download=False)
                     self._record_diagnostic(
