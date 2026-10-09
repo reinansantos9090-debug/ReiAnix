@@ -204,6 +204,7 @@ class ReiAnixTypographyConsistencyTests(unittest.TestCase):
         settings = (ROOT / "views/settings_view.py").read_text(encoding="utf-8")
         self.assertIn('ft.Text(title, size=15, weight=ft.FontWeight.BOLD', home)
         self.assertIn('ft.Text(label, color=TEXT, size=15, weight=ft.FontWeight.BOLD)', settings)
+        self.assertIn('ft.Text(description, color=TEXT_MUTED, size=12)', settings)
 
 
 if __name__ == "__main__":
