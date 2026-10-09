@@ -117,6 +117,7 @@ class ComposePerformanceTests(unittest.TestCase):
         library = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt")
         search = self.read(SEARCH)
         details = self.read(DETAILS)
+        my_list = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mylist/ReiAnixMyList.kt")
 
         self.assertIn("onSelectSource = viewModel::selectSafTree", library)
         self.assertIn('state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)', library)
@@ -126,6 +127,9 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertIn("onSelectSource = viewModel::selectSafTree", details)
         self.assertIn('state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)', details)
         self.assertIn('actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true))', details)
+        self.assertIn('state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)', my_list)
+        self.assertIn("viewModel::selectSafTree", my_list)
+        self.assertIn('"Selecionar pasta"', my_list)
 
     def test_home_keeps_usable_catalog_visible_during_incremental_loading(self):
         home = self.read(HOME)

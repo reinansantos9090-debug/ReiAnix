@@ -178,10 +178,10 @@ fun ReiAnixSearchScreen(
     onQueryChange: (String) -> Unit,
     onBack: () -> Unit = {},
     onRefresh: () -> Unit = {},
-    onSelectSource: () -> Unit = onRefresh,
     onOpenFilters: () -> Unit = {},
     onClearFilters: () -> Unit = {},
     onOpenDetails: (Long) -> Unit = {},
+    onSelectSource: () -> Unit = onRefresh,
 ) {
     ReiAnixResponsiveRoot {
     val listState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }

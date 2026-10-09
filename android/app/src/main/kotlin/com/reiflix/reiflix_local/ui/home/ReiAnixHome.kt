@@ -292,9 +292,9 @@ fun ReiAnixHomeScreen(
     onWatch: (episodeId: Long, animeId: Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onRefresh: () -> Unit,
-    onSelectSource: () -> Unit = onRefresh,
     onOpenMyList: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
+    onSelectSource: () -> Unit = onRefresh,
 ) {
     ReiAnixResponsiveRoot {
     Column(

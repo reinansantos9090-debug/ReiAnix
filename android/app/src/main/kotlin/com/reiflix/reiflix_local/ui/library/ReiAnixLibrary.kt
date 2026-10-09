@@ -194,7 +194,6 @@ fun ReiAnixLibraryScreen(
     onSortSelected: (String) -> Unit = {},
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
-    onSelectSource: () -> Unit = onRefresh,
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
@@ -202,6 +201,7 @@ fun ReiAnixLibraryScreen(
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
+    onSelectSource: () -> Unit = onRefresh,
 ) {
     val presentation = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState(
         status = state.status,
@@ -255,7 +255,6 @@ private fun ReiAnixLibraryPresentationScreen(
     onSortSelected: (String) -> Unit = {},
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
-    onSelectSource: () -> Unit = onRefresh,
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
@@ -263,6 +262,7 @@ private fun ReiAnixLibraryPresentationScreen(
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
+    onSelectSource: () -> Unit = onRefresh,
 ) {
     ReiAnixResponsiveRoot {
     Column(

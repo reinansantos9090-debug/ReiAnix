@@ -168,8 +168,21 @@ fun ReiAnixMyListRoute(
             } else {
                 ReiAnixSourceUnavailableState(
                     title = "Minha Lista indisponível",
-                    message = "A fonte local configurada não está disponível agora.",
-                    onAction = viewModel::refresh,
+                    message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                        "Configure uma pasta local para carregar os títulos salvos."
+                    } else {
+                        "A fonte local configurada não está disponível agora."
+                    },
+                    actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                        "Selecionar pasta"
+                    } else {
+                        "Atualizar"
+                    },
+                    onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                        viewModel::selectSafTree
+                    } else {
+                        viewModel::refresh
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
