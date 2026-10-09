@@ -1695,6 +1695,14 @@ fun SettingsHeader(
     )
 }
 
+
+private fun settingsCategoryDescription(category: String): String =
+    ReiAnixSettingsCategoryUiModel.defaultCategories()
+        .firstOrNull { it.label == category }
+        ?.description
+        .orEmpty()
+        .ifBlank { "Preferências do ReiAnix" }
+
 @Composable
 private fun BooleanSettingCard(
     keyName: String,
