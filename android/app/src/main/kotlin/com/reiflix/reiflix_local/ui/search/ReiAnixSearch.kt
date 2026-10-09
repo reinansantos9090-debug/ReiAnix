@@ -154,6 +154,7 @@ fun ReiAnixSearchRoute(
         onQueryChange = viewModel::setSearchQuery,
         onBack = { navController.popBackStack() },
         onRefresh = viewModel::refresh,
+        onSelectSource = viewModel::selectSafTree,
         onOpenFilters = { showFilterSheet = true },
         onClearFilters = viewModel::clearSearchFilters,
         onOpenDetails = { animeId ->
@@ -177,6 +178,7 @@ fun ReiAnixSearchScreen(
     onQueryChange: (String) -> Unit,
     onBack: () -> Unit = {},
     onRefresh: () -> Unit = {},
+    onSelectSource: () -> Unit = onRefresh,
     onOpenFilters: () -> Unit = {},
     onClearFilters: () -> Unit = {},
     onOpenDetails: (Long) -> Unit = {},
@@ -325,16 +327,41 @@ fun ReiAnixSearchScreen(
                             )
                             ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                                 title = "Biblioteca local indisponível",
-                                message = "A fonte local configurada não está disponível agora.",
-                                onAction = onRefresh,
+                                message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                                    "Configure uma pasta local para pesquisar sua biblioteca."
+                                } else {
+                                    "A fonte local configurada não está disponível agora."
+                                },
+                                actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                                    "Selecionar pasta"
+                                } else {
+                                    "Atualizar"
+                                },
+                                onAction = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                                    onSelectSource
+                                } else {
+                                    onRefresh
+                                },
                                 modifier = Modifier.fillMaxSize(),
                             )
                             ReiAnixLibraryLoadStatus.EMPTY,
                             ReiAnixLibraryLoadStatus.READY,
                             -> ReiAnixEmptyLibraryState(
-                                message = "Nenhum conteúdo local disponível para pesquisa.",
-                                actionLabel = "Atualizar",
-                                onAction = onRefresh,
+                                message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                                    "Configure uma pasta local para pesquisar sua biblioteca."
+                                } else {
+                                    "Nenhum conteúdo local disponível para pesquisa."
+                                },
+                                actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                                    "Selecionar pasta"
+                                } else {
+                                    "Atualizar"
+                                },
+                                onAction = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                                    onSelectSource
+                                } else {
+                                    onRefresh
+                                },
                                 modifier = Modifier.fillMaxSize(),
                             )
                             ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
@@ -361,16 +388,41 @@ fun ReiAnixSearchScreen(
                     )
                     ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                         title = "Biblioteca local indisponível",
-                        message = "A fonte local configurada não está disponível agora.",
-                        onAction = onRefresh,
+                        message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                            "Configure uma pasta local para pesquisar sua biblioteca."
+                        } else {
+                            "A fonte local configurada não está disponível agora."
+                        },
+                        actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                            "Selecionar pasta"
+                        } else {
+                            "Atualizar"
+                        },
+                        onAction = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                            onSelectSource
+                        } else {
+                            onRefresh
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                     ReiAnixLibraryLoadStatus.EMPTY,
                     ReiAnixLibraryLoadStatus.READY,
                     -> ReiAnixEmptyLibraryState(
-                        message = "Nenhum conteúdo local disponível para pesquisa.",
-                        actionLabel = "Atualizar",
-                        onAction = onRefresh,
+                        message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                            "Configure uma pasta local para pesquisar sua biblioteca."
+                        } else {
+                            "Nenhum conteúdo local disponível para pesquisa."
+                        },
+                        actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                            "Selecionar pasta"
+                        } else {
+                            "Atualizar"
+                        },
+                        onAction = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                            onSelectSource
+                        } else {
+                            onRefresh
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                     ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(

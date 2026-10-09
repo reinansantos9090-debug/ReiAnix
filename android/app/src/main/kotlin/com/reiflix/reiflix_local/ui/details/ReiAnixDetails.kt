@@ -192,6 +192,7 @@ fun ReiAnixDetailsRoute(
         },
         onToggleFavorite = viewModel::toggleFavorite,
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
+        onSelectSource = viewModel::selectSafTree,
     )
 }
 
@@ -204,6 +205,7 @@ fun ReiAnixDetailsScreen(
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
+    onSelectSource: () -> Unit = onRetry,
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -234,16 +236,41 @@ fun ReiAnixDetailsScreen(
             }
 
             ReiAnixDetailsLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
-                message = "Nenhum anime local está disponível.",
-                actionLabel = "Atualizar",
-                onAction = onRetry,
+                message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    "Configure uma pasta local para acessar os detalhes."
+                } else {
+                    "Nenhum anime local está disponível."
+                },
+                actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    "Selecionar pasta"
+                } else {
+                    "Atualizar"
+                },
+                onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    onSelectSource
+                } else {
+                    onRetry
+                },
                 modifier = Modifier.fillMaxSize(),
             )
 
             ReiAnixDetailsLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = "Biblioteca local indisponível",
-                message = state.error ?: "A fonte local não está disponível agora.",
-                onAction = onRetry,
+                message = state.error ?: if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    "Configure uma pasta local para acessar os detalhes."
+                } else {
+                    "A fonte local não está disponível agora."
+                },
+                actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    "Selecionar pasta"
+                } else {
+                    "Atualizar"
+                },
+                onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                    onSelectSource
+                } else {
+                    onRetry
+                },
                 modifier = Modifier.fillMaxSize(),
             )
 

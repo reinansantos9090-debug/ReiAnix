@@ -113,6 +113,20 @@ class ComposePerformanceTests(unittest.TestCase):
             legacy_home,
         )
 
+    def test_unconfigured_library_search_and_details_route_to_source_selection(self):
+        library = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt")
+        search = self.read(SEARCH)
+        details = self.read(DETAILS)
+
+        self.assertIn("onSelectSource = viewModel::selectSafTree", library)
+        self.assertIn('state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)', library)
+        self.assertIn('actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true))', library)
+        self.assertIn("onSelectSource = viewModel::selectSafTree", search)
+        self.assertIn('libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)', search)
+        self.assertIn("onSelectSource = viewModel::selectSafTree", details)
+        self.assertIn('state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)', details)
+        self.assertIn('actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true))', details)
+
     def test_home_keeps_usable_catalog_visible_during_incremental_loading(self):
         home = self.read(HOME)
         self.assertIn(

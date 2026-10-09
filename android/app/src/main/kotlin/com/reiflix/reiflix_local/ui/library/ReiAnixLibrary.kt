@@ -115,6 +115,7 @@ fun ReiAnixLibraryRoute(
         onSortSelected = viewModel::setLibrarySort,
         onClearFilters = viewModel::clearLibraryFilters,
         onRefresh = viewModel::refresh,
+        onSelectSource = viewModel::selectSafTree,
         onSearch = {
             navController.navigateToTopLevel(ReiAnixRoutes.SEARCH)
         },
@@ -161,6 +162,7 @@ fun ReiAnixLibraryRoute(
         onSortSelected = viewModel::setLibrarySort,
         onClearFilters = viewModel::clearLibraryFilters,
         onRefresh = viewModel::refresh,
+        onSelectSource = viewModel::selectSafTree,
         onOpenDetails = onOpenDetails,
         onToggleFavorite = viewModel::toggleFavorite,
         hasMore = pageState.hasMore,
@@ -192,6 +194,7 @@ fun ReiAnixLibraryScreen(
     onSortSelected: (String) -> Unit = {},
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
+    onSelectSource: () -> Unit = onRefresh,
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
@@ -227,6 +230,7 @@ fun ReiAnixLibraryScreen(
         onSortSelected = onSortSelected,
         onClearFilters = onClearFilters,
         onRefresh = onRefresh,
+        onSelectSource = onSelectSource,
         onOpenDetails = onOpenDetails,
         onToggleFavorite = onToggleFavorite,
         onSearch = onSearch,
@@ -251,6 +255,7 @@ private fun ReiAnixLibraryPresentationScreen(
     onSortSelected: (String) -> Unit = {},
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
+    onSelectSource: () -> Unit = onRefresh,
     onOpenDetails: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
@@ -332,8 +337,21 @@ private fun ReiAnixLibraryPresentationScreen(
 
                 ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                     title = "Biblioteca local indisponível",
-                    message = "A fonte local configurada não está disponível agora.",
-                    onAction = onRefresh,
+                    message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                        "Configure uma pasta local para acessar sua biblioteca."
+                    } else {
+                        "A fonte local configurada não está disponível agora."
+                    },
+                    actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                        "Selecionar pasta"
+                    } else {
+                        "Atualizar"
+                    },
+                    onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                        onSelectSource
+                    } else {
+                        onRefresh
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -341,9 +359,20 @@ private fun ReiAnixLibraryPresentationScreen(
 
                 ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                     title = "Biblioteca vazia",
-                    message = "Adicione uma pasta de mídia para começar.",
-                    actionLabel = if (onOpenStorage != null) "Adicionar pasta" else "Atualizar biblioteca",
-                    onAction = onOpenStorage ?: onRefresh,
+                    message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
+                        "Configure uma pasta de mídia para começar."
+                    } else {
+                        "Adicione uma pasta de mídia para começar."
+                    },
+                    actionLabel = when {
+                        state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> "Selecionar pasta"
+                        onOpenStorage != null -> "Adicionar pasta"
+                        else -> "Atualizar biblioteca"
+                    },
+                    onAction = when {
+                        state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> onSelectSource
+                        else -> onOpenStorage ?: onRefresh
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
