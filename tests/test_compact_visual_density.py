@@ -99,7 +99,8 @@ class CompactVisualDensityTests(unittest.TestCase):
     def test_navigation_insets_and_player_contract_are_not_replaced_by_density_workarounds(self):
         shell = read(ANDROID_UI / "shell/ReiAnixAppShell.kt")
         navigation = read(ANDROID_UI / "navigation/ReiAnixNavigation.kt")
-        player = read(ANDROID_UI / "player/ReiAnixPlayer.kt")
+        player_ui = read(ANDROID_UI / "player/ReiAnixPlayer.kt")
+        player_activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
         tokens = read(ANDROID_UI / "theme/ReiAnixTokens.kt")
         self.assertIn("WindowInsets.safeDrawing.only(", shell)
         self.assertIn("NavigationBarItem(", shell)
@@ -107,8 +108,9 @@ class CompactVisualDensityTests(unittest.TestCase):
         self.assertIn("ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION", navigation)
         self.assertIn("val touchTarget = 48.dp", tokens)
         self.assertIn("PlayerDimensions", tokens)
-        self.assertIn("track", player.lower())
-        self.assertIn("PictureInPicture", player)
+        self.assertIn("track", player_ui.lower())
+        self.assertIn("PictureInPicture", player_activity)
+        self.assertIn("enterImmersiveMode()", player_activity)
 
 
 if __name__ == "__main__":
