@@ -213,5 +213,23 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertIn('text = "Salvar"', screens["Settings"])
 
 
+    def test_library_search_details_organize_and_my_list_share_filter_chips(self):
+        components = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixComponents.kt")
+        screens = {
+            "Library": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt"),
+            "Search": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearch.kt"),
+            "Details": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"),
+            "Organize": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt"),
+            "My List": read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mylist/ReiAnixMyList.kt"),
+        }
+        self.assertIn("fun ReiAnixChip(", components)
+        self.assertIn("ReiAnixTokens.Dimensions.chipMinHeight", components)
+        self.assertIn("ReiAnixTokens.TypographyTokens.chip", components)
+        for name, source in screens.items():
+            self.assertIn("ReiAnixChip(", source, msg=name)
+            self.assertNotIn("FilterChip(", source, msg=name)
+            self.assertNotIn("AssistChip(", source, msg=name)
+
+
 if __name__ == "__main__":
     unittest.main()
