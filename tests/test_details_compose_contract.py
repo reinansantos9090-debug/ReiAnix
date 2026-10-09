@@ -50,6 +50,7 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertIn("val detailsSeasonPreviewWidth = 80.dp", tokens)
         self.assertIn("val detailsSeasonPreviewHeight = 54.dp", tokens)
         self.assertIn("val detailsSeasonCardMinWidth = 240.dp", tokens)
+        self.assertIn("PaddingValues(ReiAnixTokens.Spacing.none)", source)
         self.assertIn("ReiAnixTokens.Dimensions.detailsSeasonCardMinWidth", source)
 
     def test_details_prioritizes_compact_actions_and_current_progress(self):

@@ -68,7 +68,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -986,7 +985,7 @@ private fun DetailsExpandableSynopsis(description: String) {
         Text(text = "Sinopse", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
         Text(text = description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
             maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis)
-        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
+        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(ReiAnixTokens.Spacing.none)) {
             Text(if (expanded) "menos" else "mais")
         }
     }
