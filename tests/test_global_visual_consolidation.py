@@ -211,6 +211,8 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertNotIn("TextButton(", screens["Search"])
         self.assertNotIn("TextButton(", screens["Details"])
         self.assertIn('text = "Salvar"', screens["Settings"])
+        self.assertIn('text = "Ver todas  ›"', screens["Details"])
+        self.assertGreaterEqual(screens["Details"].count("ReiAnixCompactButton("), 2)
 
 
     def test_library_search_details_organize_and_my_list_share_filter_chips(self):
