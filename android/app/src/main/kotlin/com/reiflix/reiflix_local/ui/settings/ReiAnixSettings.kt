@@ -518,7 +518,9 @@ private fun SettingsFlatCategoryRow(
         }
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(
+                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+            ),
         )
     }
 }
@@ -1852,7 +1854,9 @@ fun ReiAnixSettingsRow(
         }
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(
+                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+            ),
         )
     }
 }
@@ -1988,7 +1992,9 @@ private fun BooleanSettingCard(
         }
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(
+                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+            ),
         )
     }
 }
@@ -2059,7 +2065,9 @@ private fun LanguageSettingCard(
         )
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(
+                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+            ),
         )
     }
 }
@@ -2204,7 +2212,9 @@ private fun ChoiceSettingCard(
         }
         HorizontalDivider(
             thickness = ReiAnixTokens.Dimensions.dividerHeight,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(
+                alpha = ReiAnixTokens.Colors.subtleBorderAlpha,
+            ),
         )
     }
 }
