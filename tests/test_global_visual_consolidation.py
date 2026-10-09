@@ -153,12 +153,15 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         details = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
         organize = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt")
         settings = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt")
+        mylist = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mylist/ReiAnixMyList.kt")
+        storage = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixStorageScreen.kt")
         components = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixComponents.kt")
         self.assertIn("fun ReiAnixTopBar(", components)
         self.assertIn("ReiAnixTokens.Dimensions.topBarMinHeight", components)
         self.assertIn("LocalReiAnixResponsiveMetrics.current.horizontalPadding", components)
-        for screen in (home, library, search, details, organize, settings):
+        for screen in (home, library, search, details, organize, settings, mylist):
             self.assertIn("ReiAnixTopBar(", screen)
+        self.assertIn("SettingsHeader(", storage)
         self.assertIn("actions: @Composable RowScope.() -> Unit", components)
         self.assertIn("navigationContentDescription", components)
         self.assertIn("ReiAnixTokens.TypographyTokens.screenTitle", settings)

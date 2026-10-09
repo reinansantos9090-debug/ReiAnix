@@ -53,7 +53,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
-import com.reiflix.reiflix_local.ui.ReiAnixScreenTitle
+import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.ReiAnixSurface
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
@@ -92,13 +92,8 @@ fun ReiAnixMyListRoute(
             .background(MaterialTheme.colorScheme.background),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ReiAnixScreenTitle(
+        ReiAnixTopBar(
             title = "Minha Lista",
-            modifier = Modifier.padding(
-                start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                top = ReiAnixTokens.Dimensions.screenTopPadding,
-            ),
         )
 
         when (state.status) {
