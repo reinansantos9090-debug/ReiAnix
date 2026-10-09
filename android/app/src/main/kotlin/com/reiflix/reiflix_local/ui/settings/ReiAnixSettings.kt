@@ -1900,7 +1900,7 @@ private fun ChoiceSettingCard(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 420.dp),
+                        .heightIn(max = ReiAnixTokens.Dimensions.settingsChoiceDialogMaxHeight),
                 ) {
                     items(
                         items = choices,
@@ -1995,7 +1995,10 @@ private fun ChoiceSettingCard(
             }
             Column(
                 modifier = Modifier
-                    .widthIn(min = 64.dp, max = 120.dp)
+                    .widthIn(
+                        min = ReiAnixTokens.Dimensions.settingsChoiceValueMinWidth,
+                        max = ReiAnixTokens.Dimensions.settingsChoiceValueMaxWidth,
+                    )
                     .semantics { contentDescription = selectedLabel },
                 horizontalAlignment = Alignment.End,
             ) {

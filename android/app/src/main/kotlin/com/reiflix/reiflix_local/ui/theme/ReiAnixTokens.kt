@@ -150,6 +150,9 @@ object ReiAnixTokens {
         val settingsRowMinHeight = 56.dp
         val settingsIconContainerSize = 32.dp
         val settingsTrailingSize = 48.dp
+        val settingsChoiceDialogMaxHeight = 420.dp
+        val settingsChoiceValueMinWidth = 64.dp
+        val settingsChoiceValueMaxWidth = 120.dp
         val buttonMinHeight = 40.dp
         val chipMinHeight = 32.dp
         val touchTarget = 48.dp
@@ -200,6 +203,8 @@ object ReiAnixTokens {
         val detailsSeasonCardWidth = 236.dp
         val detailsSeasonPreviewWidth = 80.dp
         val detailsSeasonPreviewHeight = 54.dp
+        val detailsSeasonCardMinWidth = 240.dp
+        val iconViewportSize = 24.dp
         val detailsInfoLabelWidth = 96.dp
         val homeHeroHeight = 220.dp
         val homeCardWidth = 100.dp

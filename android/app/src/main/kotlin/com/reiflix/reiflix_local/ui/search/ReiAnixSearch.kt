@@ -51,7 +51,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
@@ -87,8 +86,8 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
 private val ReiAnixFilterIcon: ImageVector = ImageVector.Builder(
     name = "ReiAnixFilter",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
+    defaultWidth = ReiAnixTokens.Dimensions.iconViewportSize,
+    defaultHeight = ReiAnixTokens.Dimensions.iconViewportSize,
     viewportWidth = 24f,
     viewportHeight = 24f,
 ).apply {

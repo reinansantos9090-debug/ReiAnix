@@ -26,6 +26,11 @@ class CompactVisualDensityTests(unittest.TestCase):
             "val iconSecondary = 20.dp",
             "val iconMedium = 22.dp",
             "val iconLarge = 26.dp",
+            "val iconViewportSize = 24.dp",
+            "val settingsChoiceDialogMaxHeight = 420.dp",
+            "val settingsChoiceValueMinWidth = 64.dp",
+            "val settingsChoiceValueMaxWidth = 120.dp",
+            "val detailsSeasonCardMinWidth = 240.dp",
             "val dividerHeight = 1.dp",
         ):
             self.assertIn(token, tokens)

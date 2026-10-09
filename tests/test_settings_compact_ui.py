@@ -73,9 +73,11 @@ def test_settings_rows_are_flat_and_choices_are_on_demand():
     assert "ReiAnixSettingsSurface(" not in choice_row
     assert "HorizontalDivider(" not in choice_row
     assert "dialogOpen" in choice_row
-    assert "heightIn(max = 420.dp)" in choice_row
+    assert "heightIn(max = ReiAnixTokens.Dimensions.settingsChoiceDialogMaxHeight)" in choice_row
     assert "RadioButton(" in choice_row
     assert "Icons.Filled.ChevronRight" in choice_row
+    assert "ReiAnixTokens.Dimensions.settingsChoiceValueMinWidth" in choice_row
+    assert "ReiAnixTokens.Dimensions.settingsChoiceValueMaxWidth" in choice_row
     assert "ReiAnixSettingsSurface(" not in language_row
     assert "HorizontalDivider(" not in language_row
     assert "ReiAnixTextField(" in language_row

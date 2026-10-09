@@ -1114,7 +1114,7 @@ private fun DetailsSeasonCard(
         responsive.maxWidth -
             responsive.horizontalPadding -
             responsive.horizontalPadding
-        ).coerceAtLeast(240.dp)
+        ).coerceAtLeast(ReiAnixTokens.Dimensions.detailsSeasonCardMinWidth)
     val title = season.title.ifBlank {
         season.number?.let { "Temporada $it" } ?: "Temporada"
     }
