@@ -50,5 +50,21 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertIn("val detailsSeasonPreviewWidth = 80.dp", tokens)
         self.assertIn("val detailsSeasonPreviewHeight = 54.dp", tokens)
 
+    def test_details_prioritizes_compact_actions_and_current_progress(self):
+        source = DETAILS.read_text(encoding="utf-8")
+        self.assertIn('text = "Continuar • ${formatEpisodeNumber(current.number)}"', source)
+        self.assertIn("progress = current.progressFraction", source)
+        self.assertIn("modifier = Modifier.weight(1f)", source)
+        self.assertIn('text = if (anime.favorite) "Favoritado" else "Favoritar"', source)
+        self.assertIn('text = if (watched) "Desmarcar visto" else "Marcar visto"', source)
+
+    def test_details_synopsis_uses_only_the_canonical_description(self):
+        source = DETAILS.read_text(encoding="utf-8")
+        about = source[source.index("private fun DetailsAboutSection("):]
+        self.assertIn("anime.description?.trim()?.takeIf { it.isNotBlank() }", about)
+        self.assertIn("DetailsExpandableSynopsis(description)", about)
+        self.assertNotIn("descriptionOriginal", source)
+        self.assertNotIn("description_original", source)
+
 if __name__ == "__main__":
     unittest.main()

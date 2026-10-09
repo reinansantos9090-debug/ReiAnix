@@ -795,48 +795,146 @@ private fun DetailsHero(
             }
         }
         currentEpisode?.let { current ->
-            Surface(modifier = Modifier.fillMaxWidth().padding(
-                start = responsive.horizontalPadding,
-                top = ReiAnixTokens.Spacing.md,
-                end = responsive.horizontalPadding,
-            ),
-                shape = ReiAnixTokens.Shapes.card, color = MaterialTheme.colorScheme.surfaceContainer) {
-                Column(modifier = Modifier.padding(ReiAnixTokens.Spacing.md), verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
-                    Text(text = "Episódio atual • ${formatEpisodeNumber(current.number)}", style = ReiAnixTokens.TypographyTokens.label, color = MaterialTheme.colorScheme.onSurface)
-                    Text(text = current.displayTitle, style = ReiAnixTokens.TypographyTokens.cardTitle, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(text = "${formatElapsedSeconds(current.progressSeconds)} / ${formatDurationLabel(current.durationSeconds ?: 0.0)}",
-                        style = ReiAnixTokens.TypographyTokens.metadata, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    ReiAnixProgressIndicator(progress = current.progressFraction, visible = current.progressFraction > 0f, announceProgress = false)
-                    nextEpisode?.takeIf { it.id != current.id }?.let { next -> Text(text = "Próximo: ${formatEpisodeNumber(next.number)} • ${next.displayTitle}",
-                        style = ReiAnixTokens.TypographyTokens.metadata, color = MaterialTheme.colorScheme.primary, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = responsive.horizontalPadding,
+                        vertical = ReiAnixTokens.Spacing.md,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                ) {
+                    Text(
+                        text = "Continuar • ${formatEpisodeNumber(current.number)}",
+                        style = ReiAnixTokens.TypographyTokens.label,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${(current.progressFraction * 100f).toInt()}%",
+                        style = ReiAnixTokens.TypographyTokens.metadata,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Text(
+                    text = current.displayTitle,
+                    style = ReiAnixTokens.TypographyTokens.cardTitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${formatElapsedSeconds(current.progressSeconds)} / ${formatDurationLabel(current.durationSeconds ?: 0.0)}",
+                    style = ReiAnixTokens.TypographyTokens.metadata,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ReiAnixProgressIndicator(
+                    progress = current.progressFraction,
+                    visible = current.progressFraction > 0f,
+                    announceProgress = false,
+                )
+                nextEpisode?.takeIf { it.id != current.id }?.let { next ->
+                    Text(
+                        text = "Próximo: ${formatEpisodeNumber(next.number)} • ${next.displayTitle}",
+                        style = ReiAnixTokens.TypographyTokens.metadata,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
         if (responsive.widthClass == ReiAnixWindowWidthClass.COMPACT) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                if (target?.isPlayable == true) ReiAnixPrimaryButton(text = target.playbackActionLabel, onClick = { onWatch(target.id) }, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Filled.PlayArrow)
-                else ReiAnixPrimaryButton(text = "Reproduzir indisponível", onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Filled.PlayArrow)
-                ReiAnixSecondaryButton(text = if (anime.favorite) "Favoritado" else "Favoritar", onClick = { onToggleFavorite(anime.id) }, modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder)
-                val watched = target?.isWatched == true || target?.consumptionState == ReiAnixConsumptionState.COMPLETED
-                ReiAnixSecondaryButton(text = if (watched) "Desmarcar" else "Marcar visto", onClick = { target?.let { onSetEpisodeWatched(it.id, !watched) } },
-                    enabled = target != null, modifier = Modifier.fillMaxWidth(), leadingIcon = Icons.Filled.Check)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            ) {
+                if (target?.isPlayable == true) {
+                    ReiAnixPrimaryButton(
+                        text = target.playbackActionLabel,
+                        onClick = { onWatch(target.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = Icons.Filled.PlayArrow,
+                    )
+                } else {
+                    ReiAnixPrimaryButton(
+                        text = "Reprodução indisponível",
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = Icons.Filled.PlayArrow,
+                    )
+                }
+                val watched = target?.isWatched == true ||
+                    target?.consumptionState == ReiAnixConsumptionState.COMPLETED
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                ) {
+                    ReiAnixSecondaryButton(
+                        text = if (anime.favorite) "Favoritado" else "Favoritar",
+                        onClick = { onToggleFavorite(anime.id) },
+                        modifier = Modifier.weight(1f),
+                        leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    )
+                    ReiAnixSecondaryButton(
+                        text = if (watched) "Desmarcar visto" else "Marcar visto",
+                        onClick = { target?.let { onSetEpisodeWatched(it.id, !watched) } },
+                        enabled = target != null,
+                        modifier = Modifier.weight(1f),
+                        leadingIcon = Icons.Filled.Check,
+                    )
+                }
             }
         } else {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md),
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                if (target?.isPlayable == true) ReiAnixPrimaryButton(text = target.playbackActionLabel, onClick = { onWatch(target.id) }, modifier = Modifier.weight(1.7f), leadingIcon = Icons.Filled.PlayArrow)
-                else ReiAnixPrimaryButton(text = "Reproduzir indisponível", onClick = {}, enabled = false, modifier = Modifier.weight(1.7f), leadingIcon = Icons.Filled.PlayArrow)
-                ReiAnixSecondaryButton(text = if (anime.favorite) "Favoritado" else "Favoritar", onClick = { onToggleFavorite(anime.id) }, modifier = Modifier.weight(1f),
-                    leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder)
-                val watched = target?.isWatched == true || target?.consumptionState == ReiAnixConsumptionState.COMPLETED
-                ReiAnixSecondaryButton(text = if (watched) "Desmarcar" else "Marcar visto", onClick = { target?.let { onSetEpisodeWatched(it.id, !watched) } },
-                    enabled = target != null, modifier = Modifier.weight(1f), leadingIcon = Icons.Filled.Check)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            ) {
+                if (target?.isPlayable == true) {
+                    ReiAnixPrimaryButton(
+                        text = target.playbackActionLabel,
+                        onClick = { onWatch(target.id) },
+                        modifier = Modifier.weight(1.7f),
+                        leadingIcon = Icons.Filled.PlayArrow,
+                    )
+                } else {
+                    ReiAnixPrimaryButton(
+                        text = "Reprodução indisponível",
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.weight(1.7f),
+                        leadingIcon = Icons.Filled.PlayArrow,
+                    )
+                }
+                ReiAnixSecondaryButton(
+                    text = if (anime.favorite) "Favoritado" else "Favoritar",
+                    onClick = { onToggleFavorite(anime.id) },
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                )
+                val watched = target?.isWatched == true ||
+                    target?.consumptionState == ReiAnixConsumptionState.COMPLETED
+                ReiAnixSecondaryButton(
+                    text = if (watched) "Desmarcar visto" else "Marcar visto",
+                    onClick = { target?.let { onSetEpisodeWatched(it.id, !watched) } },
+                    enabled = target != null,
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = Icons.Filled.Check,
+                )
             }
         }
-        anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description -> DetailsExpandableSynopsis(description) }
     }
 }
 
@@ -871,14 +969,11 @@ private fun DetailsExpandableSynopsis(description: String) {
 private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
+        anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
+            DetailsExpandableSynopsis(description)
+        }
         val details = buildList {
-            anime.year?.let { add("Ano" to it.toString()) }
-            anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { add("Status" to statusLabel(it)) }
-            anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { add("Formato" to formatLabel(it)) }
             anime.studio?.trim()?.takeIf { it.isNotBlank() }?.let { add("Estúdio" to it) }
-            anime.durationMinutes?.takeIf { it > 0 }?.let { add("Duração" to "$it min/ep") }
-            anime.episodeCount?.takeIf { it > 0 }?.let { add("Episódios" to it.toString()) }
-            anime.seasons.size.takeIf { it > 0 }?.let { add("Temporadas" to it.toString()) }
             anime.seasonLabel?.trim()?.takeIf { it.isNotBlank() }?.let { add("Temporada" to seasonLabel(it)) }
         }
         if (details.isNotEmpty()) {
@@ -892,17 +987,7 @@ private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
                 }
             }
         }
-        anime.preferredAlternateTitle?.takeIf { it.isNotBlank() && !it.equals(anime.title, ignoreCase = true) }?.let { alternate ->
-            Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
-                Text(text = "Título alternativo", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
-                Text(text = alternate, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        if (anime.genres.isNotEmpty()) {
-            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                anime.genres.forEach { genre -> ReiAnixBadge(text = genre.name, tone = ReiAnixBadgeTone.Primary) }
-            }
-        }
+
     }
 }
 
