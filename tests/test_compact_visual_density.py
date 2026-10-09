@@ -50,7 +50,7 @@ class CompactVisualDensityTests(unittest.TestCase):
         )
         self.assertIn("Modifier.size(ReiAnixTokens.Dimensions.settingsTrailingSize)", settings)
         self.assertIn("val settingsTrailingSize = 48.dp", read(ANDROID_UI / "theme/ReiAnixTokens.kt"))
-        self.assertIn("ReiAnixTokens.Colors.subtleBorderAlpha", settings)
+        self.assertIn("ReiAnixTokens.Colors.dividerAlpha", settings)
         self.assertNotIn("alpha = 0.7f", settings)
 
     def test_divider_component_uses_shared_subtle_contrast(self):
@@ -59,9 +59,10 @@ class CompactVisualDensityTests(unittest.TestCase):
         tokens = read(ANDROID_UI / "theme/ReiAnixTokens.kt")
         self.assertIn("val dividerHeight = 1.dp", tokens)
         self.assertIn("val subtleBorderAlpha = 0.55f", tokens)
+        self.assertIn("val dividerAlpha = 0.8f", tokens)
         divider = components[components.index("fun ReiAnixDivider("):components.index("@Composable\nfun ReiAnixBadge(")]
         self.assertIn("ReiAnixTokens.Dimensions.dividerHeight", divider)
-        self.assertIn("ReiAnixTokens.Colors.subtleBorderAlpha", divider)
+        self.assertIn("ReiAnixTokens.Colors.dividerAlpha", divider)
         self.assertIn("ReiAnixTokens.Dimensions.dividerHeight", settings)
 
     def test_library_grid_uses_density_tokens_and_compact_loading_gaps(self):
