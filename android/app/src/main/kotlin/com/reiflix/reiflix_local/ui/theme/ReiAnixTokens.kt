@@ -211,6 +211,47 @@ object ReiAnixTokens {
         val cornerRadius = 12.dp
     }
 
+    /**
+     * Responsive layout tokens shared by Home, Library, Search, Details and Settings.
+     * Keep window policy values here so screens consume one consistent sizing system.
+     */
+    object Responsive {
+        val mediumWidth = Dimensions.detailsHeroWideBreakpoint
+        val expandedWidth = 840.dp
+        val mediumHeight = 480.dp
+        val expandedHeight = 800.dp
+
+        val mediumLibraryGridMinWidth = 132.dp
+        val expandedLibraryGridMinWidth = 156.dp
+        val mediumHomeCardWidth = 146.dp
+        val expandedHomeCardWidth = 160.dp
+        val compactContinueCardWidth = Dimensions.homeContinueCardWidth
+        val mediumContinueCardWidth = 180.dp
+        val expandedContinueCardWidth = 220.dp
+        val compactSearchGridMinWidth = 280.dp
+        val mediumSearchGridMinWidth = 300.dp
+        val expandedSearchGridMinWidth = 320.dp
+
+        val compactWindowWidth = 360.dp
+        val compactWindowHeight = 720.dp
+        val mediumHorizontalPadding = Spacing.xl
+        val expandedHorizontalPadding = Spacing.xxl
+        val mediumContentMaxWidth = 960.dp
+        val expandedContentMaxWidth = 1200.dp
+        val mediumSettingsMaxWidth = 720.dp
+        val expandedSettingsMaxWidth = 840.dp
+        val mediumTextMaxWidth = 680.dp
+        val expandedTextMaxWidth = 760.dp
+
+        val homeHeroLandscapeMinHeight = 180.dp
+        val homeHeroLandscapeMaxHeight = 240.dp
+        val homeHeroPortraitMinHeight = 190.dp
+        val homeHeroPortraitMaxHeight = 240.dp
+        val homeHeroExpandedMaxHeight = 280.dp
+        val detailsHeroLandscapeMinHeight = 200.dp
+        val detailsHeroLandscapeMaxHeight = 260.dp
+    }
+
     object Shapes {
         val chip = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)

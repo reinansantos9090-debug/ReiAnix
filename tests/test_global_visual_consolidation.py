@@ -107,5 +107,33 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertTrue("ReiAnixPoster" in components or "ReiAnixPoster" in home)
 
 
+    def test_responsive_layout_metrics_are_owned_by_canonical_design_tokens(self):
+        tokens = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt")
+        responsive = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixResponsive.kt")
+        self.assertIn("object Responsive", tokens)
+        for token in (
+            "mediumWidth", "expandedWidth", "mediumHeight", "expandedHeight",
+            "mediumLibraryGridMinWidth", "expandedLibraryGridMinWidth",
+            "mediumHomeCardWidth", "expandedHomeCardWidth",
+            "compactContinueCardWidth", "mediumContinueCardWidth",
+            "expandedContinueCardWidth", "compactSearchGridMinWidth",
+            "mediumSearchGridMinWidth", "expandedSearchGridMinWidth",
+            "compactWindowWidth", "compactWindowHeight",
+            "mediumHorizontalPadding", "expandedHorizontalPadding",
+            "mediumContentMaxWidth", "expandedContentMaxWidth",
+            "mediumSettingsMaxWidth", "expandedSettingsMaxWidth",
+            "mediumTextMaxWidth", "expandedTextMaxWidth",
+            "homeHeroLandscapeMinHeight", "homeHeroLandscapeMaxHeight",
+            "homeHeroPortraitMinHeight", "homeHeroPortraitMaxHeight",
+            "homeHeroExpandedMaxHeight", "detailsHeroLandscapeMinHeight",
+            "detailsHeroLandscapeMaxHeight",
+        ):
+            self.assertIn("val " + token + " =", tokens)
+            self.assertIn("ReiAnixTokens.Responsive." + token, responsive)
+        self.assertNotRegex(responsive, r"\\b\\d+(?:\\.\\d+)?\\.dp\\b")
+        self.assertIn("ReiAnixTokens.Dimensions.detailsHeroWideBreakpoint", tokens)
+        self.assertIn("val mediumWidth = ReiAnixTokens.Responsive.mediumWidth", responsive)
+
+
 if __name__ == "__main__":
     unittest.main()

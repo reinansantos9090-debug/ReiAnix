@@ -10,7 +10,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 
 /**
  * ReiAnix responsive window policy.
@@ -34,10 +33,10 @@ enum class ReiAnixWindowHeightClass {
 }
 
 object ReiAnixResponsiveBreakpoints {
-    val mediumWidth = 600.dp
-    val expandedWidth = 840.dp
-    val mediumHeight = 480.dp
-    val expandedHeight = 800.dp
+    val mediumWidth = ReiAnixTokens.Responsive.mediumWidth
+    val expandedWidth = ReiAnixTokens.Responsive.expandedWidth
+    val mediumHeight = ReiAnixTokens.Responsive.mediumHeight
+    val expandedHeight = ReiAnixTokens.Responsive.expandedHeight
 }
 
 @Immutable
@@ -67,8 +66,8 @@ data class ReiAnixResponsiveMetrics(
         }
         return when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> base
-            ReiAnixWindowWidthClass.MEDIUM -> maxOf(base, 132.dp)
-            ReiAnixWindowWidthClass.EXPANDED -> maxOf(base, 156.dp)
+            ReiAnixWindowWidthClass.MEDIUM -> maxOf(base, ReiAnixTokens.Responsive.mediumLibraryGridMinWidth)
+            ReiAnixWindowWidthClass.EXPANDED -> maxOf(base, ReiAnixTokens.Responsive.expandedLibraryGridMinWidth)
         }
     }
 
@@ -76,23 +75,23 @@ data class ReiAnixResponsiveMetrics(
         val base = preferredCardWidth(preference)
         return when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> base
-            ReiAnixWindowWidthClass.MEDIUM -> maxOf(base, 146.dp)
-            ReiAnixWindowWidthClass.EXPANDED -> maxOf(base, 160.dp)
+            ReiAnixWindowWidthClass.MEDIUM -> maxOf(base, ReiAnixTokens.Responsive.mediumHomeCardWidth)
+            ReiAnixWindowWidthClass.EXPANDED -> maxOf(base, ReiAnixTokens.Responsive.expandedHomeCardWidth)
         }.coerceAtMost(ReiAnixTokens.Dimensions.gridMaxItemWidth)
     }
 
     val homeContinueCardWidth: Dp
         get() = when (widthClass) {
-            ReiAnixWindowWidthClass.COMPACT -> 110.dp
-            ReiAnixWindowWidthClass.MEDIUM -> 180.dp
-            ReiAnixWindowWidthClass.EXPANDED -> 220.dp
+            ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Responsive.compactContinueCardWidth
+            ReiAnixWindowWidthClass.MEDIUM -> ReiAnixTokens.Responsive.mediumContinueCardWidth
+            ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedContinueCardWidth
         }
 
     val searchGridMinWidth: Dp
         get() = when (widthClass) {
-            ReiAnixWindowWidthClass.COMPACT -> 280.dp
-            ReiAnixWindowWidthClass.MEDIUM -> 300.dp
-            ReiAnixWindowWidthClass.EXPANDED -> 320.dp
+            ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Responsive.compactSearchGridMinWidth
+            ReiAnixWindowWidthClass.MEDIUM -> ReiAnixTokens.Responsive.mediumSearchGridMinWidth
+            ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedSearchGridMinWidth
         }
 
     fun gridItemMinWidth(preference: String): Dp = libraryGridMinWidth(preference)
@@ -102,17 +101,27 @@ data class ReiAnixResponsiveMetrics(
 
     fun homeHeroHeight(): Dp {
         if (isLandscape || heightClass == ReiAnixWindowHeightClass.COMPACT) {
-            return (maxWidth * 0.50f).coerceIn(180.dp, 240.dp)
+            return (maxWidth * 0.50f).coerceIn(
+                ReiAnixTokens.Responsive.homeHeroLandscapeMinHeight,
+                ReiAnixTokens.Responsive.homeHeroLandscapeMaxHeight,
+            )
         }
         return (maxWidth * 0.56f).coerceIn(
-            190.dp,
-            if (widthClass == ReiAnixWindowWidthClass.EXPANDED) 280.dp else 240.dp,
+            ReiAnixTokens.Responsive.homeHeroPortraitMinHeight,
+            if (widthClass == ReiAnixWindowWidthClass.EXPANDED) {
+                ReiAnixTokens.Responsive.homeHeroExpandedMaxHeight
+            } else {
+                ReiAnixTokens.Responsive.homeHeroPortraitMaxHeight
+            },
         )
     }
 
     fun detailsHeroHeight(): Dp {
         if (isLandscape) {
-            return (maxWidth * 0.44f).coerceIn(200.dp, 260.dp)
+            return (maxWidth * 0.44f).coerceIn(
+                ReiAnixTokens.Responsive.detailsHeroLandscapeMinHeight,
+                ReiAnixTokens.Responsive.detailsHeroLandscapeMaxHeight,
+            )
         }
         return (maxWidth * 0.66f).coerceIn(
             ReiAnixTokens.Dimensions.detailsHeroHeight,
@@ -123,15 +132,15 @@ data class ReiAnixResponsiveMetrics(
     companion object {
         fun compactDefaults(): ReiAnixResponsiveMetrics =
             ReiAnixResponsiveMetrics(
-                maxWidth = 360.dp,
-                maxHeight = 720.dp,
+                maxWidth = ReiAnixTokens.Responsive.compactWindowWidth,
+                maxHeight = ReiAnixTokens.Responsive.compactWindowHeight,
                 widthClass = ReiAnixWindowWidthClass.COMPACT,
                 heightClass = ReiAnixWindowHeightClass.MEDIUM,
                 isLandscape = false,
                 horizontalPadding = ReiAnixTokens.Dimensions.screenHorizontalPadding,
-                contentMaxWidth = 360.dp,
-                settingsMaxWidth = 360.dp,
-                textMaxWidth = 360.dp,
+                contentMaxWidth = ReiAnixTokens.Responsive.compactWindowWidth,
+                settingsMaxWidth = ReiAnixTokens.Responsive.compactWindowWidth,
+                textMaxWidth = ReiAnixTokens.Responsive.compactWindowWidth,
             )
     }
 }
@@ -163,26 +172,26 @@ fun ReiAnixResponsiveRoot(
 
         val horizontalPadding = when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Dimensions.screenHorizontalPadding
-            ReiAnixWindowWidthClass.MEDIUM -> 20.dp
-            ReiAnixWindowWidthClass.EXPANDED -> 24.dp
+            ReiAnixWindowWidthClass.MEDIUM -> ReiAnixTokens.Responsive.mediumHorizontalPadding
+            ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedHorizontalPadding
         }
 
         val contentMaxWidth = when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> maxWidth
-            ReiAnixWindowWidthClass.MEDIUM -> 960.dp
-            ReiAnixWindowWidthClass.EXPANDED -> 1200.dp
+            ReiAnixWindowWidthClass.MEDIUM -> ReiAnixTokens.Responsive.mediumContentMaxWidth
+            ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedContentMaxWidth
         }
 
         val settingsMaxWidth = when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> maxWidth
-            ReiAnixWindowWidthClass.MEDIUM -> 720.dp
-            ReiAnixWindowWidthClass.EXPANDED -> 840.dp
+            ReiAnixWindowWidthClass.MEDIUM -> ReiAnixTokens.Responsive.mediumSettingsMaxWidth
+            ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedSettingsMaxWidth
         }
 
         val textMaxWidth = when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> maxWidth
-            ReiAnixWindowWidthClass.MEDIUM -> 680.dp
-            ReiAnixWindowWidthClass.EXPANDED -> 760.dp
+            ReiAnixWindowWidthClass.MEDIUM -> ReiAnixTokens.Responsive.mediumTextMaxWidth
+            ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedTextMaxWidth
         }
 
         val metrics = ReiAnixResponsiveMetrics(
