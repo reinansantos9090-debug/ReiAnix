@@ -719,7 +719,7 @@ private fun ColumnScope.LibraryReadyContent(
                         onAction = if (filters.hasAnyFilter) onClearFilters else null,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = ReiAnixTokens.Spacing.xxl),
+                            .padding(vertical = ReiAnixTokens.Spacing.lg),
                     )
                 }
             } else {
@@ -866,7 +866,7 @@ private fun LibraryLoadingGrid(
             top = ReiAnixTokens.Spacing.sm,
             bottom = ReiAnixTokens.Spacing.xxl,
         ),
-        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         items(
