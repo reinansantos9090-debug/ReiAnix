@@ -227,8 +227,8 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertIn("ReiAnixTokens.TypographyTokens.chip", components)
         for name, source in screens.items():
             self.assertIn("ReiAnixChip(", source, msg=name)
-            self.assertNotIn("FilterChip(", source, msg=name)
-            self.assertNotIn("AssistChip(", source, msg=name)
+            self.assertNotRegex(source, r"(?<![A-Za-z0-9_])FilterChip\s*\(", msg=name)
+            self.assertNotRegex(source, r"(?<![A-Za-z0-9_])AssistChip\s*\(", msg=name)
 
 
 if __name__ == "__main__":
