@@ -95,6 +95,24 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertIn("ReiAnixHomeLibraryUiState.from(state)", home)
         self.assertNotIn("it.playbackEpisodeId", home)
 
+    def test_legacy_home_empty_states_route_to_the_correct_source_action(self):
+        home = self.read(HOME)
+        legacy_home = home[home.index("fun ReiAnixHomeScreen("):]
+
+        self.assertIn("onSelectSource: () -> Unit = onRefresh", legacy_home)
+        self.assertIn(
+            'actionLabel = "Selecionar pasta",\n                        onAction = onSelectSource',
+            legacy_home,
+        )
+        self.assertIn(
+            'onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {\n'
+            '                    onSelectSource\n'
+            '                } else {\n'
+            '                    onRefresh\n'
+            '                },',
+            legacy_home,
+        )
+
     def test_home_keeps_usable_catalog_visible_during_incremental_loading(self):
         home = self.read(HOME)
         self.assertIn(
