@@ -402,8 +402,6 @@ fun ReiAnixHomeScreen(
 }
 
 @Composable
-
-@Composable
 private fun HomeHeader(
     onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,

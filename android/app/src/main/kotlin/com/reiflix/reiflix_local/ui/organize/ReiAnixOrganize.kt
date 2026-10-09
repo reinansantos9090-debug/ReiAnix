@@ -623,8 +623,6 @@ private fun organizeSourceStateTone(state: String): ReiAnixBadgeTone = when (sta
 }
 
 @Composable
-
-@Composable
 private fun OrganizeTopBar(
     sourceAvailable: Boolean,
     isRefreshing: Boolean,

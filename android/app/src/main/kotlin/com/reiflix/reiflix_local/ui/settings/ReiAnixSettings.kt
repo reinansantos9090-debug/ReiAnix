@@ -1677,8 +1677,6 @@ fun ReiAnixSettingsRow(
     }
 }
 @Composable
-
-@Composable
 fun SettingsHeader(
     title: String,
     subtitle: String,

@@ -389,8 +389,6 @@ private fun ReiAnixLibraryPresentationScreen(
 }
 
 @Composable
-
-@Composable
 private fun LibraryHeader(
     sourceAvailable: Boolean,
     onSearch: (() -> Unit)?,
