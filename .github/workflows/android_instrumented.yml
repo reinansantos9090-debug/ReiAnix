@@ -160,6 +160,15 @@ jobs:
         working-directory: build/flutter
         run: flutter pub get
 
+      - name: Run Android Kotlin unit tests (no emulator)
+        working-directory: build/flutter/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ./gradlew
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --max-workers=2
+
       - name: Precompile Android app and instrumentation APKs
         working-directory: build/flutter/android
         shell: bash
