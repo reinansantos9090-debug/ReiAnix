@@ -541,7 +541,7 @@ private fun ColumnScope.HomeReadyContent(
             .widthIn(max = responsive.contentMaxWidth)
             .fillMaxWidth(),
         state = listState,
-        contentPadding = PaddingValues(bottom = ReiAnixTokens.Spacing.huge),
+        contentPadding = PaddingValues(bottom = ReiAnixTokens.Spacing.xxl),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.section),
     ) {
         if (animes.isNotEmpty()) {
