@@ -286,6 +286,7 @@ fun ReiAnixCompactButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues = ButtonDefaults.TextButtonContentPadding,
 ) {
     TextButton(
         onClick = onClick,
@@ -294,10 +295,11 @@ fun ReiAnixCompactButton(
             .heightIn(min = ReiAnixTokens.Dimensions.touchTarget)
             .semantics { role = Role.Button },
         shape = ReiAnixTokens.Shapes.button,
+        contentPadding = contentPadding,
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge,
+            style = ReiAnixTokens.TypographyTokens.button,
             maxLines = 2,
             overflow = TextOverflow.Clip,
         )
