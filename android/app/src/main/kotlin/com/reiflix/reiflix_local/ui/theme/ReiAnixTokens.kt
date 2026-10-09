@@ -174,6 +174,8 @@ object ReiAnixTokens {
         val gridMinWidthMedium = 108.dp
         val gridMinWidthLarge = 144.dp
         val gridMaxItemWidth = 184.dp
+        // The genre picker stays scrollable and bounded even for large catalogs.
+        val libraryGenrePickerMaxHeight = 360.dp
         // Grid gaps are expressed as density presets, not screen-local magic values.
         val libraryGridSpacingDense = 6.dp
         val libraryGridSpacingBalanced = 8.dp
