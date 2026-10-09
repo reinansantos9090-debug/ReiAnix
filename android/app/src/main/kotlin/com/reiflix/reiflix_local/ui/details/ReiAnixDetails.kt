@@ -42,7 +42,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -74,6 +73,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
+import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixChip
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
@@ -1000,9 +1000,11 @@ private fun DetailsExpandableSynopsis(description: String) {
         Text(text = "Sinopse", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
         Text(text = description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
             maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis)
-        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(ReiAnixTokens.Spacing.none)) {
-            Text(if (expanded) "menos" else "mais")
-        }
+        ReiAnixCompactButton(
+            text = if (expanded) "menos" else "mais",
+            onClick = { expanded = !expanded },
+            contentPadding = PaddingValues(ReiAnixTokens.Spacing.none),
+        )
     }
 }
 
