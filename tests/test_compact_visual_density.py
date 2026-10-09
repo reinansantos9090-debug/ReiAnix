@@ -106,7 +106,7 @@ class CompactVisualDensityTests(unittest.TestCase):
         self.assertIn("WindowInsets.safeDrawing.only(", shell)
         self.assertIn("NavigationBarItem(", shell)
         self.assertIn("ReiAnixTokens.Dimensions.bottomNavigationMinHeight", shell)
-        self.assertIn("ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION", navigation)
+        self.assertIn('const val BOTTOM_NAV_CONTENT_DESCRIPTION = "ReiAnixBottomNavigation"', navigation)
         self.assertIn("val touchTarget = 48.dp", tokens)
         self.assertIn("PlayerDimensions", tokens)
         self.assertIn("BackHandler", player_ui)
