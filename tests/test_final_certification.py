@@ -135,3 +135,19 @@ def test_no_weakening_or_fake_runtime_pass_contracts():
         assert classification in runner
     assert "p.returncode==0 else FAIL" in runner
     assert "NOT VALIDATED" in runner
+
+def test_existing_android_instrumentation_sources_keep_compilable_compose_contracts():
+    test_root = ROOT / "android/app/src/androidTest/kotlin"
+    sources = list(test_root.rglob("*.kt"))
+    assert sources, "Existing Android instrumentation sources must remain present"
+
+    for source_path in sources:
+        source = source_path.read_text(encoding="utf-8")
+        assert "assertDoesNotExist" not in source, source_path
+        if "assertIsNotDisplayed(" in source:
+            assert "import androidx.compose.ui.test.assertIsNotDisplayed" in source, source_path
+
+    navigation_test = read(
+        "android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigationInstrumentedTest.kt"
+    )
+    assert "import androidx.compose.ui.Modifier" in navigation_test
