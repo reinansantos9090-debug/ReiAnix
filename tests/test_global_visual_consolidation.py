@@ -165,6 +165,8 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertIn("actions: @Composable RowScope.() -> Unit", components)
         self.assertIn("navigationContentDescription", components)
         self.assertIn("ReiAnixTokens.TypographyTokens.screenTitle", settings)
+        self.assertIn("applyResponsiveHorizontalPadding: Boolean = true", components)
+        self.assertIn("applyResponsiveHorizontalPadding = false", settings)
 
 
 if __name__ == "__main__":

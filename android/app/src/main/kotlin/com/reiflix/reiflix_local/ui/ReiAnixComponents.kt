@@ -582,13 +582,20 @@ fun ReiAnixTopBar(
     onNavigationClick: (() -> Unit)? = null,
     titleStyle: TextStyle = ReiAnixTokens.TypographyTokens.screenTitle,
     titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground,
+    applyResponsiveHorizontalPadding: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
-            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+            .then(
+                if (applyResponsiveHorizontalPadding) {
+                    Modifier.padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding)
+                } else {
+                    Modifier
+                },
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
             ReiAnixTokens.Spacing.xs,

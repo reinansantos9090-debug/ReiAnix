@@ -1692,6 +1692,7 @@ fun SettingsHeader(
         modifier = Modifier.padding(bottom = ReiAnixTokens.Spacing.xs),
         titleStyle = ReiAnixTokens.TypographyTokens.screenTitle,
         titleColor = MaterialTheme.colorScheme.onSurface,
+        applyResponsiveHorizontalPadding = false,
     )
 }
 
