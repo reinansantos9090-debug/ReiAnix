@@ -169,5 +169,31 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         self.assertIn("applyResponsiveHorizontalPadding = false", settings)
 
 
+    def test_shared_text_fields_use_one_canonical_color_policy(self):
+        components = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixComponents.kt")
+        self.assertIn("private fun reiAnixOutlinedTextFieldColors()", components)
+        self.assertEqual(components.count("OutlinedTextFieldDefaults.colors("), 1)
+        self.assertEqual(components.count("colors = reiAnixOutlinedTextFieldColors()"), 2)
+        for token in (
+            "focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant",
+            "focusedBorderColor = MaterialTheme.colorScheme.primary",
+            "unfocusedBorderColor = MaterialTheme.colorScheme.outline",
+            "disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy",
+            "disabledTextColor = MaterialTheme.colorScheme.onSurface.copy",
+            "focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant",
+        ):
+            self.assertIn(token, components)
+
+    def test_settings_preferences_share_compact_semantic_text_component(self):
+        settings = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt")
+        self.assertIn("private fun SettingsPreferenceText(", settings)
+        self.assertGreaterEqual(settings.count("SettingsPreferenceText("), 4)
+        self.assertIn("ReiAnixTokens.TypographyTokens.bodySecondary", settings)
+        self.assertIn("ReiAnixTokens.TypographyTokens.metadata", settings)
+        self.assertIn("onCheckedChange(!checked)", settings)
+        self.assertIn("onSave(draftValue.trim())", settings)
+        self.assertIn("onSelected(choice.value)", settings)
+
+
 if __name__ == "__main__":
     unittest.main()
