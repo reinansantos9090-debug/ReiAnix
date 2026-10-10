@@ -69,6 +69,10 @@ class ReiAnixComposeLibraryHost(
             val appearanceCardSize by settingsViewModel.appearanceCardSize.collectAsStateWithLifecycle()
             val appearanceShowThumbnails by settingsViewModel.appearanceShowThumbnails.collectAsStateWithLifecycle()
             val libraryGridDensity by settingsViewModel.libraryGridDensity.collectAsStateWithLifecycle()
+            val libraryPageSize by settingsViewModel.libraryPageSize.collectAsStateWithLifecycle()
+            val librarySortDefault by settingsViewModel.librarySortDefault.collectAsStateWithLifecycle()
+            val continueWatchingEnabled by settingsViewModel.continueWatchingEnabled.collectAsStateWithLifecycle()
+            val continueWatchingLimit by settingsViewModel.continueWatchingLimit.collectAsStateWithLifecycle()
             val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
 
             ReiAnixComposeRoot(
@@ -132,6 +136,10 @@ class ReiAnixComposeLibraryHost(
                         appearanceCardSize = appearanceCardSize,
                         appearanceShowThumbnails = appearanceShowThumbnails,
                         libraryGridDensity = libraryGridDensity,
+                        libraryPageSize = libraryPageSize,
+                        librarySortDefault = librarySortDefault,
+                        continueWatchingEnabled = continueWatchingEnabled,
+                        continueWatchingLimit = continueWatchingLimit,
                         settings = {
                             ReiAnixSettingsRoute(
                                 viewModel = settingsViewModel,
