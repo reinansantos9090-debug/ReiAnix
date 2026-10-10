@@ -33,6 +33,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Dp
+import android.content.res.Configuration
 import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.runtime.Composable
@@ -338,7 +341,12 @@ fun ReiAnixNativePlayerBottomControls(
     onSource: () -> Unit,
     onNext: () -> Unit,
 ) {
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
+    val timelineHeight = if (landscape) 36.dp else ReiAnixTokens.PlayerDimensions.timelineHeight
+    val actionButtonSize = if (landscape) 40.dp else ReiAnixTokens.PlayerDimensions.actionButtonSize
+    val topPadding = if (landscape) 8.dp else ReiAnixTokens.PlayerDimensions.bottomTopPadding
+    val timelineSpacerHeight = if (landscape) 0.dp else ReiAnixTokens.Spacing.xs / 2
     if (state.locked) {
         Box(
             modifier = Modifier
@@ -413,7 +421,7 @@ fun ReiAnixNativePlayerBottomControls(
             .padding(
                 start = ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding,
                 end = ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding,
-                top = ReiAnixTokens.PlayerDimensions.bottomTopPadding,
+                top = topPadding,
                 bottom = safeBottom + ReiAnixTokens.PlayerDimensions.bottomExtraPadding,
             ),
     ) {
@@ -430,7 +438,7 @@ fun ReiAnixNativePlayerBottomControls(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = ReiAnixTokens.PlayerDimensions.timelineHeight),
+                    .heightIn(min = timelineHeight),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 val bufferedFraction = if (duration > 0L) {
@@ -490,7 +498,7 @@ fun ReiAnixNativePlayerBottomControls(
             )
         }
 
-        Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.xs / 2))
+        Spacer(modifier = Modifier.height(timelineSpacerHeight))
 
         Row(
             modifier = Modifier
@@ -502,6 +510,7 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 icon = Icons.Filled.Lock,
                 label = "Bloquear toques",
+                buttonSize = actionButtonSize,
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
                 enabled = !state.episodeTransitionInProgress,
@@ -509,6 +518,7 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 icon = Icons.Filled.AspectRatio,
                 label = "Proporção",
+                buttonSize = actionButtonSize,
                 contentDescription = "Alterar proporção do vídeo",
                 onClick = onResize,
                 enabled = !state.episodeTransitionInProgress,
@@ -516,6 +526,7 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 icon = Icons.Filled.MoreVert,
                 label = "Opções",
+                buttonSize = actionButtonSize,
                 contentDescription = buildString {
                     append("Mais opções do player")
                     val speed = state.playbackSpeed.takeIf { it.isFinite() && it > 0f }
@@ -534,6 +545,7 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 icon = Icons.Filled.SkipNext,
                 label = "Próximo episódio",
+                buttonSize = actionButtonSize,
                 contentDescription = "Próximo episódio",
                 onClick = onNext,
                 enabled = state.canNext && !state.episodeTransitionInProgress,
@@ -549,6 +561,7 @@ private fun RowScope.PlayerBottomAction(
     contentDescription: String,
     onClick: () -> Unit,
     enabled: Boolean = true,
+    buttonSize: Dp = ReiAnixTokens.PlayerDimensions.actionButtonSize,
 ) {
     Column(
         modifier = Modifier.weight(1f),
@@ -558,7 +571,7 @@ private fun RowScope.PlayerBottomAction(
             onClick = onClick,
             enabled = enabled,
             modifier = Modifier
-                .size(ReiAnixTokens.PlayerDimensions.actionButtonSize)
+                .size(buttonSize)
                 .semantics {
                     this.contentDescription = contentDescription
                     role = Role.Button

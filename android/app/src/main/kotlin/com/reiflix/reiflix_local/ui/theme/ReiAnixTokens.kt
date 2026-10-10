@@ -293,8 +293,9 @@ object ReiAnixTokens {
         val topOverlayLandscapeHeight = 108.dp
         val centerOverlayPortraitHeight = 110.dp
         val centerOverlayLandscapeHeight = 100.dp
-        val bottomOverlayPortraitHeight = 154.dp
-        val bottomOverlayLandscapeHeight = 128.dp
+        // Reserve room for the timeline, scalable action labels, and gesture-safe inset.
+        val bottomOverlayPortraitHeight = 172.dp
+        val bottomOverlayLandscapeHeight = 136.dp
         val topTitleWidthFraction = 0.84f
         val seekButtonSize = 60.dp
         val seekIconSize = 32.dp

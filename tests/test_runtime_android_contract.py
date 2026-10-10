@@ -283,6 +283,21 @@ class RuntimeAndroidContractTests(unittest.TestCase):
         self.assertNotIn('"Timer 15m"', bottom)
         self.assertNotIn('"audio_bottom"', bottom)
 
+    def test_compose_player_bottom_controls_fit_portrait_and_landscape_safe_insets(self):
+        controls = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixNativePlayerControls.kt"
+        ).read_text(encoding="utf-8")
+        tokens = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE", controls)
+        self.assertIn("val timelineHeight = if (landscape) 36.dp", controls)
+        self.assertIn("val actionButtonSize = if (landscape) 40.dp", controls)
+        self.assertIn("val topPadding = if (landscape) 8.dp", controls)
+        self.assertIn("bottomOverlayPortraitHeight = 172.dp", tokens)
+        self.assertIn("bottomOverlayLandscapeHeight = 136.dp", tokens)
+        self.assertIn("safeBottom + ReiAnixTokens.PlayerDimensions.bottomExtraPadding", controls)
+
     def test_scroll_architecture_has_one_vertical_owner_per_main_screen(self):
         views = {
             "home_view.py": "views/home_view.py",
