@@ -93,7 +93,16 @@ fun ReiAnixLibraryRoute(
     viewModel: ReiAnixLibraryViewModel,
     cardSize: String = "medium",
     gridDensity: String = "medium",
+    pageSize: Int = 36,
+    defaultSortKey: String = "added_desc",
 ) {
+    LaunchedEffect(pageSize) {
+        viewModel.applyLibraryPageSize(pageSize)
+    }
+    LaunchedEffect(defaultSortKey) {
+        viewModel.applyLibrarySortDefault(defaultSortKey)
+    }
+
     val baseState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
     val pageState by viewModel.pagedLibraryState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
