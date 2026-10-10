@@ -96,6 +96,7 @@ def test_compose_settings_command_result_is_atomic_and_correlatable(tmp_path):
     assert result_path.exists()
     ack = json.loads(result_path.read_text(encoding="utf-8"))
     assert ack["requestId"] == "req-55"
+    assert ack["commandBridge"] == "settings"
     assert ack["status"] == "ACK"
     assert ack["operationState"] == "QUEUED"
     assert ack["key"] == "appearance.theme"
@@ -110,6 +111,7 @@ def test_compose_settings_command_result_is_atomic_and_correlatable(tmp_path):
     )
     result = json.loads(result_path.read_text(encoding="utf-8"))
     assert result["requestId"] == "req-55"
+    assert result["commandBridge"] == "settings"
     assert result["status"] == "SUCCESS"
     assert result["operationState"] == "SUCCESS"
     assert result["value"] == "light"

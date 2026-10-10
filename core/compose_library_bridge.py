@@ -758,6 +758,7 @@ class ComposeLibraryBridge:
         normalized_id = str(request_id or "").strip() or uuid.uuid4().hex
         result_payload = {
             "schemaVersion": self.SCHEMA_VERSION,
+            "commandBridge": "library",
             "requestId": normalized_id,
             "action": str(action or "").strip(),
             "status": str(status or "").upper(),

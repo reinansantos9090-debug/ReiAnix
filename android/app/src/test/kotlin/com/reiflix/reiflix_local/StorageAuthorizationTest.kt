@@ -73,6 +73,25 @@ class StorageAuthorizationTest {
     }
 
     @Test
+    fun saf_identity_matches_canonical_python_identity_for_equivalent_encoded_tree_uris() {
+        val encoded = "content://com.android.externalstorage.documents/tree/primary%3AMovies"
+        val lowercaseEncoding = "content://COM.ANDROID.EXTERNALSTORAGE.DOCUMENTS/tree/primary%3aMovies"
+
+        assertEquals(
+            "saf:com.android.externalstorage.documents:primary:Movies",
+            StorageAuthorization.safIdentity(encoded),
+        )
+        assertEquals(
+            StorageAuthorization.safIdentity(encoded),
+            StorageAuthorization.safIdentity(lowercaseEncoding),
+        )
+        assertEquals(
+            SafAccessLevel.AVAILABLE,
+            StorageAuthorization.safAccess(encoded, listOf(lowercaseEncoding)),
+        )
+    }
+
+    @Test
     fun broad_storage_state_is_independent_and_gates_only_broad_scan() {
         assertEquals(
             BroadStorageAccessLevel.AVAILABLE,

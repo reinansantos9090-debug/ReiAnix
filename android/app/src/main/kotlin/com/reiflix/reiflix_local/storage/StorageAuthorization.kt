@@ -47,11 +47,11 @@ object StorageAuthorization {
             if (readMediaVideo) MediaAccessLevel.FULL else MediaAccessLevel.DENIED
     }
 
-    private fun safIdentity(value: String): String? {
+    fun safIdentity(value: String): String? {
         // Keep this helper independent from Android framework URI parsing so the
         // same authorization model behaves identically in JVM unit tests and on
-        // Android. Persisted SAF permissions are tree URIs; compare the
-        // provider authority plus the encoded tree document id.
+        // Android. Match Python's saf_source_identity: lowercase authority, decode
+        // the tree document id once, and include the canonical "saf:" prefix.
         val raw = value.trim()
         if (!raw.startsWith("content://", ignoreCase = true)) return null
         val parsed = runCatching { java.net.URI(raw) }.getOrNull() ?: return null
@@ -64,7 +64,14 @@ object StorageAuthorization {
             .substringBefore("/")
             .trim()
         if (encodedTreeId.isBlank()) return null
-        return authority.lowercase() + ":" + encodedTreeId
+        val documentId = runCatching {
+            java.net.URLDecoder.decode(
+                encodedTreeId.replace("+", "%2B"),
+                Charsets.UTF_8.name(),
+            )
+        }.getOrNull()?.trim()
+        if (documentId.isNullOrBlank()) return null
+        return "saf:" + authority.lowercase(java.util.Locale.ROOT) + ":" + documentId
     }
 
     fun safAccess(configuredTreeUri: String?, persistedReadUris: Collection<String>): SafAccessLevel {

@@ -81,8 +81,13 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("authority", source)
         self.assertIn("documentId", source)
         self.assertIn("volumeId", source)
-        self.assertIn('"saf:"+authority+":"+documentId', source)
+        self.assertIn("StorageAuthorization.safIdentity(treeUri.toString())", source)
         self.assertIn("content://", source)
+        authorization = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/StorageAuthorization.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('return "saf:" + authority.lowercase(java.util.Locale.ROOT) + ":" + documentId', authorization)
 
     def test_provider_states_are_explicit(self):
         source = SAF.read_text(encoding="utf-8")
