@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.scanner
 
 import com.reiflix.reiflix_local.storage.NativeBatch
+import com.reiflix.reiflix_local.storage.StorageAuthorization
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -37,7 +38,9 @@ object SafScanner {
         val documentId=DocumentsContract.getTreeDocumentId(treeUri).trim()
         require(documentId.isNotBlank()) { "A árvore SAF não possui Document ID." }
         val volumeId=if(documentId.contains(":")) documentId.substringBefore(":") else ""
-        return TreeIdentity(treeUri.toString(),authority,documentId,volumeId,"saf:"+authority+":"+documentId)
+        val identity = StorageAuthorization.safIdentity(treeUri.toString())
+            ?: throw IllegalArgumentException("A árvore SAF não possui identidade canônica.")
+        return TreeIdentity(treeUri.toString(),authority,documentId,volumeId,identity)
     }
 
     fun identityPayload(treeUri:Uri):JSONObject {
