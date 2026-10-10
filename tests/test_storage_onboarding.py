@@ -204,6 +204,8 @@ class StorageOnboardingTests(unittest.TestCase):
         wide_actions = screen.split("if (wideLayout) {", 1)[1].split("} else {", 1)[0]
         self.assertLess(wide_actions.index('text = "CANCELAR"'), wide_actions.index('text = "ESCOLHER PASTA"'))
         self.assertEqual(wide_actions.count("ReiAnixSecondaryButton("), 2)
+        self.assertIn("Alignment.End", wide_actions)
+        self.assertNotIn(".weight(", wide_actions)
         self.assertNotIn("Verificando biblioteca", screen)
         self.assertNotIn("CircularProgressIndicator", screen)
 

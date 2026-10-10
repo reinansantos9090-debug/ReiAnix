@@ -143,22 +143,22 @@ fun ReiAnixLibraryFolderOnboarding(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = ReiAnixTokens.Spacing.sm),
-                                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                                horizontalArrangement = Arrangement.spacedBy(
+                                    ReiAnixTokens.Spacing.sm,
+                                    Alignment.End,
+                                ),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 ReiAnixSecondaryButton(
                                     text = "CANCELAR",
                                     onClick = onCancel,
                                     enabled = !pickerOpen,
-                                    modifier = Modifier
-                                        .weight(0.85f)
-                                        .semantics { role = Role.Button },
+                                    modifier = Modifier.semantics { role = Role.Button },
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "ESCOLHER PASTA",
                                     onClick = onSelectFolder,
                                     enabled = !pickerOpen,
-                                    modifier = Modifier.weight(1.25f),
                                 )
                             }
                         } else {
