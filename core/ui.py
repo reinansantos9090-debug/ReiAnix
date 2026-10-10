@@ -28,6 +28,8 @@ class ThemeTokens:
     warning: str
     overlay: str
     favorite: str
+    # Higher-contrast control outline; custom legacy instances fall back to border.
+    outline: str | None = None
 
 
 DARK_THEME = ThemeTokens(
@@ -46,6 +48,7 @@ DARK_THEME = ThemeTokens(
     secondary="#B3B3B3",
     border="#202020",
     divider="#202020",
+    outline="#606060",
     error="#FF5B61",
     success="#4ADE80",
     warning="#F0C85A",
@@ -69,6 +72,7 @@ LIGHT_THEME = ThemeTokens(
     secondary="#5F6670",
     border="#D0D0D0",
     divider="#DEDEDE",
+    outline="#767676",
     error="#B3261E",
     success="#1B6B42",
     warning="#8A6200",
@@ -170,7 +174,7 @@ def _flet_material_theme(tokens: ThemeTokens) -> ft.Theme:
         surface_container=tokens.surface,
         surface_container_high=tokens.surface_sheet,
         surface_container_highest=tokens.surface_dialog,
-        outline=tokens.border,
+        outline=tokens.outline or tokens.border,
         outline_variant=tokens.divider,
         scrim=tokens.overlay,
     )

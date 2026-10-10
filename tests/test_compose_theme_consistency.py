@@ -65,6 +65,8 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
             "val surfaceNavigation = Color(0xFF000000)",
             "val divider = Color(0xFF202020)",
             "val border = Color(0xFF202020)",
+            "val outline = Color(0xFF606060)",
+            "val lightOutline = Color(0xFF767676)",
             "val text = Color(0xFFFFFFFF)",
             "val textMuted = Color(0xFFB3B3B3)",
             "val textTertiary = Color(0xFF777777)",
@@ -81,6 +83,8 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
         self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceSheet", theme)
         self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.lightSurfaceVariant", theme)
         self.assertIn("surfaceContainerHighest = ReiAnixTokens.Colors.surfaceDialog", theme)
+        self.assertIn("outline = ReiAnixTokens.Colors.outline", theme)
+        self.assertIn("outline = ReiAnixTokens.Colors.lightOutline", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.primary", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.lightPrimary", theme)
         forbidden_blue_surfaces = (

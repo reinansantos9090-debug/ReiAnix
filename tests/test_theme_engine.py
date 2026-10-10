@@ -49,6 +49,7 @@ class ThemeEngineTests(unittest.TestCase):
             "primary",
             "secondary",
             "border",
+            "outline",
             "divider",
             "error",
             "success",
@@ -73,6 +74,8 @@ class ThemeEngineTests(unittest.TestCase):
         self.assertEqual(DARK_THEME.surface_raised, "#0A0A0A")
         self.assertEqual(DARK_THEME.surface_dialog, "#0A0A0A")
         self.assertEqual(DARK_THEME.surface_sheet, "#080808")
+        self.assertEqual(DARK_THEME.outline, "#606060")
+        self.assertEqual(LIGHT_THEME.outline, "#767676")
         self.assertEqual(LIGHT_THEME.surface_dialog, "#E7E7EA")
         self.assertEqual(LIGHT_THEME.surface_sheet, "#EFEFEF")
         self.assertEqual(DARK_THEME.primary, "#2579FF")
@@ -90,6 +93,7 @@ class ThemeEngineTests(unittest.TestCase):
             'text_muted="#B3B3B3"',
             'primary="#2579FF"',
             'border="#202020"',
+            'outline="#606060"',
             'divider="#202020"',
             'overlay="#000000D9"',
         }
@@ -109,6 +113,7 @@ class ThemeEngineTests(unittest.TestCase):
             self.assertEqual(theme.color_scheme.surface_container, expected.surface)
             self.assertEqual(theme.color_scheme.surface_container_high, expected.surface_sheet)
             self.assertEqual(theme.color_scheme.surface_container_highest, expected.surface_dialog)
+            self.assertEqual(theme.color_scheme.outline, expected.outline or expected.border)
             self.assertEqual(theme.canvas_color, expected.background)
             self.assertEqual(theme.scaffold_bgcolor, expected.background)
             self.assertEqual(theme.card_bgcolor, expected.surface)
@@ -128,6 +133,7 @@ class ThemeEngineTests(unittest.TestCase):
             "surface_container=tokens.surface",
             "surface_container_high=tokens.surface_sheet",
             "surface_container_highest=tokens.surface_dialog",
+            "outline=tokens.outline or tokens.border",
             "canvas_color=tokens.background",
             "card_bgcolor=tokens.surface",
             "scaffold_bgcolor=tokens.background",

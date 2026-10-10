@@ -62,6 +62,8 @@ object ReiAnixTokens {
         val textOnPrimary = onPrimary
         val border = Color(0xFF202020)
         val borderStrong = Color(0xFF2A2A2A)
+        // Input/control outlines need more contrast than decorative separators.
+        val outline = Color(0xFF606060)
         val divider = Color(0xFF202020)
 
         val error = Color(0xFFFF5B61)
@@ -121,6 +123,7 @@ object ReiAnixTokens {
         val lightOnSurface = lightText
         val lightMuted = lightTextMuted
         val lightBorder = Color(0xFFD0D0D0)
+        val lightOutline = Color(0xFF767676)
         val lightDivider = Color(0xFFDEDEDE)
     }
 
