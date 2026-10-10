@@ -3287,6 +3287,20 @@ async def main(page: ft.Page):
             normalized = "READY"
             message = None
             error = None
+        # Do not erase a useful SAF selection failure when a delayed capability
+        # snapshot or inventory event re-runs maybe_show_storage_onboarding().
+        # Keep the failure visible until the user explicitly retries, dismisses it,
+        # or a newly valid library root is discovered.
+        if (
+            current_state == "ERROR"
+            and normalized in {"CHECKING", "NEEDS_FOLDER"}
+            and not _configured_valid_library_saf_roots()
+            and not saf_selection.pending
+            and not storage_onboarding["waiting_for_result"]
+        ):
+            normalized = "ERROR"
+            message = storage_onboarding.get("message") or message
+            error = storage_onboarding.get("error") or error
         storage_onboarding["state"] = normalized
         storage_onboarding["message"] = message
         storage_onboarding["error"] = error
