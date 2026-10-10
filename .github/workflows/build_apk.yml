@@ -513,7 +513,9 @@ jobs:
           apk_bytes="$(stat -c '%s' "${{ steps.apk.outputs.path }}")"
           zip_bytes="$(stat -c '%s' build/ReiAnix-apk.zip)"
           printf 'APK_SIZE_BYTES=%s\\nZIP_SIZE_BYTES=%s\\n' "$apk_bytes" "$zip_bytes"
-          test "$zip_bytes" -lt "$apk_bytes"
+          # The ZIP also carries checksum and installation guidance; once JNI libraries
+          # are compressed inside the APK, the outer archive should be close to APK size.
+          test "$zip_bytes" -le "$((apk_bytes + 1048576))"
 
       # Actions artifact storage is a very small pooled quota. Publishing the
       # same APK/ZIP on every push can exhaust that quota even when old runs
