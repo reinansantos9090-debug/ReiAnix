@@ -2733,7 +2733,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
                         onSeekTo = { targetMs ->
-                            if (::player.isInitialized && player.duration > 0L) {
+                            if (::player.isInitialized && player.duration > 0L && !episodeChangePending) {
                                 val safeTarget = targetMs.coerceIn(0L, player.duration)
                                 player.seekTo(safeTarget)
                                 saveProgress("player_progress", force = true)

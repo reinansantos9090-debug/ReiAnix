@@ -307,7 +307,10 @@ class RuntimeAndroidContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("enabled = !state.episodeTransitionInProgress", controls)
         self.assertIn("enabled = duration > 0L && !state.episodeTransitionInProgress", controls)
+        self.assertIn("if (duration > 0L && !state.episodeTransitionInProgress)", controls)
         self.assertIn('state.episodeTransitionInProgress -> "Aguarde a troca de episódio"', controls)
+        activity = PLAYER_ACTIVITY.read_text(encoding="utf-8")
+        self.assertIn("player.duration > 0L && !episodeChangePending", activity)
 
     def test_native_player_rejects_play_pause_and_seek_commands_during_episode_transition(self):
         source = PLAYER_ACTIVITY.read_text(encoding="utf-8")

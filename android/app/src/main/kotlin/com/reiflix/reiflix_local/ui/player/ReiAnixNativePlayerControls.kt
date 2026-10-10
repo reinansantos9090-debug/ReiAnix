@@ -477,7 +477,7 @@ fun ReiAnixNativePlayerBottomControls(
                         sliderFraction = it.coerceIn(0f, 1f)
                     },
                     onValueChangeFinished = {
-                        if (duration > 0L) {
+                        if (duration > 0L && !state.episodeTransitionInProgress) {
                             onSeekTo(
                                 (sliderFraction * duration.toFloat())
                                     .toLong()
