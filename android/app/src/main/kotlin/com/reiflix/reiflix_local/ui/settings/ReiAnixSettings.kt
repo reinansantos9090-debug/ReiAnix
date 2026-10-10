@@ -1942,6 +1942,7 @@ private fun ChoiceSettingRow(
     if (dialogOpen) {
         AlertDialog(
             onDismissRequest = { dialogOpen = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             title = { Text(title) },
             text = {
                 LazyColumn(

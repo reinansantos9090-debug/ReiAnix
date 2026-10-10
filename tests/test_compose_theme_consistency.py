@@ -211,3 +211,19 @@ class ReiAnixTypographyConsistencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def test_compose_alert_dialogs_use_the_dialog_surface_instead_of_sheet_surface():
+    dialog_files = (
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt",
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixStorageScreen.kt",
+    )
+    for relative in dialog_files:
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        dialogs = source.split("AlertDialog(")[1:]
+        assert dialogs, f"{relative} should keep its existing dialog"
+        for index, call in enumerate(dialogs, start=1):
+            assert "containerColor = MaterialTheme.colorScheme.surfaceContainerHighest" in call[:360], (
+                f"{relative} AlertDialog #{index} must use the dialog surface token"
+            )
