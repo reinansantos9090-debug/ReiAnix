@@ -255,6 +255,25 @@ class ComposeLibraryBridge:
 
         previous_snapshot = self._read_persisted_snapshot()
         scan_snapshot = self._scan_snapshot()
+        previous_last_scan_status = (
+            previous_snapshot.get("lastScanStatus")
+            if isinstance(previous_snapshot, dict)
+            else None
+        )
+        last_scan_status = previous_last_scan_status
+        last_scan_reader = getattr(self.store, "last_scan", None)
+        if callable(last_scan_reader):
+            try:
+                last_scan_record = last_scan_reader()
+                last_scan_status = (
+                    str(last_scan_record.get("status") or "").strip().upper() or None
+                    if isinstance(last_scan_record, dict)
+                    else None
+                )
+            except Exception:
+                # Diagnostics about scan history must never make catalog
+                # projection fail; retain the most recent published status.
+                pass
         previous_animes = (
             previous_snapshot.get("animes")
             if isinstance(previous_snapshot, dict)
@@ -340,6 +359,7 @@ class ComposeLibraryBridge:
                 "sourceAvailable": source_state == "AVAILABLE",
                 "scanInProgress": scan_snapshot["in_progress"],
                 "scanState": scan_snapshot["state"],
+                "lastScanStatus": last_scan_status,
                 "storage": storage_snapshot,
                 "error": None,
                 "animes": projected_animes,
@@ -368,6 +388,7 @@ class ComposeLibraryBridge:
                 ),
                 "scanInProgress": scan_snapshot["in_progress"],
                 "scanState": scan_snapshot["state"],
+                "lastScanStatus": last_scan_status,
                 "storage": (
                     previous_snapshot.get("storage")
                     if isinstance(previous_snapshot, dict)
@@ -391,7 +412,14 @@ class ComposeLibraryBridge:
             return {"in_progress": False, "state": "UNKNOWN"}
 
         return {
-            "in_progress": state in {"CHECKING", "SCANNING", "WAITING_FOR_MEDIASTORE"},
+            "in_progress": state in {
+                "QUEUED",
+                "RUNNING",
+                "CANCELLING",
+                "CHECKING",
+                "SCANNING",
+                "WAITING_FOR_MEDIASTORE",
+            },
             "state": state,
         }
 
