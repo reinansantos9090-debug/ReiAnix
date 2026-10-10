@@ -44,6 +44,39 @@ class ReiAnixSettingsViewModel(context: Context) :
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), "medium")
 
+    /** Persisted library preferences projected from the canonical settings StateFlow. */
+    val libraryPageSize: StateFlow<Int> = uiState
+        .map { state ->
+            state.settings["library.page_size"]?.toIntOrNull()
+                ?.takeIf { it in setOf(24, 36, 48, 72) }
+                ?: 36
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), 36)
+
+    val librarySortDefault: StateFlow<String> = uiState
+        .map { state ->
+            state.settings["library.sort_default"]
+                ?.takeIf { it in setOf("added_desc", "title_asc", "title_desc", "recently_watched") }
+                ?: "added_desc"
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), "added_desc")
+
+    val continueWatchingEnabled: StateFlow<Boolean> = uiState
+        .map { state -> state.settings["library.continue_watching"] != "false" }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), true)
+
+    val continueWatchingLimit: StateFlow<Int> = uiState
+        .map { state ->
+            state.settings["library.continue_watching_limit"]?.toIntOrNull()
+                ?.takeIf { it in setOf(5, 10, 15, 20) }
+                ?: 10
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), 10)
+
     fun refresh() {
         viewModelScope.launch { repository.refresh() }
     }
