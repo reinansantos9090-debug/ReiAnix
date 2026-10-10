@@ -146,6 +146,20 @@ class StorageOnboardingTests(unittest.TestCase):
             block.index('storage_onboarding["waiting_for_result"] = False'),
         )
 
+    def test_saf_picker_watchdog_stays_active_during_picker_and_waits_for_foreground(self):
+        source = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        picker = source[source.index("private fun openTreePicker("):source.index("override fun onWindowFocusChanged")]
+        launch = picker[picker.index("treePicker.launch(pickerIntent)"):picker.index("catch (exception: Exception)")]
+        self.assertIn("scheduleSafPickerWatchdog(correlationId)", launch)
+        self.assertNotIn("cancelSafPickerWatchdog()", launch)
+        pause = source[source.index("override fun onPause()"):source.index("override fun onStop()")]
+        self.assertNotIn("cancelSafPickerWatchdog()", pause)
+        focus = source[source.index("override fun onWindowFocusChanged"):source.index("override fun onConfigurationChanged")]
+        focus_loss = focus[focus.index("} else if (safPickerPending)"):]
+        self.assertNotIn("cancelSafPickerWatchdog()", focus_loss)
+
     def test_saf_picker_watchdog_recovers_when_android_returns_without_focus_loss_callback(self):
         source = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"

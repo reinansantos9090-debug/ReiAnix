@@ -7215,11 +7215,14 @@ async def main(page: ft.Page):
                             page.snack_bar=ft.SnackBar(ft.Text('Entrada com Google cancelada.')); page.snack_bar.open=True; safe_update(); refresh_settings_if_active()
                         elif event_type in {'saf_error','google_error'}:
                             if event_type == 'saf_error':
-                                if event_request_id and not (
+                                compose_request_id = str(
+                                    storage_onboarding.get("pending_compose_selection_request_id") or ""
+                                ).strip()
+                                if compose_request_id and not (
                                     payload.get('treeUri') and payload.get('treeUri') in pending_folder_removals
                                 ):
                                     compose_library_bridge.write_command_result(
-                                        event_request_id,
+                                        compose_request_id,
                                         "select_saf",
                                         "ERROR",
                                         error=str(
@@ -7275,11 +7278,6 @@ async def main(page: ft.Page):
                                     page.snack_bar=ft.SnackBar(ft.Text(event.get('message', 'Não foi possível liberar a pasta.'))); page.snack_bar.open=True; safe_update()
                                     refresh_settings_if_active()
                                     continue
-                                if compose_request_id:
-                                    compose_library_bridge.write_command_result(
-                                        compose_request_id, "select_saf", "ERROR",
-                                        error=str(event.get('message') or payload.get('error') or error_message),
-                                    )
                                 _clear_pending_saf_selection_context()
                                 if compose_library_bridge.enabled:
                                     compose_library_bridge.request_publish("saf_selection_finished")

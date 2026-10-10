@@ -1129,11 +1129,10 @@ class MainActivity : FlutterFragmentActivity() {
     override fun onPause() {
         activityResumed = false
         if (safPickerPending) {
-            // DocumentsUI has taken ReiAnix out of the foreground. onResume/focus
-            // restoration will start the grace period if the result callback is lost.
+            // Keep the watchdog polling while DocumentsUI owns the foreground.
+            // Its foreground gate prevents a timeout while the user is choosing.
             safPickerFocusLost = true
             safPickerFocusRegainedAtMs = 0L
-            cancelSafPickerWatchdog()
         }
         logLifecycle("onPause")
         super.onPause()
@@ -2842,9 +2841,10 @@ class MainActivity : FlutterFragmentActivity() {
                 " timestamp=" + System.currentTimeMillis())
             treePicker.launch(pickerIntent)
             setSafPickerPhase(correlationId, SafPickerPhase.WAITING_RESULT)
-            // ActivityResult is the sole terminal signal once DocumentsUI has
-            // accepted the launch. Never run a focus-return timeout against it.
-            cancelSafPickerWatchdog()
+            // Keep polling throughout DocumentsUI. The runnable waits while this
+            // Activity is paused/unfocused, then starts the short grace period only
+            // after ReiAnix returns to foreground.
+            scheduleSafPickerWatchdog(correlationId)
             Log.i(tag, "SAF_PICKER_DIRECT_LAUNCH_ACCEPTED requestId=" + correlationId +
                 " timestamp=" + System.currentTimeMillis())
         } catch (exception: Exception) {
@@ -2882,7 +2882,6 @@ class MainActivity : FlutterFragmentActivity() {
             safPickerFocusLost = true
             safPickerFocusRegainedAtMs = 0L
             setSafPickerPhase(pendingSafRequestId, SafPickerPhase.WAITING_RESULT)
-            cancelSafPickerWatchdog()
         }
     }
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
