@@ -233,6 +233,27 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('_merge_authoritative_saf_root(tree_uri)', granted)
         self.assertIn('"STORAGE_SOURCE_VALIDATION_FAILED"', granted)
 
+    def test_saf_onboarding_error_survives_late_snapshots_and_shows_user_message(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        state_setter = source[
+            source.index("def _set_storage_onboarding_state("):
+            source.index("def storage_state()", source.index("def _set_storage_onboarding_state("))
+        ]
+        self.assertIn('current_state == "ERROR"', state_setter)
+        self.assertIn('normalized in {"CHECKING", "NEEDS_FOLDER"}', state_setter)
+        self.assertIn("not _configured_valid_library_saf_roots()", state_setter)
+        self.assertIn('storage_onboarding.get("message")', state_setter)
+        self.assertIn('storage_onboarding.get("error")', state_setter)
+
+        screen = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixLibraryFolderOnboarding.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("!message.isNullOrBlank() -> message.trim()", screen)
+        self.assertIn("text = displayMessage", screen)
+        self.assertIn("if (hasError)", screen)
+        self.assertIn("selected_saf_source_validation_failed", source)
+
     def test_saf_inventory_can_recover_one_new_explicitly_selected_persisted_tree(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         inventory = source[source.index("elif event_type == 'saf_inventory':"):source.index("elif event_type == 'saf_cancelled':")]
