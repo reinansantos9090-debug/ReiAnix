@@ -4126,25 +4126,33 @@ async def main(page: ft.Page):
                     bool(path_out),
                     request_id or '-',
                 )
-            await _write_compose_settings_result(
-                request_id,
-                action,
-                "SUCCESS",
-                operation_state="SUCCESS",
-                message="Operação concluída.",
-            )
-            compose_settings_bridge.request_publish("compose_settings_action:" + action)
-            performance.event(
-                "SETTINGS_SNAPSHOT_PUBLISHED",
-                request_id=request_id,
-                metadata={"reason": "compose_settings_action:" + action},
-            )
-            logger.info(
-                "SETTINGS_OPERATION_END requestId=%s action=%s result=SUCCESS durationMs=%s",
-                request_id,
-                action,
-                int((performance.now() - started) * 1000),
-            )
+            if action == "select_saf":
+                # SAF completes asynchronously from the native ActivityResult/mailbox.
+                # Keep the Settings operation pending until that terminal result arrives.
+                logger.info(
+                    "SETTINGS_OPERATION_WAITING_FOR_SAF_RESULT requestId=%s",
+                    request_id,
+                )
+            else:
+                await _write_compose_settings_result(
+                    request_id,
+                    action,
+                    "SUCCESS",
+                    operation_state="SUCCESS",
+                    message="Operação concluída.",
+                )
+                compose_settings_bridge.request_publish("compose_settings_action:" + action)
+                performance.event(
+                    "SETTINGS_SNAPSHOT_PUBLISHED",
+                    request_id=request_id,
+                    metadata={"reason": "compose_settings_action:" + action},
+                )
+                logger.info(
+                    "SETTINGS_OPERATION_END requestId=%s action=%s result=SUCCESS durationMs=%s",
+                    request_id,
+                    action,
+                    int((performance.now() - started) * 1000),
+                )
         except asyncio.CancelledError:
             await _write_compose_settings_result(
                 request_id,
