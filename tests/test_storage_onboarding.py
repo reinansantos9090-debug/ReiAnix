@@ -209,7 +209,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('code = "RESULT_CALLBACK_TIMEOUT"', watchdog)
         pause = source.split("override fun onPause()", 1)[1].split("override fun onStop()", 1)[0]
         self.assertIn("safPickerFocusLost = true", pause)
-        self.assertIn("cancelSafPickerWatchdog()", pause)
+        self.assertNotIn("cancelSafPickerWatchdog()", pause)
 
     def test_permission_callback_uses_authoritative_access_level(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
