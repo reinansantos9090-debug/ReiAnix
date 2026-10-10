@@ -293,7 +293,7 @@ class ComposeLibraryBridge:
             source_state = self._source_state(folders)
             storage_snapshot = self._storage_snapshot(folders)
             continue_method = getattr(self.library, "continue_watching", None)
-            continue_rows = continue_method(limit=12) if callable(continue_method) else []
+            continue_rows = continue_method(limit=20) if callable(continue_method) else []
 
             # A scan is allowed to report a transiently empty canonical read.
             # Never project that transient state over an already committed
