@@ -502,6 +502,7 @@ async def main(page: ft.Page):
         # snapshots against a newer user authorization/revocation operation.
         "last_storage_mutation_at_ms": 0,
         "pending_compose_selection_request_id": None,
+        "pending_compose_selection_bridge": None,
         "selection_started_at_ms": 0,
         "selection_baseline_saf_identities": (),
         "selection_baseline_known": False,
@@ -2811,7 +2812,12 @@ async def main(page: ft.Page):
     def refresh_settings_if_active():
         if navigation.current == "settings" and not compose_primary_ui:
             render_current(force=True, reason="settings_refresh")
-    async def add_folder(_=None, *, compose_request_id=None):
+    async def add_folder(
+        _=None,
+        *,
+        compose_request_id=None,
+        compose_request_bridge="library",
+    ):
         # Only an explicit user action may open the SAF picker.
         storage_onboarding["dismissed"] = False
         if saf_selection.pending:
@@ -2821,6 +2827,10 @@ async def main(page: ft.Page):
         baseline_caps = storage_capabilities[0]
         storage_onboarding["pending_compose_selection_request_id"] = (
             str(compose_request_id or "").strip() or None
+        )
+        requested_bridge = str(compose_request_bridge or "library").strip().lower()
+        storage_onboarding["pending_compose_selection_bridge"] = (
+            requested_bridge if requested_bridge in {"library", "settings"} else "library"
         )
         storage_onboarding["selection_started_at_ms"] = int(time.time() * 1000)
         storage_onboarding["selection_baseline_known"] = bool(baseline_caps.known)
@@ -3428,9 +3438,45 @@ async def main(page: ft.Page):
 
     def _clear_pending_saf_selection_context():
         storage_onboarding["pending_compose_selection_request_id"] = None
+        storage_onboarding["pending_compose_selection_bridge"] = None
         storage_onboarding["selection_started_at_ms"] = 0
         storage_onboarding["selection_baseline_saf_identities"] = ()
         storage_onboarding["selection_baseline_known"] = False
+
+    async def _write_pending_compose_saf_result(
+        request_id,
+        status,
+        *,
+        error=None,
+        message=None,
+    ):
+        """Publish the final storage snapshot before notifying the owning Compose repository."""
+        normalized_request_id = str(request_id or "").strip()
+        if compose_library_bridge.enabled:
+            compose_library_bridge.request_publish("saf_selection_terminal_state")
+            await compose_library_bridge.wait_for_idle()
+
+        if not normalized_request_id:
+            return
+        command_bridge = str(
+            storage_onboarding.get("pending_compose_selection_bridge") or "library"
+        ).strip().lower()
+        if command_bridge == "settings":
+            compose_settings_bridge.write_command_result(
+                normalized_request_id,
+                "select_saf",
+                status,
+                error=error,
+                message=message,
+            )
+        else:
+            compose_library_bridge.write_command_result(
+                normalized_request_id,
+                "select_saf",
+                status,
+                error=error,
+                message=message,
+            )
 
     async def _recover_pending_saf_selection_from_inventory(
         status_by_uri,
@@ -3472,28 +3518,22 @@ async def main(page: ft.Page):
         saf_selection.finish()
         storage_onboarding["waiting_for_result"] = False
         storage_onboarding["dismissed"] = False
-        if _configured_valid_library_saf_roots():
+        recovered = bool(_configured_valid_library_saf_roots())
+        if recovered:
             storage_onboarding["startup_gate"] = False
             _set_storage_onboarding_state(
                 "READY", message=None, error=None,
                 diagnostic_event="STORAGE_READY",
                 result="library_root_recovered_from_inventory",
             )
-            if request_id:
-                compose_library_bridge.write_command_result(
-                    request_id, "select_saf", "COMPLETED",
-                    message="Pasta autorizada e configurada.",
-                )
             schedule_thumbnail_reconciliation("storage_ready_inventory_recovery")
             schedule_catalog_metadata_hydration("storage_ready_inventory_recovery")
-            try:
-                await scan_coordinator.request(
-                    ScanOrigin.PERMISSION_CHANGE, source="saf", scope_ref=tree_uri,
-                    full=False, reason="saf_inventory_selection_recovery",
-                )
-            except Exception:
-                logger.exception("[STORAGE] recovered SAF scan request failed")
             logger.warning("[STORAGE] SAF_SELECTION_RECOVERED_FROM_INVENTORY identity=%s", identity)
+            await _write_pending_compose_saf_result(
+                request_id,
+                "COMPLETED",
+                message="Pasta autorizada e configurada.",
+            )
         else:
             message = (
                 "O Android autorizou a pasta, mas o ReiAnix não conseguiu confirmar "
@@ -3504,13 +3544,20 @@ async def main(page: ft.Page):
                 diagnostic_event="STORAGE_SOURCE_VALIDATION_FAILED",
                 result="inventory_recovery_validation_failed",
             )
-            if request_id:
-                compose_library_bridge.write_command_result(
-                    request_id, "select_saf", "ERROR", error=message,
-                )
+            await _write_pending_compose_saf_result(
+                request_id,
+                "ERROR",
+                error=message,
+            )
         _clear_pending_saf_selection_context()
-        if compose_library_bridge.enabled:
-            compose_library_bridge.request_publish("saf_selection_inventory_recovery")
+        if recovered:
+            try:
+                await scan_coordinator.request(
+                    ScanOrigin.PERMISSION_CHANGE, source="saf", scope_ref=tree_uri,
+                    full=False, reason="saf_inventory_selection_recovery",
+                )
+            except Exception:
+                logger.exception("[STORAGE] recovered SAF scan request failed")
         return True
 
     def maybe_show_storage_onboarding():
@@ -3995,7 +4042,10 @@ async def main(page: ft.Page):
                         request_id or '-',
                     )
             elif action == 'select_saf':
-                started_picker = await add_folder()
+                started_picker = await add_folder(
+                    compose_request_id=request_id,
+                    compose_request_bridge="settings",
+                )
                 if not started_picker:
                     raise RuntimeError("A seleção de pasta já está em andamento ou a biblioteca está sendo atualizada.")
             elif action == 'request_media_access':
@@ -7003,14 +7053,6 @@ async def main(page: ft.Page):
                                 storage_onboarding.get("pending_compose_selection_request_id") or ""
                             ).strip()
                             saf_selection.finish()
-                            if compose_request_id:
-                                compose_library_bridge.write_command_result(
-                                    compose_request_id, "select_saf", "CANCELLED",
-                                    message="Seleção de pasta cancelada.",
-                                )
-                            _clear_pending_saf_selection_context()
-                            if compose_library_bridge.enabled:
-                                compose_library_bridge.request_publish("saf_selection_finished")
                             storage_onboarding["waiting_for_result"] = False
                             storage_onboarding["dismissed"] = True
                             if storage_onboarding["startup_gate"]:
@@ -7021,9 +7063,20 @@ async def main(page: ft.Page):
                                     diagnostic_event="STORAGE_PICKER_CANCELLED",
                                     result="picker_cancelled",
                                 )
-                            set_scan_state(ScanUiState.CANCELLED, source="saf", error=None, timestamp=event.get('createdAt'))
+                            set_scan_state(
+                                ScanUiState.CANCELLED,
+                                source="saf",
+                                error=None,
+                                timestamp=event.get("createdAt"),
+                            )
                             page.snack_bar=ft.SnackBar(ft.Text('Seleção de pasta cancelada.')); page.snack_bar.open=True; safe_update()
                             refresh_settings_if_active()
+                            await _write_pending_compose_saf_result(
+                                compose_request_id,
+                                "CANCELLED",
+                                message="Seleção de pasta cancelada.",
+                            )
+                            _clear_pending_saf_selection_context()
                         elif event_type == 'saf_permission':
                             compose_request_id = str(
                                 storage_onboarding.get("pending_compose_selection_request_id") or ""
@@ -7096,11 +7149,17 @@ async def main(page: ft.Page):
                                             canonical_saf_identity,
                                         )
                                 else:
-                                    store.update_folder_status(tree_uri, 'revoked', 'A permissão desta pasta foi removida.')
+                                    store.update_folder_status(
+                                        tree_uri,
+                                        'revoked',
+                                        'A permissão desta pasta foi removida.',
+                                    )
                                     store.mark_source_unavailable(tree_uri, 'saf_permission_revoked')
+
                                 if compose_library_bridge.enabled:
                                     compose_library_bridge.request_publish("storage_event")
-                                if payload.get('granted') and tree_uri:
+
+                                if payload.get('granted'):
                                     storage_onboarding["waiting_for_result"] = False
                                     if payload.get('selected'):
                                         diagnostics.record(
@@ -7128,14 +7187,11 @@ async def main(page: ft.Page):
                                         logger.info("[STORAGE] STORAGE_READY tree_uri=%s scanner_released=true", tree_uri)
                                         schedule_thumbnail_reconciliation("storage_ready")
                                         schedule_catalog_metadata_hydration("storage_ready")
-                                        if compose_library_bridge.enabled:
-                                            compose_library_bridge.request_publish("storage_ready")
-                                        if compose_request_id:
-                                            compose_library_bridge.write_command_result(
-                                                compose_request_id, "select_saf", "COMPLETED",
-                                                message="Pasta autorizada e configurada.",
-                                            )
-                                        _clear_pending_saf_selection_context()
+                                        await _write_pending_compose_saf_result(
+                                            compose_request_id,
+                                            "COMPLETED",
+                                            message="Pasta autorizada e configurada.",
+                                        )
                                     else:
                                         message = (
                                             "O Android autorizou a pasta, mas o ReiAnix não conseguiu "
@@ -7156,28 +7212,28 @@ async def main(page: ft.Page):
                                             diagnostic_event="STORAGE_SOURCE_VALIDATION_FAILED",
                                             result="configured_source_missing",
                                         )
-                                        if compose_request_id:
-                                            compose_library_bridge.write_command_result(
-                                                compose_request_id, "select_saf", "ERROR", error=message,
-                                            )
-                                        _clear_pending_saf_selection_context()
-                            else:
-                                message = (
-                                    "O Android não confirmou o acesso à pasta selecionada. "
-                                    "Toque em ESCOLHER PASTA para tentar novamente."
-                                )
-                                _set_storage_onboarding_state(
-                                    "ERROR", message=message,
-                                    error="selected_saf_grant_missing",
-                                    diagnostic_event="STORAGE_PERMISSION_MISSING",
-                                    result="selected_tree_not_granted",
-                                )
-                                if compose_request_id:
-                                    compose_library_bridge.write_command_result(
-                                        compose_request_id, "select_saf", "ERROR", error=message,
+                                        await _write_pending_compose_saf_result(
+                                            compose_request_id,
+                                            "ERROR",
+                                            error=message,
+                                        )
+                                else:
+                                    message = (
+                                        "O Android não confirmou o acesso à pasta selecionada. "
+                                        "Toque em ESCOLHER PASTA para tentar novamente."
                                     )
-                                _clear_pending_saf_selection_context()
-                            if not tree_uri:
+                                    _set_storage_onboarding_state(
+                                        "ERROR", message=message,
+                                        error="selected_saf_grant_missing",
+                                        diagnostic_event="STORAGE_PERMISSION_MISSING",
+                                        result="selected_tree_not_granted",
+                                    )
+                                    await _write_pending_compose_saf_result(
+                                        compose_request_id,
+                                        "ERROR",
+                                        error=message,
+                                    )
+                            else:
                                 message = (
                                     "O Android retornou a seleção sem informar a pasta. "
                                     "Toque em ESCOLHER PASTA para tentar novamente."
@@ -7188,11 +7244,12 @@ async def main(page: ft.Page):
                                     diagnostic_event="STORAGE_PERMISSION_MISSING",
                                     result="selected_tree_uri_missing",
                                 )
-                                if compose_request_id:
-                                    compose_library_bridge.write_command_result(
-                                        compose_request_id, "select_saf", "ERROR", error=message,
-                                    )
-                                _clear_pending_saf_selection_context()
+                                await _write_pending_compose_saf_result(
+                                    compose_request_id,
+                                    "ERROR",
+                                    error=message,
+                                )
+                            _clear_pending_saf_selection_context()
                             refresh_settings_if_active()
                         elif event_type == 'saf_released':
                             tree_uri = payload.get('treeUri')
@@ -7218,19 +7275,6 @@ async def main(page: ft.Page):
                                 compose_request_id = str(
                                     storage_onboarding.get("pending_compose_selection_request_id") or ""
                                 ).strip()
-                                if compose_request_id and not (
-                                    payload.get('treeUri') and payload.get('treeUri') in pending_folder_removals
-                                ):
-                                    compose_library_bridge.write_command_result(
-                                        compose_request_id,
-                                        "select_saf",
-                                        "ERROR",
-                                        error=str(
-                                            event.get('message')
-                                            or payload.get('error')
-                                            or "Não foi possível autorizar a pasta."
-                                        ),
-                                    )
                                 storage_onboarding["waiting_for_result"] = False
                                 if storage_onboarding["startup_gate"]:
                                     _set_storage_onboarding_state(
@@ -7252,9 +7296,6 @@ async def main(page: ft.Page):
                                     error=event.get('message') or payload.get('error'),
                                     timestamp=event.get('createdAt'),
                                 )
-                                compose_request_id = str(
-                                    storage_onboarding.get("pending_compose_selection_request_id") or ""
-                                ).strip()
                                 saf_selection.finish()
                                 tree_uri = payload.get('treeUri')
                                 error_message = event.get('message') or 'Não foi possível abrir o seletor de pastas do Android. Tente novamente.'
@@ -7278,9 +7319,6 @@ async def main(page: ft.Page):
                                     page.snack_bar=ft.SnackBar(ft.Text(event.get('message', 'Não foi possível liberar a pasta.'))); page.snack_bar.open=True; safe_update()
                                     refresh_settings_if_active()
                                     continue
-                                _clear_pending_saf_selection_context()
-                                if compose_library_bridge.enabled:
-                                    compose_library_bridge.request_publish("saf_selection_finished")
                                 page.snack_bar=ft.SnackBar(ft.Text(error_message)); page.snack_bar.open=True; safe_update()
                                 if tree_uri:
                                     status = str(payload.get('status') or '').upper()
@@ -7288,11 +7326,21 @@ async def main(page: ft.Page):
                                         store.update_folder_status(tree_uri, 'revoked', event.get('message', 'A autorização SAF foi removida.'))
                                         store.mark_source_unavailable(tree_uri, 'saf_permission_revoked')
                                     elif status in {'UNAVAILABLE', 'FAILED', 'PARTIAL'}:
-                                        store.update_folder_status(tree_uri, 'unavailable', event.get('message', 'O provedor SAF está indisponível.'))
+                                        store.update_folder_status(tree_uri, 'unavailable', event.get('message', 'O provedor SAF está indisponível no momento.'))
                                         store.mark_source_unavailable(tree_uri, 'saf_provider_unavailable')
                                     else:
                                         store.update_folder_status(tree_uri, 'unavailable', event.get('message', 'Não foi possível acessar a pasta.'))
                                         store.mark_source_unavailable(tree_uri, 'saf_scan_error')
+                                await _write_pending_compose_saf_result(
+                                    compose_request_id,
+                                    "ERROR",
+                                    error=str(
+                                        event.get('message')
+                                        or payload.get('error')
+                                        or "Não foi possível autorizar a pasta."
+                                    ),
+                                )
+                                _clear_pending_saf_selection_context()
                             if event_type == 'google_error':
                                 code = str(event.get('code') or 'credential_error')
                                 set_account_state(
