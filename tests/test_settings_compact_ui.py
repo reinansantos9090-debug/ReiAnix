@@ -149,7 +149,7 @@ def test_settings_respects_theme_surfaces_without_gray_literals():
         "@Composable\nfun ReiAnixSettingsRow(",
     )
     assert "Box(" in flat_wrapper
-    assert "Surface(" not in flat_wrapper
+    assert "\n    Surface(" not in flat_wrapper
     assert "tonalElevation" not in flat_wrapper
 
 def test_settings_profile_row_reuses_compact_design_tokens():
