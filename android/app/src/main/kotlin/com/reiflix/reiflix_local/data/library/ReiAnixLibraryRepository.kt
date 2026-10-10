@@ -67,6 +67,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 sourceState = if (preserveCatalog) previous.sourceState else decoded.sourceState,
                 scanInProgress = decoded.scanInProgress,
                 scanState = decoded.scanState,
+                lastScanStatus = decoded.lastScanStatus ?: previous.lastScanStatus,
                 lastCommandId = previous.lastCommandId,
                 lastCommandAction = previous.lastCommandAction,
                 lastCommandStatus = previous.lastCommandStatus,
