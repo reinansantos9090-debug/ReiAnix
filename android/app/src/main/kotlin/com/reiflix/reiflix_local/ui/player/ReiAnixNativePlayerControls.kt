@@ -221,6 +221,7 @@ fun ReiAnixNativePlayerCenterControls(
                     icon = Icons.Filled.FastRewind,
                     seconds = seekSeconds,
                     description = "Voltar $seekSeconds segundos",
+                    enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
                 )
             }
@@ -303,6 +304,7 @@ fun ReiAnixNativePlayerCenterControls(
                     icon = Icons.Filled.FastForward,
                     seconds = seekSeconds,
                     description = "Avançar $seekSeconds segundos",
+                    enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
                 )
             }
@@ -315,10 +317,12 @@ private fun PlayerSeekIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     seconds: Long,
     description: String,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .size(ReiAnixTokens.PlayerDimensions.seekButtonSize)
             .semantics {
@@ -486,7 +490,7 @@ fun ReiAnixNativePlayerBottomControls(
                         }
                         userDragging = false
                     },
-                    enabled = duration > 0L,
+                    enabled = duration > 0L && !state.episodeTransitionInProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics {
