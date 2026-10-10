@@ -196,6 +196,10 @@ fun ReiAnixNavigationHost(
     appearanceCardSize: String = "medium",
     appearanceShowThumbnails: Boolean = true,
     libraryGridDensity: String = "medium",
+    libraryPageSize: Int = 36,
+    librarySortDefault: String = "added_desc",
+    continueWatchingEnabled: Boolean = true,
+    continueWatchingLimit: Int = 10,
     player: @Composable (ReiAnixPlayerArgs) -> Unit = { args ->
         ReiAnixPlayerRoute(
             navController = navController,
@@ -278,10 +282,6 @@ fun ReiAnixNavigationHost(
     appearanceCardSize: String = "medium",
     appearanceShowThumbnails: Boolean = true,
     libraryGridDensity: String = "medium",
-    libraryPageSize: Int = 36,
-    librarySortDefault: String = "added_desc",
-    continueWatchingEnabled: Boolean = true,
-    continueWatchingLimit: Int = 10,
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
     navController: NavHostController = rememberNavController(),
     startDestination: String = ReiAnixRoutes.HOME,
