@@ -219,11 +219,35 @@ def test_compose_alert_dialogs_use_the_dialog_surface_instead_of_sheet_surface()
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt",
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixStorageScreen.kt",
     )
+    def complete_call(parameters: str) -> str:
+        depth = 1
+        in_string = False
+        escaped = False
+        for index, char in enumerate(parameters):
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    return parameters[:index]
+        return parameters
+
     for relative in dialog_files:
         source = (ROOT / relative).read_text(encoding="utf-8")
         dialogs = source.split("AlertDialog(")[1:]
         assert dialogs, f"{relative} should keep its existing dialog"
         for index, call in enumerate(dialogs, start=1):
-            assert "containerColor = MaterialTheme.colorScheme.surfaceContainerHighest" in call[:360], (
+            full_call = complete_call(call)
+            assert "containerColor = MaterialTheme.colorScheme.surfaceContainerHighest" in full_call, (
                 f"{relative} AlertDialog #{index} must use the dialog surface token"
             )
