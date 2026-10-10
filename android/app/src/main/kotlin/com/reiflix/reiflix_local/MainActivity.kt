@@ -716,10 +716,10 @@ class MainActivity : FlutterFragmentActivity() {
                 result = uri.toString(),
             )
             publishNativeDiagnostic(
-                "STORAGE_READY",
+                "SAF_PERMISSION_PERSISTED",
                 requestId,
                 action = "select_tree",
-                result = "persisted_and_validated",
+                result = uri.toString(),
             )
             val persistedInspection = SafScanner.inspectTree(this, uri, requirePersisted = true)
             val persistedStatus = persistedInspection.optString("status")
@@ -737,6 +737,12 @@ class MainActivity : FlutterFragmentActivity() {
                 requestId,
                 action = "select_tree",
                 result = uri.toString(),
+            )
+            publishNativeDiagnostic(
+                "STORAGE_READY",
+                requestId,
+                action = "select_tree",
+                result = "persisted_and_validated",
             )
             val payload = SafScanner.identityPayload(uri)
                 .put("granted", true).put("selected", true)
@@ -1031,6 +1037,11 @@ class MainActivity : FlutterFragmentActivity() {
             lastObservedMediaAccess != currentMediaAccess &&
             currentMediaAccess != "denied"
         val broadBecameAvailable = lastObservedBroadAccess == false && currentBroadAccess
+        // First-run permission UI must be visible without dispatching a discovery
+        // request against an empty authorization set. In the canonical library model,
+        // a persisted SAF tree is the configured folder source; media/broad permissions
+        // alone do not add a LibraryStore source.
+        val hasPersistedSafTree = hasPersistedSafTreeGrant()
         val shouldDiscover = !startupDiscoveryTriggered
         startupDiscoveryTriggered = true
         lastObservedMediaAccess = currentMediaAccess
@@ -1038,17 +1049,30 @@ class MainActivity : FlutterFragmentActivity() {
 
         publishStorageStatus()
 
-        // Activity resume is a lifecycle signal, not a scan command. Only the
-        // first real startup or a permission transition produces a coordinator
-        // request; ordinary player/background returns do nothing.
-        if (shouldDiscover) {
+        // Activity resume is a lifecycle signal, not a scan command. Startup
+        // discovery and permission-triggered reconciliation require a persisted SAF
+        // tree. Explicit SAF selection publishes its own PERMISSION_CHANGE after the
+        // grant has been persisted and validated.
+        if (shouldDiscover && hasPersistedSafTree) {
             publishScanRequest(
                 "STARTUP",
                 source = null,
                 full = false,
                 reason = "first_activity_resume",
             )
-        } else if (mediaAccessChangedToUsable || broadBecameAvailable) {
+        } else if (shouldDiscover) {
+            Log.i(tag, "STARTUP_SCAN_SKIPPED reason=no_persisted_saf_tree")
+            publishNativeDiagnostic(
+                "STARTUP_SCAN_SKIPPED",
+                null,
+                action = "scan",
+                state = "SKIPPED",
+                result = "no_persisted_saf_tree",
+            )
+        } else if (
+            hasPersistedSafTree &&
+            (mediaAccessChangedToUsable || broadBecameAvailable)
+        ) {
             val source = when {
                 mediaAccessChangedToUsable && broadBecameAvailable -> null
                 mediaAccessChangedToUsable -> "mediastore"
@@ -1764,6 +1788,13 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         mediaPermissionRequestPending = true
+        publishNativeDiagnostic(
+            "STORAGE_PERMISSION_REQUESTED",
+            pendingMediaRequestId,
+            action = "request_media_access",
+            state = "REQUESTED",
+            result = "media_store_permission",
+        )
         NativeMailbox.write(this, JSONObject().put("type", "mediastore_permission_request")
             .put("requestId", pendingMediaRequestId ?: "")
             .put("payload", JSONObject()
@@ -1782,6 +1813,17 @@ class MainActivity : FlutterFragmentActivity() {
                 .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE)))
         }
     }
+
+    /**
+     * A media or broad-storage permission is not, by itself, a configured library
+     * folder. Startup discovery may only run when Android still holds a persisted
+     * read grant for a SAF tree; explicit selection has its own scan path.
+     */
+    private fun hasPersistedSafTreeGrant(): Boolean = runCatching {
+        contentResolver.persistedUriPermissions.any { permission ->
+            permission.isReadPermission && DocumentsContract.isTreeUri(permission.uri)
+        }
+    }.getOrDefault(false)
 
     private fun publishStorageStatus(requestId: String? = null) {
         val broadAccess = BroadStorageScanner.accessSnapshot(this)
@@ -2722,6 +2764,13 @@ class MainActivity : FlutterFragmentActivity() {
         safPickerFocusRegainedAtMs = 0L
         setSafPickerPhase(correlationId, SafPickerPhase.REQUESTED)
         setSafPickerPhase(correlationId, SafPickerPhase.LAUNCHING)
+        publishNativeDiagnostic(
+            "STORAGE_PERMISSION_REQUESTED",
+            correlationId,
+            action = "select_tree",
+            state = "REQUESTED",
+            result = "saf_tree_selection",
+        )
         publishNativeDiagnostic(
             "SAF_PICKER_REQUESTED",
             correlationId,

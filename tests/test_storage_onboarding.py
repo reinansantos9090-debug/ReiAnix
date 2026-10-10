@@ -249,6 +249,44 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('"STARTUP_SCAN_REQUESTED"', source)
         self.assertIn('publishScanRequest("PERMISSION_CHANGE"', source)
 
+    def test_startup_scan_waits_for_a_persisted_saf_tree(self):
+        source = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        resume = source[source.index("override fun onResume()"):source.index("override fun onPause")]
+        self.assertIn("val hasPersistedSafTree = hasPersistedSafTreeGrant()", resume)
+        self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
+        self.assertIn('"STARTUP_SCAN_SKIPPED"', resume)
+        self.assertIn("hasPersistedSafTree &&", resume)
+        self.assertIn("private fun hasPersistedSafTreeGrant()", source)
+        self.assertIn("DocumentsContract.isTreeUri(permission.uri)", source)
+        self.assertNotIn('if (shouldDiscover) {\\n            publishScanRequest(', resume)
+
+    def test_saf_ready_diagnostic_waits_for_persisted_validation(self):
+        source = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        start = source.index("private fun handleTreePickerResult")
+        end = source.index("\\n    private fun ", start + len("private fun handleTreePickerResult"))
+        result = source[start:end]
+        self.assertIn('"SAF_PERMISSION_PERSISTED"', result)
+        self.assertLess(
+            result.index("SafScanner.persistPermission(this, uri, flags)"),
+            result.index('"SAF_PERMISSION_PERSISTED"'),
+        )
+        self.assertLess(
+            result.index("val persistedInspection"),
+            result.index('"STORAGE_READY"'),
+        )
+        self.assertLess(
+            result.index('"STORAGE_READY"'),
+            result.index('JSONObject().put("type", "saf_permission")'),
+        )
+        self.assertLess(
+            result.index('JSONObject().put("type", "saf_permission")'),
+            result.index('publishScanRequest("PERMISSION_CHANGE"'),
+        )
+
     def test_snapshot_preserves_previous_catalog_during_scan(self):
         bridge = (ROOT / "core" / "compose_library_bridge.py").read_text(encoding="utf-8")
         repository = (
