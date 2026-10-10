@@ -216,6 +216,8 @@ fun ReiAnixNavigationHost(
                 viewModel = homeViewModel,
                 cardSize = appearanceCardSize,
                 showThumbnails = appearanceShowThumbnails,
+                continueWatchingEnabled = continueWatchingEnabled,
+                continueWatchingLimit = continueWatchingLimit,
                 onOpenCollector = onOpenCollector,
             )
         },
@@ -225,6 +227,8 @@ fun ReiAnixNavigationHost(
                 viewModel = homeViewModel,
                 cardSize = appearanceCardSize,
                 gridDensity = libraryGridDensity,
+                pageSize = libraryPageSize,
+                defaultSortKey = librarySortDefault,
             )
         },
         myList = myList,
@@ -274,6 +278,10 @@ fun ReiAnixNavigationHost(
     appearanceCardSize: String = "medium",
     appearanceShowThumbnails: Boolean = true,
     libraryGridDensity: String = "medium",
+    libraryPageSize: Int = 36,
+    librarySortDefault: String = "added_desc",
+    continueWatchingEnabled: Boolean = true,
+    continueWatchingLimit: Int = 10,
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
     navController: NavHostController = rememberNavController(),
     startDestination: String = ReiAnixRoutes.HOME,
