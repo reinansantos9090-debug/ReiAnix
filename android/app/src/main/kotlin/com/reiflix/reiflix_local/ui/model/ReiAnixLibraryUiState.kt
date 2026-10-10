@@ -22,6 +22,7 @@ data class ReiAnixLibraryUiState(
     val sourceState: String = "UNKNOWN",
     val scanInProgress: Boolean = false,
     val scanState: String = "IDLE",
+    val lastScanStatus: String? = null,
     val error: String? = null,
     val lastCommandId: String? = null,
     val lastCommandAction: String? = null,
