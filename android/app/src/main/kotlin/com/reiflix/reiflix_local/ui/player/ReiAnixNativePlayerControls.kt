@@ -33,9 +33,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.unit.Dp
 import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.runtime.Composable
@@ -344,7 +343,6 @@ fun ReiAnixNativePlayerBottomControls(
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
     val timelineHeight = if (landscape) 36.dp else ReiAnixTokens.PlayerDimensions.timelineHeight
-    val actionButtonSize = if (landscape) 40.dp else ReiAnixTokens.PlayerDimensions.actionButtonSize
     val topPadding = if (landscape) 8.dp else ReiAnixTokens.PlayerDimensions.bottomTopPadding
     val timelineSpacerHeight = if (landscape) 0.dp else ReiAnixTokens.Spacing.xs / 2
     if (state.locked) {
@@ -446,6 +444,12 @@ fun ReiAnixNativePlayerBottomControls(
                 } else {
                     0f
                 }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)),
+                )
                 if (bufferedFraction > 0f) {
                     Box(
                         modifier = Modifier
@@ -485,7 +489,7 @@ fun ReiAnixNativePlayerBottomControls(
                     colors = SliderDefaults.colors(
                         thumbColor = MaterialTheme.colorScheme.primary,
                         activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = MaterialTheme.colorScheme.outline,
+                        inactiveTrackColor = Color.Transparent,
                     ),
                     steps = 0,
                 )
@@ -510,7 +514,7 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 icon = Icons.Filled.Lock,
                 label = "Bloquear toques",
-                buttonSize = actionButtonSize,
+                showLabel = !landscape,
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
                 enabled = !state.episodeTransitionInProgress,
@@ -518,7 +522,7 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 icon = Icons.Filled.AspectRatio,
                 label = "Proporção",
-                buttonSize = actionButtonSize,
+                showLabel = !landscape,
                 contentDescription = "Alterar proporção do vídeo",
                 onClick = onResize,
                 enabled = !state.episodeTransitionInProgress,
@@ -526,7 +530,7 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 icon = Icons.Filled.MoreVert,
                 label = "Opções",
-                buttonSize = actionButtonSize,
+                showLabel = !landscape,
                 contentDescription = buildString {
                     append("Mais opções do player")
                     val speed = state.playbackSpeed.takeIf { it.isFinite() && it > 0f }
@@ -545,7 +549,7 @@ fun ReiAnixNativePlayerBottomControls(
             PlayerBottomAction(
                 icon = Icons.Filled.SkipNext,
                 label = "Próximo episódio",
-                buttonSize = actionButtonSize,
+                showLabel = !landscape,
                 contentDescription = "Próximo episódio",
                 onClick = onNext,
                 enabled = state.canNext && !state.episodeTransitionInProgress,
@@ -561,7 +565,7 @@ private fun RowScope.PlayerBottomAction(
     contentDescription: String,
     onClick: () -> Unit,
     enabled: Boolean = true,
-    buttonSize: Dp = ReiAnixTokens.PlayerDimensions.actionButtonSize,
+    showLabel: Boolean = true,
 ) {
     Column(
         modifier = Modifier.weight(1f),
@@ -571,7 +575,7 @@ private fun RowScope.PlayerBottomAction(
             onClick = onClick,
             enabled = enabled,
             modifier = Modifier
-                .size(buttonSize)
+                .size(ReiAnixTokens.PlayerDimensions.actionButtonSize)
                 .semantics {
                     this.contentDescription = contentDescription
                     role = Role.Button
@@ -584,12 +588,14 @@ private fun RowScope.PlayerBottomAction(
                 modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
             )
         }
-        Text(
-            text = label,
-            style = ReiAnixTokens.TypographyTokens.playerActionLabel,
-            color = ReiAnixTokens.Colors.playerControl.copy(alpha = if (enabled) 0.92f else 0.42f),
-            maxLines = 1,
-        )
+        if (showLabel) {
+            Text(
+                text = label,
+                style = ReiAnixTokens.TypographyTokens.playerActionLabel,
+                color = ReiAnixTokens.Colors.playerControl.copy(alpha = if (enabled) 0.92f else 0.42f),
+                maxLines = 1,
+            )
+        }
     }
 }
 
