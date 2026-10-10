@@ -253,7 +253,7 @@ def test_persisted_library_preferences_drive_native_compose_consumers():
         "continueWatchingLimit",
     ):
         assert f"settingsViewModel.{flow}.collectAsStateWithLifecycle()" in host
-        assert f"{flow} = {flow}" in host or flow == "librarySortDefault"
+        assert f"{flow} = {flow}" in host
 
     assert "libraryPageSize: Int = 36" in navigation
     assert 'librarySortDefault: String = "added_desc"' in navigation
