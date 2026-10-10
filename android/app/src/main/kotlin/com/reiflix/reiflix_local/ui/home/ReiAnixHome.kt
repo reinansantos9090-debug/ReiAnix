@@ -98,14 +98,21 @@ fun ReiAnixHomeRoute(
     viewModel: ReiAnixLibraryViewModel = rememberReiAnixLibraryViewModel(),
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
+    continueWatchingEnabled: Boolean = true,
+    continueWatchingLimit: Int = 10,
     onOpenCollector: () -> Unit = {},
 ) {
     val state by viewModel.homeState.collectAsStateWithLifecycle()
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
+    val visibleContinueWatching = if (continueWatchingEnabled) {
+        continueWatching.take(continueWatchingLimit.coerceAtLeast(0))
+    } else {
+        emptyList()
+    }
 
     ReiAnixHomeObservedScreen(
         state = state,
-        continueWatching = continueWatching,
+        continueWatching = visibleContinueWatching,
         cardSize = cardSize,
         showThumbnails = showThumbnails,
         onOpenCollector = onOpenCollector,
