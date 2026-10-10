@@ -260,14 +260,14 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("hasPersistedSafTree &&", resume)
         self.assertIn("private fun hasPersistedSafTreeGrant()", source)
         self.assertIn("DocumentsContract.isTreeUri(permission.uri)", source)
-        self.assertNotIn('if (shouldDiscover) {\\n            publishScanRequest(', resume)
+        self.assertNotIn('if (shouldDiscover) {\n            publishScanRequest(', resume)
 
     def test_saf_ready_diagnostic_waits_for_persisted_validation(self):
         source = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
         ).read_text(encoding="utf-8")
         start = source.index("private fun handleTreePickerResult")
-        end = source.index("\\n    private fun ", start + len("private fun handleTreePickerResult"))
+        end = source.index("\n    private fun ", start + len("private fun handleTreePickerResult"))
         result = source[start:end]
         self.assertIn('"SAF_PERMISSION_PERSISTED"', result)
         self.assertLess(
