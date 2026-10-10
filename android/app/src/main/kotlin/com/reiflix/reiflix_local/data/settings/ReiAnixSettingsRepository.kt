@@ -332,6 +332,14 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         val root = runCatching { JSONObject(raw) }.getOrNull() ?: return
         val requestId = root.optString("requestId").trim()
         if (requestId.isBlank()) return
+        val commandBridge = root.optString("commandBridge").trim().lowercase()
+        if (commandBridge.isNotBlank() && commandBridge != "settings") return
+        if (commandBridge.isBlank()) {
+            val tracked = synchronized(stateLock) {
+                _state.value.operations.containsKey(requestId)
+            }
+            if (!tracked) return
+        }
         val action = root.optString("action").trim()
         val status = root.optString("status").trim().uppercase()
         val operationState = when (root.optString("operationState").trim().uppercase()) {
