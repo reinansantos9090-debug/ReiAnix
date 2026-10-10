@@ -52,18 +52,18 @@ def test_settings_rows_are_flat_and_choices_are_on_demand():
     source = read()
     boolean_row = block(
         source,
-        "@Composable\nprivate fun BooleanSettingCard(",
-        "@Composable\nprivate fun LanguageSettingCard(",
+        "@Composable\nprivate fun BooleanSettingRow(",
+        "@Composable\nprivate fun LanguageSettingRow(",
     )
     choice_row = block(
         source,
-        "@Composable\nprivate fun ChoiceSettingCard(",
+        "@Composable\nprivate fun ChoiceSettingRow(",
         "@Composable\nprivate fun ReiAnixSettingsAccountContent(",
     )
     language_row = block(
         source,
-        "@Composable\nprivate fun LanguageSettingCard(",
-        "@Composable\nprivate fun ChoiceSettingCard(",
+        "@Composable\nprivate fun LanguageSettingRow(",
+        "@Composable\nprivate fun ChoiceSettingRow(",
     )
 
     assert "ReiAnixSettingsSurface(" not in boolean_row
@@ -115,6 +115,18 @@ def test_settings_preserves_existing_setting_keys_and_actions():
         assert token in source
 
 
+def test_setting_controls_are_named_and_implemented_as_flat_rows():
+    source = read()
+    for component in (
+        "BooleanSettingRow",
+        "LanguageSettingRow",
+        "ChoiceSettingRow",
+    ):
+        assert "@Composable\nprivate fun " + component + "(" in source
+    assert "BooleanSettingCard(" not in source
+    assert "LanguageSettingCard(" not in source
+    assert "ChoiceSettingCard(" not in source
+
 def test_settings_respects_theme_surfaces_without_gray_literals():
     source = read()
     root = block(
@@ -131,7 +143,14 @@ def test_settings_respects_theme_surfaces_without_gray_literals():
     assert "Color.Gray" not in root
     assert "Color.Gray" not in compact_rows
     assert "Surface(" in root
-    assert "tonalElevation = ReiAnixTokens.Elevation.none" in source
+    flat_wrapper = block(
+        source,
+        "@Composable\nfun ReiAnixSettingsSurface(",
+        "@Composable\nfun ReiAnixSettingsRow(",
+    )
+    assert "Box(" in flat_wrapper
+    assert "Surface(" not in flat_wrapper
+    assert "tonalElevation" not in flat_wrapper
 
 def test_settings_profile_row_reuses_compact_design_tokens():
     source = read()
@@ -173,18 +192,18 @@ def test_settings_rows_share_compact_spacing_and_group_dividers():
     )
     boolean_row = block(
         source,
-        "@Composable\nprivate fun BooleanSettingCard(",
-        "@Composable\nprivate fun LanguageSettingCard(",
+        "@Composable\nprivate fun BooleanSettingRow(",
+        "@Composable\nprivate fun LanguageSettingRow(",
     )
     choice_row = block(
         source,
-        "@Composable\nprivate fun ChoiceSettingCard(",
+        "@Composable\nprivate fun ChoiceSettingRow(",
         "@Composable\nprivate fun ReiAnixSettingsAccountContent(",
     )
     language_row = block(
         source,
-        "@Composable\nprivate fun LanguageSettingCard(",
-        "@Composable\nprivate fun ChoiceSettingCard(",
+        "@Composable\nprivate fun LanguageSettingRow(",
+        "@Composable\nprivate fun ChoiceSettingRow(",
     )
     section = block(
         source,
@@ -223,7 +242,7 @@ def test_preference_text_presentation_is_shared_without_changing_persistence_row
     helper = block(
         source,
         "@Composable\nprivate fun SettingsPreferenceText(",
-        "@Composable\nprivate fun BooleanSettingCard(",
+        "@Composable\nprivate fun BooleanSettingRow(",
     )
     assert "ReiAnixTokens.TypographyTokens.bodySecondary" in helper
     assert "ReiAnixTokens.TypographyTokens.metadata" in helper
@@ -231,8 +250,8 @@ def test_preference_text_presentation_is_shared_without_changing_persistence_row
     assert "maxLines = 2" in helper
     boolean_row = block(
         source,
-        "@Composable\nprivate fun BooleanSettingCard(",
-        "@Composable\nprivate fun LanguageSettingCard(",
+        "@Composable\nprivate fun BooleanSettingRow(",
+        "@Composable\nprivate fun LanguageSettingRow(",
     )
     assert "SettingsPreferenceText(" in boolean_row
     assert "text = title," not in boolean_row

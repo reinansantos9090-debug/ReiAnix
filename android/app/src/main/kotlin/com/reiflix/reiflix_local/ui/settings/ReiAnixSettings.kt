@@ -663,7 +663,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Geral" -> {
                     item(key = "section:general:behavior") { SettingsSectionLabel("Comportamento") }
                     item(key = "setting:app.confirm_destructive") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "app.confirm_destructive",
                             title = "Confirmar ações destrutivas",
                             description = "Pede confirmação antes de ações como limpar cache e restaurar configurações.",
@@ -675,7 +675,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Aparência" -> {
                     item(key = "section:appearance:visual") { SettingsSectionLabel("Visual") }
                     item(key = "setting:appearance.theme") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "appearance.theme",
                             title = "Tema",
                             description = "Aplica o tema da interface Compose imediatamente, sem reiniciar a Activity.",
@@ -685,7 +685,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:appearance.card_size") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "appearance.card_size",
                             title = "Tamanho dos cards",
                             description = "Controla o tamanho visual dos cards da biblioteca/Home.",
@@ -695,7 +695,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:appearance.show_thumbnails") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "appearance.show_thumbnails",
                             title = "Mostrar miniaturas",
                             description = "Quando desativado, a Home mantém o espaço do card, mas não carrega imagens.",
@@ -708,7 +708,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Biblioteca" -> {
                     item(key = "section:library:organization") { SettingsSectionLabel("Organização") }
                     item(key = "setting:library.sort_default") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "library.sort_default",
                             title = "Ordenação padrão",
                             description = "Define a ordenação inicial quando outra ordenação não foi salva.",
@@ -723,7 +723,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:library.grid_density") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "library.grid_density",
                             title = "Densidade da grade",
                             description = "Controla a largura efetiva dos cards.",
@@ -737,7 +737,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:library.page_size") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "library.page_size",
                             title = "Itens por página",
                             description = "Quantidade persistida de itens da paginação.",
@@ -752,7 +752,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:library.continue_watching") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "library.continue_watching",
                             title = "Continue Watching",
                             description = "Controla a preferência global dessa seção.",
@@ -761,7 +761,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:library.continue_watching_limit") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "library.continue_watching_limit",
                             title = "Limite de Continue Watching",
                             description = "Quantidade persistida de itens na seção.",
@@ -780,7 +780,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Player" -> {
                     item(key = "section:player:playback") { SettingsSectionLabel("Reprodução") }
                     item(key = "setting:player.autoplay_next") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "player.autoplay_next",
                             title = "Autoplay do próximo episódio",
                             description = "Permite o avanço automático no player local.",
@@ -789,7 +789,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.resume") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "player.resume",
                             title = "Continuar reprodução",
                             description = "Usa a posição de progresso já salva; desligar não apaga o progresso.",
@@ -799,7 +799,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                     item(key = "section:player:video") { SettingsSectionLabel("Vídeo") }
                     item(key = "setting:player.default_speed") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.default_speed",
                             title = "Velocidade padrão",
                             description = "Aplicada quando um episódio é aberto.",
@@ -809,7 +809,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.aspect_ratio") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.aspect_ratio",
                             title = "Modo de vídeo",
                             description = "Ajustar preserva toda a imagem; Preencher ocupa a tela cortando somente o excedente.",
@@ -820,7 +820,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                     item(key = "section:player:controls") { SettingsSectionLabel("Controles") }
                     item(key = "setting:player.zoom_enabled") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "player.zoom_enabled",
                             title = "Zoom por gesto",
                             description = "Permite ampliar e mover o vídeo com gesto de pinça.",
@@ -829,7 +829,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.lock_mode") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "player.lock_mode",
                             title = "Bloqueio dos controles",
                             description = "Define o estado persistido de bloqueio dos controles ao abrir o player.",
@@ -838,7 +838,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.double_tap_seek_seconds") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.double_tap_seek_seconds",
                             title = "Salto no double tap",
                             description = "Define quantos segundos são avançados ou retrocedidos pelo double tap.",
@@ -848,7 +848,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.long_press_speed") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.long_press_speed",
                             title = "Velocidade da pressão longa",
                             description = "Velocidade temporária aplicada enquanto a pressão longa estiver ativa.",
@@ -858,7 +858,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.max_video_resolution") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.max_video_resolution",
                             title = "Resolução máxima",
                             description = "Limita a faixa de vídeo selecionada pelo Media3 quando o arquivo oferece múltiplas tracks.",
@@ -868,7 +868,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.max_video_frame_rate") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.max_video_frame_rate",
                             title = "FPS máximo",
                             description = "Limita a taxa de frames da track de vídeo selecionada.",
@@ -878,7 +878,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.max_audio_channels") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.max_audio_channels",
                             title = "Canais de áudio máximos",
                             description = "Limita a seleção de áudio sem criar um mixer ou decoder alternativo.",
@@ -889,7 +889,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                     item(key = "section:player:display") { SettingsSectionLabel("Tela") }
                     item(key = "setting:player.immersive") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.immersive",
                             title = "Modo imersivo",
                             description = "Controla as barras do sistema somente no player.",
@@ -899,7 +899,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.rotation") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.rotation",
                             title = "Rotação",
                             description = "Define a orientação do player sem forçar o aplicativo inteiro.",
@@ -909,7 +909,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.pip") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "player.pip",
                             title = "Picture-in-Picture",
                             description = "Permite PiP quando suportado pelo Android.",
@@ -918,7 +918,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:player.auto_hide_seconds") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "player.auto_hide_seconds",
                             title = "Auto-hide dos controles",
                             description = "0 significa nunca.",
@@ -963,7 +963,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Gestos" -> {
                     item(key = "section:gestures:gestures") { SettingsSectionLabel("Gestos") }
                     item(key = "setting:gestures.volume") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "gestures.volume",
                             title = "Gestos de volume",
                             description = "Swipe vertical no lado direito ajusta o volume quando ativado.",
@@ -972,7 +972,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:gestures.brightness") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "gestures.brightness",
                             title = "Gestos de brilho",
                             description = "Swipe vertical no lado esquerdo ajusta o brilho quando ativado.",
@@ -981,7 +981,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:gestures.double_tap") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "gestures.double_tap",
                             title = "Double tap para seek",
                             description = "Controla o double tap existente.",
@@ -990,7 +990,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:gestures.long_press") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "gestures.long_press",
                             title = "Pressão longa",
                             description = "Controla a ação de long press existente.",
@@ -1002,7 +1002,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Metadata" -> {
                     item(key = "section:metadata:matching") { SettingsSectionLabel("AniList") }
                     item(key = "setting:metadata.anilist_enabled") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "metadata.anilist_enabled",
                             title = "Usar AniList",
                             description = "Permite ou bloqueia chamadas remotas do cliente AniList.",
@@ -1011,7 +1011,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:metadata.auto_match") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "metadata.auto_match",
                             title = "Auto-match AniList",
                             description = "Controla a associação automática de novos itens.",
@@ -1023,7 +1023,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
                 "Artwork" -> {
                     item(key = "setting:artwork.enabled") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "artwork.enabled",
                             title = "Artwork remoto",
                             description = "Permite downloads remotos de capas pelo Artwork Engine existente.",
@@ -1032,7 +1032,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:artwork.cache_limit_mb") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "artwork.cache_limit_mb",
                             title = "Limite do cache de artwork",
                             description = "Limite persistido aplicado ao único Artwork Engine.",
@@ -1356,7 +1356,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Áudio e Legendas" -> {
                     item(key = "section:audio:subtitles") { SettingsSectionLabel("Legendas") }
                     item(key = "setting:audio.subtitle_scale") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "audio.subtitle_scale",
                             title = "Escala da legenda",
                             description = "Aplica o tamanho relativo usando o SubtitleView do Media3.",
@@ -1366,7 +1366,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:audio.subtitle_bottom_padding") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "audio.subtitle_bottom_padding",
                             title = "Margem inferior da legenda",
                             description = "Controla a margem inferior quando a cue não especifica uma linha fixa.",
@@ -1376,7 +1376,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:audio.subtitle_embedded_style") {
-                        BooleanSettingCard(
+                        BooleanSettingRow(
                             keyName = "audio.subtitle_embedded_style",
                             title = "Estilo embutido da legenda",
                             description = "Permite que o estilo declarado pela própria faixa seja aplicado.",
@@ -1386,7 +1386,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                     item(key = "section:audio:languages") { SettingsSectionLabel("Idiomas") }
                     item(key = "setting:audio.preferred_language") {
-                        LanguageSettingCard(
+                        LanguageSettingRow(
                             keyName = "audio.preferred_language",
                             title = "Idioma de áudio",
                             description = "Use uma tag BCP-47 como pt-BR, en ou ja. O Media3 usa fallback seguro se não existir.",
@@ -1395,7 +1395,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "setting:audio.preferred_subtitle_language") {
-                        LanguageSettingCard(
+                        LanguageSettingRow(
                             keyName = "audio.preferred_subtitle_language",
                             title = "Idioma da legenda",
                             description = "Use uma tag BCP-47. A seleção ocorre somente entre tracks existentes no arquivo.",
@@ -1405,7 +1405,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                     item(key = "section:audio:behavior") { SettingsSectionLabel("Comportamento") }
                     item(key = "setting:audio.subtitles") {
-                        ChoiceSettingCard(
+                        ChoiceSettingRow(
                             keyName = "audio.subtitles",
                             title = "Legendas",
                             description = "Automático respeita as preferências do arquivo; Sempre tenta selecionar uma legenda; Nunca desativa a track de texto.",
@@ -1645,18 +1645,25 @@ private fun SettingsSectionLabel(
     )
 }
 
+/**
+ * Flat content wrapper shared by Settings and Storage.
+ *
+ * Keep the public name for existing call sites, but intentionally avoid a
+ * decorative Material surface: no separate background, shape or elevation.
+ * The screen's canonical background and content color remain theme-driven.
+ */
 @Composable
 fun ReiAnixSettingsSurface(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = androidx.compose.ui.graphics.RectangleShape,
-        color = MaterialTheme.colorScheme.background,
-        tonalElevation = ReiAnixTokens.Elevation.none,
-        content = content,
-    )
+    Box(modifier = modifier.fillMaxWidth()) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onBackground,
+        ) {
+            content()
+        }
+    }
 }
 
 @Composable
@@ -1810,7 +1817,7 @@ private fun SettingsPreferenceText(
 }
 
 @Composable
-private fun BooleanSettingCard(
+private fun BooleanSettingRow(
     keyName: String,
     title: String,
     description: String,
@@ -1866,7 +1873,7 @@ private fun BooleanSettingCard(
 }
 
 @Composable
-private fun LanguageSettingCard(
+private fun LanguageSettingRow(
     keyName: String,
     title: String,
     description: String,
@@ -1917,7 +1924,7 @@ private fun LanguageSettingCard(
 }
 
 @Composable
-private fun ChoiceSettingCard(
+private fun ChoiceSettingRow(
     keyName: String,
     title: String,
     description: String,
