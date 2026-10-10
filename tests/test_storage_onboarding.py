@@ -198,8 +198,13 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('compose_settings_bridge.write_command_result(', result_writer)
         self.assertIn('compose_library_bridge.write_command_result(', result_writer)
         self.assertIn("await compose_library_bridge.wait_for_idle()", result_writer)
+        self.assertIn("await compose_settings_bridge.wait_for_idle()", result_writer)
         self.assertLess(
             result_writer.index("await compose_library_bridge.wait_for_idle()"),
+            result_writer.index("compose_settings_bridge.write_command_result("),
+        )
+        self.assertLess(
+            result_writer.index("await compose_settings_bridge.wait_for_idle()"),
             result_writer.index("compose_settings_bridge.write_command_result("),
         )
 
