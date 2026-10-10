@@ -75,13 +75,16 @@ class TestBroadStorageArchitecture(unittest.TestCase):
         self.assertNotIn("READ_EXTERNAL_STORAGE", scanner)
         self.assertIn("NativeIndex.failActiveGenerations", runner)
 
-    def test_nomedia_directory_filtering_supported(self):
+    def test_broad_storage_filters_nomedia_but_explicit_saf_library_does_not(self):
         broad_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
         saf_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn('.equals(".nomedia", ignoreCase = true)', broad_scanner)
         self.assertIn('nomediaDirectories', broad_scanner)
         self.assertIn('name.equals(".nomedia",ignoreCase=true)', saf_scanner)
+        self.assertIn('containsNoMediaMarker', saf_scanner)
         self.assertIn('nomediaDirectories', saf_scanner)
+        self.assertNotIn("if(hasNoMedia)", saf_scanner)
+        self.assertNotIn("return@use", saf_scanner[saf_scanner.index("if(containsNoMediaMarker)"):saf_scanner.index("for((childId,childName) in directoriesToVisit)")])
 
     def test_intent_fallback_chain_in_main_activity(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
