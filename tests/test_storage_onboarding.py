@@ -113,7 +113,7 @@ class StorageOnboardingTests(unittest.TestCase):
 
     def test_add_folder_is_not_blocked_by_an_active_scan(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("    async def add_folder(_=None):")
+        start = source.index("    async def add_folder(")
         end = source.index("    async def check_video_access", start)
         block = source[start:end]
         self.assertNotIn("scan_coordinator.active or not saf_selection.begin()", block)
@@ -586,7 +586,7 @@ class StorageOnboardingTests(unittest.TestCase):
 
     def test_add_folder_marks_native_picker_open_and_keeps_cancel_recoverable(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("    async def add_folder(_=None):")
+        start = source.index("    async def add_folder(")
         end = source.index("    async def check_video_access", start)
         block = source[start:end]
         self.assertIn('storage_onboarding["state"] = "FOLDER_PICKER_OPEN"', block)

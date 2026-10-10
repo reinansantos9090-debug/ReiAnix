@@ -121,7 +121,10 @@ class TestSafProfessionalContract(unittest.TestCase):
     def test_scan_failure_does_not_revoke_saf_authorization(self):
         source = MAIN.read_text(encoding="utf-8")
         block_start = source.find("elif event_type in {'saf_error','google_error'}:")
-        block = source[block_start:block_start + 5000]
+        block_end = source.find("elif event_type == 'google_error':", block_start + 1)
+        if block_end < 0:
+            block_end = len(source)
+        block = source[block_start:block_end]
         self.assertIn("status == 'REVOKED'", block)
         self.assertIn("status in {'UNAVAILABLE', 'FAILED', 'PARTIAL'}", block)
         self.assertIn("update_folder_status(tree_uri, 'unavailable'", block)
