@@ -89,9 +89,18 @@ class BackLifecycleTests(unittest.TestCase):
     def test_player_keeps_native_back_dispatch_and_finishes_itself(self):
         source = self.read(PLAYER_ACTIVITY)
         self.assertIn("onBackPressedDispatcher.addCallback(", source)
-        self.assertIn('finishPlayer("android_back")', source)
+        self.assertIn('finishPlayer("back_button")', source)
+        self.assertNotIn('finishPlayer("android_back")', source)
         self.assertIn("player.release()", source)
         self.assertIn("setResult(", source)
+        self.assertNotIn("navigationChannel.popRoute()", source)
+        self.assertNotIn("navigate_back(", source)
+
+        handler_start = source.index("private fun installBackHandler")
+        handler_end = source.index("private fun applyRootInsets", handler_start)
+        handler = source[handler_start:handler_end]
+        self.assertLess(handler.index("if (moreVisible)"), handler.index('finishPlayer("back_button")'))
+        self.assertIn('findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE', handler)
 
     def test_legacy_back_overrides_are_absent_from_both_activities(self):
         for path in (MAIN_ACTIVITY, PLAYER_ACTIVITY):
