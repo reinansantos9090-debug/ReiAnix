@@ -381,15 +381,29 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("onboardingAllowed", overlay)
         self.assertIn("ReiAnixLibraryFolderOnboarding(", overlay)
 
-    def test_selected_saf_root_becomes_ready_without_a_second_store(self):
+    def test_selected_saf_root_uses_canonical_identity_and_becomes_ready(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         granted = source[source.index("event_type == 'saf_permission'"):source.index("event_type == 'saf_released'")]
-        self.assertIn("store.add_folder(", granted)
+        self.assertIn("canonical_saf_identity = (", granted)
+        self.assertIn("saf_identity=canonical_saf_identity", granted)
+        self.assertIn("_repair_configured_saf_source_identities()", granted)
         self.assertIn("_configured_valid_library_saf_roots()", granted)
         self.assertIn('"READY"', granted)
         self.assertNotIn("SharedPreferences", source)
         self.assertNotIn("StorageV2", source)
         self.assertNotIn("LibraryStoreV2", source)
+
+    def test_existing_authorized_saf_source_identity_is_repaired_only_for_current_grants(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        start = source.index("def _repair_configured_saf_source_identities")
+        end = source.index("def _has_configured_saf_folder", start)
+        repair = source[start:end]
+        self.assertIn("persisted_identities", repair)
+        self.assertIn('canonical_identity not in persisted_identities', repair)
+        self.assertIn('authorization', repair)
+        self.assertIn('store.add_folder(', repair)
+        self.assertIn('saf_identity=canonical_identity', repair)
+        self.assertIn('SAF_SOURCE_IDENTITY_REPAIRED', repair)
 
     def test_startup_does_not_schedule_thumbnail_reconciliation_before_storage_ready(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
