@@ -162,5 +162,22 @@ class NativePlayerLifecycleTests(unittest.TestCase):
         self.assertIn('cancelFirstFrameDiagnostics("first_frame")', self.player)
 
 
+    def test_find_view_by_tag_is_safe_before_root_initialization(self):
+        helper_start = self.player.index("private fun <T : View> findViewByTag")
+        helper_end = self.player.index("private fun logPlayer", helper_start)
+        helper = self.player[helper_start:helper_end]
+
+        self.assertIn("if (!::root.isInitialized) return null", helper)
+        self.assertIn("return root.findViewWithTag(tagValue)", helper)
+
+        destroy_start = self.player.index("override fun onDestroy()")
+        destroy_end = self.player.index("private fun shouldUseImmersive", destroy_start)
+        destroy = self.player[destroy_start:destroy_end]
+        self.assertIn("findViewByTag<GestureLayer>(\"reiflix_gesture_layer\")?.dispose()", destroy)
+        self.assertIn("playbackWorker.shutdown()", destroy)
+        self.assertIn("progressWorker.shutdown()", destroy)
+        self.assertIn("if (::player.isInitialized)", destroy)
+
+
 if __name__ == "__main__":
     unittest.main()
