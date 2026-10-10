@@ -243,6 +243,9 @@ fun ReiAnixSettingsRoute(
     onBack: () -> Unit,
     onOpenCategory: (String) -> Unit,
     onOpenStorage: () -> Unit = {},
+    scanInProgress: Boolean = false,
+    scanState: String = "IDLE",
+    lastScanStatus: String? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedCategory by androidx.compose.runtime.saveable.rememberSaveable {
@@ -264,6 +267,9 @@ fun ReiAnixSettingsRoute(
             onAccountAction = viewModel::requestAccountAction,
             onAction = viewModel::requestAction,
             onOpenStorage = onOpenStorage,
+            scanInProgress = scanInProgress,
+            scanState = scanState,
+            lastScanStatus = lastScanStatus,
             onRetry = viewModel::refresh,
         )
     } else {
@@ -494,6 +500,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onAccountAction: (String) -> Unit,
     onAction: (String) -> Unit,
     onOpenStorage: () -> Unit,
+    scanInProgress: Boolean = false,
+    scanState: String = "IDLE",
+    lastScanStatus: String? = null,
     onRetry: () -> Unit,
 ) {
     fun actionBusy(action: String): Boolean =
@@ -1447,11 +1456,36 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Varredura" -> {
+                    val normalizedScanState = scanState.trim().uppercase().ifBlank { "IDLE" }
+                    val scanStateLabel = when (normalizedScanState) {
+                        "IDLE" -> "Ociosa"
+                        "QUEUED" -> "Na fila"
+                        "CHECKING" -> "Verificando fontes"
+                        "RUNNING", "SCANNING" -> "Em andamento"
+                        "CANCELLING" -> "Cancelando"
+                        "WAITING_FOR_MEDIASTORE" -> "Aguardando MediaStore"
+                        "COMPLETED", "SUCCESS" -> "Concluída"
+                        "PARTIAL" -> "Concluída parcialmente"
+                        "CANCELLED" -> "Cancelada"
+                        "FAILED", "ERROR" -> "Falhou"
+                        "BLOCKED" -> "Bloqueada"
+                        "UNKNOWN" -> "Desconhecida"
+                        else -> normalizedScanState
+                    }
+                    val normalizedLastScan = lastScanStatus?.trim()?.uppercase().orEmpty()
+                    val lastScanLabel = when (normalizedLastScan) {
+                        "" -> "Nenhuma"
+                        "COMPLETED", "SUCCESS" -> "Concluída"
+                        "PARTIAL" -> "Concluída parcialmente"
+                        "CANCELLED" -> "Cancelada"
+                        "FAILED", "ERROR" -> "Falhou"
+                        "BLOCKED" -> "Bloqueada"
+                        else -> normalizedLastScan
+                    }
+
                     item(key = "section:scan:state") { SettingsSectionLabel("Scanner") }
                     item(key = "scan:existing") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1459,23 +1493,50 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
                                 Text(
-                                    text = "Scanner",
+                                    text = "Varredura em andamento",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = "MediaStore, SAF e broad storage continuam sob o ScanCoordinator e scanners existentes.",
+                                    text = if (scanInProgress) {
+                                        "Uma varredura está sendo executada."
+                                    } else {
+                                        "Nenhuma varredura está em andamento."
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                ReiAnixBadge(text = "Existente", tone = ReiAnixBadgeTone.Neutral)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "Estado: $scanStateLabel",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    ReiAnixBadge(
+                                        text = if (scanInProgress) "Ativa" else "Inativa",
+                                        tone = ReiAnixBadgeTone.Neutral,
+                                    )
+                                }
+                                Text(
+                                    text = "Última varredura: $lastScanLabel",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "MediaStore, SAF e broad storage continuam sob o ScanCoordinator e os scanners existentes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }
                     item(key = "scan:refresh") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1488,13 +1549,12 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = "Settings não inicia uma varredura automaticamente; o refresh continua no fluxo existente da Biblioteca.",
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    text = "A atualização da biblioteca continua no fluxo existente; Settings não cria nem inicia um scanner paralelo.",
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                ReiAnixBadge(text = "Sem scan", tone = ReiAnixBadgeTone.Neutral)
                                 ReiAnixSecondaryButton(
-                                    text = "Ver estado e atualizar biblioteca",
+                                    text = "Ver armazenamento e fontes",
                                     onClick = onOpenStorage,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
