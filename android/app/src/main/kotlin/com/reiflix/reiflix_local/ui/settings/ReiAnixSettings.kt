@@ -1046,7 +1046,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("artwork.cache_limit_mb", it) },
                         )
                     }
-                    }
                 }
 
                 "Armazenamento" -> {
