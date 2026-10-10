@@ -5,12 +5,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
 LAYOUT = ROOT / "android/app/src/main/res/layout/native_player_view.xml"
+STYLES = ROOT / "android/app/src/main/res/values/styles.xml"
+MANIFEST = ROOT / "android/app/src/main/AndroidManifest.xml"
 
 
 class PlayerReconstructionTests(unittest.TestCase):
     def setUp(self):
         self.player = PLAYER.read_text(encoding="utf-8")
         self.layout = LAYOUT.read_text(encoding="utf-8")
+        self.styles = STYLES.read_text(encoding="utf-8")
+        self.manifest = MANIFEST.read_text(encoding="utf-8")
 
     def test_responsive_player_uses_native_layout_and_weighted_controls(self):
         self.assertIn("R.layout.native_player_view", self.player)
@@ -86,6 +90,21 @@ class PlayerReconstructionTests(unittest.TestCase):
         self.assertIn("SEEK_PROGRESS_MAX", self.player)
         self.assertIn("PROGRESS_INTERVAL_MS = 250L", self.player)
         self.assertIn("PROGRESS_PERSIST_INTERVAL_MS = 15_000L", self.player)
+
+    def test_track_dialog_uses_platform_alert_dialog_compatible_with_player_theme(self):
+        track_selection = self.player[
+            self.player.index("private fun showTrackSelection"):
+            self.player.index("private fun seekBy", self.player.index("private fun showTrackSelection"))
+        ]
+        self.assertIn("import android.app.AlertDialog", self.player)
+        self.assertIn("AlertDialog.Builder(this)", track_selection)
+        self.assertNotIn("androidx.appcompat.app.AlertDialog", self.player)
+        self.assertIn('android:name=".NativePlayerActivity"', self.manifest)
+        self.assertIn('android:theme="@style/ReiAnixPlayerTheme"', self.manifest)
+        self.assertIn(
+            'style name="ReiAnixPlayerTheme" parent="android:style/Theme.Material.NoActionBar"',
+            self.styles,
+        )
 
     def test_buffering_error_and_first_frame_are_separate_ui_states(self):
         self.assertIn("Player.STATE_BUFFERING", self.player)
