@@ -175,12 +175,20 @@ object SafScanner {
                     data class Child(val id:String,val name:String,val mime:String,val size:Long?,val modified:Long?)
                     val directoriesToVisit=mutableListOf<Pair<String,String>>()
                     val videoChildren=mutableListOf<Child>()
-                    var hasNoMedia=false
+                    var containsNoMediaMarker=false
                     while(c.moveToNext()){
                         val id=c.getString(idCol)?.trim().orEmpty()
                         if(id.isBlank()){stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("O provedor SAF retornou um documento sem ID em: "+currentPath);continue}
                         val name=c.getString(nameCol)?.trim().takeUnless{it.isNullOrBlank()} ?: id
-                        if(name.equals(".nomedia",ignoreCase=true)){hasNoMedia=true;stats.put("nomediaFiles",stats.getInt("nomediaFiles")+1);continue}
+                        // SAF roots are explicitly selected by the user for the ReiAnix
+                        // library. .nomedia is a MediaStore/gallery hint, not a veto on
+                        // files the user deliberately included in this tree. Count it for
+                        // diagnostics, but still index sibling videos and recurse into folders.
+                        if(name.equals(".nomedia",ignoreCase=true)){
+                            containsNoMediaMarker=true
+                            stats.put("nomediaFiles",stats.getInt("nomediaFiles")+1)
+                            continue
+                        }
                         val mime=c.getString(mimeCol)?.trim().takeUnless{it.isNullOrBlank()} ?: "application/octet-stream"
                         val size=if(sizeCol>=0&&!c.isNull(sizeCol))c.getLong(sizeCol)else null
                         val modified=if(modCol>=0&&!c.isNull(modCol))c.getLong(modCol)else null
@@ -195,9 +203,8 @@ object SafScanner {
                         if(!mimeVideo&&!extensionVideo)continue
                         videoChildren.add(Child(id,name,mime,size,modified))
                     }
-                    if(hasNoMedia){
-                        stats.put("excludedNoMedia",stats.getInt("excludedNoMedia")+1).put("nomediaDirectories",stats.getInt("nomediaDirectories")+1)
-                        return@use
+                    if(containsNoMediaMarker){
+                        stats.put("nomediaDirectories",stats.getInt("nomediaDirectories")+1)
                     }
                     for((childId,childName) in directoriesToVisit){
                         val relative=if(currentPath.isEmpty())childName else currentPath+"/"+childName
