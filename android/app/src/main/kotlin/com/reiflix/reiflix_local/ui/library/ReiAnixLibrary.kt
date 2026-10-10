@@ -689,7 +689,7 @@ private fun ColumnScope.LibraryReadyContent(
                                                 onClick = { genreMenuExpanded = false },
                                             )
                                         },
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                                     )
                                 }
                             }

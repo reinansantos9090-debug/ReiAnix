@@ -567,7 +567,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             }
             AlertDialog(
                 onDismissRequest = { pendingConfirmationAction = null },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 title = { Text(title) },
                 text = { Text(message) },
                 confirmButton = {

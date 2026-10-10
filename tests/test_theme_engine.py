@@ -40,6 +40,8 @@ class ThemeEngineTests(unittest.TestCase):
             "surface",
             "surface_variant",
             "surface_raised",
+            "surface_dialog",
+            "surface_sheet",
             "text",
             "text_muted",
             "text_on_accent",
@@ -69,6 +71,10 @@ class ThemeEngineTests(unittest.TestCase):
         self.assertEqual(DARK_THEME.surface, "#050505")
         self.assertEqual(DARK_THEME.surface_variant, "#080808")
         self.assertEqual(DARK_THEME.surface_raised, "#0A0A0A")
+        self.assertEqual(DARK_THEME.surface_dialog, "#0A0A0A")
+        self.assertEqual(DARK_THEME.surface_sheet, "#080808")
+        self.assertEqual(LIGHT_THEME.surface_dialog, "#E7E7EA")
+        self.assertEqual(LIGHT_THEME.surface_sheet, "#EFEFEF")
         self.assertEqual(DARK_THEME.primary, "#2579FF")
 
     def test_dark_palette_is_neutral_with_controlled_blue_accent(self):
@@ -78,6 +84,8 @@ class ThemeEngineTests(unittest.TestCase):
             'surface="#050505"',
             'surface_variant="#080808"',
             'surface_raised="#0A0A0A"',
+            'surface_dialog="#0A0A0A"',
+            'surface_sheet="#080808"',
             'text="#FFFFFF"',
             'text_muted="#B3B3B3"',
             'primary="#2579FF"',
@@ -99,12 +107,13 @@ class ThemeEngineTests(unittest.TestCase):
             self.assertEqual(theme.color_scheme.secondary_container, expected.surface_variant)
             self.assertEqual(theme.color_scheme.tertiary_container, expected.surface_variant)
             self.assertEqual(theme.color_scheme.surface_container, expected.surface)
-            self.assertEqual(theme.color_scheme.surface_container_high, expected.surface_raised)
+            self.assertEqual(theme.color_scheme.surface_container_high, expected.surface_sheet)
+            self.assertEqual(theme.color_scheme.surface_container_highest, expected.surface_dialog)
             self.assertEqual(theme.canvas_color, expected.background)
             self.assertEqual(theme.scaffold_bgcolor, expected.background)
             self.assertEqual(theme.card_bgcolor, expected.surface)
-            self.assertEqual(theme.dialog_theme.bgcolor, expected.surface_raised)
-            self.assertEqual(theme.bottom_sheet_theme.bgcolor, expected.surface_raised)
+            self.assertEqual(theme.dialog_theme.bgcolor, expected.surface_dialog)
+            self.assertEqual(theme.bottom_sheet_theme.bgcolor, expected.surface_sheet)
             self.assertEqual(theme.navigation_bar_theme.bgcolor, expected.background)
             self.assertEqual(theme.appbar_theme.bgcolor, expected.background)
 
@@ -117,14 +126,17 @@ class ThemeEngineTests(unittest.TestCase):
             "secondary_container=tokens.surface_variant",
             "tertiary_container=tokens.surface_variant",
             "surface_container=tokens.surface",
-            "surface_container_high=tokens.surface_raised",
+            "surface_container_high=tokens.surface_sheet",
+            "surface_container_highest=tokens.surface_dialog",
             "canvas_color=tokens.background",
             "card_bgcolor=tokens.surface",
             "scaffold_bgcolor=tokens.background",
             "appbar_theme=ft.AppBarTheme",
             "navigation_bar_theme=ft.NavigationBarTheme",
             "dialog_theme=ft.DialogTheme",
+            "bgcolor=tokens.surface_dialog",
             "bottom_sheet_theme=ft.BottomSheetTheme",
+            "bgcolor=tokens.surface_sheet",
             "disabled_color=tokens.text_muted",
             "divider_color=tokens.divider",
         ):

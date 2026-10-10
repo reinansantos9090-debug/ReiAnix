@@ -61,6 +61,7 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
             "val surfaceVariant = Color(0xFF080808)",
             "val surfaceRaised = Color(0xFF0A0A0A)",
             "val surfaceDialog = Color(0xFF0A0A0A)",
+            "val surfaceSheet = Color(0xFF080808)",
             "val surfaceNavigation = Color(0xFF000000)",
             "val divider = Color(0xFF202020)",
             "val border = Color(0xFF202020)",
@@ -77,7 +78,8 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
         self.assertIn("surface = ReiAnixTokens.Colors.surface", theme)
         self.assertIn("surfaceContainerLow = ReiAnixTokens.Colors.backgroundSecondary", theme)
         self.assertIn("surfaceContainer = ReiAnixTokens.Colors.surface", theme)
-        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceRaised", theme)
+        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceSheet", theme)
+        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.lightSurfaceVariant", theme)
         self.assertIn("surfaceContainerHighest = ReiAnixTokens.Colors.surfaceDialog", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.primary", theme)
         self.assertIn("primary = ReiAnixTokens.Colors.lightPrimary", theme)
@@ -116,7 +118,7 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
         self.assertIn("surfaceContainerLowest = ReiAnixTokens.Colors.background", theme)
         self.assertIn("surfaceContainerLow = ReiAnixTokens.Colors.backgroundSecondary", theme)
         self.assertIn("surfaceContainer = ReiAnixTokens.Colors.surface", theme)
-        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceRaised", theme)
+        self.assertIn("surfaceContainerHigh = ReiAnixTokens.Colors.surfaceSheet", theme)
 
 
 

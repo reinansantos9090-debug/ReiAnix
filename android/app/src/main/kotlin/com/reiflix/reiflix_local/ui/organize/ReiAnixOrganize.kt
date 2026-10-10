@@ -300,7 +300,7 @@ fun ReiAnixOrganizeScreen(
                 ?: "esta pasta"
             AlertDialog(
                 onDismissRequest = { pendingSourceRemoval = null },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 title = { Text("Remover fonte da biblioteca?") },
                 text = {
                     Text(

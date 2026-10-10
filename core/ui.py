@@ -13,6 +13,8 @@ class ThemeTokens:
     surface: str
     surface_variant: str
     surface_raised: str
+    surface_dialog: str
+    surface_sheet: str
     text: str
     text_muted: str
     text_on_accent: str
@@ -34,6 +36,8 @@ DARK_THEME = ThemeTokens(
     surface="#050505",
     surface_variant="#080808",
     surface_raised="#0A0A0A",
+    surface_dialog="#0A0A0A",
+    surface_sheet="#080808",
     text="#FFFFFF",
     text_muted="#B3B3B3",
     text_on_accent="#FFFFFF",
@@ -55,6 +59,8 @@ LIGHT_THEME = ThemeTokens(
     surface="#FFFFFF",
     surface_variant="#EFEFEF",
     surface_raised="#E7E7EA",
+    surface_dialog="#E7E7EA",
+    surface_sheet="#EFEFEF",
     text="#141414",
     text_muted="#5F5F5F",
     text_on_accent="#FFFFFF",
@@ -162,7 +168,8 @@ def _flet_material_theme(tokens: ThemeTokens) -> ft.Theme:
         surface_bright=tokens.surface_raised,
         surface_container_low=tokens.background,
         surface_container=tokens.surface,
-        surface_container_high=tokens.surface_raised,
+        surface_container_high=tokens.surface_sheet,
+        surface_container_highest=tokens.surface_dialog,
         surface_container_highest=tokens.surface_raised,
         outline=tokens.border,
         outline_variant=tokens.divider,
@@ -188,11 +195,11 @@ def _flet_material_theme(tokens: ThemeTokens) -> ft.Theme:
             shadow_color=tokens.background,
         ),
         dialog_theme=ft.DialogTheme(
-            bgcolor=tokens.surface_raised,
+            bgcolor=tokens.surface_dialog,
             barrier_color=tokens.overlay,
         ),
         bottom_sheet_theme=ft.BottomSheetTheme(
-            bgcolor=tokens.surface_raised,
+            bgcolor=tokens.surface_sheet,
             barrier_color=tokens.overlay,
         ),
         disabled_color=tokens.text_muted,
