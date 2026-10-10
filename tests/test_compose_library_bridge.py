@@ -8,11 +8,15 @@ from core.compose_library_bridge import ComposeLibraryBridge
 
 
 class FakeStore:
-    def __init__(self, folders=None):
+    def __init__(self, folders=None, last_scan=None):
         self._folders = list(folders or [])
+        self._last_scan = dict(last_scan) if isinstance(last_scan, dict) else None
 
     def folders(self):
         return list(self._folders)
+
+    def last_scan(self):
+        return dict(self._last_scan) if self._last_scan is not None else None
 
 
 class FakeLibrary:
@@ -247,6 +251,23 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(payload["scanInProgress"])
             self.assertEqual("SCANNING", payload["scanState"])
             self.assertEqual([anime["id"]], [item["id"] for item in payload["animes"]])
+
+    async def test_scan_snapshot_publishes_live_state_and_persisted_last_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scan = {"state": "RUNNING"}
+            store = FakeStore(last_scan={"status": "completed"})
+            bridge = ComposeLibraryBridge(directory, FakeLibrary([]), store)
+            bridge.set_scan_state_provider(lambda: scan)
+
+            bridge.request_publish("scan_status")
+            await bridge.wait_for_idle()
+
+            payload = json.loads(
+                (Path(directory) / "reianix-compose/library.json").read_text()
+            )
+            self.assertTrue(payload["scanInProgress"])
+            self.assertEqual("RUNNING", payload["scanState"])
+            self.assertEqual("COMPLETED", payload["lastScanStatus"])
 
     async def test_projection_error_keeps_last_catalog_after_scan_failure(self):
         class FlakyLibrary(FakeLibrary):
