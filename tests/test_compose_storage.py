@@ -42,6 +42,30 @@ class FakeStore:
 
 
 class ComposeStorageBridgeTest(unittest.TestCase):
+    def test_recreated_bridge_continues_persisted_snapshot_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot_dir = Path(directory) / "reianix-compose"
+            snapshot_dir.mkdir(parents=True)
+            snapshot_path = snapshot_dir / "library.json"
+            snapshot_path.write_text(
+                json.dumps({
+                    "schemaVersion": 1, "revision": 41, "generatedAt": 1000,
+                    "reason": "previous_process", "status": "EMPTY",
+                    "sourceState": "UNAVAILABLE", "sourceAvailable": False,
+                    "scanInProgress": False, "scanState": "IDLE", "lastScanStatus": None,
+                    "storage": {}, "animes": [], "continue_watching": [],
+                }), encoding="utf-8",
+            )
+            bridge = ComposeLibraryBridge(directory, FakeLibrary(), FakeStore())
+
+            async def publish():
+                bridge.request_publish("restart_revision_regression")
+                await bridge.wait_for_idle()
+
+            asyncio.run(publish())
+            snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            self.assertGreater(snapshot["revision"], 41)
+
     def test_storage_projection_uses_canonical_capabilities_and_configured_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             bridge = ComposeLibraryBridge(

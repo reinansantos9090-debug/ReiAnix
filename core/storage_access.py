@@ -48,6 +48,43 @@ def storage_snapshot_is_stale(event_at_ms: int | float | None, latest_mutation_a
     return event_at > 0 and mutation_at > event_at
 
 
+def pending_saf_inventory_selection_candidate(
+    trees: Any,
+    baseline_identities,
+    *,
+    inventory_started_at_ms: int | float | None,
+    selection_started_at_ms: int | float | None,
+    inventory_complete: bool,
+) -> dict[str, Any] | None:
+    """Find one new persisted root that proves an explicit pending selection."""
+    if not inventory_complete:
+        return None
+    try:
+        inventory_started = int(inventory_started_at_ms or 0)
+        selection_started = int(selection_started_at_ms or 0)
+    except (TypeError, ValueError):
+        return None
+    if inventory_started <= 0 or selection_started <= 0 or inventory_started < selection_started:
+        return None
+    baseline = {
+        str(value).strip() for value in (baseline_identities or ()) if str(value).strip()
+    }
+    candidates: dict[str, dict[str, Any]] = {}
+    for item in trees or ():
+        if not isinstance(item, dict) or not item.get("persisted"):
+            continue
+        if str(item.get("status") or "").strip().upper() not in {"COMPLETED", "EMPTY_COMPLETE"}:
+            continue
+        uri = str(item.get("treeUri") or "").strip()
+        identity = saf_source_identity(uri) or str(item.get("identity") or "").strip()
+        if not uri or not identity or identity in baseline:
+            continue
+        candidates[identity] = dict(item)
+    if len(candidates) != 1:
+        return None
+    return next(iter(candidates.values()))
+
+
 def scan_ui_state_from_native(status: str | None, *, errors: bool = False, cancelled: bool = False,
                               waiting_for_mediastore: bool = False, volume_available: bool = True) -> ScanUiState:
     if waiting_for_mediastore:
@@ -370,6 +407,7 @@ __all__ = [
     "scan_ui_state_from_native",
     "StorageCapabilities",
     "saf_source_identity",
+    "pending_saf_inventory_selection_candidate",
     "dedupe_saf_roots",
     "library_saf_roots",
     "normalize_storage_snapshot",

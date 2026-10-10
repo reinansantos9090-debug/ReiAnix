@@ -146,6 +146,41 @@ class StorageOnboardingTests(unittest.TestCase):
             block.index('storage_onboarding["waiting_for_result"] = False'),
         )
 
+    def test_saf_picker_watchdog_recovers_when_android_returns_without_focus_loss_callback(self):
+        source = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        watchdog = source.split("private fun scheduleSafPickerWatchdog", 1)[1].split(
+            "private fun handleTreePickerResult", 1
+        )[0]
+        self.assertNotIn("if (!safPickerFocusLost)", watchdog)
+        self.assertIn("SafPickerPhase.WAITING_RESULT", watchdog)
+        resume = source.split("override fun onResume()", 1)[1].split(
+            "override fun onPause()", 1
+        )[0]
+        self.assertIn("safPickerPhase == SafPickerPhase.WAITING_RESULT", resume)
+
+    def test_compose_select_saf_result_uses_the_compose_request_id(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        granted = source[source.index("elif event_type == 'saf_permission':"):source.index("elif event_type == 'saf_released'")]
+        self.assertIn('storage_onboarding.get("pending_compose_selection_request_id")', granted)
+        self.assertIn('"COMPLETED"', granted)
+        self.assertNotIn('compose_library_bridge.write_command_result(\n                                        event_request_id', granted)
+
+    def test_saf_permission_result_never_leaves_picker_open_when_validation_fails(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        granted = source[source.index("elif event_type == 'saf_permission':"):source.index("elif event_type == 'saf_released'")]
+        self.assertIn('_merge_authoritative_saf_root(tree_uri)', granted)
+        self.assertIn('"STORAGE_SOURCE_VALIDATION_FAILED"', granted)
+
+    def test_saf_inventory_can_recover_one_new_explicitly_selected_persisted_tree(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        inventory = source[source.index("elif event_type == 'saf_inventory':"):source.index("elif event_type == 'saf_cancelled':")]
+        self.assertIn("_recover_pending_saf_selection_from_inventory(", inventory)
+        helper = (ROOT / "core/storage_access.py").read_text(encoding="utf-8")
+        self.assertIn("inventory_started < selection_started", helper)
+        self.assertIn("len(candidates) != 1", helper)
+
     def test_saf_picker_watchdog_recovers_when_android_returns_without_result_callback(self):
         source = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"

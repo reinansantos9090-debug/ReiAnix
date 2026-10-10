@@ -76,6 +76,26 @@ class ComposeLibraryBridge:
         if self.enabled:
             self.snapshot_dir.mkdir(parents=True, exist_ok=True)
             self.command_result_dir.mkdir(parents=True, exist_ok=True)
+            self._restore_snapshot_revision()
+
+    def _restore_snapshot_revision(self) -> None:
+        """Resume the persisted snapshot sequence after restarting Python.
+
+        Kotlin rejects snapshots whose revision is not newer than its accepted
+        revision. The snapshot file survives runtime restarts, this bridge does
+        not; resetting the sequence to zero can freeze Compose on an old state.
+        """
+        revision = 0
+        try:
+            raw = json.loads(self.snapshot_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                revision = max(0, int(raw.get("revision") or 0))
+        except (OSError, TypeError, ValueError):
+            revision = 0
+        self._requested_revision = revision
+        self._last_published_revision = revision
+        if revision:
+            logger.info("[COMPOSE_LIBRARY] restored_snapshot_revision=%s", revision)
 
     def set_scan_state_provider(
         self,

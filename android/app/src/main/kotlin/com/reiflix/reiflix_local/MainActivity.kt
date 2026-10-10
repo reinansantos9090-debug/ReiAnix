@@ -638,12 +638,8 @@ class MainActivity : FlutterFragmentActivity() {
                 }
 
                 if (resultPending) {
-                    // The return timestamp is set only after DocumentsUI relinquishes
-                    // focus. Never time out while the user is still choosing a folder.
-                    if (!safPickerFocusLost) {
-                        cancelSafPickerWatchdog()
-                        return
-                    }
+                    // Do not require a separate focus-loss callback: some providers omit
+                    // it, otherwise recovery is cancelled indefinitely after the return.
                     if (safPickerFocusRegainedAtMs <= 0L) {
                         safPickerFocusRegainedAtMs = now
                     }
@@ -947,8 +943,9 @@ class MainActivity : FlutterFragmentActivity() {
         NativeMailbox.writeBestEffort(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "ON_RESUME").put("lifecycle", "onResume")))
         applyApplicationSystemUi()
         if (safPickerPending) {
+            // onResume marks return even when a provider omits the separate focus-loss callback.
             if (
-                safPickerFocusLost &&
+                safPickerPhase == SafPickerPhase.WAITING_RESULT &&
                 safPickerFocusRegainedAtMs <= 0L &&
                 window?.decorView?.hasWindowFocus() == true
             ) {
@@ -2866,7 +2863,10 @@ class MainActivity : FlutterFragmentActivity() {
          publishInteractionProfileIfChanged()
             ViewCompat.requestApplyInsets(window.decorView)
             if (activityResumed && safPickerPending) {
-                if (safPickerFocusLost && safPickerFocusRegainedAtMs <= 0L) {
+                if (
+                    safPickerPhase == SafPickerPhase.WAITING_RESULT &&
+                    safPickerFocusRegainedAtMs <= 0L
+                ) {
                     safPickerFocusRegainedAtMs = System.currentTimeMillis()
                 }
                 scheduleSafPickerWatchdog(pendingSafRequestId)

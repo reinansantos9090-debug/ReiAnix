@@ -7,6 +7,7 @@ from core.scan_coordinator import ScanCoordinator, ScanOrigin, ScanState, ScanTa
 from core.storage_access import (
     StorageCapabilities,
     configured_library_saf_roots,
+    pending_saf_inventory_selection_candidate,
     dedupe_saf_roots,
     library_saf_roots,
     saf_source_identity,
@@ -78,6 +79,37 @@ class SourceIdentityTests(unittest.TestCase):
             (self.URI_A,),
             configured_library_saf_roots([self.URI_A, other], configured),
         )
+
+    def test_inventory_recovery_only_accepts_one_new_persisted_root_after_selection(self):
+        baseline = {saf_source_identity(self.URI_A)}
+        trees = [
+            {"treeUri": self.URI_A, "identity": saf_source_identity(self.URI_A), "status": "COMPLETED", "persisted": True},
+            {"treeUri": self.URI_OTHER, "identity": saf_source_identity(self.URI_OTHER), "status": "COMPLETED", "persisted": True},
+        ]
+        selected = pending_saf_inventory_selection_candidate(
+            trees, baseline, inventory_started_at_ms=2200,
+            selection_started_at_ms=2000, inventory_complete=True,
+        )
+        self.assertIsNotNone(selected)
+        self.assertEqual(self.URI_OTHER, selected["treeUri"])
+
+    def test_inventory_recovery_rejects_stale_ambiguous_or_unpersisted_roots(self):
+        baseline = {saf_source_identity(self.URI_A)}
+        new_tree = {"treeUri": self.URI_OTHER, "identity": saf_source_identity(self.URI_OTHER), "status": "COMPLETED", "persisted": True}
+        self.assertIsNone(pending_saf_inventory_selection_candidate(
+            [new_tree], baseline, inventory_started_at_ms=1999,
+            selection_started_at_ms=2000, inventory_complete=True,
+        ))
+        second_uri = "content://com.android.externalstorage.documents/tree/primary%3AAnime3"
+        second = {"treeUri": second_uri, "identity": saf_source_identity(second_uri), "status": "COMPLETED", "persisted": True}
+        self.assertIsNone(pending_saf_inventory_selection_candidate(
+            [new_tree, second], baseline, inventory_started_at_ms=2200,
+            selection_started_at_ms=2000, inventory_complete=True,
+        ))
+        self.assertIsNone(pending_saf_inventory_selection_candidate(
+            [dict(new_tree, persisted=False)], baseline, inventory_started_at_ms=2200,
+            selection_started_at_ms=2000, inventory_complete=True,
+        ))
 
     def test_revoked_configured_saf_grant_is_not_a_library_source(self):
         configured = [{"path": self.URI_A, "kind": "saf", "authorization": "revoked"}]
