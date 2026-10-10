@@ -240,3 +240,33 @@ def test_preference_text_presentation_is_shared_without_changing_persistence_row
     assert "onSave(draftValue.trim())" in source
     assert "onCheckedChange(!checked)" in source
     assert "onSelected(choice.value)" in source
+
+def test_artwork_cache_clear_has_one_canonical_entry_and_destructive_resets_confirm():
+    source = read()
+    data_cache = block(
+        source,
+        '"Dados e Cache" -> {',
+        '"Backup e Restauração" -> {',
+    )
+    artwork = block(
+        source,
+        '"Artwork" -> {',
+        '"Armazenamento" -> {',
+    )
+    player = block(
+        source,
+        '"Player" -> {',
+        '"Gestos" -> {',
+    )
+
+    # Cache clearing is a single backend operation and must not appear twice
+    # under separate category pages.
+    assert source.count('text = "Limpar cache de artwork"') == 1
+    assert 'data-cache:artwork-cache' in data_cache
+    assert 'requestDestructiveAction("clear_anilist_cache")' in data_cache
+    assert 'text = "Limpar cache de artwork"' not in artwork
+
+    # Destructive resets follow the same confirmation preference as restore/cache actions.
+    assert 'onClick = { requestDestructiveAction("reset_player") }' in player
+    assert '"reset_player" -> Triple(' in source
+
