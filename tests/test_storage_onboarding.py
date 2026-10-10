@@ -363,7 +363,8 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertNotIn("views/settings_view.py", host)
         self.assertIn('text = "ESCOLHER PASTA"', screen)
         self.assertIn('text = "CANCELAR"', screen)
-        self.assertIn('text = "PERMITIR"', screen)
+        self.assertNotIn('text = "PERMITIR"', screen)
+        self.assertIn("onboardingDismissed", host)
         self.assertIn("onboardingDismissed", host)
         self.assertIn("ACTION_OPEN_DOCUMENT_TREE", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8"))
 
