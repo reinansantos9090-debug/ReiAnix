@@ -420,6 +420,7 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(1, len(files))
             payload = json.loads(files[0].read_text())
             self.assertEqual("req-1", payload["requestId"])
+            self.assertEqual("library", payload["commandBridge"])
             self.assertEqual("toggle_favorite", payload["action"])
             self.assertEqual("COMPLETED", payload["status"])
 
