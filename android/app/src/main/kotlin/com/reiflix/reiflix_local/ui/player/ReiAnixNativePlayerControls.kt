@@ -236,10 +236,12 @@ fun ReiAnixNativePlayerCenterControls(
                 ) {
                     IconButton(
                         onClick = onPlayPause,
+                        enabled = !state.episodeTransitionInProgress,
                         modifier = Modifier
                             .size(ReiAnixTokens.PlayerDimensions.centerButtonSize)
                             .semantics {
                                 contentDescription = when {
+                                    state.episodeTransitionInProgress -> "Aguarde a troca de episódio"
                                     state.ended -> "Reproduzir novamente"
                                     state.isPlaying -> "Pausar"
                                     else -> "Reproduzir"
