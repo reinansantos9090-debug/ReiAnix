@@ -527,6 +527,11 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     "Somente as preferências do ReiAnix serão restauradas. Biblioteca, consumo, metadata manual, artwork, arquivos e permissões permanecem intactos.",
                     "Restaurar",
                 )
+                "reset_player" -> Triple(
+                    "Restaurar configurações do Player?",
+                    "Somente as preferências do Player voltarão aos valores padrão. A biblioteca, o progresso salvo e as demais configurações serão preservados.",
+                    "Restaurar",
+                )
                 "backup_restore" -> Triple(
                     "Restaurar backup?",
                     "O BackupService existente validará o arquivo antes de alterar o estado lógico local.",
@@ -925,7 +930,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar",
-                                    onClick = { onAction("reset_player") },
+                                    onClick = { requestDestructiveAction("reset_player") },
                                     enabled = !actionBusy("reset_player"),
                                     modifier = Modifier.align(Alignment.End),
                                 )
@@ -1019,32 +1024,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("artwork.cache_limit_mb", it) },
                         )
                     }
-                    item(key = "artwork:clear-cache") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Limpar cache de artwork",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Remove somente o cache temporário administrado pelo catálogo.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "Limpar cache",
-                                    onClick = { requestDestructiveAction("clear_anilist_cache") },
-                                    enabled = !actionBusy("clear_anilist_cache"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
                     }
                 }
 
@@ -1198,6 +1177,36 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     text = "Restaurar configurações",
                                     onClick = { requestDestructiveAction("reset_all_settings") },
                                     enabled = !actionBusy("reset_all_settings"),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                    item(key = "section:data:cache") {
+                        SettingsSectionLabel("Cache")
+                    }
+                    item(key = "data-cache:artwork-cache") {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Cache de artwork",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Remove somente capas e miniaturas temporárias gerenciadas pelo Artwork Engine. Não apaga arquivos de vídeo, biblioteca nem progresso.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Limpar cache de artwork",
+                                    onClick = { requestDestructiveAction("clear_anilist_cache") },
+                                    enabled = !actionBusy("clear_anilist_cache"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
