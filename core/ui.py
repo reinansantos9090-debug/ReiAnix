@@ -170,7 +170,6 @@ def _flet_material_theme(tokens: ThemeTokens) -> ft.Theme:
         surface_container=tokens.surface,
         surface_container_high=tokens.surface_sheet,
         surface_container_highest=tokens.surface_dialog,
-        surface_container_highest=tokens.surface_raised,
         outline=tokens.border,
         outline_variant=tokens.divider,
         scrim=tokens.overlay,
