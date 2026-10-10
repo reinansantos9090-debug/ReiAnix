@@ -343,6 +343,9 @@ fun ReiAnixSettingsScreen(
                             ReiAnixTopBar(
                                 title = "Configurações",
                                 subtitle = "Preferências do ReiAnix",
+                                navigationIcon = Icons.Filled.ArrowBack,
+                                navigationContentDescription = "Voltar das Configurações",
+                                onNavigationClick = onBack,
                                 modifier = Modifier.padding(bottom = ReiAnixTokens.Spacing.xs),
                                 titleStyle = ReiAnixTokens.TypographyTokens.screenTitle,
                                 titleColor = MaterialTheme.colorScheme.onSurface,
