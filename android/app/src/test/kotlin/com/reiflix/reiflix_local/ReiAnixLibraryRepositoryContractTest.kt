@@ -70,6 +70,36 @@ class ReiAnixLibraryRepositoryContractTest {
         assertEquals("SCANNING", merged.scanState)
     }
 
+
+    @Test
+    fun storageOnboardingReadyIsNotFrozenByCatalogPreservationDuringScan() {
+        val previous = ReiAnixLibrarySnapshotCodec.decode(
+            """{"schemaVersion":1,"revision":1,"status":"READY","sourceState":"AVAILABLE","sourceAvailable":true,
+               "animes":[{"id":7,"main_title":"Local","media_kind":"series",
+               "favorite":true,"year":2026,"genres":[],"genre_ids":[],"meta":{},
+               "seasons":[],"specials":[],"media_files":[]}],"continue_watching":[],
+               "storage":{"onboardingState":"needs_folder","onboardingDismissed":false,
+               "capabilities":{"safRoots":[]}}}""".trimIndent(),
+        )
+
+        val decoded = ReiAnixLibrarySnapshotCodec.decode(
+            """{"schemaVersion":1,"revision":2,"status":"EMPTY","sourceState":"ERROR","sourceAvailable":false,
+               "scanInProgress":true,"scanState":"SCANNING","animes":[],"continue_watching":[],
+               "storage":{"onboardingState":"ready","onboardingDismissed":false,
+               "capabilities":{"safRoots":["content://com.android.externalstorage.documents/tree/primary%3AAnime"]}}}""".trimIndent(),
+        )
+
+        val merged = ReiAnixLibraryRepository.mergeSnapshotState(decoded, previous)
+
+        assertEquals(listOf(7L), merged.animes.map { it.id })
+        assertEquals("ready", merged.storage.onboardingState)
+        assertEquals(
+            listOf("content://com.android.externalstorage.documents/tree/primary%3AAnime"),
+            merged.storage.safRoots,
+        )
+        assertEquals(true, merged.scanInProgress)
+    }
+
     @Test
     fun scanFailurePreservesKnownCatalogWhileSurfacingError() {
         val previous = ReiAnixLibrarySnapshotCodec.decode(
