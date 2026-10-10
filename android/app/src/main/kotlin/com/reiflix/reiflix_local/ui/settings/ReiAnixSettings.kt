@@ -1167,12 +1167,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     enabled = !actionBusy("settings_import"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixSecondaryButton(
-                                    text = "Limpar cache de artwork",
-                                    onClick = { requestDestructiveAction("clear_anilist_cache") },
-                                    enabled = !actionBusy("clear_anilist_cache"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+
                                 ReiAnixSecondaryButton(
                                     text = "Restaurar configurações",
                                     onClick = { requestDestructiveAction("reset_all_settings") },
