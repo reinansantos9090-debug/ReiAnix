@@ -211,9 +211,6 @@ class ReiAnixComposeLibraryHost(
                             error = libraryState.storage.onboardingError,
                             onCancel = libraryViewModel::dismissStorageOnboarding,
                             onSelectFolder = libraryViewModel::selectSafTree,
-                            onRequestMediaAccess = {
-                                activity.requestNativeStorageAction("request_media_access")
-                            },
                         )
                     }
                 }

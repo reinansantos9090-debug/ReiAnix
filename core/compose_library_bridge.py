@@ -437,6 +437,7 @@ class ComposeLibraryBridge:
         onboarding_state = "checking"
         onboarding_message: str | None = None
         onboarding_error: str | None = None
+        onboarding_dismissed = False
         if callable(provider):
             try:
                 snapshot = provider()
@@ -451,6 +452,7 @@ class ComposeLibraryBridge:
                     else:
                         capabilities = dict(snapshot)
                     saf_selection_pending = bool(snapshot.get("safSelectionPending"))
+                    onboarding_dismissed = bool(snapshot.get("onboardingDismissed"))
                     onboarding_state = str(snapshot.get("onboardingState") or "checking").strip().lower()
                     onboarding_message = (
                         str(snapshot.get("onboardingMessage")).strip()
@@ -502,6 +504,7 @@ class ComposeLibraryBridge:
             "capabilities": capabilities,
             "configuredSources": sources,
             "safSelectionPending": saf_selection_pending,
+            "onboardingDismissed": onboarding_dismissed,
             "onboardingState": onboarding_state,
             "onboardingMessage": onboarding_message,
             "onboardingError": onboarding_error,

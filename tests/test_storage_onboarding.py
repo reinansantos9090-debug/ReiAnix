@@ -189,17 +189,21 @@ class StorageOnboardingTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("onboardingDismissed", host)
         self.assertIn('onboardingState in setOf("checking", "needs_folder", "folder_picker_open", "error")', host)
+        self.assertIn('text = "Fonte da biblioteca necessária"', screen)
         self.assertIn('text = "ESCOLHER PASTA"', screen)
-        self.assertIn('text = "PERMITIR"', screen)
         self.assertIn('text = "CANCELAR"', screen)
-        self.assertIn("ReiAnixPrimaryButton", screen)
+        self.assertIn("Escolha uma pasta que pertença à sua biblioteca do ReiAnix.", screen)
+        self.assertIn("Somente vídeos dentro dessa pasta e de suas subpastas serão considerados.", screen)
+        self.assertNotIn('text = "PERMITIR"', screen)
+        self.assertNotIn("onRequestMediaAccess", screen)
+        self.assertNotIn("ReiAnixPrimaryButton", screen)
         self.assertIn("ReiAnixSecondaryButton", screen)
         self.assertIn("BoxWithConstraints", screen)
         self.assertIn("maxWidth >= 480.dp", screen)
         self.assertIn("Arrangement.spacedBy", screen)
         wide_actions = screen.split("if (wideLayout) {", 1)[1].split("} else {", 1)[0]
         self.assertLess(wide_actions.index('text = "CANCELAR"'), wide_actions.index('text = "ESCOLHER PASTA"'))
-        self.assertLess(wide_actions.index('text = "ESCOLHER PASTA"'), wide_actions.index('text = "PERMITIR"'))
+        self.assertEqual(wide_actions.count("ReiAnixSecondaryButton("), 2)
         self.assertNotIn("Verificando biblioteca", screen)
         self.assertNotIn("CircularProgressIndicator", screen)
 
@@ -225,6 +229,10 @@ class StorageOnboardingTests(unittest.TestCase):
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixStorageUiModels.kt"
         ).read_text(encoding="utf-8")
         self.assertIn("val onboardingDismissed: Boolean = false", model)
+        bridge = (ROOT / "core" / "compose_library_bridge.py").read_text(encoding="utf-8")
+        snapshot = bridge[bridge.index("def _storage_snapshot"):bridge.index("def _source_state", bridge.index("def _storage_snapshot"))]
+        self.assertIn('onboarding_dismissed = bool(snapshot.get("onboardingDismissed"))', snapshot)
+        self.assertIn('"onboardingDismissed": onboarding_dismissed', snapshot)
 
     def test_compose_onboarding_updates_in_place_after_saf_permission(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")

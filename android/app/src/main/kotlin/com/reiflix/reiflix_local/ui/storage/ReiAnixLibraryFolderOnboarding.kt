@@ -27,7 +27,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.reiflix.reiflix_local.ui.ReiAnixCard
-import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
@@ -48,7 +47,6 @@ fun ReiAnixLibraryFolderOnboarding(
     error: String?,
     onCancel: () -> Unit,
     onSelectFolder: () -> Unit,
-    onRequestMediaAccess: () -> Unit,
 ) {
     val normalizedState = state.trim().lowercase()
     val pickerOpen = normalizedState == "folder_picker_open"
@@ -91,7 +89,7 @@ fun ReiAnixLibraryFolderOnboarding(
                         }
 
                         Text(
-                            text = "Permissão necessária",
+                            text = "Fonte da biblioteca necessária",
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = if (wideLayout) ReiAnixTokens.Spacing.xs else ReiAnixTokens.Spacing.lg),
@@ -104,9 +102,8 @@ fun ReiAnixLibraryFolderOnboarding(
                             text = when {
                                 errorMessage != null -> errorMessage
                                 pickerOpen -> "Aguardando a escolha da pasta no Android…"
-                                else -> "O ReiAnix precisa de acesso aos seus vídeos locais. " +
-                                    "Você pode permitir o acesso aos vídeos do dispositivo " +
-                                    "ou escolher uma pasta específica para a biblioteca."
+                                else -> "Escolha uma pasta que pertença à sua biblioteca do ReiAnix. " +
+                                    "Somente vídeos dentro dessa pasta e de suas subpastas serão considerados."
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -163,12 +160,6 @@ fun ReiAnixLibraryFolderOnboarding(
                                     enabled = !pickerOpen,
                                     modifier = Modifier.weight(1.25f),
                                 )
-                                ReiAnixPrimaryButton(
-                                    text = "PERMITIR",
-                                    onClick = onRequestMediaAccess,
-                                    enabled = !pickerOpen,
-                                    modifier = Modifier.weight(1f),
-                                )
                             }
                         } else {
                             Column(
@@ -188,13 +179,6 @@ fun ReiAnixLibraryFolderOnboarding(
                                     onClick = onSelectFolder,
                                     enabled = !pickerOpen,
                                     leadingIcon = Icons.Filled.Folder,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                ReiAnixPrimaryButton(
-                                    text = "PERMITIR",
-                                    onClick = onRequestMediaAccess,
-                                    enabled = !pickerOpen,
-                                    leadingIcon = Icons.Filled.VideoLibrary,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
