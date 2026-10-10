@@ -3175,6 +3175,58 @@ async def main(page: ft.Page):
             store.folders(),
         )
 
+    def _repair_configured_saf_source_identities():
+        """Repair older SAF rows against the canonical identity of persisted grants.
+
+        Native URI strings and document IDs can use different escaping. Existing
+        rows are explicit library sources, so a currently persisted grant for the
+        same canonical URI can repair an old identity without adding any new source.
+        """
+        persisted_identities = {
+            identity
+            for identity in (
+                saf_source_identity(uri)
+                for uri in storage_capabilities[0].saf_roots
+            )
+            if identity
+        }
+        if not persisted_identities:
+            return 0
+
+        repaired = 0
+        for folder in store.folders():
+            if not isinstance(folder, dict):
+                continue
+            if str(folder.get("kind") or "").strip().casefold() != "saf":
+                continue
+            if str(folder.get("authorization") or "").strip().casefold() != "granted":
+                continue
+            reference = str(folder.get("path") or "").strip()
+            canonical_identity = saf_source_identity(reference)
+            if not canonical_identity or canonical_identity not in persisted_identities:
+                continue
+            old_identity = str(folder.get("saf_identity") or "").strip()
+            if old_identity == canonical_identity:
+                continue
+
+            store.add_folder(
+                reference,
+                name=folder.get("name") or reference.rsplit("/", 1)[-1],
+                kind="saf",
+                authorization="granted",
+                account_id=folder.get("account_id"),
+                saf_authority=folder.get("saf_authority"),
+                saf_document_id=folder.get("saf_document_id"),
+                saf_volume_id=folder.get("saf_volume_id"),
+                saf_identity=canonical_identity,
+            )
+            repaired += 1
+            logger.warning(
+                "[STORAGE] SAF_SOURCE_IDENTITY_REPAIRED identity=%s",
+                canonical_identity,
+            )
+        return repaired
+
     def _has_configured_saf_folder():
         return any(
             str(folder.get("kind") or "").strip().casefold() == "saf"
@@ -3342,6 +3394,9 @@ async def main(page: ft.Page):
         if not storage_capabilities[0].known:
             return
 
+        # Repair old configured rows before deciding that the user must select
+        # the same folder again. This never imports an unconfigured grant.
+        _repair_configured_saf_source_identities()
         valid_roots = _configured_valid_library_saf_roots()
         if valid_roots:
             storage_onboarding["startup_gate"] = False
@@ -6837,6 +6892,23 @@ async def main(page: ft.Page):
                         elif event_type == 'saf_permission':
                             storage_onboarding["waiting_for_result"] = False
                             storage_onboarding["dismissed"] = False
+                            tree_uri = str(payload.get("treeUri") or "").strip()
+                            native_saf_identity = str(payload.get("identity") or "").strip()
+                            canonical_saf_identity = (
+                                saf_source_identity(tree_uri)
+                                or native_saf_identity
+                                or None
+                            )
+                            if (
+                                canonical_saf_identity
+                                and native_saf_identity
+                                and canonical_saf_identity != native_saf_identity
+                            ):
+                                logger.warning(
+                                    "[STORAGE] SAF_IDENTITY_NORMALIZED native=%s canonical=%s",
+                                    native_saf_identity,
+                                    canonical_saf_identity,
+                                )
                             try:
                                 saf_mutation_at_ms = int(
                                     event.get("createdAt")
@@ -6854,7 +6926,6 @@ async def main(page: ft.Page):
                                     payload,
                                     event_created_at_ms=saf_mutation_at_ms,
                                 )
-                            tree_uri = payload.get('treeUri')
                             if tree_uri:
                                 if payload.get('granted') and event_request_id:
                                     compose_library_bridge.write_command_result(
@@ -6874,7 +6945,7 @@ async def main(page: ft.Page):
                                             saf_authority=payload.get('authority') or None,
                                             saf_document_id=payload.get('documentId') or None,
                                             saf_volume_id=payload.get('volumeId') or None,
-                                            saf_identity=payload.get('identity') or None,
+                                            saf_identity=canonical_saf_identity,
                                         )
                                     else:
                                         store.update_folder_status(tree_uri, 'granted')
@@ -6883,7 +6954,7 @@ async def main(page: ft.Page):
                                             payload.get('authority') or '',
                                             payload.get('documentId') or '',
                                             payload.get('volumeId') or None,
-                                            payload.get('identity') or None,
+                                            canonical_saf_identity,
                                         )
                                 else:
                                     store.update_folder_status(tree_uri, 'revoked', 'A permissão desta pasta foi removida.')
@@ -6898,6 +6969,7 @@ async def main(page: ft.Page):
                                             source="saf",
                                             result=str(tree_uri),
                                         )
+                                    _repair_configured_saf_source_identities()
                                     valid_after_selection = bool(_configured_valid_library_saf_roots())
                                     if valid_after_selection:
                                         if storage_onboarding["startup_gate"]:
