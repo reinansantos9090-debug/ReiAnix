@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 import uuid
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.storage_access import StorageCapabilities, saf_source_identity
+
+logger = logging.getLogger(__name__)
 
 
 class ComposeLibraryBridge:
@@ -270,10 +273,14 @@ class ComposeLibraryBridge:
                     if isinstance(last_scan_record, dict)
                     else None
                 )
-            except Exception:
+            except Exception as exc:
                 # Diagnostics about scan history must never make catalog
                 # projection fail; retain the most recent published status.
-                pass
+                logger.warning(
+                    "Could not read the last persisted scan status; preserving the published value: %s",
+                    exc,
+                    exc_info=True,
+                )
         previous_animes = (
             previous_snapshot.get("animes")
             if isinstance(previous_snapshot, dict)
