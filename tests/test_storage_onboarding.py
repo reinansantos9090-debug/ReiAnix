@@ -181,6 +181,37 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('"COMPLETED"', granted)
         self.assertNotIn('compose_library_bridge.write_command_result(\n                                        event_request_id', granted)
 
+    def test_settings_saf_selection_preserves_request_id_and_result_bridge(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        start = source.index("async def _run_compose_settings_action")
+        end = source.index("elif action == 'request_media_access':", start)
+        settings_action = source[start:end]
+        self.assertIn("compose_request_id=request_id", settings_action)
+        self.assertIn('compose_request_bridge="settings"', settings_action)
+
+        clear = source[source.index("def _clear_pending_saf_selection_context"):
+                       source.index("async def _recover_pending_saf_selection_from_inventory")]
+        self.assertIn('storage_onboarding["pending_compose_selection_bridge"] = None', clear)
+
+        result_writer = source[source.index("async def _write_pending_compose_saf_result"):
+                               source.index("async def _recover_pending_saf_selection_from_inventory")]
+        self.assertIn('compose_settings_bridge.write_command_result(', result_writer)
+        self.assertIn('compose_library_bridge.write_command_result(', result_writer)
+        self.assertIn("await compose_library_bridge.wait_for_idle()", result_writer)
+        self.assertLess(
+            result_writer.index("await compose_library_bridge.wait_for_idle()"),
+            result_writer.index("compose_settings_bridge.write_command_result("),
+        )
+
+        library_repository = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
+        ).read_text(encoding="utf-8")
+        settings_repository = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('commandBridge != "library"', library_repository)
+        self.assertIn('commandBridge != "settings"', settings_repository)
+
     def test_saf_permission_result_never_leaves_picker_open_when_validation_fails(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         granted = source[source.index("elif event_type == 'saf_permission':"):source.index("elif event_type == 'saf_released'")]
