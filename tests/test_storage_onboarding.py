@@ -894,3 +894,19 @@ class TestAndroidMediaLifecycle(unittest.TestCase):
         self.assertNotIn("requestMediaAccess()", receiver)
         self.assertNotIn("openBroadStorageSettings()", receiver)
         self.assertNotIn("openTreePicker()", receiver)
+
+class TestComposeStorageSnapshotMerge(unittest.TestCase):
+    def test_catalog_preservation_does_not_freeze_new_storage_onboarding_state(self):
+        source = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
+        ).read_text(encoding="utf-8")
+        start = source.index("internal fun mergeSnapshotState(")
+        end = source.index("\n        internal fun reconcilePagedState(", start)
+        merge = source[start:end]
+        # Catalog preservation and storage authorization are independent state
+        # domains. A READY onboarding snapshot must not be replaced by stale UI
+        # state just because the last catalog is retained during a scan.
+        self.assertIn("storage = decoded.storage", merge)
+        self.assertNotIn("storage = if (preserveCatalog) previous.storage else decoded.storage", merge)
+
