@@ -203,6 +203,16 @@ class StorageOnboardingTests(unittest.TestCase):
             result_writer.index("compose_settings_bridge.write_command_result("),
         )
 
+        settings_worker = source[
+            source.index("async def _run_compose_settings_action"):
+            source.index("async def _hydrate_compose_details_context")
+        ]
+        self.assertIn(
+            'if action == "select_saf":\n                # SAF completes asynchronously',
+            settings_worker,
+        )
+        self.assertIn("SETTINGS_OPERATION_WAITING_FOR_SAF_RESULT", settings_worker)
+
         library_repository = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
         ).read_text(encoding="utf-8")
