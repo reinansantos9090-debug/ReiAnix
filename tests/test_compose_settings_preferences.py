@@ -210,10 +210,20 @@ def test_settings_storage_and_scanner_reuse_the_canonical_storage_route():
 
     assert "onOpenStorage: () -> Unit" in compose
     assert 'text = "Gerenciar fontes e atualização"' in compose
-    assert 'text = "Ver estado e atualizar biblioteca"' in compose
+    assert 'text = "Ver armazenamento e fontes"' in compose
     assert "onClick = onOpenStorage" in compose
     assert "onOpenStorage = {" in host
     assert "ReiAnixRoutes.STORAGE" in host
+    assert 'text = "Última varredura: $lastScanLabel"' in compose
+    assert "scanInProgress = libraryState.scanInProgress" in host
+    assert "scanState = libraryState.scanState" in host
+    assert "lastScanStatus = libraryState.lastScanStatus" in host
+    bridge = read("core/compose_library_bridge.py")
+    repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
+    )
+    assert '"lastScanStatus": last_scan_status' in bridge
+    assert "lastScanStatus = decoded.lastScanStatus ?: previous.lastScanStatus" in repository
     assert "onRemoveSaf = onRemoveSaf" in storage
     assert "pendingRemoval = source" in storage
     assert "onRefreshLibrary = viewModel::refresh" in storage
