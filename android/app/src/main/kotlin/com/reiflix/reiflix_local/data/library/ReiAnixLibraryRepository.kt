@@ -62,7 +62,11 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 status = if (preserveCatalogDuringScan) previous.status else decoded.status,
                 animes = if (preserveCatalog) previous.animes else decoded.animes,
                 continueWatching = if (preserveCatalog) previous.continueWatching else decoded.continueWatching,
-                storage = if (preserveCatalog) previous.storage else decoded.storage,
+                // Storage authorization/onboarding is independent of catalog retention.
+                // A scan may temporarily publish an empty catalog while SAF selection
+                // has already transitioned onboarding to READY; never freeze that newer
+                // state just because the previous anime list is retained.
+                storage = decoded.storage,
                 sourceAvailable = if (preserveCatalog) previous.sourceAvailable else decoded.sourceAvailable,
                 sourceState = if (preserveCatalog) previous.sourceState else decoded.sourceState,
                 scanInProgress = decoded.scanInProgress,
