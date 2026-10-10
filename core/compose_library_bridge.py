@@ -230,7 +230,7 @@ class ComposeLibraryBridge:
             current["animes"] = patched
             continue_method = getattr(self.library, "continue_watching", None)
             if callable(continue_method):
-                rows = continue_method(limit=12) or []
+                rows = continue_method(limit=20) or []
                 current["continue_watching"] = [
                     self._project_continue_watching(item)
                     for item in rows
