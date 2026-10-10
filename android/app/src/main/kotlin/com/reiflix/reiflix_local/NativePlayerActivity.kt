@@ -2950,7 +2950,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         touchControls()
                         return
                     }
-                    finishPlayer("android_back")
+                    finishPlayer("back_button")
                 }
             },
         )
