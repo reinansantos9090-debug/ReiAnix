@@ -441,7 +441,8 @@ if sdk_marker not in existing:
         sdk_block = "\n// ReiAnix Android 16 SDK contract\nandroid {\n    compileSdk = 36\n    defaultConfig {\n        targetSdk = 36\n        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\n    }\n}\n"
     else:
         sdk_block = "\n// ReiAnix Android 16 SDK contract\nandroid {\n    compileSdk 36\n    defaultConfig {\n        targetSdk 36\n        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'\n    }\n}\n"
-    gradle.write_text(existing + sdk_block, encoding="utf-8")
+    existing += sdk_block
+    gradle.write_text(existing, encoding="utf-8")
 
 # Compress JNI libraries inside the APK itself before signing. This reduces
 # the distributable APK size; Android extracts these libraries at install time.
