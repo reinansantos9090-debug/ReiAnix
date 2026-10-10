@@ -3454,7 +3454,8 @@ async def main(page: ft.Page):
         normalized_request_id = str(request_id or "").strip()
         if compose_library_bridge.enabled:
             compose_library_bridge.request_publish("saf_selection_terminal_state")
-            await compose_library_bridge.wait_for_idle()
+            if normalized_request_id:
+                await compose_library_bridge.wait_for_idle()
 
         if not normalized_request_id:
             return
