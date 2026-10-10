@@ -301,6 +301,25 @@ class RuntimeAndroidContractTests(unittest.TestCase):
         self.assertIn("bottomOverlayLandscapeHeight = 136.dp", tokens)
         self.assertIn("safeBottom + ReiAnixTokens.PlayerDimensions.bottomExtraPadding", controls)
 
+    def test_compose_player_disables_seek_and_play_during_episode_transition(self):
+        controls = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixNativePlayerControls.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("enabled = !state.episodeTransitionInProgress", controls)
+        self.assertIn("enabled = duration > 0L && !state.episodeTransitionInProgress", controls)
+        self.assertIn('state.episodeTransitionInProgress -> "Aguarde a troca de episódio"', controls)
+
+    def test_native_player_rejects_play_pause_and_seek_commands_during_episode_transition(self):
+        source = PLAYER_ACTIVITY.read_text(encoding="utf-8")
+        self.assertIn('command=seek reason=episode_transition', source)
+        self.assertIn('command=play_pause reason=episode_transition', source)
+        seek_start = source.index("private fun seekBy(")
+        seek_end = source.index("private fun showFeedback(", seek_start)
+        self.assertIn("if (episodeChangePending)", source[seek_start:seek_end])
+        play_start = source.index("private fun togglePlayPause()")
+        play_end = source.index("private fun updatePlayPauseButton()", play_start)
+        self.assertIn("if (episodeChangePending)", source[play_start:play_end])
+
     def test_scroll_architecture_has_one_vertical_owner_per_main_screen(self):
         views = {
             "home_view.py": "views/home_view.py",

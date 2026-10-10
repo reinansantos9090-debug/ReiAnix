@@ -3022,6 +3022,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun togglePlayPause() {
         if (!::player.isInitialized || errorVisible) return
+        if (episodeChangePending) {
+            logPlayer("PLAYER_COMMAND_IGNORED command=play_pause reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
+            return
+        }
         when {
             player.playbackState == Player.STATE_ENDED -> {
                 // The UI exposes a replay affordance for an ended item, so tapping
@@ -3497,6 +3501,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun seekBy(deltaMs: Long, feedbackText: String) {
         if (!::player.isInitialized || player.duration <= 0L) return
+        if (episodeChangePending) {
+            logPlayer("PLAYER_COMMAND_IGNORED command=seek reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
+            return
+        }
         val target = PlayerGesturePolicy.seekTarget(
             currentPositionMs = player.currentPosition,
             deltaMs = deltaMs,
