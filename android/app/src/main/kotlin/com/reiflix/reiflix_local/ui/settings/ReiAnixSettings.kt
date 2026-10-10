@@ -333,6 +333,16 @@ fun ReiAnixSettingsScreen(
                     }
 
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
+                        item(key = "settings:top-bar") {
+                            ReiAnixTopBar(
+                                title = "Configurações",
+                                subtitle = "Preferências do ReiAnix",
+                                modifier = Modifier.padding(bottom = ReiAnixTokens.Spacing.xs),
+                                titleStyle = ReiAnixTokens.TypographyTokens.screenTitle,
+                                titleColor = MaterialTheme.colorScheme.onSurface,
+                                applyResponsiveHorizontalPadding = false,
+                            )
+                        }
                         item(key = "settings:account-profile") {
                             SettingsProfileRow(
                                 state = state,
