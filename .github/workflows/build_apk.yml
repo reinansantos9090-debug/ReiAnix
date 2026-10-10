@@ -444,7 +444,7 @@ jobs:
         shell: bash
         run: |
           apk="${{ steps.apk.outputs.path }}"
-          sha256sum "$apk" | tee "${apk}.sha256"
+          (cd "$(dirname "$apk")" && sha256sum "$(basename "$apk")") | tee "${apk}.sha256"
           sha256="$(sha256sum "$apk" | awk '{print $1}')"
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk")"
           {
