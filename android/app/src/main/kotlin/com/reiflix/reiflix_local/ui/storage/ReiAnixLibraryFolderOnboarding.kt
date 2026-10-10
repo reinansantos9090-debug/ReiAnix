@@ -50,7 +50,21 @@ fun ReiAnixLibraryFolderOnboarding(
 ) {
     val normalizedState = state.trim().lowercase()
     val pickerOpen = normalizedState == "folder_picker_open"
-    val errorMessage = error?.takeIf { it.isNotBlank() }
+    // "error" may be a diagnostic code (for example, selected_saf_source_validation_failed).
+    // Never show that internal identifier when the bridge already supplies a user-facing message.
+    val errorMessage = error
+        ?.trim()
+        ?.takeIf { value -> value.isNotBlank() && value.any { character -> character.isWhitespace() } }
+    val hasError = !error.isNullOrBlank()
+    val fallbackMessage =
+        "Escolha uma pasta que pertença à sua biblioteca do ReiAnix. " +
+            "Somente vídeos dentro dessa pasta e de suas subpastas serão considerados."
+    val displayMessage = when {
+        pickerOpen -> "Aguardando a escolha da pasta no Android…"
+        !message.isNullOrBlank() -> message.trim()
+        errorMessage != null -> errorMessage
+        else -> fallbackMessage
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -99,12 +113,7 @@ fun ReiAnixLibraryFolderOnboarding(
                         )
 
                         Text(
-                            text = when {
-                                errorMessage != null -> errorMessage
-                                pickerOpen -> "Aguardando a escolha da pasta no Android…"
-                                else -> "Escolha uma pasta que pertença à sua biblioteca do ReiAnix. " +
-                                    "Somente vídeos dentro dessa pasta e de suas subpastas serão considerados."
-                            },
+                            text = displayMessage,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(
@@ -116,7 +125,7 @@ fun ReiAnixLibraryFolderOnboarding(
                             textAlign = if (wideLayout) TextAlign.Start else TextAlign.Center,
                         )
 
-                        if (errorMessage != null) {
+                        if (hasError) {
                             Text(
                                 text = "Você pode tentar novamente sem fechar o aplicativo.",
                                 modifier = Modifier
