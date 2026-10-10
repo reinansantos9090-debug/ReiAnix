@@ -481,15 +481,39 @@ jobs:
           test -s build/reiflix-release-metadata.txt
           test -s build/reiflix-build-identity.json
 
+      - name: Write Portuguese install instructions
+        shell: bash
+        run: |
+          cat > build/LEIA-ANTES-DE-INSTALAR.txt <<'EOF'
+          REIANIX — COMO INSTALAR NO ANDROID
+
+          IMPORTANTE: não use a opção “Extrair” no arquivo ReiAnix.apk.
+          O APK é o instalador do aplicativo, não um ZIP para o usuário extrair.
+
+          1. Se você já vê ReiAnix.apk em uma pasta, a extração do ZIP já terminou.
+          2. Toque diretamente em ReiAnix.apk e escolha Instalar.
+          3. Se o Android bloquear, permita “Instalar apps desconhecidos” para o gerenciador de arquivos e tente novamente.
+          4. ReiAnix.apk.sha256 é somente um checksum de verificação; não instale nem extraia esse arquivo.
+          5. Se o Android mostrar “App não instalado” ou “Pacote inválido”, envie a mensagem exata. Não tente extrair o APK.
+          EOF
+          test -s build/LEIA-ANTES-DE-INSTALAR.txt
+          grep -q 'não use a opção “Extrair”' build/LEIA-ANTES-DE-INSTALAR.txt
+
       # Keep both download forms: the direct APK for immediate installation
       # and a standalone ZIP for users who prefer a packaged download.
       - name: Create downloadable APK ZIP
         shell: bash
         run: |
-          zip -j -9 build/ReiAnix-apk.zip ${{ steps.apk.outputs.path }}
+          zip -j -9 -X build/ReiAnix-apk.zip "${{ steps.apk.outputs.path }}" build/ReiAnix.apk.sha256 build/LEIA-ANTES-DE-INSTALAR.txt
           unzip -tq build/ReiAnix-apk.zip
           test -s build/ReiAnix-apk.zip
           unzip -Z1 build/ReiAnix-apk.zip | grep -Fx 'ReiAnix.apk'
+          unzip -Z1 build/ReiAnix-apk.zip | grep -Fx 'ReiAnix.apk.sha256'
+          unzip -Z1 build/ReiAnix-apk.zip | grep -Fx 'LEIA-ANTES-DE-INSTALAR.txt'
+          apk_bytes="$(stat -c '%s' "${{ steps.apk.outputs.path }}")"
+          zip_bytes="$(stat -c '%s' build/ReiAnix-apk.zip)"
+          printf 'APK_SIZE_BYTES=%s\\nZIP_SIZE_BYTES=%s\\n' "$apk_bytes" "$zip_bytes"
+          test "$zip_bytes" -lt "$apk_bytes"
 
       # Actions artifact storage is a very small pooled quota. Publishing the
       # same APK/ZIP on every push can exhaust that quota even when old runs
@@ -517,9 +541,9 @@ jobs:
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" "${release_args[@]}"
-            gh release upload "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               --clobber               --repo "$GITHUB_REPOSITORY"
+            gh release upload "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/LEIA-ANTES-DE-INSTALAR.txt               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               --clobber               --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               "${release_args[@]}"               --target "$GITHUB_SHA"
+            gh release create "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/LEIA-ANTES-DE-INSTALAR.txt               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               "${release_args[@]}"               --target "$GITHUB_SHA"
           fi
 
       # Keep a short-lived Actions artifact for every successful push to main,
@@ -530,10 +554,11 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: ReiAnix-apk-${{ github.run_number }}
+          name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}
           path: |
             build/ReiAnix.apk
             build/ReiAnix.apk.sha256
+            build/LEIA-ANTES-DE-INSTALAR.txt
           retention-days: 1
           if-no-files-found: error
 
@@ -541,7 +566,7 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: ReiAnix-apk-zip-${{ github.run_number }}
+          name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
           path: build/ReiAnix-apk.zip
           retention-days: 1
           if-no-files-found: error
