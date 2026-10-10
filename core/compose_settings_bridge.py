@@ -171,6 +171,7 @@ class ComposeSettingsBridge:
             return
         payload: dict[str, Any] = {
             "schemaVersion": self.SCHEMA_VERSION,
+            "commandBridge": "settings",
             "requestId": normalized_id,
             "action": str(action or "").strip(),
             "status": str(status or "").upper(),
