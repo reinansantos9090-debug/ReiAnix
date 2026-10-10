@@ -299,7 +299,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         val generation = if (reset) pageGeneration.incrementAndGet()
         else pageGeneration.get().coerceAtLeast(1L)
 
-        val normalizedPageSize = pageSize.coerceIn(12, 48)
+        val normalizedPageSize = pageSize.coerceIn(12, 72)
         val requestId = UUID.randomUUID().toString()
         synchronized(pageRequestGuard) {
             val existing = inFlightPage
