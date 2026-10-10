@@ -3454,10 +3454,15 @@ async def main(page: ft.Page):
         normalized_request_id = str(request_id or "").strip()
         if compose_library_bridge.enabled:
             compose_library_bridge.request_publish("saf_selection_terminal_state")
-            if normalized_request_id:
-                await compose_library_bridge.wait_for_idle()
+        if compose_settings_bridge.enabled:
+            compose_settings_bridge.request_publish("saf_selection_terminal_state")
 
-        if not normalized_request_id:
+        if normalized_request_id:
+            if compose_library_bridge.enabled:
+                await compose_library_bridge.wait_for_idle()
+            if compose_settings_bridge.enabled:
+                await compose_settings_bridge.wait_for_idle()
+        else:
             return
         command_bridge = str(
             storage_onboarding.get("pending_compose_selection_bridge") or "library"
