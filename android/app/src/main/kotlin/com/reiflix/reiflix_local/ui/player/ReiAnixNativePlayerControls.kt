@@ -258,7 +258,11 @@ fun ReiAnixNativePlayerCenterControls(
                                 Icon(
                                     imageVector = Icons.Filled.Replay,
                                     contentDescription = null,
-                                    tint = ReiAnixTokens.Colors.playerControl,
+                                    tint = if (state.episodeTransitionInProgress) {
+                                        ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f)
+                                    } else {
+                                        ReiAnixTokens.Colors.playerControl
+                                    },
                                     modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
                                 )
                             }
@@ -266,7 +270,11 @@ fun ReiAnixNativePlayerCenterControls(
                                 Icon(
                                     imageVector = Icons.Filled.Pause,
                                     contentDescription = null,
-                                    tint = ReiAnixTokens.Colors.playerControl,
+                                    tint = if (state.episodeTransitionInProgress) {
+                                        ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f)
+                                    } else {
+                                        ReiAnixTokens.Colors.playerControl
+                                    },
                                     modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
                                 )
                             }
@@ -274,7 +282,11 @@ fun ReiAnixNativePlayerCenterControls(
                                 Icon(
                                     imageVector = Icons.Filled.PlayArrow,
                                     contentDescription = null,
-                                    tint = ReiAnixTokens.Colors.playerControl,
+                                    tint = if (state.episodeTransitionInProgress) {
+                                        ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f)
+                                    } else {
+                                        ReiAnixTokens.Colors.playerControl
+                                    },
                                     modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
                                 )
                             }
@@ -318,13 +330,13 @@ private fun PlayerSeekIconButton(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = ReiAnixTokens.Colors.playerControl,
+                tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.seekIconSize),
             )
             Text(
                 text = seconds.toString(),
                 style = ReiAnixTokens.TypographyTokens.chip,
-                color = ReiAnixTokens.Colors.playerControl,
+                color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier.align(Alignment.BottomEnd),
             )
         }
