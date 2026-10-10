@@ -377,7 +377,7 @@ fun ReiAnixNativePlayerBottomControls(
                 modifier = Modifier
                     .size(ReiAnixTokens.PlayerDimensions.lockAffordanceSize)
                     .background(
-                        Color.Black.copy(alpha = 0.48f),
+                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.48f),
                         shape = androidx.compose.foundation.shape.CircleShape,
                     )
                     .semantics {

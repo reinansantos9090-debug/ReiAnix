@@ -191,6 +191,15 @@ class ReiAnixTypographyConsistencyTests(unittest.TestCase):
         self.assertIn("ReiAnixTokens.TypographyTokens.settingsCategory", settings)
         self.assertIn("ReiAnixTokens.TypographyTokens.settingsDescription", settings)
 
+        # Player scrims are semantic theme tokens too; preserve video-overlay intent
+        # without introducing a local black value in the composable.
+        player = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixNativePlayerControls.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.48f)", player)
+        self.assertNotIn("Color.Black.copy(alpha = 0.48f)", player)
+
     def test_navigation_labels_keep_the_canonical_compact_role(self):
         shell = (
             ROOT
