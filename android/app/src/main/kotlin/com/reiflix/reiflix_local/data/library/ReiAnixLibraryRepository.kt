@@ -533,8 +533,14 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     }
 
     private suspend fun loadCommandResult(file: File) {
+        val raw = runCatching { file.readText(Charsets.UTF_8) }.getOrElse { return }
+        val commandBridge = runCatching {
+            org.json.JSONObject(raw).optString("commandBridge").trim().lowercase()
+        }.getOrNull().orEmpty()
+        if (commandBridge.isNotBlank() && commandBridge != "library") return
+
         val result = runCatching {
-            ReiAnixLibrarySnapshotCodec.decodeCommandResult(file.readText(Charsets.UTF_8))
+            ReiAnixLibrarySnapshotCodec.decodeCommandResult(raw)
         }.getOrElse { decodeError ->
             val requestId = file.name
                 .removePrefix("command-")
