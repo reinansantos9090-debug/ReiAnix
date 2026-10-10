@@ -217,3 +217,55 @@ def test_settings_storage_and_scanner_reuse_the_canonical_storage_route():
     assert "onRemoveSaf = onRemoveSaf" in storage
     assert "pendingRemoval = source" in storage
     assert "onRefreshLibrary = viewModel::refresh" in storage
+
+def test_persisted_library_preferences_drive_native_compose_consumers():
+    settings_vm = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
+    )
+    host = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    )
+    navigation = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
+    )
+    home = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt"
+    )
+    library = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/ReiAnixLibrary.kt"
+    )
+    library_vm = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+    )
+    library_repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
+    )
+
+    # All values remain projections from the single persisted SettingsStore snapshot.
+    assert "val libraryPageSize: StateFlow<Int>" in settings_vm
+    assert "val librarySortDefault: StateFlow<String>" in settings_vm
+    assert "val continueWatchingEnabled: StateFlow<Boolean>" in settings_vm
+    assert "val continueWatchingLimit: StateFlow<Int>" in settings_vm
+    for flow in (
+        "libraryPageSize",
+        "librarySortDefault",
+        "continueWatchingEnabled",
+        "continueWatchingLimit",
+    ):
+        assert f"settingsViewModel.{flow}.collectAsStateWithLifecycle()" in host
+        assert f"{flow} = {flow}" in host or flow == "librarySortDefault"
+
+    assert "libraryPageSize: Int = 36" in navigation
+    assert 'librarySortDefault: String = "added_desc"' in navigation
+    assert "continueWatchingEnabled: Boolean = true" in navigation
+    assert "continueWatchingLimit: Int = 10" in navigation
+    assert "continueWatching = visibleContinueWatching" in home
+    assert "continueWatching.take(continueWatchingLimit.coerceAtLeast(0))" in home
+    assert "viewModel.applyLibraryPageSize(pageSize)" in library
+    assert "viewModel.applyLibrarySortDefault(defaultSortKey)" in library
+    assert "pageSize = configuredLibraryPageSize" in library_vm
+    assert "sort = librarySortLabelForSetting(appliedLibrarySortDefault)" in library_vm
+    assert "pageSize.coerceIn(12, 72)" in library_repository
+    assert "fun setSetting(key: String, value: String)" in read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
+    )
