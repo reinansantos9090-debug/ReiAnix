@@ -325,6 +325,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
             self.assertIn('main.set(launch_attr, "singleTask")', hook)
             self.assertIn('main.set(document_launch_attr, "never")', hook)
             self.assertIn("compileSdk = 36", hook)
+            self.assertIn("useLegacyPackaging = true", hook)
+            self.assertIn("useLegacyPackaging true", hook)
             self.assertNotIn("__REIFLIX_OVERLAY_APP__", hook)
             self.assertIn(f'Path({str((template / "reiflix_android_overlay" / "app").resolve())!r})', hook)
 
@@ -447,6 +449,7 @@ E: manifest
         self.assertIn("aapt2", workflow)
         self.assertIn("sha256sum", workflow)
         self.assertIn('(cd "$(dirname "$apk")" && sha256sum "$(basename "$apk")") | tee "${apk}.sha256"', workflow)
+        self.assertIn('test "$zip_bytes" -le "$((apk_bytes + 1048576))"', workflow)
         self.assertIn("MAIN_LAUNCH_MODE_ATTRIBUTE = \"android:launchMode\"", verifier)
         self.assertIn("MAIN_DOCUMENT_LAUNCH_MODE_ATTRIBUTE = \"android:documentLaunchMode\"", verifier)
         self.assertIn("has_attribute(main_block, \"launchMode\"", verifier)
