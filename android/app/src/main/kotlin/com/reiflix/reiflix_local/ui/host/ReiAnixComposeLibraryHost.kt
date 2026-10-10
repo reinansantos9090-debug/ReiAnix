@@ -167,6 +167,9 @@ class ReiAnixComposeLibraryHost(
                                         },
                                     )
                                 },
+                                scanInProgress = libraryState.scanInProgress,
+                                scanState = libraryState.scanState,
+                                lastScanStatus = libraryState.lastScanStatus,
                             )
                         },
                         storage = {
