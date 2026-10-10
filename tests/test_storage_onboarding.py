@@ -194,6 +194,12 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('text = "CANCELAR"', screen)
         self.assertIn("ReiAnixPrimaryButton", screen)
         self.assertIn("ReiAnixSecondaryButton", screen)
+        self.assertIn("BoxWithConstraints", screen)
+        self.assertIn("maxWidth >= 480.dp", screen)
+        self.assertIn("Arrangement.spacedBy", screen)
+        wide_actions = screen.split("if (wideLayout) {", 1)[1].split("} else {", 1)[0]
+        self.assertLess(wide_actions.index('text = "CANCELAR"'), wide_actions.index('text = "ESCOLHER PASTA"'))
+        self.assertLess(wide_actions.index('text = "ESCOLHER PASTA"'), wide_actions.index('text = "PERMITIR"'))
         self.assertNotIn("Verificando biblioteca", screen)
         self.assertNotIn("CircularProgressIndicator", screen)
 

@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui.storage
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.reiflix.reiflix_local.ui.ReiAnixCard
 import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
@@ -34,9 +36,10 @@ import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 /**
  * First-access surface for a library without an authorized source.
  *
- * The surface is intentionally presentation-only. Storage authorization,
- * persistence, scan coordination and navigation remain owned by the existing
- * Python LibraryStore + Android SAF/native bridge.
+ * Uses the ReiAnix theme and tokens while adapting the source reference's
+ * horizontal action row to wide layouts. Compact layouts retain stacked,
+ * touch-friendly actions. Storage authorization, persistence, scan coordination
+ * and navigation remain owned by the existing Python LibraryStore + Android bridge.
  */
 @Composable
 fun ReiAnixLibraryFolderOnboarding(
@@ -70,96 +73,133 @@ fun ReiAnixLibraryFolderOnboarding(
                     .fillMaxWidth()
                     .widthIn(max = ReiAnixTokens.Dimensions.onboardingCardMaxWidth),
             ) {
-                Icon(
-                    imageVector = if (pickerOpen) Icons.Filled.Folder else Icons.Filled.VideoLibrary,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .size(ReiAnixTokens.Dimensions.onboardingIconSize),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val wideLayout = maxWidth >= 480.dp
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = if (wideLayout) Alignment.Start else Alignment.CenterHorizontally,
+                    ) {
+                        if (!wideLayout) {
+                            Icon(
+                                imageVector = if (pickerOpen) Icons.Filled.Folder else Icons.Filled.VideoLibrary,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .align(Alignment.CenterHorizontally)
+                                    .size(ReiAnixTokens.Dimensions.onboardingIconSize),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
 
-                Text(
-                    text = "Permissão necessária",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = ReiAnixTokens.Spacing.lg),
-                    style = ReiAnixTokens.TypographyTokens.display,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                )
+                        Text(
+                            text = "Permissão necessária",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = if (wideLayout) ReiAnixTokens.Spacing.xs else ReiAnixTokens.Spacing.lg),
+                            style = ReiAnixTokens.TypographyTokens.display,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = if (wideLayout) TextAlign.Start else TextAlign.Center,
+                        )
 
-                Text(
-                    text = when {
-                        errorMessage != null -> errorMessage
-                        pickerOpen -> "Aguardando a escolha da pasta no Android…"
-                        else -> "O ReiAnix precisa de acesso aos seus vídeos locais. " +
-                            "Você pode permitir o acesso aos vídeos do dispositivo " +
-                            "ou escolher uma pasta específica para a biblioteca."
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            top = ReiAnixTokens.Spacing.md,
-                            bottom = ReiAnixTokens.Spacing.xl,
-                        ),
-                    style = ReiAnixTokens.TypographyTokens.body,
-                    color = ReiAnixTokens.Colors.textMuted,
-                    textAlign = TextAlign.Center,
-                )
+                        Text(
+                            text = when {
+                                errorMessage != null -> errorMessage
+                                pickerOpen -> "Aguardando a escolha da pasta no Android…"
+                                else -> "O ReiAnix precisa de acesso aos seus vídeos locais. " +
+                                    "Você pode permitir o acesso aos vídeos do dispositivo " +
+                                    "ou escolher uma pasta específica para a biblioteca."
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    top = ReiAnixTokens.Spacing.md,
+                                    bottom = ReiAnixTokens.Spacing.xl,
+                                ),
+                            style = ReiAnixTokens.TypographyTokens.body,
+                            color = ReiAnixTokens.Colors.textMuted,
+                            textAlign = if (wideLayout) TextAlign.Start else TextAlign.Center,
+                        )
 
-                if (errorMessage != null) {
-                    Text(
-                        text = "Você pode tentar novamente sem fechar o aplicativo.",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = ReiAnixTokens.Spacing.lg),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ReiAnixTokens.Colors.error,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+                        if (errorMessage != null) {
+                            Text(
+                                text = "Você pode tentar novamente sem fechar o aplicativo.",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = ReiAnixTokens.Spacing.lg),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ReiAnixTokens.Colors.error,
+                                textAlign = if (wideLayout) TextAlign.Start else TextAlign.Center,
+                            )
+                        }
 
-                if (pickerOpen) {
-                    ReiAnixProgressIndicator(
-                        progress = 0f,
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(bottom = ReiAnixTokens.Spacing.lg),
-                        announceProgress = false,
-                    )
-                }
+                        if (pickerOpen) {
+                            ReiAnixProgressIndicator(
+                                progress = 0f,
+                                modifier = Modifier
+                                    .align(if (wideLayout) Alignment.Start else Alignment.CenterHorizontally)
+                                    .padding(bottom = ReiAnixTokens.Spacing.lg),
+                                announceProgress = false,
+                            )
+                        }
 
-                ReiAnixPrimaryButton(
-                    text = "ESCOLHER PASTA",
-                    onClick = onSelectFolder,
-                    enabled = !pickerOpen,
-                    leadingIcon = Icons.Filled.Folder,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
-
-                ReiAnixSecondaryButton(
-                    text = "PERMITIR",
-                    onClick = onRequestMediaAccess,
-                    enabled = !pickerOpen,
-                    leadingIcon = Icons.Filled.VideoLibrary,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.xs))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    ReiAnixSecondaryButton(
-                        text = "CANCELAR",
-                        onClick = onCancel,
-                        enabled = !pickerOpen,
-                        modifier = Modifier.semantics { role = Role.Button },
-                    )
+                        if (wideLayout) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = ReiAnixTokens.Spacing.sm),
+                                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                ReiAnixSecondaryButton(
+                                    text = "CANCELAR",
+                                    onClick = onCancel,
+                                    enabled = !pickerOpen,
+                                    modifier = Modifier
+                                        .weight(0.85f)
+                                        .semantics { role = Role.Button },
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "ESCOLHER PASTA",
+                                    onClick = onSelectFolder,
+                                    enabled = !pickerOpen,
+                                    modifier = Modifier.weight(1.25f),
+                                )
+                                ReiAnixPrimaryButton(
+                                    text = "PERMITIR",
+                                    onClick = onRequestMediaAccess,
+                                    enabled = !pickerOpen,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                ReiAnixSecondaryButton(
+                                    text = "CANCELAR",
+                                    onClick = onCancel,
+                                    enabled = !pickerOpen,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .semantics { role = Role.Button },
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "ESCOLHER PASTA",
+                                    onClick = onSelectFolder,
+                                    enabled = !pickerOpen,
+                                    leadingIcon = Icons.Filled.Folder,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixPrimaryButton(
+                                    text = "PERMITIR",
+                                    onClick = onRequestMediaAccess,
+                                    enabled = !pickerOpen,
+                                    leadingIcon = Icons.Filled.VideoLibrary,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
