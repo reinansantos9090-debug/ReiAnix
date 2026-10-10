@@ -90,11 +90,18 @@ class TestSafProfessionalContract(unittest.TestCase):
                       "STATUS_FAILED", "STATUS_REVOKED", "STATUS_UNAVAILABLE", "STATUS_COMPLETED"):
             self.assertIn(state, source)
 
-    def test_nomedia_is_discovery_level_behavior(self):
+    def test_explicitly_selected_saf_tree_scans_media_even_with_nomedia_markers(self):
         source = SAF.read_text(encoding="utf-8")
         self.assertIn('name.equals(".nomedia",ignoreCase=true)', source)
+        self.assertIn("containsNoMediaMarker", source)
         self.assertIn("nomediaDirectories", source)
         self.assertIn("nomediaFiles", source)
+        self.assertIn("SAF roots are explicitly selected by the user", source)
+        self.assertNotIn("if(hasNoMedia)", source)
+        marker = source.index("if(containsNoMediaMarker)")
+        recurse = source.index("for((childId,childName) in directoriesToVisit)", marker)
+        self.assertLess(marker, recurse)
+        self.assertNotIn("return@use", source[marker:recurse])
 
     def test_metadata_absence_and_mime_fallback_are_not_fatal(self):
         source = SAF.read_text(encoding="utf-8")
