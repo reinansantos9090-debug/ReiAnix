@@ -711,6 +711,36 @@ class ArtworkEngineTests(unittest.TestCase):
         self.assertLessEqual(stats["bytes"], 1024)
 
 
+    def test_legacy_cache_rows_without_byte_size_are_counted_and_evicted(self):
+        anime = self._media("Legacy cache size")
+        paths = []
+        for index in range(2):
+            path = self.engine.cache_dir / f"legacy-unknown-size-{index}.jpg"
+            path.write_bytes(JPEG + (b"x" * 900))
+            self.engine._upsert(
+                entity_type="anime",
+                entity_id=anime,
+                artwork_type="poster",
+                source="cache",
+                source_ref=f"legacy-null-size-{index}",
+                local_path=str(path),
+                status=STATUS_READY,
+                byte_size=None,
+            )
+            paths.append(path)
+
+        expected_bytes = sum(path.stat().st_size for path in paths)
+        self.assertEqual(self.engine.cache_stats()["bytes"], expected_bytes)
+
+        self.engine.shutdown()
+        reopened_store = LibraryStore(self.tmp.name)
+        self.engine = ArtworkEngine(reopened_store, cache_limit_bytes=2000)
+        remaining = [path for path in paths if path.is_file()]
+        stats = self.engine.cache_stats()
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(stats["bytes"], remaining[0].stat().st_size)
+        self.assertLessEqual(stats["bytes"], 2000)
+
     def test_generation_invalidation_waits_for_atomic_cache_commit(self):
         anime = self._media("Generation commit")
         self._remote(anime, "https://example/generation.jpg")
