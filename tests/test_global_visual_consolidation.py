@@ -146,7 +146,7 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         flat_wrapper_end = settings.index("fun ReiAnixSettingsRow(", flat_wrapper_start)
         flat_wrapper = settings[flat_wrapper_start:flat_wrapper_end]
         self.assertIn("Box(modifier = modifier.fillMaxWidth())", flat_wrapper)
-        self.assertNotIn("\\n    Surface(", flat_wrapper)
+        self.assertNotIn("\n    Surface(", flat_wrapper)
         self.assertNotIn("tonalElevation", flat_wrapper)
         self.assertIn("val organizeFilterMaxHeight = 260.dp", tokens)
         self.assertIn("ReiAnixTokens.Dimensions.organizeFilterMaxHeight", organize)
