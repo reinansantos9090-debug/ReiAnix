@@ -6890,6 +6890,12 @@ async def main(page: ft.Page):
                             page.snack_bar=ft.SnackBar(ft.Text('Seleção de pasta cancelada.')); page.snack_bar.open=True; safe_update()
                             refresh_settings_if_active()
                         elif event_type == 'saf_permission':
+                            # ActivityResult has resolved the picker operation. This
+                            # guard must not remain pending until the independent SAF scan
+                            # finishes, or a delayed/missing scan can block every retry.
+                            saf_selection.finish()
+                            if compose_library_bridge.enabled:
+                                compose_library_bridge.request_publish("saf_selection_finished")
                             storage_onboarding["waiting_for_result"] = False
                             storage_onboarding["dismissed"] = False
                             tree_uri = str(payload.get("treeUri") or "").strip()

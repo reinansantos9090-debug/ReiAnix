@@ -134,6 +134,34 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertNotIn("proxyIntent", picker)
         self.assertIn("safPickerPending = false", source)
 
+    def test_saf_permission_result_releases_picker_guard_before_scan_finishes(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        start = source.index("elif event_type == 'saf_permission':")
+        end = source.index("event_type == 'saf_released'", start)
+        block = source[start:end]
+        self.assertIn("saf_selection.finish()", block)
+        self.assertIn('compose_library_bridge.request_publish("saf_selection_finished")', block)
+        self.assertLess(
+            block.index("saf_selection.finish()"),
+            block.index('storage_onboarding["waiting_for_result"] = False'),
+        )
+
+    def test_saf_picker_watchdog_recovers_when_android_returns_without_result_callback(self):
+        source = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("private const val SAF_PICKER_RETURN_GRACE_MS = 2500L", source)
+        watchdog = source.split("private fun scheduleSafPickerWatchdog", 1)[1].split(
+            "private fun handleTreePickerResult", 1
+        )[0]
+        self.assertIn("SafPickerPhase.WAITING_RESULT", watchdog)
+        self.assertIn("safPickerFocusRegainedAtMs", watchdog)
+        self.assertIn('stage = "picker_result_watchdog"', watchdog)
+        self.assertIn('code = "RESULT_CALLBACK_TIMEOUT"', watchdog)
+        pause = source.split("override fun onPause()", 1)[1].split("override fun onStop()", 1)[0]
+        self.assertIn("safPickerFocusLost = true", pause)
+        self.assertIn("cancelSafPickerWatchdog()", pause)
+
     def test_permission_callback_uses_authoritative_access_level(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         callback = source.split("private val mediaPermissionRequester", 1)[1].split("private val treePicker", 1)[0]

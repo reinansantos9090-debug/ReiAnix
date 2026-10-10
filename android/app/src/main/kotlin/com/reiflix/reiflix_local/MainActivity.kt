@@ -593,15 +593,21 @@ class MainActivity : FlutterFragmentActivity() {
             .put("requestId", requestId ?: "").put("message", message).put("payload", payload))
     }
 
-    private fun timeoutSafPicker(requestId: String?) {
+    private fun timeoutSafPicker(
+        requestId: String?,
+        stage: String = "picker_watchdog",
+        code: String = "TIMEOUT",
+        message: String = "Não foi possível abrir o seletor de pastas do Android. Tente novamente.",
+    ) {
         if (!safPickerPending || pendingSafRequestId != requestId) return
         Log.e(tag, "SAF_PICKER_TIMEOUT requestId=" + (requestId ?: "-") +
+            " stage=" + stage + " code=" + code +
+            " phase=" + safPickerPhase.name +
             " startedAt=" + safPickerStartedAtMs + " now=" + System.currentTimeMillis() +
-            " focusLost=" + safPickerFocusLost)
+            " focusLost=" + safPickerFocusLost +
+            " focusRegainedAt=" + safPickerFocusRegainedAtMs)
         clearSafPickerPending(requestId, SafPickerPhase.TIMEOUT)
-        publishSafPickerError(requestId,
-            "Não foi possível abrir o seletor de pastas do Android. Tente novamente.",
-            stage = "picker_watchdog", code = "TIMEOUT")
+        publishSafPickerError(requestId, message, stage = stage, code = code)
     }
 
     private fun scheduleSafPickerWatchdog(requestId: String?) {
@@ -612,15 +618,14 @@ class MainActivity : FlutterFragmentActivity() {
             override fun run() {
                 if (!safPickerPending || pendingSafRequestId != correlationId) return
 
-                // The watchdog is only allowed to cover the native launch window.
-                // Once DocumentsUI has accepted the launch and the phase is
-                // WAITING_RESULT, ActivityResult is the authoritative completion
-                // signal. Timing out after focus returns can race the legitimate SAF
-                // callback and destroy request correlation.
-                if (
-                    safPickerPhase != SafPickerPhase.REQUESTED &&
-                    safPickerPhase != SafPickerPhase.LAUNCHING
-                ) {
+                // The Android result callback normally completes the request before
+                // focus returns. Keep the picker alive while DocumentsUI is foreground,
+                // but recover if ReiAnix regains focus and ActivityResult never arrives.
+                val phase = safPickerPhase
+                val launchPending =
+                    phase == SafPickerPhase.REQUESTED || phase == SafPickerPhase.LAUNCHING
+                val resultPending = phase == SafPickerPhase.WAITING_RESULT
+                if (!launchPending && !resultPending) {
                     cancelSafPickerWatchdog()
                     return
                 }
@@ -631,6 +636,34 @@ class MainActivity : FlutterFragmentActivity() {
                     safPickerWatchdogHandler.postDelayed(this, SAF_PICKER_WATCHDOG_RETRY_MS)
                     return
                 }
+
+                if (resultPending) {
+                    // The return timestamp is set only after DocumentsUI relinquishes
+                    // focus. Never time out while the user is still choosing a folder.
+                    if (!safPickerFocusLost) {
+                        cancelSafPickerWatchdog()
+                        return
+                    }
+                    if (safPickerFocusRegainedAtMs <= 0L) {
+                        safPickerFocusRegainedAtMs = now
+                    }
+                    val elapsedAfterReturn = now - safPickerFocusRegainedAtMs
+                    if (elapsedAfterReturn >= SAF_PICKER_RETURN_GRACE_MS) {
+                        timeoutSafPicker(
+                            correlationId,
+                            stage = "picker_result_watchdog",
+                            code = "RESULT_CALLBACK_TIMEOUT",
+                            message = "O Android voltou do seletor, mas o ReiAnix não recebeu o resultado da pasta. Toque em ESCOLHER PASTA para tentar novamente.",
+                        )
+                    } else {
+                        safPickerWatchdogHandler.postDelayed(
+                            this,
+                            maxOf(1L, SAF_PICKER_RETURN_GRACE_MS - elapsedAfterReturn),
+                        )
+                    }
+                    return
+                }
+
                 val elapsed = now - safPickerStartedAtMs
                 if (elapsed >= SAF_PICKER_LAUNCH_TIMEOUT_MS) {
                     timeoutSafPicker(correlationId)
@@ -913,7 +946,16 @@ class MainActivity : FlutterFragmentActivity() {
         logLifecycle("onResume")
         NativeMailbox.writeBestEffort(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "ON_RESUME").put("lifecycle", "onResume")))
         applyApplicationSystemUi()
-        if (safPickerPending) scheduleSafPickerWatchdog(pendingSafRequestId)
+        if (safPickerPending) {
+            if (
+                safPickerFocusLost &&
+                safPickerFocusRegainedAtMs <= 0L &&
+                window?.decorView?.hasWindowFocus() == true
+            ) {
+                safPickerFocusRegainedAtMs = System.currentTimeMillis()
+            }
+            scheduleSafPickerWatchdog(pendingSafRequestId)
+        }
 
         // A lifecycle-sensitive command may have been queued because the
         // Activity was not resumed when Python delivered the request. Do not
@@ -1089,6 +1131,13 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onPause() {
         activityResumed = false
+        if (safPickerPending) {
+            // DocumentsUI has taken ReiAnix out of the foreground. onResume/focus
+            // restoration will start the grace period if the result callback is lost.
+            safPickerFocusLost = true
+            safPickerFocusRegainedAtMs = 0L
+            cancelSafPickerWatchdog()
+        }
         logLifecycle("onPause")
         super.onPause()
     }
@@ -2817,7 +2866,9 @@ class MainActivity : FlutterFragmentActivity() {
          publishInteractionProfileIfChanged()
             ViewCompat.requestApplyInsets(window.decorView)
             if (activityResumed && safPickerPending) {
-                if (safPickerFocusLost) safPickerFocusRegainedAtMs = System.currentTimeMillis()
+                if (safPickerFocusLost && safPickerFocusRegainedAtMs <= 0L) {
+                    safPickerFocusRegainedAtMs = System.currentTimeMillis()
+                }
                 scheduleSafPickerWatchdog(pendingSafRequestId)
             }
             if (activityResumed && nativeRequestState.pendingLifecycleAction == "select_tree") {
