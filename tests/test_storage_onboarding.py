@@ -273,7 +273,11 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('storage_onboarding["startup_gate"] = False', granted)
         self.assertIn('_set_storage_onboarding_state(', granted)
         self.assertIn('"READY"', granted)
-        self.assertNotIn("finish()", granted)
+        self.assertIn("saf_selection.finish()", granted)
+        self.assertLess(
+            granted.index("saf_selection.finish()"),
+            granted.index('storage_onboarding["waiting_for_result"] = False'),
+        )
 
         host = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
