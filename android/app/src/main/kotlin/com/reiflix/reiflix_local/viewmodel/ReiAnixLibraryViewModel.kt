@@ -89,6 +89,55 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     private var libraryFilterJob: Job? = null
 
+    // These values are projections of the persisted SettingsStore preferences,
+    // not another preference store. The settings StateFlow remains canonical.
+    private var configuredLibraryPageSize: Int = 36
+    private var appliedLibrarySortDefault: String = "added_desc"
+
+    private fun librarySortLabelForSetting(value: String): String = when (value) {
+        "title_asc" -> ReiAnixLibrarySort.TITLE_ASC.label
+        "title_desc" -> ReiAnixLibrarySort.TITLE_DESC.label
+        "recently_watched" -> ReiAnixLibrarySort.RECENTLY_WATCHED.label
+        else -> ReiAnixLibrarySort.RECENT.label
+    }
+
+    fun applyLibraryPageSize(value: Int) {
+        val normalized = value.takeIf { it in setOf(24, 36, 48, 72) } ?: 36
+        if (configuredLibraryPageSize == normalized) return
+        configuredLibraryPageSize = normalized
+        val filters = libraryFilters.value
+        repository.loadLibraryPage(
+            page = 0,
+            pageSize = configuredLibraryPageSize,
+            query = filters.query,
+            genre = filters.selectedGenreKey ?: "Todos",
+            sort = filters.sort,
+            favoritesOnly = filters.favoritesOnly,
+            watchingOnly = filters.watchingOnly,
+            completedOnly = filters.completedOnly,
+            reset = true,
+        )
+    }
+
+    fun applyLibrarySortDefault(value: String) {
+        val normalized = value.takeIf {
+            it in setOf("added_desc", "title_asc", "title_desc", "recently_watched")
+        } ?: "added_desc"
+        if (normalized == appliedLibrarySortDefault) return
+
+        val previousDefaultLabel = librarySortLabelForSetting(appliedLibrarySortDefault)
+        val nextDefaultLabel = librarySortLabelForSetting(normalized)
+        appliedLibrarySortDefault = normalized
+
+        // A changed default follows the preference only while the current order
+        // still equals the previously applied default. A custom transient sort
+        // selected by the user is not silently discarded.
+        val current = libraryFilters.value
+        if (current.sort == previousDefaultLabel && current.sort != nextDefaultLabel) {
+            _libraryFilters.value = current.copy(sort = nextDefaultLabel)
+        }
+    }
+
     /**
      * Canonical immutable catalog projection.
      *
@@ -301,7 +350,7 @@ class ReiAnixLibraryViewModel(context: Context) :
                     animes = canonical,
                     filters = filters,
                 )
-                requested.take(page.pageSize.coerceIn(12, 48))
+                requested.take(page.pageSize.coerceIn(12, 72))
             } else {
                 emptyList()
             }
@@ -708,7 +757,7 @@ class ReiAnixLibraryViewModel(context: Context) :
                 .collectLatest { filters ->
                     repository.loadLibraryPage(
                         page = 0,
-                        pageSize = 36,
+                        pageSize = configuredLibraryPageSize,
                         query = filters.query,
                         genre = filters.selectedGenreKey ?: "Todos",
                         sort = filters.sort,
@@ -727,7 +776,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         val filters = libraryFilters.value
         repository.loadLibraryPage(
             page = page.loadedPage + 1,
-            pageSize = 36,
+            pageSize = configuredLibraryPageSize,
             query = filters.query,
             genre = filters.selectedGenreKey ?: "Todos",
             sort = filters.sort,
@@ -776,7 +825,9 @@ class ReiAnixLibraryViewModel(context: Context) :
     }
 
     fun clearLibraryFilters() {
-        _libraryFilters.value = ReiAnixLibraryFilters()
+        _libraryFilters.value = ReiAnixLibraryFilters(
+            sort = librarySortLabelForSetting(appliedLibrarySortDefault),
+        )
     }
 
     fun toggleFavorite(animeId: Long) = repository.toggleFavorite(animeId)
