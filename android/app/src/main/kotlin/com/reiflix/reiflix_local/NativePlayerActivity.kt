@@ -5190,8 +5190,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             else -> null
         }
-    private fun <T : View> findViewByTag(tagValue: String): T? =
-        root.findViewWithTag(tagValue)
+    private fun <T : View> findViewByTag(tagValue: String): T? {
+        // onDestroy() can run after a partial onCreate() failure, before root exists.
+        // Treat the view tree as unavailable in that state so cleanup can continue.
+        if (!::root.isInitialized) return null
+        return root.findViewWithTag(tagValue)
+    }
 
     private fun logPlayer(message: String, error: Throwable? = null) {
         if (error != null) {
