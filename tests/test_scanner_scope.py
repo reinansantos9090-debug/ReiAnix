@@ -126,8 +126,13 @@ class ScopePolicyTests(unittest.TestCase):
 
     def test_saf_scanner_membership_defense(self):
         source = SAF.read_text(encoding="utf-8")
-        for token in ("isDocumentIdWithinTree", "isAuthorizedDocumentForTree", "rejectedOutsideSource", "OUTSIDE_SOURCE"):
-            self.assertIn(token, source)
+        self.assertIn("isAuthorizedDocumentForTree", source)
+        self.assertIn("isDocumentWithinTree", source)
+        self.assertIn("DocumentsContract.isChildDocument(context.contentResolver, rootDocument, candidate)", source)
+        self.assertIn("rejectedOutsideSource", source)
+        self.assertIn("OUTSIDE_SOURCE", source)
+        self.assertNotIn("isDocumentIdWithinTree", source)
+
 
     def test_fixture_boundary(self):
         with tempfile.TemporaryDirectory() as root:
@@ -143,8 +148,29 @@ class ScopePolicyTests(unittest.TestCase):
 
     def test_saf_scanner_rejects_outside_directories_before_traversal(self):
         source = SAF.read_text(encoding="utf-8")
-        self.assertIn("for((childId,childName) in directoriesToVisit)", source)
-        self.assertIn("if(!isDocumentIdWithinTree(identity.documentId, childId))", source)
+        self.assertIn("DocumentsContract.buildChildDocumentsUriUsingTree(treeUri,parentId)", source)
+        self.assertIn("DocumentsContract.isChildDocument(context.contentResolver, rootDocument, candidate)", source)
+        self.assertIn("DocumentsContract.isChildDocument(resolver, parentUri, childUri)", source)
+        self.assertNotIn("isDocumentIdWithinTree", source)
+
+        directory_start = source.index("for((childId,childName) in directoriesToVisit)")
+        directory_end = source.index("for(child in videoChildren)", directory_start)
+        directory_loop = source[directory_start:directory_end]
+        scope_guard = directory_loop.index("if (!isDocumentWithinTree(context, treeUri, childId))")
+        parent_guard = directory_loop.index("DocumentsContract.isChildDocument(resolver, parentUri, childUri)")
+        enqueue = directory_loop.index("pending.addLast(childId to relative)")
+        self.assertLess(scope_guard, enqueue)
+        self.assertLess(parent_guard, enqueue)
+        self.assertIn('stats.put("rejectedOutsideSource"', directory_loop)
+        self.assertIn("continue", directory_loop[scope_guard:enqueue])
+
+        video_start = source.index("for(child in videoChildren)", directory_start)
+        video_end = source.index("batches.add(", video_start)
+        video_loop = source[video_start:video_end]
+        self.assertLess(
+            video_loop.index("if (!isDocumentWithinTree(context, treeUri, child.id))"),
+            video_loop.index("DocumentsContract.buildDocumentUriUsingTree(treeUri,child.id)"),
+        )
 
     def test_media_store_rejects_empty_scope_path(self):
         source = MEDIA.read_text(encoding="utf-8")
