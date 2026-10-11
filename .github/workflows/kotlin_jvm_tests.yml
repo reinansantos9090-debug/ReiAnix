@@ -218,6 +218,12 @@ jobs:
                   detail = (problem.text or "").strip()
                   if detail:
                       print(detail)
+                  for stream_name in ("system-out", "system-err"):
+                      stream = testcase.find(stream_name)
+                      stream_text = (stream.text or "").strip() if stream is not None else ""
+                      if stream_text:
+                          print(f"{stream_name.upper()} FOR FAILED TEST:")
+                          print(stream_text)
           if not found:
               print(f"No failing testcase details found under {root}")
           PY
