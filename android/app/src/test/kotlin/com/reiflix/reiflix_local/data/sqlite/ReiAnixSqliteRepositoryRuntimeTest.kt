@@ -108,6 +108,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         createCanonicalFixture()
         val fixture = loadCanonicalSchemaFixture()
         val snapshot = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertEquals(fixture.getInt("sqlite_user_version"), snapshot.sqliteUserVersion)
 
         val canonicalTables = fixture.getJSONArray("tables")
         for (tableIndex in 0 until canonicalTables.length()) {
