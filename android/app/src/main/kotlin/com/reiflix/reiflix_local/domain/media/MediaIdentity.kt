@@ -141,8 +141,8 @@ object MediaTitleNormalizer {
             .lowercase(Locale.ROOT)
     }
 
-    /** Removes selected release tags from candidate titles; it does not prove identity. */
-    fun normalizeMediaTitle(value: String?): String {
+    /** Removes release metadata while retaining the source title's casing for presentation. */
+    fun cleanMediaTitle(value: String?): String {
         if (value.isNullOrBlank()) return ""
         var result = value.trim()
             .replace(Regex("^\\s*\\[[^\\]]{1,120}]\\s*"), "")
@@ -151,8 +151,13 @@ object MediaTitleNormalizer {
         result = recordingTimestamp.replace(result, " ")
         result = standaloneTimestamp.replace(result, " ")
         result = result.replace(Regex("\\b(?:complete|batch|season[ ._-]*pack)\\b", RegexOption.IGNORE_CASE), " ")
-        return normalizeTitle(result)
+        result = result.replace(Regex("[._]+"), " ")
+        result = result.replace(Regex("\\s+"), " ")
+        return result.trim().trim(' ', '-', '_', '[', ']', '(', ')', '{', '}')
     }
+
+    /** Comparison form of the cleaned title; never proves identity on its own. */
+    fun normalizeMediaTitle(value: String?): String = normalizeTitle(cleanMediaTitle(value))
 
     private val technicalPatterns = listOf(
         Regex("(?<![A-Za-z0-9])(?:2160p|1080p|720p|480p|4320p|4k)(?![A-Za-z0-9])", RegexOption.IGNORE_CASE),
@@ -356,11 +361,11 @@ object MediaFilenameParser {
         }
 
         val titleSource = marker?.let { stem.substring(0, it.range.first) } ?: stem
-        var title = MediaTitleNormalizer.normalizeMediaTitle(titleSource)
+        var title = MediaTitleNormalizer.cleanMediaTitle(titleSource)
         if (title.isBlank() || title.matches(Regex("(?i)(?:e|ep|episode)?\\s*\\d+"))) {
             title = effectiveFolders.asReversed().firstOrNull {
                 it.lowercase(Locale.ROOT) !in genericFolders
-            }?.let(MediaTitleNormalizer::normalizeMediaTitle).orEmpty()
+            }?.let(MediaTitleNormalizer::cleanMediaTitle).orEmpty()
         }
         if (title.isBlank()) title = "Arquivo não identificado"
 
@@ -378,7 +383,7 @@ object MediaFilenameParser {
         val tail = marker?.let { stem.substring(it.range.last + 1) }.orEmpty()
             .replace(Regex("^[ ._\\-–—]+"), "")
             .replace(Regex("\\[[^]]*]"), " ")
-            .let(MediaTitleNormalizer::normalizeMediaTitle)
+            .let(MediaTitleNormalizer::cleanMediaTitle)
         return ParsedMediaName(
             animeTitle = title,
             season = season,
