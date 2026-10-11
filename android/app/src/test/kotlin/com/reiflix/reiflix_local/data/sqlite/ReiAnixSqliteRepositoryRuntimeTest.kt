@@ -117,22 +117,24 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertEquals("Column count differs for $table", canonicalColumns.length(), actualColumns.size)
             for (columnIndex in 0 until canonicalColumns.length()) {
                 val expected = canonicalColumns.getJSONObject(columnIndex)
-                val actual = actualColumns[expected.getString("name")]
-                assertNotNull("$table.${expected.getString("name")} missing from PRAGMA table_info", actual)
-                assertEquals(table + "." + expected.getString("name") + " type", expected.getString("type").uppercase(), actual!!.declaredType)
-                assertEquals(table + "." + expected.getString("name") + " nullability", expected.getBoolean("not_null"), actual.notNull)
-                assertEquals(table + "." + expected.getString("name") + " primary key", expected.getInt("primary_key_position"), actual.primaryKeyPosition)
+                val columnName = expected.getString("name")
+                val actual = actualColumns[columnName]
+                    ?: throw AssertionError("$table.$columnName missing from PRAGMA table_info")
+                assertEquals(table + "." + columnName + " type", expected.getString("type").uppercase(), actual.declaredType)
+                assertEquals(table + "." + columnName + " nullability", expected.getBoolean("not_null"), actual.notNull)
+                assertEquals(table + "." + columnName + " primary key", expected.getInt("primary_key_position"), actual.primaryKeyPosition)
                 val expectedDefault = if (expected.isNull("default")) null else expected.getString("default").replace(Regex("\\s+"), " ").trim()
-                assertEquals(table + "." + expected.getString("name") + " default", expectedDefault, actual.defaultValue)
+                assertEquals(table + "." + columnName + " default", expectedDefault, actual.defaultValue)
             }
         }
 
         val canonicalIndexes = fixture.getJSONArray("indexes")
         for (index in 0 until canonicalIndexes.length()) {
             val expected = canonicalIndexes.getJSONObject(index)
-            val actual = snapshot.indexSnapshots[expected.getString("name")]
-            assertNotNull("Index ${expected.getString("name")} missing from SQLite metadata", actual)
-            assertEquals(expected.getString("table"), actual!!.table)
+            val indexName = expected.getString("name")
+            val actual = snapshot.indexSnapshots[indexName]
+                ?: throw AssertionError("Index $indexName missing from SQLite metadata")
+            assertEquals(expected.getString("table"), actual.table)
             assertEquals(expected.getBoolean("unique"), actual.unique)
             assertEquals(expected.getBoolean("partial"), actual.partial)
             val expectedColumns = expected.getJSONArray("columns")
