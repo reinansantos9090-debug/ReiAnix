@@ -12,7 +12,7 @@ The existing SQLite records remain the canonical persistence records. `SqliteDom
 
 ## Identity rules ported to Kotlin
 
-`LocalMediaIdentity` follows the contract from `core/media_identity.py`:
+`data/media/LocalMediaIdentity` follows the contract from `core/media_identity.py`:
 
 - Shared storage requires both a recognized storage location and a non-empty relative path.
 - `/storage/emulated/0` maps to the primary volume. `primary`, `external_primary` and `external` are normalized to the same volume key.
@@ -21,11 +21,11 @@ The existing SQLite records remain the canonical persistence records. `SqliteDom
 - If no stable location evidence is present, identity remains null. For a non-filesystem content provider, a provider-scoped URI identity is used, not a guessed shared-storage identity.
 - File size and modification time are discovery attributes, not inputs to a stable media identity.
 
-`MediaTitleNormalizer` keeps title normalization separate from the physical-media identity algorithm. It does not fuzzy-match or promote a normalized title into an identifier. `MediaFilenameParser` recognizes explicit season/episode markers before considering numeric suffixes and exposes confidence/evidence/uncertainty for callers.
+`data/media/MediaTitleNormalizer` keeps title normalization separate from the physical-media identity algorithm. It does not fuzzy-match or promote a normalized title into an identifier. `data/media/MediaFilenameParser` recognizes explicit season/episode markers before considering numeric suffixes and exposes confidence/evidence/uncertainty for callers.
 
 ## Python/Kotlin parity and boundary
 
-The current Python parser and its tests remain in place. The Kotlin helpers cover the core location identity contract and the main deterministic filename patterns (SxxExx, Temp/Temporada + E, NxM, episode markers, specials, movies, absolute markers and conservative numeric suffixes). Explicit season conflicts and multi-episode ranges are marked as unresolved rather than silently treated as unambiguous.
+The current Python parser and its tests remain in place. The The pure-JVM helpers under the existing `data/media` package cover the core location identity contract and the main deterministic filename patterns (SxxExx, Temp/Temporada + E, NxM, episode markers, specials, movies, absolute markers and conservative numeric suffixes). Explicit season conflicts and multi-episode ranges are marked as unresolved rather than silently treated as unambiguous.
 
 This step intentionally does not switch the existing scanner, library service, player, or legacy Python bridge to the new Kotlin parser. Their orchestration is outside this prompt's scope. Wiring discovery results to these domain helpers should happen with the scanner/library migration step, with cross-language fixture tests expanded against any remaining edge cases in `core/library_parser.py`; until then the legacy behavior remains available and is not removed.
 
