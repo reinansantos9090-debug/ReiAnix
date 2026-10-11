@@ -309,6 +309,17 @@ class ArtworkEngine:
             return False
 
     @staticmethod
+    def _file_size(path, stored_size=None):
+        """Return persisted size when valid, otherwise measure the existing file."""
+        try:
+            size = int(stored_size or 0)
+            if size > 0:
+                return size
+            return max(0, int(Path(path).stat().st_size))
+        except (OSError, TypeError, ValueError):
+            return 0
+
+    @staticmethod
     def _is_valid_image_file(path):
         if not ArtworkEngine._is_file(path):
             return False
@@ -1517,17 +1528,18 @@ class ArtworkEngine:
                    FROM artwork WHERE local_path IS NOT NULL AND source='cache'
                    ORDER BY COALESCE(last_access,updated_at,0) ASC"""
             ).fetchall()
-        total = sum(int(row["byte_size"] or 0) for row in rows if self._is_file(row["local_path"]))
+        total = sum(
+            self._file_size(row["local_path"], row["byte_size"])
+            for row in rows
+            if self._is_file(row["local_path"])
+        )
         for row in rows:
             if total <= self.cache_limit_bytes:
                 break
             path = str(row["local_path"])
             if path in protected or int(row["manual"] or 0):
                 continue
-            try:
-                size = int(row["byte_size"] or Path(path).stat().st_size)
-            except OSError:
-                size = 0
+            size = self._file_size(path, row["byte_size"])
             try:
                 Path(path).unlink(missing_ok=True)
             except OSError:
@@ -1612,11 +1624,14 @@ class ArtworkEngine:
     def cache_stats(self):
         with self.store._conn() as con:
             rows = con.execute(
-                """SELECT COUNT(*) AS files, COALESCE(SUM(byte_size),0) AS bytes
-                   FROM artwork WHERE source='cache' AND local_path IS NOT NULL"""
-            ).fetchone()
-        return {"files": int(rows["files"] or 0), "bytes": int(rows["bytes"] or 0),
-                "limit_bytes": self.cache_limit_bytes}
+                """SELECT local_path,byte_size FROM artwork
+                   WHERE source='cache' AND local_path IS NOT NULL"""
+            ).fetchall()
+        return {
+            "files": len(rows),
+            "bytes": sum(self._file_size(row["local_path"], row["byte_size"]) for row in rows),
+            "limit_bytes": self.cache_limit_bytes,
+        }
 
     def shutdown(self):
         self._closed = True
