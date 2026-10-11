@@ -11,6 +11,8 @@ from core.storage_access import (
     dedupe_saf_roots,
     library_saf_roots,
     saf_source_identity,
+    saf_folder_identity,
+    saf_inventory_by_identity,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +81,41 @@ class SourceIdentityTests(unittest.TestCase):
             (self.URI_A,),
             configured_library_saf_roots([self.URI_A, other], configured),
         )
+
+    def test_stale_cached_identity_never_redirects_a_configured_saf_folder(self):
+        configured = [{
+            "path": self.URI_A,
+            "kind": "saf",
+            "authorization": "granted",
+            "saf_identity": saf_source_identity(self.URI_OTHER),
+        }]
+        self.assertEqual(
+            (self.URI_A,),
+            configured_library_saf_roots([self.URI_A, self.URI_OTHER], configured),
+        )
+        self.assertEqual(
+            (),
+            configured_library_saf_roots([self.URI_OTHER], configured),
+        )
+        self.assertEqual(saf_source_identity(self.URI_A), saf_folder_identity(configured[0]))
+
+    def test_saf_inventory_collapses_uri_variants_and_prefers_valid_tree_status(self):
+        rows = saf_inventory_by_identity([
+            {
+                "treeUri": self.URI_A,
+                "identity": saf_source_identity(self.URI_A),
+                "status": "REVOKED",
+            },
+            {
+                "treeUri": self.URI_DUPLICATE_ENCODING,
+                "identity": saf_source_identity(self.URI_DUPLICATE_ENCODING),
+                "status": "COMPLETED",
+            },
+        ])
+        self.assertEqual(1, len(rows))
+        identity = saf_source_identity(self.URI_A)
+        self.assertEqual("COMPLETED", rows[identity]["status"])
+        self.assertEqual(self.URI_DUPLICATE_ENCODING, rows[identity]["treeUri"])
 
     def test_inventory_recovery_only_accepts_one_new_persisted_root_after_selection(self):
         baseline = {saf_source_identity(self.URI_A)}
