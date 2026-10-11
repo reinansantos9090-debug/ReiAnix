@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Generate an isolated JVM-test schema from the canonical LibraryStore.
+"""Export a canonical SQLite fixture and runtime contract from LibraryStore.
 
-The generated JSON is a test resource, not an application database. It contains
-DDL exported from a fresh temporary database initialized by LibraryStore._init,
-including the real migrations/indexes for the currently supported schema.
+The schema is initialized by the real Python LibraryStore in an isolated
+temporary directory. The test fixture includes DDL for creating an isolated
+Robolectric database; the runtime contract contains only expected metadata.
+Neither output is a production database.
 """
 from __future__ import annotations
 
@@ -28,11 +29,98 @@ EXPECTED_TABLES = {
 }
 
 
+def normalize_sql_expression(sql: str) -> str:
+    """Normalize SQL tokens while preserving quoted identifiers and literals."""
+    out: list[str] = []
+    quote: str | None = None
+    pending_space = False
+    index = 0
+    while index < len(sql):
+        char = sql[index]
+        if quote is not None:
+            out.append(char)
+            if char == quote:
+                if index + 1 < len(sql) and sql[index + 1] == quote:
+                    out.append(sql[index + 1])
+                    index += 1
+                else:
+                    quote = None
+        elif char in ("'", '"', "`"):
+            if pending_space and out:
+                out.append(" ")
+            pending_space = False
+            quote = char
+            out.append(char)
+        elif char == "[":
+            if pending_space and out:
+                out.append(" ")
+            pending_space = False
+            quote = "]"
+            out.append(char)
+        elif char.isspace():
+            pending_space = True
+        else:
+            if pending_space and out:
+                out.append(" ")
+            pending_space = False
+            out.append(char.upper())
+        index += 1
+    return "".join(out).strip().rstrip(";").strip()
+
+
+def extract_parenthesized_sql(sql: str, keyword: str) -> list[str]:
+    """Extract balanced CHECK(...) expressions, ignoring quoted parentheses."""
+    values: list[str] = []
+    keyword_pattern = re.compile(rf"\b{re.escape(keyword)}\s*\(", re.IGNORECASE)
+    search_from = 0
+    while match := keyword_pattern.search(sql, search_from):
+        open_index = sql.find("(", match.start(), match.end())
+        depth = 1
+        index = open_index + 1
+        quote: str | None = None
+        while index < len(sql) and depth:
+            char = sql[index]
+            if quote is not None:
+                if char == quote:
+                    if index + 1 < len(sql) and sql[index + 1] == quote:
+                        index += 1
+                    else:
+                        quote = None
+                elif quote == "]" and char == "]":
+                    quote = None
+            elif char in ("'", '"', "`"):
+                quote = char
+            elif char == "[":
+                quote = "]"
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            index += 1
+        if depth:
+            raise RuntimeError(f"Unbalanced {keyword} clause in SQLite DDL: {sql}")
+        values.append(normalize_sql_expression(sql[open_index + 1:index - 1]))
+        search_from = index
+    return values
+
+
+def _table_ddl(connection: sqlite3.Connection, table: str) -> str:
+    row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table,),
+    ).fetchone()
+    if not row or not row[0]:
+        raise RuntimeError(f"Canonical table {table!r} has no DDL in sqlite_master")
+    return str(row[0])
+
+
 def build_fixture() -> dict[str, object]:
     with tempfile.TemporaryDirectory(prefix="reianix-sqlite-schema-") as temporary:
         store = LibraryStore(temporary)
         if store.recovery_error:
-            raise RuntimeError(f"LibraryStore could not initialize its temporary schema: {store.recovery_error}")
+            raise RuntimeError(
+                f"LibraryStore could not initialize its temporary schema: {store.recovery_error}"
+            )
 
         with sqlite3.connect(store.db_path) as connection:
             version_row = connection.execute(
@@ -42,19 +130,10 @@ def build_fixture() -> dict[str, object]:
             if schema_version != EXPECTED_SCHEMA_VERSION or schema_version != LibraryStore.SCHEMA_VERSION:
                 raise RuntimeError(
                     f"Canonical schema version is {schema_version}; this Kotlin contract expects "
-                    f"{EXPECTED_SCHEMA_VERSION}. Update the Kotlin compatibility contract before proceeding."
+                    f"{EXPECTED_SCHEMA_VERSION}. Update the compatibility contract before proceeding."
                 )
 
-            objects = connection.execute(
-                """
-                SELECT type, name, sql
-                FROM sqlite_master
-                WHERE type IN ('table', 'index')
-                  AND sql IS NOT NULL
-                  AND name NOT LIKE 'sqlite_%'
-                ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
-                """
-            ).fetchall()
+            user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
             tables = sorted(
                 row[0] for row in connection.execute(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
@@ -64,27 +143,36 @@ def build_fixture() -> dict[str, object]:
             if missing_tables:
                 raise RuntimeError(f"Canonical schema is missing expected tables: {sorted(missing_tables)}")
 
-            columns: dict[str, list[dict[str, object]]] = {}
+            table_columns: dict[str, list[dict[str, object]]] = {}
+            table_contract: dict[str, dict[str, object]] = {}
+            table_sql: dict[str, str] = {}
             for table in tables:
                 escaped = table.replace('"', '""')
-                rows = connection.execute(f'PRAGMA table_info("{escaped}")').fetchall()
-                columns[table] = [
+                ddl = _table_ddl(connection, table)
+                table_sql[table] = ddl
+                rows = connection.execute(f'PRAGMA table_xinfo("{escaped}")').fetchall()
+                table_columns[table] = [
                     {
                         "name": row[1],
-                        "type": row[2],
+                        "type": row[2] or "",
                         "not_null": bool(row[3]),
                         "default": row[4],
                         "primary_key_position": row[5],
+                        "hidden": row[6],
                     }
                     for row in rows
                 ]
+                table_contract[table] = {
+                    "strict": bool(re.search(r"\bSTRICT\s*;?\s*$", ddl, re.IGNORECASE)),
+                    "without_rowid": bool(re.search(r"\bWITHOUT\s+ROWID\b", ddl, re.IGNORECASE)),
+                    "checks": extract_parenthesized_sql(ddl, "CHECK"),
+                }
 
-            indexes = []
-            foreign_keys: dict[str, list[dict[str, object]]] = {}
+            indexes: list[dict[str, object]] = []
             for table in tables:
                 escaped = table.replace('"', '""')
                 for row in connection.execute(f'PRAGMA index_list("{escaped}")').fetchall():
-                    index_name = row[1]
+                    index_name = str(row[1])
                     index_sql_row = connection.execute(
                         "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
                         (index_name,),
@@ -93,6 +181,8 @@ def build_fixture() -> dict[str, object]:
                     index_columns = [
                         {
                             "name": item[2],
+                            "column_id": int(item[1]),
+                            "expression": int(item[1]) == -2,
                             "descending": bool(item[3]),
                             "collation": item[4],
                         }
@@ -104,54 +194,99 @@ def build_fixture() -> dict[str, object]:
                     predicate = None
                     if index_sql:
                         match = re.search(r"(?is)\bWHERE\b(.*)$", index_sql)
-                        predicate = " ".join(match.group(1).strip().rstrip(";").split()) if match else None
+                        predicate = normalize_sql_expression(match.group(1)) if match else None
                     indexes.append({
                         "name": index_name,
                         "table": table,
                         "unique": bool(row[2]),
-                        "origin": row[3],
+                        "origin": str(row[3]),
                         "partial": bool(row[4]),
                         "columns": index_columns,
                         "predicate": predicate,
                         "sql": index_sql,
                     })
 
+            foreign_keys: dict[str, list[dict[str, object]]] = {}
+            for table in tables:
+                escaped = table.replace('"', '""')
                 foreign_keys[table] = [
                     {
+                        "id": int(row[0]),
+                        "sequence": int(row[1]),
                         "table": row[2],
                         "from": row[3],
                         "to": row[4],
-                        "on_update": row[5],
-                        "on_delete": row[6],
-                        "match": row[7],
+                        "on_update": str(row[5]).upper(),
+                        "on_delete": str(row[6]).upper(),
+                        "match": str(row[7]).upper(),
                     }
                     for row in connection.execute(f'PRAGMA foreign_key_list("{escaped}")').fetchall()
                 ]
 
-            user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            triggers = [
+                {
+                    "name": row[0],
+                    "table": row[1],
+                    "sql": normalize_sql_expression(row[2] or ""),
+                }
+                for row in connection.execute(
+                    "SELECT name, tbl_name, sql FROM sqlite_master "
+                    "WHERE type = 'trigger' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                ).fetchall()
+            ]
+
+            objects = connection.execute(
+                """
+                SELECT type, name, sql
+                FROM sqlite_master
+                WHERE type IN ('table', 'index')
+                  AND sql IS NOT NULL
+                  AND name NOT LIKE 'sqlite_%'
+                ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
+                """
+            ).fetchall()
             return {
                 "schema_version": schema_version,
                 "sqlite_user_version": user_version,
                 "tables": tables,
-                "columns": columns,
+                "columns": table_columns,
+                "table_contract": table_contract,
                 "indexes": indexes,
                 "foreign_keys": foreign_keys,
+                "triggers": triggers,
                 "statements": [sql for _, _, sql in objects],
             }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True, help="Destination JSON test resource")
-    args = parser.parse_args()
-    output = args.output.resolve()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    payload = build_fixture()
-    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(
-        f"Generated isolated schema fixture v{payload['schema_version']}: "
-        f"{len(payload['tables'])} tables and {len(payload['indexes'])} index entries -> {output}"
+    parser.add_argument("--output", type=Path, required=True, help="Destination JSON test fixture")
+    parser.add_argument(
+        "--contract-output",
+        type=Path,
+        help="Optional production runtime contract JSON, generated from the same canonical snapshot",
     )
+    args = parser.parse_args()
+    fixture_path = args.output.resolve()
+    fixture_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = build_fixture()
+    fixture_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    if args.contract_output:
+        contract_path = args.contract_output.resolve()
+        contract_path.parent.mkdir(parents=True, exist_ok=True)
+        contract = {key: value for key, value in payload.items() if key != "statements"}
+        contract_path.write_text(
+            json.dumps(contract, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    print(
+        f"Generated canonical SQLite schema v{payload['schema_version']}: "
+        f"{len(payload['tables'])} tables and {len(payload['indexes'])} index entries -> {fixture_path}"
+    )
+    if args.contract_output:
+        print(f"Generated runtime contract -> {args.contract_output.resolve()}")
     return 0
 
 
