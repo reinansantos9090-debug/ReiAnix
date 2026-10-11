@@ -104,6 +104,8 @@ class TestSafProfessionalContract(unittest.TestCase):
             self.assertNotIn("isWithinTree(tree.documentId, documentId)", block)
         self.assertIn("DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)", source)
         self.assertIn("DocumentsContract.Document.COLUMN_DOCUMENT_ID", source)
+        self.assertIn("DocumentsContract.buildChildDocumentsUriUsingTree", source)
+        self.assertNotIn("isDocumentIdWithinTree", source)
 
     def test_provider_states_are_explicit(self):
         source = SAF.read_text(encoding="utf-8")
