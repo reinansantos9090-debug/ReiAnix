@@ -21,6 +21,31 @@ class ReiAnixSqliteModelsTest {
         assertNull(update.watched)
     }
 
+
+    @Test
+    fun metadataPatchCanUpdateCatalogFieldsWithoutModelingUserOwnedFields() {
+        val patch = ReiAnixAnimeMetadataPatch(
+            animeId = 17L,
+            title = "  Naruto  ",
+            coverUrl = "https://example.invalid/cover.jpg",
+        )
+
+        assertEquals(17L, patch.animeId)
+        assertEquals("  Naruto  ", patch.title)
+        assertNull(patch.anilistId)
+        assertNull(patch.metadataStatus)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun metadataPatchRejectsBlankTitle() {
+        ReiAnixAnimeMetadataPatch(animeId = 17L, title = "   ")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun metadataPatchRejectsEmptyPatch() {
+        ReiAnixAnimeMetadataPatch(animeId = 17L)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun playbackUpdateRejectsNonPositiveIds() {
         ReiAnixPlaybackProgressUpdate(episodeId = 0L, progress = 0.0)

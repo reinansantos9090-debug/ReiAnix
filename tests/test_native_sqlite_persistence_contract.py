@@ -48,6 +48,19 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("database.transaction", library)
         self.assertIn("withContext(Dispatchers.IO)", library)
 
+
+    def test_metadata_patch_updates_catalog_fields_without_overwriting_user_state(self):
+        library = LIBRARY.read_text(encoding="utf-8")
+        method_start = library.index("suspend fun updateAnimeMetadata(")
+        method_end = library.index("suspend fun getEpisode(", method_start)
+        method = library[method_start:method_end]
+
+        self.assertIn('database.transaction', method)
+        self.assertIn('"metadata_updated_at"', method)
+        self.assertIn('SELECT * FROM anime WHERE id = ?', method)
+        for user_owned_column in ('"favorite"', '"is_pinned"', '"personal_note"', '"user_tags"'):
+            self.assertNotIn(user_owned_column, method)
+
     def test_settings_are_parameterized_and_transactional(self):
         settings = SETTINGS.read_text(encoding="utf-8")
 
