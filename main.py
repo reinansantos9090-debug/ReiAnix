@@ -55,6 +55,17 @@ GOOGLE_CLIENT_ID = os.getenv('REIFLIX_GOOGLE_CLIENT_ID', CONFIG_GOOGLE_CLIENT_ID
 GOOGLE_REDIRECT_URL = os.getenv('REIFLIX_GOOGLE_REDIRECT_URL', CONFIG_GOOGLE_REDIRECT_URL)
 GOOGLE_WEB_CLIENT_ID = os.getenv('REIFLIX_GOOGLE_WEB_CLIENT_ID', CONFIG_GOOGLE_WEB_CLIENT_ID)
 
+def normalize_app_lifecycle_state(event_or_state) -> str:
+    raw = getattr(event_or_state, "state", getattr(event_or_state, "data", event_or_state))
+    if hasattr(raw, "value") and isinstance(getattr(raw, "value"), str):
+        raw = raw.value
+    elif hasattr(raw, "name") and isinstance(getattr(raw, "name"), str):
+        raw = raw.name
+    s = str(raw or "").strip().lower()
+    if "." in s:
+        s = s.rsplit(".", 1)[-1]
+    return s
+
 async def main(page: ft.Page):
     performance = get_performance_monitor()
     startup_started = performance.now()
@@ -279,6 +290,7 @@ async def main(page: ft.Page):
                 task.cancel()
             except Exception as exc:
                 logger.debug("[FLET] mailbox poll task cancellation failed: %s", exc)
+        native_poll_task[0] = None
         account_task = account_action_task[0]
         if account_task is not None and not account_task.done():
             try:
@@ -2820,6 +2832,7 @@ async def main(page: ft.Page):
         compose_request_id=None,
         compose_request_bridge="library",
     ):
+        ensure_native_poll_task("add_folder")
         # Only an explicit user action may open the SAF picker.
         storage_onboarding["dismissed"] = False
         if saf_selection.pending:
@@ -7470,8 +7483,36 @@ async def main(page: ft.Page):
                 logger.exception("[ANDROID] NATIVE_MAILBOX_LOOP_FAILED")
                 poll_interval = min(1.0, poll_interval * 1.5)
             await asyncio.sleep(poll_interval)
+
+    def ensure_native_poll_task(reason="check"):
+        ui_alive[0] = True
+        task = native_poll_task[0]
+        if task is None or task.done():
+            native_poll_task[0] = page.run_task(poll_native_bridge)
+            logger.info("[FLET] native_poll_task started/restarted reason=%s", reason)
+
+    def _handle_page_connect(_event=None):
+        logger.info("[FLET] page connected, ensuring native_poll_task")
+        ensure_native_poll_task("page_connect")
+
+    def _handle_app_lifecycle_state_change(event=None):
+        state = normalize_app_lifecycle_state(event)
+        logger.info("[FLET] app lifecycle state change: %s", state)
+        if state in {"resume", "restart", "show", "app_lifecycle_state_change"}:
+            ensure_native_poll_task(f"app_lifecycle_{state}")
+
+    try:
+        page.on_connect = _handle_page_connect
+    except Exception as exc:
+        logger.warning("[FLET] on_connect hook unavailable: %s", exc)
+
+    try:
+        page.on_app_lifecycle_state_change = _handle_app_lifecycle_state_change
+    except Exception as exc:
+        logger.warning("[FLET] on_app_lifecycle_state_change hook unavailable: %s", exc)
+
     page.on_login=login_done
-    native_poll_task[0] = page.run_task(poll_native_bridge)
+    ensure_native_poll_task("startup")
     if recovered_scans:
         page.snack_bar = ft.SnackBar(ft.Text(
             f"{len(recovered_scans)} varredura(s) anterior(es) foram interrompidas e poderão ser refeitas."
