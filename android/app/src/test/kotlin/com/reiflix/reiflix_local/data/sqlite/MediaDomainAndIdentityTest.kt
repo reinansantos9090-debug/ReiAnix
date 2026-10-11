@@ -104,6 +104,29 @@ class MediaDomainAndIdentityTest {
     }
 
     @Test
+    fun unknownEpisodeInSeasonFolderUsesTheProbableAnimeFolder() {
+        val parsed = MediaFilenameParser.parseVideoPath("/library/Naruto/Season 2/teaser.mkv", "/library")
+
+        assertEquals("Naruto", parsed.animeTitle)
+        assertEquals(2, parsed.season)
+        assertEquals(ParsedMediaKind.UNKNOWN, parsed.kind)
+        assertTrue(parsed.unresolved.contains("episode_not_identified"))
+    }
+
+    @Test
+    fun conflictingExplicitAndFolderSeasonsRemainUnresolved() {
+        val parsed = MediaFilenameParser.parseVideoPath(
+            "/library/Naruto/Season 2/Naruto.S01E03.mkv",
+            "/library",
+        )
+
+        assertEquals(1, parsed.season)
+        assertEquals(3.0, parsed.episodeNumber!!, 0.0)
+        assertEquals(MediaIdentificationConfidence.MEDIUM, parsed.confidence)
+        assertTrue(parsed.unresolved.any { it.startsWith("season_conflict:") })
+    }
+
+    @Test
     fun numericOnlyFilenameIsNotPromotedToAnEpisodeIdentity() {
         val parsed = MediaFilenameParser.parseVideoPath("/library/Naruto/Season 1/03.mkv")
 
