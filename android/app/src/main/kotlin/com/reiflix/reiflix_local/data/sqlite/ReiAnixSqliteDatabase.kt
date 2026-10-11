@@ -475,8 +475,6 @@ class ReiAnixSqliteDatabase(context: Context) {
         )
     }
 }
-    }
-}
 
 class ReiAnixSqliteOpenException(message: String, cause: Throwable) :
     IllegalStateException(message, cause)
