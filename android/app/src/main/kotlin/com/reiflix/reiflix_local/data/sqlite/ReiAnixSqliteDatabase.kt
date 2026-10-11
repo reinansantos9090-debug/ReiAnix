@@ -702,38 +702,74 @@ private fun extractWherePredicate(sql: String): String? {
 
 private fun extractParenthesizedSql(sql: String, keyword: String): List<String> {
     val values = mutableListOf<String>()
-    val pattern = Regex("\\b${Regex.escape(keyword)}\\s*\\(", RegexOption.IGNORE_CASE)
-    var searchFrom = 0
-    while (true) {
-        val match = pattern.find(sql, searchFrom) ?: break
-        val openIndex = sql.indexOf('(', match.range.first)
-        var depth = 1
-        var index = openIndex + 1
-        var quote: Char? = null
-        while (index < sql.length && depth > 0) {
-            val char = sql[index]
-            if (quote != null) {
-                if (char == quote) {
-                    if (index + 1 < sql.length && sql[index + 1] == quote) {
-                        index++
-                    } else {
-                        quote = null
-                    }
-                }
-            } else if (char == '\'' || char == '"' || char == '`') {
-                quote = char
-            } else if (char == '[') {
-                quote = ']'
-            } else if (char == '(') {
-                depth++
-            } else if (char == ')') {
-                depth--
-            }
-            index++
+    val target = keyword.uppercase(Locale.ROOT)
+    var index = 0
+    while (index < sql.length) {
+        val char = sql[index]
+        if (char == '\\'' || char == '"' || char == '`' || char == '[' ||
+            sql.startsWith("--", index) || sql.startsWith("/*", index)
+        ) {
+            index = skipQuotedOrComment(sql, index)
+            continue
         }
-        check(depth == 0) { "Unbalanced $keyword clause in SQLite DDL." }
-        values += normalizeSqlExpression(sql.substring(openIndex + 1, index - 1))
-        searchFrom = index
+        val beforeIsWord = index > 0 && (sql[index - 1].isLetterOrDigit() || sql[index - 1] == '_')
+        val endKeyword = index + target.length
+        val afterIsWord = endKeyword < sql.length &&
+            (sql[endKeyword].isLetterOrDigit() || sql[endKeyword] == '_')
+        if (!beforeIsWord && !afterIsWord &&
+            sql.regionMatches(index, target, 0, target.length, ignoreCase = true)
+        ) {
+            var openIndex = endKeyword
+            while (openIndex < sql.length && sql[openIndex].isWhitespace()) openIndex++
+            if (openIndex < sql.length && sql[openIndex] == '(') {
+                var depth = 1
+                var cursor = openIndex + 1
+                while (cursor < sql.length && depth > 0) {
+                    val token = sql[cursor]
+                    if (token == '\\'' || token == '"' || token == '`' || token == '[' ||
+                        sql.startsWith("--", cursor) || sql.startsWith("/*", cursor)
+                    ) {
+                        cursor = skipQuotedOrComment(sql, cursor)
+                        continue
+                    }
+                    when (token) {
+                        '(' -> depth++
+                        ')' -> depth--
+                    }
+                    cursor++
+                }
+                check(depth == 0) { "Unbalanced $keyword clause in SQLite DDL." }
+                values += normalizeSqlExpression(sql.substring(openIndex + 1, cursor - 1))
+                index = cursor
+                continue
+            }
+        }
+        index++
     }
     return values
+}
+
+private fun skipQuotedOrComment(sql: String, start: Int): Int {
+    if (sql.startsWith("--", start)) {
+        val newline = sql.indexOf('\\n', start + 2)
+        return if (newline < 0) sql.length else newline + 1
+    }
+    if (sql.startsWith("/*", start)) {
+        val close = sql.indexOf("*/", start + 2)
+        return if (close < 0) sql.length else close + 2
+    }
+    val opening = sql[start]
+    val closing = if (opening == '[') ']' else opening
+    var index = start + 1
+    while (index < sql.length) {
+        if (sql[index] == closing) {
+            if (opening != '[' && index + 1 < sql.length && sql[index + 1] == closing) {
+                index += 2
+                continue
+            }
+            return index + 1
+        }
+        index++
+    }
+    return index
 }
