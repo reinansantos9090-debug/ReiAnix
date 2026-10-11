@@ -1,12 +1,12 @@
 package com.reiflix.reiflix_local.data.sqlite
 
-import com.reiflix.reiflix_local.domain.media.AnimeRecordId
-import com.reiflix.reiflix_local.domain.media.EpisodeRecordId
-import com.reiflix.reiflix_local.domain.media.LocalMediaIdentity
-import com.reiflix.reiflix_local.domain.media.MediaFilenameParser
-import com.reiflix.reiflix_local.domain.media.MediaIdentificationConfidence
-import com.reiflix.reiflix_local.domain.media.MediaTitleNormalizer
-import com.reiflix.reiflix_local.domain.media.ParsedMediaKind
+import com.reiflix.reiflix_local.data.media.AnimeRecordId
+import com.reiflix.reiflix_local.data.media.EpisodeRecordId
+import com.reiflix.reiflix_local.data.media.LocalMediaIdentity
+import com.reiflix.reiflix_local.data.media.MediaFilenameParser
+import com.reiflix.reiflix_local.data.media.MediaIdentificationConfidence
+import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+import com.reiflix.reiflix_local.data.media.ParsedMediaKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
