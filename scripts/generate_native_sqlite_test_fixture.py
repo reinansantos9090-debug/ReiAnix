@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import sys
 import tempfile
@@ -149,7 +150,7 @@ def main() -> int:
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
         f"Generated isolated schema fixture v{payload['schema_version']}: "
-        f"{len(payload['tables'])} tables and {len(payload['indexes'])} explicit indexes -> {output}"
+        f"{len(payload['tables'])} tables and {len(payload['indexes'])} index entries -> {output}"
     )
     return 0
 
