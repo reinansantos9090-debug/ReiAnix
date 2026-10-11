@@ -322,7 +322,8 @@ class ReiAnixSqliteDatabase(context: Context) {
         // signature, not sqlite_autoindex_* names (whose suffix is implementation detail).
         val expectedConstraintIndexes = expectedIndexes.filter { it.origin != "c" }
             .map { it.semanticSignature() }.sorted()
-        val actualConstraintIndexes = indexSnapshots.values.filter { it.origin != "c" }
+        val actualConstraintIndexes = indexSnapshots.values
+            .filter { it.origin != "c" && it.table in expectedTables }
             .map { it.semanticSignature() }.sorted()
         if (expectedConstraintIndexes != actualConstraintIndexes) {
             incompatibilities += "SQLite UNIQUE/PRIMARY KEY index constraints differ; expected=$expectedConstraintIndexes actual=$actualConstraintIndexes"
