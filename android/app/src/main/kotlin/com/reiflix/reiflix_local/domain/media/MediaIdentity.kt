@@ -75,7 +75,7 @@ object LocalMediaIdentity {
         if (!parsed.scheme.equals("content", ignoreCase = true)) return null
         val normalizedPath = cleanRelative(path)
         if (normalizedPath.isEmpty()) return null
-        return "uri:${authority.lowercase(Locale.ROOT)}:$normalizedPath"
+        return "uri:${caseFold(authority)}:$normalizedPath"
     }
 
     /** File size, source kind and modification time are discovery metadata, not stable identity. */
@@ -93,7 +93,7 @@ object LocalMediaIdentity {
     }
 
     private fun normalizeVolume(volume: String?): String {
-        val value = volume.orEmpty().trim().lowercase(Locale.ROOT)
+        val value = caseFold(volume.orEmpty().trim())
         return if (value.isEmpty() || value in primaryAliases) "primary" else value
     }
 
@@ -117,8 +117,11 @@ object LocalMediaIdentity {
                 else -> parts.addLast(part)
             }
         }
-        return parts.joinToString("/").lowercase(Locale.ROOT)
+        return caseFold(parts.joinToString("/"))
     }
+
+    private fun caseFold(value: String): String =
+        value.lowercase(Locale.ROOT).replace("ß", "ss").replace("ς", "σ")
 
     private fun parseUri(value: String): URI? = runCatching { URI(value.trim()) }.getOrNull()
     private fun decodedPath(uri: URI): String? = uri.rawPath?.let(::decodePercent)
