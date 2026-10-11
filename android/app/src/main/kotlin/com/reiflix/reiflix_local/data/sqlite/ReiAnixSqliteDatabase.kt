@@ -204,6 +204,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             val present = indexSnapshots.values.any { index ->
                 index.table == expected.table &&
                     index.unique &&
+                    !index.partial &&
                     index.columns.map { it.name.orEmpty() } == expected.columns
             }
             if (!present) {
