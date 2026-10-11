@@ -104,6 +104,54 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun runtimeSchemaMetadataMatchesEveryColumnAndIndexInCanonicalFixture() = runBlocking {
+        createCanonicalFixture()
+        val fixture = loadCanonicalSchemaFixture()
+        val snapshot = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+
+        val canonicalTables = fixture.getJSONArray("tables")
+        for (tableIndex in 0 until canonicalTables.length()) {
+            val table = canonicalTables.getString(tableIndex)
+            val canonicalColumns = fixture.getJSONObject("columns").getJSONArray(table)
+            val actualColumns = snapshot.columnSnapshots[table].orEmpty()
+            assertEquals("Column count differs for $table", canonicalColumns.length(), actualColumns.size)
+            for (columnIndex in 0 until canonicalColumns.length()) {
+                val expected = canonicalColumns.getJSONObject(columnIndex)
+                val actual = actualColumns[expected.getString("name")]
+                assertNotNull("$table.${expected.getString("name")} missing from PRAGMA table_info", actual)
+                assertEquals(table + "." + expected.getString("name") + " type", expected.getString("type").uppercase(), actual!!.declaredType)
+                assertEquals(table + "." + expected.getString("name") + " nullability", expected.getBoolean("not_null"), actual.notNull)
+                assertEquals(table + "." + expected.getString("name") + " primary key", expected.getInt("primary_key_position"), actual.primaryKeyPosition)
+            }
+        }
+
+        val canonicalIndexes = fixture.getJSONArray("indexes")
+        for (index in 0 until canonicalIndexes.length()) {
+            val expected = canonicalIndexes.getJSONObject(index)
+            val actual = snapshot.indexSnapshots[expected.getString("name")]
+            assertNotNull("Index ${expected.getString("name")} missing from SQLite metadata", actual)
+            assertEquals(expected.getString("table"), actual!!.table)
+            assertEquals(expected.getBoolean("unique"), actual.unique)
+            assertEquals(expected.getBoolean("partial"), actual.partial)
+            val expectedColumns = expected.getJSONArray("columns")
+            val expectedNames = (0 until expectedColumns.length()).map { expectedColumns.getJSONObject(it).getString("name") }
+            assertEquals(expectedNames, actual.columns.map { it.name.orEmpty() })
+        }
+
+        val canonicalForeignKeys = fixture.getJSONObject("foreign_keys")
+        for (table in canonicalTables) {
+            val tableName = table as String
+            val expectedKeys = canonicalForeignKeys.getJSONArray(tableName)
+            assertEquals(
+                "Foreign key count differs for $tableName",
+                expectedKeys.length(),
+                snapshot.foreignKeys[tableName].orEmpty().size,
+            )
+        }
+        assertTrue(snapshot.supportsCurrentContract)
+    }
+
+    @Test
     fun playbackUpdatePersistsAcrossConnectionsAndRollbackRestoresPreviousProgress() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
