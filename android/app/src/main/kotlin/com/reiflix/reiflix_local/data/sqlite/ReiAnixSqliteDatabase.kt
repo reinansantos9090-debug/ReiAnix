@@ -318,6 +318,16 @@ class ReiAnixSqliteDatabase(context: Context) {
             incompatibilities.addAll(issues)
         }
 
+        val expectedExplicitIndexNames = expectedExplicitIndexes.map { it.name }.toSet()
+        val actualExplicitIndexNames = indexSnapshots.values
+            .filter { it.origin == "c" && it.table in expectedTables }
+            .map { it.name }
+            .toSet()
+        val unexpectedExplicitIndexes = actualExplicitIndexNames - expectedExplicitIndexNames
+        if (unexpectedExplicitIndexes.isNotEmpty()) {
+            incompatibilities += "unexpected indexes on canonical tables: ${unexpectedExplicitIndexes.sorted().joinToString()}"
+        }
+
         // SQLite-generated UNIQUE/PRIMARY KEY indexes are compared by semantic
         // signature, not sqlite_autoindex_* names (whose suffix is implementation detail).
         val expectedConstraintIndexes = expectedIndexes.filter { it.origin != "c" }
