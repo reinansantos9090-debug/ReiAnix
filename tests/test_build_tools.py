@@ -35,27 +35,27 @@ DESCRIPTORS = (
 
 
 class AndroidHostVerificationTests(unittest.TestCase):
-    def _apk(self, descriptors):
+    def _apk(self, descriptors, include_sqlite_contract=True):
         path = Path(self.tmp.name) / "app.apk"
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("AndroidManifest.xml", b"manifest")
             archive.writestr("classes.dex", b"dex\n" + b"\n".join(descriptors))
-            # The release verifier now requires the generated SQLite asset as
-            # well as the native host classes, so keep this synthetic APK valid
-            # up to the specific condition each test is exercising.
-            archive.writestr(
-                "assets/native-sqlite-contract-v29.json",
-                json.dumps({
-                    "schema_version": 29,
-                    "sqlite_user_version": 0,
-                    "tables": [],
-                    "columns": {},
-                    "table_contract": {},
-                    "indexes": [],
-                    "foreign_keys": {},
-                    "triggers": [],
-                }),
-            )
+            if include_sqlite_contract:
+                # Keep the synthetic APK valid up to the specific condition
+                # each host-verifier test is exercising.
+                archive.writestr(
+                    "assets/native-sqlite-contract-v29.json",
+                    json.dumps({
+                        "schema_version": 29,
+                        "sqlite_user_version": 0,
+                        "tables": [],
+                        "columns": {},
+                        "table_contract": {},
+                        "indexes": [],
+                        "foreign_keys": {},
+                        "triggers": [],
+                    }),
+                )
         return path
 
     def setUp(self):
@@ -101,6 +101,14 @@ class AndroidHostVerificationTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("COMPOSE_COMPILED_CLASSES=PASS", result.stdout)
             self.assertIn("COMPOSE_APK_DEX=PASS", result.stdout)
+
+    def test_rejects_apk_without_sqlite_contract_asset(self):
+        result = subprocess.run(
+            [sys.executable, str(VERIFY), str(self._apk(DESCRIPTORS, include_sqlite_contract=False))],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not contain the generated SQLite contract asset", result.stderr)
 
     def test_rejects_stock_apk_without_native_host_classes(self):
         result = subprocess.run([sys.executable, str(VERIFY), str(self._apk(DESCRIPTORS[:1]))],
