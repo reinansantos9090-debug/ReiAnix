@@ -94,7 +94,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             while (cursor.moveToNext()) {
                 val name = cursor.getString(0)
                 val table = cursor.getString(1)
-                val sql = cursor.optionalString(2)
+                val sql = if (cursor.isNull(2)) null else cursor.getString(2)
                 indexes += name
                 val indexListEntry = database.rawQuery("PRAGMA index_list(\"$table\")", null).use { listCursor ->
                     var found: ReiAnixSqliteIndexListEntry? = null
