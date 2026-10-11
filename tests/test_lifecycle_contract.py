@@ -70,6 +70,7 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("native_poll_task = [None]", source)
         self.assertIn("def _handle_page_disconnect", source)
         self.assertIn("task.cancel()", source)
+        self.assertIn("native_poll_task[0] = None", source)
         self.assertIn("while ui_alive[0]:", source)
         self.assertIn("native_poll_task[0] = page.run_task(poll_native_bridge)", source)
         self.assertEqual(
@@ -77,6 +78,68 @@ class LifecycleContractTests(unittest.TestCase):
             1,
             "mailbox poller must be started through the tracked task handle exactly once",
         )
+
+    def test_python_mailbox_poller_restarts_on_reconnect_and_app_resume(self):
+        source = MAIN_PY.read_text(encoding="utf-8")
+        self.assertIn("def ensure_native_poll_task(reason=\"check\"):", source)
+        self.assertIn("ui_alive[0] = True", source)
+        self.assertIn("page.on_connect = _handle_page_connect", source)
+        self.assertIn("page.on_app_lifecycle_state_change = _handle_app_lifecycle_state_change", source)
+        self.assertIn("ensure_native_poll_task(\"add_folder\")", source)
+
+    def test_normalize_app_lifecycle_state_handles_enums_events_and_strings(self):
+        import flet as ft
+        from main import normalize_app_lifecycle_state
+
+        self.assertEqual(normalize_app_lifecycle_state(ft.AppLifecycleState.RESUME), "resume")
+        self.assertEqual(normalize_app_lifecycle_state(ft.AppLifecycleState.SHOW), "show")
+        self.assertEqual(normalize_app_lifecycle_state("AppLifecycleState.RESUME"), "resume")
+        self.assertEqual(normalize_app_lifecycle_state("RESUME"), "resume")
+        self.assertEqual(normalize_app_lifecycle_state("resume"), "resume")
+
+        evt = ft.AppLifecycleStateChangeEvent(name="change", control=None, state=ft.AppLifecycleState.RESUME)
+        self.assertEqual(normalize_app_lifecycle_state(evt), "resume")
+
+        evt_str = ft.AppLifecycleStateChangeEvent(name="change", control=None, state="resume")
+        self.assertEqual(normalize_app_lifecycle_state(evt_str), "resume")
+
+    def test_ensure_native_poll_task_idempotency_and_no_duplicates(self):
+        from unittest.mock import MagicMock
+
+        page = MagicMock()
+        ui_alive = [False]
+        native_poll_task = [None]
+
+        def poll_native_bridge():
+            pass
+
+        def ensure_native_poll_task(reason="check"):
+            ui_alive[0] = True
+            task = native_poll_task[0]
+            if task is None or task.done():
+                native_poll_task[0] = page.run_task(poll_native_bridge)
+
+        running_task = MagicMock()
+        running_task.done.return_value = False
+        page.run_task.return_value = running_task
+
+        ensure_native_poll_task("call1")
+        self.assertTrue(ui_alive[0])
+        self.assertEqual(page.run_task.call_count, 1)
+        self.assertEqual(native_poll_task[0], running_task)
+
+        ensure_native_poll_task("call2")
+        self.assertEqual(page.run_task.call_count, 1)
+        self.assertEqual(native_poll_task[0], running_task)
+
+        running_task.done.return_value = True
+        new_task = MagicMock()
+        new_task.done.return_value = False
+        page.run_task.return_value = new_task
+
+        ensure_native_poll_task("call3")
+        self.assertEqual(page.run_task.call_count, 2)
+        self.assertEqual(native_poll_task[0], new_task)
 
     def test_python_page_disconnect_cancels_thumbnail_background_work(self):
         source = MAIN_PY.read_text(encoding="utf-8")

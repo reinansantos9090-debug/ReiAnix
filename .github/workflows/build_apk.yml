@@ -548,12 +548,11 @@ jobs:
             gh release create "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/LEIA-ANTES-DE-INSTALAR.txt               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               "${release_args[@]}"               --target "$GITHUB_SHA"
           fi
 
-      # Keep a short-lived Actions artifact for every successful push to main,
-      # so the APK and standalone ZIP are downloadable directly from the run.
-      # One-day retention prevents repeated push builds from accumulating in
-      # the small Actions artifact storage pool.
+      # Publish short-lived APK/ZIP artifacts for pull_request builds and pushes to main.
+      # One-day retention limits storage use because Actions artifacts share a
+      # small pooled quota. Manual workflow_dispatch builds publish to the rolling Release.
       - name: Upload APK to Actions run
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}
@@ -565,7 +564,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload APK ZIP to Actions run
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
@@ -573,6 +572,5 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # Keep Actions artifact publication disabled for push/PR builds. The
-      # rolling release above is the supported download channel for manual
-      # APK builds, avoiding repeated consumption of the Actions artifact quota.
+      # Pull request and main-branch builds publish short-lived Actions artifacts.
+      # Manual workflow_dispatch builds also publish to the rolling GitHub Release.
