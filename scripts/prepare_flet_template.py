@@ -59,6 +59,13 @@ if not ids_source.is_file():
     raise RuntimeError(f"Missing ReiAnix resource ID contract: {ids_source}")
 shutil.copy2(ids_source, values / "reianix_ids.xml")
 
+# Runtime schema contract assets are generated from the canonical LibraryStore
+# immediately before rendering. Copy them into the actual APK assets so runtime
+# validation and JVM tests consume the same generated contract.
+assets_source = overlay / "src" / "main" / "assets"
+if assets_source.is_dir():
+    shutil.copytree(assets_source, app / "src" / "main" / "assets", dirs_exist_ok=True)
+
 # Native PlayerView XML belongs to the rendered Android resource tree. Copy the
 # overlay resource subtree instead of relying on the source project existing
 # beside the generated Flet module.
@@ -527,6 +534,7 @@ def main() -> int:
         source / "src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt",
         source / "src/main/res/values/styles.xml",
         source / "src/main/res/layout/native_player_view.xml",
+        source / "src/main/assets/native-sqlite-contract-v29.json",
     ]
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
