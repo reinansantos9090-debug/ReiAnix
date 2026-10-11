@@ -246,6 +246,53 @@ def saf_source_identity(value: str | None) -> str | None:
     return f"saf:{parsed.netloc.casefold()}:{document_id}"
 
 
+def saf_folder_identity(folder: Any) -> str | None:
+    """Resolve configured SAF folder identity from its URI before cached metadata.
+
+    The stored identity is derived metadata and can be stale after an Android
+    URI is re-encoded or migrated. A parseable SAF folder URI is authoritative.
+    """
+    if not isinstance(folder, dict):
+        return None
+    reference = str(folder.get("path") or "").strip()
+    identity = saf_source_identity(reference)
+    if identity:
+        return identity
+    stored = str(folder.get("saf_identity") or "").strip()
+    return stored or None
+
+
+def saf_inventory_by_identity(trees: Any) -> dict[str, dict[str, Any]]:
+    """Collapse native SAF inventory rows by canonical tree identity.
+
+    Providers may report different URI spellings for the same tree. When that
+    happens, prefer a usable completed result over a transient/error duplicate
+    so the same folder is not incorrectly treated as revoked or unavailable.
+    """
+    by_identity: dict[str, dict[str, Any]] = {}
+    priority = {
+        "COMPLETED": 4,
+        "EMPTY_COMPLETE": 4,
+        "UNAVAILABLE": 3,
+        "FAILED": 3,
+        "PARTIAL": 3,
+        "REVOKED": 2,
+    }
+    for item in trees or ():
+        if not isinstance(item, dict):
+            continue
+        uri = str(item.get("treeUri") or "").strip()
+        identity = saf_source_identity(uri) or str(item.get("identity") or "").strip()
+        if not uri or not identity:
+            continue
+        previous = by_identity.get(identity)
+        current_rank = priority.get(str(item.get("status") or "").strip().upper(), 1)
+        previous_rank = priority.get(str((previous or {}).get("status") or "").strip().upper(), 1)
+        if previous is None or current_rank > previous_rank:
+            by_identity[identity] = dict(item)
+    return by_identity
+
+
 def dedupe_saf_roots(values) -> tuple[str, ...]:
     """Normalize and de-duplicate SAF tree URIs by provider/document identity."""
     by_identity: dict[str, str] = {}
@@ -295,10 +342,10 @@ def configured_library_saf_roots(
         if str(folder.get("authorization") or "").strip().casefold() != "granted":
             continue
         reference = str(folder.get("path") or "").strip()
-        identity = (
-            str(folder.get("saf_identity") or "").strip()
-            or saf_source_identity(reference)
-        )
+        # Never let stale cached metadata authorize a different persisted tree.
+        # The configured URI is the durable source reference; cached identity is
+        # only a fallback for legacy records whose reference cannot be parsed.
+        identity = saf_folder_identity(folder)
         if identity:
             configured_ids.add(identity)
 
