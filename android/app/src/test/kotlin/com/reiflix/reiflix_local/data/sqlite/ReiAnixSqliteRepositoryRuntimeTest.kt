@@ -67,6 +67,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val repository = ReiAnixSqliteLibraryRepository(context)
 
         val schemaBefore = repository.inspectSchema()
+        println("Prompt 4 SQLite fixture incompatibilities: ${schemaBefore.incompatibilities}")
         assertEquals(29, schemaBefore.schemaVersion)
         assertTrue(schemaBefore.missingRequiredTables.isEmpty())
         assertTrue(schemaBefore.missingRequiredColumns.isEmpty())

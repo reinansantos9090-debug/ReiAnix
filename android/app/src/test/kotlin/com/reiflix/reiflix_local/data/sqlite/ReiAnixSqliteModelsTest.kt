@@ -35,9 +35,10 @@ class ReiAnixSqliteModelsTest {
         assertNull(patch.metadataFetchedAt)
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun metadataPatchRejectsBlankTitle() {
-        ReiAnixAnimeMetadataPatch(animeId = 17L, title = "   ")
+    @Test
+    fun metadataPatchPreservesBlankTitleForRepositoryToIgnore() {
+        val patch = ReiAnixAnimeMetadataPatch(animeId = 17L, title = "   ")
+        assertEquals("   ", patch.title)
     }
 
     @Test(expected = IllegalArgumentException::class)
