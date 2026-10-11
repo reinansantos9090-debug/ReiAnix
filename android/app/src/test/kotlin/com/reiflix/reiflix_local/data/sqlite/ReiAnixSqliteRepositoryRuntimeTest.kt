@@ -193,6 +193,89 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun applicationRepositoryRejectsAnIncompatibleSchemaBeforeServingRows() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("ALTER TABLE episodes RENAME COLUMN file_name TO old_file_name")
+        }
+        try {
+            ReiAnixSqliteLibraryRepository(context).getAnime(1L)
+            fail("A repository read must reject an incompatible schema, not only expose a diagnostic snapshot.")
+        } catch (expected: ReiAnixSqliteSchemaMismatchException) {
+            assertTrue(expected.incompatibilities.any {
+                it.contains("episodes.file_name") || it.contains("unexpected columns in episodes")
+            })
+        }
+    }
+
+    @Test
+    fun additiveTablesOutsideTheCanonicalNamespaceDoNotInvalidateTheLibraryContract() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("CREATE TABLE extension_cache (key TEXT PRIMARY KEY, value TEXT)")
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertTrue(schema.tables.contains("extension_cache"))
+        assertTrue(schema.supportsCurrentContract)
+    }
+
+    @Test
+    fun foreignKeyDataViolationsAreReportedWithoutRepairingRows() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.setForeignKeyConstraintsEnabled(false)
+            db.execSQL(
+                "INSERT INTO episodes(id, anime_id, path, file_name, season) " +
+                    "VALUES (99, 999, '/orphan/episode.mkv', 'episode.mkv', 1)",
+            )
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.foreignKeyViolations.isNotEmpty())
+        assertEquals(1, ReiAnixSqliteLibraryRepository(context).getEpisode(99L)?.id?.toInt())
+    }
+
+    @Test
+    fun unexpectedTriggerIsRejectedBecauseItCanChangeCatalogWrites() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "CREATE TRIGGER injected_contract_trigger AFTER INSERT ON anime " +
+                    "BEGIN UPDATE anime SET favorite = 1 WHERE id = NEW.id; END",
+            )
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("trigger names differ") })
+    }
+
+    @Test
+    fun checkConstraintNotPresentInCanonicalContractIsDetected() = runBlocking {
+        createCanonicalFixture { schema ->
+            replaceCreateTableStatement(schema, "folders") { sql ->
+                sql.replace("saf_identity TEXT", "saf_identity TEXT CHECK (length(saf_identity) >= 0)")
+            }
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("folders CHECK constraints") })
+    }
+
+    @Test
+    fun generatedColumnIsDetectedByTableXinfoAndRejectedAtTheRuntimeBoundary() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "ALTER TABLE episodes ADD COLUMN generated_label TEXT " +
+                    "GENERATED ALWAYS AS (path || '.generated') VIRTUAL",
+            )
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("unexpected columns in episodes") })
+    }
+
+    @Test
     fun playbackUpdatePersistsAcrossConnectionsAndRollbackRestoresPreviousProgress() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
