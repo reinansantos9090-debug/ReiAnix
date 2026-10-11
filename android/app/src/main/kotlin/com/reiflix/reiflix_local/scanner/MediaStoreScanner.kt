@@ -157,6 +157,25 @@ object MediaStoreScanner {
                 if(NativeIndex.canReuseMediaStoreVolume(context,volumeName,access,version,generation)){
                     val cachedGeneration=NativeIndex.cachedGeneration(context,scopeKey)
                     val cachedCount=NativeIndex.forEachCachedBatch(context,scopeKey,NativeBatch.DEFAULT_SIZE) { batch,batchNumber ->
+                        // Older physical-index generations predate parsedMedia/availability facts.
+                        // Enrich the transient batch before publication without rewriting the
+                        // cached snapshot or treating a cache hit as catalogue reconciliation.
+                        for (index in 0 until batch.length()) {
+                            val document = batch.optJSONObject(index) ?: continue
+                            val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
+                            val sizeBytes = if (document.has("size") && !document.isNull("size")) document.optLong("size") else null
+                            val modifiedAtMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt") else null
+                            DiscoveredMediaMetadata.attach(
+                                document = document,
+                                fileName = name,
+                                relativePath = document.optString("relativePath").ifBlank { name },
+                                source = "mediastore",
+                                mimeType = document.optString("mimeType").takeIf { it.isNotBlank() },
+                                sizeBytes = sizeBytes,
+                                modifiedAtMillis = modifiedAtMillis,
+                                providerId = document.optString("mediaId").takeIf { it.isNotBlank() },
+                            )
+                        }
                         onBatch?.invoke(JSONObject()
                             .put("volumeId",volumeName)
                             .put("batchId","reused:" + NativeIndex.generationId(SOURCE,scopeKey,cachedGeneration) + ":" + batchNumber)
