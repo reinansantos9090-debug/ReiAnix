@@ -82,9 +82,9 @@ class ReiAnixSqliteLibraryRepository(
                     )
                 }
                 val rawManualFields = cursor.optionalString("metadata_manual_fields") ?: "[]"
-                val manualFields = try {
+                val manualFields: Set<String> = try {
                     val parsed = JSONArray(rawManualFields)
-                    buildSet {
+                    buildSet<String> {
                         for (index in 0 until parsed.length()) {
                             val field = parsed.get(index)
                             if (field !is String) {
@@ -92,7 +92,7 @@ class ReiAnixSqliteLibraryRepository(
                                     "Stored manual metadata ownership contains a non-string field.",
                                 )
                             }
-                            add(field)
+                            add(field as String)
                         }
                     }
                 } catch (error: JSONException) {
