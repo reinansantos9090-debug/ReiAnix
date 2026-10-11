@@ -14,7 +14,7 @@
 O pacote `data/sqlite` contém:
 
 - `ReiAnixSqliteDatabase`: abre o arquivo existente em modo somente leitura ou leitura/escrita, habilita chaves estrangeiras, aplica `busy_timeout`, oferece transações e inspeciona tabelas, versão registrada e `PRAGMA quick_check`. Não cria diretórios/bancos, tabelas, índices ou migrações e não substitui um arquivo ausente/corrompido.
-- `ReiAnixSqliteLibraryRepository`: leitura paginada de anime, consultas por IDs persistidos, episódios por anime, episódios recentes, pastas e artwork; atualização transacional de progresso no registro existente.
+- `ReiAnixSqliteLibraryRepository`: leitura paginada de anime, consultas por IDs persistidos, episódios por anime, episódios recentes, pastas e artwork; atualização transacional de progresso; patch de metadados que preserva campos em `metadata_manual_fields` e não altera favoritos, pins, etiquetas, notas, identidade nem bookkeeping de origem.
 - `ReiAnixSqliteSettingsRepository`: leitura, gravação transacional e remoção explícita de preferências na tabela existente.
 - `ReiAnixSqliteModels`: registros Kotlin para as colunas existentes. Valores nulos e colunas JSON/textuais são mantidos sem normalização destrutiva. IDs de anime, episódio e mídia não são gerados novamente.
 

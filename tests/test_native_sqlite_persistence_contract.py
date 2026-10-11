@@ -58,6 +58,9 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn('database.transaction', method)
         self.assertIn('"metadata_updated_at"', method)
         self.assertIn('SELECT * FROM anime WHERE id = ?', method)
+        self.assertIn('optionalString("metadata_manual_fields")', method)
+        self.assertIn('if ("title" !in manualFields)', method)
+        self.assertNotIn('values.put("metadata_source"', method)
         for user_owned_column in ('"favorite"', '"is_pinned"', '"personal_note"', '"user_tags"'):
             self.assertNotIn(user_owned_column, method)
 
