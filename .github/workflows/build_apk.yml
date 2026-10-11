@@ -299,23 +299,6 @@ jobs:
           # most of the job timeout before reporting the real error.
           flet build "${build_args[@]}"
 
-      - name: Execute Kotlin JVM unit tests (Robolectric, no emulator)
-        shell: bash
-        env:
-          SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/flutter/site-packages
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true"
-        run: |
-          set -euo pipefail
-          gradle_root="$GITHUB_WORKSPACE/build/flutter/android"
-          test -x "$gradle_root/gradlew"
-          "$gradle_root/gradlew" \
-            --project-dir "$gradle_root" \
-            :app:testDebugUnitTest \
-            --no-daemon \
-            --max-workers=1 \
-            --console=plain \
-            --stacktrace
-
       - name: Preserve build identity evidence
         shell: bash
         run: |

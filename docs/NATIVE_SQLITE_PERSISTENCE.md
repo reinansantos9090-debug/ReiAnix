@@ -30,15 +30,17 @@ O progresso e a data de reprodução estão persistidos nas colunas da tabela `e
 
 ## Testes
 
-- `ReiAnixSqliteModelsTest` valida a validação pura dos dados de progresso sem depender de emulador.
-- `test_native_sqlite_persistence_contract.py` verifica os contratos de caminho, esquema, transação, consultas parametrizadas e ausência de criação destrutiva.
-- Os testes acima não substituem a validação Android integrada do banco no dispositivo. Não foram adicionados testes instrumentados ou workflows de emulador.
+- `ReiAnixSqliteModelsTest` valida os modelos e a validação de progresso sem emulador.
+- `test_native_sqlite_persistence_contract.py` verifica os contratos estáticos de caminho, esquema, transação, consultas parametrizadas e ausência de criação destrutiva.
+- `ReiAnixSqliteRepositoryRuntimeTest` executa os repositórios contra o SQLite Android via Robolectric no JVM, sem dispositivos nem emuladores. O fixture usa o caminho canônico e as colunas consultadas pelo repositório, com marcador de versão 29; não é uma cópia binária do banco de um usuário.
+- `.github/workflows/kotlin_jvm_tests.yml` permanece separado do workflow rápido de APK e executa os testes tanto em pull requests quanto por acionamento manual. O build de APK não roda `:app:testDebugUnitTest`, preservando a separação de duração/escopo existente.
+- A fixture de contrato runtime complementa, mas não substitui, a regressão Python que valida as migrações e o esquema canônico produzido por `LibraryStore`. Não foram adicionados testes instrumentados nem jobs de emulador.
 
 ## Pendências explícitas
 
 - Migrar consumidores individuais da mailbox/projeções para estes repositórios só depois de verificar equivalência das regras e remover o escritor Python correspondente para cada operação.
 - Migrar validação de configuração, ingestão/reconciliação, recuperação/backup e eventos completos do player exige trabalho de domínio e paridade fora do escopo desta camada.
-- A execução de testes e build ainda precisa ser confirmada por um run CI concluído; a existência destes arquivos não é evidência de build aprovado.
+- O resultado definitivo dos testes JVM e do build deve ser registrado somente após a execução CI no SHA final terminar com estado `completed/success`; a existência dos arquivos não é evidência de aprovação.
 
 
 ## Runtime contract tests

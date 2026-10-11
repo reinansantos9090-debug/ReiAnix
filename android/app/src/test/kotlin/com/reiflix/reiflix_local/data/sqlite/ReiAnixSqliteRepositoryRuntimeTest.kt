@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.data.sqlite
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -32,6 +33,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
     private val databaseFile: File
         get() = File(File(context.filesDir, "data"), ReiAnixSqliteDatabase.DATABASE_FILE_NAME)
+
+    @Before
+    fun resetFixture() {
+        cleanupFixture()
+    }
 
     @After
     fun cleanupFixture() {
