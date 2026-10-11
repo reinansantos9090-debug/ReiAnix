@@ -55,6 +55,64 @@ class ReiAnixSqliteLibraryRepository(
             }
         }
 
+
+    /**
+     * Updates supplied metadata for an existing anime in one transaction.
+     * Null patch members are no-ops. Stable IDs and user-owned fields remain untouched.
+     */
+    suspend fun updateAnimeMetadata(
+        patch: ReiAnixAnimeMetadataPatch,
+    ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
+        database.transaction { connection ->
+            val values = ContentValues()
+            patch.title?.let { values.put("title", it.trim()) }
+            patch.anilistId?.let { values.put("anilist_id", it) }
+            patch.romaji?.let { values.put("romaji", it) }
+            patch.english?.let { values.put("english", it) }
+            patch.nativeTitle?.let { values.put("native", it) }
+            patch.aliasesJson?.let { values.put("aliases", it) }
+            patch.description?.let { values.put("description", it) }
+            patch.coverUrl?.let { values.put("cover_url", it) }
+            patch.coverCache?.let { values.put("cover_cache", it) }
+            patch.bannerUrl?.let { values.put("banner_url", it) }
+            patch.genresJson?.let { values.put("genres", it) }
+            patch.year?.let { values.put("year", it) }
+            patch.season?.let { values.put("season", it) }
+            patch.status?.let { values.put("status", it) }
+            patch.episodesCount?.let { values.put("episodes_count", it) }
+            patch.duration?.let { values.put("duration", it) }
+            patch.score?.let { values.put("score", it) }
+            patch.format?.let { values.put("format", it) }
+            patch.studio?.let { values.put("studio", it) }
+            patch.metadataFetchedAt?.let { values.put("metadata_fetched_at", it) }
+            patch.metadataSource?.let { values.put("metadata_source", it) }
+            patch.metadataConfidence?.let { values.put("metadata_confidence", it) }
+            patch.metadataStatus?.let { values.put("metadata_status", it) }
+            values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
+
+            val updated = connection.update(
+                "anime",
+                values,
+                "id = ?",
+                arrayOf(patch.animeId.toString()),
+            )
+            if (updated == 0) {
+                throw NoSuchElementException(
+                    "Cannot update anime metadata: anime ID does not exist.",
+                )
+            }
+            connection.rawQuery(
+                "SELECT * FROM anime WHERE id = ? LIMIT 1",
+                arrayOf(patch.animeId.toString()),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.toAnimeRecord()
+                else throw NoSuchElementException(
+                    "Anime disappeared while updating persisted metadata.",
+                )
+            }
+        }
+    }
+
     suspend fun getEpisode(id: Long): ReiAnixEpisodeRecord? = withContext(Dispatchers.IO) {
         require(id > 0L) { "Episode ID must be a positive persisted ID." }
         database.read { connection ->

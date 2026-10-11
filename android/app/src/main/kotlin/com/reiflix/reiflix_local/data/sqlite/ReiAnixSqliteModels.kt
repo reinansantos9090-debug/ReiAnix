@@ -126,6 +126,59 @@ data class ReiAnixArtworkRecord(
 )
 
 /** Values written by the native player use the same units as episodes.progress/duration. */
+
+/**
+ * Patch of AniList/catalog metadata for an already-persisted anime.
+ *
+ * Null fields are intentionally "not supplied" and therefore leave existing
+ * values unchanged. User-owned fields (favorite, tags, pin, personal note,
+ * lookup_title, added_at and manual-override bookkeeping) are never overwritten.
+ */
+data class ReiAnixAnimeMetadataPatch(
+    val animeId: Long,
+    val title: String? = null,
+    val anilistId: Long? = null,
+    val romaji: String? = null,
+    val english: String? = null,
+    val nativeTitle: String? = null,
+    val aliasesJson: String? = null,
+    val description: String? = null,
+    val coverUrl: String? = null,
+    val coverCache: String? = null,
+    val bannerUrl: String? = null,
+    val genresJson: String? = null,
+    val year: Int? = null,
+    val season: String? = null,
+    val status: String? = null,
+    val episodesCount: Int? = null,
+    val duration: Int? = null,
+    val score: Int? = null,
+    val format: String? = null,
+    val studio: String? = null,
+    val metadataFetchedAt: Double? = null,
+    val metadataSource: String? = null,
+    val metadataConfidence: String? = null,
+    val metadataStatus: String? = null,
+) {
+    init {
+        require(animeId > 0L) { "animeId must be a positive persisted ID." }
+        require(title == null || title.isNotBlank()) { "A supplied title must not be blank." }
+        require(anilistId == null || anilistId > 0L) { "A supplied AniList ID must be positive." }
+        require(metadataFetchedAt == null || (metadataFetchedAt.isFinite() && metadataFetchedAt >= 0.0)) {
+            "metadataFetchedAt must be finite and non-negative."
+        }
+        require(
+            title != null || anilistId != null || romaji != null || english != null ||
+                nativeTitle != null || aliasesJson != null || description != null ||
+                coverUrl != null || coverCache != null || bannerUrl != null ||
+                genresJson != null || year != null || season != null || status != null ||
+                episodesCount != null || duration != null || score != null || format != null ||
+                studio != null || metadataFetchedAt != null || metadataSource != null ||
+                metadataConfidence != null || metadataStatus != null,
+        ) { "The metadata patch must supply at least one field." }
+    }
+}
+
 data class ReiAnixPlaybackProgressUpdate(
     val episodeId: Long,
     val progress: Double,
