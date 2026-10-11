@@ -132,6 +132,9 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
 
         self.assertEqual(29, fixture["schema_version"])
+        # LibraryStore records schema_migrations and intentionally leaves SQLite's
+        # PRAGMA user_version at its default zero; these are separate contracts.
+        self.assertEqual(0, fixture["sqlite_user_version"])
         expected_tables = {
             "folders", "anime", "episodes", "episode_observations", "artwork",
             "associations", "pending_matches", "account", "preferences", "genres",
@@ -145,6 +148,27 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("idx_episodes_media_identity", index_sql)
         self.assertIn("WHERE media_identity IS NOT NULL", index_sql["idx_episodes_media_identity"])
         self.assertTrue(any("REFERENCES anime(id) ON DELETE CASCADE" in sql for sql in fixture["statements"]))
+
+        structured_indexes = {index["name"]: index for index in fixture["indexes"]}
+        unique_identity = structured_indexes["idx_episodes_media_identity"]
+        self.assertEqual("episodes", unique_identity["table"])
+        self.assertTrue(unique_identity["unique"])
+        self.assertTrue(unique_identity["partial"])
+        self.assertEqual(["media_identity"], [column["name"] for column in unique_identity["columns"]])
+        self.assertEqual("media_identity IS NOT NULL", unique_identity["predicate"])
+        compound_index = structured_indexes["idx_episodes_anime_season_number_abs"]
+        self.assertEqual(
+            ["anime_id", "season", "number", "absolute_number", "id"],
+            [column["name"] for column in compound_index["columns"]],
+        )
+        self.assertEqual(
+            {"anime_id": "anime", "episode_id": "episodes"},
+            {
+                key: value[0]["table"]
+                for key, value in fixture["foreign_keys"].items()
+                if key in {"episodes", "episode_observations"}
+            } | {},
+        )
 
         def column(table, name):
             return next(item for item in fixture["columns"][table] if item["name"] == name)
