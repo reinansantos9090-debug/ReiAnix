@@ -200,6 +200,17 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
         }
 
+        for (expected in REQUIRED_UNIQUE_CONSTRAINTS) {
+            val present = indexSnapshots.values.any { index ->
+                index.table == expected.table &&
+                    index.unique &&
+                    index.columns.map { it.name.orEmpty() } == expected.columns
+            }
+            if (!present) {
+                incompatibilities += "missing unique constraint on ${expected.table}${expected.columns}"
+            }
+        }
+
         for ((name, expected) in REQUIRED_INDEX_CONTRACT) {
             val actual = indexSnapshots[name]
             if (actual == null) {
@@ -430,13 +441,37 @@ class ReiAnixSqliteDatabase(context: Context) {
         )
 
         private val REQUIRED_FOREIGN_KEYS = mapOf(
+            "folders" to emptySet<ReiAnixSqliteForeignKeySnapshot>(),
+            "anime" to emptySet(),
             "episodes" to setOf(ReiAnixSqliteForeignKeySnapshot("anime", "anime_id", "id", "NO ACTION", "CASCADE", "NONE")),
             "episode_observations" to setOf(ReiAnixSqliteForeignKeySnapshot("episodes", "episode_id", "id", "NO ACTION", "CASCADE", "NONE")),
+            "artwork" to emptySet(),
+            "associations" to emptySet(),
+            "pending_matches" to emptySet(),
+            "account" to emptySet(),
+            "preferences" to emptySet(),
+            "genres" to emptySet(),
             "genre_aliases" to setOf(ReiAnixSqliteForeignKeySnapshot("genres", "genre_id", "id", "NO ACTION", "CASCADE", "NONE")),
             "anime_genres" to setOf(
                 ReiAnixSqliteForeignKeySnapshot("anime", "anime_id", "id", "NO ACTION", "CASCADE", "NONE"),
                 ReiAnixSqliteForeignKeySnapshot("genres", "genre_id", "id", "NO ACTION", "CASCADE", "NONE"),
             ),
+            "schema_migrations" to emptySet(),
+            "scan_runs" to emptySet(),
+        )
+
+        private val REQUIRED_UNIQUE_CONSTRAINTS = listOf(
+            ReiAnixSqliteExpectedUniqueConstraint("folders", listOf("path")),
+            ReiAnixSqliteExpectedUniqueConstraint("anime", listOf("lookup_title")),
+            ReiAnixSqliteExpectedUniqueConstraint("episodes", listOf("path")),
+            ReiAnixSqliteExpectedUniqueConstraint("artwork", listOf("entity_type", "entity_id", "artwork_type", "source_ref")),
+            ReiAnixSqliteExpectedUniqueConstraint("genres", listOf("normalized_name")),
+            ReiAnixSqliteExpectedUniqueConstraint("genre_aliases", listOf("normalized_alias")),
+            ReiAnixSqliteExpectedUniqueConstraint("associations", listOf("lookup_title")),
+            ReiAnixSqliteExpectedUniqueConstraint("pending_matches", listOf("lookup_title")),
+            ReiAnixSqliteExpectedUniqueConstraint("account", listOf("key")),
+            ReiAnixSqliteExpectedUniqueConstraint("preferences", listOf("key")),
+            ReiAnixSqliteExpectedUniqueConstraint("anime_genres", listOf("anime_id", "genre_id", "source")),
         )
     }
 }
@@ -494,6 +529,11 @@ private data class ReiAnixSqliteExpectedIndex(
     val predicate: String? = null,
     val descendingColumns: Set<String> = emptySet(),
     val collations: Map<String, String> = emptyMap(),
+)
+
+private data class ReiAnixSqliteExpectedUniqueConstraint(
+    val table: String,
+    val columns: List<String>,
 )
 
 private fun normalizeSqlExpression(sql: String): String {
