@@ -71,7 +71,7 @@ class ReiAnixSqliteDatabase(context: Context) {
                             name = cursor.getString(1),
                             declaredType = cursor.getString(2).orEmpty().trim().uppercase(),
                             notNull = cursor.getInt(3) != 0,
-                            defaultValue = cursor.optionalString(4)?.let(::normalizeSqlExpression),
+                            defaultValue = (if (cursor.isNull(4)) null else cursor.getString(4))?.let(::normalizeSqlExpression),
                             primaryKeyPosition = cursor.getInt(5),
                         )
                         put(column.name, column)
@@ -115,9 +115,9 @@ class ReiAnixSqliteDatabase(context: Context) {
                             if (indexCursor.columnCount > 5 && indexCursor.getInt(5) != 0) {
                                 add(
                                     ReiAnixSqliteIndexColumn(
-                                        name = indexCursor.optionalString(2),
+                                        name = if (indexCursor.isNull(2)) null else indexCursor.getString(2),
                                         descending = indexCursor.getInt(3) != 0,
-                                        collation = indexCursor.optionalString(4)?.uppercase(),
+                                        collation = (if (indexCursor.isNull(4)) null else indexCursor.getString(4))?.uppercase(),
                                     ),
                                 )
                             }
@@ -209,7 +209,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             if (actual.table != expected.table) incompatibilities += "index $name belongs to ${actual.table}, expected ${expected.table}"
             if (actual.unique != expected.unique) incompatibilities += "index $name unique expected ${expected.unique} but was ${actual.unique}"
             if (actual.partial != (expected.predicate != null)) incompatibilities += "index $name partial expected ${expected.predicate != null} but was ${actual.partial}"
-            val actualColumns = actual.columns.map { it.name }
+            val actualColumns = actual.columns.map { it.name.orEmpty() }
             if (actualColumns != expected.columns) incompatibilities += "index $name columns expected ${expected.columns} but were $actualColumns"
             val actualDescending = actual.columns.mapIndexedNotNull { index, column ->
                 if (column.descending) actualColumns.getOrNull(index) else null
