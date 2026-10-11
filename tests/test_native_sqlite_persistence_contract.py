@@ -16,6 +16,7 @@ MODELS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqli
 TEMPLATE = ROOT / "scripts/prepare_flet_template.py"
 FIXTURE_GENERATOR = ROOT / "scripts/generate_native_sqlite_test_fixture.py"
 KOTLIN_WORKFLOW = ROOT / ".github/workflows/kotlin_jvm_tests.yml"
+APK_WORKFLOW = ROOT / ".github/workflows/build_apk.yml"
 
 
 class NativeSqlitePersistenceContractTests(unittest.TestCase):
@@ -34,6 +35,9 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn('CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json"', database)
         self.assertIn("ReiAnixSqliteSchemaMismatchException", database)
         self.assertIn("validateContract && !contractValidated", database)
+        self.assertNotIn("REQUIRED_COLUMN_CONTRACT", database)
+        self.assertIn('contract.getJSONObject("columns")', database)
+        self.assertIn('contract.getJSONObject("table_contract")', database)
 
     def test_opening_never_creates_or_rebuilds_the_canonical_database(self):
         database = DATABASE.read_text(encoding="utf-8")
@@ -124,6 +128,19 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         template = TEMPLATE.read_text(encoding="utf-8")
         self.assertNotIn("kotlin_jvm_tests.yml", template)
         self.assertNotIn(".github/workflows/", template)
+        self.assertIn("--contract-output", workflow)
+        self.assertIn("native-sqlite-contract-v29.json", workflow)
+        self.assertIn("rm -f android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
+
+    def test_apk_workflow_packages_and_cleans_generated_runtime_contract(self):
+        workflow = APK_WORKFLOW.read_text(encoding="utf-8")
+        template = TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("Generate canonical SQLite runtime contract and JVM fixture", workflow)
+        self.assertIn("--contract-output android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
+        self.assertIn("rm -f android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
+        self.assertIn("assets_source = overlay / \"src\" / \"main\" / \"assets\"", template)
+        self.assertIn("shutil.copytree(assets_source, app / \"src\" / \"main\" / \"assets\"", template)
+        self.assertIn("source / \"src/main/assets/native-sqlite-contract-v29.json\"", template)
 
     def test_runtime_fixture_is_generated_from_the_real_library_store_schema(self):
         with tempfile.TemporaryDirectory(prefix="reianix-contract-test-") as temporary:
@@ -174,7 +191,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertTrue(unique_identity["unique"])
         self.assertTrue(unique_identity["partial"])
         self.assertEqual(["media_identity"], [column["name"] for column in unique_identity["columns"]])
-        self.assertEqual("media_identity IS NOT NULL", unique_identity["predicate"])
+        self.assertEqual("MEDIA_IDENTITY IS NOT NULL", unique_identity["predicate"])
         compound_index = structured_indexes["idx_episodes_anime_season_number_abs"]
         self.assertEqual(
             ["anime_id", "season", "number", "absolute_number", "id"],
