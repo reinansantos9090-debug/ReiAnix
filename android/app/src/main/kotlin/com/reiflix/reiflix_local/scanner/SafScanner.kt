@@ -225,15 +225,15 @@ object SafScanner {
                         if(!mimeVideo&&!extensionVideo)continue
                         videoChildren.add(Child(id,name,mime,size,modified))
                     }
-                    if(containsNoMediaMarker){
-                        stats.put("nomediaDirectories",stats.getInt("nomediaDirectories")+1)
-                    }
                     val parentUri = runCatching {
                         DocumentsContract.buildDocumentUriUsingTree(treeUri, parentId)
                     }.getOrElse {
                         stats.put("failedQueries",stats.getInt("failedQueries")+1)
                         errors.put("Não foi possível validar o escopo de: "+currentPath)
                         return@use
+                    }
+                    if(containsNoMediaMarker){
+                        stats.put("nomediaDirectories",stats.getInt("nomediaDirectories")+1)
                     }
                     for((childId,childName) in directoriesToVisit){
                         val relative=if(currentPath.isEmpty())childName else currentPath+"/"+childName
