@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.data.sqlite
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertEquals
@@ -23,8 +24,8 @@ import java.io.File
  * Runtime tests against the Android SQLite engine through Robolectric.
  *
  * These are local JVM tests, not instrumented/device/emulator tests. The fixture
- * provides the columns touched by the repository contract while retaining the
- * canonical file path and v29 migration marker.
+ * DDL is generated from an isolated temporary database initialized by the real
+ * core.library_store.LibraryStore; the runtime test seeds only synthetic rows.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -67,7 +68,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
         val schemaBefore = repository.inspectSchema()
         assertEquals(29, schemaBefore.schemaVersion)
-        assertEquals(emptySet<String>(), schemaBefore.missingRequiredTables)
+        assertTrue(schemaBefore.missingRequiredTables.isEmpty())
+        assertTrue(schemaBefore.missingRequiredColumns.isEmpty())
+        assertTrue(schemaBefore.missingRequiredIndexes.isEmpty())
+        assertEquals(14, schemaBefore.tables.size)
+        assertTrue(schemaBefore.tables.containsAll(setOf(
+            "episode_observations", "associations", "pending_matches", "scan_runs",
+            "genres", "genre_aliases", "anime_genres",
+        )))
         assertTrue(schemaBefore.supportsCurrentContract)
         assertEquals(listOf("ok"), repository.quickCheck())
 
@@ -90,7 +98,9 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val reopened = ReiAnixSqliteLibraryRepository(context)
         assertEquals("Original Title", reopened.getAnime(1L)!!.title)
         assertEquals(29, reopened.inspectSchema().schemaVersion)
-        assertEquals(emptySet<String>(), reopened.inspectSchema().missingRequiredTables)
+        assertTrue(reopened.inspectSchema().missingRequiredTables.isEmpty())
+        assertTrue(reopened.inspectSchema().missingRequiredColumns.isEmpty())
+        assertTrue(reopened.inspectSchema().missingRequiredIndexes.isEmpty())
     }
 
     @Test
@@ -198,60 +208,78 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals("not a sqlite database", databaseFile.readText(Charsets.UTF_8))
     }
 
+    @Test
+    fun futureSchemaVersionIsNotAssumedCompatible() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(
+            databaseFile.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.execSQL("UPDATE schema_migrations SET version = 30 WHERE version = 29")
+        }
+
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertEquals(30, schema.schemaVersion)
+        assertFalse(schema.supportsCurrentContract)
+    }
+
+    @Test
+    fun missingCanonicalTableIsReportedAsIncompatible() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(
+            databaseFile.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db -> db.execSQL("DROP TABLE scan_runs") }
+
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertTrue(schema.missingRequiredTables.contains("scan_runs"))
+        assertTrue(schema.missingRequiredIndexes.contains("idx_scan_runs_scan_id"))
+        assertFalse(schema.supportsCurrentContract)
+    }
+
+    @Test
+    fun blankRemoteTitleDoesNotEraseAnExistingCatalogTitle() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(
+            databaseFile.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.execSQL("UPDATE anime SET metadata_manual_fields = '[]' WHERE id = 1")
+        }
+
+        val updated = ReiAnixSqliteLibraryRepository(context).updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(animeId = 1L, title = "   "),
+        )
+        assertEquals("Original Title", updated.title)
+        assertEquals(1000.0, updated.addedAt, 0.0)
+    }
+
+    private fun loadCanonicalSchemaFixture(): JSONObject {
+        val stream = javaClass.classLoader?.getResourceAsStream("native-sqlite-schema-v29.json")
+            ?: throw IllegalStateException(
+                "Canonical SQLite schema fixture is missing. Run " +
+                    "scripts/generate_native_sqlite_test_fixture.py before JVM tests.",
+            )
+        return stream.bufferedReader(Charsets.UTF_8).use { reader -> JSONObject(reader.readText()) }
+    }
+
     private fun createCanonicalFixture() {
         databaseFile.parentFile?.mkdirs()
+        val schema = loadCanonicalSchemaFixture()
+        assertEquals(ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION, schema.getInt("schema_version"))
+
         SQLiteDatabase.openOrCreateDatabase(databaseFile, null).use { db ->
+            db.setForeignKeyConstraintsEnabled(true)
+            val statements = schema.getJSONArray("statements")
+            for (index in 0 until statements.length()) {
+                db.execSQL(statements.getString(index))
+            }
             db.execSQL(
-                """
-                CREATE TABLE schema_migrations (
-                    version INTEGER PRIMARY KEY
-                )
-                """.trimIndent(),
-            )
-            db.execSQL("INSERT INTO schema_migrations(version) VALUES (29)")
-            db.execSQL(
-                """
-                CREATE TABLE anime (
-                    id INTEGER PRIMARY KEY,
-                    lookup_title TEXT NOT NULL,
-                    anilist_id INTEGER,
-                    title TEXT NOT NULL,
-                    romaji TEXT,
-                    english TEXT,
-                    native TEXT,
-                    aliases TEXT,
-                    description TEXT,
-                    description_original TEXT,
-                    cover_url TEXT,
-                    cover_cache TEXT,
-                    banner_url TEXT,
-                    genres TEXT,
-                    year INTEGER,
-                    season TEXT,
-                    status TEXT,
-                    episodes_count INTEGER,
-                    duration INTEGER,
-                    score INTEGER,
-                    format TEXT,
-                    studio TEXT,
-                    metadata_updated_at REAL,
-                    metadata_fetched_at REAL,
-                    metadata_source TEXT,
-                    metadata_confidence TEXT,
-                    metadata_status TEXT,
-                    metadata_manual_fields TEXT,
-                    favorite INTEGER,
-                    user_tags TEXT,
-                    media_kind TEXT,
-                    is_pinned INTEGER,
-                    personal_note TEXT,
-                    added_at REAL NOT NULL,
-                    anilist_match_status TEXT,
-                    anilist_match_score REAL,
-                    anilist_match_margin REAL,
-                    anilist_match_manual INTEGER
-                )
-                """.trimIndent(),
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                arrayOf(schema.getInt("schema_version"), 1_000.0),
             )
             db.execSQL(
                 """
@@ -269,38 +297,6 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
             db.execSQL(
                 """
-                CREATE TABLE episodes (
-                    id INTEGER PRIMARY KEY,
-                    anime_id INTEGER NOT NULL,
-                    path TEXT NOT NULL,
-                    file_name TEXT NOT NULL,
-                    season INTEGER NOT NULL DEFAULT 0,
-                    number REAL,
-                    duration REAL,
-                    progress REAL,
-                    watched INTEGER,
-                    mime_type TEXT,
-                    file_size INTEGER,
-                    modified_at REAL,
-                    source_folder TEXT,
-                    absolute_number REAL,
-                    relative_path TEXT,
-                    volume_id TEXT,
-                    volume_uuid TEXT,
-                    episode_type TEXT,
-                    episode_title TEXT,
-                    identification_source TEXT,
-                    identification_confidence TEXT,
-                    manual_override INTEGER,
-                    missing INTEGER,
-                    last_played_at REAL,
-                    media_identity TEXT,
-                    availability_state TEXT
-                )
-                """.trimIndent(),
-            )
-            db.execSQL(
-                """
                 INSERT INTO episodes (
                     id, anime_id, path, file_name, season, number, duration,
                     progress, watched, last_played_at
@@ -312,76 +308,22 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
             db.execSQL(
                 """
-                CREATE TABLE folders (
-                    path TEXT PRIMARY KEY,
-                    name TEXT,
-                    kind TEXT,
-                    authorization TEXT,
-                    account_id TEXT,
-                    added_at REAL,
-                    last_scan_at REAL,
-                    last_error TEXT,
-                    saf_authority TEXT,
-                    saf_document_id TEXT,
-                    saf_volume_id TEXT,
-                    saf_identity TEXT
-                )
-                """.trimIndent(),
-            )
-            db.execSQL(
-                """
                 INSERT INTO folders(path, name, added_at)
                 VALUES ('/media/show', 'Show Folder', 1000)
                 """.trimIndent(),
             )
+            // discovered_at is NOT NULL in the canonical LibraryStore schema.
             db.execSQL(
                 """
-                CREATE TABLE artwork (
-                    id INTEGER PRIMARY KEY,
-                    entity_type TEXT NOT NULL,
-                    entity_id TEXT NOT NULL,
-                    artwork_type TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    source_ref TEXT,
-                    local_path TEXT,
-                    external_url TEXT,
-                    manual INTEGER,
-                    priority INTEGER,
-                    status TEXT,
-                    discovered_at REAL,
-                    updated_at REAL,
-                    last_attempt_at REAL,
-                    failure_count INTEGER,
-                    artwork_key TEXT,
-                    variant TEXT,
-                    byte_size INTEGER,
-                    width INTEGER,
-                    height INTEGER,
-                    checksum TEXT,
-                    content_type TEXT,
-                    last_access REAL,
-                    next_retry_at REAL,
-                    http_status INTEGER
-                )
+                INSERT INTO artwork(
+                    id, entity_type, entity_id, artwork_type, source, priority,
+                    discovered_at, updated_at
+                ) VALUES (3, 'anime', '1', 'cover', 'anilist', 5, 1000, 1000)
                 """.trimIndent(),
             )
             db.execSQL(
-                """
-                INSERT INTO artwork(id, entity_type, entity_id, artwork_type, source, priority, updated_at)
-                VALUES (3, 'anime', '1', 'cover', 'anilist', 5, 1000)
-                """.trimIndent(),
+                "INSERT INTO preferences(key, value, updated_at) VALUES ('theme', 'light', 900)",
             )
-            db.execSQL(
-                """
-                CREATE TABLE preferences (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at REAL NOT NULL
-                )
-                """.trimIndent(),
-            )
-            db.execSQL("INSERT INTO preferences(key, value, updated_at) VALUES ('theme', 'light', 900)")
-            db.execSQL("CREATE TABLE account (id INTEGER PRIMARY KEY)")
         }
     }
 }
