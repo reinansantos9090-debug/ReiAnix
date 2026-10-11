@@ -380,11 +380,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     fun missingRequiredColumnIsRejected() = runBlocking {
         createCanonicalFixture { schema ->
             replaceCreateTableStatement(schema, "episodes") { sql ->
-                sql.replace("number REAL, ", "")
+                sql.replace(", availability_state TEXT NOT NULL DEFAULT 'available'", "")
             }
         }
         val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
-        assertTrue(schema.missingRequiredColumns["episodes"].orEmpty().contains("number"))
+        assertTrue(schema.missingRequiredColumns["episodes"].orEmpty().contains("availability_state"))
         assertFalse(schema.supportsCurrentContract)
     }
 
