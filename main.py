@@ -7484,9 +7484,19 @@ async def main(page: ft.Page):
         logger.info("[FLET] page connected, ensuring native_poll_task")
         ensure_native_poll_task("page_connect")
 
+    def normalize_app_lifecycle_state(event_or_state) -> str:
+        raw = getattr(event_or_state, "state", getattr(event_or_state, "data", event_or_state))
+        if hasattr(raw, "value") and isinstance(getattr(raw, "value"), str):
+            raw = raw.value
+        elif hasattr(raw, "name") and isinstance(getattr(raw, "name"), str):
+            raw = raw.name
+        s = str(raw or "").strip().lower()
+        if "." in s:
+            s = s.rsplit(".", 1)[-1]
+        return s
+
     def _handle_app_lifecycle_state_change(event=None):
-        raw_state = getattr(event, "state", getattr(event, "data", event))
-        state = str(raw_state or "").lower()
+        state = normalize_app_lifecycle_state(event)
         logger.info("[FLET] app lifecycle state change: %s", state)
         if state in {"resume", "restart", "show", "app_lifecycle_state_change"}:
             ensure_native_poll_task(f"app_lifecycle_{state}")

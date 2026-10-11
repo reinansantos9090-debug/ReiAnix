@@ -87,6 +87,34 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("page.on_app_lifecycle_state_change = _handle_app_lifecycle_state_change", source)
         self.assertIn("ensure_native_poll_task(\"add_folder\")", source)
 
+    def test_normalize_app_lifecycle_state_handles_enums_events_and_strings(self):
+        import flet as ft
+        source = MAIN_PY.read_text(encoding="utf-8")
+        self.assertIn("def normalize_app_lifecycle_state(", source)
+
+        def normalize_app_lifecycle_state(event_or_state) -> str:
+            raw = getattr(event_or_state, "state", getattr(event_or_state, "data", event_or_state))
+            if hasattr(raw, "value") and isinstance(getattr(raw, "value"), str):
+                raw = raw.value
+            elif hasattr(raw, "name") and isinstance(getattr(raw, "name"), str):
+                raw = raw.name
+            s = str(raw or "").strip().lower()
+            if "." in s:
+                s = s.rsplit(".", 1)[-1]
+            return s
+
+        self.assertEqual(normalize_app_lifecycle_state(ft.AppLifecycleState.RESUME), "resume")
+        self.assertEqual(normalize_app_lifecycle_state(ft.AppLifecycleState.SHOW), "show")
+        self.assertEqual(normalize_app_lifecycle_state("AppLifecycleState.RESUME"), "resume")
+        self.assertEqual(normalize_app_lifecycle_state("RESUME"), "resume")
+        self.assertEqual(normalize_app_lifecycle_state("resume"), "resume")
+
+        evt = ft.AppLifecycleStateChangeEvent(name="change", control=None, state=ft.AppLifecycleState.RESUME)
+        self.assertEqual(normalize_app_lifecycle_state(evt), "resume")
+
+        evt_str = ft.AppLifecycleStateChangeEvent(name="change", control=None, state="resume")
+        self.assertEqual(normalize_app_lifecycle_state(evt_str), "resume")
+
     def test_python_page_disconnect_cancels_thumbnail_background_work(self):
         source = MAIN_PY.read_text(encoding="utf-8")
         start = source.index("def _handle_page_disconnect")
