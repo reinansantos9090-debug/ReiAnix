@@ -7,13 +7,13 @@
 - SHA completo inicial: `495ad3b3c80243ef0a5be97a002e63d0d4a76810`.
 - Fonte canônica atual: `core/library_store.py`, `LibraryStore.SCHEMA_VERSION = 29`.
 - Arquivo canônico esperado pelo host Android e pelos testes de regressão existentes: `filesDir/data/library.sqlite3`.
-- As tabelas reais observadas incluem `anime`, `episodes`, `folders`, `artwork`, `preferences`, `account` e `schema_migrations`.
+- O esquema canônico tem 14 tabelas: `folders`, `anime`, `episodes`, `episode_observations`, `artwork`, `associations`, `pending_matches`, `account`, `preferences`, `genres`, `genre_aliases`, `anime_genres`, `schema_migrations` e `scan_runs`.
 
 ## Implementação Kotlin
 
 O pacote `data/sqlite` contém:
 
-- `ReiAnixSqliteDatabase`: abre o arquivo existente em modo somente leitura ou leitura/escrita, habilita chaves estrangeiras, aplica `busy_timeout`, oferece transações e inspeciona tabelas, versão registrada e `PRAGMA quick_check`. Não cria diretórios/bancos, tabelas, índices ou migrações e não substitui um arquivo ausente/corrompido.
+- `ReiAnixSqliteDatabase`: abre o arquivo existente em modo somente leitura ou leitura/escrita, habilita chaves estrangeiras, aplica `busy_timeout`, oferece transações e inspeciona versão, todas as tabelas/colunas requeridas, índices canônicos e `PRAGMA quick_check`. A compatibilidade é aceita somente para a versão 29 exata; versões futuras ou esquemas incompletos são sinalizados como incompatíveis. Não cria diretórios/bancos, tabelas, índices ou migrações e não substitui um arquivo ausente/corrompido.
 - `ReiAnixSqliteLibraryRepository`: leitura paginada de anime, consultas por IDs persistidos, episódios por anime, episódios recentes, pastas e artwork; atualização transacional de progresso; patch de metadados que preserva campos em `metadata_manual_fields`, trata strings vazias/`[]` como dados não fornecidos e não altera favoritos, pins, etiquetas, notas, identidade nem bookkeeping de origem.
 - `ReiAnixSqliteSettingsRepository`: leitura, gravação transacional e remoção explícita de preferências na tabela existente.
 - `ReiAnixSqliteModels`: registros Kotlin para as colunas existentes. Valores nulos e colunas JSON/textuais são mantidos sem normalização destrutiva. IDs de anime, episódio e mídia não são gerados novamente.
@@ -32,15 +32,15 @@ O progresso e a data de reprodução estão persistidos nas colunas da tabela `e
 
 - `ReiAnixSqliteModelsTest` valida os modelos e a validação de progresso sem emulador.
 - `test_native_sqlite_persistence_contract.py` verifica os contratos estáticos de caminho, esquema, transação, consultas parametrizadas e ausência de criação destrutiva.
-- `ReiAnixSqliteRepositoryRuntimeTest` executa os repositórios contra o SQLite Android via Robolectric no JVM, sem dispositivos nem emuladores. O fixture usa o caminho canônico e as colunas consultadas pelo repositório, com marcador de versão 29; não é uma cópia binária do banco de um usuário.
-- `.github/workflows/kotlin_jvm_tests.yml` permanece separado do workflow rápido de APK e executa os testes tanto em pull requests quanto por acionamento manual. O build de APK não roda `:app:testDebugUnitTest`, preservando a separação de duração/escopo existente.
-- A fixture de contrato runtime complementa, mas não substitui, a regressão Python que valida as migrações e o esquema canônico produzido por `LibraryStore`. Não foram adicionados testes instrumentados nem jobs de emulador.
+- `ReiAnixSqliteRepositoryRuntimeTest` executa os repositórios contra o SQLite Android via Robolectric no JVM, sem dispositivos nem emuladores. `scripts/generate_native_sqlite_test_fixture.py` inicializa um banco temporário pelo `LibraryStore` real, exporta seu DDL, colunas, restrições e índices para o recurso JSON de teste, e a suíte usa esse DDL no caminho canônico sob o diretório temporário do Robolectric. Os registros de teste são sintéticos; nenhum banco ou dado pessoal é copiado.
+- `.github/workflows/kotlin_jvm_tests.yml` permanece exclusivamente manual (`workflow_dispatch`). O workflow gera o recurso de esquema canônico antes de renderizar o host Android e o remove na etapa de limpeza. `scripts/prepare_flet_template.py` copia os recursos de teste, mas não cria nem modifica workflows ou seus gatilhos. O workflow de APK mantém seus próprios gatilhos.
+- O teste Python do contrato executa o gerador e confere a versão, o conjunto de 14 tabelas, colunas obrigatórias e índices; a suíte Robolectric testa abertura, leituras, escrita, reabertura, rollback, detecção de esquema futuro/incompleto, preferências, ownership de metadados e recusa de bancos ausentes/corrompidos. Não foram adicionados testes instrumentados nem jobs de emulador.
 
 ## Pendências explícitas
 
 - Migrar consumidores individuais da mailbox/projeções para estes repositórios só depois de verificar equivalência das regras e remover o escritor Python correspondente para cada operação.
 - Migrar validação de configuração, ingestão/reconciliação, recuperação/backup e eventos completos do player exige trabalho de domínio e paridade fora do escopo desta camada.
-- O resultado definitivo dos testes JVM e do build deve ser registrado somente após a execução CI no SHA final terminar com estado `completed/success`; a existência dos arquivos não é evidência de aprovação.
+- A execução do workflow Kotlin JVM continua exigindo acionamento explícito manual. O resultado definitivo dos testes JVM e do build deve ser registrado somente após cada workflow pertinente no SHA final terminar em `completed/success`; a existência dos arquivos não é evidência de aprovação.
 
 
 ## Runtime contract tests
