@@ -76,7 +76,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             "episode_observations", "associations", "pending_matches", "scan_runs",
             "genres", "genre_aliases", "anime_genres",
         )))
-        assertTrue(schemaBefore.supportsCurrentContract)
+        assertTrue("SQLite contract incompatibilities: ${schemaBefore.incompatibilities}", schemaBefore.supportsCurrentContract)
         assertEquals(listOf("ok"), repository.quickCheck())
 
         val anime = repository.getAnime(1L)
