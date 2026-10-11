@@ -156,9 +156,20 @@ data class ArtworkReference(
     val manual: Boolean?,
     val priority: Int?,
     val status: String?,
+    val discoveredAtEpochSeconds: Double?,
+    val updatedAtEpochSeconds: Double?,
+    val lastAttemptAtEpochSeconds: Double?,
+    val failureCount: Int?,
+    val artworkKey: String?,
     val variant: String?,
+    val byteSize: Long?,
+    val width: Int?,
+    val height: Int?,
     val checksum: String?,
     val contentType: String?,
+    val lastAccessEpochSeconds: Double?,
+    val nextRetryAtEpochSeconds: Double?,
+    val httpStatus: Int?,
 )
 
 data class PlaybackProgress(
