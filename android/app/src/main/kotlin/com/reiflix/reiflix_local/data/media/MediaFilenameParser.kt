@@ -188,10 +188,15 @@ object MediaFilenameParser {
                     val candidates = filenameNumber.findAll(stem).filter { match ->
                         val value = match.groupValues[1]
                         val before = stem.substring(0, match.range.first)
+                        val technicalNumber = value in setOf("264", "265", "4320", "2160", "1080", "720", "480", "8", "10", "12")
+                        val numberFollowsTechnicalMarker =
+                            Regex("(?i)(?:x|h\\.?|codec|bit)\\s*${Regex.escape(value)}\\b").containsMatchIn(stem)
                         !year.matches(value) &&
-                            !Regex("(?i)\\b${Regex.escape(value)}p\\b").containsMatchIn(stem) &&
+                            !Regex("(?i)(?<!\\d)${Regex.escape(value)}p\\b").containsMatchIn(stem) &&
+                            !(technicalNumber && numberFollowsTechnicalMarker) &&
                             value !in setOf("264", "265", "1080", "2160", "720", "480") &&
-                            !Regex("(?i)\\b(?:vol(?:ume)?|disc|disk)[ ._-]*${Regex.escape(value)}\\b").containsMatchIn(stem) &&
+                            !volumeOrDisc.containsMatchIn(stem) &&
+                            !Regex("(?i)\\b(?:vol(?:ume)?|disc|disk)\\s*$").containsMatchIn(before) &&
                             before.trim(' ', '.', '_', '-', '[', ']', '(', ')', '{', '}').isNotEmpty()
                     }.toList()
                     if (candidates.isNotEmpty() && absoluteMatch == null &&

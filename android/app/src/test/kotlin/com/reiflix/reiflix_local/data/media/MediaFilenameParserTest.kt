@@ -112,6 +112,20 @@ class MediaFilenameParserTest {
     }
 
     @Test
+    fun codecNumbersAndVolumeDiscNumbersMatchLegacyPythonExclusions() {
+        listOf(
+            "Show h.10.mkv",
+            "Show codec 4320.mkv",
+            "Show x 8.mkv",
+            "Show Vol.02 and 03.mkv",
+            "Show Disc 01 and 02.mkv",
+        ).forEach { name ->
+            assertNull("$name must not become an episode under Python-compatible filtering",
+                MediaFilenameParser.parseVideoPath(name).episodeNumber)
+        }
+    }
+
+    @Test
     fun ambiguousNumericSuffixIsReportedRatherThanHidden() {
         val parsed = MediaFilenameParser.parseVideoPath("Series - 02 - 03.mkv")
 
