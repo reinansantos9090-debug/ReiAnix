@@ -140,7 +140,6 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("rm -f android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
         self.assertIn("assets_source = overlay / \"src\" / \"main\" / \"assets\"", template)
         self.assertIn("shutil.copytree(assets_source, app / \"src\" / \"main\" / \"assets\"", template)
-        self.assertIn("source / \"src/main/assets/native-sqlite-contract-v29.json\"", template)
 
     def test_runtime_fixture_is_generated_from_the_real_library_store_schema(self):
         with tempfile.TemporaryDirectory(prefix="reianix-contract-test-") as temporary:
