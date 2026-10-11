@@ -23,6 +23,8 @@ from core.storage_access import (
     storage_source_states,
     dedupe_saf_roots,
     saf_source_identity,
+    saf_folder_identity,
+    saf_inventory_by_identity,
     configured_library_saf_roots,
     pending_saf_inventory_selection_candidate,
     storage_snapshot_is_stale,
@@ -7005,9 +7007,16 @@ async def main(page: ft.Page):
                                 if not isinstance(item, dict) or not item.get('treeUri'):
                                     continue
                                 status_by_uri[str(item.get('treeUri'))] = item
+
+                            # SAF providers can describe the same tree using different
+                            # URI spellings/escaping. All matching and revocation logic
+                            # below must use the canonical tree identity, not raw strings.
+                            status_by_identity = saf_inventory_by_identity(status_by_uri.values())
                             available_uris = {
-                                uri for uri, item in status_by_uri.items()
+                                str(item.get('treeUri') or "").strip()
+                                for item in status_by_identity.values()
                                 if str(item.get('status') or '').upper() in {'COMPLETED', 'EMPTY_COMPLETE'}
+                                and str(item.get('treeUri') or "").strip()
                             }
                             update_saf_capabilities(available_uris)
                             await _recover_pending_saf_selection_from_inventory(
@@ -7017,56 +7026,66 @@ async def main(page: ft.Page):
                             )
                             logger.info(
                                 "[STORAGE] action=saf_inventory native_result=received "
-                                "persisted=%s available=%s lifecycle=%s complete=%s",
+                                "persisted=%s available=%s identities=%s lifecycle=%s complete=%s",
                                 len(status_by_uri),
                                 len(available_uris),
+                                len(status_by_identity),
                                 payload.get('lifecycle', '-'),
                                 inventory_complete,
                             )
-                            for reference, item in status_by_uri.items():
-                                status = str(item.get('status') or 'UNAVAILABLE').upper()
-                                folder = next((f for f in store.folders() if f.get('path') == reference), None)
+                            configured_saf = [
+                                folder for folder in store.folders()
+                                if isinstance(folder, dict)
+                                and str(folder.get('kind') or '').strip().lower() == 'saf'
+                            ]
+                            for identity, item in status_by_identity.items():
+                                matching_folders = [
+                                    folder for folder in configured_saf
+                                    if saf_folder_identity(folder) == identity
+                                ]
 
                                 # A persisted Android grant is only an authorization
                                 # capability. It must never become a library source unless
                                 # the user explicitly configured it in LibraryStore.
-                                if folder is None:
+                                if not matching_folders:
                                     continue
 
-                                store.update_saf_identity(
-                                    reference,
-                                    item.get('authority') or '',
-                                    item.get('documentId') or '',
-                                    item.get('volumeId') or None,
-                                    item.get('identity') or None,
-                                )
-                                if status in {'COMPLETED', 'EMPTY_COMPLETE'}:
-                                    store.update_folder_status(reference, 'granted')
-                                    store.restore_source(reference)
-                                elif status == 'REVOKED':
-                                    store.update_folder_status(
+                                status = str(item.get('status') or 'UNAVAILABLE').upper()
+                                for folder in matching_folders:
+                                    reference = str(folder.get('path') or '').strip()
+                                    if not reference:
+                                        continue
+                                    store.update_saf_identity(
                                         reference,
-                                        'revoked',
-                                        'A autorização SAF desta pasta não está mais presente no Android.',
+                                        item.get('authority') or '',
+                                        item.get('documentId') or '',
+                                        item.get('volumeId') or None,
+                                        item.get('identity') or identity,
                                     )
-                                    store.mark_source_unavailable(reference, 'saf_permission_revoked')
-                                elif status in {'UNAVAILABLE', 'FAILED', 'PARTIAL'}:
-                                    store.update_folder_status(
-                                        reference,
-                                        'unavailable',
-                                        'O provedor SAF desta pasta está indisponível no momento.',
-                                    )
-                                    store.mark_source_unavailable(reference, 'saf_provider_unavailable')
+                                    if status in {'COMPLETED', 'EMPTY_COMPLETE'}:
+                                        store.update_folder_status(reference, 'granted')
+                                        store.restore_source(reference)
+                                    elif status == 'REVOKED':
+                                        store.update_folder_status(
+                                            reference,
+                                            'revoked',
+                                            'A autorização SAF desta pasta não está mais presente no Android.',
+                                        )
+                                        store.mark_source_unavailable(reference, 'saf_permission_revoked')
+                                    elif status in {'UNAVAILABLE', 'FAILED', 'PARTIAL'}:
+                                        store.update_folder_status(
+                                            reference,
+                                            'unavailable',
+                                            'O provedor SAF desta pasta está indisponível no momento.',
+                                        )
+                                        store.mark_source_unavailable(reference, 'saf_provider_unavailable')
 
                             if inventory_complete:
-                                configured_saf = [
-                                    folder for folder in store.folders()
-                                    if str(folder.get('kind') or '').strip().lower() == 'saf'
-                                ]
-                                known_references = set(status_by_uri)
+                                known_identities = set(status_by_identity)
                                 for folder in configured_saf:
                                     reference = str(folder.get('path') or '').strip()
-                                    if not reference or reference in known_references:
+                                    identity = saf_folder_identity(folder)
+                                    if not reference or not identity or identity in known_identities:
                                         continue
                                     store.update_folder_status(
                                         reference,
