@@ -62,6 +62,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn('if ("title" !in manualFields)', method)
         self.assertNotIn('values.put("metadata_source"', method)
         self.assertNotIn('values.put("anilist_id"', method)
+        self.assertIn('patch.coverCache?.takeIf { it.isNotBlank() }', method)
+        self.assertIn('patch.genresJson?.takeIf { it.isNotBlank() && it.trim() != "[]" }', method)
         for user_owned_column in ('"favorite"', '"is_pinned"', '"personal_note"', '"user_tags"'):
             self.assertNotIn(user_owned_column, method)
 

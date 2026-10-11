@@ -109,23 +109,23 @@ class ReiAnixSqliteLibraryRepository(
             val values = ContentValues()
 
             patch.title?.let { if ("title" !in manualFields) values.put("title", it.trim()) }
-            patch.romaji?.let { if ("romaji" !in manualFields) values.put("romaji", it) }
-            patch.english?.let { if ("english" !in manualFields) values.put("english", it) }
-            patch.nativeTitle?.let { if ("native" !in manualFields) values.put("native", it) }
-            patch.aliasesJson?.let { if ("aliases" !in manualFields) values.put("aliases", it) }
-            patch.description?.let { if ("description" !in manualFields) values.put("description", it) }
-            patch.coverUrl?.let { if ("cover_url" !in manualFields) values.put("cover_url", it) }
-            patch.coverCache?.let { if ("cover_cache" !in manualFields) values.put("cover_cache", it) }
-            patch.bannerUrl?.let { if ("banner_url" !in manualFields) values.put("banner_url", it) }
-            patch.genresJson?.let { if ("genres" !in manualFields) values.put("genres", it) }
+            patch.romaji?.takeIf { it.isNotBlank() }?.let { if ("romaji" !in manualFields) values.put("romaji", it) }
+            patch.english?.takeIf { it.isNotBlank() }?.let { if ("english" !in manualFields) values.put("english", it) }
+            patch.nativeTitle?.takeIf { it.isNotBlank() }?.let { if ("native" !in manualFields) values.put("native", it) }
+            patch.aliasesJson?.takeIf { it.isNotBlank() && it.trim() != "[]" }?.let { if ("aliases" !in manualFields) values.put("aliases", it) }
+            patch.description?.takeIf { it.isNotBlank() }?.let { if ("description" !in manualFields) values.put("description", it) }
+            patch.coverUrl?.takeIf { it.isNotBlank() }?.let { if ("cover_url" !in manualFields) values.put("cover_url", it) }
+            patch.coverCache?.takeIf { it.isNotBlank() }?.let { if ("cover_cache" !in manualFields) values.put("cover_cache", it) }
+            patch.bannerUrl?.takeIf { it.isNotBlank() }?.let { if ("banner_url" !in manualFields) values.put("banner_url", it) }
+            patch.genresJson?.takeIf { it.isNotBlank() && it.trim() != "[]" }?.let { if ("genres" !in manualFields) values.put("genres", it) }
             patch.year?.let { if ("year" !in manualFields) values.put("year", it) }
-            patch.season?.let { if ("season" !in manualFields) values.put("season", it) }
-            patch.status?.let { if ("status" !in manualFields) values.put("status", it) }
+            patch.season?.takeIf { it.isNotBlank() }?.let { if ("season" !in manualFields) values.put("season", it) }
+            patch.status?.takeIf { it.isNotBlank() }?.let { if ("status" !in manualFields) values.put("status", it) }
             patch.episodesCount?.let { if ("episodes_count" !in manualFields) values.put("episodes_count", it) }
             patch.duration?.let { if ("duration" !in manualFields) values.put("duration", it) }
             patch.score?.let { if ("score" !in manualFields) values.put("score", it) }
-            patch.format?.let { if ("format" !in manualFields) values.put("format", it) }
-            patch.studio?.let { if ("studio" !in manualFields) values.put("studio", it) }
+            patch.format?.takeIf { it.isNotBlank() }?.let { if ("format" !in manualFields) values.put("format", it) }
+            patch.studio?.takeIf { it.isNotBlank() }?.let { if ("studio" !in manualFields) values.put("studio", it) }
             patch.metadataFetchedAt?.let { values.put("metadata_fetched_at", it) }
 
             // If every requested editorial field is manually protected, preserve
