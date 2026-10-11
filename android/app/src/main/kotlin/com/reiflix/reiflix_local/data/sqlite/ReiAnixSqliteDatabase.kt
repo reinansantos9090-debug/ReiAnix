@@ -260,7 +260,9 @@ class ReiAnixSqliteDatabase(context: Context) {
                 }
             }
         }.also { results ->
-            check(results.isNotEmpty()) { "SQLite quick_check returned no result." }
+            check(results == listOf("ok")) {
+                "SQLite quick_check failed: ${results.joinToString("; ").ifBlank { "no result" }}"
+            }
         }
     }
 
