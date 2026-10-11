@@ -108,27 +108,50 @@ object SafScanner {
         val child = normalizedDocumentId(documentId)
         return root.isNotBlank() && child.isNotBlank() && (child == root || child.startsWith(root + "/"))
     }
+    /**
+     * Ask the document provider to resolve the document through this authorized tree.
+     *
+     * Document IDs are provider-defined opaque identifiers. External-storage IDs often
+     * resemble paths, but cloud and third-party providers are not required to encode
+     * ancestry as a string prefix. Building a tree-scoped URI and successfully querying
+     * it lets Android/the provider enforce the grant instead of guessing from the ID.
+     */
     fun isAuthorizedDocumentForTree(context:Context,treeUri:Uri,documentUri:Uri):Boolean {
         val tree = runCatching { treeIdentity(treeUri) }.getOrNull() ?: return false
-        if(documentUri.scheme != "content" || !DocumentsContract.isDocumentUri(context,documentUri)) return false
-        if(documentUri.authority != tree.authority) return false
-        val documentId = runCatching { DocumentsContract.getDocumentId(documentUri) }.getOrNull() ?: return false
-        return isDocumentIdWithinTree(tree.documentId, documentId)
+        if (!hasPersistedReadPermission(context, treeUri)) return false
+        if (documentUri.scheme != "content" || !DocumentsContract.isDocumentUri(context,documentUri)) return false
+        if (!documentUri.authority.equals(tree.authority, ignoreCase = true)) return false
+        val documentId = runCatching { DocumentsContract.getDocumentId(documentUri) }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: return false
+        return canQueryDocument(context, treeUri, documentId)
     }
 
     fun isAuthorizedDocument(context:Context,documentUri:Uri):Boolean {
         if(documentUri.scheme!="content" || !DocumentsContract.isDocumentUri(context,documentUri)) return false
-        val documentId=runCatching{DocumentsContract.getDocumentId(documentUri)}.getOrNull() ?: return false
-        return context.contentResolver.persistedUriPermissions.any { p ->
-            if(!p.isReadPermission) return@any false
-            val tree=runCatching{treeIdentity(p.uri)}.getOrNull() ?: return@any false
-            if(tree.authority!=documentUri.authority) return@any false
-            if(!isDocumentIdWithinTree(tree.documentId, documentId)) return@any false
-            runCatching{DocumentsContract.buildDocumentUriUsingTree(p.uri,documentId)}.getOrNull()?.let { u ->
-                context.contentResolver.query(u,arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID),null,null,null)?.use{it.moveToFirst()}==true
-            } ?: false
+        val documentId=runCatching{DocumentsContract.getDocumentId(documentUri)}.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: return false
+        return context.contentResolver.persistedUriPermissions.any { permission ->
+            if(!permission.isReadPermission) return@any false
+            val tree=runCatching{treeIdentity(permission.uri)}.getOrNull() ?: return@any false
+            if(!tree.authority.equals(documentUri.authority, ignoreCase = true)) return@any false
+            canQueryDocument(context, permission.uri, documentId)
         }
     }
+
+    private fun canQueryDocument(context:Context,treeUri:Uri,documentId:String):Boolean =
+        runCatching {
+            val scopedUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+            context.contentResolver.query(
+                scopedUri,
+                arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                cursor.moveToFirst() && idColumn >= 0 && cursor.getString(idColumn) == documentId
+            } ?: false
+        }.getOrDefault(false)
 
     fun displayName(context:Context,treeUri:Uri):String = runCatching{DocumentFile.fromTreeUri(context,treeUri)?.name}.getOrNull()?.trim()?.takeIf{it.isNotBlank()} ?: "Pasta da biblioteca"
 
