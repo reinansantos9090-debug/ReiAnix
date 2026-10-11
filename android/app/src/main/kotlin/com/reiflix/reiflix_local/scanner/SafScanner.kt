@@ -274,10 +274,20 @@ object SafScanner {
                         if(!child.mime.startsWith("video/"))stats.put("mimeFallbacks",stats.getInt("mimeFallbacks")+1)
                         if(child.size==null)stats.put("metadataMissingSize",stats.getInt("metadataMissingSize")+1)
                         if(child.modified==null)stats.put("metadataMissingModified",stats.getInt("metadataMissingModified")+1)
-                        batches.add(JSONObject().put("uri",childUri.toString()).put("treeUri",treeUri.toString()).put("documentId",child.id)
+                        val discovered = JSONObject().put("uri",childUri.toString()).put("treeUri",treeUri.toString()).put("documentId",child.id)
                             .put("name",child.name).put("relativePath",relative).put("volumeId",identity.volumeId).put("volumeUuid",identity.volumeId)
                             .put("mimeType",child.mime).put("size",child.size?:JSONObject.NULL).put("modifiedAt",child.modified?:JSONObject.NULL)
-                            .put("source","saf").put("scope",identity.identity))
+                            .put("source","saf").put("scope",identity.identity)
+                        batches.add(DiscoveredMediaMetadata.attach(
+                            document = discovered,
+                            fileName = child.name,
+                            relativePath = relative,
+                            source = "saf",
+                            mimeType = child.mime,
+                            sizeBytes = child.size,
+                            modifiedAtMillis = child.modified,
+                            providerId = child.id,
+                        ))
                         stats.put("videos",stats.getInt("videos")+1)
                         if(stats.getInt("files")-lastFiles>=100){lastFiles=stats.getInt("files");onProgress?.invoke(identityPayload(treeUri).put("phase","scanning").put("source","saf").put("directories",stats.getInt("directories")).put("files",lastFiles).put("videos",stats.getInt("videos")).put("currentPath",currentPath))}
                     }
@@ -293,8 +303,8 @@ object SafScanner {
         if(shouldCancel())cancelled=true
         batches.flush()
         val failed=stats.getInt("failedQueries"); val successful=stats.getInt("successfulQueries"); val fileCount=stats.getInt("files")
-        val status=when{revokedDuringScan->STATUS_REVOKED;cancelled->STATUS_CANCELLED;successful==0&&failed>0->STATUS_UNAVAILABLE;failed>0->STATUS_PARTIAL;fileCount==0->STATUS_EMPTY_COMPLETE;else->STATUS_COMPLETED}
-        val partial=status in setOf(STATUS_PARTIAL,STATUS_UNAVAILABLE,STATUS_REVOKED)
+        val status=when{revokedDuringScan->STATUS_REVOKED;cancelled->STATUS_CANCELLED;successful==0&&failed>0->STATUS_UNAVAILABLE;failed>0->STATUS_PARTIAL;stats.getInt("videos")==0->STATUS_EMPTY_COMPLETE;else->STATUS_COMPLETED}
+        val partial=status in setOf(STATUS_PARTIAL,STATUS_UNAVAILABLE,STATUS_REVOKED,STATUS_CANCELLED)
         stats.put("status",status).put("emptyComplete",status==STATUS_EMPTY_COMPLETE)
         onProgress?.invoke(identityPayload(treeUri).put("phase","finished").put("source","saf").put("status",status).put("directories",stats.getInt("directories")).put("files",fileCount).put("videos",stats.getInt("videos")).put("cancelled",cancelled))
         Log.i(TAG,"SCAN_SOURCE_COMPLETED identity=" + identity.identity + " status=" + status +

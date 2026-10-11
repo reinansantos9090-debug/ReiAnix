@@ -439,6 +439,9 @@ object BroadStorageScanner {
                 }
                 val volumeName = root.volumeId
                 val relative = relativePath(file, root.file)
+                val mimeType = mimeFor(file.extension)
+                val sizeBytes = runCatching { file.length() }.getOrNull()
+                val modifiedAtMillis = runCatching { file.lastModified() }.getOrNull()?.takeIf { it > 0L }
                 val document = JSONObject()
                     .put("uri", Uri.fromFile(file).toString())
                     .put("path", file.path)
@@ -447,10 +450,19 @@ object BroadStorageScanner {
                     .put("volumeName", volumeName)
                     .put("volumeId", volumeName)
                     .put("volumeUuid", root.volumeUuid ?: "")
-                    .put("mimeType", mimeFor(file.extension))
-                    .put("size", runCatching { file.length() }.getOrDefault(0L))
-                    .put("modifiedAt", runCatching { file.lastModified() }.getOrDefault(0L))
-                batchesByVolume[volumeName]?.add(document)
+                    .put("mimeType", mimeType)
+                    .put("size", sizeBytes ?: JSONObject.NULL)
+                    .put("modifiedAt", modifiedAtMillis ?: JSONObject.NULL)
+                batchesByVolume[volumeName]?.add(DiscoveredMediaMetadata.attach(
+                    document = document,
+                    fileName = file.name,
+                    relativePath = relative,
+                    source = SOURCE,
+                    mimeType = mimeType,
+                    sizeBytes = sizeBytes,
+                    modifiedAtMillis = modifiedAtMillis,
+                    providerId = file.path,
+                ))
                 videos++
                 volumeStats.put("videos", volumeStats.optInt("videos", 0) + 1)
                 if (videos % 100 == 0) {

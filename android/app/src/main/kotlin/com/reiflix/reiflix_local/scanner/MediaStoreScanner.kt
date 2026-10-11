@@ -218,11 +218,22 @@ object MediaStoreScanner {
                             continue
                         }
                         val uri=if(Build.VERSION.SDK_INT>=29)MediaStore.Video.Media.getContentUri(actualVol,id)else android.content.ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,id)
+                        val sizeBytes = if(sizeCol>=0&&!cursor.isNull(sizeCol)) cursor.getLong(sizeCol) else null
+                        val modifiedAtMillis = if(modCol>=0&&!cursor.isNull(modCol)) cursor.getLong(modCol)*1000L else null
                         val item=JSONObject().put("uri",uri.toString()).put("name",name).put("relativePath",rel).put("volumeName",actualVol).put("volumeId",actualVol).put("volumeUuid",actualVolumeUuid)
-                            .put("mediaId",id).put("mimeType",mime).put("size",if(sizeCol>=0&&!cursor.isNull(sizeCol))cursor.getLong(sizeCol)else 0L).put("modifiedAt",if(modCol>=0&&!cursor.isNull(modCol))cursor.getLong(modCol)*1000L else 0L)
+                            .put("mediaId",id).put("mimeType",mime).put("size",sizeBytes ?: JSONObject.NULL).put("modifiedAt",modifiedAtMillis ?: JSONObject.NULL)
                         if(gaCol>=0&&!cursor.isNull(gaCol))item.put("generationAdded",cursor.getLong(gaCol))
                         if(gmCol>=0&&!cursor.isNull(gmCol))item.put("generationModified",cursor.getLong(gmCol))
-                        batches.add(item);videos++;volumeVideos++
+                        batches.add(DiscoveredMediaMetadata.attach(
+                            document = item,
+                            fileName = name,
+                            relativePath = rel,
+                            source = "mediastore",
+                            mimeType = mime,
+                            sizeBytes = sizeBytes,
+                            modifiedAtMillis = modifiedAtMillis,
+                            providerId = id.toString(),
+                        ));videos++;volumeVideos++
                         if(videos%100==0)onProgress?.invoke(JSONObject().put("phase","scanning").put("source",SOURCE).put("volumeId",volumeName).put("files",files).put("videos",videos))
                     }
                 }?:localErrors.put("O MediaStore não conseguiu consultar o volume "+volumeName+".")
