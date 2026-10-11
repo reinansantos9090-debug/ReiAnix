@@ -29,6 +29,11 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("schema_migrations", database)
         self.assertIn("PRAGMA user_version", database)
         self.assertIn("PRAGMA quick_check", database)
+        self.assertIn("PRAGMA foreign_key_check", database)
+        self.assertIn("table_xinfo", database)
+        self.assertIn('CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json"', database)
+        self.assertIn("ReiAnixSqliteSchemaMismatchException", database)
+        self.assertIn("validateContract && !contractValidated", database)
 
     def test_opening_never_creates_or_rebuilds_the_canonical_database(self):
         database = DATABASE.read_text(encoding="utf-8")
@@ -39,6 +44,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertNotIn("SQLiteOpenHelper", database)
         self.assertNotIn("CREATE TABLE", database.upper())
         self.assertNotIn("DROP TABLE", database.upper())
+        self.assertNotIn("openOrCreateDatabase", database)
+        self.assertNotIn("CREATE_IF_NECESSARY", database)
         self.assertNotIn("deleteDatabase(", database)
         self.assertIn("beginTransactionNonExclusive", database)
         self.assertIn("setTransactionSuccessful", database)
@@ -121,8 +128,13 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
     def test_runtime_fixture_is_generated_from_the_real_library_store_schema(self):
         with tempfile.TemporaryDirectory(prefix="reianix-contract-test-") as temporary:
             fixture_path = Path(temporary) / "canonical-schema.json"
+            contract_path = Path(temporary) / "canonical-contract.json"
             result = subprocess.run(
-                [sys.executable, str(FIXTURE_GENERATOR), "--output", str(fixture_path)],
+                [
+                    sys.executable, str(FIXTURE_GENERATOR),
+                    "--output", str(fixture_path),
+                    "--contract-output", str(contract_path),
+                ],
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
@@ -130,8 +142,15 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             )
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+            contract = json.loads(contract_path.read_text(encoding="utf-8"))
 
         self.assertEqual(29, fixture["schema_version"])
+        self.assertEqual(0, fixture["sqlite_user_version"])
+        self.assertEqual(
+            {key: value for key, value in fixture.items() if key != "statements"},
+            contract,
+            "runtime contract and JVM fixture must be generated from the same canonical snapshot",
+        )
         # LibraryStore records schema_migrations and intentionally leaves SQLite's
         # PRAGMA user_version at its default zero; these are separate contracts.
         self.assertEqual(0, fixture["sqlite_user_version"])
@@ -173,6 +192,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertTrue(column("artwork", "discovered_at")["not_null"])
         self.assertTrue(column("artwork", "updated_at")["not_null"])
         self.assertTrue(column("episodes", "anime_id")["not_null"])
+        self.assertIn("hidden", column("episodes", "number"))
+        self.assertEqual(0, column("episodes", "number")["hidden"])
 
     def test_models_keep_nullable_sqlite_values_and_existing_identity(self):
         models = MODELS.read_text(encoding="utf-8")
