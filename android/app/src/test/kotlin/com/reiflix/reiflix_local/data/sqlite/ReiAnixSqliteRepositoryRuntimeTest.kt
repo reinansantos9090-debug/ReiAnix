@@ -122,6 +122,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 assertEquals(table + "." + expected.getString("name") + " type", expected.getString("type").uppercase(), actual!!.declaredType)
                 assertEquals(table + "." + expected.getString("name") + " nullability", expected.getBoolean("not_null"), actual.notNull)
                 assertEquals(table + "." + expected.getString("name") + " primary key", expected.getInt("primary_key_position"), actual.primaryKeyPosition)
+                val expectedDefault = if (expected.isNull("default")) null else expected.getString("default").replace(Regex("\\s+"), " ").trim()
+                assertEquals(table + "." + expected.getString("name") + " default", expectedDefault, actual.defaultValue)
             }
         }
 
@@ -136,17 +138,47 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val expectedColumns = expected.getJSONArray("columns")
             val expectedNames = (0 until expectedColumns.length()).map { expectedColumns.getJSONObject(it).getString("name") }
             assertEquals(expectedNames, actual.columns.map { it.name.orEmpty() })
+            val expectedDescending = (0 until expectedColumns.length())
+                .filter { expectedColumns.getJSONObject(it).getBoolean("descending") }
+                .map { expectedColumns.getJSONObject(it).getString("name") }
+                .toSet()
+            assertEquals(expectedDescending, actual.columns.mapIndexedNotNull { columnIndex, column ->
+                if (column.descending) expectedNames.getOrNull(columnIndex) else null
+            }.toSet())
+            for (columnIndex in 0 until expectedColumns.length()) {
+                val expectedColumn = expectedColumns.getJSONObject(columnIndex)
+                assertEquals(
+                    "Index collation ${expected.getString("name")}.${expectedColumn.getString("name")}",
+                    expectedColumn.optString("collation").uppercase(),
+                    actual.columns[columnIndex].collation,
+                )
+            }
+            val expectedPredicate = if (expected.isNull("predicate")) null else expected.getString("predicate")
+            if (expectedPredicate != null) {
+                assertEquals(expectedPredicate.replace(Regex("\\s+"), " ").trim(), actual.predicate)
+            }
         }
 
         val canonicalForeignKeys = fixture.getJSONObject("foreign_keys")
         for (tableIndex in 0 until canonicalTables.length()) {
             val tableName = canonicalTables.getString(tableIndex)
             val expectedKeys = canonicalForeignKeys.getJSONArray(tableName)
-            assertEquals(
-                "Foreign key count differs for $tableName",
-                expectedKeys.length(),
-                snapshot.foreignKeys[tableName].orEmpty().size,
-            )
+            val expectedSet = buildSet {
+                for (keyIndex in 0 until expectedKeys.length()) {
+                    val key = expectedKeys.getJSONObject(keyIndex)
+                    add(
+                        ReiAnixSqliteForeignKeySnapshot(
+                            table = key.getString("table"),
+                            from = key.getString("from"),
+                            to = key.getString("to"),
+                            onUpdate = key.getString("on_update").uppercase(),
+                            onDelete = key.getString("on_delete").uppercase(),
+                            match = key.getString("match").uppercase(),
+                        ),
+                    )
+                }
+            }
+            assertEquals("Foreign keys differ for $tableName", expectedSet, snapshot.foreignKeys[tableName].orEmpty())
         }
         assertTrue(snapshot.supportsCurrentContract)
     }
