@@ -117,7 +117,7 @@ object SafScanner {
         if (!documentUri.authority.equals(tree.authority, ignoreCase = true)) return false
         val documentId = runCatching { DocumentsContract.getDocumentId(documentUri) }.getOrNull()
             ?.takeIf { it.isNotBlank() } ?: return false
-        return canQueryDocument(context, treeUri, documentId)
+        return isDocumentWithinTree(context, treeUri, documentId)
     }
 
     fun isAuthorizedDocument(context:Context,documentUri:Uri):Boolean {
@@ -128,24 +128,26 @@ object SafScanner {
             if(!permission.isReadPermission) return@any false
             val tree=runCatching{treeIdentity(permission.uri)}.getOrNull() ?: return@any false
             if(!tree.authority.equals(documentUri.authority, ignoreCase = true)) return@any false
-            canQueryDocument(context, permission.uri, documentId)
+            isDocumentWithinTree(context, permission.uri, documentId)
         }
     }
 
-    private fun canQueryDocument(context:Context,treeUri:Uri,documentId:String):Boolean =
+    /**
+     * Enforce tree membership using the document provider's relationship API.
+     * Document IDs are opaque and must never be interpreted as path strings.
+     * The tree grant alone does not prove that an arbitrary document from the
+     * same provider is a descendant of the user-selected root.
+     */
+    private fun isDocumentWithinTree(context:Context,treeUri:Uri,documentId:String):Boolean =
         runCatching {
-            val scopedUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
-            context.contentResolver.query(
-                scopedUri,
-                arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                val idColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-                cursor.moveToFirst() && idColumn >= 0 && cursor.getString(idColumn) == documentId
-            } ?: false
+            if (!hasPersistedReadPermission(context, treeUri)) return@runCatching false
+            val tree = treeIdentity(treeUri)
+            if (documentId == tree.documentId) return@runCatching true
+            val rootDocument = DocumentsContract.buildDocumentUriUsingTree(treeUri, tree.documentId)
+            val candidate = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+            DocumentsContract.isChildDocument(context.contentResolver, rootDocument, candidate)
         }.getOrDefault(false)
+
 
     fun displayName(context:Context,treeUri:Uri):String = runCatching{DocumentFile.fromTreeUri(context,treeUri)?.name}.getOrNull()?.trim()?.takeIf{it.isNotBlank()} ?: "Pasta da biblioteca"
 
@@ -226,13 +228,45 @@ object SafScanner {
                     if(containsNoMediaMarker){
                         stats.put("nomediaDirectories",stats.getInt("nomediaDirectories")+1)
                     }
+                    val parentUri = runCatching {
+                        DocumentsContract.buildDocumentUriUsingTree(treeUri, parentId)
+                    }.getOrElse {
+                        stats.put("failedQueries",stats.getInt("failedQueries")+1)
+                        errors.put("Não foi possível validar o escopo de: "+currentPath)
+                        return@use
+                    }
                     for((childId,childName) in directoriesToVisit){
                         val relative=if(currentPath.isEmpty())childName else currentPath+"/"+childName
+                        if (!isDocumentWithinTree(context, treeUri, childId)) {
+                            stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
+                            errors.put("Pasta fora da árvore SAF autorizada: "+relative)
+                            continue
+                        }
+                        val childUri = runCatching {
+                            DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
+                        }.getOrElse {
+                            stats.put("failedQueries",stats.getInt("failedQueries")+1)
+                            errors.put("Não foi possível acessar: "+relative)
+                            continue
+                        }
+                        val isChild = runCatching {
+                            DocumentsContract.isChildDocument(resolver, parentUri, childUri)
+                        }.getOrDefault(false)
+                        if (!isChild) {
+                            stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
+                            errors.put("Pasta não confirmada pelo provedor como filha autorizada: "+relative)
+                            continue
+                        }
                         pending.addLast(childId to relative)
                     }
                     for(child in videoChildren){
                         if(shouldCancel()){cancelled=true;break}
                         val relative=if(currentPath.isEmpty())child.name else currentPath+"/"+child.name
+                        if (!isDocumentWithinTree(context, treeUri, child.id)) {
+                            stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
+                            errors.put("Arquivo fora da árvore SAF autorizada: "+relative)
+                            continue
+                        }
                         val childUri=runCatching{DocumentsContract.buildDocumentUriUsingTree(treeUri,child.id)}.getOrElse{stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("Não foi possível acessar: "+relative);continue}
                         if(!child.mime.startsWith("video/"))stats.put("mimeFallbacks",stats.getInt("mimeFallbacks")+1)
                         if(child.size==null)stats.put("metadataMissingSize",stats.getInt("metadataMissingSize")+1)
