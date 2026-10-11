@@ -706,7 +706,7 @@ private fun extractParenthesizedSql(sql: String, keyword: String): List<String> 
     var index = 0
     while (index < sql.length) {
         val char = sql[index]
-        if (char == '\\'' || char == '"' || char == '`' || char == '[' ||
+        if (char.code == 39 || char == '"' || char.code == 96 || char == '[' ||
             sql.startsWith("--", index) || sql.startsWith("/*", index)
         ) {
             index = skipQuotedOrComment(sql, index)
@@ -726,7 +726,7 @@ private fun extractParenthesizedSql(sql: String, keyword: String): List<String> 
                 var cursor = openIndex + 1
                 while (cursor < sql.length && depth > 0) {
                     val token = sql[cursor]
-                    if (token == '\\'' || token == '"' || token == '`' || token == '[' ||
+                    if (token.code == 39 || token == '"' || token.code == 96 || token == '[' ||
                         sql.startsWith("--", cursor) || sql.startsWith("/*", cursor)
                     ) {
                         cursor = skipQuotedOrComment(sql, cursor)
