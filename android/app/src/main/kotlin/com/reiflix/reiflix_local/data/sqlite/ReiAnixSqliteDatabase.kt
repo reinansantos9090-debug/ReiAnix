@@ -364,7 +364,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             incompatibilities += "PRAGMA foreign_key_check reported ${foreignKeyViolations.size} violation(s): ${foreignKeyViolations.take(5).joinToString("; ")}"
         }
 
-        ReiAnixSqliteSchemaSnapshot(
+        return ReiAnixSqliteSchemaSnapshot(
             schemaVersion = schemaVersion,
             sqliteUserVersion = userVersion,
             tables = tables,
