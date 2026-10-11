@@ -228,21 +228,11 @@ object SafScanner {
                     }
                     for((childId,childName) in directoriesToVisit){
                         val relative=if(currentPath.isEmpty())childName else currentPath+"/"+childName
-                        if(!isDocumentIdWithinTree(identity.documentId, childId)){
-                            stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
-                            if(Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE documentId="+childId)
-                            continue
-                        }
                         pending.addLast(childId to relative)
                     }
                     for(child in videoChildren){
                         if(shouldCancel()){cancelled=true;break}
                         val relative=if(currentPath.isEmpty())child.name else currentPath+"/"+child.name
-                        if(!isDocumentIdWithinTree(identity.documentId, child.id)){
-                            stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
-                            if(Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE documentId="+child.id)
-                            continue
-                        }
                         val childUri=runCatching{DocumentsContract.buildDocumentUriUsingTree(treeUri,child.id)}.getOrElse{stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("Não foi possível acessar: "+relative);continue}
                         if(!child.mime.startsWith("video/"))stats.put("mimeFallbacks",stats.getInt("mimeFallbacks")+1)
                         if(child.size==null)stats.put("metadataMissingSize",stats.getInt("metadataMissingSize")+1)
