@@ -166,6 +166,30 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             }
         }
 
+        val tableContract = fixture.getJSONObject("table_contract")
+        for (tableIndex in 0 until canonicalTables.length()) {
+            val tableName = canonicalTables.getString(tableIndex)
+            val expected = tableContract.getJSONObject(tableName)
+            val actual = snapshot.tableContract[tableName]
+                ?: throw AssertionError("Table contract metadata missing for $tableName")
+            assertEquals(expected.getBoolean("strict"), actual.strict)
+            assertEquals(expected.getBoolean("without_rowid"), actual.withoutRowId)
+            val checks = expected.getJSONArray("checks")
+            assertEquals(
+                (0 until checks.length()).map { checks.getString(it) },
+                actual.checks,
+            )
+        }
+        val expectedTriggers = fixture.getJSONArray("triggers")
+        assertEquals(expectedTriggers.length(), snapshot.triggers.size)
+        for (triggerIndex in 0 until expectedTriggers.length()) {
+            val expected = expectedTriggers.getJSONObject(triggerIndex)
+            val actual = snapshot.triggers[expected.getString("name")]
+                ?: throw AssertionError("Trigger ${expected.getString("name")} missing")
+            assertEquals(expected.getString("table"), actual.table)
+            assertEquals(expected.getString("sql"), actual.sql)
+        }
+
         val canonicalForeignKeys = fixture.getJSONObject("foreign_keys")
         for (tableIndex in 0 until canonicalTables.length()) {
             val tableName = canonicalTables.getString(tableIndex)
