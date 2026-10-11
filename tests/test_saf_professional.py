@@ -105,6 +105,8 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)", source)
         self.assertIn("DocumentsContract.Document.COLUMN_DOCUMENT_ID", source)
         self.assertIn("DocumentsContract.buildChildDocumentsUriUsingTree", source)
+        self.assertIn("DocumentsContract.isChildDocument", source)
+        self.assertIn("isDocumentWithinTree", source)
         self.assertNotIn("isDocumentIdWithinTree", source)
 
     def test_provider_states_are_explicit(self):
