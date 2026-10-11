@@ -94,7 +94,7 @@ class MediaDomainAndIdentityTest {
             "/library",
         )
 
-        assertEquals("naruto", parsed.animeTitle)
+        assertEquals("Naruto", parsed.animeTitle)
         assertEquals(2, parsed.season)
         assertEquals(3.0, parsed.episodeNumber!!, 0.0)
         assertEquals(".mkv", parsed.extension)
@@ -115,12 +115,12 @@ class MediaDomainAndIdentityTest {
 
     @Test
     fun ambiguousNumericSuffixIsLowerConfidenceAndExposesUncertainty() {
-        val parsed = MediaFilenameParser.parseVideoPath("/library/Series/Series 2023 - 03.mkv")
+        val parsed = MediaFilenameParser.parseVideoPath("/library/Series/Series - 02 - 03.mkv")
 
         assertEquals(ParsedMediaKind.REGULAR, parsed.kind)
         assertEquals(3.0, parsed.episodeNumber!!, 0.0)
         assertEquals(MediaIdentificationConfidence.MEDIUM, parsed.confidence)
-        assertTrue(parsed.unresolved.contains("multiple_numeric_candidates").not())
+        assertTrue(parsed.unresolved.contains("multiple_numeric_candidates"))
     }
 
     @Test
