@@ -86,7 +86,7 @@ def _skip_quoted_or_comment(sql: str, index: int) -> int:
         close = sql.find("]", index + 1)
         return len(sql) if close < 0 else close + 1
     if sql.startswith("--", index):
-        newline = sql.find("\\n", index + 2)
+        newline = sql.find(chr(10), index + 2)
         return len(sql) if newline < 0 else newline + 1
     if sql.startswith("/*", index):
         close = sql.find("*/", index + 2)
