@@ -158,7 +158,6 @@ data class ReiAnixAnimeMetadataPatch(
 ) {
     init {
         require(animeId > 0L) { "animeId must be a positive persisted ID." }
-        require(title == null || title.isNotBlank()) { "A supplied title must not be blank." }
         require(metadataFetchedAt == null || (metadataFetchedAt.isFinite() && metadataFetchedAt >= 0.0)) {
             "metadataFetchedAt must be finite and non-negative."
         }

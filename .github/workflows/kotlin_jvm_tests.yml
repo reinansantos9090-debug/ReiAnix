@@ -2,6 +2,8 @@ name: ReiAnix Kotlin JVM Validation
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
 
 concurrency:
   group: reianix-kotlin-jvm-${{ github.ref }}
@@ -49,12 +51,6 @@ jobs:
           python -m pip install -r requirements.txt "flet[cli]==0.86.5"
           python -c "import flet; assert flet.__version__ == '0.86.5'"
 
-      - name: Generate test schema from canonical LibraryStore
-        run: |
-          python scripts/generate_native_sqlite_test_fixture.py \
-            --output android/app/src/test/resources/native-sqlite-schema-v29.json \
-            --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
-
       - name: Generate build identity for the rendered Android host
         run: |
           mkdir -p build
@@ -68,6 +64,12 @@ jobs:
             --build-number "$GITHUB_RUN_NUMBER"
           test -s core/build_identity.py
           test -s .reiflix-build-identity.json
+
+      - name: Generate test schema from canonical LibraryStore
+        run: |
+          python scripts/generate_native_sqlite_test_fixture.py \
+            --output android/app/src/test/resources/native-sqlite-schema-v29.json \
+            --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
 
       - name: Prepare Flet build template with Android host
         shell: bash
@@ -185,6 +187,46 @@ jobs:
             --max-workers=1 \
             --console=plain \
             --stacktrace
+
+      - name: Print Kotlin JVM test failure details
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_root="$GITHUB_WORKSPACE/build/flutter"
+          python - "$report_root" <<'PY'
+          import pathlib
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = pathlib.Path(sys.argv[1])
+          reports = sorted(root.glob("**/test-results/testDebugUnitTest/TEST-*.xml"))
+          found = False
+          for report in reports:
+              suite = ET.parse(report).getroot()
+              for testcase in suite.iter("testcase"):
+                  problem = testcase.find("failure")
+                  if problem is None:
+                      problem = testcase.find("error")
+                  if problem is None:
+                      continue
+                  found = True
+                  classname = testcase.attrib.get("classname", "<unknown>")
+                  name = testcase.attrib.get("name", "<unknown>")
+                  print(f"FAILED TEST: {classname} > {name}")
+                  print(f"MESSAGE: {problem.attrib.get('message', '')}")
+                  detail = (problem.text or "").strip()
+                  if detail:
+                      print(detail)
+                  for stream_name in ("system-out", "system-err"):
+                      stream = testcase.find(stream_name)
+                      stream_text = (stream.text or "").strip() if stream is not None else ""
+                      if stream_text:
+                          print(f"{stream_name.upper()} FOR FAILED TEST:")
+                          print(stream_text)
+          if not found:
+              print(f"No failing testcase details found under {root}")
+          PY
 
       - name: Restore generated build identity source and verify repository integrity
         if: always()

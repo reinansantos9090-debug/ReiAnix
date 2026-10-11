@@ -67,16 +67,24 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val repository = ReiAnixSqliteLibraryRepository(context)
 
         val schemaBefore = repository.inspectSchema()
+        println("Prompt 4 SQLite fixture incompatibilities: ${schemaBefore.incompatibilities}")
         assertEquals(29, schemaBefore.schemaVersion)
         assertTrue(schemaBefore.missingRequiredTables.isEmpty())
         assertTrue(schemaBefore.missingRequiredColumns.isEmpty())
         assertTrue(schemaBefore.missingRequiredIndexes.isEmpty())
-        assertEquals(14, schemaBefore.tables.size)
-        assertTrue(schemaBefore.tables.containsAll(setOf(
-            "episode_observations", "associations", "pending_matches", "scan_runs",
-            "genres", "genre_aliases", "anime_genres",
-        )))
-        assertTrue(schemaBefore.supportsCurrentContract)
+        // Android SQLite may expose platform metadata tables, and compatible
+        // extension tables must survive inspection. Validate the complete
+        // canonical table set rather than assuming the physical DB has no extras.
+        val fixtureTables = loadCanonicalSchemaFixture().getJSONArray("tables")
+        val canonicalTables = (0 until fixtureTables.length())
+            .map { fixtureTables.getString(it) }
+            .toSet()
+        assertEquals("The canonical LibraryStore schema has 14 tables", 14, canonicalTables.size)
+        assertTrue(
+            "Runtime SQLite is missing canonical tables: ${canonicalTables - schemaBefore.tables}",
+            schemaBefore.tables.containsAll(canonicalTables),
+        )
+        assertTrue("SQLite contract incompatibilities: ${schemaBefore.incompatibilities}", schemaBefore.supportsCurrentContract)
         assertEquals(listOf("ok"), repository.quickCheck())
 
         val anime = repository.getAnime(1L)

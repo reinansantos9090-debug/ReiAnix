@@ -302,7 +302,7 @@ class ReiAnixSqliteDatabase(context: Context) {
                 .toForeignKeyList()
             val actualForeignKeys = foreignKeys[table].orEmpty()
             if (expectedForeignKeys != actualForeignKeys) {
-                incompatibilities += "$table foreign keys expected $expectedForeignKeys but were $actualForeignKeys"
+                incompatibilities += "$table foreign keys differ; expected=$expectedForeignKeys actual=$actualForeignKeys"
             }
         }
 
@@ -331,12 +331,30 @@ class ReiAnixSqliteDatabase(context: Context) {
         // SQLite-generated UNIQUE/PRIMARY KEY indexes are compared by semantic
         // signature, not sqlite_autoindex_* names (whose suffix is implementation detail).
         val expectedConstraintIndexes = expectedIndexes.filter { it.origin != "c" }
-            .map { it.semanticSignature() }.sorted()
         val actualConstraintIndexes = indexSnapshots.values
             .filter { it.origin != "c" && it.table in expectedTables }
-            .map { it.semanticSignature() }.sorted()
-        if (expectedConstraintIndexes != actualConstraintIndexes) {
-            incompatibilities += "SQLite UNIQUE/PRIMARY KEY index constraints differ; expected=$expectedConstraintIndexes actual=$actualConstraintIndexes"
+        val expectedConstraintCounts = expectedConstraintIndexes.groupingBy { it.semanticSignature() }.eachCount()
+        val actualConstraintCounts = actualConstraintIndexes.groupingBy { it.semanticSignature() }.eachCount()
+        for ((signature, expectedCount) in expectedConstraintCounts) {
+            val actualCount = actualConstraintCounts[signature] ?: 0
+            if (actualCount < expectedCount) {
+                val expected = expectedConstraintIndexes.first { it.semanticSignature() == signature }
+                val columns = expected.columns.joinToString(",") { it.name.orEmpty() }
+                val constraintKind = if (expected.origin == "u" || expected.unique) "unique constraint" else "primary-key constraint"
+                incompatibilities += "missing $constraintKind on ${expected.table}[$columns]"
+            }
+        }
+        for ((signature, actualCount) in actualConstraintCounts) {
+            val expectedCount = expectedConstraintCounts[signature] ?: 0
+            if (actualCount > expectedCount) {
+                val actual = actualConstraintIndexes.first { it.semanticSignature() == signature }
+                val columns = actual.columns.joinToString(",") { it.name.orEmpty() }
+                val constraintKind = if (actual.origin == "u" || actual.unique) "unique constraint" else "primary-key constraint"
+                incompatibilities += "unexpected $constraintKind on ${actual.table}[$columns]"
+            }
+        }
+        if (expectedConstraintCounts != actualConstraintCounts) {
+            incompatibilities += "SQLite UNIQUE/PRIMARY KEY index constraints differ; expected=$expectedConstraintCounts actual=$actualConstraintCounts"
         }
 
         val expectedTriggers = contract.getJSONArray("triggers").toTriggerMap()
@@ -458,7 +476,9 @@ class ReiAnixSqliteDatabase(context: Context) {
         if (expected.unique != actual.unique) issues += "index ${expected.name} unique expected ${expected.unique} but was ${actual.unique}"
         if (expected.origin != actual.origin) issues += "index ${expected.name} origin expected ${expected.origin} but was ${actual.origin}"
         if (expected.partial != actual.partial) issues += "index ${expected.name} partial expected ${expected.partial} but was ${actual.partial}"
-        if (expected.columns != actual.columns) issues += "index ${expected.name} columns/order/options differ; expected=${expected.columns} actual=${actual.columns}"
+        if (expected.columns != actual.columns) {
+            issues += "index ${expected.name} columns expected ${expected.columns} (including order and options) but were ${actual.columns}"
+        }
         if (normalizeSqlExpression(expected.predicate.orEmpty()) != normalizeSqlExpression(actual.predicate.orEmpty())) {
             issues += "index ${expected.name} predicate expected ${expected.predicate} but was ${actual.predicate}"
         }

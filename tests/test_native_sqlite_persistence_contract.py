@@ -106,9 +106,11 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("unitTests.includeAndroidResources = true", template)
         self.assertNotIn(":app:testDebugUnitTest", template)
 
-    def test_kotlin_jvm_workflow_is_manual_only_and_template_does_not_regenerate_it(self):
+    def test_kotlin_jvm_workflow_runs_on_pr_and_remains_dispatchable(self):
         workflow = KOTLIN_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("pull_request:", workflow)
+        self.assertIn("branches: [main]", workflow)
         lines = workflow.splitlines()
         on_index = lines.index("on:")
         event_lines = []
@@ -122,8 +124,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             match = re.fullmatch(r"  ([a-z_]+):", line)
             if match:
                 events.append(match.group(1))
-        self.assertEqual(["workflow_dispatch"], events)
-        for forbidden in ("pull_request", "pull_request_target", "push", "schedule", "workflow_run"):
+        self.assertEqual(["workflow_dispatch", "pull_request"], events)
+        for forbidden in ("pull_request_target", "push", "schedule", "workflow_run"):
             self.assertNotIn(forbidden, events)
 
         template = TEMPLATE.read_text(encoding="utf-8")
