@@ -130,10 +130,21 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertEqual(expected_tables, set(fixture["tables"]))
         self.assertIn("discovered_at", {column["name"] for column in fixture["columns"]["artwork"]})
         self.assertIn("applied_at", {column["name"] for column in fixture["columns"]["schema_migrations"]})
-        index_names = {index["name"] for index in fixture["indexes"]}
-        self.assertIn("idx_episodes_anime_season_number_abs", index_names)
-        self.assertIn("idx_episodes_media_identity", index_names)
+        index_sql = {index["name"]: index["sql"] for index in fixture["indexes"]}
+        self.assertIn("idx_episodes_anime_season_number_abs", index_sql)
+        self.assertIn("idx_episodes_media_identity", index_sql)
+        self.assertIn("WHERE media_identity IS NOT NULL", index_sql["idx_episodes_media_identity"])
         self.assertTrue(any("REFERENCES anime(id) ON DELETE CASCADE" in sql for sql in fixture["statements"]))
+
+        def column(table, name):
+            return next(item for item in fixture["columns"][table] if item["name"] == name)
+
+        self.assertEqual("REAL", column("episodes", "number")["type"])
+        self.assertEqual("INTEGER", column("episodes", "file_size")["type"])
+        self.assertEqual("REAL", column("preferences", "updated_at")["type"])
+        self.assertTrue(column("artwork", "discovered_at")["not_null"])
+        self.assertTrue(column("artwork", "updated_at")["not_null"])
+        self.assertTrue(column("episodes", "anime_id")["not_null"])
 
     def test_models_keep_nullable_sqlite_values_and_existing_identity(self):
         models = MODELS.read_text(encoding="utf-8")
