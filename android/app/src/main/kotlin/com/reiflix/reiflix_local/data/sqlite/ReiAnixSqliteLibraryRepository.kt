@@ -59,10 +59,6 @@ class ReiAnixSqliteLibraryRepository(
 
 
     /**
-     * Updates supplied metadata for an existing anime in one transaction.
-     * Null patch members are no-ops. Stable IDs and user-owned fields remain untouched.
-     */
-    /**
      * Updates supplied catalog metadata for an existing anime in one transaction.
      * Fields in metadata_manual_fields are protected. Null patch members are no-ops.
      * Source/confidence/status bookkeeping and explicit manual corrections remain
@@ -108,7 +104,9 @@ class ReiAnixSqliteLibraryRepository(
             val manualFields = current.second
             val values = ContentValues()
 
-            patch.title?.let { if ("title" !in manualFields) values.put("title", it.trim()) }
+            patch.title?.takeIf { it.isNotBlank() }?.let {
+                if ("title" !in manualFields) values.put("title", it.trim())
+            }
             patch.romaji?.takeIf { it.isNotBlank() }?.let { if ("romaji" !in manualFields) values.put("romaji", it) }
             patch.english?.takeIf { it.isNotBlank() }?.let { if ("english" !in manualFields) values.put("english", it) }
             patch.nativeTitle?.takeIf { it.isNotBlank() }?.let { if ("native" !in manualFields) values.put("native", it) }
