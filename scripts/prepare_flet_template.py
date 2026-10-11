@@ -534,7 +534,6 @@ def main() -> int:
         source / "src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt",
         source / "src/main/res/values/styles.xml",
         source / "src/main/res/layout/native_player_view.xml",
-        source / "src/main/assets/native-sqlite-contract-v29.json",
     ]
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
