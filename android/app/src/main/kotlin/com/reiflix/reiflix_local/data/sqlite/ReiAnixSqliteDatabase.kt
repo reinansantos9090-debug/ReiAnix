@@ -88,8 +88,8 @@ class ReiAnixSqliteDatabase(context: Context) {
         val indexes = linkedSetOf<String>()
         val indexSnapshots = mutableMapOf<String, ReiAnixSqliteIndexSnapshot>()
         database.rawQuery(
-            "SELECT name, tbl_name, sql FROM sqlite_master WHERE type = ? AND name NOT LIKE ? ORDER BY name",
-            arrayOf("index", "sqlite_%"),
+            "SELECT name, tbl_name, sql FROM sqlite_master WHERE type = ? ORDER BY name",
+            arrayOf("index"),
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val name = cursor.getString(0)
