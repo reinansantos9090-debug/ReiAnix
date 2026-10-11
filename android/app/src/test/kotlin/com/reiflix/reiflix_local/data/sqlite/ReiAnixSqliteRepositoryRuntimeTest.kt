@@ -155,7 +155,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             }
             val expectedPredicate = if (expected.isNull("predicate")) null else expected.getString("predicate")
             if (expectedPredicate != null) {
-                assertEquals(expectedPredicate.replace(Regex("\\s+"), " ").trim(), actual.predicate)
+                assertEquals(expectedPredicate.replace(Regex("\\s+"), " ").trim().uppercase(), actual.predicate)
             }
         }
 
