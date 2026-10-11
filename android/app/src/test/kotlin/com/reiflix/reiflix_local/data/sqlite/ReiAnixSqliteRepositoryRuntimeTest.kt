@@ -429,6 +429,20 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun missingUniqueConstraintIsRejectedEvenWhenColumnsStillExist() = runBlocking {
+        createCanonicalFixture { schema ->
+            replaceCreateTableStatement(schema, "anime") { sql ->
+                sql.replace("lookup_title TEXT UNIQUE NOT NULL", "lookup_title TEXT NOT NULL")
+            }
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any {
+            it.contains("missing unique constraint on anime[lookup_title]")
+        })
+    }
+
+    @Test
     fun foreignKeyOnDeleteContractIsValidated() = runBlocking {
         createCanonicalFixture { schema ->
             replaceCreateTableStatement(schema, "episodes") { sql ->
