@@ -67,7 +67,11 @@ class ReiAnixSqliteDatabase(context: Context) {
         synchronized(connectionLock) {
             val database = openExisting(readOnly = true)
             try {
-                runQuickCheck(database)
+                runQuickCheck(database).also { results ->
+                    check(results == listOf("ok")) {
+                        "SQLite quick_check failed: ${results.joinToString("; ").ifBlank { "no result" }}"
+                    }
+                }
             } finally {
                 database.close()
             }
@@ -336,7 +340,11 @@ class ReiAnixSqliteDatabase(context: Context) {
         }
 
         val quickCheckResults = runQuickCheck(database)
-        val integrityErrors = if (quickCheckResults == listOf("ok")) emptyList() else quickCheckResults
+        val integrityErrors = if (quickCheckResults == listOf("ok")) {
+            emptyList()
+        } else {
+            quickCheckResults.ifEmpty { listOf("PRAGMA quick_check returned no result") }
+        }
         if (integrityErrors.isNotEmpty()) {
             incompatibilities += "PRAGMA quick_check failed: ${integrityErrors.joinToString("; ")}"
         }
@@ -427,10 +435,6 @@ class ReiAnixSqliteDatabase(context: Context) {
         database.rawQuery("PRAGMA quick_check", null).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) add(cursor.getString(0))
-            }
-        }.also { results ->
-            check(results == listOf("ok")) {
-                "SQLite quick_check failed: ${results.joinToString("; ").ifBlank { "no result" }}"
             }
         }
 
