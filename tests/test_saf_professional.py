@@ -89,6 +89,22 @@ class TestSafProfessionalContract(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('return "saf:" + authority.lowercase(java.util.Locale.ROOT) + ":" + documentId', authorization)
 
+    def test_document_authorization_uses_provider_scoped_uri_not_document_id_prefix(self):
+        source = SAF.read_text(encoding="utf-8")
+        tree_scoped = source[
+            source.index("fun isAuthorizedDocumentForTree"):
+            source.index("fun isAuthorizedDocument(context")
+        ]
+        general = source[
+            source.index("fun isAuthorizedDocument(context"):
+            source.index("private fun canQueryDocument")
+        ]
+        for block in (tree_scoped, general):
+            self.assertIn("canQueryDocument(context", block)
+            self.assertNotIn("isWithinTree(tree.documentId, documentId)", block)
+        self.assertIn("DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)", source)
+        self.assertIn("DocumentsContract.COLUMN_DOCUMENT_ID", source)
+
     def test_provider_states_are_explicit(self):
         source = SAF.read_text(encoding="utf-8")
         for state in ("STATUS_EMPTY_COMPLETE", "STATUS_PARTIAL", "STATUS_CANCELLED",
