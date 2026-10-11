@@ -7060,7 +7060,7 @@ async def main(page: ft.Page):
                                         item.get('authority') or '',
                                         item.get('documentId') or '',
                                         item.get('volumeId') or None,
-                                        item.get('identity') or identity,
+                                        identity,
                                     )
                                     if status in {'COMPLETED', 'EMPTY_COMPLETE'}:
                                         store.update_folder_status(reference, 'granted')
