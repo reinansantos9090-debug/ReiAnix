@@ -161,14 +161,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             ["anime_id", "season", "number", "absolute_number", "id"],
             [column["name"] for column in compound_index["columns"]],
         )
-        self.assertEqual(
-            {"anime_id": "anime", "episode_id": "episodes"},
-            {
-                key: value[0]["table"]
-                for key, value in fixture["foreign_keys"].items()
-                if key in {"episodes", "episode_observations"}
-            } | {},
-        )
+        self.assertEqual("anime", fixture["foreign_keys"]["episodes"][0]["table"])
+        self.assertEqual("episodes", fixture["foreign_keys"]["episode_observations"][0]["table"])
 
         def column(table, name):
             return next(item for item in fixture["columns"][table] if item["name"] == name)
