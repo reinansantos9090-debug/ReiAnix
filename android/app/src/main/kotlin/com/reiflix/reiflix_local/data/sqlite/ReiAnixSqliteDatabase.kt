@@ -483,7 +483,7 @@ class ReiAnixSqliteOpenException(message: String, cause: Throwable) :
 
 private data class ReiAnixSqliteIndexListEntry(val unique: Boolean, val partial: Boolean)
 
-internal data class ReiAnixSqliteColumnSnapshot(
+data class ReiAnixSqliteColumnSnapshot(
     val name: String,
     val declaredType: String,
     val notNull: Boolean,
@@ -491,13 +491,13 @@ internal data class ReiAnixSqliteColumnSnapshot(
     val primaryKeyPosition: Int,
 )
 
-internal data class ReiAnixSqliteIndexColumn(
+data class ReiAnixSqliteIndexColumn(
     val name: String?,
     val descending: Boolean,
     val collation: String?,
 )
 
-internal data class ReiAnixSqliteIndexSnapshot(
+data class ReiAnixSqliteIndexSnapshot(
     val name: String,
     val table: String,
     val unique: Boolean,
@@ -506,7 +506,7 @@ internal data class ReiAnixSqliteIndexSnapshot(
     val predicate: String?,
 )
 
-internal data class ReiAnixSqliteForeignKeySnapshot(
+data class ReiAnixSqliteForeignKeySnapshot(
     val table: String,
     val from: String,
     val to: String,
