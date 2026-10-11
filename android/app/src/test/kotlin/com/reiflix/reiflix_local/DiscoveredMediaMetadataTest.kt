@@ -198,7 +198,7 @@ class DiscoveredMediaMetadataTest {
             verifySizeWithoutReading = { throw IOException("file was removed or cannot be opened") },
             lastModified = { 0L },
         )
-        assertTrue(metadata.fileReadable)
+        assertFalse(metadata.fileReadable)
         assertNull(metadata.sizeBytes)
         assertNull(metadata.modifiedAtMillis)
     }

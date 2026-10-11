@@ -43,15 +43,24 @@ object BroadStorageScanner {
         if (!readable) return LocalFileMetadata(fileReadable = false, sizeBytes = null, modifiedAtMillis = null)
 
         val reportedLength = runCatching { length() }.getOrNull()
+        var zeroSizeVerificationFailed = false
         val sizeBytes = when {
             reportedLength == null || reportedLength < 0L -> null
             reportedLength > 0L -> reportedLength
-            else -> runCatching { verifySizeWithoutReading() }.getOrNull()?.takeIf { it >= 0L }
+            else -> {
+                val verifiedSize = runCatching { verifySizeWithoutReading() }
+                zeroSizeVerificationFailed = verifiedSize.isFailure
+                verifiedSize.getOrNull()?.takeIf { it >= 0L }
+            }
         }
         // File.lastModified() returns zero when it cannot determine the timestamp. Unlike
         // the content-provider columns, this API has no separate value-availability flag.
         val modifiedAtMillis = runCatching { lastModified() }.getOrNull()?.takeIf { it > 0L }
-        return LocalFileMetadata(fileReadable = true, sizeBytes = sizeBytes, modifiedAtMillis = modifiedAtMillis)
+        return LocalFileMetadata(
+            fileReadable = !zeroSizeVerificationFailed,
+            sizeBytes = sizeBytes,
+            modifiedAtMillis = modifiedAtMillis,
+        )
     }
     const val SOURCE = "broad-storage"
     const val DISPLAY_NAME = "Armazenamento local"
