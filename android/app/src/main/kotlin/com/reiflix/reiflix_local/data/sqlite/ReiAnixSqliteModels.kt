@@ -156,9 +156,6 @@ data class ReiAnixAnimeMetadataPatch(
     val format: String? = null,
     val studio: String? = null,
     val metadataFetchedAt: Double? = null,
-    val metadataSource: String? = null,
-    val metadataConfidence: String? = null,
-    val metadataStatus: String? = null,
 ) {
     init {
         require(animeId > 0L) { "animeId must be a positive persisted ID." }
@@ -173,8 +170,7 @@ data class ReiAnixAnimeMetadataPatch(
                 coverUrl != null || coverCache != null || bannerUrl != null ||
                 genresJson != null || year != null || season != null || status != null ||
                 episodesCount != null || duration != null || score != null || format != null ||
-                studio != null || metadataFetchedAt != null || metadataSource != null ||
-                metadataConfidence != null || metadataStatus != null,
+                studio != null || metadataFetchedAt != null,
         ) { "The metadata patch must supply at least one field." }
     }
 }

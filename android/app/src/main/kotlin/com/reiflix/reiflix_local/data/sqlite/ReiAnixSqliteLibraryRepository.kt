@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import org.json.JSONArray
+import org.json.JSONException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -60,47 +62,86 @@ class ReiAnixSqliteLibraryRepository(
      * Updates supplied metadata for an existing anime in one transaction.
      * Null patch members are no-ops. Stable IDs and user-owned fields remain untouched.
      */
+    /**
+     * Updates supplied catalog metadata for an existing anime in one transaction.
+     * Fields in metadata_manual_fields are protected. Null patch members are no-ops.
+     * Source/confidence/status bookkeeping and explicit manual corrections remain
+     * owned by LibraryStore until their merge rules are migrated with parity tests.
+     */
     suspend fun updateAnimeMetadata(
         patch: ReiAnixAnimeMetadataPatch,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         database.transaction { connection ->
-            val values = ContentValues()
-            patch.title?.let { values.put("title", it.trim()) }
-            patch.anilistId?.let { values.put("anilist_id", it) }
-            patch.romaji?.let { values.put("romaji", it) }
-            patch.english?.let { values.put("english", it) }
-            patch.nativeTitle?.let { values.put("native", it) }
-            patch.aliasesJson?.let { values.put("aliases", it) }
-            patch.description?.let { values.put("description", it) }
-            patch.coverUrl?.let { values.put("cover_url", it) }
-            patch.coverCache?.let { values.put("cover_cache", it) }
-            patch.bannerUrl?.let { values.put("banner_url", it) }
-            patch.genresJson?.let { values.put("genres", it) }
-            patch.year?.let { values.put("year", it) }
-            patch.season?.let { values.put("season", it) }
-            patch.status?.let { values.put("status", it) }
-            patch.episodesCount?.let { values.put("episodes_count", it) }
-            patch.duration?.let { values.put("duration", it) }
-            patch.score?.let { values.put("score", it) }
-            patch.format?.let { values.put("format", it) }
-            patch.studio?.let { values.put("studio", it) }
-            patch.metadataFetchedAt?.let { values.put("metadata_fetched_at", it) }
-            patch.metadataSource?.let { values.put("metadata_source", it) }
-            patch.metadataConfidence?.let { values.put("metadata_confidence", it) }
-            patch.metadataStatus?.let { values.put("metadata_status", it) }
-            values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
+            val current = connection.rawQuery(
+                "SELECT * FROM anime WHERE id = ? LIMIT 1",
+                arrayOf(patch.animeId.toString()),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    throw NoSuchElementException(
+                        "Cannot update anime metadata: anime ID does not exist.",
+                    )
+                }
+                val rawManualFields = cursor.optionalString("metadata_manual_fields") ?: "[]"
+                val manualFields = try {
+                    val parsed = JSONArray(rawManualFields)
+                    buildSet {
+                        for (index in 0 until parsed.length()) {
+                            val field = parsed.get(index)
+                            if (field !is String) {
+                                throw IllegalStateException(
+                                    "Stored manual metadata ownership contains a non-string field.",
+                                )
+                            }
+                            add(field)
+                        }
+                    }
+                } catch (error: JSONException) {
+                    throw IllegalStateException(
+                        "Stored manual metadata ownership is unreadable; refusing to overwrite metadata.",
+                        error,
+                    )
+                }
+                cursor.toAnimeRecord() to manualFields
+            }
 
-            val updated = connection.update(
+            val currentRecord = current.first
+            val manualFields = current.second
+            val values = ContentValues()
+
+            patch.title?.let { if ("title" !in manualFields) values.put("title", it.trim()) }
+            patch.anilistId?.let { values.put("anilist_id", it) }
+            patch.romaji?.let { if ("romaji" !in manualFields) values.put("romaji", it) }
+            patch.english?.let { if ("english" !in manualFields) values.put("english", it) }
+            patch.nativeTitle?.let { if ("native" !in manualFields) values.put("native", it) }
+            patch.aliasesJson?.let { if ("aliases" !in manualFields) values.put("aliases", it) }
+            patch.description?.let { if ("description" !in manualFields) values.put("description", it) }
+            patch.coverUrl?.let { if ("cover_url" !in manualFields) values.put("cover_url", it) }
+            patch.coverCache?.let { if ("cover_cache" !in manualFields) values.put("cover_cache", it) }
+            patch.bannerUrl?.let { if ("banner_url" !in manualFields) values.put("banner_url", it) }
+            patch.genresJson?.let { if ("genres" !in manualFields) values.put("genres", it) }
+            patch.year?.let { if ("year" !in manualFields) values.put("year", it) }
+            patch.season?.let { if ("season" !in manualFields) values.put("season", it) }
+            patch.status?.let { if ("status" !in manualFields) values.put("status", it) }
+            patch.episodesCount?.let { if ("episodes_count" !in manualFields) values.put("episodes_count", it) }
+            patch.duration?.let { if ("duration" !in manualFields) values.put("duration", it) }
+            patch.score?.let { if ("score" !in manualFields) values.put("score", it) }
+            patch.format?.let { if ("format" !in manualFields) values.put("format", it) }
+            patch.studio?.let { if ("studio" !in manualFields) values.put("studio", it) }
+            patch.metadataFetchedAt?.let { values.put("metadata_fetched_at", it) }
+
+            // If every requested editorial field is manually protected, preserve
+            // the record and its timestamps exactly.
+            if (values.size() == 0) {
+                return@transaction currentRecord
+            }
+
+            values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
+            connection.update(
                 "anime",
                 values,
                 "id = ?",
                 arrayOf(patch.animeId.toString()),
             )
-            if (updated == 0) {
-                throw NoSuchElementException(
-                    "Cannot update anime metadata: anime ID does not exist.",
-                )
-            }
             connection.rawQuery(
                 "SELECT * FROM anime WHERE id = ? LIMIT 1",
                 arrayOf(patch.animeId.toString()),
