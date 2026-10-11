@@ -102,12 +102,6 @@ object SafScanner {
         }
     }
 
-    private fun normalizedDocumentId(value:String):String = Uri.decode(value).trim().trim('/')
-    private fun isDocumentIdWithinTree(treeDocumentId:String, documentId:String):Boolean {
-        val root = normalizedDocumentId(treeDocumentId)
-        val child = normalizedDocumentId(documentId)
-        return root.isNotBlank() && child.isNotBlank() && (child == root || child.startsWith(root + "/"))
-    }
     /**
      * Ask the document provider to resolve the document through this authorized tree.
      *
