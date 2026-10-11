@@ -239,6 +239,7 @@ object SafScanner {
                         val relative=if(currentPath.isEmpty())childName else currentPath+"/"+childName
                         if (!isDocumentWithinTree(context, treeUri, childId)) {
                             stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
+                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE documentId="+childId)
                             errors.put("Pasta fora da árvore SAF autorizada: "+relative)
                             continue
                         }
@@ -254,6 +255,7 @@ object SafScanner {
                         }.getOrDefault(false)
                         if (!isChild) {
                             stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
+                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE parentId="+parentId+" documentId="+childId)
                             errors.put("Pasta não confirmada pelo provedor como filha autorizada: "+relative)
                             continue
                         }
@@ -264,6 +266,7 @@ object SafScanner {
                         val relative=if(currentPath.isEmpty())child.name else currentPath+"/"+child.name
                         if (!isDocumentWithinTree(context, treeUri, child.id)) {
                             stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
+                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE documentId="+child.id)
                             errors.put("Arquivo fora da árvore SAF autorizada: "+relative)
                             continue
                         }
