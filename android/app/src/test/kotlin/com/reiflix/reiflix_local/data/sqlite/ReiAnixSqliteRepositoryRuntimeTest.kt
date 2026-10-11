@@ -588,6 +588,20 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun unexpectedExplicitIndexOnCanonicalTableIsRejected() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("CREATE INDEX injected_contract_index ON anime(title)")
+        }
+
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any {
+            it.contains("unexpected indexes on canonical tables: injected_contract_index")
+        })
+    }
+
+    @Test
     fun sameIndexNameWithDifferentUniquenessIsRejected() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
