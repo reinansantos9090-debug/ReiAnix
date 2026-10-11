@@ -1,7 +1,6 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
-import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import java.io.File
@@ -103,7 +102,9 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, flags).also { database ->
                 database.setForeignKeyConstraintsEnabled(true)
-                database.execSQL("PRAGMA busy_timeout = " + BUSY_TIMEOUT_MS)
+                database.rawQuery("PRAGMA busy_timeout = " + BUSY_TIMEOUT_MS, null).use { cursor ->
+                    while (cursor.moveToNext()) Unit
+                }
             }
         } catch (error: SQLiteException) {
             throw ReiAnixSqliteOpenException(
