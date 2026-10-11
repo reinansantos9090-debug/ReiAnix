@@ -97,12 +97,13 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
     def test_kotlin_jvm_workflow_is_manual_only_and_template_does_not_regenerate_it(self):
         workflow = KOTLIN_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("on:\n  workflow_dispatch:\n", workflow)
-        event_block = re.search(r"(?ms)^on:\\n(.*?)(?=^[^ \\t#\\n]|\\Z)", workflow)
-        self.assertIsNotNone(event_block)
-        events = re.findall(r"(?m)^  ([a-z_]+):", event_block.group(1))
+        self.assertIn("\\non:\\n", workflow)
+        self.assertIn("\\nconcurrency:", workflow)
+        event_block = workflow.split("\\non:\\n", 1)[1].split("\\nconcurrency:", 1)[0]
+        events = re.findall(r"(?m)^  ([a-z_]+):", event_block)
         self.assertEqual(["workflow_dispatch"], events)
         for forbidden in ("pull_request:", "pull_request_target:", "push:", "schedule:", "workflow_run:"):
-            self.assertNotIn(forbidden, event_block.group(1))
+            self.assertNotIn(forbidden, event_block)
 
         template = TEMPLATE.read_text(encoding="utf-8")
         self.assertNotIn("kotlin_jvm_tests.yml", template)
