@@ -68,41 +68,72 @@ def normalize_sql_expression(sql: str) -> str:
     return "".join(out).strip().rstrip(";").strip()
 
 
-def extract_parenthesized_sql(sql: str, keyword: str) -> list[str]:
-    """Extract balanced CHECK(...) expressions, ignoring quoted parentheses."""
-    values: list[str] = []
-    keyword_pattern = re.compile(rf"\b{re.escape(keyword)}\s*\(", re.IGNORECASE)
-    search_from = 0
-    while match := keyword_pattern.search(sql, search_from):
-        open_index = sql.find("(", match.start(), match.end())
-        depth = 1
-        index = open_index + 1
-        quote: str | None = None
-        while index < len(sql) and depth:
-            char = sql[index]
-            if quote is not None:
-                if char == quote:
-                    if index + 1 < len(sql) and sql[index + 1] == quote:
-                        index += 1
-                    else:
-                        quote = None
-                elif quote == "]" and char == "]":
-                    quote = None
-            elif char in ("'", '"', "`"):
-                quote = char
-            elif char == "[":
-                quote = "]"
-            elif char == "(":
-                depth += 1
-            elif char == ")":
-                depth -= 1
+def _skip_quoted_or_comment(sql: str, index: int) -> int:
+    """Return the first character after one quoted token or SQL comment."""
+    char = sql[index]
+    if char in ("'", '"', "`"):
+        quote = char
+        index += 1
+        while index < len(sql):
+            if sql[index] == quote:
+                if index + 1 < len(sql) and sql[index + 1] == quote:
+                    index += 2
+                    continue
+                return index + 1
             index += 1
-        if depth:
-            raise RuntimeError(f"Unbalanced {keyword} clause in SQLite DDL: {sql}")
-        values.append(normalize_sql_expression(sql[open_index + 1:index - 1]))
-        search_from = index
-    return values
+        return index
+    if char == "[":
+        close = sql.find("]", index + 1)
+        return len(sql) if close < 0 else close + 1
+    if sql.startswith("--", index):
+        newline = sql.find("\\n", index + 2)
+        return len(sql) if newline < 0 else newline + 1
+    if sql.startswith("/*", index):
+        close = sql.find("*/", index + 2)
+        return len(sql) if close < 0 else close + 2
+    return index
 
+
+def extract_parenthesized_sql(sql: str, keyword: str) -> list[str]:
+    """Extract balanced keyword(...) expressions, ignoring strings/comments."""
+    values: list[str] = []
+    target = keyword.upper()
+    index = 0
+    while index < len(sql):
+        char = sql[index]
+        if char in ("'", '"', "`", "[") or sql.startswith("--", index) or sql.startswith("/*", index):
+            index = _skip_quoted_or_comment(sql, index)
+            continue
+
+        before_is_word = index > 0 and (sql[index - 1].isalnum() or sql[index - 1] == "_")
+        end_keyword = index + len(target)
+        after_is_word = end_keyword < len(sql) and (
+            sql[end_keyword].isalnum() or sql[end_keyword] == "_"
+        )
+        if not before_is_word and not after_is_word and sql[index:end_keyword].upper() == target:
+            open_index = end_keyword
+            while open_index < len(sql) and sql[open_index].isspace():
+                open_index += 1
+            if open_index < len(sql) and sql[open_index] == "(":
+                depth = 1
+                cursor = open_index + 1
+                while cursor < len(sql) and depth:
+                    token = sql[cursor]
+                    if token in ("'", '"', "`", "[") or sql.startswith("--", cursor) or sql.startswith("/*", cursor):
+                        cursor = _skip_quoted_or_comment(sql, cursor)
+                        continue
+                    if token == "(":
+                        depth += 1
+                    elif token == ")":
+                        depth -= 1
+                    cursor += 1
+                if depth:
+                    raise RuntimeError(f"Unbalanced {keyword} clause in SQLite DDL: {sql}")
+                values.append(normalize_sql_expression(sql[open_index + 1:cursor - 1]))
+                index = cursor
+                continue
+        index += 1
+    return values
 
 def _table_ddl(connection: sqlite3.Connection, table: str) -> str:
     row = connection.execute(
