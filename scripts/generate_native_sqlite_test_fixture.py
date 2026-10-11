@@ -78,16 +78,63 @@ def build_fixture() -> dict[str, object]:
                     for row in rows
                 ]
 
-            indexes = [
-                {"name": name, "sql": sql}
-                for object_type, name, sql in objects
-                if object_type == "index"
-            ]
+            indexes = []
+            foreign_keys: dict[str, list[dict[str, object]]] = {}
+            for table in tables:
+                escaped = table.replace('"', '""')
+                for row in connection.execute(f'PRAGMA index_list("{escaped}")').fetchall():
+                    index_name = row[1]
+                    index_sql_row = connection.execute(
+                        "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+                        (index_name,),
+                    ).fetchone()
+                    index_sql = index_sql_row[0] if index_sql_row else None
+                    index_columns = [
+                        {
+                            "name": item[2],
+                            "descending": bool(item[3]),
+                            "collation": item[4],
+                        }
+                        for item in connection.execute(
+                            f'PRAGMA index_xinfo("{index_name.replace(chr(34), chr(34) * 2)}")'
+                        ).fetchall()
+                        if len(item) > 5 and item[5]
+                    ]
+                    predicate = None
+                    if index_sql:
+                        match = __import__("re").search(r"(?is)\\bWHERE\\b(.*)$", index_sql)
+                        predicate = " ".join(match.group(1).strip().rstrip(";").split()) if match else None
+                    indexes.append({
+                        "name": index_name,
+                        "table": table,
+                        "unique": bool(row[2]),
+                        "origin": row[3],
+                        "partial": bool(row[4]),
+                        "columns": index_columns,
+                        "predicate": predicate,
+                        "sql": index_sql,
+                    })
+
+                foreign_keys[table] = [
+                    {
+                        "table": row[2],
+                        "from": row[3],
+                        "to": row[4],
+                        "on_update": row[5],
+                        "on_delete": row[6],
+                        "match": row[7],
+                    }
+                    for row in connection.execute(f'PRAGMA foreign_key_list("{escaped}")').fetchall()
+                ]
+
+            user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
             return {
                 "schema_version": schema_version,
+                "sqlite_user_version": user_version,
                 "tables": tables,
                 "columns": columns,
                 "indexes": indexes,
+                "foreign_keys": foreign_keys,
                 "statements": [sql for _, _, sql in objects],
             }
 
