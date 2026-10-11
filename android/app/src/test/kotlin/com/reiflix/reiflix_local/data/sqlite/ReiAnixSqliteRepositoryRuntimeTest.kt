@@ -455,6 +455,18 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun missingRequiredIndexIsRejectedIndependentlyOfItsTable() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("DROP INDEX idx_artwork_entity")
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertTrue(schema.missingRequiredIndexes.contains("idx_artwork_entity"))
+        assertTrue(schema.incompatibilities.any { it.contains("missing index: idx_artwork_entity") })
+        assertFalse(schema.supportsCurrentContract)
+    }
+
+    @Test
     fun sameIndexNameWithDifferentUniquenessIsRejected() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
