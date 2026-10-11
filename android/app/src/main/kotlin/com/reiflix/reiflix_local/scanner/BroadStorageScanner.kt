@@ -18,6 +18,41 @@ import java.util.HashSet
 
 object BroadStorageScanner {
     private const val TAG = "[REIFLIX][SCANNER]"
+
+    internal data class LocalFileMetadata(
+        val fileReadable: Boolean,
+        val sizeBytes: Long?,
+        val modifiedAtMillis: Long?,
+    )
+
+    /**
+     * java.io.File metadata calls are best-effort and not an atomic snapshot. File.length()
+     * returns zero both for an empty file and for some unavailable paths. When it returns
+     * zero, confirm through a newly opened FileChannel's size without reading content.
+     * If descriptor opening fails, size remains unknown. This metadata probe never decides
+     * whether the already enumerated file is retained in the discovery result.
+     */
+    internal fun readLocalFileMetadata(
+        isRegularFile: () -> Boolean,
+        canRead: () -> Boolean,
+        length: () -> Long,
+        verifySizeWithoutReading: () -> Long,
+        lastModified: () -> Long,
+    ): LocalFileMetadata {
+        val readable = runCatching { isRegularFile() && canRead() }.getOrDefault(false)
+        if (!readable) return LocalFileMetadata(fileReadable = false, sizeBytes = null, modifiedAtMillis = null)
+
+        val reportedLength = runCatching { length() }.getOrNull()
+        val sizeBytes = when {
+            reportedLength == null || reportedLength < 0L -> null
+            reportedLength > 0L -> reportedLength
+            else -> runCatching { verifySizeWithoutReading() }.getOrNull()?.takeIf { it >= 0L }
+        }
+        // File.lastModified() returns zero when it cannot determine the timestamp. Unlike
+        // the content-provider columns, this API has no separate value-availability flag.
+        val modifiedAtMillis = runCatching { lastModified() }.getOrNull()?.takeIf { it > 0L }
+        return LocalFileMetadata(fileReadable = true, sizeBytes = sizeBytes, modifiedAtMillis = modifiedAtMillis)
+    }
     const val SOURCE = "broad-storage"
     const val DISPLAY_NAME = "Armazenamento local"
     // Keep the extension fallback close to Nova's local video intent/indexing
@@ -440,8 +475,15 @@ object BroadStorageScanner {
                 val volumeName = root.volumeId
                 val relative = relativePath(file, root.file)
                 val mimeType = mimeFor(file.extension)
-                val sizeBytes = runCatching { file.length() }.getOrNull()
-                val modifiedAtMillis = runCatching { file.lastModified() }.getOrNull()?.takeIf { it > 0L }
+                val fileMetadata = readLocalFileMetadata(
+                    isRegularFile = { file.isFile },
+                    canRead = { file.canRead() },
+                    length = { file.length() },
+                    verifySizeWithoutReading = { java.io.FileInputStream(file).use { input -> input.channel.size() } },
+                    lastModified = { file.lastModified() },
+                )
+                val sizeBytes = fileMetadata.sizeBytes
+                val modifiedAtMillis = fileMetadata.modifiedAtMillis
                 val document = JSONObject()
                     .put("uri", Uri.fromFile(file).toString())
                     .put("path", file.path)
@@ -458,10 +500,14 @@ object BroadStorageScanner {
                     fileName = file.name,
                     relativePath = relative,
                     source = SOURCE,
+                    // The MIME type is inferred from the extension, not provided by a document provider.
                     mimeType = mimeType,
                     sizeBytes = sizeBytes,
                     modifiedAtMillis = modifiedAtMillis,
-                    providerId = file.path,
+                    providerId = null,
+                    nameAvailable = file.name.isNotBlank(),
+                    mimeTypeAvailable = false,
+                    accessState = if (fileMetadata.fileReadable) "accessible" else "enumerated",
                 ))
                 videos++
                 volumeStats.put("videos", volumeStats.optInt("videos", 0) + 1)

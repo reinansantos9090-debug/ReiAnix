@@ -162,18 +162,41 @@ object MediaStoreScanner {
                         // cached snapshot or treating a cache hit as catalogue reconciliation.
                         for (index in 0 until batch.length()) {
                             val document = batch.optJSONObject(index) ?: continue
-                            val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
-                            val sizeBytes = if (document.has("size") && !document.isNull("size")) document.optLong("size") else null
-                            val modifiedAtMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt") else null
+                            val rawMediaId = (document.opt("mediaId") as? Number)?.toLong()?.takeIf { it > 0L }
+                            val rawName = (document.opt("name") as? String)?.trim()?.takeIf { it.isNotEmpty() }
+                            val rawRelativePath = (document.opt("relativePath") as? String)?.trim()?.takeIf { it.isNotEmpty() }
+                            val fallbackName = rawRelativePath?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                                ?: rawMediaId?.let { "video-$it" }
+                                ?: "Arquivo de vídeo sem nome"
+                            val name = rawName ?: fallbackName
+                            val priorAvailability = document.optJSONObject("metadataAvailability")
+                            val legacyFallbackName = rawMediaId != null && rawName == "video-$rawMediaId"
+                            val nameAvailable = if (priorAvailability?.has("nameAvailable") == true && !legacyFallbackName) {
+                                priorAvailability.optBoolean("nameAvailable", false)
+                            } else {
+                                rawName != null && !legacyFallbackName
+                            }
+                            val rawMimeType = (document.opt("mimeType") as? String)?.trim()?.takeIf { it.isNotEmpty() }
+                            // video/* was a scanner fallback in older cache records, not provider evidence.
+                            val legacyFallbackMime = rawMimeType == "video/*"
+                            val mimeTypeAvailable = if (priorAvailability?.has("mimeTypeAvailable") == true && !legacyFallbackMime) {
+                                priorAvailability.optBoolean("mimeTypeAvailable", false)
+                            } else {
+                                rawMimeType != null && !legacyFallbackMime
+                            }
+                            val sizeBytes = DiscoveredMediaMetadata.cachedLongOrNull(document, "size", "sizeAvailable")
+                            val modifiedAtMillis = DiscoveredMediaMetadata.cachedLongOrNull(document, "modifiedAt", "modifiedAtAvailable")
                             DiscoveredMediaMetadata.attach(
                                 document = document,
                                 fileName = name,
-                                relativePath = document.optString("relativePath").ifBlank { name },
+                                relativePath = rawRelativePath ?: name,
                                 source = "mediastore",
-                                mimeType = document.optString("mimeType").takeIf { it.isNotBlank() },
+                                mimeType = rawMimeType.takeIf { mimeTypeAvailable },
                                 sizeBytes = sizeBytes,
                                 modifiedAtMillis = modifiedAtMillis,
-                                providerId = document.optString("mediaId").takeIf { it.isNotBlank() },
+                                providerId = rawMediaId?.toString(),
+                                nameAvailable = nameAvailable,
+                                mimeTypeAvailable = mimeTypeAvailable,
                             )
                         }
                         onBatch?.invoke(JSONObject()
@@ -221,8 +244,12 @@ object MediaStoreScanner {
                     val gmCol=if(Build.VERSION.SDK_INT>=30)cursor.getColumnIndex(MediaStore.MediaColumns.GENERATION_MODIFIED)else -1
                     if(idCol<0||nameCol<0)localErrors.put("O MediaStore não retornou os dados necessários.")else while(cursor.moveToNext()){
                         if(shouldCancel()){cancelled=true;localCancelled=true;break}
-                        files++;val id=cursor.getLong(idCol);val name=cursor.getString(nameCol)?:"video-"+id
-                        val mime=if(mimeCol>=0&&!cursor.isNull(mimeCol))cursor.getString(mimeCol) else "video/*"
+                        files++
+                        val id=cursor.getLong(idCol)
+                        val providerName=cursor.getString(nameCol)?.trim()?.takeIf { it.isNotEmpty() }
+                        val name=providerName ?: "video-"+id
+                        val providerMime=if(mimeCol>=0&&!cursor.isNull(mimeCol))cursor.getString(mimeCol)?.trim()?.takeIf { it.isNotEmpty() } else null
+                        val mime=providerMime ?: "video/*"
                         val ext=name.substringAfterLast('.',"").lowercase();if(!mime.startsWith("video/")&&ext !in videoExtensions)continue
                         val relDir=if(relCol>=0&&!cursor.isNull(relCol))cursor.getString(relCol).orEmpty().trimEnd('/')else ""
                         val rel=if(relDir.isBlank())name else relDir+"/"+name
@@ -237,7 +264,7 @@ object MediaStoreScanner {
                             continue
                         }
                         val uri=if(Build.VERSION.SDK_INT>=29)MediaStore.Video.Media.getContentUri(actualVol,id)else android.content.ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,id)
-                        val sizeBytes = if(sizeCol>=0&&!cursor.isNull(sizeCol)) cursor.getLong(sizeCol) else null
+                        val sizeBytes = if(sizeCol>=0&&!cursor.isNull(sizeCol)) cursor.getLong(sizeCol).takeIf { it >= 0L } else null
                         val modifiedAtMillis = if(modCol>=0&&!cursor.isNull(modCol)) cursor.getLong(modCol)*1000L else null
                         val item=JSONObject().put("uri",uri.toString()).put("name",name).put("relativePath",rel).put("volumeName",actualVol).put("volumeId",actualVol).put("volumeUuid",actualVolumeUuid)
                             .put("mediaId",id).put("mimeType",mime).put("size",sizeBytes ?: JSONObject.NULL).put("modifiedAt",modifiedAtMillis ?: JSONObject.NULL)
@@ -248,10 +275,12 @@ object MediaStoreScanner {
                             fileName = name,
                             relativePath = rel,
                             source = "mediastore",
-                            mimeType = mime,
+                            mimeType = providerMime,
                             sizeBytes = sizeBytes,
                             modifiedAtMillis = modifiedAtMillis,
-                            providerId = id.toString(),
+                            providerId = id.takeIf { it > 0L }?.toString(),
+                            nameAvailable = providerName != null,
+                            mimeTypeAvailable = providerMime != null,
                         ));videos++;volumeVideos++
                         if(videos%100==0)onProgress?.invoke(JSONObject().put("phase","scanning").put("source",SOURCE).put("volumeId",volumeName).put("files",files).put("videos",videos))
                     }

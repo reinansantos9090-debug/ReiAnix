@@ -5,9 +5,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Adds non-destructive parsing and metadata-availability facts to an already
- * discovered physical document. It never assigns catalogue IDs or mutates the
- * persisted library; URI/source identity remain owned by the originating scanner.
+ * Enriches one already-enumerated physical document without assigning catalogue identity
+ * or touching the persisted library. Fallback labels stay useful for discovery, but are
+ * not reported as provider metadata.
  */
 internal object DiscoveredMediaMetadata {
     fun attach(
@@ -19,9 +19,36 @@ internal object DiscoveredMediaMetadata {
         sizeBytes: Long?,
         modifiedAtMillis: Long?,
         providerId: String?,
+        nameAvailable: Boolean = fileName.isNotBlank(),
+        mimeTypeAvailable: Boolean = !mimeType.isNullOrBlank(),
+        accessState: String = "accessible",
     ): JSONObject {
+        val knownSize = sizeBytes?.takeIf { it >= 0L }
+        val knownModifiedAt = modifiedAtMillis?.takeIf { it >= 0L }
+
+        // Keep public field names stable and make nullable scalar fields consistent with
+        // availability flags. JSONObject.NULL, not Kotlin null, serializes as JSON null.
+        document.put("size", knownSize ?: JSONObject.NULL)
+        document.put("modifiedAt", knownModifiedAt ?: JSONObject.NULL)
+        if (source == "saf" || source == "mediastore") {
+            document.put("mimeType", mimeType?.takeIf { mimeTypeAvailable && it.isNotBlank() } ?: JSONObject.NULL)
+        }
+
         val parseInput = relativePath.trim().takeIf { it.isNotEmpty() } ?: fileName
         val parsed = MediaFilenameParser.parseVideoPath(parseInput)
+        val fieldConfidence = JSONObject()
+        parsed.fieldConfidence.forEach { (field, confidence) ->
+            fieldConfidence.put(field.name.lowercase(), confidence.name.lowercase())
+        }
+        val usableProviderId = when (source) {
+            // Document IDs are opaque provider values; do not interpret their contents.
+            "saf" -> providerId?.trim()?.takeIf { it.isNotEmpty() }
+            // MediaStore's _ID is a positive numeric row identifier.
+            "mediastore" -> providerId?.trim()?.toLongOrNull()?.takeIf { it > 0L }?.toString()
+            // Broad filesystem paths are locations, not provider-issued document IDs.
+            else -> null
+        }
+
         document.put(
             "parsedMedia",
             JSONObject()
@@ -35,6 +62,11 @@ internal object DiscoveredMediaMetadata {
                 .put("displayTitle", parsed.displayTitle)
                 .put("extension", parsed.extension)
                 .put("supportedParserExtension", parsed.isSupportedVideoExtension)
+                .put("originalFileName", parsed.originalFileName)
+                .put("baseName", parsed.baseName)
+                .put("technicalTokens", JSONArray(parsed.technicalTokens))
+                .put("fieldConfidence", fieldConfidence)
+                .put("unknownFields", JSONArray(parsed.unknownFields.map { it.name.lowercase() }))
                 .put("evidence", JSONArray(parsed.evidence))
                 .put("unresolved", JSONArray(parsed.unresolved))
                 .put("ambiguities", JSONArray(parsed.ambiguities))
@@ -43,13 +75,37 @@ internal object DiscoveredMediaMetadata {
             "metadataAvailability",
             JSONObject()
                 .put("source", source)
-                .put("accessState", "accessible")
-                .put("nameAvailable", fileName.isNotBlank())
-                .put("mimeTypeAvailable", !mimeType.isNullOrBlank())
-                .put("sizeAvailable", sizeBytes != null)
-                .put("modifiedAtAvailable", modifiedAtMillis != null)
-                .put("providerIdAvailable", !providerId.isNullOrBlank())
+                .put("accessState", accessState)
+                .put("nameAvailable", nameAvailable && fileName.isNotBlank())
+                .put("mimeTypeAvailable", mimeTypeAvailable && !mimeType.isNullOrBlank())
+                .put("sizeAvailable", knownSize != null)
+                .put("modifiedAtAvailable", knownModifiedAt != null)
+                .put("providerIdAvailable", usableProviderId != null)
         )
         return document
+    }
+
+    /**
+     * Reads a numeric value from a reused MediaStore batch. Newer rows carry an explicit
+     * availability bit, which is authoritative. For legacy rows without one, zero is
+     * ambiguous because older scanners used zero as fallback for missing metadata. This
+     * conservative rule may classify a legacy true-zero as unknown, but never promotes an
+     * ambiguous placeholder to known metadata. The cached snapshot is not rewritten.
+     */
+    internal fun cachedLongOrNull(
+        document: JSONObject,
+        field: String,
+        availabilityField: String,
+    ): Long? {
+        val number = document.opt(field) as? Number ?: return null
+        val value = number.toLong()
+        if (value < 0L) return null
+        val availability = document.optJSONObject("metadataAvailability")
+        val known = if (availability?.has(availabilityField) == true) {
+            availability.optBoolean(availabilityField, false)
+        } else {
+            value > 0L
+        }
+        return value.takeIf { known }
     }
 }
