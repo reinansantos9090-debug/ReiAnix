@@ -232,7 +232,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
         assertFalse(schema.supportsCurrentContract)
         assertTrue(schema.foreignKeyViolations.isNotEmpty())
-        assertEquals(1, ReiAnixSqliteLibraryRepository(context).getEpisode(99L)?.id?.toInt())
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT COUNT(*) FROM episodes WHERE id = 99", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+        }
     }
 
     @Test
