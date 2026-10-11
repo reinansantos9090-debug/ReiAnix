@@ -360,7 +360,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
         }
         if (foreignKeyViolations.isNotEmpty()) {
-            incompatibilities += "PRAGMA foreign_key_check reported ${foreignKeyViolations.size} violation(s)"
+            incompatibilities += "PRAGMA foreign_key_check reported ${foreignKeyViolations.size} violation(s): ${foreignKeyViolations.take(5).joinToString("; ")}"
         }
 
         ReiAnixSqliteSchemaSnapshot(
