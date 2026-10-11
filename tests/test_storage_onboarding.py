@@ -227,6 +227,17 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('commandBridge != "library"', library_repository)
         self.assertIn('commandBridge != "settings"', settings_repository)
 
+    def test_saf_inventory_reconciles_folder_identity_not_raw_uri_text(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        start = source.index("elif event_type == 'saf_inventory':")
+        end = source.index("elif event_type == 'saf_cancelled':", start)
+        inventory = source[start:end]
+        self.assertIn("status_by_identity = saf_inventory_by_identity(status_by_uri.values())", inventory)
+        self.assertIn("saf_folder_identity(folder) == identity", inventory)
+        self.assertIn("known_identities = set(status_by_identity)", inventory)
+        self.assertNotIn("f.get('path') == reference", inventory)
+        self.assertNotIn("reference in known_references", inventory)
+
     def test_saf_permission_result_never_leaves_picker_open_when_validation_fails(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         granted = source[source.index("elif event_type == 'saf_permission':"):source.index("elif event_type == 'saf_released'")]
