@@ -1,4 +1,9 @@
 from pathlib import Path
+import json
+import re
+import subprocess
+import sys
+import tempfile
 import unittest
 
 
@@ -9,6 +14,8 @@ LIBRARY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sql
 SETTINGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSettingsRepository.kt"
 MODELS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteModels.kt"
 TEMPLATE = ROOT / "scripts/prepare_flet_template.py"
+FIXTURE_GENERATOR = ROOT / "scripts/generate_native_sqlite_test_fixture.py"
+KOTLIN_WORKFLOW = ROOT / ".github/workflows/kotlin_jvm_tests.yml"
 
 
 class NativeSqlitePersistenceContractTests(unittest.TestCase):
@@ -86,6 +93,47 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("unitTests.isIncludeAndroidResources = true", template)
         self.assertIn("unitTests.includeAndroidResources = true", template)
         self.assertNotIn(":app:testDebugUnitTest", template)
+
+    def test_kotlin_jvm_workflow_is_manual_only_and_template_does_not_regenerate_it(self):
+        workflow = KOTLIN_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("on:\n  workflow_dispatch:\n", workflow)
+        event_block = re.search(r"(?ms)^on:\\n(.*?)(?=^[^ \\t#\\n]|\\Z)", workflow)
+        self.assertIsNotNone(event_block)
+        events = re.findall(r"(?m)^  ([a-z_]+):", event_block.group(1))
+        self.assertEqual(["workflow_dispatch"], events)
+        for forbidden in ("pull_request:", "pull_request_target:", "push:", "schedule:", "workflow_run:"):
+            self.assertNotIn(forbidden, event_block.group(1))
+
+        template = TEMPLATE.read_text(encoding="utf-8")
+        self.assertNotIn("kotlin_jvm_tests.yml", template)
+        self.assertNotIn(".github/workflows/", template)
+
+    def test_runtime_fixture_is_generated_from_the_real_library_store_schema(self):
+        with tempfile.TemporaryDirectory(prefix="reianix-contract-test-") as temporary:
+            fixture_path = Path(temporary) / "canonical-schema.json"
+            result = subprocess.run(
+                [sys.executable, str(FIXTURE_GENERATOR), "--output", str(fixture_path)],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(29, fixture["schema_version"])
+        expected_tables = {
+            "folders", "anime", "episodes", "episode_observations", "artwork",
+            "associations", "pending_matches", "account", "preferences", "genres",
+            "genre_aliases", "anime_genres", "schema_migrations", "scan_runs",
+        }
+        self.assertEqual(expected_tables, set(fixture["tables"]))
+        self.assertIn("discovered_at", {column["name"] for column in fixture["columns"]["artwork"]})
+        self.assertIn("applied_at", {column["name"] for column in fixture["columns"]["schema_migrations"]})
+        index_names = {index["name"] for index in fixture["indexes"]}
+        self.assertIn("idx_episodes_anime_season_number_abs", index_names)
+        self.assertIn("idx_episodes_media_identity", index_names)
+        self.assertTrue(any("REFERENCES anime(id) ON DELETE CASCADE" in sql for sql in fixture["statements"]))
 
     def test_models_keep_nullable_sqlite_values_and_existing_identity(self):
         models = MODELS.read_text(encoding="utf-8")
