@@ -137,7 +137,6 @@ data class ReiAnixArtworkRecord(
 data class ReiAnixAnimeMetadataPatch(
     val animeId: Long,
     val title: String? = null,
-    val anilistId: Long? = null,
     val romaji: String? = null,
     val english: String? = null,
     val nativeTitle: String? = null,
@@ -160,12 +159,11 @@ data class ReiAnixAnimeMetadataPatch(
     init {
         require(animeId > 0L) { "animeId must be a positive persisted ID." }
         require(title == null || title.isNotBlank()) { "A supplied title must not be blank." }
-        require(anilistId == null || anilistId > 0L) { "A supplied AniList ID must be positive." }
         require(metadataFetchedAt == null || (metadataFetchedAt.isFinite() && metadataFetchedAt >= 0.0)) {
             "metadataFetchedAt must be finite and non-negative."
         }
         require(
-            title != null || anilistId != null || romaji != null || english != null ||
+            title != null || romaji != null || english != null ||
                 nativeTitle != null || aliasesJson != null || description != null ||
                 coverUrl != null || coverCache != null || bannerUrl != null ||
                 genresJson != null || year != null || season != null || status != null ||

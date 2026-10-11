@@ -32,7 +32,6 @@ class ReiAnixSqliteModelsTest {
 
         assertEquals(17L, patch.animeId)
         assertEquals("  Naruto  ", patch.title)
-        assertNull(patch.anilistId)
         assertNull(patch.metadataFetchedAt)
     }
 

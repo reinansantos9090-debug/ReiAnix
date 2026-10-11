@@ -109,7 +109,6 @@ class ReiAnixSqliteLibraryRepository(
             val values = ContentValues()
 
             patch.title?.let { if ("title" !in manualFields) values.put("title", it.trim()) }
-            patch.anilistId?.let { values.put("anilist_id", it) }
             patch.romaji?.let { if ("romaji" !in manualFields) values.put("romaji", it) }
             patch.english?.let { if ("english" !in manualFields) values.put("english", it) }
             patch.nativeTitle?.let { if ("native" !in manualFields) values.put("native", it) }
