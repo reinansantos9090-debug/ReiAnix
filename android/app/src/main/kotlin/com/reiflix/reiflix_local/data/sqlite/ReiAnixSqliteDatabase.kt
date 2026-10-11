@@ -349,7 +349,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             "idx_episode_observation_unique" to ReiAnixSqliteExpectedIndex("episode_observations", listOf("episode_id", "source_kind", "scope_kind", "scope_ref", "uri"), unique = true),
             "idx_episode_observation_scope" to ReiAnixSqliteExpectedIndex("episode_observations", listOf("source_kind", "scope_kind", "scope_ref", "state")),
             "idx_episode_observation_volume" to ReiAnixSqliteExpectedIndex("episode_observations", listOf("volume_id", "state")),
-            "idx_artwork_entity" to ReiAnixSqliteExpectedIndex("artwork", listOf("entity_type", "entity_id", "artwork_type", "priority")),
+            "idx_artwork_entity" to ReiAnixSqliteExpectedIndex("artwork", listOf("entity_type", "entity_id", "artwork_type", "priority"), descendingColumns = setOf("priority")),
             "idx_artwork_status" to ReiAnixSqliteExpectedIndex("artwork", listOf("status", "last_attempt_at")),
             "idx_genre_aliases_genre" to ReiAnixSqliteExpectedIndex("genre_aliases", listOf("genre_id")),
             "idx_anime_genres_genre" to ReiAnixSqliteExpectedIndex("anime_genres", listOf("genre_id", "anime_id")),
@@ -496,8 +496,39 @@ private data class ReiAnixSqliteExpectedIndex(
     val collations: Map<String, String> = emptyMap(),
 )
 
-private fun normalizeSqlExpression(sql: String): String =
-    sql.trim().trimEnd(';').replace(Regex("\\s+"), " ").uppercase()
+private fun normalizeSqlExpression(sql: String): String {
+    val output = StringBuilder()
+    var quote: Char? = null
+    var pendingSpace = false
+    var index = 0
+    while (index < sql.length) {
+        val char = sql[index]
+        if (quote != null) {
+            output.append(char)
+            if (char == quote) {
+                if (index + 1 < sql.length && sql[index + 1] == quote) {
+                    output.append(sql[index + 1])
+                    index++
+                } else {
+                    quote = null
+                }
+            }
+        } else if (char == '\'' || char == '"') {
+            if (pendingSpace && output.isNotEmpty()) output.append(' ')
+            pendingSpace = false
+            quote = char
+            output.append(char)
+        } else if (char.isWhitespace()) {
+            pendingSpace = true
+        } else {
+            if (pendingSpace && output.isNotEmpty()) output.append(' ')
+            pendingSpace = false
+            output.append(char.uppercaseChar())
+        }
+        index++
+    }
+    return output.toString().trim().trimEnd(';')
+}
 
 private fun extractWherePredicate(sql: String): String? {
     val match = Regex("(?is)\\bWHERE\\b(.*)$").find(sql) ?: return null
