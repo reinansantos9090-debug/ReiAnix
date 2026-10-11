@@ -1,7 +1,6 @@
 name: ReiAnix Kotlin JVM Validation
 
 on:
-  pull_request:
   workflow_dispatch:
 
 concurrency:
