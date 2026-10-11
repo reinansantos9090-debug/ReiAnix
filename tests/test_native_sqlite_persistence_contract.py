@@ -96,14 +96,23 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
 
     def test_kotlin_jvm_workflow_is_manual_only_and_template_does_not_regenerate_it(self):
         workflow = KOTLIN_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("on:\n  workflow_dispatch:\n", workflow)
-        self.assertIn("\\non:\\n", workflow)
-        self.assertIn("\\nconcurrency:", workflow)
-        event_block = workflow.split("\\non:\\n", 1)[1].split("\\nconcurrency:", 1)[0]
-        events = re.findall(r"(?m)^  ([a-z_]+):", event_block)
+        self.assertIn("workflow_dispatch:", workflow)
+        lines = workflow.splitlines()
+        on_index = lines.index("on:")
+        event_lines = []
+        for line in lines[on_index + 1:]:
+            if line and not line[0].isspace() and not line.lstrip().startswith("#"):
+                break
+            event_lines.append(line)
+
+        events = []
+        for line in event_lines:
+            match = re.fullmatch(r"  ([a-z_]+):", line)
+            if match:
+                events.append(match.group(1))
         self.assertEqual(["workflow_dispatch"], events)
-        for forbidden in ("pull_request:", "pull_request_target:", "push:", "schedule:", "workflow_run:"):
-            self.assertNotIn(forbidden, event_block)
+        for forbidden in ("pull_request", "pull_request_target", "push", "schedule", "workflow_run"):
+            self.assertNotIn(forbidden, events)
 
         template = TEMPLATE.read_text(encoding="utf-8")
         self.assertNotIn("kotlin_jvm_tests.yml", template)
