@@ -70,6 +70,7 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("native_poll_task = [None]", source)
         self.assertIn("def _handle_page_disconnect", source)
         self.assertIn("task.cancel()", source)
+        self.assertIn("native_poll_task[0] = None", source)
         self.assertIn("while ui_alive[0]:", source)
         self.assertIn("native_poll_task[0] = page.run_task(poll_native_bridge)", source)
         self.assertEqual(
@@ -77,6 +78,14 @@ class LifecycleContractTests(unittest.TestCase):
             1,
             "mailbox poller must be started through the tracked task handle exactly once",
         )
+
+    def test_python_mailbox_poller_restarts_on_reconnect_and_app_resume(self):
+        source = MAIN_PY.read_text(encoding="utf-8")
+        self.assertIn("def ensure_native_poll_task(reason=\"check\"):", source)
+        self.assertIn("ui_alive[0] = True", source)
+        self.assertIn("page.on_connect = _handle_page_connect", source)
+        self.assertIn("page.on_app_lifecycle_state_change = _handle_app_lifecycle_state_change", source)
+        self.assertIn("ensure_native_poll_task(\"add_folder\")", source)
 
     def test_python_page_disconnect_cancels_thumbnail_background_work(self):
         source = MAIN_PY.read_text(encoding="utf-8")
