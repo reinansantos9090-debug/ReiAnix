@@ -673,7 +673,7 @@ private fun normalizeSqlExpression(sql: String): String {
                     quote = null
                 }
             }
-        } else if (char == '\'' || char == '"' || char == '`') {
+        } else if (char.code == 39 || char == '"' || char == '`') {
             if (pendingSpace && output.isNotEmpty()) output.append(' ')
             pendingSpace = false
             quote = char
@@ -751,7 +751,7 @@ private fun extractParenthesizedSql(sql: String, keyword: String): List<String> 
 
 private fun skipQuotedOrComment(sql: String, start: Int): Int {
     if (sql.startsWith("--", start)) {
-        val newline = sql.indexOf('\\n', start + 2)
+        val newline = sql.indexOf(10.toChar(), start + 2)
         return if (newline < 0) sql.length else newline + 1
     }
     if (sql.startsWith("/*", start)) {
