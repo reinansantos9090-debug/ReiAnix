@@ -141,6 +141,10 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val expectedColumns = expected.getJSONArray("columns")
             val expectedNames = (0 until expectedColumns.length()).map { expectedColumns.getJSONObject(it).getString("name") }
             assertEquals(expectedNames, actual.columns.map { it.name.orEmpty() })
+            val expectedColumnIds = (0 until expectedColumns.length()).map { expectedColumns.getJSONObject(it).getInt("column_id") }
+            assertEquals(expectedColumnIds, actual.columns.map { it.columnId })
+            val expectedExpressions = (0 until expectedColumns.length()).map { expectedColumns.getJSONObject(it).getBoolean("expression") }
+            assertEquals(expectedExpressions, actual.columns.map { it.expression })
             val expectedDescending = (0 until expectedColumns.length())
                 .filter { expectedColumns.getJSONObject(it).getBoolean("descending") }
                 .map { expectedColumns.getJSONObject(it).getString("name") }
@@ -166,11 +170,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         for (tableIndex in 0 until canonicalTables.length()) {
             val tableName = canonicalTables.getString(tableIndex)
             val expectedKeys = canonicalForeignKeys.getJSONArray(tableName)
-            val expectedSet = buildSet {
+            val expectedKeysInOrder = buildList {
                 for (keyIndex in 0 until expectedKeys.length()) {
                     val key = expectedKeys.getJSONObject(keyIndex)
                     add(
                         ReiAnixSqliteForeignKeySnapshot(
+                            id = key.getInt("id"),
+                            sequence = key.getInt("sequence"),
                             table = key.getString("table"),
                             from = key.getString("from"),
                             to = key.getString("to"),
@@ -180,8 +186,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                         ),
                     )
                 }
-            }
-            assertEquals("Foreign keys differ for $tableName", expectedSet, snapshot.foreignKeys[tableName].orEmpty())
+            }.sortedWith(compareBy<ReiAnixSqliteForeignKeySnapshot> { it.id }.thenBy { it.sequence })
+            assertEquals("Foreign keys differ for $tableName", expectedKeysInOrder, snapshot.foreignKeys[tableName].orEmpty())
         }
         assertTrue(snapshot.supportsCurrentContract)
     }
