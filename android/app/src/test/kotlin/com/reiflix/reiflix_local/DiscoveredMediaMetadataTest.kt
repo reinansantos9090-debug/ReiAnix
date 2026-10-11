@@ -176,6 +176,31 @@ class DiscoveredMediaMetadataTest {
     }
 
     @Test
+    fun cachedStringAvailabilityRejectsMissingAndFallbackValuesEvenWhenFlagIsTrue() {
+        val fallbackName = JSONObject()
+            .put("name", "video-15")
+            .put("metadataAvailability", JSONObject().put("nameAvailable", true))
+        val missingMime = JSONObject()
+            .put("mimeType", JSONObject.NULL)
+            .put("metadataAvailability", JSONObject().put("mimeTypeAvailable", true))
+        val fallbackMime = JSONObject()
+            .put("mimeType", "video/*")
+            .put("metadataAvailability", JSONObject().put("mimeTypeAvailable", true))
+        val validName = JSONObject()
+            .put("name", "Series.mkv")
+            .put("metadataAvailability", JSONObject().put("nameAvailable", true))
+        val explicitlyUnavailable = JSONObject()
+            .put("name", "Series.mkv")
+            .put("metadataAvailability", JSONObject().put("nameAvailable", false))
+
+        assertFalse(DiscoveredMediaMetadata.cachedStringAvailable(fallbackName, "name", "nameAvailable", "video-15"))
+        assertFalse(DiscoveredMediaMetadata.cachedStringAvailable(missingMime, "mimeType", "mimeTypeAvailable", "video/*"))
+        assertFalse(DiscoveredMediaMetadata.cachedStringAvailable(fallbackMime, "mimeType", "mimeTypeAvailable", "video/*"))
+        assertTrue(DiscoveredMediaMetadata.cachedStringAvailable(validName, "name", "nameAvailable"))
+        assertFalse(DiscoveredMediaMetadata.cachedStringAvailable(explicitlyUnavailable, "name", "nameAvailable"))
+    }
+
+    @Test
     fun readableEmptyFileCanHaveKnownZeroLengthWithoutReadingVideoBytes() {
         val metadata = BroadStorageScanner.readLocalFileMetadata(
             isRegularFile = { true },

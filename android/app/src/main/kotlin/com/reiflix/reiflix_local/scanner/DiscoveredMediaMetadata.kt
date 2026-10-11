@@ -86,6 +86,26 @@ internal object DiscoveredMediaMetadata {
     }
 
     /**
+     * Legacy cached strings may have been filled from a fallback label. A stored availability
+     * bit is authoritative only when the field itself still contains a usable string.
+     */
+    internal fun cachedStringAvailable(
+        document: JSONObject,
+        field: String,
+        availabilityField: String,
+        legacyFallbackValue: String? = null,
+    ): Boolean {
+        val value = (document.opt(field) as? String)?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        if (legacyFallbackValue != null && value == legacyFallbackValue) return false
+        val availability = document.optJSONObject("metadataAvailability")
+        return if (availability?.has(availabilityField) == true) {
+            availability.optBoolean(availabilityField, false)
+        } else {
+            true
+        }
+    }
+
+    /**
      * Reads a numeric value from a reused MediaStore batch. Newer rows carry an explicit
      * availability bit, which is authoritative. For legacy rows without one, zero is
      * ambiguous because older scanners used zero as fallback for missing metadata. This

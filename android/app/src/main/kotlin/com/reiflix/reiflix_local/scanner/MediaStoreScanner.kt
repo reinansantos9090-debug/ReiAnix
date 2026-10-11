@@ -169,21 +169,19 @@ object MediaStoreScanner {
                                 ?: rawMediaId?.let { "video-$it" }
                                 ?: "Arquivo de vídeo sem nome"
                             val name = rawName ?: fallbackName
-                            val priorAvailability = document.optJSONObject("metadataAvailability")
-                            val legacyFallbackName = rawMediaId != null && rawName == "video-$rawMediaId"
-                            val nameAvailable = if (priorAvailability?.has("nameAvailable") == true && !legacyFallbackName) {
-                                priorAvailability.optBoolean("nameAvailable", false)
-                            } else {
-                                rawName != null && !legacyFallbackName
-                            }
+                            val nameAvailable = DiscoveredMediaMetadata.cachedStringAvailable(
+                                document,
+                                "name",
+                                "nameAvailable",
+                                legacyFallbackValue = rawMediaId?.let { "video-$it" },
+                            )
                             val rawMimeType = (document.opt("mimeType") as? String)?.trim()?.takeIf { it.isNotEmpty() }
-                            // video/* was a scanner fallback in older cache records, not provider evidence.
-                            val legacyFallbackMime = rawMimeType == "video/*"
-                            val mimeTypeAvailable = if (priorAvailability?.has("mimeTypeAvailable") == true && !legacyFallbackMime) {
-                                priorAvailability.optBoolean("mimeTypeAvailable", false)
-                            } else {
-                                rawMimeType != null && !legacyFallbackMime
-                            }
+                            val mimeTypeAvailable = DiscoveredMediaMetadata.cachedStringAvailable(
+                                document,
+                                "mimeType",
+                                "mimeTypeAvailable",
+                                legacyFallbackValue = "video/*",
+                            )
                             val sizeBytes = DiscoveredMediaMetadata.cachedLongOrNull(document, "size", "sizeAvailable")
                             val modifiedAtMillis = DiscoveredMediaMetadata.cachedLongOrNull(document, "modifiedAt", "modifiedAtAvailable")
                             DiscoveredMediaMetadata.attach(
