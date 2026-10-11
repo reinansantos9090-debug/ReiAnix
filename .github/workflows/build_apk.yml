@@ -153,6 +153,14 @@ jobs:
           path: ~/.cache/reiflix/flet-build-template-v0.86.5.zip
           key: reianix-flet-template-v0.86.5-${{ runner.os }}
 
+      - name: Generate canonical SQLite runtime contract and JVM fixture
+        run: |
+          python scripts/generate_native_sqlite_test_fixture.py \
+            --output android/app/src/test/resources/native-sqlite-schema-v29.json \
+            --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
+          test -s android/app/src/test/resources/native-sqlite-schema-v29.json
+          test -s android/app/src/main/assets/native-sqlite-contract-v29.json
+
       - name: Prepare Flet build template with Android host
         shell: bash
         run: |
@@ -468,6 +476,8 @@ jobs:
       - name: Final Git integrity check
         shell: bash
         run: |
+          rm -f android/app/src/test/resources/native-sqlite-schema-v29.json
+          rm -f android/app/src/main/assets/native-sqlite-contract-v29.json
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --check
           status="$(git status --porcelain)"

@@ -8,9 +8,14 @@ This check is deliberately dependency-free so it can run in GitHub Actions.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import zipfile
 from pathlib import Path
+
+CONTRACT_ASSET_PATH = "assets/native-sqlite-contract-v29.json"
+CONTRACT_SCHEMA_VERSION = 29
+CONTRACT_SQLITE_USER_VERSION = 0
 
 REQUIRED_CLASSES = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
@@ -47,6 +52,30 @@ def main() -> int:
             dex_files = sorted(name for name in names if name.startswith("classes") and name.endswith(".dex"))
             if "AndroidManifest.xml" not in names or not dex_files:
                 raise ValueError("APK does not contain AndroidManifest.xml and DEX payload")
+            if CONTRACT_ASSET_PATH not in names:
+                raise ValueError(f"APK does not contain the generated SQLite contract asset: {CONTRACT_ASSET_PATH}")
+            try:
+                contract = json.loads(archive.read(CONTRACT_ASSET_PATH))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError(f"APK SQLite contract asset is not valid JSON: {exc}") from exc
+            if contract.get("schema_version") != CONTRACT_SCHEMA_VERSION:
+                raise ValueError(
+                    f"APK SQLite contract schema_version must be {CONTRACT_SCHEMA_VERSION}; "
+                    f"found {contract.get('schema_version')!r}"
+                )
+            if contract.get("sqlite_user_version") != CONTRACT_SQLITE_USER_VERSION:
+                raise ValueError(
+                    f"APK SQLite contract user_version must be {CONTRACT_SQLITE_USER_VERSION}; "
+                    f"found {contract.get('sqlite_user_version')!r}"
+                )
+            required_contract_keys = {
+                "tables", "columns", "table_contract", "indexes", "foreign_keys", "triggers",
+            }
+            missing_contract_keys = required_contract_keys - contract.keys()
+            if missing_contract_keys:
+                raise ValueError(
+                    "APK SQLite contract is missing metadata: " + ", ".join(sorted(missing_contract_keys))
+                )
             dex = b"".join(archive.read(name) for name in dex_files)
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         print(f"Invalid APK: {exc}", file=sys.stderr)
@@ -57,7 +86,10 @@ def main() -> int:
         print("Native ReiAnix host was not packaged; refusing to publish a stock Flet APK.", file=sys.stderr)
         print("Missing DEX descriptors: " + ", ".join(missing), file=sys.stderr)
         return 1
-    print(f"Verified native ReiAnix host in {args.apk} ({args.apk.stat().st_size} bytes).")
+    print(
+        f"Verified native ReiAnix host and SQLite contract asset (schema v{CONTRACT_SCHEMA_VERSION}) "
+        f"in {args.apk} ({args.apk.stat().st_size} bytes)."
+    )
     return 0
 
 

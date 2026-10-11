@@ -59,6 +59,13 @@ if not ids_source.is_file():
     raise RuntimeError(f"Missing ReiAnix resource ID contract: {ids_source}")
 shutil.copy2(ids_source, values / "reianix_ids.xml")
 
+# Runtime schema contract assets are generated from the canonical LibraryStore
+# immediately before rendering. Copy them into the actual APK assets so runtime
+# validation and JVM tests consume the same generated contract.
+assets_source = overlay / "src" / "main" / "assets"
+if assets_source.is_dir():
+    shutil.copytree(assets_source, app / "src" / "main" / "assets", dirs_exist_ok=True)
+
 # Native PlayerView XML belongs to the rendered Android resource tree. Copy the
 # overlay resource subtree instead of relying on the source project existing
 # beside the generated Flet module.
@@ -412,8 +419,14 @@ if test_dependency_marker not in existing:
     if gradle.suffix == ".kts":
         test_block = """
 // ReiAnix Kotlin test dependencies
+android {
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+}
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
@@ -424,8 +437,14 @@ dependencies {
     else:
         test_block = """
 // ReiAnix Kotlin test dependencies
+android {
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
+}
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test:core:1.6.1'
