@@ -52,7 +52,8 @@ jobs:
       - name: Generate test schema from canonical LibraryStore
         run: |
           python scripts/generate_native_sqlite_test_fixture.py \
-            --output android/app/src/test/resources/native-sqlite-schema-v29.json
+            --output android/app/src/test/resources/native-sqlite-schema-v29.json \
+            --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
 
       - name: Generate build identity for the rendered Android host
         run: |
@@ -194,6 +195,7 @@ jobs:
           fi
           rm -f .reiflix-build-identity.json build/flet-version.txt
           rm -f android/app/src/test/resources/native-sqlite-schema-v29.json
+          rm -f android/app/src/main/assets/native-sqlite-contract-v29.json
           if [ -e .git ]; then
             git diff --check
             status="$(git status --porcelain)"
