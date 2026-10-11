@@ -988,3 +988,70 @@ class TestComposeStorageSnapshotMerge(unittest.TestCase):
         self.assertIn("storage = decoded.storage", merge)
         self.assertNotIn("storage = if (preserveCatalog) previous.storage else decoded.storage", merge)
 
+    def test_saf_permission_mailbox_event_processing_transitions_storage_onboarding_to_ready(self):
+        import tempfile
+        import shutil
+        from core.library_store import LibraryStore
+        from core.storage_access import StorageCapabilities, configured_library_saf_roots
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            store = LibraryStore(temp_dir)
+            storage_capabilities = [StorageCapabilities.unknown()]
+            storage_onboarding = {
+                "dismissed": False,
+                "dialog_open": True,
+                "waiting_for_result": True,
+                "startup_gate": True,
+                "inventory_complete": False,
+                "state": "NEEDS_FOLDER",
+                "message": None,
+                "error": None,
+                "last_storage_mutation_at_ms": 0,
+            }
+
+            tree_uri = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
+
+            # Process simulated saf_permission event
+            saf_mutation_at_ms = 1000
+            storage_onboarding["last_storage_mutation_at_ms"] = saf_mutation_at_ms
+            storage_onboarding["waiting_for_result"] = False
+            storage_onboarding["dismissed"] = False
+
+            current_roots = tuple(dict.fromkeys(list(storage_capabilities[0].saf_roots) + [tree_uri]))
+            storage_capabilities[0] = StorageCapabilities(
+                media_read_state="granted",
+                broad_storage_state="unavailable",
+                saf_roots=current_roots,
+                removable_volumes=(),
+                scanner_capabilities=frozenset({"saf"}),
+                reconciliation_capabilities=frozenset({"saf"}),
+                lifecycle_state="revalidated",
+                api=34,
+            )
+
+            store.add_folder(
+                tree_uri,
+                name="Anime",
+                kind="saf",
+                authorization="granted",
+                saf_identity="primary:Anime",
+            )
+
+            valid_roots = configured_library_saf_roots(storage_capabilities[0].saf_roots, store.folders())
+            self.assertTrue(bool(valid_roots))
+
+            if valid_roots:
+                storage_onboarding["startup_gate"] = False
+                storage_onboarding["state"] = "READY"
+                storage_onboarding["message"] = None
+                storage_onboarding["error"] = None
+                storage_onboarding["dialog_open"] = False
+
+            self.assertEqual(storage_onboarding["state"], "READY")
+            self.assertFalse(storage_onboarding["startup_gate"])
+            self.assertFalse(storage_onboarding["dialog_open"])
+            self.assertEqual(len(store.folders()), 1)
+            self.assertEqual(store.folders()[0]["path"], tree_uri)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)

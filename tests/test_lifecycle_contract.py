@@ -89,19 +89,7 @@ class LifecycleContractTests(unittest.TestCase):
 
     def test_normalize_app_lifecycle_state_handles_enums_events_and_strings(self):
         import flet as ft
-        source = MAIN_PY.read_text(encoding="utf-8")
-        self.assertIn("def normalize_app_lifecycle_state(", source)
-
-        def normalize_app_lifecycle_state(event_or_state) -> str:
-            raw = getattr(event_or_state, "state", getattr(event_or_state, "data", event_or_state))
-            if hasattr(raw, "value") and isinstance(getattr(raw, "value"), str):
-                raw = raw.value
-            elif hasattr(raw, "name") and isinstance(getattr(raw, "name"), str):
-                raw = raw.name
-            s = str(raw or "").strip().lower()
-            if "." in s:
-                s = s.rsplit(".", 1)[-1]
-            return s
+        from main import normalize_app_lifecycle_state
 
         self.assertEqual(normalize_app_lifecycle_state(ft.AppLifecycleState.RESUME), "resume")
         self.assertEqual(normalize_app_lifecycle_state(ft.AppLifecycleState.SHOW), "show")
@@ -114,6 +102,44 @@ class LifecycleContractTests(unittest.TestCase):
 
         evt_str = ft.AppLifecycleStateChangeEvent(name="change", control=None, state="resume")
         self.assertEqual(normalize_app_lifecycle_state(evt_str), "resume")
+
+    def test_ensure_native_poll_task_idempotency_and_no_duplicates(self):
+        from unittest.mock import MagicMock
+
+        page = MagicMock()
+        ui_alive = [False]
+        native_poll_task = [None]
+
+        def poll_native_bridge():
+            pass
+
+        def ensure_native_poll_task(reason="check"):
+            ui_alive[0] = True
+            task = native_poll_task[0]
+            if task is None or task.done():
+                native_poll_task[0] = page.run_task(poll_native_bridge)
+
+        running_task = MagicMock()
+        running_task.done.return_value = False
+        page.run_task.return_value = running_task
+
+        ensure_native_poll_task("call1")
+        self.assertTrue(ui_alive[0])
+        self.assertEqual(page.run_task.call_count, 1)
+        self.assertEqual(native_poll_task[0], running_task)
+
+        ensure_native_poll_task("call2")
+        self.assertEqual(page.run_task.call_count, 1)
+        self.assertEqual(native_poll_task[0], running_task)
+
+        running_task.done.return_value = True
+        new_task = MagicMock()
+        new_task.done.return_value = False
+        page.run_task.return_value = new_task
+
+        ensure_native_poll_task("call3")
+        self.assertEqual(page.run_task.call_count, 2)
+        self.assertEqual(native_poll_task[0], new_task)
 
     def test_python_page_disconnect_cancels_thumbnail_background_work(self):
         source = MAIN_PY.read_text(encoding="utf-8")

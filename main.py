@@ -55,6 +55,17 @@ GOOGLE_CLIENT_ID = os.getenv('REIFLIX_GOOGLE_CLIENT_ID', CONFIG_GOOGLE_CLIENT_ID
 GOOGLE_REDIRECT_URL = os.getenv('REIFLIX_GOOGLE_REDIRECT_URL', CONFIG_GOOGLE_REDIRECT_URL)
 GOOGLE_WEB_CLIENT_ID = os.getenv('REIFLIX_GOOGLE_WEB_CLIENT_ID', CONFIG_GOOGLE_WEB_CLIENT_ID)
 
+def normalize_app_lifecycle_state(event_or_state) -> str:
+    raw = getattr(event_or_state, "state", getattr(event_or_state, "data", event_or_state))
+    if hasattr(raw, "value") and isinstance(getattr(raw, "value"), str):
+        raw = raw.value
+    elif hasattr(raw, "name") and isinstance(getattr(raw, "name"), str):
+        raw = raw.name
+    s = str(raw or "").strip().lower()
+    if "." in s:
+        s = s.rsplit(".", 1)[-1]
+    return s
+
 async def main(page: ft.Page):
     performance = get_performance_monitor()
     startup_started = performance.now()
@@ -7483,17 +7494,6 @@ async def main(page: ft.Page):
     def _handle_page_connect(_event=None):
         logger.info("[FLET] page connected, ensuring native_poll_task")
         ensure_native_poll_task("page_connect")
-
-    def normalize_app_lifecycle_state(event_or_state) -> str:
-        raw = getattr(event_or_state, "state", getattr(event_or_state, "data", event_or_state))
-        if hasattr(raw, "value") and isinstance(getattr(raw, "value"), str):
-            raw = raw.value
-        elif hasattr(raw, "name") and isinstance(getattr(raw, "name"), str):
-            raw = raw.name
-        s = str(raw or "").strip().lower()
-        if "." in s:
-            s = s.rsplit(".", 1)[-1]
-        return s
 
     def _handle_app_lifecycle_state_change(event=None):
         state = normalize_app_lifecycle_state(event)
