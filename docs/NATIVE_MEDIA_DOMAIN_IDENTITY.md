@@ -34,3 +34,7 @@ This step intentionally does not switch the existing scanner, library service, p
 The domain projection retains the existing episode row ID, anime foreign reference, progress, duration, watched flag, last-played timestamp, source/confidence/manual override flags, availability state and media identity. The model is a read projection only: it does not create database rows, rewrite IDs, update progress or mutate manual/user-owned metadata. Existing repository update operations continue to own writes to SQLite.
 
 The domain models deliberately allow incomplete optional metadata and nullable logical identities. No schema migration, data deletion, scanner rewrite, AniList integration or player rewrite was performed in this step.
+
+## Validation workflow
+
+The existing Kotlin/JVM workflow remains manually dispatchable and also runs for pull requests targeting `main`, so these pure-JVM identity/mapping tests are exercised without an emulator. The workflow generates build identity before creating untracked SQLite test fixtures because the identity generator enforces a clean working tree.
