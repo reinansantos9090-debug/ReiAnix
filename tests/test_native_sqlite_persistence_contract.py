@@ -125,7 +125,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             if match:
                 events.append(match.group(1))
         self.assertEqual(["workflow_dispatch", "pull_request"], events)
-        for forbidden in ("pull_request", "pull_request_target", "push", "schedule", "workflow_run"):
+        for forbidden in ("pull_request_target", "push", "schedule", "workflow_run"):
             self.assertNotIn(forbidden, events)
 
         template = TEMPLATE.read_text(encoding="utf-8")
