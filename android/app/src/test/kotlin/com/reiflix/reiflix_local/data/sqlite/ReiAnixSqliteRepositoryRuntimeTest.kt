@@ -139,8 +139,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
 
         val canonicalForeignKeys = fixture.getJSONObject("foreign_keys")
-        for (table in canonicalTables) {
-            val tableName = table as String
+        for (tableIndex in 0 until canonicalTables.length()) {
+            val tableName = canonicalTables.getString(tableIndex)
             val expectedKeys = canonicalForeignKeys.getJSONArray(tableName)
             assertEquals(
                 "Foreign key count differs for $tableName",
