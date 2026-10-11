@@ -39,3 +39,8 @@ O progresso e a data de reprodução estão persistidos nas colunas da tabela `e
 - Migrar consumidores individuais da mailbox/projeções para estes repositórios só depois de verificar equivalência das regras e remover o escritor Python correspondente para cada operação.
 - Migrar validação de configuração, ingestão/reconciliação, recuperação/backup e eventos completos do player exige trabalho de domínio e paridade fora do escopo desta camada.
 - A execução de testes e build ainda precisa ser confirmada por um run CI concluído; a existência destes arquivos não é evidência de build aprovado.
+
+
+## Runtime contract tests
+
+`android/app/src/test/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt` uses Robolectric to run Android SQLite APIs in the JVM; no device/emulator tests were added. The suite covers a v29 compatibility fixture saved at `filesDir/data/library.sqlite3`: catalog/schema reads, SQLite `quick_check`, reopening connections, playback persistence, transaction rollback, preferences round-trip, manual metadata ownership, and refusal to create/replace missing or corrupt databases. The fixture models the columns consumed by the native repositories and the expected required table names; it is not a binary snapshot of a production user database. Existing Python regression tests continue to validate the canonical Python schema/migration contract.
