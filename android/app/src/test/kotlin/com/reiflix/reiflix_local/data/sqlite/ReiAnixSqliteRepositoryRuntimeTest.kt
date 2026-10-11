@@ -257,6 +257,169 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(1000.0, updated.addedAt, 0.0)
     }
 
+    @Test
+    fun emptyDatabaseFileIsRejectedWithoutReplacement() = runBlocking {
+        databaseFile.parentFile?.mkdirs()
+        databaseFile.writeBytes(byteArrayOf())
+        try {
+            ReiAnixSqliteLibraryRepository(context).inspectSchema()
+            fail("An empty existing file must not be treated as an empty library.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("existing canonical SQLite database"))
+        }
+        assertTrue(databaseFile.exists())
+        assertEquals(0L, databaseFile.length())
+    }
+
+    @Test
+    fun schemaMigrationVersionAndSqliteUserVersionMustAgreeWithCanonicalSemantics() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("PRAGMA user_version = 29")
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertEquals(29, schema.schemaVersion)
+        assertEquals(29, schema.sqliteUserVersion)
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("PRAGMA user_version expected 0") })
+    }
+
+    @Test
+    fun declaredColumnTypeMismatchIsRejected() = runBlocking {
+        createCanonicalFixture { schema ->
+            replaceCreateTableStatement(schema, "episodes") { sql ->
+                sql.replace("number REAL", "number TEXT")
+            }
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("episodes.number declared type") })
+    }
+
+    @Test
+    fun missingRequiredColumnIsRejected() = runBlocking {
+        createCanonicalFixture { schema ->
+            replaceCreateTableStatement(schema, "episodes") { sql ->
+                sql.replace("number REAL, ", "")
+            }
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertTrue(schema.missingRequiredColumns["episodes"].orEmpty().contains("number"))
+        assertFalse(schema.supportsCurrentContract)
+    }
+
+    @Test
+    fun nullabilityMismatchIsRejected() = runBlocking {
+        createCanonicalFixture { schema ->
+            replaceCreateTableStatement(schema, "artwork") { sql ->
+                sql.replace("discovered_at REAL NOT NULL", "discovered_at REAL")
+            }
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("artwork.discovered_at NOT NULL expected true") })
+    }
+
+    @Test
+    fun defaultValueMismatchIsRejected() = runBlocking {
+        createCanonicalFixture { schema ->
+            replaceCreateTableStatement(schema, "folders") { sql ->
+                sql.replace("DEFAULT 'path'", "DEFAULT 'other'")
+            }
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("folders.kind default expected") })
+    }
+
+    @Test
+    fun compositePrimaryKeyOrderMismatchIsRejected() = runBlocking {
+        createCanonicalFixture { schema ->
+            replaceCreateTableStatement(schema, "anime_genres") { sql ->
+                sql.replace(
+                    "PRIMARY KEY(anime_id, genre_id, source)",
+                    "PRIMARY KEY(anime_id, source, genre_id)",
+                )
+            }
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("anime_genres.genre_id primary-key position expected 2") })
+        assertTrue(schema.incompatibilities.any { it.contains("anime_genres.source primary-key position expected 3") })
+    }
+
+    @Test
+    fun foreignKeyOnDeleteContractIsValidated() = runBlocking {
+        createCanonicalFixture { schema ->
+            replaceCreateTableStatement(schema, "episodes") { sql ->
+                sql.replace("REFERENCES anime(id) ON DELETE CASCADE", "REFERENCES anime(id)")
+            }
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("episodes foreign keys differ") })
+    }
+
+    @Test
+    fun sameIndexNameWithDifferentUniquenessIsRejected() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("DROP INDEX idx_episode_observation_unique")
+            db.execSQL(
+                "CREATE INDEX idx_episode_observation_unique " +
+                    "ON episode_observations(episode_id, source_kind, scope_kind, scope_ref, uri)",
+            )
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("index idx_episode_observation_unique unique expected true") })
+    }
+
+    @Test
+    fun sameIndexNameWithWrongCompoundColumnOrderIsRejected() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("DROP INDEX idx_episodes_anime_season_number_abs")
+            db.execSQL(
+                "CREATE INDEX idx_episodes_anime_season_number_abs " +
+                    "ON episodes(season, anime_id, number, absolute_number, id)",
+            )
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("index idx_episodes_anime_season_number_abs columns expected") })
+    }
+
+    @Test
+    fun partialIndexPredicateIsValidatedNotOnlyItsName() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("DROP INDEX idx_episodes_media_identity")
+            db.execSQL("CREATE UNIQUE INDEX idx_episodes_media_identity ON episodes(media_identity)")
+        }
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertFalse(schema.supportsCurrentContract)
+        assertTrue(schema.incompatibilities.any { it.contains("index idx_episodes_media_identity partial expected true") })
+    }
+
+    private fun replaceCreateTableStatement(
+        schema: JSONObject,
+        table: String,
+        transform: (String) -> String,
+    ) {
+        val statements = schema.getJSONArray("statements")
+        var replaced = false
+        for (index in 0 until statements.length()) {
+            val sql = statements.getString(index)
+            if (sql.startsWith("CREATE TABLE $table ") || sql.startsWith("CREATE TABLE $table(")) {
+                statements.put(index, transform(sql))
+                replaced = true
+                break
+            }
+        }
+        assertTrue("Expected canonical CREATE TABLE statement for $table", replaced)
+    }
+
     private fun loadCanonicalSchemaFixture(): JSONObject {
         val stream = javaClass.classLoader?.getResourceAsStream("native-sqlite-schema-v29.json")
             ?: throw IllegalStateException(
@@ -266,9 +429,10 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         return stream.bufferedReader(Charsets.UTF_8).use { reader -> JSONObject(reader.readText()) }
     }
 
-    private fun createCanonicalFixture() {
+    private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()
+        transformFixture(schema)
         assertEquals(ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION, schema.getInt("schema_version"))
 
         SQLiteDatabase.openOrCreateDatabase(databaseFile, null).use { db ->
