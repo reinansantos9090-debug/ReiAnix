@@ -100,9 +100,20 @@ fun ReiAnixArtworkRecord.toDomain(): ArtworkReference = ArtworkReference(
     manual = manual,
     priority = priority,
     status = status,
+    discoveredAtEpochSeconds = discoveredAt,
+    updatedAtEpochSeconds = updatedAt,
+    lastAttemptAtEpochSeconds = lastAttemptAt,
+    failureCount = failureCount,
+    artworkKey = artworkKey,
     variant = variant,
+    byteSize = byteSize,
+    width = width,
+    height = height,
     checksum = checksum,
     contentType = contentType,
+    lastAccessEpochSeconds = lastAccess,
+    nextRetryAtEpochSeconds = nextRetryAt,
+    httpStatus = httpStatus,
 )
 
 fun ReiAnixEpisodeRecord.toPlaybackProgress(): PlaybackProgress = PlaybackProgress(
