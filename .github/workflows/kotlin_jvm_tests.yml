@@ -188,6 +188,40 @@ jobs:
             --console=plain \
             --stacktrace
 
+      - name: Print Kotlin JVM test failure details
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_root="$GITHUB_WORKSPACE/build/flutter"
+          python - "$report_root" <<'PY'
+          import pathlib
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = pathlib.Path(sys.argv[1])
+          reports = sorted(root.glob("**/test-results/testDebugUnitTest/TEST-*.xml"))
+          found = False
+          for report in reports:
+              suite = ET.parse(report).getroot()
+              for testcase in suite.iter("testcase"):
+                  problem = testcase.find("failure")
+                  if problem is None:
+                      problem = testcase.find("error")
+                  if problem is None:
+                      continue
+                  found = True
+                  classname = testcase.attrib.get("classname", "<unknown>")
+                  name = testcase.attrib.get("name", "<unknown>")
+                  print(f"FAILED TEST: {classname} > {name}")
+                  print(f"MESSAGE: {problem.attrib.get('message', '')}")
+                  detail = (problem.text or "").strip()
+                  if detail:
+                      print(detail)
+          if not found:
+              print(f"No failing testcase details found under {root}")
+          PY
+
       - name: Restore generated build identity source and verify repository integrity
         if: always()
         shell: bash
