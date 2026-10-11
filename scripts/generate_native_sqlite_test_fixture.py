@@ -102,7 +102,7 @@ def build_fixture() -> dict[str, object]:
                     ]
                     predicate = None
                     if index_sql:
-                        match = __import__("re").search(r"(?is)\\bWHERE\\b(.*)$", index_sql)
+                        match = __import__("re").search(r"(?is)\bWHERE\b(.*)$", index_sql)
                         predicate = " ".join(match.group(1).strip().rstrip(";").split()) if match else None
                     indexes.append({
                         "name": index_name,
