@@ -112,3 +112,10 @@ A árvore de responsabilidades é:
 Nenhum pacote `domain/` artificial foi criado: não havia um modelo de domínio independente justificando outra camada. SQLite, scanner, SAF, MediaStore, permissões, artwork/cache, progresso e Media3 continuam sendo as fontes existentes. Também não foram adicionadas dependências Gradle para concluir a reorganização; o earlier validation stage 29 usa as dependências Compose/Navigation/Lifecycle/Media3 já presentes no módulo.
 
 As dependências seguem o sentido operacional host → bridge/ui → scanner/player → storage quando aplicável. As atividades continuam no raiz para preservar o manifesto, o host Flet e a integração Media3. Adapters Compose existentes não foram removidos porque ainda possuem consumidores reais em `MainActivity`.
+
+
+## Referência arquitetural canônica
+
+O mapa atualizado das camadas existentes, do fluxo Python ↔ Kotlin, dos contratos transitórios, da responsabilidade de cada módulo Python e da sequência segura de migração está em [\`docs/ARCHITECTURE_NATIVE_KOTLIN.md\`](../docs/ARCHITECTURE_NATIVE_KOTLIN.md).
+
+Distinção essencial: \`data/library\` e \`data/settings\` são adapters de projeção/IPC; \`library.json\` e as projeções de configurações não substituem \`LibraryStore\`/SQLite. \`NativeIndex\` é staging/indexação do scan, não um segundo catálogo canônico. A Activity de entrada continua herdando de \`FlutterFragmentActivity\` dentro do host gerado pelo Flet; portanto, o estado atual ainda não é um aplicativo independente de Python/Flet/Flutter.
