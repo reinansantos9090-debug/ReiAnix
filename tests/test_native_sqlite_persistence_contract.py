@@ -8,6 +8,7 @@ DATABASE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sq
 LIBRARY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt"
 SETTINGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSettingsRepository.kt"
 MODELS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteModels.kt"
+TEMPLATE = ROOT / "scripts/prepare_flet_template.py"
 
 
 class NativeSqlitePersistenceContractTests(unittest.TestCase):
@@ -77,6 +78,14 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("connection.delete(", settings)
         self.assertIn("database.transaction", settings)
         self.assertIn("withContext(Dispatchers.IO)", settings)
+
+    def test_rendered_android_host_includes_robolectric_jvm_sqlite_runtime(self):
+        template = TEMPLATE.read_text(encoding="utf-8")
+
+        self.assertIn('testImplementation("org.robolectric:robolectric:4.14.1")', template)
+        self.assertIn("unitTests.isIncludeAndroidResources = true", template)
+        self.assertIn("unitTests.includeAndroidResources = true", template)
+        self.assertNotIn(":app:testDebugUnitTest", template)
 
     def test_models_keep_nullable_sqlite_values_and_existing_identity(self):
         models = MODELS.read_text(encoding="utf-8")

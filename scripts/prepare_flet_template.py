@@ -412,8 +412,14 @@ if test_dependency_marker not in existing:
     if gradle.suffix == ".kts":
         test_block = """
 // ReiAnix Kotlin test dependencies
+android {
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+}
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
@@ -424,8 +430,14 @@ dependencies {
     else:
         test_block = """
 // ReiAnix Kotlin test dependencies
+android {
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
+}
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test:core:1.6.1'
