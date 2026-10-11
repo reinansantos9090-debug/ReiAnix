@@ -40,6 +40,22 @@ class AndroidHostVerificationTests(unittest.TestCase):
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("AndroidManifest.xml", b"manifest")
             archive.writestr("classes.dex", b"dex\n" + b"\n".join(descriptors))
+            # The release verifier now requires the generated SQLite asset as
+            # well as the native host classes, so keep this synthetic APK valid
+            # up to the specific condition each test is exercising.
+            archive.writestr(
+                "assets/native-sqlite-contract-v29.json",
+                json.dumps({
+                    "schema_version": 29,
+                    "sqlite_user_version": 0,
+                    "tables": [],
+                    "columns": {},
+                    "table_contract": {},
+                    "indexes": [],
+                    "foreign_keys": {},
+                    "triggers": [],
+                }),
+            )
         return path
 
     def setUp(self):
