@@ -97,16 +97,21 @@ class TestSafProfessionalContract(unittest.TestCase):
         ]
         general = source[
             source.index("fun isAuthorizedDocument(context"):
-            source.index("private fun canQueryDocument")
+            source.index("private fun isDocumentWithinTree")
         ]
         for block in (tree_scoped, general):
-            self.assertIn("canQueryDocument(context", block)
+            self.assertIn("isDocumentWithinTree(context", block)
             self.assertNotIn("isWithinTree(tree.documentId, documentId)", block)
-        self.assertIn("DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)", source)
-        self.assertIn("DocumentsContract.Document.COLUMN_DOCUMENT_ID", source)
+        helper = source[
+            source.index("private fun isDocumentWithinTree"):
+            source.index("fun displayName")
+        ]
+        self.assertIn("hasPersistedReadPermission(context, treeUri)", helper)
+        self.assertIn("DocumentsContract.buildDocumentUriUsingTree(treeUri, tree.documentId)", helper)
+        self.assertIn("DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)", helper)
+        self.assertIn("DocumentsContract.isChildDocument(context.contentResolver, rootDocument, candidate)", helper)
         self.assertIn("DocumentsContract.buildChildDocumentsUriUsingTree", source)
         self.assertIn("DocumentsContract.isChildDocument", source)
-        self.assertIn("isDocumentWithinTree", source)
         self.assertNotIn("isDocumentIdWithinTree", source)
 
     def test_provider_states_are_explicit(self):
