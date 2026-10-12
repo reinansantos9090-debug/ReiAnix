@@ -100,6 +100,32 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual("already_reconciled", repeated["status"])
         self.assertEqual(episode_id, self.store.physical_row(new_uri)["id"])
 
+    def test_saf_rename_with_stable_provider_uri_updates_name_without_replacing_identity(self):
+        anime_id = self.anime("Stable URI")
+        uri = "content://com.android.externalstorage.documents/document/primary%3AAnime%2Fstable.mp4"
+        episode_id = self.episode(
+            anime_id,
+            uri,
+            "before.mp4",
+            identity="stable:provider-document",
+            source_folder=self.SAF_ROOT,
+            progress=63,
+        )
+        result = self.service.reconcile_saf_document_identity_change(
+            uri, uri, "after.mp4"
+        )
+        self.assertEqual("reconciled", result["status"])
+        row = self.store.physical_row(uri)
+        self.assertEqual(episode_id, row["id"])
+        self.assertEqual(anime_id, row["anime_id"])
+        self.assertEqual("after.mp4", row["file_name"])
+        self.assertEqual(63, row["progress"])
+        repeated = self.service.reconcile_saf_document_identity_change(
+            uri, uri, "after.mp4"
+        )
+        self.assertEqual("already_reconciled", repeated["status"])
+        self.assertEqual(episode_id, self.store.physical_row(uri)["id"])
+
     def test_saf_uri_reconciliation_conflict_preserves_both_canonical_rows(self):
         anime_id = self.anime("Conflict")
         old_uri = "content://com.android.externalstorage.documents/document/primary%3AAnime%2Fold.mp4"
