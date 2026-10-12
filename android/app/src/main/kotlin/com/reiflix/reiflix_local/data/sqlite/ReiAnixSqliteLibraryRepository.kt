@@ -61,6 +61,170 @@ class ReiAnixSqliteLibraryRepository(
 
 
     /**
+     * Searches the canonical LibraryStore SQLite database and returns persisted anime IDs.
+     * SQL applies filters and ordering; Kotlin verifies normalized text from one streamed
+     * cursor so Unicode and accent-insensitive matching do not depend on SQLite LOWER().
+     */
+    suspend fun searchAnimeIds(
+        query: String,
+        genreKey: String?,
+        favoritesOnly: Boolean,
+        watchingOnly: Boolean,
+        completedOnly: Boolean,
+        sortLabel: String?,
+        limit: Int,
+        offset: Int,
+    ): ReiAnixSqliteSearchPage = withContext(Dispatchers.IO) {
+        require(limit in 1..199) { "Search page size must be between 1 and 199." }
+        require(offset >= 0) { "Search offset cannot be negative." }
+
+        val terms = normalizeNativeSearchText(query).split(' ').filter(String::isNotBlank).distinct()
+        val where = mutableListOf<String>()
+        val args = mutableListOf<String>()
+
+        if (genreKey != null) {
+            if (genreKey.startsWith("name:")) {
+                val name = genreKey.removePrefix("name:")
+                where += "(EXISTS (SELECT 1 FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id WHERE ag.anime_id=a.id AND lower(g.canonical_name)=?) OR a.genres LIKE ?)"
+                args += name
+                args += "%$name%"
+            } else {
+                where += "(EXISTS (SELECT 1 FROM anime_genres ag WHERE ag.anime_id=a.id AND ag.genre_id=?) OR a.genres LIKE ?)"
+                args += genreKey
+                args += "%$genreKey%"
+            }
+        }
+        if (favoritesOnly) where += "COALESCE(a.favorite,0)=1"
+        if (watchingOnly) {
+            where += """EXISTS (SELECT 1 FROM episodes ew WHERE ew.anime_id=a.id
+                AND COALESCE(ew.missing,0)=0 AND COALESCE(ew.watched,0)=0
+                AND COALESCE(ew.progress,0)>0
+                AND (COALESCE(ew.duration,0)<=0 OR COALESCE(ew.progress,0)<ew.duration*0.9))"""
+        }
+        if (completedOnly) {
+            where += """EXISTS (SELECT 1 FROM episodes ec WHERE ec.anime_id=a.id
+                AND (COALESCE(ec.watched,0)=1 OR
+                (COALESCE(ec.duration,0)>0 AND COALESCE(ec.progress,0)>=ec.duration*0.9)))"""
+        }
+
+        // SQL candidate narrowing uses first-character variants, then the streamed cursor
+        // applies the canonical Unicode-normalized token predicate.
+        val candidateArgs = mutableListOf<String>()
+        for (term in terms) {
+            val variants = nativeSearchCharacterVariants(term.first().toString())
+            val alternatives = mutableListOf<String>()
+            for (variant in variants) {
+                alternatives += listOf(
+                    "a.title LIKE ? COLLATE NOCASE",
+                    "a.lookup_title LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.romaji,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.english,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.native,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.aliases,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.description,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.studio,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.genres,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.user_tags,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.personal_note,'') LIKE ? COLLATE NOCASE",
+                    "EXISTS (SELECT 1 FROM episodes es WHERE es.anime_id=a.id AND (COALESCE(es.episode_title,'') LIKE ? COLLATE NOCASE OR COALESCE(es.file_name,'') LIKE ? COLLATE NOCASE))",
+                    "EXISTS (SELECT 1 FROM anime_genres ags JOIN genres gs ON gs.id=ags.genre_id LEFT JOIN genre_aliases gas ON gas.genre_id=gs.id WHERE ags.anime_id=a.id AND (gs.canonical_name LIKE ? COLLATE NOCASE OR COALESCE(gas.alias,'') LIKE ? COLLATE NOCASE))",
+                )
+                repeat(11) { candidateArgs += "%$variant%" }
+                repeat(4) { candidateArgs += "%$variant%" }
+            }
+            where += "(" + alternatives.joinToString(" OR ") + ")"
+        }
+        args += candidateArgs
+
+        val sort = when (sortLabel?.trim()) {
+            "Nome A-Z" -> "a.title COLLATE NOCASE ASC, a.id ASC"
+            "Nome Z-A" -> "a.title COLLATE NOCASE DESC, a.id DESC"
+            "Assistidos recentemente" -> "(SELECT MAX(e.last_played_at) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Progresso" -> "(SELECT MAX(COALESCE(e.progress,0)/CASE WHEN COALESCE(e.duration,0)>0 THEN e.duration ELSE 1 END) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Episódio" -> "(SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Temporada + episódio" -> "(SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Modificação" -> "(SELECT MAX(e.modified_at) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Duração" -> "(SELECT SUM(COALESCE(e.duration,0)) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Tamanho" -> "(SELECT SUM(COALESCE(e.file_size,0)) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Favoritos primeiro" -> "COALESCE(a.favorite,0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Fixados primeiro" -> "COALESCE(a.is_pinned,0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            else -> "a.added_at DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+        }
+
+        val sql = """
+            SELECT a.id, a.title, a.romaji, a.english, a.native, a.aliases, a.description,
+                   a.cover_url, a.cover_cache, a.banner_url, a.genres, a.year, a.season,
+                   a.status, a.format, a.studio, a.user_tags, a.personal_note, a.lookup_title,
+                   COALESCE((SELECT GROUP_CONCAT(COALESCE(e.episode_title,'') || ' ' || e.file_name, ' ')
+                             FROM episodes e WHERE e.anime_id=a.id), '') AS episode_search_text,
+                   COALESCE((SELECT GROUP_CONCAT(g.canonical_name || ' ' || COALESCE(ga.alias,''), ' ')
+                             FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id
+                             LEFT JOIN genre_aliases ga ON ga.genre_id=g.id WHERE ag.anime_id=a.id), '') AS genre_search_text
+            FROM anime a
+            ${if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")}
+            ORDER BY $sort
+        """.trimIndent()
+
+        database.read { connection ->
+            val matched = mutableListOf<Pair<Long, Int>>()
+            connection.rawQuery(sql, args.toTypedArray()).use { cursor ->
+                while (cursor.moveToNext()) {
+                    if (terms.isNotEmpty()) {
+                        val searchable = buildString {
+                            for (column in 1..17) {
+                                if (!cursor.isNull(column)) append(cursor.getString(column)).append(' ')
+                            }
+                            append(cursor.getString(19)).append(' ').append(cursor.getString(20))
+                        }
+                        val normalized = normalizeNativeSearchText(searchable)
+                        if (!terms.all { term -> normalized.contains(term) }) continue
+                    }
+                    val title = normalizeNativeSearchText(cursor.getString(1))
+                    val aliases = normalizeNativeSearchText(cursor.getString(5))
+                    val queryText = terms.joinToString(" ")
+                    val score = when {
+                        terms.isEmpty() -> 0
+                        title == queryText -> 1000
+                        title.startsWith(queryText) -> 800
+                        title.contains(queryText) -> 600
+                        aliases.contains(queryText) -> 320
+                        else -> terms.sumOf { term -> if (title.contains(term)) 180 else 20 }
+                    }
+                    matched += cursor.getLong(0) to score
+                }
+            }
+            val ordered = if (terms.isNotEmpty() && sortLabel.isNullOrBlank()) {
+                matched.sortedWith(compareByDescending<Pair<Long, Int>> { it.second }.thenBy { it.first })
+            } else matched
+            val page = ordered.drop(offset).take(limit + 1)
+            ReiAnixSqliteSearchPage(page.take(limit).map { it.first }, offset, limit, page.size > limit)
+        }
+    }
+
+    private fun normalizeNativeSearchText(value: String): String =
+        java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
+            .replace("\\p{M}+".toRegex(), "")
+            .lowercase(java.util.Locale.ROOT)
+            .replace("[^\\p{L}\\p{Nd}]+".toRegex(), " ")
+            .trim()
+            .replace("\\s+".toRegex(), " ")
+
+    private fun nativeSearchCharacterVariants(character: String): Set<String> {
+        val base = java.text.Normalizer.normalize(character, java.text.Normalizer.Form.NFD)
+            .replace("\\p{M}+".toRegex(), "")
+        return when (base.lowercase(java.util.Locale.ROOT)) {
+            "a" -> setOf("a", "á", "à", "â", "ã", "ä", "å", "ā")
+            "e" -> setOf("e", "é", "è", "ê", "ë", "ē")
+            "i" -> setOf("i", "í", "ì", "î", "ï", "ī")
+            "o" -> setOf("o", "ó", "ò", "ô", "õ", "ö", "ō")
+            "u" -> setOf("u", "ú", "ù", "û", "ü", "ū")
+            "c" -> setOf("c", "ç", "ć", "č")
+            "n" -> setOf("n", "ñ", "ń")
+            else -> setOf(character)
+        }
+    }
+
+    /**
      * Updates supplied catalog metadata for an existing anime in one transaction.
      * Fields in metadata_manual_fields are protected. Null patch members are no-ops.
      * Source/confidence/status bookkeeping and explicit manual corrections remain
@@ -680,4 +844,12 @@ private fun Cursor.toArtworkRecord() = ReiAnixArtworkRecord(
     lastAccess = optionalDouble("last_access"),
     nextRetryAt = optionalDouble("next_retry_at"),
     httpStatus = optionalInt("http_status"),
+)
+
+/** A bounded page of persisted anime identities returned by native SQLite search. */
+data class ReiAnixSqliteSearchPage(
+    val animeIds: List<Long>,
+    val offset: Int,
+    val limit: Int,
+    val hasMore: Boolean,
 )
