@@ -857,23 +857,11 @@ class ReiAnixLibraryViewModel(context: Context) :
                         )
                     } else {
                         val selected = result.value.animeIds.mapNotNull(byId::get)
-                        // SQLite owns membership, filters, and the selected ordering.
-                        // Only relevance mode uses the existing index to preserve its
-                        // established scoring for the already-selected persisted IDs.
-                        val ordered = if (request.settledQuery.isNotBlank() && filters.sort.isNullOrBlank()) {
-                            val rankedIds = ReiAnixSearchEngine.buildIndex(selected)
-                                .search(request.settledQuery)
-                                .map { it.id }
-                            val rank = rankedIds.withIndex().associate { it.value to it.index }
-                            selected.sortedWith(
-                                compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel> {
-                                    rank[it.id] ?: Int.MAX_VALUE
-                                }.thenBy { it.id },
-                            )
-                        } else selected
+                        // The SQLite query service owns membership and ordering.
+                        // Keep the returned persisted-ID order unchanged in Compose.
                         ReiAnixSearchUiState(
                             query = request.settledQuery,
-                            results = ordered,
+                            results = selected,
                             filters = filters,
                         )
                     }
