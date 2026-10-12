@@ -183,12 +183,11 @@ object NativeScanRunner {
                     .put("generationStatus", if (result.optBoolean("cancelled")) NativeIndex.STATUS_CANCELLED else if (partial) NativeIndex.STATUS_PARTIAL else NativeIndex.STATUS_COMPLETED)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "broad_storage_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
-                val terminalStatus = when {
-                    result.optBoolean("cancelled") -> "CANCELLED"
-                    result.optBoolean("partial") -> "PARTIAL"
-                    result.optString("status").uppercase() in setOf("FAILED", "UNAVAILABLE", "REVOKED") -> "FAILED"
-                    else -> "COMPLETED"
-                }
+                val terminalStatus = ScanResultClassifier.classifyBroadStorage(
+                    result.optJSONObject("stats")?.optString("status"),
+                    cancelled = result.optBoolean("cancelled"),
+                    partial = result.optBoolean("partial"),
+                )
                 NativeScanController.complete(scanId, terminalStatus, result)
             } catch (exception: CancellationException) {
                 NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
@@ -268,13 +267,11 @@ object NativeScanRunner {
                 }
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "mediastore_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
-                val terminalStatus = when {
-                    result.optBoolean("cancelled") -> "CANCELLED"
-                    result.optBoolean("partial") -> "PARTIAL"
-                    finalStatus == NativeIndex.STATUS_WAITING_FOR_MEDIASTORE -> "PARTIAL"
-                    finalStatus in setOf("FAILED", "UNAVAILABLE", "REVOKED", "DENIED") -> "FAILED"
-                    else -> "COMPLETED"
-                }
+                val terminalStatus = ScanResultClassifier.classifyMediaStore(
+                    finalStatus,
+                    cancelled = result.optBoolean("cancelled"),
+                    partial = result.optBoolean("partial"),
+                )
                 NativeScanController.complete(scanId, terminalStatus, result)
             } catch (exception: CancellationException) {
                 NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
