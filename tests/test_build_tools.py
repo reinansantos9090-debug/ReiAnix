@@ -88,7 +88,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
             apk = root / "app.apk"
             with zipfile.ZipFile(apk, "w") as archive:
                 archive.writestr("AndroidManifest.xml", b"manifest")
-                archive.writestr("classes.dex", b"\\n".join((
+                archive.writestr("classes.dex", b"\n".join((
                     b"Lcom/reiflix/reiflix_local/ui/theme/ReiAnixComposeThemeKt;",
                     b"Lcom/reiflix/reiflix_local/ui/ReiAnixComposeRootKt;",
                     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixViewModel;",
