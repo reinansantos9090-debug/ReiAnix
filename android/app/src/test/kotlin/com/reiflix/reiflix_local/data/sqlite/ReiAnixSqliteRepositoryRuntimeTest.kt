@@ -1198,10 +1198,10 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL(
-                """UPDATE anime SET english=?, romaji=?, native=?, aliases=?, genres=?
+                """UPDATE anime SET english=?, romaji=?, native=?, aliases=?, genres=?, year=?
                    WHERE id=?""".trimIndent(),
                 arrayOf("São Paulo", "Shingeki no Kyojin", "進撃の巨人",
-                    """["Attack on Titan","進撃の巨人"]""", """["Action"]""", 1),
+                    """["Attack on Titan","進撃の巨人"]""", """["Action"]""", 2026, 1),
             )
             db.execSQL(
                 """INSERT INTO genres(id, canonical_name, normalized_name, created_at, updated_at)
@@ -1222,6 +1222,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(listOf(1L), repository.searchAnimeIds("attack on titan", null, false, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("進撃の巨人", null, false, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("episode 1", null, false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("2026", null, false, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("", "action-id", false, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("", null, true, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("", null, false, true, false, null, 36, 0).animeIds)
