@@ -192,6 +192,7 @@ class ReiAnixLibraryViewModel(context: Context) :
                     val message = when (val match = result.value) {
                         AniListAutoMatchResult.Disabled -> "Correspondência automática desativada nas configurações."
                         AniListAutoMatchResult.NoMatch -> "Nenhuma correspondência confiável encontrada."
+                        AniListAutoMatchResult.RecentlyAttempted -> "A busca automática já foi tentada recentemente."
                         is AniListAutoMatchResult.AlreadyManuallyMatched -> "A associação manual existente foi preservada."
                         is AniListAutoMatchResult.AlreadyMatched -> "A associação AniList existente foi preservada."
                         is AniListAutoMatchResult.Matched -> "Anime identificado no AniList."
