@@ -16,6 +16,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -920,6 +922,51 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
         assertEquals("superseded", observations["/media/show/episode-01.mkv"])
         assertEquals("available", observations["/media/show/episode-01-renamed.mkv"])
+    }
+
+    @Test
+    fun nativeQueryServiceDistinguishesDataEmptyAndMissingRecords() = runBlocking {
+        createCanonicalFixture()
+        val service = ReiAnixLibraryQueryService(context)
+
+        val page = service.animePage(limit = 1, offset = 0)
+        assertTrue(page is ReiAnixLibraryQueryResult.Success)
+        val pageValue = (page as ReiAnixLibraryQueryResult.Success).value
+        assertEquals(listOf(1L), pageValue.items.map { it.id })
+        assertFalse(pageValue.hasMore)
+
+        val beyondEnd = service.animePage(limit = 1, offset = 5)
+        assertTrue(beyondEnd is ReiAnixLibraryQueryResult.Empty)
+
+        val missingAnime = service.animeById(999L)
+        assertTrue(missingAnime is ReiAnixLibraryQueryResult.NotFound)
+
+        val episodes = service.episodesForAnime(1L)
+        assertTrue(episodes is ReiAnixLibraryQueryResult.Success)
+        assertEquals(listOf(7L), (episodes as ReiAnixLibraryQueryResult.Success).value.map { it.id })
+
+        val missingParentEpisodes = service.episodesForAnime(999L)
+        assertTrue(missingParentEpisodes is ReiAnixLibraryQueryResult.NotFound)
+
+        val episode = service.episodeById(7L)
+        assertTrue(episode is ReiAnixLibraryQueryResult.Success)
+        assertEquals(1L, (episode as ReiAnixLibraryQueryResult.Success).value.animeId)
+
+        val folders = service.folders()
+        assertTrue(folders is ReiAnixLibraryQueryResult.Success)
+        assertEquals("/media/show", (folders as ReiAnixLibraryQueryResult.Success).value.single().path)
+
+        val artwork = service.artworkForAnime(1L)
+        assertTrue(artwork is ReiAnixLibraryQueryResult.Success)
+        assertEquals("1", (artwork as ReiAnixLibraryQueryResult.Success).value.single().entityId)
+    }
+
+    @Test
+    fun nativeQueryServiceNeverTurnsMissingDatabaseIntoEmptyLibrary() = runBlocking {
+        assertFalse(databaseFile.exists())
+        val result = ReiAnixLibraryQueryService(context).animePage()
+        assertTrue(result is ReiAnixLibraryQueryResult.Failure)
+        assertFalse(databaseFile.exists())
     }
 
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
