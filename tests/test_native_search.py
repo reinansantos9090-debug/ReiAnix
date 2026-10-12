@@ -43,7 +43,7 @@ class NativeSearchTests(unittest.TestCase):
         self.assertIn("ORDER BY $sort", repository)
         self.assertIn("LIMIT ? OFFSET ?", repository)
         self.assertIn("requestedQuery != request.settledQuery", view_model)
-        self.assertIn("results = selected", view_model)
+        self.assertIn("results = orderedIds.mapNotNull(byId::get)", view_model)
 
     def test_search_ui_has_required_states_and_stable_details_identity(self):
         source = SEARCH.read_text(encoding="utf-8")
