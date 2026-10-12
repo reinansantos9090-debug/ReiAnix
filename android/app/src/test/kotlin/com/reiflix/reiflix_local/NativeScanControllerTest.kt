@@ -180,6 +180,18 @@ class NativeScanControllerTest {
     }
 
     @Test
+    fun failureCannotBeOverwrittenByLaterGenericSuccess() {
+        val scanId = id()
+        assertTrue(NativeScanController.begin(scanId, "broad:blocked"))
+        NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", "BLOCKED"))
+        NativeScanController.complete(scanId, "COMPLETED", JSONObject())
+        val snapshot = NativeScanController.snapshot(scanId)
+        assertEquals(ScanLifecycleState.FAILED, snapshot?.state)
+        assertFalse(snapshot?.isComplete == true)
+        NativeScanController.finish(scanId)
+    }
+
+    @Test
     fun failedOperationReleasesSourceForRetry() {
         val first = id()
         val retry = id()
