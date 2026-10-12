@@ -108,13 +108,14 @@ class SafFileOperations(private val context: Context) {
     suspend fun rename(uri: Uri, newName: String): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(uri)) {
             val safeName = validateName(newName) ?: return@synchronized Result.Failure(FailureKind.INVALID_NAME, "Nome inválido.", uri)
+            if (isTreeRootUri(uri)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser renomeada.", uri)
             val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
             val source = target.document
             if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite renomeação.", uri)
             val parent = findParentInTree(target.treeUri, source.uri)
                 ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não permitiu localizar a pasta pai autorizada deste item.", uri)
             val conflict = runCatching { parent.findFile(safeName) }.getOrNull()
-            if (conflict != null && conflict.uri != source.uri) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", uri, conflict.uri)
+            if (conflict != null && !sameDocument(conflict.uri, source.uri)) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", uri, conflict.uri)
             try {
                 if (!source.renameTo(safeName)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor recusou a renomeação.", uri)
                 val renamed = resolveAfterMutation(source.uri, parent, safeName)
@@ -195,7 +196,9 @@ class SafFileOperations(private val context: Context) {
 
     suspend fun delete(uri: Uri): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(uri)) {
-            val source = authorizedDocument(uri) ?: return@synchronized failureFor(uri)
+            if (isTreeRootUri(uri)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser excluída.", uri)
+            val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
+            val source = target.document
             try {
                 if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite exclusão.", uri)
                 if (!source.delete()) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor recusou a exclusão.", uri)
@@ -342,7 +345,30 @@ class SafFileOperations(private val context: Context) {
         return name.takeIf { it.length <= 255 }
     }
 
-    private fun lockFor(uri: Uri): Any = locks.getOrPut(uri.toString()) { Any() }
+    private fun isTreeRootUri(uri: Uri): Boolean =
+        runCatching { DocumentsContract.isTreeUri(uri) && !DocumentsContract.isDocumentUri(context, uri) }
+            .getOrDefault(false)
+
+    private fun lockFor(uri: Uri): Any {
+        val treeKey = if (isTreeRootUri(uri)) {
+            uri.toString()
+        } else {
+            resolver.persistedUriPermissions.firstOrNull { grant ->
+                grant.isReadPermission &&
+                    runCatching { DocumentsContract.isTreeUri(grant.uri) }.getOrDefault(false) &&
+                    runCatching { SafScanner.isAuthorizedDocumentForTree(context, grant.uri, uri) }.getOrDefault(false)
+            }?.uri?.toString() ?: uri.toString()
+        }
+        return locks.getOrPut(treeKey) { Any() }
+    }
+
+    private fun <T> withLocks(keys: Collection<String>, block: () -> T): T {
+        val ordered = keys.distinct().sorted()
+        fun acquire(index: Int): T =
+            if (index >= ordered.size) block()
+            else synchronized(locks.getOrPut(ordered[index]) { Any() }) { acquire(index + 1) }
+        return acquire(0)
+    }
 
     private fun safeMessage(error: Exception): String =
         when (error) {
