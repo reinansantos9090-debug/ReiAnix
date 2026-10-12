@@ -78,7 +78,9 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                     "$operation concluída no armazenamento. A atualização do catálogo foi solicitada; a preservação de histórico e progresso ainda não foi confirmada."
                 }
                 error = null
-                viewModel.refresh()
+                // Rename/move publish a durable identity-change event first. The
+                // Python consumer publishes the canonical snapshot after its transaction.
+                if (!result.catalogReconciliationQueued) viewModel.refresh()
                 current?.let(::refresh)
             }
             is SafFileOperations.Result.Failure -> {
