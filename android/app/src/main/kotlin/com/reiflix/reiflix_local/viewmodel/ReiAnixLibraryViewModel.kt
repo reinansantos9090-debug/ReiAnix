@@ -784,6 +784,13 @@ class ReiAnixLibraryViewModel(context: Context) :
         )
     }
 
+    private data class SearchRequest(
+        val index: com.reiflix.reiflix_local.ui.search.ReiAnixSearchIndex,
+        val requestedQuery: String,
+        val settledQuery: String,
+        val filters: ReiAnixSearchFilters,
+    )
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -800,19 +807,33 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     val searchState: StateFlow<ReiAnixSearchUiState> = combine(
         searchIndex,
+        _searchQuery,
         debouncedSearchQuery,
         _searchFilters,
-    ) { index, query, filters ->
-        Triple(index, query, filters)
+    ) { index, requestedQuery, settledQuery, filters ->
+        SearchRequest(index, requestedQuery, settledQuery, filters)
     }
-        .mapLatest { (index, query, filters) ->
+        .mapLatest { request ->
+            val (index, requestedQuery, settledQuery, filters) = request
+            // Publish the latest query immediately. The UI already renders its
+            // dedicated loading state while state.query differs from the input;
+            // clearing pending results here prevents a prior query's matches
+            // from remaining observable as if they belonged to the new query.
+            if (requestedQuery != settledQuery) {
+                return@mapLatest ReiAnixSearchUiState(
+                    query = requestedQuery,
+                    results = emptyList(),
+                    filters = filters,
+                )
+            }
+
             runCatching {
-                val indexedResults = if (query.isBlank()) {
+                val indexedResults = if (settledQuery.isBlank()) {
                     index.all()
                 } else {
-                    index.search(query)
+                    index.search(settledQuery)
                 }
-                val hasSearchRefinement = query.isNotBlank() || filters.hasAnyFilter
+                val hasSearchRefinement = settledQuery.isNotBlank() || filters.hasAnyFilter
                 val filteredResults = if (!hasSearchRefinement) {
                     emptyList()
                 } else {
@@ -833,13 +854,13 @@ class ReiAnixLibraryViewModel(context: Context) :
                     )
                 }
                 ReiAnixSearchUiState(
-                    query = query,
+                    query = requestedQuery,
                     results = filteredResults,
                     filters = filters,
                 )
             }.getOrElse { error ->
                 ReiAnixSearchUiState(
-                    query = query,
+                    query = requestedQuery,
                     results = emptyList(),
                     filters = filters,
                     error = error.message?.takeIf { it.isNotBlank() }
