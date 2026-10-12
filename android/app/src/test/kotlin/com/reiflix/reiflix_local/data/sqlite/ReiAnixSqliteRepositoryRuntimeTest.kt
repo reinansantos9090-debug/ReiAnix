@@ -401,6 +401,68 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun manualAniListAssociationPreservesProtectedAndManualMetadataBookkeeping() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            connection.execSQL(
+                "UPDATE anime SET metadata_source = 'manual', metadata_status = 'manual', metadata_confidence = 'high', metadata_updated_at = 1234 WHERE id = 1",
+            )
+        }
+
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val updated = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                title = "Remote Title",
+                coverUrl = "https://example.invalid/new-cover.jpg",
+                english = "New English Title",
+                metadataFetchedAt = 2000.0,
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+
+        assertEquals(42L, updated.anilistId)
+        assertEquals(true, updated.anilistMatchManual)
+        assertEquals("manual", updated.anilistMatchStatus)
+        assertEquals(1.0, updated.anilistMatchScore!!, 0.0)
+        assertEquals(1.0, updated.anilistMatchMargin!!, 0.0)
+        assertEquals("Original Title", updated.title)
+        assertEquals("https://example.invalid/old-cover.jpg", updated.coverUrl)
+        assertEquals("New English Title", updated.english)
+        assertEquals("manual", updated.metadataSource)
+        assertEquals("manual", updated.metadataStatus)
+        assertEquals("high", updated.metadataConfidence)
+        assertEquals(1234.0, updated.metadataUpdatedAt!!, 0.0)
+    }
+
+    @Test
+    fun automaticAniListAssociationDoesNotReplaceAnExistingDifferentAssociation() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            connection.execSQL(
+                "UPDATE anime SET anilist_id = 99, anilist_match_manual = 0, anilist_match_status = 'matched' WHERE id = 1",
+            )
+        }
+
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val updated = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(animeId = 1L, title = "Must Not Replace"),
+            anilistId = 42L,
+            manual = false,
+            score = 0.96,
+            margin = 0.20,
+        )
+
+        assertEquals(99L, updated.anilistId)
+        assertEquals("Original Title", updated.title)
+    }
+
+    @Test
     fun corruptDatabaseDoesNotGetReplacedWithAnEmptyCatalog() = runBlocking {
         databaseFile.parentFile?.mkdirs()
         databaseFile.writeText("not a sqlite database", Charsets.UTF_8)
