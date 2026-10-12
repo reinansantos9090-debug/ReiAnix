@@ -162,18 +162,19 @@ class SafFileOperations(private val context: Context) {
             if (!parent.isDirectory || !parent.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "A pasta de destino não permite escrita.", parentUri)
             try {
                 val existing = findChildByName(targetTreeUri(parentUri), parent.uri, safeName)
-                if (existing != null) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", existing.uri, parentUri)
+                if (existing != null) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", existing, parentUri)
                 val createdUri = DocumentsContract.createDocument(
                     resolver,
                     parent.uri,
                     DocumentsContract.Document.MIME_TYPE_DIR,
                     safeName,
                 ) ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não conseguiu criar a pasta.", parentUri)
-                val confirmed = findChildByName(targetTreeUri(parentUri), parent.uri, safeName)
-                if (confirmed == null || !confirmed.exists() || !confirmed.isDirectory || confirmed.name != safeName) {
+                val confirmedUri = findChildByName(targetTreeUri(parentUri), parent.uri, safeName)
+                val confirmed = confirmedUri?.let { DocumentFile.fromSingleUri(context, it) }
+                if (confirmedUri == null || confirmed == null || !confirmed.exists() || !confirmed.isDirectory || confirmed.name != safeName) {
                     return@synchronized Result.Failure(FailureKind.PARTIAL, "A criação pode ter ocorrido, mas o provedor não confirmou a pasta ao consultá-la novamente.", createdUri, parentUri, recoverable = true)
                 }
-                Result.Success(confirmed.uri, confirmed.name.orEmpty(), true)
+                Result.Success(confirmedUri, confirmed.name.orEmpty(), true)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "Sem permissão para criar a pasta.", parentUri)
             } catch (e: CancellationException) {
@@ -193,19 +194,22 @@ class SafFileOperations(private val context: Context) {
             if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite renomeação.", uri)
             val parent = findParentInTree(target.treeUri, source.uri)
                 ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não permitiu localizar a pasta pai autorizada deste item.", uri)
-            val conflict = findChildByName(target.treeUri, parent.uri, safeName)
-            if (conflict != null && !sameDocument(conflict.uri, source.uri)) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", uri, conflict.uri)
             try {
+                val conflictUri = findChildByName(target.treeUri, parent.uri, safeName)
+                if (conflictUri != null && !sameDocument(conflictUri, source.uri)) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", uri, conflictUri)
                 val renamedUri = DocumentsContract.renameDocument(resolver, source.uri, safeName)
                     ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor recusou a renomeação.", uri)
-                val renamed = findChildByName(target.treeUri, parent.uri, safeName)
+                val confirmedUri = findChildByName(target.treeUri, parent.uri, safeName)
                     ?: return@synchronized Result.Failure(FailureKind.PARTIAL, "A renomeação pode ter ocorrido, mas o novo item não pôde ser confirmado. Verifique a pasta antes de tentar novamente.", uri, recoverable = true)
-                val renamedDocument = DocumentFile.fromSingleUri(context, renamedUri)
-                if (renamedDocument == null || !renamedDocument.exists() || renamedDocument.name != safeName ||
-                    !sameDocument(renamed.uri, renamedDocument.uri)) {
-                    return@synchronized Result.Failure(FailureKind.PARTIAL, "O provedor retornou uma URI de renomeação que não corresponde ao item encontrado na pasta.", uri, renamed.uri, recoverable = true)
+                val renamedDocument = DocumentFile.fromSingleUri(context, confirmedUri)
+                val returnedDocument = DocumentFile.fromSingleUri(context, renamedUri)
+                if (renamedDocument == null || returnedDocument == null ||
+                    !renamedDocument.exists() || !returnedDocument.exists() ||
+                    renamedDocument.name != safeName || returnedDocument.name != safeName ||
+                    !sameDocument(confirmedUri, renamedUri)) {
+                    return@synchronized Result.Failure(FailureKind.PARTIAL, "O provedor retornou uma URI de renomeação que não corresponde ao item encontrado na pasta.", uri, confirmedUri, recoverable = true)
                 }
-                Result.Success(renamed.uri, renamed.name.orEmpty(), renamed.isDirectory)
+                Result.Success(confirmedUri, renamedDocument.name.orEmpty(), renamedDocument.isDirectory)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a renomeação.", uri)
             } catch (e: CancellationException) {
@@ -242,10 +246,10 @@ class SafFileOperations(private val context: Context) {
             }
             val name = sourceDocument.name?.takeIf(String::isNotBlank)
                 ?: return@withLocks Result.Failure(FailureKind.FAILURE, "O provedor não informou o nome da origem.", uri, destinationDirectoryUri)
-            if (findChildByName(currentDestination.treeUri, destinationDocument.uri, name) != null) {
-                return@withLocks Result.Failure(FailureKind.CONFLICT, "O destino já contém um item com esse nome.", uri, destinationDirectoryUri)
-            }
             try {
+                if (findChildByName(currentDestination.treeUri, destinationDocument.uri, name) != null) {
+                    return@withLocks Result.Failure(FailureKind.CONFLICT, "O destino já contém um item com esse nome.", uri, destinationDirectoryUri)
+                }
                 val sourceParent = findParentInTree(currentSource.treeUri, sourceDocument.uri)
                     ?: return@withLocks Result.Failure(FailureKind.UNSUPPORTED, "Não foi possível confirmar a pasta de origem autorizada.", uri, destinationDirectoryUri)
                 if (sourceDocument.uri.authority != destinationDocument.uri.authority ||
@@ -264,7 +268,7 @@ class SafFileOperations(private val context: Context) {
                 val moved = DocumentFile.fromSingleUri(context, movedUri)
                 val locatedAtDestination = findChildByName(currentDestination.treeUri, destinationDocument.uri, name)
                 if (moved != null && moved.exists() && moved.name == name &&
-                    locatedAtDestination != null && sameDocument(locatedAtDestination.uri, moved.uri)) {
+                    locatedAtDestination != null && sameDocument(locatedAtDestination, moved.uri)) {
                     Result.Success(moved.uri, name, moved.isDirectory)
                 } else {
                     Result.Failure(FailureKind.PARTIAL, "O provedor aceitou a movimentação, mas não confirmou o documento no destino. Verifique ambas as pastas antes de repetir.", uri, destinationDirectoryUri, recoverable = true)
@@ -422,7 +426,7 @@ class SafFileOperations(private val context: Context) {
                     runCatching { SafScanner.isAuthorizedDocumentForTree(context, grant.uri, uri) }.getOrDefault(false))
         }?.uri ?: throw SecurityException("A URI não pertence a uma árvore SAF autorizada.")
 
-    private fun findChildByName(treeUri: Uri, parentUri: Uri, name: String): DocumentFile? {
+    private fun findChildByName(treeUri: Uri, parentUri: Uri, name: String): Uri? {
         val parentId = if (isTreeRootUri(parentUri)) {
             DocumentsContract.getTreeDocumentId(parentUri)
         } else {
@@ -440,12 +444,11 @@ class SafFileOperations(private val context: Context) {
             val idColumn = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             val nameColumn = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             if (idColumn < 0 || nameColumn < 0) throw IOException("O provedor não retornou ID e nome dos documentos.")
-            var found: DocumentFile? = null
+            var found: Uri? = null
             while (c.moveToNext()) {
                 if (c.getString(nameColumn) == name) {
                     val id = c.getString(idColumn)?.takeIf { it.isNotBlank() } ?: continue
-                    val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
-                    found = DocumentFile.fromSingleUri(context, childUri)
+                    found = DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
                     break
                 }
             }
