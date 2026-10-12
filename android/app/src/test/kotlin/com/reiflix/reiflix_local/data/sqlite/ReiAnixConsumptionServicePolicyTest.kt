@@ -10,7 +10,7 @@ class ReiAnixConsumptionServicePolicyTest {
         val neverPlayed = ReiAnixConsumptionService.Progress(1L, null, 120_000L, false, null)
         val savedZero = ReiAnixConsumptionService.Progress(1L, 0L, 120_000L, false, 10.0)
         assertFalse(neverPlayed.hasSavedPosition); assertTrue(savedZero.hasSavedPosition)
-        assertEquals(null, neverPlayed.positionMs); assertEquals(0L, savedZero.positionMs)
+        assertTrue(neverPlayed.positionMs == null); assertTrue(savedZero.positionMs == 0L)
     }
     @Test fun watchedAndInProgressStatesAreMutuallyExclusive() {
         val active = ReiAnixConsumptionService.Progress(2L, 20_000L, 100_000L, false, 12.0)
