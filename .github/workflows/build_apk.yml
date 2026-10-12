@@ -307,11 +307,33 @@ jobs:
           # most of the job timeout before reporting the real error.
           flet build "${build_args[@]}"
 
+      - name: Clean malformed Gradle download ETag cache
+        shell: bash
+        working-directory: build/flutter/android
+        run: |
+          set -euo pipefail
+          # Per-ABI Serious Python downloads share gradle-download-task's ETag JSON.
+          # Remove only malformed metadata left by a concurrent download; keep valid caches.
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for etag_file in Path(".").rglob("etags.json"):
+              if etag_file.parent.name != "download-task":
+                  continue
+              try:
+                  json.loads(etag_file.read_text(encoding="utf-8"))
+              except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                  etag_file.unlink(missing_ok=True)
+                  print(f"Removed malformed Gradle ETag cache: {etag_file}")
+          PY
+
       - name: Explicitly verify release Kotlin compilation
         shell: bash
         working-directory: build/flutter/android
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true"
+          # Avoid concurrent per-ABI writes to the shared gradle-download-task ETag file.
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=false"
           SERIOUS_PYTHON_SITE_PACKAGES: "${{ github.workspace }}/build/site-packages/arm64-v8a"
         run: |
           set -euo pipefail
