@@ -102,9 +102,12 @@ class ReiAnixSqliteLibraryRepository(
                 AND (COALESCE(ew.duration,0)<=0 OR COALESCE(ew.progress,0)<ew.duration*0.9))"""
         }
         if (completedOnly) {
-            where += """EXISTS (SELECT 1 FROM episodes ec WHERE ec.anime_id=a.id
-                AND (COALESCE(ec.watched,0)=1 OR
-                (COALESCE(ec.duration,0)>0 AND COALESCE(ec.progress,0)>=ec.duration*0.9)))"""
+            where += """EXISTS (SELECT 1 FROM episodes ec0 WHERE ec0.anime_id=a.id)
+                AND NOT EXISTS (SELECT 1 FROM episodes ec WHERE ec.anime_id=a.id
+                    AND (COALESCE(ec.missing,0)=1 OR
+                         lower(COALESCE(ec.availability_state,'')) IN ('missing','scope_unavailable','volume_unavailable') OR
+                         NOT (COALESCE(ec.watched,0)=1 OR
+                              (COALESCE(ec.duration,0)>0 AND COALESCE(ec.progress,0)>=ec.duration*0.9))))"""
         }
 
         // SQL candidate narrowing uses first-character variants, then the streamed cursor
@@ -141,8 +144,8 @@ class ReiAnixSqliteLibraryRepository(
             "Nome Z-A" -> "a.title COLLATE NOCASE DESC, a.id DESC"
             "Assistidos recentemente" -> "(SELECT MAX(e.last_played_at) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Progresso" -> "(SELECT MAX(COALESCE(e.progress,0)/CASE WHEN COALESCE(e.duration,0)>0 THEN e.duration ELSE 1 END) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Episódio" -> "(SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Temporada + episódio" -> "(SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Episódio" -> "CASE WHEN (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Temporada + episódio" -> "CASE WHEN (SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, CASE WHEN (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Modificação" -> "(SELECT MAX(e.modified_at) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Duração" -> "(SELECT SUM(COALESCE(e.duration,0)) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Tamanho" -> "(SELECT SUM(COALESCE(e.file_size,0)) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
@@ -163,15 +166,21 @@ class ReiAnixSqliteLibraryRepository(
             FROM anime a
             ${if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")}
             ORDER BY $sort
+            ${if (terms.isEmpty()) "LIMIT ? OFFSET ?" else ""}
         """.trimIndent()
+        val queryArgs = args.toMutableList()
+        if (terms.isEmpty()) {
+            queryArgs += (limit + 1).toString()
+            queryArgs += offset.toString()
+        }
 
         database.read { connection ->
             val matched = mutableListOf<Pair<Long, Int>>()
-            connection.rawQuery(sql, args.toTypedArray()).use { cursor ->
+            connection.rawQuery(sql, queryArgs.toTypedArray()).use { cursor ->
                 while (cursor.moveToNext()) {
                     if (terms.isNotEmpty()) {
                         val searchable = buildString {
-                            for (column in 1..17) {
+                            for (column in 1..18) {
                                 if (!cursor.isNull(column)) append(cursor.getString(column)).append(' ')
                             }
                             append(cursor.getString(19)).append(' ').append(cursor.getString(20))
@@ -196,7 +205,7 @@ class ReiAnixSqliteLibraryRepository(
             val ordered = if (terms.isNotEmpty() && sortLabel.isNullOrBlank()) {
                 matched.sortedWith(compareByDescending<Pair<Long, Int>> { it.second }.thenBy { it.first })
             } else matched
-            val page = ordered.drop(offset).take(limit + 1)
+            val page = if (terms.isEmpty()) ordered else ordered.drop(offset).take(limit + 1)
             ReiAnixSqliteSearchPage(page.take(limit).map { it.first }, offset, limit, page.size > limit)
         }
     }
