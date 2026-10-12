@@ -46,6 +46,35 @@ class ReiAnixLibraryQueryService(
             }
         }
 
+    suspend fun searchAnime(
+        query: String,
+        genreKey: String? = null,
+        favoritesOnly: Boolean = false,
+        watchingOnly: Boolean = false,
+        completedOnly: Boolean = false,
+        sortLabel: String? = null,
+        limit: Int = DEFAULT_PAGE_SIZE,
+        offset: Int = 0,
+    ): ReiAnixLibraryQueryResult<ReiAnixSqliteSearchPage> =
+        query("searchAnime") {
+            require(limit in 1..MAX_PAGE_SIZE) {
+                "Search page size must be between 1 and $MAX_PAGE_SIZE."
+            }
+            require(offset >= 0) { "Search offset cannot be negative." }
+            val page = repository.searchAnimeIds(
+                query = query,
+                genreKey = genreKey,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                sortLabel = sortLabel,
+                limit = limit,
+                offset = offset,
+            )
+            if (page.animeIds.isEmpty()) ReiAnixLibraryQueryResult.Empty("searchAnime")
+            else ReiAnixLibraryQueryResult.Success(page)
+        }
+
     suspend fun episodesForAnime(
         animeId: Long,
     ): ReiAnixLibraryQueryResult<List<ReiAnixEpisodeRecord>> =
