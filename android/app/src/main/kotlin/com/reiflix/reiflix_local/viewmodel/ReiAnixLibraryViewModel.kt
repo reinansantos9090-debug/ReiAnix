@@ -835,55 +835,63 @@ class ReiAnixLibraryViewModel(context: Context) :
                 )
             }
 
-            when (val result = nativeLibraryQueries.searchAnime(
-                searchText = request.settledQuery,
-                genreKey = filters.selectedGenreKey,
-                favoritesOnly = filters.favoritesOnly,
-                watchingOnly = filters.watchingOnly,
-                completedOnly = filters.completedOnly,
-                sortLabel = filters.sort,
-                limit = ReiAnixLibraryQueryService.MAX_PAGE_SIZE,
-                offset = 0,
-            )) {
-                is ReiAnixLibraryQueryResult.Success -> {
-                    val byId = request.catalog.associateBy { it.id }
-                    val missingIds = result.value.animeIds.filterNot(byId::containsKey)
-                    if (missingIds.isNotEmpty()) {
-                        ReiAnixSearchUiState(
-                            query = request.settledQuery,
-                            results = emptyList(),
-                            filters = filters,
-                            error = "A pesquisa SQLite retornou itens que ainda não estão disponíveis na projeção da biblioteca. Atualize a biblioteca e tente novamente.",
-                        )
-                    } else {
-                        val selected = result.value.animeIds.mapNotNull(byId::get)
-                        // The SQLite query service owns membership and ordering.
-                        // Keep the returned persisted-ID order unchanged in Compose.
-                        ReiAnixSearchUiState(
-                            query = request.settledQuery,
-                            results = selected,
-                            filters = filters,
-                        )
+            val selectedIds = mutableListOf<Long>()
+            var offset = 0
+            var hasMore = true
+            var queryError: String? = null
+            while (hasMore && queryError == null) {
+                when (val result = nativeLibraryQueries.searchAnime(
+                    searchText = request.settledQuery,
+                    genreKey = filters.selectedGenreKey,
+                    favoritesOnly = filters.favoritesOnly,
+                    watchingOnly = filters.watchingOnly,
+                    completedOnly = filters.completedOnly,
+                    sortLabel = filters.sort,
+                    limit = ReiAnixLibraryQueryService.MAX_PAGE_SIZE,
+                    offset = offset,
+                )) {
+                    is ReiAnixLibraryQueryResult.Success -> {
+                        val page = result.value
+                        selectedIds += page.animeIds
+                        hasMore = page.hasMore
+                        offset += page.limit
+                    }
+                    is ReiAnixLibraryQueryResult.Empty -> hasMore = false
+                    is ReiAnixLibraryQueryResult.Failure -> {
+                        queryError = result.cause.message?.takeIf(String::isNotBlank)
+                            ?: "Não foi possível pesquisar no banco SQLite da biblioteca."
+                    }
+                    is ReiAnixLibraryQueryResult.NotFound -> {
+                        queryError = "O banco SQLite não encontrou o item solicitado."
                     }
                 }
-                is ReiAnixLibraryQueryResult.Empty -> ReiAnixSearchUiState(
+            }
+
+            if (queryError != null) {
+                ReiAnixSearchUiState(
                     query = request.settledQuery,
                     results = emptyList(),
                     filters = filters,
+                    error = queryError,
                 )
-                is ReiAnixLibraryQueryResult.Failure -> ReiAnixSearchUiState(
-                    query = request.settledQuery,
-                    results = emptyList(),
-                    filters = filters,
-                    error = result.cause.message?.takeIf(String::isNotBlank)
-                        ?: "Não foi possível pesquisar no banco SQLite da biblioteca.",
-                )
-                is ReiAnixLibraryQueryResult.NotFound -> ReiAnixSearchUiState(
-                    query = request.settledQuery,
-                    results = emptyList(),
-                    filters = filters,
-                    error = "O banco SQLite não encontrou o item solicitado.",
-                )
+            } else {
+                val byId = request.catalog.associateBy { it.id }
+                val orderedIds = selectedIds.distinct()
+                val missingIds = orderedIds.filterNot(byId::containsKey)
+                if (missingIds.isNotEmpty()) {
+                    ReiAnixSearchUiState(
+                        query = request.settledQuery,
+                        results = emptyList(),
+                        filters = filters,
+                        error = "A pesquisa SQLite retornou itens que ainda não estão disponíveis na projeção da biblioteca. Atualize a biblioteca e tente novamente.",
+                    )
+                } else {
+                    ReiAnixSearchUiState(
+                        query = request.settledQuery,
+                        results = orderedIds.mapNotNull(byId::get),
+                        filters = filters,
+                    )
+                }
             }
         }
         .flowOn(Dispatchers.Default)
