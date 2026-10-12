@@ -77,6 +77,21 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("Intent.FLAG_GRANT_WRITE_URI_PERMISSION", picker)
 
 
+    def test_saf_identity_reconciliation_uses_canonical_mailbox_and_store(self):
+        store = (ROOT / "core/library_store.py").read_text(encoding="utf-8")
+        service = (ROOT / "core/library_service.py").read_text(encoding="utf-8")
+        main = MAIN.read_text(encoding="utf-8")
+        view_model = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("reconcile_saf_document_identity_change", store)
+        self.assertIn("UPDATE episode_observations", store)
+        self.assertIn("reconcile_saf_document_identity_change", service)
+        self.assertIn("saf_document_identity_change", main)
+        self.assertIn("NativeMailbox.write(appContext, event)", view_model)
+        self.assertIn("catalogReconciliationQueued", view_model)
+        self.assertNotIn("library.sqlite", view_model)
+
     def test_native_saf_file_manager_uses_scoped_grants_and_confirms_operations(self):
         operations = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/SafFileOperations.kt"
