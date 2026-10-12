@@ -97,6 +97,8 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("mutationAttempted", operations)
         self.assertNotIn("runCatching { DocumentsContract.isChildDocument", operations)
         self.assertIn("a movimentação foi recusada por segurança", operations.lower())
+        self.assertIn("FailureKind.UNSUPPORTED", operations)
+        self.assertIn("FailureKind.PARTIAL", operations)
 
     def test_native_saf_file_manager_uses_scoped_grants_and_confirms_operations(self):
         operations = (
