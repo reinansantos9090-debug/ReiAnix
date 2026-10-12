@@ -312,9 +312,11 @@ jobs:
         working-directory: build/flutter/android
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true"
+          SERIOUS_PYTHON_SITE_PACKAGES: "${{ github.workspace }}/build/site-packages/arm64-v8a"
         run: |
           set -euo pipefail
           test -x ./gradlew
+          test -d "$SERIOUS_PYTHON_SITE_PACKAGES"
           ./gradlew :app:compileReleaseKotlin --no-daemon --console=plain --stacktrace
 
       - name: Preserve build identity evidence
