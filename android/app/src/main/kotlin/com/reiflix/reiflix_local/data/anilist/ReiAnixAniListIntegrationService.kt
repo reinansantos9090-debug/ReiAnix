@@ -8,6 +8,7 @@ import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
