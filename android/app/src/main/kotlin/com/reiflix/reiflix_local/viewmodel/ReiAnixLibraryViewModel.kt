@@ -193,6 +193,7 @@ class ReiAnixLibraryViewModel(context: Context) :
                         AniListAutoMatchResult.Disabled -> "Correspondência automática desativada nas configurações."
                         AniListAutoMatchResult.NoMatch -> "Nenhuma correspondência confiável encontrada."
                         is AniListAutoMatchResult.AlreadyManuallyMatched -> "A associação manual existente foi preservada."
+                        is AniListAutoMatchResult.AlreadyMatched -> "A associação AniList existente foi preservada."
                         is AniListAutoMatchResult.Matched -> "Anime identificado no AniList."
                         is AniListAutoMatchResult.Ambiguous -> "Há resultados ambíguos. Selecione manualmente a obra correta."
                     }
