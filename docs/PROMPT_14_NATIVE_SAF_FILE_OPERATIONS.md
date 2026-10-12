@@ -2,37 +2,35 @@
 
 ## Estado real
 
-A implementação publicada acrescenta um navegador de arquivos Compose à tela **Organizar**, endurece a autorização SAF e mantém a persistência canônica existente. Esta etapa **não está integralmente concluída**: a integração de identidade após renomeação/movimentação/exclusão ainda precisa de contrato canônico verificável, e o workflow oficial do APK precisa terminar com sucesso no HEAD final.
+A implementação acrescenta um navegador de arquivos Compose acessível pela tela **Organizar**, endurece a autorização SAF e continua usando a persistência canônica existente. Esta etapa **não deve ser declarada integralmente concluída** até que o workflow oficial do APK termine com sucesso no HEAD final e que a reconciliação de identidade do catálogo esteja comprovada.
 
 ## Implementação
 
-- `SafFileOperations` aceita URIs SAF de conteúdo e valida a concessão persistida de leitura separadamente da concessão de escrita.
-- A autorização exige uma concessão de árvore com leitura, escrita quando exigida, autoridade compatível e confirmação de que o documento pertence à árvore pelo `SafScanner.isAuthorizedDocumentForTree` / contrato do provedor. Uma concessão de leitura não autoriza mutações.
-- A URI da raiz de árvore é tratada de forma diferente de uma URI de documento com escopo de árvore. O código não deriva caminhos físicos de URIs nem interpreta document IDs como caminhos.
-- O seletor SAF solicita leitura, escrita, persistência e prefixo; `SafScanner.persistPermission` persiste a escrita somente quando o seletor/provedor realmente a concedeu.
-- A listagem inclui metadados opcionais; falhas de provedor, autorização e resultados ambíguos retornam estados explícitos.
-- A criação confirma o resultado por nova consulta ao pai; renomeação procura a URI resultante no pai; movimentação usa `DocumentsContract.moveDocument`, valida o destino e não simula suporte com cópia/exclusão; exclusão requer escrita e uma consulta posterior, retornando resultado parcial quando a confirmação não é confiável.
-- As operações serializam chamadas pela árvore SAF autorizada, usando ordenação de locks para movimentações entre árvores e propagando cancelamento de corrotinas.
-- A tela `ReiAnixSafFileManagerRoute` é acessível a partir de Organizar. Exibe itens e metadados disponíveis, navega por pastas, cria pastas, renomeia, move com escolha navegável do destino e exige confirmação explícita para excluir. Resultados parciais são apresentados como ambíguos.
-- Depois de uma mutação confirmada, a interface solicita a atualização existente do catálogo via `viewModel.refresh()`; isso não é apresentado como prova de preservação do histórico.
+- `SafFileOperations` lista documentos por consulta SAF explícita via `ContentResolver` e `DocumentsContract.buildChildDocumentsUriUsingTree`, distinguindo pasta inválida, ausência de permissão, metadados mínimos indisponíveis e falha do provedor. Tamanho, data e MIME são opcionais quando não fornecidos.
+- A autorização exige concessão de árvore persistida com leitura, escrita quando exigida, autoridade compatível e confirmação da relação do documento com a árvore por `SafScanner.isAuthorizedDocumentForTree`. Uma concessão de leitura não autoriza mutações.
+- A raiz da árvore é distinguida de uma URI de documento com escopo de árvore. O código não converte URIs em caminhos físicos nem interpreta IDs de documento como caminhos.
+- O seletor SAF solicita leitura, escrita, persistência e prefixo. `SafScanner.persistPermission` persiste a escrita somente se o seletor/provedor a concedeu de fato.
+- A criação usa `DocumentsContract.createDocument` e confirma por nova consulta. A renomeação usa `DocumentsContract.renameDocument` e valida a URI retornada contra o item encontrado no pai. A movimentação usa `DocumentsContract.moveDocument`, confirma o item no destino e não simula suporte por cópia/exclusão. A exclusão exige escrita e uma consulta posterior; resultados ambíguos retornam falha recuperável.
+- Operações na mesma árvore são serializadas por lock derivado da concessão SAF. Movimentações que envolvem duas árvores adquirem locks em ordem estável. O cancelamento de corrotinas é propagado.
+- A tela `ReiAnixSafFileManagerRoute` é aberta a partir de Organizar. Lista pastas/arquivos e metadados disponíveis, navega entre pastas, cria pastas, renomeia, permite escolher o destino navegando, e exige confirmação explícita para excluir. A interface mostra erros reais e avisa que renomeação/movimentação pode alterar a identidade do catálogo.
+- Após mutação confirmada, a interface solicita a atualização existente do catálogo com `viewModel.refresh()`. Isso é uma solicitação de atualização, não uma prova de sincronização nem de preservação de progresso.
 
-## Persistência e limite de segurança
+## Persistência canônica e limite conhecido
 
-O catálogo continua tendo como fonte de verdade o `LibraryStore`/`LibraryService` Python e a reconciliação já existente. Não foi criado outro banco nem um escritor SQLite concorrente.
+O catálogo continua tendo como fonte de verdade o `LibraryStore`/`LibraryService` Python e os mecanismos de reconciliação existentes. Não foi criada outra base de dados nem um escritor SQLite concorrente.
 
-O comando atual de atualização do catálogo não oferece, no contrato nativo verificado nesta etapa, uma operação explícita que relacione atomicamente a URI antiga à URI nova após renomear/mover. Para provedores genéricos, a identidade pode depender da URI/document ID; para árvores de armazenamento compartilhado, pode depender do caminho relativo. Por isso, não é possível garantir nesta etapa que progresso, histórico, metadados, capa e associação AniList sejam preservados após qualquer renomeação/movimentação. A interface deixa essa limitação explícita e solicita a atualização canônica, mas **não se declara a reconciliação de identidade concluída**. A exclusão só informa sucesso quando a consulta posterior confirma a ausência; estados ambíguos preservam a necessidade de reconciliação.
+O contrato nativo de comando disponível não oferece uma operação explícita que associe atomicamente a URI antiga à nova após renomear/mover. Para provedores genéricos, a identidade pode depender da URI/ID do documento; em árvores de armazenamento compartilhado, pode depender do caminho relativo. Assim, esta etapa não pode garantir que progresso, histórico, metadados, capa e associação AniList sejam preservados após qualquer renomeação/movimentação. A UI informa essa limitação e solicita atualização canônica, mas **a reconciliação da identidade permanece pendente de validação/integracão específica**. Uma exclusão só é apresentada como confirmada quando a consulta posterior indica ausência; estados ambíguos exigem reconciliação.
 
-Movimentações entre provedores/autoridades diferentes não são implementadas por cópia seguida de exclusão. São recusadas explicitamente para evitar perda de conteúdo.
+Movimentações entre provedores/autoridades diferentes são recusadas explicitamente. Não é implementada cópia seguida de exclusão.
 
 ## Testes
 
-- `SafFileOperationsTest` cobre URIs de sistema de arquivos recusadas, nomes inválidos, ausência de concessão, política de leitura versus escrita, escopo da árvore, URI inacessível e propagação de cancelamento.
-- `tests/test_saf_professional.py` cobre contratos de autorização/integração por inspeção de código, a presença da interface Compose e o pedido de concessão de escrita.
-- `tests/test_build_tools.py` foi atualizado para o novo contrato de persistência das concessões.
-- Testes com URIs sintéticas não demonstram o comportamento de provedores SAF reais. Não foram adicionados testes instrumentados ou de emulador.
+- `SafFileOperationsTest` contém sete testes JVM/Robolectric para URIs de sistema de arquivos recusadas, nomes inválidos, ausência de concessão, política de leitura versus escrita, escopo da árvore e cancelamento. Os cenários de concessão são verificados por política pura; não simulam um provedor SAF real.
+- `tests/test_saf_professional.py` e `tests/test_build_tools.py` foram atualizados para validar os contratos de autorização, a integração da tela, os avisos sobre identidade e a concessão opcional de escrita.
+- Não foram adicionados testes instrumentados nem testes de emulador.
 
-## Validação de build
+## Validação oficial
 
-O workflow oficial `.github/workflows/build_apk.yml` executa no push para `main` e inclui a suíte Python, preparação do host Flet/Android, compilação Kotlin integrada e geração/verificação do APK. O workflow Kotlin/JVM permanece sem execução manual nesta etapa.
+O workflow [Build ReiAnix Android APK](https://github.com/reinansantos9090-debug/ReiAnix/actions/workflows/build_apk.yml) é disparado automaticamente no push para `main`. Inclui a suíte Python, preparação do host Flet/Android, compilação Kotlin integrada, verificação do APK e publicação de artefatos quando o job passa.
 
-**Não declarar build, testes ou artefatos aprovados até obter o resultado do workflow referente ao HEAD final exato.** Validação física em dispositivo também permanece pendente até ser executada explicitamente.
+Não executei manualmente o workflow nem a suíte Kotlin/JVM. A conclusão exige verificar o resultado do workflow que corresponda ao SHA final exato. A validação física em dispositivo Android também permanece pendente até ser executada.
