@@ -13,7 +13,6 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Native, typed AniList GraphQL client.
@@ -252,7 +251,7 @@ class HttpUrlConnectionAniListTransport(
         withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
-                connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                val activeConnection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = connectTimeoutMs
                     readTimeout = readTimeoutMs
@@ -261,14 +260,15 @@ class HttpUrlConnectionAniListTransport(
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
                     setRequestProperty("User-Agent", "ReiAnix-Android")
                 }
+                connection = activeConnection
                 coroutineContext.job.invokeOnCompletion { cause ->
-                    if (cause is CancellationException) connection?.disconnect()
+                    if (cause is CancellationException) activeConnection.disconnect()
                 }
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                val code = connection.responseCode
-                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                activeConnection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = activeConnection.responseCode
+                val stream = if (code in 200..299) activeConnection.inputStream else activeConnection.errorStream
                 val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                val retryAfter = connection.getHeaderField("Retry-After")?.toLongOrNull()
+                val retryAfter = activeConnection.getHeaderField("Retry-After")?.toLongOrNull()
                 AniListHttpResponse(code, responseBody, retryAfter)
             } finally {
                 connection?.disconnect()
