@@ -422,6 +422,8 @@ fun ReiAnixSearchScreen(
 
                 searchState.query != searchQuery -> SearchQueryLoadingState()
 
+                searchState.isLoading -> SearchQueryLoadingState()
+
                 searchState.error != null -> ReiAnixRecoverableErrorState(
                     title = "Erro na busca",
                     message = searchState.error,
