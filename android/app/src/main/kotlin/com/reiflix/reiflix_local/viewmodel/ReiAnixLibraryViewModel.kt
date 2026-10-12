@@ -5,6 +5,11 @@ import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
+import com.reiflix.reiflix_local.data.anilist.AniListAnime
+import com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult
+import com.reiflix.reiflix_local.data.anilist.AniListError
+import com.reiflix.reiflix_local.data.anilist.AniListResult
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
@@ -46,6 +51,14 @@ import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeMode
 import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
 import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
+data class ReiAnixAniListUiState(
+    val query: String = "",
+    val isLoading: Boolean = false,
+    val results: List<AniListAnime> = emptyList(),
+    val error: String? = null,
+    val lastAssociationMessage: String? = null,
+)
+
 enum class ReiAnixNativeFoldersStatus {
     IDLE,
     LOADING,
@@ -111,6 +124,96 @@ class ReiAnixLibraryViewModel(context: Context) :
     }
 
     private val repository = ReiAnixLibraryRepository(context)
+    private val aniListIntegration = ReiAnixAniListIntegrationService(context)
+    private val _aniListUiState = MutableStateFlow(ReiAnixAniListUiState())
+    val aniListUiState: StateFlow<ReiAnixAniListUiState> = _aniListUiState.asStateFlow()
+    private var aniListSearchJob: Job? = null
+    private var aniListAssociationJob: Job? = null
+
+    /** Remote search is an explicit user action, never launched by Compose recomposition. */
+    fun searchAniList(term: String) {
+        aniListSearchJob?.cancel()
+        val query = term.trim()
+        if (query.isEmpty()) {
+            _aniListUiState.value = ReiAnixAniListUiState()
+            return
+        }
+        _aniListUiState.value = _aniListUiState.value.copy(
+            query = query, isLoading = true, results = emptyList(), error = null,
+        )
+        aniListSearchJob = viewModelScope.launch {
+            when (val result = aniListIntegration.search(query)) {
+                is AniListResult.Success -> {
+                    if (_aniListUiState.value.query == query) {
+                        _aniListUiState.value = _aniListUiState.value.copy(
+                            isLoading = false, results = result.value, error = null,
+                        )
+                    }
+                }
+                is AniListResult.Failure -> {
+                    if (_aniListUiState.value.query == query) {
+                        _aniListUiState.value = _aniListUiState.value.copy(
+                            isLoading = false, results = emptyList(), error = result.error.userMessage(),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /** Confirms a user-selected AniList entry and persists it on the existing local anime ID. */
+    fun associateAniListManually(animeId: Long, anilistId: Int) {
+        aniListAssociationJob?.cancel()
+        aniListAssociationJob = viewModelScope.launch {
+            _aniListUiState.value = _aniListUiState.value.copy(isLoading = true, error = null)
+            when (val result = aniListIntegration.associateManually(animeId, anilistId)) {
+                is AniListResult.Success -> {
+                    _aniListUiState.value = _aniListUiState.value.copy(
+                        isLoading = false, lastAssociationMessage = "Associação AniList salva.",
+                    )
+                    repository.refresh()
+                }
+                is AniListResult.Failure -> {
+                    _aniListUiState.value = _aniListUiState.value.copy(
+                        isLoading = false, error = result.error.userMessage(),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Runs conservative exact-title matching only when the persisted auto-match preference allows it. */
+    fun autoMatchAniList(animeId: Long) {
+        aniListAssociationJob?.cancel()
+        aniListAssociationJob = viewModelScope.launch {
+            _aniListUiState.value = _aniListUiState.value.copy(isLoading = true, error = null)
+            when (val result = aniListIntegration.autoMatch(animeId)) {
+                is AniListResult.Success -> {
+                    val message = when (val match = result.value) {
+                        AniListAutoMatchResult.Disabled -> "Correspondência automática desativada nas configurações."
+                        AniListAutoMatchResult.NoMatch -> "Nenhuma correspondência confiável encontrada."
+                        is AniListAutoMatchResult.AlreadyManuallyMatched -> "A associação manual existente foi preservada."
+                        is AniListAutoMatchResult.Matched -> "Anime identificado no AniList."
+                        is AniListAutoMatchResult.Ambiguous -> "Há resultados ambíguos. Selecione manualmente a obra correta."
+                    }
+                    _aniListUiState.value = _aniListUiState.value.copy(
+                        isLoading = false, lastAssociationMessage = message,
+                        results = (result.value as? AniListAutoMatchResult.Ambiguous)?.candidates.orEmpty(),
+                    )
+                    if (result.value is AniListAutoMatchResult.Matched) repository.refresh()
+                }
+                is AniListResult.Failure -> {
+                    _aniListUiState.value = _aniListUiState.value.copy(
+                        isLoading = false, error = result.error.userMessage(),
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearAniListMessage() {
+        _aniListUiState.value = _aniListUiState.value.copy(lastAssociationMessage = null)
+    }
     /**
      * Direct, read-only queries against the canonical SQLite database. The legacy
      * repository remains responsible for command/IPC flows until each mutation
@@ -931,3 +1034,13 @@ class ReiAnixLibraryViewModel(context: Context) :
         super.onCleared()
     }
 }
+ 
+private fun AniListError.userMessage(): String = when (this) {
+    is AniListError.Network -> "Não foi possível conectar ao AniList. Os dados locais foram preservados."
+    is AniListError.Http -> "O AniList respondeu com erro HTTP $statusCode."
+    is AniListError.RateLimited -> "O AniList limitou as requisições. Tente novamente mais tarde."
+    is AniListError.GraphQl -> messages.joinToString(" ")
+    is AniListError.InvalidRequest -> message
+    is AniListError.InvalidResponse -> "Resposta inválida do AniList ou falha ao salvar os metadados."
+}
+
