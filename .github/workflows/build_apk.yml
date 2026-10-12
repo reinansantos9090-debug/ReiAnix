@@ -318,14 +318,20 @@ jobs:
           import json
           from pathlib import Path
 
-          for etag_file in Path(".").rglob("etags.json"):
-              if etag_file.parent.name != "download-task":
+          search_roots = [Path("."), Path.home() / ".pub-cache"]
+          visited = set()
+          for root in search_roots:
+              if not root.exists():
                   continue
-              try:
-                  json.loads(etag_file.read_text(encoding="utf-8"))
-              except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                  etag_file.unlink(missing_ok=True)
-                  print(f"Removed malformed Gradle ETag cache: {etag_file}")
+              for etag_file in root.rglob("etags.json"):
+                  if etag_file in visited or etag_file.parent.name != "download-task":
+                      continue
+                  visited.add(etag_file)
+                  try:
+                      json.loads(etag_file.read_text(encoding="utf-8"))
+                  except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                      etag_file.unlink(missing_ok=True)
+                      print(f"Removed malformed Gradle ETag cache: {etag_file}")
           PY
 
       - name: Explicitly verify release Kotlin compilation
