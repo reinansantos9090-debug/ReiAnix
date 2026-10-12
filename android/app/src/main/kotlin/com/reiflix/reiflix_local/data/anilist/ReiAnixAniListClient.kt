@@ -87,11 +87,13 @@ class ReiAnixAniListClient(
                 val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
                 if (wait > 0L) delay(wait)
                 lastRequestAtMs = System.currentTimeMillis()
-            }
-            withContext(Dispatchers.IO) {
-                transport.post(ENDPOINT, JSONObject()
-                    .put("query", query)
-                    .put("variables", variables))
+                // Keep the lock through the HTTP call so concurrent callers cannot
+                // start together after sharing the same rate-limit delay.
+                withContext(Dispatchers.IO) {
+                    transport.post(ENDPOINT, JSONObject()
+                        .put("query", query)
+                        .put("variables", variables))
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
