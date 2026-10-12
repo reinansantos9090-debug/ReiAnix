@@ -72,7 +72,11 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
     fun finish(result: SafFileOperations.Result, operation: String) {
         when (result) {
             is SafFileOperations.Result.Success -> {
-                notice = "$operation concluída no armazenamento. A atualização do catálogo foi solicitada; confira a reconciliação antes de presumir que histórico e progresso foram preservados."
+                notice = if (result.catalogReconciliationQueued) {
+                    "$operation confirmada pelo provedor; reconciliação canônica enfileirada. A identidade só será considerada atualizada após o processamento do catálogo."
+                } else {
+                    "$operation concluída no armazenamento. A atualização do catálogo foi solicitada; a preservação de histórico e progresso ainda não foi confirmada."
+                }
                 error = null
                 viewModel.refresh()
                 current?.let(::refresh)
