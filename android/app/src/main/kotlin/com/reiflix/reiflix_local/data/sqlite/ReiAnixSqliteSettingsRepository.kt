@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -54,12 +55,15 @@ class ReiAnixSqliteSettingsRepository(
         updatedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
     ): ReiAnixPreferenceRecord = withContext(Dispatchers.IO) {
         val normalizedKey = requireKey(key)
+        val normalizedValue = ReiAnixSettingsContract.normalize(normalizedKey, value)
         require(updatedAtEpochSeconds.isFinite() && updatedAtEpochSeconds >= 0.0) {
             "updatedAtEpochSeconds must be finite and non-negative."
         }
         database.transaction { connection ->
+            val existing = queryPreference(connection, normalizedKey)
+            if (existing?.value == normalizedValue) return@transaction existing
             val values = ContentValues().apply {
-                put("value", value)
+                put("value", normalizedValue)
                 put("updated_at", updatedAtEpochSeconds)
             }
             val updatedRows = connection.update(
@@ -71,7 +75,7 @@ class ReiAnixSqliteSettingsRepository(
             if (updatedRows == 0) {
                 val insertValues = ContentValues().apply {
                     put("key", normalizedKey)
-                    put("value", value)
+                    put("value", normalizedValue)
                     put("updated_at", updatedAtEpochSeconds)
                 }
                 connection.insertOrThrow("preferences", null, insertValues)
@@ -81,6 +85,47 @@ class ReiAnixSqliteSettingsRepository(
         }
     }
 
+    /**
+     * Validates and writes a group of preferences in one SQLite transaction.
+     * Unchanged values are not rewritten, so their updated_at metadata remains stable.
+     * Unknown legacy keys are preserved by ReiAnixSettingsContract for compatibility.
+     */
+    suspend fun setPreferencesAtomically(
+        values: Map<String, String>,
+        updatedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
+    ): Map<String, ReiAnixPreferenceRecord> = withContext(Dispatchers.IO) {
+        require(updatedAtEpochSeconds.isFinite() && updatedAtEpochSeconds >= 0.0) {
+            "updatedAtEpochSeconds must be finite and non-negative."
+        }
+        val normalized = values.entries.associate { (key, value) ->
+            val normalizedKey = requireKey(key)
+            normalizedKey to ReiAnixSettingsContract.normalize(normalizedKey, value)
+        }
+        database.transaction { connection ->
+            buildMap {
+                normalized.forEach { (key, value) ->
+                    val existing = queryPreference(connection, key)
+                    if (existing?.value != value) {
+                        val updated = ContentValues().apply {
+                            put("value", value)
+                            put("updated_at", updatedAtEpochSeconds)
+                        }
+                        val rows = connection.update("preferences", updated, "key = ?", arrayOf(key))
+                        if (rows == 0) {
+                            val inserted = ContentValues().apply {
+                                put("key", key)
+                                put("value", value)
+                                put("updated_at", updatedAtEpochSeconds)
+                            }
+                            connection.insertOrThrow("preferences", null, inserted)
+                        }
+                    }
+                    put(key, queryPreference(connection, key)
+                        ?: throw IllegalStateException("Preference batch did not persist key: $key"))
+                }
+            }
+        }
+    }
     /** Deletion is explicit and idempotent; no other preference rows are touched. */
     suspend fun removePreference(key: String): Boolean = withContext(Dispatchers.IO) {
         val normalizedKey = requireKey(key)
