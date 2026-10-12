@@ -84,6 +84,9 @@ import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.ui.storage.ReiAnixSafFileManagerRoute
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.filled.Folder
 
 @Composable
 fun ReiAnixOrganizeRoute(
@@ -96,6 +99,14 @@ fun ReiAnixOrganizeRoute(
     onRemoveFolder: (String) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    var showSafFileManager by rememberSaveable { mutableStateOf(false) }
+    if (showSafFileManager) {
+        ReiAnixSafFileManagerRoute(
+            viewModel = viewModel,
+            onBack = { showSafFileManager = false },
+        )
+        return
+    }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val filters by viewModel.organizeFilters.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.organizeVisibleAnimes.collectAsStateWithLifecycle()
@@ -130,6 +141,7 @@ fun ReiAnixOrganizeRoute(
             )
         },
         onRefresh = viewModel::refresh,
+        onOpenSafFileManager = { showSafFileManager = true },
     )
 }
 
@@ -156,6 +168,7 @@ fun ReiAnixOrganizeScreen(
     onOpenCollection: (String) -> Unit,
     onOpenDetails: (Long) -> Unit,
     onRefresh: () -> Unit,
+    onOpenSafFileManager: () -> Unit = {},
 ) {
     var pendingSourceRemoval by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -187,6 +200,16 @@ fun ReiAnixOrganizeScreen(
                     vertical = ReiAnixTokens.Spacing.xs,
                 ),
         )
+
+        OutlinedButton(
+            onClick = onOpenSafFileManager,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+        ) {
+            Icon(Icons.Default.Folder, contentDescription = null)
+            Text("Gerenciar arquivos locais (SAF)", modifier = Modifier.padding(start = ReiAnixTokens.Spacing.sm))
+        }
 
         when (state.status) {
             ReiAnixLibraryLoadStatus.LOADING -> {
