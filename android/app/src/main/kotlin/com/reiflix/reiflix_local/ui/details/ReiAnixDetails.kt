@@ -47,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -146,6 +147,11 @@ fun ReiAnixDetailsRoute(
     )
     val aniListState by viewModel.aniListUiState.collectAsStateWithLifecycle()
     var showAniListDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
+    LaunchedEffect(canonicalId, state.status) {
+        if (state.status == ReiAnixDetailsLoadStatus.READY) {
+            viewModel.autoMatchAniList(canonicalId)
+        }
+    }
 
     // Guard only the short navigation hand-off. NavHost/launchSingleTop remains
     // the canonical navigation policy, while this prevents a double tap from
