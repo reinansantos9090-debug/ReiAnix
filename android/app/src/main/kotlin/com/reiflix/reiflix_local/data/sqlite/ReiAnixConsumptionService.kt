@@ -1,8 +1,6 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Native consumption contract over the canonical LibraryStore SQLite database.
@@ -29,6 +27,7 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
     suspend fun saveProgress(
         episodeId: Long, positionMs: Long, durationMs: Long? = null,
         playedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
+        completed: Boolean = false,
     ): Progress {
         require(episodeId > 0L) { "episodeId must be a positive persisted ID." }
         require(positionMs >= 0L) { "positionMs cannot be negative." }
@@ -42,12 +41,15 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
             ?: existing.duration?.takeIf { it.isFinite() && it > 0.0 }
         val positionSeconds = positionMs.toDouble() / 1_000.0
         val boundedPosition = durationSeconds?.let(positionSeconds::coerceAtMost) ?: positionSeconds
-        val completed = durationSeconds != null && durationSeconds > 0.0 &&
+        val reachedCompletionThreshold = durationSeconds != null && durationSeconds > 0.0 &&
             boundedPosition / durationSeconds >= COMPLETION_RATIO
+        val finalPosition = if ((completed || reachedCompletionThreshold) && durationSeconds != null) {
+            durationSeconds
+        } else boundedPosition
         return library.updatePlaybackProgress(
             ReiAnixPlaybackProgressUpdate(
-                episodeId = episodeId, progress = boundedPosition, duration = durationSeconds,
-                watched = if (completed) true else existing.watched,
+                episodeId = episodeId, progress = finalPosition, duration = durationSeconds,
+                watched = if (completed || reachedCompletionThreshold) true else existing.watched,
                 playedAtEpochSeconds = playedAtEpochSeconds,
             ),
         ).toConsumptionProgress()
@@ -68,23 +70,29 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
         ).toConsumptionProgress()
     }
 
-    suspend fun continueWatching(limit: Int = 36): List<Progress> {
-        require(limit in 1..200) { "Page size must be between 1 and 200." }
-        return withContext(Dispatchers.IO) {
-            library.listRecentlyPlayed(limit = 200).asSequence()
-                .filter { it.missing != true && it.watched != true }
-                .filter { (it.progress ?: 0.0) > 0.0 }
-                .take(limit).map { it.toConsumptionProgress() }.toList()
-        }
-    }
+    suspend fun continueWatching(limit: Int = 36): List<Progress> =
+        queryRecentlyPlayed(limit) { it.missing != true && it.watched != true && (it.progress ?: 0.0) > 0.0 }
 
-    suspend fun watchedRecently(limit: Int = 36): List<Progress> {
+    suspend fun watchedRecently(limit: Int = 36): List<Progress> =
+        queryRecentlyPlayed(limit) { it.watched == true && it.missing != true }
+
+    /** Filters across pages so a large watched/missing prefix cannot hide eligible items. */
+    private suspend fun queryRecentlyPlayed(
+        limit: Int,
+        include: (ReiAnixEpisodeRecord) -> Boolean,
+    ): List<Progress> {
         require(limit in 1..200) { "Page size must be between 1 and 200." }
-        return withContext(Dispatchers.IO) {
-            library.listRecentlyPlayed(limit = 200).asSequence()
-                .filter { it.watched == true && it.missing != true }
-                .take(limit).map { it.toConsumptionProgress() }.toList()
+        val result = ArrayList<Progress>(limit)
+        var offset = 0
+        while (result.size < limit) {
+            val page = library.listRecentlyPlayed(limit = 200, offset = offset)
+            if (page.isEmpty()) break
+            page.asSequence().filter(include).take(limit - result.size)
+                .map { it.toConsumptionProgress() }.forEach(result::add)
+            if (page.size < 200) break
+            offset += page.size
         }
+        return result
     }
 
     private fun ReiAnixEpisodeRecord.toConsumptionProgress(): Progress {

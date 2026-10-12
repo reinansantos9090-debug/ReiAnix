@@ -979,6 +979,75 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertFalse(databaseFile.exists())
     }
 
+    @Test
+    fun consumptionServicePersistsProgressRejectsOlderCheckpointAndSurvivesReopen() = runBlocking {
+        createCanonicalFixture()
+        val service = ReiAnixConsumptionService(ReiAnixSqliteLibraryRepository(context))
+
+        val saved = service.saveProgress(
+            episodeId = 7L,
+            positionMs = 45_000L,
+            durationMs = 120_000L,
+            playedAtEpochSeconds = 2_000.0,
+        )
+        assertEquals(45_000L, saved.positionMs)
+        assertEquals(120_000L, saved.durationMs)
+        assertFalse(saved.watched)
+
+        val reopenedService = ReiAnixConsumptionService(ReiAnixSqliteLibraryRepository(context))
+        val stale = reopenedService.saveProgress(
+            episodeId = 7L,
+            positionMs = 10_000L,
+            durationMs = 120_000L,
+            playedAtEpochSeconds = 1_500.0,
+        )
+        assertEquals(45_000L, stale.positionMs)
+        assertEquals(45_000L, reopenedService.getProgress(7L)!!.positionMs)
+
+        val completed = reopenedService.saveProgress(
+            episodeId = 7L,
+            positionMs = 108_000L,
+            durationMs = 120_000L,
+            playedAtEpochSeconds = 3_000.0,
+        )
+        assertTrue(completed.watched)
+        assertEquals(120_000L, completed.positionMs)
+
+        val reopenedAgain = ReiAnixConsumptionService(ReiAnixSqliteLibraryRepository(context))
+        assertTrue(reopenedAgain.getProgress(7L)!!.watched)
+        assertFalse(reopenedAgain.markWatched(7L, false).watched)
+    }
+
+    @Test
+    fun consumptionServicePreservesUnknownDurationAndBoundsKnownDuration() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(
+            databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.execSQL("UPDATE episodes SET duration = NULL WHERE id = ?", arrayOf(7L))
+        }
+        val service = ReiAnixConsumptionService(ReiAnixSqliteLibraryRepository(context))
+        val unknownDuration = service.saveProgress(
+            episodeId = 7L,
+            positionMs = 30_000L,
+            durationMs = null,
+            playedAtEpochSeconds = 2_000.0,
+        )
+        assertEquals(30_000L, unknownDuration.positionMs)
+        assertNull(unknownDuration.durationMs)
+        assertFalse(unknownDuration.watched)
+
+        val bounded = service.saveProgress(
+            episodeId = 7L,
+            positionMs = 90_000L,
+            durationMs = 60_000L,
+            playedAtEpochSeconds = 3_000.0,
+        )
+        assertEquals(60_000L, bounded.positionMs)
+        assertEquals(60_000L, bounded.durationMs)
+        assertTrue(bounded.watched)
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()

@@ -176,14 +176,15 @@ class ReiAnixSqliteLibraryRepository(
             }
         }
 
-    suspend fun listRecentlyPlayed(limit: Int = 36): List<ReiAnixEpisodeRecord> =
+    suspend fun listRecentlyPlayed(limit: Int = 36, offset: Int = 0): List<ReiAnixEpisodeRecord> =
         withContext(Dispatchers.IO) {
             require(limit in 1..200) { "Page size must be between 1 and 200." }
+            require(offset >= 0) { "Offset cannot be negative." }
             database.read { connection ->
                 connection.rawQuery(
                     "SELECT * FROM episodes WHERE last_played_at IS NOT NULL " +
-                        "ORDER BY last_played_at DESC, id DESC LIMIT ?",
-                    arrayOf(limit.toString()),
+                        "ORDER BY last_played_at DESC, id DESC LIMIT ? OFFSET ?",
+                    arrayOf(limit.toString(), offset.toString()),
                 ).use { cursor ->
                     buildList {
                         while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
@@ -228,6 +229,16 @@ class ReiAnixSqliteLibraryRepository(
     suspend fun updatePlaybackProgress(
         update: ReiAnixPlaybackProgressUpdate,
     ): ReiAnixEpisodeRecord = withContext(Dispatchers.IO) {
+        require(update.episodeId > 0L) { "Episode ID must be a positive persisted ID." }
+        require(update.progress.isFinite() && update.progress >= 0.0) {
+            "Progress must be finite and non-negative."
+        }
+        require(update.duration == null || (update.duration.isFinite() && update.duration > 0.0)) {
+            "Duration must be finite and positive when known."
+        }
+        require(update.playedAtEpochSeconds.isFinite() && update.playedAtEpochSeconds >= 0.0) {
+            "Playback timestamp must be finite and non-negative."
+        }
         database.transaction { connection ->
             val current = queryEpisode(connection, update.episodeId)
                 ?: throw NoSuchElementException(
@@ -236,7 +247,7 @@ class ReiAnixSqliteLibraryRepository(
 
             // A delayed callback from an older player session must not overwrite
             // a newer durable position or its watched state.
-            if ((current.lastPlayedAt ?: 0.0) > update.playedAtEpochSeconds) {
+            if ((current.lastPlayedAt ?: 0.0) >= update.playedAtEpochSeconds) {
                 return@transaction current
             }
 

@@ -6004,16 +6004,24 @@ async def main(page: ft.Page):
                                             "duration_ms": duration_ms,
                                         },
                                     )
-                                    updated = await asyncio.to_thread(
-                                        store.save_progress,
-                                        path_ref,
-                                        position_ms / 1000.0,
-                                        duration_ms / 1000.0,
-                                        episode_id=payload.get("episodeId"),
-                                        media_id=payload.get("mediaId"),
-                                        event_created_at=event.get('createdAt') or event.get('timestamp'),
-                                        session_id=payload.get("playerSessionId"),
-                                    )
+                                    if payload.get("nativeProgressPersisted") is True:
+                                        # NativePlayerActivity committed this exact canonical episode
+                                        # through ReiAnixConsumptionService. Keep validation and UI
+                                        # publication here, but do not issue a second SQLite write.
+                                        updated = True
+                                    else:
+                                        # Compatibility fallback if native persistence fails or the
+                                        # event has no usable canonical numeric episode ID.
+                                        updated = await asyncio.to_thread(
+                                            store.save_progress,
+                                            path_ref,
+                                            position_ms / 1000.0,
+                                            duration_ms / 1000.0,
+                                            episode_id=payload.get("episodeId"),
+                                            media_id=payload.get("mediaId"),
+                                            event_created_at=event.get('createdAt') or event.get('timestamp'),
+                                            session_id=payload.get("playerSessionId"),
+                                        )
                                     callback_current, callback_reason = player_callback_is_current(
                                         event_request_id,
                                         payload,

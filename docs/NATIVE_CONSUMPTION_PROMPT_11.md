@@ -8,7 +8,7 @@ Repository writes are transactional and reject an older playedAtEpochSeconds upd
 
 ## Integration boundary
 
-NativePlayerActivity continues publishing the established player event contract through NativeMailbox, currently consumed by main.py / LibraryStore and used for legacy UI refreshes. It is intentionally not switched to dual-write the SQLite service: that would introduce competing writers and could bypass existing event/UI contracts. The service is available for the native player integration cutover, but routing live player callbacks exclusively through it requires the matching bridge consumer to skip Python persistence while still processing notifications. That cutover is not claimed complete in this prompt.
+NativePlayerActivity checkpoints the canonical numeric episode ID through ReiAnixConsumptionService on its dedicated progress worker before publishing the established event to NativeMailbox. Successful native writes carry nativeProgressPersisted=true; main.py still validates session/request/episode identity and publishes the library refresh, but skips LibraryStore.save_progress for that same event. If native persistence fails or no canonical numeric episode ID is available, the existing LibraryStore path remains the compatibility fallback. Player generation and transition metadata are carried with the event so the existing Python callback guard can reject stale notifications. The player consults the native service for resume only when neither saved Activity state nor an explicit positionMs intent extra exists.
 
 ## Validation
 

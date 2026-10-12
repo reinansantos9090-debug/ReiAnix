@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local
 
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
 import com.reiflix.reiflix_local.player.DeviceInteractionProfile
 import com.reiflix.reiflix_local.player.LocalSubtitleResolver
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
@@ -121,6 +122,9 @@ class NativePlayerActivity : ComponentActivity() {
     private lateinit var lockButton: TextView
     private lateinit var systemUiController: SystemUiController
     private lateinit var localMetadataStore: PlayerLocalMetadataStore
+    private val consumptionService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixConsumptionService(applicationContext)
+    }
 
     private var locked = false
     private var inPictureInPicture = false
@@ -325,8 +329,9 @@ class NativePlayerActivity : ComponentActivity() {
         Thread(runnable, "ReiAnix-PlayerIO").apply { isDaemon = true }
     }
     /**
-     * Progress remains on the existing mailbox + SQLite pipeline, but uses its own
-     * single-thread publisher so durable checkpoints cannot delay transition control.
+     * Native consumption persistence and mailbox publication use one ordered worker.
+     * Successfully persisted events are marked so Python only refreshes UI/diagnostics;
+     * if native persistence fails, the legacy LibraryStore path remains the fallback.
      */
     private val progressWorker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ReiAnix-ProgressIO").apply { isDaemon = true }
@@ -1303,6 +1308,30 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         " latencyMs=" + metricDelta(preflightStartedAtMs, preflightCompletedAtMs),
                 )
 
+                // Recover progress only when neither saved Activity state nor an
+                // explicit caller position exists; the persisted episode ID is authoritative.
+                var startupPositionMs = initialPositionMsForGeneration
+                if (restoredPositionMs == null && !intent.hasExtra("positionMs")) {
+                    val canonicalEpisodeId = currentEpisodeId().toLongOrNull()
+                    if (canonicalEpisodeId != null && canonicalEpisodeId > 0L) {
+                        try {
+                            val savedProgress = kotlinx.coroutines.runBlocking {
+                                consumptionService.getProgress(canonicalEpisodeId)
+                            }
+                            if (savedProgress?.isInProgress == true && savedProgress.hasSavedPosition) {
+                                startupPositionMs = savedProgress.positionMs ?: startupPositionMs
+                                logPlayer(
+                                    "RESUME_FROM_NATIVE_SQLITE episodeId=" + canonicalEpisodeId +
+                                        " positionMs=" + startupPositionMs +
+                                        " requestId=" + requestId.ifEmpty { "-" },
+                                )
+                            }
+                        } catch (error: Exception) {
+                            logPlayer("RESUME_FROM_NATIVE_SQLITE_FAILED episodeId=" + canonicalEpisodeId, error)
+                        }
+                    }
+                }
+
                 // Optional MIME/display-name/size/subtitle discovery starts in parallel
                 // but is never awaited by the playback path.
                 hydrateLocalMediaReferencesAsync(
@@ -1313,6 +1342,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
                 handler.post {
                     if (!isCurrentPreparation(generation, localUri, preparationTransitionGeneration)) return@post
+                    initialPositionMsForGeneration = startupPositionMs.coerceAtLeast(0L)
 
                     val subtitleTracks = deferredSubtitleCache[localUri.toString()].orEmpty()
                     val mediaItem = buildMediaItem(
@@ -4524,6 +4554,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     .put("playbackSpeed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
                     .put("playerSessionId", playerSessionId)
                     .put("activityInstanceId", activityInstanceId)
+                    .put("playerGeneration", playerGeneration)
+                    .put("transitionGeneration", transitionGeneration)
+                    .put("originTransitionGeneration", originTransitionGeneration)
+                    .put("originPlayerSessionId", originPlayerSessionId)
             )
     }
 
@@ -4532,6 +4566,39 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val durable = force || eventType in setOf("player_paused", "player_completed", "player_exited")
         try {
             progressWorker.submit {
+                val payload = event.optJSONObject("payload")
+                val episodeId = payload?.optString("episodeId").orEmpty().toLongOrNull()
+                val positionMs = payload?.optLong("positionMs", -1L) ?: -1L
+                val durationMs = payload?.optLong("durationMs", 0L) ?: 0L
+                var persistedNatively = false
+                if (episodeId != null && episodeId > 0L && positionMs >= 0L) {
+                    try {
+                        // The event snapshot is created on the current Media3 generation;
+                        // its canonical episode ID is the only write key.
+                        kotlinx.coroutines.runBlocking {
+                            consumptionService.saveProgress(
+                                episodeId = episodeId,
+                                positionMs = positionMs,
+                                durationMs = durationMs.takeIf { it > 0L },
+                                playedAtEpochSeconds = event.optLong("createdAt", 0L)
+                                    .takeIf { it > 0L }?.div(1000.0)
+                                    ?: System.currentTimeMillis() / 1000.0,
+                                completed = eventType == "player_completed",
+                            )
+                        }
+                        persistedNatively = true
+                    } catch (error: Exception) {
+                        logPlayer(
+                            "NATIVE_PROGRESS_PERSIST_FAILED event=" + eventType +
+                                " episodeId=" + episodeId +
+                                " playerSessionId=" + payload?.optString("playerSessionId").orEmpty(),
+                            error,
+                        )
+                    }
+                }
+                // Exactly one writer per event: Python validates the same event and
+                // publishes UI state, but skips the mutation after a native commit.
+                if (persistedNatively) payload?.put("nativeProgressPersisted", true)
                 val ok = if (durable) {
                     NativeMailbox.write(this@NativePlayerActivity, event)
                 } else {
