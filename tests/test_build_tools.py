@@ -173,6 +173,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("python -m pytest -q | tee build/pytest.txt", workflow)
         self.assertIn("Clean malformed Gradle download ETag cache", workflow)
         self.assertIn("json.loads(etag_file.read_text(encoding=\"utf-8\"))", workflow)
+        self.assertIn('Path.home() / ".pub-cache"', workflow)
         self.assertIn("-Dorg.gradle.parallel=false", workflow)
         self.assertIn(":app:compileReleaseKotlin --no-daemon --console=plain --stacktrace", workflow)
         self.assertNotIn("--ignore=tests/test_certification_runner.py", workflow)
