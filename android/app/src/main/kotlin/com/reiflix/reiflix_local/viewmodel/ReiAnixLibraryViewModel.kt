@@ -5,6 +5,12 @@ import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState
@@ -82,6 +88,34 @@ class ReiAnixLibraryViewModel(context: Context) :
     }
 
     private val repository = ReiAnixLibraryRepository(context)
+    /**
+     * Direct, read-only queries against the canonical SQLite database. The legacy
+     * repository remains responsible for command/IPC flows until each mutation
+     * is migrated with parity and single-writer guarantees.
+     */
+    private val nativeLibraryQueries = ReiAnixLibraryQueryService(context)
+
+    suspend fun queryNativeAnime(id: Long): ReiAnixLibraryQueryResult<ReiAnixAnimeRecord> =
+        nativeLibraryQueries.animeById(id)
+
+    suspend fun queryNativeEpisodes(animeId: Long): ReiAnixLibraryQueryResult<List<ReiAnixEpisodeRecord>> =
+        nativeLibraryQueries.episodesForAnime(animeId)
+
+    suspend fun queryNativeEpisode(id: Long): ReiAnixLibraryQueryResult<ReiAnixEpisodeRecord> =
+        nativeLibraryQueries.episodeById(id)
+
+    suspend fun queryNativeRecentlyPlayed(
+        limit: Int = ReiAnixLibraryQueryService.DEFAULT_PAGE_SIZE,
+    ): ReiAnixLibraryQueryResult<List<ReiAnixEpisodeRecord>> =
+        nativeLibraryQueries.recentlyPlayed(limit)
+
+    suspend fun queryNativeFolders(): ReiAnixLibraryQueryResult<List<ReiAnixFolderRecord>> =
+        nativeLibraryQueries.folders()
+
+    suspend fun queryNativeArtwork(
+        animeId: Long,
+    ): ReiAnixLibraryQueryResult<List<ReiAnixArtworkRecord>> =
+        nativeLibraryQueries.artworkForAnime(animeId)
     override val uiState: StateFlow<ReiAnixLibraryUiState> = repository.state
 
     /** Bounded Library pages; the canonical domain remains owned by the repository/SQLite. */
