@@ -169,6 +169,7 @@ class ReiAnixAniListClient(
             episodes = media.optInt("episodes", -1).takeIf { it >= 0 },
             status = media.optString("status").nonBlankOrNull(),
             averageScore = media.optInt("averageScore", -1).takeIf { it >= 0 },
+            durationMinutes = media.optInt("duration", -1).takeIf { it >= 0 },
             season = media.optString("season").nonBlankOrNull(),
             seasonYear = media.optInt("seasonYear", -1).takeIf { it > 0 },
             genres = genres,
@@ -187,7 +188,7 @@ class ReiAnixAniListClient(
         const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
         private const val MEDIA_FIELDS = """
             id title { romaji english native } synonyms
-            description(asHtml: false) format episodes status averageScore season seasonYear
+            description(asHtml: false) format episodes duration status averageScore season seasonYear
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
         """
@@ -205,6 +206,7 @@ data class AniListAnime(
     val episodes: Int?,
     val status: String?,
     val averageScore: Int?,
+    val durationMinutes: Int?,
     val season: String?,
     val seasonYear: Int?,
     val genres: List<String>,
