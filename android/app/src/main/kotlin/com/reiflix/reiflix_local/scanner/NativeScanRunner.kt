@@ -182,6 +182,7 @@ object NativeScanRunner {
                             )
                         )
                         nativeIndexingStatus = if (indexReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL"
+                        if (!indexReport.reconciliationAuthorized) nativeIndexingFailed = true
                         result.put("nativeLibraryIndex", JSONObject()
                             .put("status", nativeIndexingStatus)
                             .put("inserted", indexReport.inserted)

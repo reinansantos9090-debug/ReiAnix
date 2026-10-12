@@ -380,7 +380,7 @@ class ReiAnixSqliteLibraryRepository(
                     inserted++
                 }
 
-                val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence
+                val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence && ambiguous == 0
                 var missing = 0
                 if (reconcile) {
                     val root = snapshot.scopeRoot.trim().replace('\\', '/').trimEnd('/')
