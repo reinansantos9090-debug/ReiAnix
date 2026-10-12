@@ -177,6 +177,8 @@ class SafFileOperations(private val context: Context) {
                 Result.Success(confirmedUri, confirmed.name.orEmpty(), true)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "Sem permissão para criar a pasta.", parentUri)
+            } catch (e: UnsupportedOperationException) {
+                Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à criação de pastas.", parentUri)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -212,6 +214,8 @@ class SafFileOperations(private val context: Context) {
                 Result.Success(confirmedUri, renamedDocument.name.orEmpty(), renamedDocument.isDirectory)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a renomeação.", uri)
+            } catch (e: UnsupportedOperationException) {
+                Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à renomeação.", uri)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -307,6 +311,8 @@ class SafFileOperations(private val context: Context) {
                 }
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a exclusão.", uri)
+            } catch (e: UnsupportedOperationException) {
+                Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à exclusão.", uri)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -533,6 +539,6 @@ class SafFileOperations(private val context: Context) {
             is CancellationException -> "Operação cancelada."
             is SecurityException -> "O provedor negou o acesso solicitado."
             is IOException -> "Falha de leitura ou escrita no provedor."
-            else -> error.message?.take(180)?.takeIf(String::isNotBlank) ?: "Falha operacional do provedor."
+            else -> "Falha operacional do provedor."
         }
 }
