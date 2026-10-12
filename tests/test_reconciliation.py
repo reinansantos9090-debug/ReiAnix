@@ -50,6 +50,72 @@ class ReconciliationTests(unittest.TestCase):
             self.store.save_progress(path, progress, 100)
         return episode_id
 
+    def test_confirmed_saf_uri_change_preserves_canonical_episode_state_and_is_idempotent(self):
+        anime_id = self.anime("Reconciliation")
+        old_uri = "content://com.android.externalstorage.documents/document/primary%3AAnime%2Fepisode-old.mp4"
+        new_uri = "content://com.android.externalstorage.documents/document/primary%3AAnime%2Fepisode-new.mp4"
+        episode_id = self.episode(
+            anime_id,
+            old_uri,
+            "episode-old.mp4",
+            identity="stable:episode:reconciliation",
+            source_folder=self.SAF_ROOT,
+            progress=42,
+        )
+        with self.store._conn() as connection:
+            connection.execute(
+                """INSERT INTO episode_observations(
+                    episode_id,source_kind,scope_kind,scope_ref,uri,first_seen,
+                    last_seen,last_checked_at,state
+                ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                (episode_id, "saf", "root", self.SAF_ROOT, old_uri, 1.0, 2.0, 2.0, "available"),
+            )
+            connection.execute(
+                "UPDATE episodes SET watched=1,last_played_at=1234 WHERE id=?",
+                (episode_id,),
+            )
+
+        result = self.service.reconcile_saf_document_identity_change(
+            old_uri, new_uri, "episode-new.mp4"
+        )
+        self.assertEqual("reconciled", result["status"])
+        row = self.store.physical_row(new_uri)
+        self.assertEqual(episode_id, row["id"])
+        self.assertEqual(anime_id, row["anime_id"])
+        self.assertEqual(42, row["progress"])
+        self.assertEqual(1, row["watched"])
+        self.assertEqual(1234, row["last_played_at"])
+        self.assertEqual("stable:episode:reconciliation", row["media_identity"])
+        self.assertIsNone(self.store.physical_row(old_uri))
+        with self.store._conn() as connection:
+            observations = connection.execute(
+                "SELECT uri,state FROM episode_observations WHERE episode_id=?",
+                (episode_id,),
+            ).fetchall()
+        self.assertEqual([(new_uri, "available")], [(item["uri"], item["state"]) for item in observations])
+
+        repeated = self.service.reconcile_saf_document_identity_change(
+            old_uri, new_uri, "episode-new.mp4"
+        )
+        self.assertEqual("already_reconciled", repeated["status"])
+        self.assertEqual(episode_id, self.store.physical_row(new_uri)["id"])
+
+    def test_saf_uri_reconciliation_conflict_preserves_both_canonical_rows(self):
+        anime_id = self.anime("Conflict")
+        old_uri = "content://com.android.externalstorage.documents/document/primary%3AAnime%2Fold.mp4"
+        occupied_uri = "content://com.android.externalstorage.documents/document/primary%3AAnime%2Foccupied.mp4"
+        old_id = self.episode(anime_id, old_uri, "old.mp4", source_folder=self.SAF_ROOT, progress=20)
+        occupied_id = self.episode(anime_id, occupied_uri, "occupied.mp4", source_folder=self.SAF_ROOT, progress=55)
+
+        result = self.service.reconcile_saf_document_identity_change(
+            old_uri, occupied_uri, "occupied.mp4"
+        )
+        self.assertEqual("conflict", result["status"])
+        self.assertEqual(old_id, self.store.physical_row(old_uri)["id"])
+        self.assertEqual(occupied_id, self.store.physical_row(occupied_uri)["id"])
+        self.assertEqual(20, self.store.physical_row(old_uri)["progress"])
+        self.assertEqual(55, self.store.physical_row(occupied_uri)["progress"])
+
     def test_mixed_valid_and_invalid(self):
         valid_anime = self.anime("Anime A")
         invalid_anime = self.anime("Anime B")
