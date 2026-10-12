@@ -1260,6 +1260,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             listOf(1L, 2L),
             repository.searchAnimeIds("", null, false, false, false, "Nome Z-A", 36, 0).animeIds,
         )
+        assertEquals(
+            listOf(2L, 1L),
+            repository.searchAnimeIds("", null, false, false, false, "Assistidos recentemente", 36, 0).animeIds,
+        )
+        assertEquals(
+            listOf(1L, 2L),
+            repository.searchAnimeIds("", null, false, false, false, "Episódio", 36, 0).animeIds,
+        )
     }
 
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
