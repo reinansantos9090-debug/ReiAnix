@@ -265,6 +265,11 @@ class ProfessionalMetadataTests(unittest.TestCase):
             result = self.service.hydrate_catalog_metadata(self.service.catalog())
         self.assertEqual(len(result), 1)
         row = self.store.anime_metadata('attack on titan')
+        # Hydration deliberately schedules artwork downloads without blocking.
+        # Join the existing/coalesced poster task here so this test can verify
+        # the durable cache result rather than race the background worker.
+        self.service.artwork.request('anime', row['id'], 'poster', priority=400, blocking=True)
+        row = self.store.anime_metadata('attack on titan')
         self.assertEqual(row['anilist_id'], 16498)
         self.assertNotEqual(row['cover_cache'], str(cover))
         self.assertTrue(Path(row['cover_cache']).is_file())
