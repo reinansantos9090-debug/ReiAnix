@@ -40,6 +40,7 @@ class ReiAnixAniListViewModel(context: Context) : ReiAnixViewModel<ReiAnixAniLis
     private var manualAssociationJob: Job? = null
     private var autoMatchJob: Job? = null
     private var searchRequestId: Long = 0L
+    private var manualAssociationRequestId: Long = 0L
     private val autoMatchRequestedAnimeIds = mutableSetOf<Long>()
 
     fun searchAniList(term: String) {
@@ -92,30 +93,39 @@ class ReiAnixAniListViewModel(context: Context) : ReiAnixViewModel<ReiAnixAniLis
 
     fun associateAniListManually(animeId: Long, anilistId: Int) {
         manualAssociationJob?.cancel()
+        val requestId = ++manualAssociationRequestId
         manualAssociationJob = viewModelScope.launch {
             _aniListUiState.value = _aniListUiState.value.copy(
                 isManualAssociationLoading = true, error = null,
             )
             try {
                 when (val result = integration.associateManually(animeId, anilistId)) {
-                    is AniListResult.Success -> _aniListUiState.value = _aniListUiState.value.copy(
-                        isManualAssociationLoading = false,
-                        lastAssociationMessage = "Associação AniList salva.",
-                        associationRevision = _aniListUiState.value.associationRevision + 1,
-                    )
-                    is AniListResult.Failure -> _aniListUiState.value = _aniListUiState.value.copy(
-                        isManualAssociationLoading = false, error = result.error.userMessage(),
-                    )
+                    is AniListResult.Success -> if (requestId == manualAssociationRequestId) {
+                        _aniListUiState.value = _aniListUiState.value.copy(
+                            isManualAssociationLoading = false,
+                            lastAssociationMessage = "Associação AniList salva.",
+                            associationRevision = _aniListUiState.value.associationRevision + 1,
+                        )
+                    }
+                    is AniListResult.Failure -> if (requestId == manualAssociationRequestId) {
+                        _aniListUiState.value = _aniListUiState.value.copy(
+                            isManualAssociationLoading = false, error = result.error.userMessage(),
+                        )
+                    }
                 }
             } catch (cancelled: CancellationException) {
-                _aniListUiState.value = _aniListUiState.value.copy(isManualAssociationLoading = false)
+                if (requestId == manualAssociationRequestId) {
+                    _aniListUiState.value = _aniListUiState.value.copy(isManualAssociationLoading = false)
+                }
                 throw cancelled
             } catch (error: Exception) {
-                _aniListUiState.value = _aniListUiState.value.copy(
-                    isManualAssociationLoading = false,
-                    error = error.message?.takeIf(String::isNotBlank)
-                        ?: "Não foi possível salvar a associação AniList.",
-                )
+                if (requestId == manualAssociationRequestId) {
+                    _aniListUiState.value = _aniListUiState.value.copy(
+                        isManualAssociationLoading = false,
+                        error = error.message?.takeIf(String::isNotBlank)
+                            ?: "Não foi possível salvar a associação AniList.",
+                    )
+                }
             }
         }
     }
