@@ -107,7 +107,8 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("Gerenciar arquivos locais (SAF)", organize)
         self.assertIn("preservação de histórico e progresso não está garantida", manager)
         self.assertIn("preserve o registro", operations)
-\n    def test_tree_identity_is_authority_document_and_volume_scoped(self):
+
+    def test_tree_identity_is_authority_document_and_volume_scoped(self):
         source = SAF.read_text(encoding="utf-8")
         self.assertIn("authority", source)
         self.assertIn("documentId", source)
