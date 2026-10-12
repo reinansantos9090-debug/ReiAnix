@@ -678,6 +678,146 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         return stream.bufferedReader(Charsets.UTF_8).use { reader -> JSONObject(reader.readText()) }
     }
 
+    @Test
+    fun indexingInsertsOnceAndReexecutionPreservesExistingEpisodeIdentity() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE episodes SET source_folder = ? WHERE id = ?", arrayOf("/media/show", 7L))
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val snapshot = NativeLibraryScanSnapshot(
+            operationId = "index-insert-idempotent",
+            source = "saf",
+            scopeRoot = "/media/show",
+            expectedLocations = setOf("/media/show"),
+            processedLocations = setOf("/media/show"),
+            status = "COMPLETED",
+            complete = true,
+            authorizationValid = true,
+            items = listOf(
+                NativeDiscoveredMedia(
+                    location = "/media/show/episode-02.mkv",
+                    fileName = "episode-02.mkv",
+                    scopeLocation = "/media/show/episode-02.mkv",
+                    animeTitle = "Original Title",
+                    season = 1,
+                    episodeNumber = 2.0,
+                    identificationSource = "sxxexx",
+                    identificationConfidence = "high",
+                    sourceFolder = "/media/show",
+                    mediaIdentity = "shared:primary:show/episode-02.mkv",
+                ),
+            ),
+        )
+
+        val first = repository.indexDiscoveredMedia(snapshot)
+        assertEquals(1, first.inserted)
+        val inserted = repository.listEpisodes(1L).single { it.path.endsWith("episode-02.mkv") }
+        assertTrue(inserted.id > 7L)
+
+        val second = repository.indexDiscoveredMedia(snapshot.copy(operationId = "index-retry"))
+        assertEquals(0, second.inserted)
+        assertEquals(1, second.unchanged)
+        assertEquals(inserted.id, repository.listEpisodes(1L).single { it.path.endsWith("episode-02.mkv") }.id)
+        assertEquals(11.0, repository.getEpisode(7L)!!.progress!!, 0.0)
+    }
+
+    @Test
+    fun partialOrCancelledScanNeverMarksOldRowsMissing() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE episodes SET source_folder = ? WHERE id = ?", arrayOf("/media/show", 7L))
+        }
+        val report = ReiAnixSqliteLibraryRepository(context).indexDiscoveredMedia(
+            NativeLibraryScanSnapshot(
+                operationId = "partial-scan",
+                source = "saf",
+                scopeRoot = "/media/show",
+                expectedLocations = setOf("/media/show"),
+                processedLocations = emptySet(),
+                failedLocations = setOf("/media/show/season-2"),
+                status = "PARTIAL",
+                complete = false,
+                cancelled = true,
+                authorizationValid = true,
+                items = emptyList(),
+            ),
+        )
+        assertFalse(report.reconciliationAuthorized)
+        assertEquals(0, report.reconciledMissing)
+        assertEquals(false, ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.missing)
+    }
+
+    @Test
+    fun emptyCompleteScanMarksOnlyRowsInsideTheVerifiedScopeMissing() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE episodes SET source_folder = ? WHERE id = ?", arrayOf("/media/show", 7L))
+            db.execSQL(
+                "INSERT INTO episodes(id, anime_id, path, file_name, season, number, source_folder) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                arrayOf(8L, 1L, "/media/other/episode-02.mkv", "episode-02.mkv", 1, 2.0, "/media/other"),
+            )
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val report = repository.indexDiscoveredMedia(
+            NativeLibraryScanSnapshot(
+                operationId = "empty-complete",
+                source = "saf",
+                scopeRoot = "/media/show",
+                expectedLocations = setOf("/media/show"),
+                processedLocations = setOf("/media/show"),
+                status = "EMPTY_COMPLETE",
+                complete = true,
+                authorizationValid = true,
+                items = emptyList(),
+            ),
+        )
+        assertTrue(report.reconciliationAuthorized)
+        assertEquals(1, report.reconciledMissing)
+        assertEquals(true, repository.getEpisode(7L)!!.missing)
+        assertEquals(false, repository.getEpisode(8L)!!.missing)
+        assertEquals(11.0, repository.getEpisode(7L)!!.progress!!, 0.0)
+    }
+
+    @Test
+    fun ambiguousSecondReleaseBlocksReconciliationAndPreservesOriginalReference() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE episodes SET source_folder = ?, media_identity = ? WHERE id = ?",
+                arrayOf("/media/show", "shared:primary:show/episode-01.mkv", 7L))
+        }
+        val report = ReiAnixSqliteLibraryRepository(context).indexDiscoveredMedia(
+            NativeLibraryScanSnapshot(
+                operationId = "ambiguous-release",
+                source = "saf",
+                scopeRoot = "/media/show",
+                expectedLocations = setOf("/media/show"),
+                processedLocations = setOf("/media/show"),
+                status = "COMPLETED",
+                complete = true,
+                authorizationValid = true,
+                items = listOf(
+                    NativeDiscoveredMedia(
+                        location = "/media/show/renamed-release.mkv",
+                        fileName = "renamed-release.mkv",
+                        scopeLocation = "/media/show/renamed-release.mkv",
+                        animeTitle = "Original Title",
+                        season = 1,
+                        episodeNumber = 1.0,
+                        identificationConfidence = "high",
+                        sourceFolder = "/media/show",
+                        mediaIdentity = "shared:primary:show/renamed-release.mkv",
+                    ),
+                ),
+            ),
+        )
+        assertFalse(report.reconciliationAuthorized)
+        assertEquals(1, report.ambiguous)
+        assertEquals("/media/show/episode-01.mkv", ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.path)
+        assertEquals(false, ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.missing)
+        assertEquals(11.0, ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.progress!!, 0.0)
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()
