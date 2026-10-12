@@ -39,6 +39,9 @@ class ReiAnixSettingsContractTest {
     @Test fun validatesLanguageTagsAndDecimalChoices() {
         assertEquals("pt-BR", ReiAnixSettingsContract.normalize("audio.preferred_language", "pt-BR"))
         assertEquals("1.5", ReiAnixSettingsContract.normalize("player.default_speed", "1.5"))
+        assertEquals("1.0", ReiAnixSettingsContract.normalize("player.default_speed", "1.00"))
+        assertEquals("5", ReiAnixSettingsContract.normalize("player.auto_hide_seconds", "05"))
+        assertEquals("0", ReiAnixSettingsContract.normalize("player.auto_hide_seconds", "00"))
         assertThrows(IllegalArgumentException::class.java) {
             ReiAnixSettingsContract.normalize("audio.preferred_language", "not a language tag")
         }

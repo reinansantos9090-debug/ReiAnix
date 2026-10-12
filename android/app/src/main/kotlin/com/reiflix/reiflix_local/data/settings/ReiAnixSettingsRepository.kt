@@ -182,12 +182,17 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
                 synchronized(stateLock) {
                     val current = _state.value
                     val pending = pendingSettings[normalizedKey]
-                    val rollback = if (pending != null && pending.requestId == requestId) {
+                    val rollbackSettings = if (pending != null && pending.requestId == requestId) {
                         pendingSettings.remove(normalizedKey)
-                        confirmedSettings[normalizedKey] ?: pending.confirmedValue
-                    } else normalizedValue
+                        current.settings + (
+                            normalizedKey to (confirmedSettings[normalizedKey] ?: pending.confirmedValue)
+                        )
+                    } else {
+                        // A failed older request must not overwrite a newer optimistic value.
+                        current.settings
+                    }
                     _state.value = current.copy(
-                        settings = current.settings + (normalizedKey to rollback),
+                        settings = rollbackSettings,
                         operations = upsertOperationLocked(
                             current.operations,
                             (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(

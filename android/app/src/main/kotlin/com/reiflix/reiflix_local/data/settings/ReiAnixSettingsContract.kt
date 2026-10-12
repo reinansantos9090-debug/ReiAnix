@@ -26,20 +26,20 @@ data class ReiAnixSettingDefinition(
                 val parsed = value.toIntOrNull()
                     ?: throw IllegalArgumentException("Invalid integer for $key")
                 require(parsed >= 0) { "Negative integer for $key" }
-                if (choices.isNotEmpty()) require(value in choices) { "Unsupported value for $key" }
+                if (choices.isNotEmpty()) require(parsed.toString() in choices) {
+                    "Unsupported value for $key"
+                }
                 parsed.toString()
             }
             ReiAnixSettingKind.DECIMAL -> {
                 val parsed = value.toDoubleOrNull()
                     ?: throw IllegalArgumentException("Invalid decimal for $key")
                 require(parsed.isFinite() && parsed > 0.0) { "Invalid decimal for $key" }
-                val canonical = parsed.toString().removeSuffix(".0").let {
-                    if (it.contains('.') || it.contains('E') || it.contains('e')) it else "$it.0"
-                }
-                if (choices.isNotEmpty()) require(value in choices || canonical in choices) {
+                val allowedNumbers = choices.mapNotNull(String::toDoubleOrNull).toSet()
+                if (allowedNumbers.isNotEmpty()) require(parsed in allowedNumbers) {
                     "Unsupported value for $key"
                 }
-                canonical
+                parsed.toString()
             }
             ReiAnixSettingKind.ENUM -> {
                 require(value in choices) { "Unsupported option for $key" }
