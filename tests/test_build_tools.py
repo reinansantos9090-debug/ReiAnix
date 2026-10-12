@@ -592,7 +592,7 @@ E: manifest
             "Intent.FLAG_GRANT_PREFIX_URI_PERMISSION",
         ):
             self.assertIn(token, picker)
-        self.assertNotIn("Intent.FLAG_GRANT_WRITE_URI_PERMISSION", picker)
+        self.assertIn("Intent.FLAG_GRANT_WRITE_URI_PERMISSION", picker)
         self.assertIn("treePicker.launch(pickerIntent)", main)
         self.assertNotIn("SafPickerProxyActivity", main)
 
