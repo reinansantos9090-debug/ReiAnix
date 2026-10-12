@@ -11,6 +11,8 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
+import com.reiflix.reiflix_local.storage.SafFileOperations
+import android.net.Uri
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState
@@ -117,6 +119,23 @@ class ReiAnixLibraryViewModel(context: Context) :
      * is migrated with parity and single-writer guarantees.
      */
     private val nativeLibraryQueries = ReiAnixLibraryQueryService(context)
+    /** SAF mutations operate only on persisted, user-authorized content URIs. */
+    private val nativeFileOperations = SafFileOperations(context.applicationContext)
+
+    suspend fun listSafDirectory(uri: Uri): SafFileOperations.ResultOrItems =
+        nativeFileOperations.list(uri)
+
+    suspend fun createSafDirectory(parentUri: Uri, name: String): SafFileOperations.Result =
+        nativeFileOperations.createDirectory(parentUri, name)
+
+    suspend fun renameSafItem(uri: Uri, newName: String): SafFileOperations.Result =
+        nativeFileOperations.rename(uri, newName)
+
+    suspend fun moveSafItem(uri: Uri, destinationDirectoryUri: Uri): SafFileOperations.Result =
+        nativeFileOperations.move(uri, destinationDirectoryUri)
+
+    suspend fun deleteSafItem(uri: Uri): SafFileOperations.Result =
+        nativeFileOperations.delete(uri)
 
     suspend fun queryNativeAnime(id: Long): ReiAnixLibraryQueryResult<ReiAnixAnimeRecord> =
         nativeLibraryQueries.animeById(id)
