@@ -313,6 +313,8 @@ class SafFileOperations(private val context: Context) {
             } ?: continue
             val usable = try {
                 document.exists() && document.canRead() && (!requireWrite || document.canWrite())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: SecurityException) {
                 false
             } catch (_: Exception) {
