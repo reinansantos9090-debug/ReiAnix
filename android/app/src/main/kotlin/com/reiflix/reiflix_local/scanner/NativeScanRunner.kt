@@ -176,18 +176,24 @@ object NativeScanRunner {
                     )
                     }
                 )
-                val partial = result.optBoolean("partial")
-                result.put("requestId", requestId ?: "")
-                    .put("scanId", scanId).put("scopeKind", "global").put("scopeRef", "broad-storage")
-                    .put("generationId", "native-scoped")
-                    .put("generationStatus", if (result.optBoolean("cancelled")) NativeIndex.STATUS_CANCELLED else if (partial) NativeIndex.STATUS_PARTIAL else NativeIndex.STATUS_COMPLETED)
-                NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "broad_storage_scan")
-                    .put("requestId", requestId ?: "").put("payload", result))
                 val terminalStatus = ScanResultClassifier.classifyBroadStorage(
                     result.optJSONObject("stats")?.optString("status"),
                     cancelled = result.optBoolean("cancelled"),
                     partial = result.optBoolean("partial"),
                 )
+                val generationStatus = when (terminalStatus) {
+                    "CANCELLED" -> NativeIndex.STATUS_CANCELLED
+                    "PARTIAL" -> NativeIndex.STATUS_PARTIAL
+                    "EMPTY_COMPLETE" -> NativeIndex.STATUS_EMPTY_COMPLETE
+                    "COMPLETED" -> NativeIndex.STATUS_COMPLETED
+                    else -> NativeIndex.STATUS_FAILED
+                }
+                result.put("requestId", requestId ?: "")
+                    .put("scanId", scanId).put("scopeKind", "global").put("scopeRef", "broad-storage")
+                    .put("generationId", "native-scoped")
+                    .put("generationStatus", generationStatus)
+                NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "broad_storage_scan")
+                    .put("requestId", requestId ?: "").put("payload", result))
                 NativeScanController.complete(scanId, terminalStatus, result)
             } catch (exception: CancellationException) {
                 NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
