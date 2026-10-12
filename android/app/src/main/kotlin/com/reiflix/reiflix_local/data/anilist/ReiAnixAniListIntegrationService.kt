@@ -115,7 +115,21 @@ class ReiAnixAniListIntegrationService(
                 addAll(candidate.synonyms)
             }.map(::normalize).filter(String::isNotBlank).toSet()
             val exact = localTitles.intersect(remoteTitles).isNotEmpty()
-            val score = if (exact) 0.96 else 0.0
+            var score = if (exact) 0.96 else 0.0
+            if (exact) {
+                // Contradictory catalog facts lower confidence; matching facts only
+                // break ties and never turn a weak title match into an automatic link.
+                if (local.year != null && candidate.seasonYear != null) {
+                    score += if (local.year == candidate.seasonYear) 0.02 else -0.30
+                }
+                if (!local.format.isNullOrBlank() && !candidate.format.isNullOrBlank()) {
+                    score += if (local.format.equals(candidate.format, ignoreCase = true)) 0.01 else -0.18
+                }
+                if (local.episodesCount != null && candidate.episodes != null) {
+                    score += if (local.episodesCount == candidate.episodes) 0.01 else -0.15
+                }
+                score = score.coerceIn(0.0, 1.0)
+            }
             candidate to score
         }.sortedByDescending { it.second }
         val best = ranked.first()
@@ -160,6 +174,7 @@ class ReiAnixAniListIntegrationService(
                     season = remote.season,
                     status = remote.status,
                     episodesCount = remote.episodes,
+                    duration = remote.durationMinutes,
                     score = remote.averageScore,
                     format = remote.format,
                     studio = remote.studios.takeIf { it.isNotEmpty() }?.joinToString(", "),
