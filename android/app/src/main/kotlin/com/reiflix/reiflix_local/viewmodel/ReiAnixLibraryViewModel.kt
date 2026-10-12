@@ -785,7 +785,7 @@ class ReiAnixLibraryViewModel(context: Context) :
     }
 
     private data class SearchRequest(
-        val index: com.reiflix.reiflix_local.ui.search.ReiAnixSearchIndex,
+        val catalog: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
         val requestedQuery: String,
         val settledQuery: String,
         val filters: ReiAnixSearchFilters,
@@ -805,66 +805,96 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     private val _searchFilters = MutableStateFlow(ReiAnixSearchFilters())
 
+    /**
+     * Search result identities come from the canonical SQLite query service.
+     * The in-memory canonical projection is used only to provide existing Compose
+     * presentation models for those persisted IDs; it does not decide membership.
+     */
     val searchState: StateFlow<ReiAnixSearchUiState> = combine(
-        searchIndex,
+        canonicalCatalog,
         _searchQuery,
         debouncedSearchQuery,
         _searchFilters,
-    ) { index, requestedQuery, settledQuery, filters ->
-        SearchRequest(index, requestedQuery, settledQuery, filters)
+    ) { catalog, requestedQuery, settledQuery, filters ->
+        SearchRequest(catalog, requestedQuery, settledQuery, filters)
     }
         .mapLatest { request ->
-            val (index, requestedQuery, settledQuery, filters) = request
-            // Publish the latest query immediately. The UI already renders its
-            // dedicated loading state while state.query differs from the input;
-            // clearing pending results here prevents a prior query's matches
-            // from remaining observable as if they belonged to the new query.
-            if (requestedQuery != settledQuery) {
+            val filters = request.filters
+            if (request.requestedQuery != request.settledQuery) {
                 return@mapLatest ReiAnixSearchUiState(
-                    query = requestedQuery,
+                    query = request.settledQuery,
+                    results = emptyList(),
+                    filters = filters,
+                )
+            }
+            if (request.settledQuery.isBlank() && !filters.hasAnyFilter) {
+                return@mapLatest ReiAnixSearchUiState(
+                    query = request.settledQuery,
                     results = emptyList(),
                     filters = filters,
                 )
             }
 
-            runCatching {
-                val indexedResults = if (settledQuery.isBlank()) {
-                    index.all()
-                } else {
-                    index.search(settledQuery)
+            when (val result = nativeLibraryQueries.searchAnime(
+                searchText = request.settledQuery,
+                genreKey = filters.selectedGenreKey,
+                favoritesOnly = filters.favoritesOnly,
+                watchingOnly = filters.watchingOnly,
+                completedOnly = filters.completedOnly,
+                sortLabel = filters.sort,
+                limit = ReiAnixLibraryQueryService.MAX_PAGE_SIZE,
+                offset = 0,
+            )) {
+                is ReiAnixLibraryQueryResult.Success -> {
+                    val byId = request.catalog.associateBy { it.id }
+                    val missingIds = result.value.animeIds.filterNot(byId::containsKey)
+                    if (missingIds.isNotEmpty()) {
+                        ReiAnixSearchUiState(
+                            query = request.settledQuery,
+                            results = emptyList(),
+                            filters = filters,
+                            error = "A pesquisa SQLite retornou itens que ainda não estão disponíveis na projeção da biblioteca. Atualize a biblioteca e tente novamente.",
+                        )
+                    } else {
+                        val selected = result.value.animeIds.mapNotNull(byId::get)
+                        // SQLite owns membership, filters, and the selected ordering.
+                        // Only relevance mode uses the existing index to preserve its
+                        // established scoring for the already-selected persisted IDs.
+                        val ordered = if (request.settledQuery.isNotBlank() && filters.sort.isNullOrBlank()) {
+                            val rankedIds = ReiAnixSearchEngine.buildIndex(selected)
+                                .search(request.settledQuery)
+                                .map { it.id }
+                            val rank = rankedIds.withIndex().associate { it.value to it.index }
+                            selected.sortedWith(
+                                compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel> {
+                                    rank[it.id] ?: Int.MAX_VALUE
+                                }.thenBy { it.id },
+                            )
+                        } else selected
+                        ReiAnixSearchUiState(
+                            query = request.settledQuery,
+                            results = ordered,
+                            filters = filters,
+                        )
+                    }
                 }
-                val hasSearchRefinement = settledQuery.isNotBlank() || filters.hasAnyFilter
-                val filteredResults = if (!hasSearchRefinement) {
-                    emptyList()
-                } else {
-                    // Text matching has already been normalized and ranked by
-                    // ReiAnixSearchEngine. Do not feed the raw query back into
-                    // the generic Library matcher, otherwise aliases and
-                    // accent-insensitive matches would be rejected again.
-                    ReiAnixLibraryFilterEngine.filter(
-                        animes = indexedResults,
-                        filters = ReiAnixLibraryFilters(
-                            query = "",
-                            selectedGenreKey = filters.selectedGenreKey,
-                            favoritesOnly = filters.favoritesOnly,
-                            watchingOnly = filters.watchingOnly,
-                            completedOnly = filters.completedOnly,
-                            sort = filters.sort ?: "",
-                        ),
-                    )
-                }
-                ReiAnixSearchUiState(
-                    query = requestedQuery,
-                    results = filteredResults,
-                    filters = filters,
-                )
-            }.getOrElse { error ->
-                ReiAnixSearchUiState(
-                    query = requestedQuery,
+                is ReiAnixLibraryQueryResult.Empty -> ReiAnixSearchUiState(
+                    query = request.settledQuery,
                     results = emptyList(),
                     filters = filters,
-                    error = error.message?.takeIf { it.isNotBlank() }
-                        ?: "Não foi possível pesquisar na biblioteca local.",
+                )
+                is ReiAnixLibraryQueryResult.Failure -> ReiAnixSearchUiState(
+                    query = request.settledQuery,
+                    results = emptyList(),
+                    filters = filters,
+                    error = result.cause.message?.takeIf(String::isNotBlank)
+                        ?: "Não foi possível pesquisar no banco SQLite da biblioteca.",
+                )
+                is ReiAnixLibraryQueryResult.NotFound -> ReiAnixSearchUiState(
+                    query = request.settledQuery,
+                    results = emptyList(),
+                    filters = filters,
+                    error = "O banco SQLite não encontrou o item solicitado.",
                 )
             }
         }
@@ -873,10 +903,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
-            ReiAnixSearchUiState(
-                query = "",
-                results = emptyList(),
-            ),
+            ReiAnixSearchUiState(query = "", results = emptyList()),
         )
 
     fun setSearchQuery(value: String) {
