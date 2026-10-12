@@ -91,7 +91,7 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("NativeMailbox.write(appContext, event)", view_model)
         self.assertIn("treeUri", view_model)
         self.assertIn("catalogReconciliationQueued", view_model)
-        self.assertIn("await bridge.rescan_tree(tree_uri)", main)
+        self.assertIn("asyncio.create_task(_request_reconciled_saf_rescan())", main)
         self.assertNotIn("library.sqlite", view_model)
         operations = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/SafFileOperations.kt"
