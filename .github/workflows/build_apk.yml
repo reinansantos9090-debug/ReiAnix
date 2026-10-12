@@ -307,6 +307,15 @@ jobs:
           # most of the job timeout before reporting the real error.
           flet build "${build_args[@]}"
 
+      - name: Explicitly verify release Kotlin compilation
+        shell: bash
+        working-directory: build/flutter/android
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true"
+        run: |
+          test -x ./gradlew
+          ./gradlew :app:compileReleaseKotlin --no-daemon --console=plain
+
       - name: Preserve build identity evidence
         shell: bash
         run: |
