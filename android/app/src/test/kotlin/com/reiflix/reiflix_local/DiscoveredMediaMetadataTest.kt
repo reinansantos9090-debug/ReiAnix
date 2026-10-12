@@ -189,6 +189,19 @@ class DiscoveredMediaMetadataTest {
     }
 
     @Test
+    fun cachedLongRejectsNegativeAndNonNumericMetadata() {
+        val negative = JSONObject().put("size", -1L)
+        val nonNumeric = JSONObject().put("size", "0")
+        val explicitUnknown = JSONObject()
+            .put("size", 0L)
+            .put("metadataAvailability", JSONObject().put("sizeAvailable", false))
+
+        assertNull(DiscoveredMediaMetadata.cachedLongOrNull(negative, "size", "sizeAvailable"))
+        assertNull(DiscoveredMediaMetadata.cachedLongOrNull(nonNumeric, "size", "sizeAvailable"))
+        assertNull(DiscoveredMediaMetadata.cachedLongOrNull(explicitUnknown, "size", "sizeAvailable"))
+    }
+
+    @Test
     fun cachedZeroIsPreservedWhenAvailabilityBitConfirmsIt() {
         val cached = JSONObject()
             .put("size", 0L)
