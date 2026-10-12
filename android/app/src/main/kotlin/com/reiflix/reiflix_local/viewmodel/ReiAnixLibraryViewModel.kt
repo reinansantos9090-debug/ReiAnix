@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
@@ -818,22 +819,37 @@ class ReiAnixLibraryViewModel(context: Context) :
     ) { catalog, requestedQuery, settledQuery, filters ->
         SearchRequest(catalog, requestedQuery, settledQuery, filters)
     }
-        .mapLatest { request ->
+        .transformLatest { request ->
             val filters = request.filters
             if (request.requestedQuery != request.settledQuery) {
-                return@mapLatest ReiAnixSearchUiState(
-                    query = request.settledQuery,
-                    results = emptyList(),
-                    filters = filters,
+                emit(
+                    ReiAnixSearchUiState(
+                        query = request.settledQuery,
+                        results = emptyList(),
+                        filters = filters,
+                    ),
                 )
+                return@transformLatest
             }
             if (request.settledQuery.isBlank() && !filters.hasAnyFilter) {
-                return@mapLatest ReiAnixSearchUiState(
+                emit(
+                    ReiAnixSearchUiState(
+                        query = request.settledQuery,
+                        results = emptyList(),
+                        filters = filters,
+                    ),
+                )
+                return@transformLatest
+            }
+
+            emit(
+                ReiAnixSearchUiState(
                     query = request.settledQuery,
                     results = emptyList(),
                     filters = filters,
-                )
-            }
+                    isLoading = true,
+                ),
+            )
 
             val selectedIds = mutableListOf<Long>()
             var offset = 0
@@ -867,7 +883,7 @@ class ReiAnixLibraryViewModel(context: Context) :
                 }
             }
 
-            if (queryError != null) {
+            val completedState = if (queryError != null) {
                 ReiAnixSearchUiState(
                     query = request.settledQuery,
                     results = emptyList(),
@@ -893,6 +909,7 @@ class ReiAnixLibraryViewModel(context: Context) :
                     )
                 }
             }
+            emit(completedState)
         }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
@@ -901,6 +918,7 @@ class ReiAnixLibraryViewModel(context: Context) :
             SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             ReiAnixSearchUiState(query = "", results = emptyList()),
         )
+
 
     fun setSearchQuery(value: String) {
         _searchQuery.value = value
