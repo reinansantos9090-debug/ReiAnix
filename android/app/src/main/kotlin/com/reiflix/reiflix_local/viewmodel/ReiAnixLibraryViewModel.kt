@@ -12,6 +12,9 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.storage.SafFileOperations
+import com.reiflix.reiflix_local.bridge.NativeMailbox
+import org.json.JSONObject
+import kotlinx.coroutines.withContext
 import android.net.Uri
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
@@ -74,6 +77,8 @@ data class ReiAnixNativeFoldersUiState(
 @Keep
 class ReiAnixLibraryViewModel(context: Context) :
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
+    private val appContext = context.applicationContext
+
     
     companion object {
         const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
@@ -131,11 +136,47 @@ class ReiAnixLibraryViewModel(context: Context) :
     suspend fun createSafDirectory(parentUri: Uri, name: String): SafFileOperations.Result =
         nativeFileOperations.createDirectory(parentUri, name)
 
-    suspend fun renameSafItem(uri: Uri, newName: String): SafFileOperations.Result =
-        nativeFileOperations.rename(uri, newName)
+    private suspend fun enqueueSafIdentityReconciliation(
+        oldUri: Uri,
+        result: SafFileOperations.Result,
+        operation: String,
+    ): SafFileOperations.Result {
+        if (result !is SafFileOperations.Result.Success) return result
+        val event = JSONObject()
+            .put("type", "saf_document_identity_change")
+            .put(
+                "payload",
+                JSONObject()
+                    .put("operation", operation)
+                    .put("oldUri", oldUri.toString())
+                    .put("newUri", result.uri.toString())
+                    .put("name", result.name),
+            )
+        val queued = withContext(Dispatchers.IO) {
+            NativeMailbox.write(appContext, event)
+        }
+        return if (queued) {
+            result.copy(catalogReconciliationQueued = true)
+        } else {
+            SafFileOperations.Result.Failure(
+                SafFileOperations.FailureKind.PARTIAL,
+                "A mutação SAF foi confirmada pelo provedor, mas a reconciliação canônica não pôde ser enfileirada. O catálogo foi preservado; verifique a biblioteca antes de repetir a operação.",
+                oldUri,
+                result.uri,
+                recoverable = true,
+            )
+        }
+    }
 
-    suspend fun moveSafItem(uri: Uri, destinationDirectoryUri: Uri): SafFileOperations.Result =
-        nativeFileOperations.move(uri, destinationDirectoryUri)
+    suspend fun renameSafItem(uri: Uri, newName: String): SafFileOperations.Result {
+        val result = nativeFileOperations.rename(uri, newName)
+        return enqueueSafIdentityReconciliation(uri, result, "rename")
+    }
+
+    suspend fun moveSafItem(uri: Uri, destinationDirectoryUri: Uri): SafFileOperations.Result {
+        val result = nativeFileOperations.move(uri, destinationDirectoryUri)
+        return enqueueSafIdentityReconciliation(uri, result, "move")
+    }
 
     suspend fun deleteSafItem(uri: Uri): SafFileOperations.Result =
         nativeFileOperations.delete(uri)
