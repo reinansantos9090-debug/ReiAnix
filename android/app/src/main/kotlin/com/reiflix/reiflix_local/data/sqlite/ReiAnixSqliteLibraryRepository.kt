@@ -268,6 +268,8 @@ class ReiAnixSqliteLibraryRepository(
                 val inputIdentities = hashSetOf<String>()
 
                 for (item in snapshot.items) {
+                    db.execSQL("SAVEPOINT native_index_item")
+                    try {
                     if (!item.scopeVerified && !(item.scopeLocation ?: item.location).isWithinScope(snapshot.scopeRoot)) {
                         rejected++
                         invalidScopeEvidence = true
@@ -408,6 +410,14 @@ class ReiAnixSqliteLibraryRepository(
                     val insertedEpisodeId = db.insertOrThrow("episodes", null, values)
                     recordEpisodeObservation(db, insertedEpisodeId, snapshot, item)
                     inserted++
+                    } catch (itemError: Exception) {
+                        // Roll back only the bad item. Other verified observations in this
+                        // scan can still be committed, but ambiguity blocks reconciliation.
+                        db.execSQL("ROLLBACK TO native_index_item")
+                        ambiguous++
+                    } finally {
+                        db.execSQL("RELEASE native_index_item")
+                    }
                 }
 
                 val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence && ambiguous == 0
