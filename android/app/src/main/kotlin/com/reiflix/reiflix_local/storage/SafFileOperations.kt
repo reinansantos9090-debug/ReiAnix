@@ -262,6 +262,9 @@ class SafFileOperations(private val context: Context) {
             .distinct()
             .toList()
 
+    fun treeDisplayName(treeUri: Uri): String =
+        SafScanner.displayName(context, treeUri)
+
     sealed interface ResultOrItems {
         data class Items(val value: List<ItemInfo>) : ResultOrItems
         data class Failed(val result: Result.Failure) : ResultOrItems
