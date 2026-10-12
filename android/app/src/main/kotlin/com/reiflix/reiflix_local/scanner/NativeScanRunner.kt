@@ -6,6 +6,7 @@ import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.storage.NativeIndex
 import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
 
 /**
  * Process-owned execution boundary for native storage scans.
@@ -36,6 +37,7 @@ object NativeScanRunner {
                     .put("payload", SafScanner.identityPayload(treeUri).put("scanId", scanId).put("phase", "started")
                         .put("source", "saf").put("generationId", NativeIndex.generationId(NativeIndex.SOURCE_SAF, scanKey, generationId))))
                 val onScanProgress: (JSONObject) -> Unit = { progress ->
+                    NativeScanController.updateProgress(scanId, progress)
                     NativeMailbox.write(
                         appContext,
                         JSONObject()
@@ -78,7 +80,8 @@ object NativeScanRunner {
                     SafScanner.STATUS_CANCELLED -> NativeIndex.STATUS_CANCELLED
                     SafScanner.STATUS_PARTIAL -> NativeIndex.STATUS_PARTIAL
                     SafScanner.STATUS_EMPTY_COMPLETE -> NativeIndex.STATUS_EMPTY_COMPLETE
-                    else -> NativeIndex.STATUS_COMPLETED
+                    SafScanner.STATUS_COMPLETED -> NativeIndex.STATUS_COMPLETED
+                    else -> NativeIndex.STATUS_FAILED
                 }
                 val finished = NativeIndex.finishGeneration(
                     appContext,
@@ -107,8 +110,13 @@ object NativeScanRunner {
                     .put("volumeId", result.optString("volumeId"))
                     .put("status", scanStatus.ifBlank { SafScanner.STATUS_COMPLETED })
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
+                NativeScanController.complete(scanId, scanStatus.ifBlank { SafScanner.STATUS_FAILED }, result)
+            } catch (exception: CancellationException) {
+                NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
+                throw exception
             } catch (exception: Exception) {
                 Log.e(TAG, "SAF scan failed", exception)
+                NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", exception::class.java.simpleName))
                 NativeIndex.failGeneration(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
                     exception.message ?: "SAF scan failed",
                     JSONObject().put("treeUri", reference))
@@ -135,6 +143,7 @@ object NativeScanRunner {
                 val result = BroadStorageScanner.scan(
                     appContext,
                     { progress ->
+                        NativeScanController.updateProgress(scanId, progress)
                         NativeMailbox.write(appContext, JSONObject().put("type", "broad_storage_scan_progress")
                             .put("payload", progress.put("scanId", scanId).put("requestId", requestId ?: "").put("scopeKind", "global")))
                     },
@@ -163,8 +172,19 @@ object NativeScanRunner {
                     .put("generationStatus", if (result.optBoolean("cancelled")) NativeIndex.STATUS_CANCELLED else if (partial) NativeIndex.STATUS_PARTIAL else NativeIndex.STATUS_COMPLETED)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "broad_storage_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
+                val terminalStatus = when {
+                    result.optBoolean("cancelled") -> "CANCELLED"
+                    result.optBoolean("partial") -> "PARTIAL"
+                    result.optString("status").uppercase() in setOf("FAILED", "UNAVAILABLE", "REVOKED") -> "FAILED"
+                    else -> "COMPLETED"
+                }
+                NativeScanController.complete(scanId, terminalStatus, result)
+            } catch (exception: CancellationException) {
+                NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
+                throw exception
             } catch (exception: Exception) {
                 Log.e(TAG, "Broad storage scan failed", exception)
+                NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", exception::class.java.simpleName))
                 NativeIndex.failActiveGenerations(
                     appContext,
                     NativeIndex.SOURCE_BROAD,
@@ -201,6 +221,7 @@ object NativeScanRunner {
                 val result = MediaStoreScanner.scan(
                     appContext,
                     { progress ->
+                        NativeScanController.updateProgress(scanId, progress)
                         NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_scan_progress")
                             .put("payload", progress.put("scanId", scanId).put("requestId", requestId ?: "").put("scopeKind", "global")))
                     },
@@ -236,8 +257,20 @@ object NativeScanRunner {
                 }
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "mediastore_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
+                val terminalStatus = when {
+                    result.optBoolean("cancelled") -> "CANCELLED"
+                    result.optBoolean("partial") -> "PARTIAL"
+                    finalStatus == NativeIndex.STATUS_WAITING_FOR_MEDIASTORE -> "PARTIAL"
+                    finalStatus in setOf("FAILED", "UNAVAILABLE", "REVOKED", "DENIED") -> "FAILED"
+                    else -> "COMPLETED"
+                }
+                NativeScanController.complete(scanId, terminalStatus, result)
+            } catch (exception: CancellationException) {
+                NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
+                throw exception
             } catch (exception: Exception) {
                 Log.e(TAG, "MediaStore scan failed", exception)
+                NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", exception::class.java.simpleName))
                 NativeIndex.failActiveGenerations(appContext, NativeIndex.SOURCE_MEDIASTORE, exception.message ?: "MediaStore scan failed")
                 NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_error")
                     .put("requestId", requestId ?: "")
