@@ -13,6 +13,7 @@ class NativeLibraryConsumerIntegrationTest(unittest.TestCase):
         storage = STORAGE.read_text(encoding="utf-8")
 
         self.assertIn("val nativeFoldersState: StateFlow<ReiAnixNativeFoldersUiState>", vm)
+        self.assertIn("ReiAnixNativeFolderUiModel(name = folder.name, path = folder.path)", vm)
         self.assertIn("fun refreshNativeFolders()", vm)
         self.assertIn("queryNativeFolders()", vm)
         self.assertIn("viewModel.nativeFoldersState.collectAsStateWithLifecycle()", storage)
@@ -23,8 +24,9 @@ class NativeLibraryConsumerIntegrationTest(unittest.TestCase):
     def test_native_folder_consumer_keeps_empty_and_failure_distinct(self):
         storage = STORAGE.read_text(encoding="utf-8")
 
-        for result in ("Success", "Empty", "NotFound", "Failure"):
-            self.assertIn(f"ReiAnixLibraryQueryResult.{result}", storage)
+        for status in ("READY", "EMPTY", "NOT_FOUND", "ERROR"):
+            self.assertIn(f"ReiAnixNativeFoldersStatus.{status}", storage)
+        self.assertIn("ReiAnixNativeFoldersStatus.LOADING", storage)
         self.assertIn("Os registros configurados continuam preservados", storage)
 
     def test_kotlin_jvm_workflow_remains_manual_and_pull_request_only(self):

@@ -46,9 +46,23 @@ import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeMode
 import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
 import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
+enum class ReiAnixNativeFoldersStatus {
+    IDLE,
+    LOADING,
+    READY,
+    EMPTY,
+    NOT_FOUND,
+    ERROR,
+}
+
+data class ReiAnixNativeFolderUiModel(
+    val name: String?,
+    val path: String,
+)
+
 data class ReiAnixNativeFoldersUiState(
-    val isLoading: Boolean = false,
-    val result: ReiAnixLibraryQueryResult<List<ReiAnixFolderRecord>>? = null,
+    val status: ReiAnixNativeFoldersStatus = ReiAnixNativeFoldersStatus.IDLE,
+    val folders: List<ReiAnixNativeFolderUiModel> = emptyList(),
 )
 
 /**
@@ -128,13 +142,28 @@ class ReiAnixLibraryViewModel(context: Context) :
     /** Refreshes the read-only SQLite folder view without changing folder ownership or SAF grants. */
     fun refreshNativeFolders() {
         nativeFoldersJob?.cancel()
-        _nativeFoldersState.value = ReiAnixNativeFoldersUiState(isLoading = true)
+        _nativeFoldersState.value = ReiAnixNativeFoldersUiState(
+            status = ReiAnixNativeFoldersStatus.LOADING,
+        )
         nativeFoldersJob = viewModelScope.launch {
             val result = queryNativeFolders()
-            _nativeFoldersState.value = ReiAnixNativeFoldersUiState(
-                isLoading = false,
-                result = result,
-            )
+            _nativeFoldersState.value = when (result) {
+                is ReiAnixLibraryQueryResult.Success -> ReiAnixNativeFoldersUiState(
+                    status = ReiAnixNativeFoldersStatus.READY,
+                    folders = result.value.map { folder ->
+                        ReiAnixNativeFolderUiModel(name = folder.name, path = folder.path)
+                    },
+                )
+                is ReiAnixLibraryQueryResult.Empty -> ReiAnixNativeFoldersUiState(
+                    status = ReiAnixNativeFoldersStatus.EMPTY,
+                )
+                is ReiAnixLibraryQueryResult.NotFound -> ReiAnixNativeFoldersUiState(
+                    status = ReiAnixNativeFoldersStatus.NOT_FOUND,
+                )
+                is ReiAnixLibraryQueryResult.Failure -> ReiAnixNativeFoldersUiState(
+                    status = ReiAnixNativeFoldersStatus.ERROR,
+                )
+            }
         }
     }
 
