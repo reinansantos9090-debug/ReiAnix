@@ -153,6 +153,33 @@ class NativeScanControllerTest {
     }
 
     @Test
+    fun unknownTerminalStatusFailsClosed() {
+        val scanId = id()
+        assertTrue(NativeScanController.begin(scanId, "saf:unknown-status"))
+        NativeScanController.complete(scanId, "UNRECOGNIZED_STATUS", JSONObject())
+        assertEquals(ScanLifecycleState.FAILED, NativeScanController.snapshot(scanId)?.state)
+        assertFalse(NativeScanController.snapshot(scanId)?.isComplete == true)
+        NativeScanController.finish(scanId)
+    }
+
+    @Test
+    fun cancellationPreservesCountsAlreadyObserved() {
+        val scanId = id()
+        assertTrue(NativeScanController.begin(scanId, "mediastore:partial"))
+        NativeScanController.updateProgress(
+            scanId,
+            JSONObject().put("videos", 5).put("directories", 2),
+        )
+        assertTrue(NativeScanController.requestCancel(scanId, "test"))
+        NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
+        val result = NativeScanController.snapshot(scanId)?.result
+        assertEquals(5L, result?.discoveredFiles)
+        assertEquals(2L, result?.directoriesCompleted)
+        assertFalse(result?.complete == true)
+        NativeScanController.finish(scanId)
+    }
+
+    @Test
     fun failedOperationReleasesSourceForRetry() {
         val first = id()
         val retry = id()
