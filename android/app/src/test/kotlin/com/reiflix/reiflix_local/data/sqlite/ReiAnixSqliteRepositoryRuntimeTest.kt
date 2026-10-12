@@ -962,6 +962,16 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun nativeQueryServiceRejectsInvalidPageBoundsAsFailure() = runBlocking {
+        createCanonicalFixture()
+        val service = ReiAnixLibraryQueryService(context)
+
+        assertTrue(service.animePage(limit = 0) is ReiAnixLibraryQueryResult.Failure)
+        assertTrue(service.animePage(limit = ReiAnixLibraryQueryService.MAX_PAGE_SIZE + 1) is ReiAnixLibraryQueryResult.Failure)
+        assertTrue(service.animePage(limit = 1, offset = -1) is ReiAnixLibraryQueryResult.Failure)
+    }
+
+    @Test
     fun nativeQueryServiceNeverTurnsMissingDatabaseIntoEmptyLibrary() = runBlocking {
         assertFalse(databaseFile.exists())
         val result = ReiAnixLibraryQueryService(context).animePage()

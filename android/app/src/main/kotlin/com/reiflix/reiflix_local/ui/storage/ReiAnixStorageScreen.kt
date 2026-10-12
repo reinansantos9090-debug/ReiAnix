@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,9 @@ import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
+import com.reiflix.reiflix_local.viewmodel.ReiAnixNativeFoldersUiState
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsSurface
 import com.reiflix.reiflix_local.ui.settings.SettingsHeader
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -63,15 +67,24 @@ fun ReiAnixStorageRoute(
     onCheckAccess: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val nativeFolders by viewModel.nativeFoldersState.collectAsStateWithLifecycle()
+    LaunchedEffect(viewModel) {
+        viewModel.refreshNativeFolders()
+    }
     ReiAnixStorageScreen(
         state = state,
+        nativeFolders = nativeFolders,
+        onRefreshNativeFolders = viewModel::refreshNativeFolders,
         onBack = onBack,
         onSelectSaf = viewModel::selectSafTree,
         onRemoveSaf = onRemoveSaf,
         onRequestMediaAccess = onRequestMediaAccess,
         onOpenBroadSettings = onOpenBroadSettings,
         onCheckAccess = onCheckAccess,
-        onRefreshLibrary = viewModel::refresh,
+        onRefreshLibrary = {
+            viewModel.refresh()
+            viewModel.refreshNativeFolders()
+        },
     )
 }
 
@@ -85,6 +98,8 @@ fun ReiAnixStorageScreen(
     onOpenBroadSettings: () -> Unit,
     onCheckAccess: () -> Unit,
     onRefreshLibrary: () -> Unit,
+    nativeFolders: ReiAnixNativeFoldersUiState = ReiAnixNativeFoldersUiState(),
+    onRefreshNativeFolders: () -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     val storage = state.storage
@@ -270,6 +285,13 @@ fun ReiAnixStorageScreen(
                 )
             }
 
+            item(key = "native-sqlite-folders") {
+                NativeSqliteFoldersSection(
+                    state = nativeFolders,
+                    onRetry = onRefreshNativeFolders,
+                )
+            }
+
             if (otherSources.isNotEmpty()) {
                 item(key = "other-sources-section") {
                     StorageSectionTitle(
@@ -339,6 +361,86 @@ fun ReiAnixStorageScreen(
     }
 
     }
+    }
+}
+
+@Composable
+private fun NativeSqliteFoldersSection(
+    state: ReiAnixNativeFoldersUiState,
+    onRetry: () -> Unit,
+) {
+    val result = state.result
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+    ) {
+        StorageSectionTitle(
+            title = "Registros persistidos no SQLite",
+            description = "Consulta somente leitura do banco canônico. As permissões e alterações de pastas continuam sendo gerenciadas pelo fluxo atual.",
+        )
+        when {
+            state.isLoading -> ReiAnixLoadingState(
+                title = "Consultando pastas persistidas",
+                message = "Lendo os registros locais do SQLite…",
+                modifier = Modifier.fillMaxWidth(),
+            )
+            result == null -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "A consulta nativa ainda não foi executada.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            result is ReiAnixLibraryQueryResult.Success -> {
+                val folders = result.value
+                ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
+                        Text(
+                            text = "${folders.size} registro(s) de pasta no SQLite",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        folders.forEach { folder ->
+                            Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
+                                Text(
+                                    text = folder.name?.takeIf { it.isNotBlank() } ?: folder.path,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = folder.path,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            result is ReiAnixLibraryQueryResult.Empty -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Nenhuma pasta registrada no banco SQLite.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            result is ReiAnixLibraryQueryResult.NotFound -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "A consulta nativa retornou uma referência inexistente.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                ReiAnixSecondaryButton(text = "Consultar novamente", onClick = onRetry)
+            }
+            result is ReiAnixLibraryQueryResult.Failure -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Não foi possível consultar as pastas persistidas. Os registros configurados continuam preservados.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                ReiAnixSecondaryButton(text = "Tentar novamente", onClick = onRetry)
+            }
+        }
     }
 }
 

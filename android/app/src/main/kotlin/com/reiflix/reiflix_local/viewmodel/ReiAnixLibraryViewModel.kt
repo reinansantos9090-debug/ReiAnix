@@ -46,6 +46,15 @@ import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeMode
 import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
 import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
+data class ReiAnixNativeFoldersUiState(
+    val isLoading: Boolean = false,
+    val result: ReiAnixLibraryQueryResult<List<ReiAnixFolderRecord>>? = null,
+)
+
+/**
+ * ViewModel coordinating the real read-only SQLite folder query for Storage.
+ * The existing projection still owns SAF commands and permission state.
+ */
 @Keep
 class ReiAnixLibraryViewModel(context: Context) :
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
@@ -111,6 +120,23 @@ class ReiAnixLibraryViewModel(context: Context) :
 
     suspend fun queryNativeFolders(): ReiAnixLibraryQueryResult<List<ReiAnixFolderRecord>> =
         nativeLibraryQueries.folders()
+
+    private val _nativeFoldersState = MutableStateFlow(ReiAnixNativeFoldersUiState())
+    val nativeFoldersState: StateFlow<ReiAnixNativeFoldersUiState> = _nativeFoldersState.asStateFlow()
+    private var nativeFoldersJob: Job? = null
+
+    /** Refreshes the read-only SQLite folder view without changing folder ownership or SAF grants. */
+    fun refreshNativeFolders() {
+        nativeFoldersJob?.cancel()
+        _nativeFoldersState.value = ReiAnixNativeFoldersUiState(isLoading = true)
+        nativeFoldersJob = viewModelScope.launch {
+            val result = queryNativeFolders()
+            _nativeFoldersState.value = ReiAnixNativeFoldersUiState(
+                isLoading = false,
+                result = result,
+            )
+        }
+    }
 
     suspend fun queryNativeArtwork(
         animeId: Long,

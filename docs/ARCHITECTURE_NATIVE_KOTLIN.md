@@ -213,3 +213,7 @@ A ordem precisa ser revalidada a cada prompt. O objetivo é migrar uma responsab
 Antes de implementar a primeira fatia funcional da migração, selecionar a partir do próximo prompt (sem assumir antecipadamente qual será a tarefa) o domínio afetado e registrar: contratos de entrada/saída, estado persistido, invariantes, fontes canônicas, chamadas/consumidores Python/Kotlin, testes de paridade e estratégia para fallback/cutover. Não implementar a migração completa da biblioteca, banco ou player de uma só vez.
 
 A arquitetura desta etapa está documentada e ligada ao código existente. A migração integral não está concluída: Python/Flet/Flutter continuam sendo dependências operacionais e a persistência canônica continua em `LibraryStore`/SQLite no fluxo Python.
+
+## Prompt 10.1 — leitura SQLite consumida pela tela de Armazenamento
+
+A rota `ReiAnixStorageRoute` agora observa a consulta nativa de `folders` por meio de `ReiAnixLibraryViewModel.nativeFoldersState`. Essa seção é uma leitura de diagnóstico dos registros persistidos no SQLite canônico; ela não controla grants SAF nem substitui o estado operacional publicado pela ponte atual. Resultados vazios e falhas são estados distintos, e a ação de nova consulta cancela a consulta anterior. O catálogo e as telas Home/Library/Details/My List/Search continuam usando a projeção atual enquanto a conversão de todos os campos e contratos de domínio não for demonstrada. Não houve mudança no esquema nem no escritor Python.
