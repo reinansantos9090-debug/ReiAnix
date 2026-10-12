@@ -74,7 +74,18 @@ object NativeScanRunner {
                     )
                 }
                 val partial = result.optBoolean("partial")
-                val scanStatus = result.optString("status").uppercase()
+                val rawScanStatus = result.optString("status").uppercase()
+                val scanStatus = rawScanStatus.takeIf {
+                    it in setOf(
+                        SafScanner.STATUS_REVOKED,
+                        SafScanner.STATUS_UNAVAILABLE,
+                        SafScanner.STATUS_CANCELLED,
+                        SafScanner.STATUS_PARTIAL,
+                        SafScanner.STATUS_EMPTY_COMPLETE,
+                        SafScanner.STATUS_COMPLETED,
+                        SafScanner.STATUS_FAILED,
+                    )
+                } ?: SafScanner.STATUS_FAILED
                 val status = when (scanStatus) {
                     SafScanner.STATUS_REVOKED, SafScanner.STATUS_UNAVAILABLE -> NativeIndex.STATUS_UNAVAILABLE
                     SafScanner.STATUS_CANCELLED -> NativeIndex.STATUS_CANCELLED
@@ -108,7 +119,7 @@ object NativeScanRunner {
                     .put("source", "saf")
                     .put("scope", SafScanner.treeIdentity(treeUri).identity)
                     .put("volumeId", result.optString("volumeId"))
-                    .put("status", scanStatus.ifBlank { SafScanner.STATUS_COMPLETED })
+                    .put("status", scanStatus)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
                 NativeScanController.complete(scanId, scanStatus.ifBlank { SafScanner.STATUS_FAILED }, result)
             } catch (exception: CancellationException) {
