@@ -47,7 +47,7 @@ class SafFileOperations(private val context: Context) {
 
     suspend fun list(directoryUri: Uri): ResultOrItems = withContext(Dispatchers.IO) {
         synchronized(lockFor(directoryUri)) {
-            val directory = authorizedDocument(directoryUri)
+            val directory = authorizedDocument(directoryUri, requireWrite = false)
                 ?: return@synchronized ResultOrItems.Failed(failureFor(directoryUri))
             if (!directory.isDirectory) return@synchronized ResultOrItems.Failed(
                 Result.Failure(FailureKind.FAILURE, "O item informado não é uma pasta.", directoryUri)
@@ -77,14 +77,14 @@ class SafFileOperations(private val context: Context) {
     }
 
     suspend fun info(uri: Uri): Result = withContext(Dispatchers.IO) {
-        val document = authorizedDocument(uri) ?: return@withContext failureFor(uri)
+        val document = authorizedDocument(uri, requireWrite = false) ?: return@withContext failureFor(uri, requireWrite = false)
         Result.Success(document.uri, document.name.orEmpty(), document.isDirectory)
     }
 
     suspend fun createDirectory(parentUri: Uri, name: String): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(parentUri)) {
             val safeName = validateName(name) ?: return@synchronized Result.Failure(FailureKind.INVALID_NAME, "Nome de pasta inválido.", parentUri)
-            val parent = authorizedDocument(parentUri) ?: return@synchronized failureFor(parentUri)
+            val parent = authorizedDocument(parentUri, requireWrite = true) ?: return@synchronized failureFor(parentUri, requireWrite = true)
             if (!parent.isDirectory || !parent.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "A pasta de destino não permite escrita.", parentUri)
             try {
                 val existing = parent.findFile(safeName)
@@ -108,7 +108,7 @@ class SafFileOperations(private val context: Context) {
     suspend fun rename(uri: Uri, newName: String): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(uri)) {
             val safeName = validateName(newName) ?: return@synchronized Result.Failure(FailureKind.INVALID_NAME, "Nome inválido.", uri)
-            val source = authorizedDocument(uri) ?: return@synchronized failureFor(uri)
+            val source = authorizedDocument(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
             if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite renomeação.", uri)
             val parent = source.parentFile
                 ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não expõe a pasta pai deste item.", uri)
@@ -133,7 +133,7 @@ class SafFileOperations(private val context: Context) {
         val lockKey = listOf(uri.toString(), destinationDirectoryUri.toString()).sorted().joinToString("|")
         synchronized(lockFor(Uri.parse("content://reianix-lock/$lockKey"))) {
             val source = authorizedDocument(uri) ?: return@synchronized failureFor(uri)
-            val destination = authorizedDocument(destinationDirectoryUri) ?: return@synchronized failureFor(destinationDirectoryUri)
+            val destination = authorizedDocument(destinationDirectoryUri, requireWrite = true) ?: return@synchronized failureFor(destinationDirectoryUri, requireWrite = true)
             if (!destination.isDirectory || !destination.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O destino não permite escrita.", uri, destinationDirectoryUri)
             if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "A origem não permite movimentação.", uri, destinationDirectoryUri)
             if (source.uri == destination.uri) return@synchronized Result.Failure(FailureKind.FAILURE, "A origem e o destino são iguais.", uri, destinationDirectoryUri)
@@ -151,7 +151,11 @@ class SafFileOperations(private val context: Context) {
                     }.getOrNull()
                     if (movedUri != null) {
                         val moved = DocumentFile.fromSingleUri(context, movedUri)
-                        if (moved != null && moved.exists() && moved.name == name) return@synchronized Result.Success(moved.uri, name, moved.isDirectory)
+                        val locatedAtDestination = runCatching { destination.findFile(name) }.getOrNull()
+                        if (moved != null && moved.exists() && moved.name == name &&
+                            locatedAtDestination != null && locatedAtDestination.uri == moved.uri) {
+                            return@synchronized Result.Success(moved.uri, name, moved.isDirectory)
+                        }
                         return@synchronized Result.Failure(FailureKind.PARTIAL, "O provedor aceitou a movimentação, mas não confirmou o item resultante.", uri, destinationDirectoryUri, recoverable = true)
                     }
                 }
@@ -172,9 +176,20 @@ class SafFileOperations(private val context: Context) {
             try {
                 if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite exclusão.", uri)
                 if (!source.delete()) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor recusou a exclusão.", uri)
-                val stillExists = runCatching { DocumentFile.fromSingleUri(context, uri)?.exists() == true }.getOrDefault(true)
-                if (stillExists) Result.Failure(FailureKind.PARTIAL, "O provedor não confirmou a exclusão; o registro da biblioteca deve ser preservado.", uri, recoverable = true)
-                else Result.Success(uri, source.name.orEmpty(), source.isDirectory)
+                val afterDelete = try {
+                    DocumentFile.fromSingleUri(context, uri)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                if (afterDelete == null) {
+                    Result.Failure(FailureKind.PARTIAL, "O provedor não permitiu verificar o estado após a exclusão; preserve o registro até reconciliar.", uri, recoverable = true)
+                } else if (afterDelete.exists()) {
+                    Result.Failure(FailureKind.PARTIAL, "O provedor não confirmou a exclusão; o registro da biblioteca deve ser preservado.", uri, recoverable = true)
+                } else {
+                    Result.Success(uri, source.name.orEmpty(), source.isDirectory)
+                }
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a exclusão.", uri)
             } catch (e: CancellationException) {
@@ -190,37 +205,63 @@ class SafFileOperations(private val context: Context) {
         data class Failed(val result: Result.Failure) : ResultOrItems
     }
 
-    private fun authorizedDocument(uri: Uri): DocumentFile? {
+    private data class AuthorizedTarget(val treeUri: Uri, val document: DocumentFile)
+
+    private fun authorizedDocument(uri: Uri, requireWrite: Boolean): DocumentFile? =
+        authorizedTarget(uri, requireWrite)?.document
+
+    private fun authorizedTarget(uri: Uri, requireWrite: Boolean): AuthorizedTarget? {
         if (uri.scheme != "content" || uri.authority.isNullOrBlank()) return null
-        val single = DocumentFile.fromSingleUri(context, uri)
-        if (single != null && single.exists() && single.canRead()) {
-            if (hasPersistedAccess(uri)) return single
+        val isTree = runCatching { DocumentsContract.isTreeUri(uri) }.getOrDefault(false)
+        val isDocument = runCatching { DocumentsContract.isDocumentUri(context, uri) }.getOrDefault(false)
+        if (!isTree && !isDocument) return null
+
+        val grants = resolver.persistedUriPermissions.filter { grant ->
+            runCatching { DocumentsContract.isTreeUri(grant.uri) }.getOrDefault(false) &&
+                grant.isReadPermission &&
+                (!requireWrite || grant.isWritePermission)
         }
-        val treePermission = resolver.persistedUriPermissions.firstOrNull { permission ->
-            permission.isReadPermission && permission.uri.authority == uri.authority
-        } ?: return null
-        if (!SafScanner.isAuthorizedDocument(context, uri)) return null
-        return DocumentFile.fromSingleUri(context, uri)
-            ?.takeIf { it.exists() && it.canRead() }
-            ?: DocumentFile.fromTreeUri(context, treePermission.uri)
-                ?.takeIf { it.uri == uri && it.exists() && it.canRead() }
+        for (grant in grants) {
+            val candidateUri = if (isTree) {
+                if (grant.uri != uri) continue
+                runCatching {
+                    DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
+                }.getOrNull() ?: continue
+            } else {
+                if (!SafScanner.isAuthorizedDocumentForTree(context, grant.uri, uri)) continue
+                runCatching {
+                    DocumentsContract.buildDocumentUriUsingTree(grant.uri, DocumentsContract.getDocumentId(uri))
+                }.getOrNull() ?: continue
+            }
+            val document = if (isTree) {
+                DocumentFile.fromTreeUri(context, uri)
+            } else {
+                DocumentFile.fromSingleUri(context, candidateUri)
+            } ?: continue
+            if (!document.exists() || !document.canRead()) continue
+            if (requireWrite && !document.canWrite()) continue
+            return AuthorizedTarget(grant.uri, document)
+        }
+        return null
     }
 
-    private fun hasPersistedAccess(uri: Uri): Boolean =
-        resolver.persistedUriPermissions.any { p ->
-            (p.isReadPermission || p.isWritePermission) &&
-                (p.uri == uri || SafScanner.isAuthorizedDocument(context, uri))
+    private fun failureFor(uri: Uri, requireWrite: Boolean): Result.Failure {
+        if (uri.scheme != "content" || uri.authority.isNullOrBlank()) {
+            return Result.Failure(FailureKind.UNSUPPORTED, "Somente URIs SAF content:// válidas são aceitas.", uri)
         }
-
-    private fun failureFor(uri: Uri): Result.Failure {
-        val permissionExists = resolver.persistedUriPermissions.any { it.uri.authority == uri.authority }
-        val exists = runCatching { DocumentFile.fromSingleUri(context, uri)?.exists() == true }.getOrDefault(false)
-        return when {
-            uri.scheme != "content" -> Result.Failure(FailureKind.UNSUPPORTED, "Somente URIs content:// são aceitas.", uri)
-            !permissionExists -> Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão SAF não existe ou foi revogada.", uri)
-            !exists -> Result.Failure(FailureKind.NOT_FOUND, "O item não existe ou não está acessível.", uri)
-            else -> Result.Failure(FailureKind.PERMISSION_DENIED, "O item não está dentro de uma árvore SAF autorizada.", uri)
+        val readTarget = authorizedTarget(uri, requireWrite = false)
+        if (readTarget == null) {
+            val exists = runCatching { DocumentFile.fromSingleUri(context, uri)?.exists() == true }.getOrDefault(false)
+            return if (!exists) {
+                Result.Failure(FailureKind.NOT_FOUND, "O item não existe ou não está acessível pela URI informada.", uri)
+            } else {
+                Result.Failure(FailureKind.PERMISSION_DENIED, "A URI não pertence a uma árvore SAF autorizada ou a concessão foi revogada.", uri)
+            }
         }
+        if (requireWrite && authorizedTarget(uri, requireWrite = true) == null) {
+            return Result.Failure(FailureKind.PERMISSION_DENIED, "A concessão SAF atual não autoriza escrita nesta árvore/documento.", uri)
+        }
+        return Result.Failure(FailureKind.FAILURE, "O provedor não disponibilizou o documento para a operação.", uri)
     }
 
     private fun resolveAfterMutation(oldUri: Uri, parent: DocumentFile, name: String): DocumentFile? {
@@ -247,6 +288,7 @@ class SafFileOperations(private val context: Context) {
     private fun safeMessage(error: Exception): String =
         when (error) {
             is CancellationException -> "Operação cancelada."
+            is SecurityException -> "O provedor negou o acesso solicitado."
             is IOException -> "Falha de leitura ou escrita no provedor."
             else -> error.message?.take(180)?.takeIf(String::isNotBlank) ?: "Falha operacional do provedor."
         }
