@@ -10,6 +10,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * AniList domain integration used by native ViewModels. The canonical SQLite
@@ -22,6 +23,8 @@ class ReiAnixAniListIntegrationService(
     private val library: ReiAnixSqliteLibraryRepository,
     private val settings: ReiAnixSqliteSettingsRepository,
 ) {
+    private val autoMatchAttempts = ConcurrentHashMap<Long, Long>()
+
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
         library = ReiAnixSqliteLibraryRepository(context),
@@ -88,10 +91,19 @@ class ReiAnixAniListIntegrationService(
         if (local.anilistId != null) {
             return AniListResult.Success(AniListAutoMatchResult.AlreadyMatched(local.anilistId))
         }
+        val now = System.currentTimeMillis()
+        val previousAttempt = autoMatchAttempts[animeId]
+        if (previousAttempt != null && now - previousAttempt < AUTO_MATCH_COOLDOWN_MS) {
+            return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
+        }
+        autoMatchAttempts[animeId] = now
         val query = local.title.takeIf { it.isNotBlank() } ?: local.lookupTitle
         val results = when (val result = client.searchAnime(query, 10)) {
             is AniListResult.Success -> result.value
-            is AniListResult.Failure -> return result
+            is AniListResult.Failure -> {
+                autoMatchAttempts.remove(animeId)
+                return result
+            }
         }
         if (results.isEmpty()) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         val localTitles = localTitles(local).map(::normalize).filter(String::isNotBlank).toSet()
@@ -148,6 +160,7 @@ class ReiAnixAniListIntegrationService(
                     season = remote.season,
                     status = remote.status,
                     episodesCount = remote.episodes,
+                    score = remote.averageScore,
                     format = remote.format,
                     studio = remote.studios.takeIf { it.isNotEmpty() }?.joinToString(", "),
                     metadataFetchedAt = System.currentTimeMillis() / 1000.0,
@@ -201,12 +214,14 @@ class ReiAnixAniListIntegrationService(
     companion object {
         const val AUTO_MATCH_MIN_SCORE = 0.88
         const val AUTO_MATCH_MIN_MARGIN = 0.12
+        const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     }
 }
 
 sealed interface AniListAutoMatchResult {
     data object Disabled : AniListAutoMatchResult
     data object NoMatch : AniListAutoMatchResult
+    data object RecentlyAttempted : AniListAutoMatchResult
     data class AlreadyMatched(val anilistId: Long) : AniListAutoMatchResult
     data class AlreadyManuallyMatched(val anilistId: Long) : AniListAutoMatchResult
     data class Matched(val anime: ReiAnixAnimeRecord, val remote: AniListAnime) : AniListAutoMatchResult
