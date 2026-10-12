@@ -23,6 +23,8 @@ class ReiAnixAniListClientTest {
                 "format": "TV",
                 "episodes": 25,
                 "status": "FINISHED",
+                "averageScore": 84,
+                "duration": 24,
                 "season": "SPRING",
                 "seasonYear": 2013,
                 "genres": ["Action", "Drama"],
@@ -39,6 +41,8 @@ class ReiAnixAniListClientTest {
         assertEquals("Attack on Titan", anime.preferredTitle)
         assertTrue(anime.synonyms.contains("Shingeki no Kyojin"))
         assertEquals(25, anime.episodes)
+        assertEquals(84, anime.averageScore)
+        assertEquals(24, anime.durationMinutes)
         assertEquals(listOf("Action", "Drama"), anime.genres)
         assertEquals("https://img.example/cover.jpg", anime.coverLargeUrl)
         assertEquals(listOf("Wit Studio"), anime.studios)
