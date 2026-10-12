@@ -35,11 +35,15 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -107,6 +111,8 @@ import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListUiState
+import com.reiflix.reiflix_local.data.anilist.AniListAnime
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -137,6 +143,8 @@ fun ReiAnixDetailsRoute(
     val state by detailsStateFlow.collectAsStateWithLifecycle(
         initialValue = ReiAnixDetailsUiState(),
     )
+    val aniListState by viewModel.aniListUiState.collectAsStateWithLifecycle()
+    var showAniListDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
 
     // Guard only the short navigation hand-off. NavHost/launchSingleTop remains
     // the canonical navigation policy, while this prevents a double tap from
@@ -193,7 +201,19 @@ fun ReiAnixDetailsRoute(
         onToggleFavorite = viewModel::toggleFavorite,
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
         onSelectSource = viewModel::selectSafTree,
+        onManageAniList = { showAniListDialog = true },
     )
+    if (showAniListDialog) {
+        AniListAssociationDialog(
+            state = aniListState,
+            onSearch = viewModel::searchAniList,
+            onAssociate = { selectedId ->
+                viewModel.associateAniListManually(canonicalId, selectedId)
+                showAniListDialog = false
+            },
+            onDismiss = { showAniListDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -206,6 +226,7 @@ fun ReiAnixDetailsScreen(
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
     onSelectSource: () -> Unit = onRetry,
+    onManageAniList: () -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -226,6 +247,7 @@ fun ReiAnixDetailsScreen(
                         onWatch = onWatch,
                         onToggleFavorite = onToggleFavorite,
                         onSetEpisodeWatched = onSetEpisodeWatched,
+                        onManageAniList = onManageAniList,
                     )
                 } ?: ReiAnixRecoverableErrorState(
                     title = "Detalhes indisponíveis",
@@ -377,6 +399,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
+    onManageAniList: () -> Unit,
 ) {
     val firstSeasonKey = anime.seasons.firstOrNull()?.stableKey
     var savedSeasonKey by rememberSaveable(anime.id) {
@@ -461,6 +484,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
                 onSetEpisodeWatched = onSetEpisodeWatched,
+                onManageAniList = onManageAniList,
             )
         }
 
@@ -670,6 +694,7 @@ private fun DetailsHero(
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
+    onManageAniList: () -> Unit,
 ) {
     val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
     val responsive = LocalReiAnixResponsiveMetrics.current
@@ -722,6 +747,13 @@ private fun DetailsHero(
                             onClick = {
                                 menuExpanded.value = false
                                 onRefresh()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Associar ao AniList") },
+                            onClick = {
+                                menuExpanded.value = false
+                                onManageAniList()
                             },
                         )
                     }
@@ -1329,4 +1361,76 @@ private fun seasonLabel(raw: String): String = when (raw.trim().uppercase(Locale
     "SUMMER" -> "Verão"
     "FALL" -> "Outono"
     else -> raw.trim()
+}
+
+@Composable
+private fun AniListAssociationDialog(
+    state: ReiAnixAniListUiState,
+    onSearch: (String) -> Unit,
+    onAssociate: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Associar anime ao AniList") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Título do anime") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        enabled = query.isNotBlank() && !state.isLoading,
+                        onClick = { onSearch(query) },
+                    ) { Text("Pesquisar") }
+                    if (state.isLoading) CircularProgressIndicator(modifier = Modifier.size(ReiAnixTokens.Spacing.lg))
+                }
+                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                state.lastAssociationMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                if (!state.isLoading && state.query.isNotBlank() && state.results.isEmpty() && state.error == null) {
+                    Text("Nenhum resultado encontrado.")
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(280.dp),
+                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                ) {
+                    items(state.results, key = { it.id }) { anime ->
+                        AniListCandidateRow(anime = anime, onSelect = { onAssociate(anime.id) })
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fechar") } },
+    )
+}
+
+@Composable
+private fun AniListCandidateRow(
+    anime: AniListAnime,
+    onSelect: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onSelect),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = ReiAnixTokens.Shapes.small,
+    ) {
+        Column(
+            modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+        ) {
+            Text(anime.preferredTitle, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val facts = listOfNotNull(anime.seasonYear?.toString(), anime.format, anime.episodes?.let { "$it episódios" })
+            if (facts.isNotEmpty()) Text(facts.joinToString(" • "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("AniList ID: ${anime.id}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
