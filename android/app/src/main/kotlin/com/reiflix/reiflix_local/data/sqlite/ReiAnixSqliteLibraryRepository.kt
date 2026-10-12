@@ -133,7 +133,7 @@ class ReiAnixSqliteLibraryRepository(
                     "COALESCE(a.season,'') LIKE ? COLLATE NOCASE",
                     "COALESCE(a.status,'') LIKE ? COLLATE NOCASE",
                     "COALESCE(a.format,'') LIKE ? COLLATE NOCASE",
-                    "EXISTS (SELECT 1 FROM episodes es WHERE es.anime_id=a.id AND (COALESCE(es.episode_title,'') LIKE ? COLLATE NOCASE OR (COALESCE(es.file_name,'') || ' episode ' || COALESCE(CAST(es.number AS TEXT),'') || ' ep ' || COALESCE(CAST(es.number AS TEXT),'') || ' season ' || CAST(es.season AS TEXT) || ' s' || printf('%02d',es.season) || 'e' || printf('%02d',CAST(COALESCE(es.number,0) AS INTEGER))) LIKE ? COLLATE NOCASE))",
+                    "EXISTS (SELECT 1 FROM episodes es WHERE es.anime_id=a.id AND (COALESCE(es.episode_title,'') LIKE ? COLLATE NOCASE OR (COALESCE(es.file_name,'') || ' ' || COALESCE(es.source_folder,'') || ' episode ' || COALESCE(CAST(es.number AS TEXT),'') || ' ep ' || COALESCE(CAST(es.number AS TEXT),'') || ' season ' || CAST(es.season AS TEXT) || ' s' || printf('%02d',es.season) || 'e' || printf('%02d',CAST(COALESCE(es.number,0) AS INTEGER))) LIKE ? COLLATE NOCASE))",
                     "EXISTS (SELECT 1 FROM anime_genres ags JOIN genres gs ON gs.id=ags.genre_id LEFT JOIN genre_aliases gas ON gas.genre_id=gs.id WHERE ags.anime_id=a.id AND (gs.canonical_name LIKE ? COLLATE NOCASE OR COALESCE(gas.alias,'') LIKE ? COLLATE NOCASE))",
                 )
                 repeat(15) { candidateArgs += "%$variant%" }
@@ -146,13 +146,13 @@ class ReiAnixSqliteLibraryRepository(
         val sort = when (sortLabel?.trim()) {
             "Nome A-Z" -> "a.title COLLATE NOCASE ASC, a.id ASC"
             "Nome Z-A" -> "a.title COLLATE NOCASE DESC, a.id DESC"
-            "Assistidos recentemente" -> "(SELECT MAX(e.last_played_at) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Progresso" -> "(SELECT AVG(CASE WHEN COALESCE(e.missing,0)=0 AND COALESCE(e.duration,0)>0 THEN MIN(1.0, MAX(COALESCE(e.progress,0),0)/e.duration) ELSE 0 END) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Assistidos recentemente" -> "COALESCE((SELECT MAX(e.last_played_at) FROM episodes e WHERE e.anime_id=a.id),0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Progresso" -> "COALESCE((SELECT AVG(CASE WHEN COALESCE(e.missing,0)=0 AND COALESCE(e.duration,0)>0 THEN MIN(1.0, MAX(COALESCE(e.progress,0),0)/e.duration) ELSE 0 END) FROM episodes e WHERE e.anime_id=a.id),0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Episódio" -> "CASE WHEN (SELECT e.number FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available' ORDER BY e.season ASC, e.number ASC, e.id ASC LIMIT 1) IS NULL THEN 1 ELSE 0 END ASC, (SELECT e.number FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available' ORDER BY e.season ASC, e.number ASC, e.id ASC LIMIT 1) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Temporada + episódio" -> "CASE WHEN (SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available') IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available') ASC, CASE WHEN (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available') IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available') ASC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Modificação" -> "(SELECT MAX(e.modified_at) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Duração" -> "(SELECT SUM(COALESCE(e.duration,0)) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Tamanho" -> "(SELECT SUM(COALESCE(e.file_size,0)) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Modificação" -> "COALESCE((SELECT MAX(e.modified_at) FROM episodes e WHERE e.anime_id=a.id),0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Duração" -> "COALESCE((SELECT SUM(COALESCE(e.duration,0)) FROM episodes e WHERE e.anime_id=a.id),0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Tamanho" -> "COALESCE((SELECT SUM(COALESCE(e.file_size,0)) FROM episodes e WHERE e.anime_id=a.id),0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Favoritos primeiro" -> "COALESCE(a.favorite,0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Fixados primeiro" -> "COALESCE(a.is_pinned,0) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             else -> "a.added_at DESC, a.title COLLATE NOCASE ASC, a.id ASC"
@@ -162,7 +162,7 @@ class ReiAnixSqliteLibraryRepository(
             SELECT a.id, a.title, a.romaji, a.english, a.native, a.aliases, a.description,
                    a.cover_url, a.cover_cache, a.banner_url, a.genres, a.year, a.season,
                    a.status, a.format, a.studio, a.user_tags, a.personal_note, a.lookup_title,
-                   COALESCE((SELECT GROUP_CONCAT(COALESCE(e.episode_title,'') || ' ' || e.file_name ||
+                   COALESCE((SELECT GROUP_CONCAT(COALESCE(e.episode_title,'') || ' ' || e.file_name || ' ' || COALESCE(e.source_folder,'') ||
                              ' episode ' || COALESCE(CAST(e.number AS TEXT),'') ||
                              ' ep ' || COALESCE(CAST(e.number AS TEXT),'') ||
                              ' season ' || CAST(e.season AS TEXT) ||
