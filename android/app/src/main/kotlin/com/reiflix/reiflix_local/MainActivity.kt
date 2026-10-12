@@ -2831,6 +2831,7 @@ class MainActivity : FlutterFragmentActivity() {
             // Do not set a MIME type/category: ACTION_OPEN_DOCUMENT_TREE is the directory contract.
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
             )
