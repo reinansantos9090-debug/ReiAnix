@@ -76,7 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
@@ -148,7 +148,7 @@ fun ReiAnixDetailsRoute(
     val state by detailsStateFlow.collectAsStateWithLifecycle(
         initialValue = ReiAnixDetailsUiState(),
     )
-    val aniListViewModel: ReiAnixAniListViewModel = viewModel(
+    val aniListViewModel: ReiAnixAniListViewModel = composeViewModel(
         factory = ReiAnixAniListViewModelFactory(LocalContext.current),
     )
     val aniListState by aniListViewModel.uiState.collectAsStateWithLifecycle()
