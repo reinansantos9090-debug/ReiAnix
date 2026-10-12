@@ -1817,13 +1817,23 @@ class LibraryStore:
         old = urlparse(old_uri)
         new = urlparse(new_uri)
         if (old.scheme != "content" or new.scheme != "content" or
-                not old.netloc or old.netloc.casefold() != new.netloc.casefold() or
-                not name or old_uri == new_uri):
-            if old_uri == new_uri and old_uri:
-                with self._conn() as c:
-                    row = c.execute("SELECT id FROM episodes WHERE path=?", (new_uri,)).fetchone()
-                return {"status": "already_reconciled" if row else "no_match",
-                        "episode_id": int(row["id"]) if row else None}
+                not old.netloc or not name):
+            return {"status": "rejected", "episode_id": None}
+        if old_uri == new_uri:
+            with self._conn() as c:
+                row = c.execute("SELECT id,file_name FROM episodes WHERE path=?", (new_uri,)).fetchone()
+                if row is None:
+                    return {"status": "no_match", "episode_id": None}
+                episode_id = int(row["id"])
+                if str(row["file_name"] or "") == name:
+                    return {"status": "already_reconciled", "episode_id": episode_id}
+                c.execute(
+                    """UPDATE episodes SET file_name=?,missing=0,availability_state='available'
+                       WHERE id=? AND path=?""",
+                    (name, episode_id, new_uri),
+                )
+                return {"status": "reconciled", "episode_id": episode_id}
+        if old.netloc.casefold() != new.netloc.casefold():
             return {"status": "rejected", "episode_id": None}
 
         now = time.time()
