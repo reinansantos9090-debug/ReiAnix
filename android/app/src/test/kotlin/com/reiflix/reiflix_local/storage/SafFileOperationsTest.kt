@@ -1,20 +1,20 @@
 package com.reiflix.reiflix_local.storage
 
 import android.net.Uri
-import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class SafFileOperationsTest {
     private val operations by lazy {
-        SafFileOperations(ApplicationProvider.getApplicationContext())
+        SafFileOperations(RuntimeEnvironment.getApplication())
     }
 
     @Test
