@@ -522,6 +522,34 @@ object NativeIndex {
             .put("committedFile", if (published) committed.absolutePath else "")
     }
 
+    /**
+     * Returns only the published snapshot for a proven complete generation.
+     * Staging/partial generations are deliberately not exposed as an inventory.
+     */
+    fun committedDocuments(context: Context, source: String, scopeKey: String): JSONArray? = synchronized(this) {
+        val state = read(context)
+        val scope = scopes(state).optJSONObject(scopeKey) ?: return@synchronized null
+        if (scope.optString("source") != source || scope.optString("scopeKey") != scopeKey) {
+            return@synchronized null
+        }
+        val committedStatus = scope.optString("committedStatus").trim()
+        if (!isCompleteStatus(committedStatus)) return@synchronized null
+        val expectedCount = committedSnapshotCount(context, scope, committedStatus) ?: return@synchronized null
+        val committed = committedFileFromScope(context, scope) ?: return@synchronized null
+        val documents = JSONArray()
+        val readResult = runCatching {
+            BufferedReader(InputStreamReader(FileInputStream(committed), Charsets.UTF_8)).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isBlank()) continue
+                    documents.put(JSONObject(line))
+                }
+            }
+        }
+        if (readResult.isFailure || documents.length() != expectedCount) return@synchronized null
+        documents
+    }
+
     fun prepare(context: Context, source: String, scopeKey: String, input: JSONArray, complete: Boolean,
                 metadata: JSONObject = JSONObject(), generation: Long = 0L, status: String = ""): NativePrepared = synchronized(this) {
         val state = read(context)
