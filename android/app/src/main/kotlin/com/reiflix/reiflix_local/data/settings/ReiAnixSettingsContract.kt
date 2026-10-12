@@ -60,7 +60,7 @@ object ReiAnixSettingsContract {
     private fun bool(key: String, default: Boolean) =
         ReiAnixSettingDefinition(key, ReiAnixSettingKind.BOOLEAN, default.toString())
     private fun int(key: String, default: Int, vararg choices: Int) =
-        ReiAnixSettingDefinition(key, ReiAnixSettingKind.INTEGER, default.toString(), choices.map(Int::toString).toSet())
+        ReiAnixSettingDefinition(key, ReiAnixSettingKind.INTEGER, default.toString(), choices.map { it.toString() }.toSet())
     private fun decimal(key: String, default: String, vararg choices: String) =
         ReiAnixSettingDefinition(key, ReiAnixSettingKind.DECIMAL, default, choices.toSet())
     private fun enum(key: String, default: String, vararg choices: String) =
