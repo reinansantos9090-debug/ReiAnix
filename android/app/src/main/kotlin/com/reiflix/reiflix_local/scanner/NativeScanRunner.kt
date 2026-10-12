@@ -138,6 +138,7 @@ object NativeScanRunner {
                                         location = uri,
                                         fileName = name,
                                         scopeLocation = documentId,
+                                        scopeVerified = documentId != null,
                                         animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
                                         season = season,
                                         episodeNumber = episodeNumber,

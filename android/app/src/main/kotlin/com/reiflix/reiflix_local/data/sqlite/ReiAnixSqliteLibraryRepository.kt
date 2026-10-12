@@ -268,7 +268,7 @@ class ReiAnixSqliteLibraryRepository(
                 val inputIdentities = hashSetOf<String>()
 
                 for (item in snapshot.items) {
-                    if (!(item.scopeLocation ?: item.location).isWithinScope(snapshot.scopeRoot)) {
+                    if (!item.scopeVerified && !(item.scopeLocation ?: item.location).isWithinScope(snapshot.scopeRoot)) {
                         rejected++
                         invalidScopeEvidence = true
                         continue

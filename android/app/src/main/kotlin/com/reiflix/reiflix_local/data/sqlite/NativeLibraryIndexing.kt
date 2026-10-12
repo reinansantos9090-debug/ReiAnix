@@ -24,7 +24,7 @@ data class NativeLibraryScanSnapshot(
                 failedLocations.isEmpty() && unprocessedLocations.isEmpty() && authorizationValid &&
                 complete && !cancelled &&
                 terminalStatus in setOf("COMPLETED", "EMPTY_COMPLETE", "SUCCEEDED") &&
-                items.all { (it.scopeLocation ?: it.location).isWithinScope(scopeRoot) }
+                items.all { it.scopeVerified || (it.scopeLocation ?: it.location).isWithinScope(scopeRoot) }
         }
 }
 
@@ -32,6 +32,8 @@ data class NativeDiscoveredMedia(
     val location: String,
     val fileName: String,
     val scopeLocation: String? = null,
+    /** True only when the scanner/provider validated this document against the granted tree. */
+    val scopeVerified: Boolean = false,
     val animeTitle: String? = null,
     val season: Int? = null,
     val episodeNumber: Double? = null,
