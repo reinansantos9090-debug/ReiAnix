@@ -85,6 +85,9 @@ class ReiAnixAniListIntegrationService(
         if (local.anilistMatchManual == true && local.anilistId != null) {
             return AniListResult.Success(AniListAutoMatchResult.AlreadyManuallyMatched(local.anilistId))
         }
+        if (local.anilistId != null) {
+            return AniListResult.Success(AniListAutoMatchResult.AlreadyMatched(local.anilistId))
+        }
         val query = local.title.takeIf { it.isNotBlank() } ?: local.lookupTitle
         val results = when (val result = client.searchAnime(query, 10)) {
             is AniListResult.Success -> result.value
@@ -124,6 +127,9 @@ class ReiAnixAniListIntegrationService(
         margin: Double?,
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
+            // Artwork preference controls whether the remote URL is made eligible
+            // for the existing artwork pipeline. This service never downloads images.
+            val artworkEnabled = settingEnabled("artwork.enabled", defaultValue = true)
             // Apply editorial fields first. If that write fails, the association
             // remains unchanged. Null/blank remote fields are intentionally no-ops.
             library.updateAnimeMetadata(
@@ -135,7 +141,7 @@ class ReiAnixAniListIntegrationService(
                     nativeTitle = remote.titleNative,
                     aliasesJson = remote.synonyms.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     description = remote.description,
-                    coverUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl,
+                    coverUrl = if (artworkEnabled) remote.coverExtraLargeUrl ?: remote.coverLargeUrl else null,
                     bannerUrl = remote.bannerUrl,
                     genresJson = remote.genres.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     year = remote.seasonYear,
@@ -201,6 +207,7 @@ class ReiAnixAniListIntegrationService(
 sealed interface AniListAutoMatchResult {
     data object Disabled : AniListAutoMatchResult
     data object NoMatch : AniListAutoMatchResult
+    data class AlreadyMatched(val anilistId: Long) : AniListAutoMatchResult
     data class AlreadyManuallyMatched(val anilistId: Long) : AniListAutoMatchResult
     data class Matched(val anime: ReiAnixAnimeRecord, val remote: AniListAnime) : AniListAutoMatchResult
     data class Ambiguous(val candidates: List<AniListAnime>) : AniListAutoMatchResult
