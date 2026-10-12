@@ -69,6 +69,21 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("withContext(Dispatchers.IO)", library)
 
 
+    def test_saf_scan_has_one_persistence_writer_and_indexes_partial_positive_results(self):
+        publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
+        runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        native_index = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn('nativeLibraryIndexOwner", source == NativeIndex.SOURCE_SAF', publisher)
+        self.assertIn('payload.get("nativeLibraryIndexOwner") is True', main)
+        self.assertIn("NATIVE_KOTLIN_INDEXER_OWNS_PERSISTENCE", main)
+        self.assertIn("NativeIndex.committedDocuments", runner)
+        self.assertIn("NativeIndex.stagedDocuments", runner)
+        self.assertIn("indexDiscoveredMedia", runner)
+        self.assertIn("fun stagedDocuments(", native_index)
+        self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
+
     def test_metadata_patch_updates_catalog_fields_without_overwriting_user_state(self):
         library = LIBRARY.read_text(encoding="utf-8")
         method_start = library.index("suspend fun updateAnimeMetadata(")

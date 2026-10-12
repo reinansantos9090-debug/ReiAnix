@@ -507,7 +507,7 @@ object NativeIndex {
                 .put("committedGenerationId", sourceKey)
         }
         write(context, state)
-        cleanupUnreferencedBatchFiles(context, state)
+        if (published) cleanupUnreferencedBatchFiles(context, state)
         JSONObject()
             .put("generation", effectiveGeneration)
             .put("generationId", sourceKey)
@@ -520,6 +520,46 @@ object NativeIndex {
             .put("duplicates", counts.optInt("duplicates", 0))
             .put("elapsedMs", now - scope.optLong("startedAt", now))
             .put("committedFile", if (published) committed.absolutePath else "")
+    }
+
+    /**
+     * Reads only this generation's staging file after an incomplete scan has
+     * finished. It is positive evidence for individual files, never an inventory
+     * and therefore must never be used to reconcile missing rows.
+     */
+    fun stagedDocuments(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+    ): JSONArray? = synchronized(this) {
+        if (generation <= 0L) return@synchronized null
+        val state = read(context)
+        val scope = scopes(state).optJSONObject(scopeKey) ?: return@synchronized null
+        if (scope.optString("source") != source ||
+            scope.optString("scopeKey") != scopeKey ||
+            scope.optLong("generation", 0L) != generation ||
+            isCompleteStatus(scope.optString("status"))
+        ) return@synchronized null
+        val staging = stagingFile(context, source, scopeKey, generation)
+        val directory = runCatching { batchDirectory(context).canonicalFile }.getOrNull()
+            ?: return@synchronized null
+        val target = runCatching { staging.canonicalFile }.getOrNull()
+            ?: return@synchronized null
+        if (target.parentFile != directory || !target.name.endsWith(".ndjson.tmp") || !target.isFile) {
+            return@synchronized null
+        }
+        val documents = JSONArray()
+        val readable = runCatching {
+            BufferedReader(InputStreamReader(FileInputStream(target), Charsets.UTF_8)).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isBlank()) continue
+                    documents.put(JSONObject(line))
+                }
+            }
+        }.isSuccess
+        if (!readable) null else documents
     }
 
     /**

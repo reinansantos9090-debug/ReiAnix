@@ -111,18 +111,22 @@ object NativeScanRunner {
                 )
                 var nativeIndexingFailed = false
                 var nativeIndexingStatus = "SKIPPED_INCOMPLETE"
-                if (status == NativeIndex.STATUS_COMPLETED || status == NativeIndex.STATUS_EMPTY_COMPLETE) {
+                {
                     try {
                         val treeIdentity = SafScanner.treeIdentity(treeUri)
-                        val committedDocuments = NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey)
-                            ?: throw IllegalStateException("No verified committed snapshot is available for this scan.")
+                        val complete = status == NativeIndex.STATUS_COMPLETED || status == NativeIndex.STATUS_EMPTY_COMPLETE
+                        val scanDocuments = if (complete) {
+                            NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey)
+                        } else {
+                            NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
+                        } ?: throw IllegalStateException("No verified scan snapshot is available for indexing.")
                         val errors = result.optJSONObject("stats")?.optJSONArray("errors")
                         val failedLocations = if (errors != null && errors.length() > 0) {
                             buildSet { for (i in 0 until errors.length()) add(errors.optString(i).ifBlank { "unknown-location" }) }
                         } else emptySet()
                         val discovered = buildList {
-                            for (i in 0 until committedDocuments.length()) {
-                                val document = committedDocuments.optJSONObject(i) ?: continue
+                            for (i in 0 until scanDocuments.length()) {
+                                val document = scanDocuments.optJSONObject(i) ?: continue
                                 val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
                                 val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
                                 val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
@@ -164,7 +168,6 @@ object NativeScanRunner {
                         val authorizationValid = authorization.optString("status") in setOf(
                             SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE,
                         )
-                        val complete = status == NativeIndex.STATUS_COMPLETED || status == NativeIndex.STATUS_EMPTY_COMPLETE
                         val indexReport = ReiAnixSqliteLibraryRepository(appContext).indexDiscoveredMedia(
                             NativeLibraryScanSnapshot(
                                 operationId = scanId,
@@ -182,7 +185,7 @@ object NativeScanRunner {
                             )
                         )
                         nativeIndexingStatus = if (indexReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL"
-                        if (!indexReport.reconciliationAuthorized) nativeIndexingFailed = true
+                        if (complete && !indexReport.reconciliationAuthorized) nativeIndexingFailed = true
                         result.put("nativeLibraryIndex", JSONObject()
                             .put("status", nativeIndexingStatus)
                             .put("inserted", indexReport.inserted)
@@ -224,9 +227,9 @@ object NativeScanRunner {
                     .put("source", "saf")
                     .put("scope", SafScanner.treeIdentity(treeUri).identity)
                     .put("volumeId", result.optString("volumeId"))
-                    .put("status", if (nativeIndexingFailed) SafScanner.STATUS_PARTIAL else scanStatus)
+                    .put("status", if (nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) SafScanner.STATUS_PARTIAL else scanStatus)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
-                NativeScanController.complete(scanId, if (nativeIndexingFailed) SafScanner.STATUS_PARTIAL else scanStatus.ifBlank { SafScanner.STATUS_FAILED }, result)
+                NativeScanController.complete(scanId, if (nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) SafScanner.STATUS_PARTIAL else scanStatus.ifBlank { SafScanner.STATUS_FAILED }, result)
             } catch (exception: CancellationException) {
                 NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
                 throw exception
