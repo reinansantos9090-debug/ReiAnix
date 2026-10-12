@@ -178,7 +178,7 @@ class DiscoveredMediaMetadataTest {
         assertFalse(availability.getBoolean("mimeTypeAvailable"))
         assertTrue(availability.getBoolean("sizeAvailable"))
         assertEquals("enumerated", availability.getString("accessState"))
-        assertEquals("video/x-matroska", document.getString("mimeType"))
+        assertTrue(document.isNull("mimeType"))
     }
 
     @Test
