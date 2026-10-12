@@ -32,7 +32,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 val raw = cursor.optionalString("metadata_manual_fields") ?: "[]"
                 val manualFields = try {
                     val parsed = JSONArray(raw)
-                    buildSet {
+                    buildSet<String> {
                         for (index in 0 until parsed.length()) {
                             val field = parsed.get(index)
                             if (field !is String) throw IllegalStateException("Manual metadata ownership is invalid.")
@@ -71,6 +71,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             patch.score?.let { if ("score" !in protectedFields) values.put("score", it) }
             patch.format?.takeIf(String::isNotBlank)?.let { if ("format" !in protectedFields) values.put("format", it) }
             patch.studio?.takeIf(String::isNotBlank)?.let { if ("studio" !in protectedFields) values.put("studio", it) }
+            val remoteMetadataFieldsApplied = values.size() > 0
             patch.metadataFetchedAt?.let { values.put("metadata_fetched_at", it) }
 
             values.put("anilist_id", anilistId)
@@ -78,10 +79,18 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             values.put("anilist_match_status", if (manual) "manual" else "matched")
             if (score != null) values.put("anilist_match_score", score)
             if (margin != null) values.put("anilist_match_margin", margin)
-            values.put("metadata_source", "anilist")
-            values.put("metadata_status", "available")
-            values.put("metadata_confidence", "high")
-            values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
+
+            // A manually curated metadata record owns its source/status/confidence
+            // contract even when the user explicitly changes the AniList link.
+            // Do not make a metadata refresh look successful when every catalog
+            // field was protected by metadata_manual_fields.
+            val metadataIsManual = current.metadataSource == "manual" || current.metadataStatus == "manual"
+            if (remoteMetadataFieldsApplied && !metadataIsManual) {
+                values.put("metadata_source", "anilist")
+                values.put("metadata_status", "available")
+                values.put("metadata_confidence", "high")
+                values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
+            }
             connection.update("anime", values, "id = ?", arrayOf(patch.animeId.toString()))
             connection.rawQuery(
                 "SELECT * FROM anime WHERE id = ? LIMIT 1",
