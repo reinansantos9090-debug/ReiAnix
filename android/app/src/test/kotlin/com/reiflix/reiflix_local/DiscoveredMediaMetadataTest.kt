@@ -178,7 +178,7 @@ class DiscoveredMediaMetadataTest {
         assertFalse(availability.getBoolean("mimeTypeAvailable"))
         assertTrue(availability.getBoolean("sizeAvailable"))
         assertEquals("enumerated", availability.getString("accessState"))
-        assertEquals("video/x-matroska", document.getString("mimeType"))
+        assertTrue(document.isNull("mimeType"))
     }
 
     @Test
@@ -186,6 +186,19 @@ class DiscoveredMediaMetadataTest {
         val legacy = JSONObject().put("size", 0L).put("modifiedAt", 0L)
         assertNull(DiscoveredMediaMetadata.cachedLongOrNull(legacy, "size", "sizeAvailable"))
         assertNull(DiscoveredMediaMetadata.cachedLongOrNull(legacy, "modifiedAt", "modifiedAtAvailable"))
+    }
+
+    @Test
+    fun cachedLongRejectsNegativeAndNonNumericMetadata() {
+        val negative = JSONObject().put("size", -1L)
+        val nonNumeric = JSONObject().put("size", "0")
+        val explicitUnknown = JSONObject()
+            .put("size", 0L)
+            .put("metadataAvailability", JSONObject().put("sizeAvailable", false))
+
+        assertNull(DiscoveredMediaMetadata.cachedLongOrNull(negative, "size", "sizeAvailable"))
+        assertNull(DiscoveredMediaMetadata.cachedLongOrNull(nonNumeric, "size", "sizeAvailable"))
+        assertNull(DiscoveredMediaMetadata.cachedLongOrNull(explicitUnknown, "size", "sizeAvailable"))
     }
 
     @Test
