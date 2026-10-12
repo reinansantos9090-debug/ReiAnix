@@ -78,17 +78,20 @@ object NativeScanRunner {
                 }
                 val partial = result.optBoolean("partial")
                 val rawScanStatus = result.optString("status").uppercase()
-                val scanStatus = rawScanStatus.takeIf {
-                    it in setOf(
+                val scanStatus = when {
+                    rawScanStatus in setOf(
                         SafScanner.STATUS_REVOKED,
                         SafScanner.STATUS_UNAVAILABLE,
                         SafScanner.STATUS_CANCELLED,
-                        SafScanner.STATUS_PARTIAL,
+                        SafScanner.STATUS_FAILED,
+                    ) -> rawScanStatus
+                    partial || rawScanStatus == SafScanner.STATUS_PARTIAL -> SafScanner.STATUS_PARTIAL
+                    rawScanStatus in setOf(
                         SafScanner.STATUS_EMPTY_COMPLETE,
                         SafScanner.STATUS_COMPLETED,
-                        SafScanner.STATUS_FAILED,
-                    )
-                } ?: SafScanner.STATUS_FAILED
+                    ) -> rawScanStatus
+                    else -> SafScanner.STATUS_FAILED
+                }
                 val status = when (scanStatus) {
                     SafScanner.STATUS_REVOKED, SafScanner.STATUS_UNAVAILABLE -> NativeIndex.STATUS_UNAVAILABLE
                     SafScanner.STATUS_CANCELLED -> NativeIndex.STATUS_CANCELLED
