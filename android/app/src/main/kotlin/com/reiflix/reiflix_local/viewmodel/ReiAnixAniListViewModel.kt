@@ -16,12 +16,17 @@ import kotlinx.coroutines.launch
 
 data class ReiAnixAniListUiState(
     val query: String = "",
-    val isLoading: Boolean = false,
+    val isSearchLoading: Boolean = false,
+    val isManualAssociationLoading: Boolean = false,
+    val isAutoMatchLoading: Boolean = false,
     val results: List<AniListAnime> = emptyList(),
     val error: String? = null,
     val lastAssociationMessage: String? = null,
     val associationRevision: Long = 0L,
-)
+) {
+    val isLoading: Boolean
+        get() = isSearchLoading || isManualAssociationLoading || isAutoMatchLoading
+}
 
 /**
  * AniList operations are isolated from local-library search and projection.
@@ -32,66 +37,82 @@ class ReiAnixAniListViewModel(context: Context) : ReiAnixViewModel<ReiAnixAniLis
     private val _aniListUiState = MutableStateFlow(ReiAnixAniListUiState())
     override val uiState: StateFlow<ReiAnixAniListUiState> = _aniListUiState.asStateFlow()
     private var searchJob: Job? = null
-    private var associationJob: Job? = null
+    private var manualAssociationJob: Job? = null
+    private var autoMatchJob: Job? = null
+    private var searchRequestId: Long = 0L
+    private val autoMatchRequestedAnimeIds = mutableSetOf<Long>()
 
     fun searchAniList(term: String) {
         searchJob?.cancel()
+        val requestId = ++searchRequestId
         val query = term.trim()
         if (query.isEmpty()) {
-            _aniListUiState.value = ReiAnixAniListUiState()
+            _aniListUiState.value = _aniListUiState.value.copy(
+                query = "", isSearchLoading = false, results = emptyList(), error = null,
+            )
             return
         }
         _aniListUiState.value = _aniListUiState.value.copy(
-            query = query, isLoading = true, results = emptyList(), error = null,
+            query = query, isSearchLoading = true, results = emptyList(), error = null,
         )
         searchJob = viewModelScope.launch {
             try {
                 when (val result = integration.search(query)) {
-                    is AniListResult.Success -> if (_aniListUiState.value.query == query) {
+                    is AniListResult.Success -> if (requestId == searchRequestId) {
                         _aniListUiState.value = _aniListUiState.value.copy(
-                            isLoading = false, results = result.value, error = null,
+                            isSearchLoading = false, results = result.value, error = null,
                         )
                     }
-                    is AniListResult.Failure -> if (_aniListUiState.value.query == query) {
+                    is AniListResult.Failure -> if (requestId == searchRequestId) {
                         _aniListUiState.value = _aniListUiState.value.copy(
-                            isLoading = false, results = emptyList(), error = result.error.userMessage(),
+                            isSearchLoading = false, results = emptyList(), error = result.error.userMessage(),
                         )
                     }
                 }
             } catch (cancelled: CancellationException) {
+                if (requestId == searchRequestId) {
+                    _aniListUiState.value = _aniListUiState.value.copy(isSearchLoading = false)
+                }
                 throw cancelled
             } catch (error: Exception) {
-                if (_aniListUiState.value.query == query) {
+                if (requestId == searchRequestId) {
                     _aniListUiState.value = _aniListUiState.value.copy(
-                        isLoading = false, results = emptyList(),
+                        isSearchLoading = false, results = emptyList(),
                         error = error.message?.takeIf(String::isNotBlank)
                             ?: "Não foi possível pesquisar no AniList.",
                     )
+                }
+            } finally {
+                if (requestId == searchRequestId && _aniListUiState.value.isSearchLoading) {
+                    _aniListUiState.value = _aniListUiState.value.copy(isSearchLoading = false)
                 }
             }
         }
     }
 
     fun associateAniListManually(animeId: Long, anilistId: Int) {
-        associationJob?.cancel()
-        associationJob = viewModelScope.launch {
-            _aniListUiState.value = _aniListUiState.value.copy(isLoading = true, error = null)
+        manualAssociationJob?.cancel()
+        manualAssociationJob = viewModelScope.launch {
+            _aniListUiState.value = _aniListUiState.value.copy(
+                isManualAssociationLoading = true, error = null,
+            )
             try {
                 when (val result = integration.associateManually(animeId, anilistId)) {
                     is AniListResult.Success -> _aniListUiState.value = _aniListUiState.value.copy(
-                        isLoading = false,
+                        isManualAssociationLoading = false,
                         lastAssociationMessage = "Associação AniList salva.",
                         associationRevision = _aniListUiState.value.associationRevision + 1,
                     )
                     is AniListResult.Failure -> _aniListUiState.value = _aniListUiState.value.copy(
-                        isLoading = false, error = result.error.userMessage(),
+                        isManualAssociationLoading = false, error = result.error.userMessage(),
                     )
                 }
             } catch (cancelled: CancellationException) {
+                _aniListUiState.value = _aniListUiState.value.copy(isManualAssociationLoading = false)
                 throw cancelled
             } catch (error: Exception) {
                 _aniListUiState.value = _aniListUiState.value.copy(
-                    isLoading = false,
+                    isManualAssociationLoading = false,
                     error = error.message?.takeIf(String::isNotBlank)
                         ?: "Não foi possível salvar a associação AniList.",
                 )
@@ -100,9 +121,12 @@ class ReiAnixAniListViewModel(context: Context) : ReiAnixViewModel<ReiAnixAniLis
     }
 
     fun autoMatchAniList(animeId: Long) {
-        associationJob?.cancel()
-        associationJob = viewModelScope.launch {
-            _aniListUiState.value = _aniListUiState.value.copy(isLoading = true, error = null)
+        if (!autoMatchRequestedAnimeIds.add(animeId)) return
+        val searchRevisionAtStart = searchRequestId
+        autoMatchJob = viewModelScope.launch {
+            _aniListUiState.value = _aniListUiState.value.copy(
+                isAutoMatchLoading = true, error = null,
+            )
             try {
                 when (val result = integration.autoMatch(animeId)) {
                     is AniListResult.Success -> {
@@ -117,22 +141,30 @@ class ReiAnixAniListViewModel(context: Context) : ReiAnixViewModel<ReiAnixAniLis
                             is AniListAutoMatchResult.Ambiguous -> "Há resultados ambíguos. Selecione manualmente a obra correta."
                         }
                         val matched = match is AniListAutoMatchResult.Matched
-                        _aniListUiState.value = _aniListUiState.value.copy(
-                            isLoading = false,
+                        val current = _aniListUiState.value
+                        val ambiguousCandidates = (match as? AniListAutoMatchResult.Ambiguous)?.candidates
+                        _aniListUiState.value = current.copy(
+                            isAutoMatchLoading = false,
                             lastAssociationMessage = message,
-                            results = (match as? AniListAutoMatchResult.Ambiguous)?.candidates.orEmpty(),
-                            associationRevision = _aniListUiState.value.associationRevision + if (matched) 1 else 0,
+                            results = if (
+                                ambiguousCandidates != null &&
+                                searchRevisionAtStart == searchRequestId &&
+                                current.query.isBlank() &&
+                                !current.isSearchLoading
+                            ) ambiguousCandidates else current.results,
+                            associationRevision = current.associationRevision + if (matched) 1 else 0,
                         )
                     }
                     is AniListResult.Failure -> _aniListUiState.value = _aniListUiState.value.copy(
-                        isLoading = false, error = result.error.userMessage(),
+                        isAutoMatchLoading = false, error = result.error.userMessage(),
                     )
                 }
             } catch (cancelled: CancellationException) {
+                _aniListUiState.value = _aniListUiState.value.copy(isAutoMatchLoading = false)
                 throw cancelled
             } catch (error: Exception) {
                 _aniListUiState.value = _aniListUiState.value.copy(
-                    isLoading = false,
+                    isAutoMatchLoading = false,
                     error = error.message?.takeIf(String::isNotBlank)
                         ?: "Não foi possível associar o anime ao AniList.",
                 )
