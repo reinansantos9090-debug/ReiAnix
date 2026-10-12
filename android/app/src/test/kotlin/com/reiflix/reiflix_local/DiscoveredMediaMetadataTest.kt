@@ -136,6 +136,29 @@ class DiscoveredMediaMetadataTest {
     }
 
     @Test
+    fun safFallbackNameAndMimeAreNotAdvertisedAsProviderMetadata() {
+        val document = JSONObject().put("name", "opaque-document-id")
+        DiscoveredMediaMetadata.attach(
+            document = document,
+            fileName = "opaque-document-id",
+            relativePath = "opaque-document-id",
+            source = "saf",
+            mimeType = null,
+            sizeBytes = null,
+            modifiedAtMillis = null,
+            providerId = "opaque-document-id",
+            nameAvailable = false,
+            mimeTypeAvailable = false,
+        )
+
+        val availability = document.getJSONObject("metadataAvailability")
+        assertFalse(availability.getBoolean("nameAvailable"))
+        assertFalse(availability.getBoolean("mimeTypeAvailable"))
+        assertTrue(availability.getBoolean("providerIdAvailable"))
+        assertTrue(document.isNull("mimeType"))
+    }
+
+    @Test
     fun filesystemPathIsNotClaimedAsProviderIssuedId() {
         val document = JSONObject()
         DiscoveredMediaMetadata.attach(
