@@ -65,6 +65,38 @@ class ReiAnixSearchEngineTest {
     }
 
     @Test
+    fun searchMatchesAlternateTitlesAndStoredAliases() {
+        val anime = anime(51L, "Original Title").copy(
+            romajiTitle = "Shingeki no Kyojin",
+            englishTitle = "Attack on Titan",
+            nativeTitle = "進撃の巨人",
+            aliases = listOf("AOT", "Titanes"),
+        )
+        val index = ReiAnixSearchEngine.buildIndex(listOf(anime))
+
+        assertEquals(listOf(51L), index.search("attack on titan").map { it.id })
+        assertEquals(listOf(51L), index.search("shingeki").map { it.id })
+        assertEquals(listOf(51L), index.search("進撃の巨人").map { it.id })
+        assertEquals(listOf(51L), index.search("AOT").map { it.id })
+    }
+
+    @Test
+    fun searchDeduplicatesPersistedAnimeIdsAndHandlesNoMatches() {
+        val index = ReiAnixSearchEngine.buildIndex(
+            listOf(
+                anime(61L, "First Title"),
+                anime(61L, "Duplicate Projection"),
+                anime(62L, "Another Title"),
+            ),
+        )
+
+        assertEquals(listOf(61L), index.search("first title").map { it.id })
+        assertEquals(listOf(62L), index.search("another title").map { it.id })
+        assertTrue(index.search("no matching catalog entry").isEmpty())
+        assertEquals(2, index.all().size)
+    }
+
+    @Test
     fun stableKeysAreNotListPositionIdentity() {
         val models = listOf(anime(41L, "First"), anime(42L, "Second"))
         assertEquals("anime:41", models[0].stableKey)
