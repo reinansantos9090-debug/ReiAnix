@@ -149,7 +149,7 @@ class ReiAnixAniListClient(
                 synonyms.optString(index).takeIf { it.isNotBlank() }?.let(::add)
             }
             listOfNotNull(title?.optString("romaji"), title?.optString("english"), title?.optString("native"))
-                .filter { it.isNotBlank() }.forEach(::add)
+                .mapNotNull { it.nonBlankOrNull() }.forEach(::add)
         }.distinctBy { it.lowercase(Locale.ROOT) }
         val genresArray = media.optJSONArray("genres")
         val genres = buildList {
