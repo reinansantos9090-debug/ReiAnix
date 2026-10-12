@@ -1212,8 +1212,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                     """["Attack on Titan","進撃の巨人"]""", """["Action"]""", 2026, 1),
             )
             db.execSQL(
-                """INSERT INTO genres(id, canonical_name, normalized_name, created_at, updated_at)
-                   VALUES ('action-id', 'Action', 'action', 1000, 1000)""".trimIndent(),
+                """INSERT INTO genres(id, canonical_name, normalized_name, source, is_system, is_custom, created_at, updated_at)
+                   VALUES ('action-id', 'Action', 'action', 'local', 0, 1, 1000, 1000)""".trimIndent(),
             )
             db.execSQL(
                 """INSERT INTO anime_genres(anime_id, genre_id, source, created_at, updated_at)
