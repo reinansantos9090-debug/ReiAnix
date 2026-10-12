@@ -122,6 +122,8 @@ class ReiAnixLibraryViewModel(context: Context) :
     /** SAF mutations operate only on persisted, user-authorized content URIs. */
     private val nativeFileOperations = SafFileOperations(context.applicationContext)
 
+    fun authorizedSafTreeUris(): List<Uri> = nativeFileOperations.authorizedTreeUris()
+
     suspend fun listSafDirectory(uri: Uri): SafFileOperations.ResultOrItems =
         nativeFileOperations.list(uri)
 
