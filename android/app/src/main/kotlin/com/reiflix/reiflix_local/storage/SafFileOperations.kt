@@ -87,16 +87,24 @@ class SafFileOperations(private val context: Context) {
 
     suspend fun info(uri: Uri): Result = withContext(Dispatchers.IO) {
         val document = authorizedDocument(uri, requireWrite = false) ?: return@withContext failureFor(uri, requireWrite = false)
-        Result.Success(
-            uri = document.uri,
-            name = document.name.orEmpty(),
-            isDirectory = document.isDirectory,
-            size = document.length().takeIf { it >= 0L },
-            lastModified = document.lastModified().takeIf { it > 0L },
-            mimeType = document.type,
-            canRead = document.canRead(),
-            canWrite = document.canWrite(),
-        )
+        try {
+            Result.Success(
+                uri = document.uri,
+                name = document.name.orEmpty(),
+                isDirectory = document.isDirectory,
+                size = runCatching { document.length() }.getOrNull()?.takeIf { it >= 0L },
+                lastModified = runCatching { document.lastModified() }.getOrNull()?.takeIf { it > 0L },
+                mimeType = runCatching { document.type }.getOrNull(),
+                canRead = document.canRead(),
+                canWrite = document.canWrite(),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: SecurityException) {
+            failureFor(uri, requireWrite = false)
+        } catch (e: Exception) {
+            Result.Failure(FailureKind.FAILURE, safeMessage(e), uri)
+        }
     }
 
     suspend fun createDirectory(parentUri: Uri, name: String): Result = withContext(Dispatchers.IO) {
@@ -299,8 +307,14 @@ class SafFileOperations(private val context: Context) {
             } else {
                 DocumentFile.fromSingleUri(context, candidateUri)
             } ?: continue
-            if (!document.exists() || !document.canRead()) continue
-            if (requireWrite && !document.canWrite()) continue
+            val usable = try {
+                document.exists() && document.canRead() && (!requireWrite || document.canWrite())
+            } catch (_: SecurityException) {
+                false
+            } catch (_: Exception) {
+                false
+            }
+            if (!usable) continue
             return AuthorizedTarget(grant.uri, document)
         }
         return null
