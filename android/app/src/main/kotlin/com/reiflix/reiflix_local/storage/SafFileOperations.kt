@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class SafFileOperations(private val context: Context) {
     enum class FailureKind {
-        CANCELLED, PERMISSION_DENIED, NOT_FOUND, INVALID_NAME, CONFLICT,
+        CANCELLED, PERMISSION_DENIED, NOT_FOUND, INVALID_ITEM, INVALID_NAME, CONFLICT,
         UNSUPPORTED, PARTIAL, FAILURE
     }
 
@@ -48,9 +48,9 @@ class SafFileOperations(private val context: Context) {
     suspend fun list(directoryUri: Uri): ResultOrItems = withContext(Dispatchers.IO) {
         synchronized(lockFor(directoryUri)) {
             val directory = authorizedDocument(directoryUri, requireWrite = false)
-                ?: return@synchronized ResultOrItems.Failed(failureFor(directoryUri))
+                ?: return@synchronized ResultOrItems.Failed(failureFor(directoryUri, requireWrite = false))
             if (!directory.isDirectory) return@synchronized ResultOrItems.Failed(
-                Result.Failure(FailureKind.FAILURE, "O item informado não é uma pasta.", directoryUri)
+                Result.Failure(FailureKind.INVALID_ITEM, "O item informado não é um diretório.", directoryUri)
             )
             try {
                 val children = directory.listFiles().map { child ->
@@ -131,39 +131,58 @@ class SafFileOperations(private val context: Context) {
     }
 
     suspend fun move(uri: Uri, destinationDirectoryUri: Uri): Result = withContext(Dispatchers.IO) {
-        val lockKey = listOf(uri.toString(), destinationDirectoryUri.toString()).sorted().joinToString("|")
-        synchronized(lockFor(Uri.parse("content://reianix-lock/$lockKey"))) {
-            val source = authorizedDocument(uri) ?: return@synchronized failureFor(uri)
-            val destination = authorizedDocument(destinationDirectoryUri, requireWrite = true) ?: return@synchronized failureFor(destinationDirectoryUri, requireWrite = true)
-            if (!destination.isDirectory || !destination.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O destino não permite escrita.", uri, destinationDirectoryUri)
-            if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "A origem não permite movimentação.", uri, destinationDirectoryUri)
-            if (source.uri == destination.uri) return@synchronized Result.Failure(FailureKind.FAILURE, "A origem e o destino são iguais.", uri, destinationDirectoryUri)
-            if (source.isDirectory && (sameDocument(destination.uri, source.uri) ||
-                runCatching { DocumentsContract.isChildDocument(resolver, source.uri, destination.uri) }.getOrDefault(false))) {
-                return@synchronized Result.Failure(FailureKind.FAILURE, "Uma pasta não pode ser movida para dentro de si mesma ou de seus descendentes.", uri, destinationDirectoryUri)
+        val sourceTarget = authorizedTarget(uri, requireWrite = true)
+            ?: return@withContext failureFor(uri, requireWrite = true)
+        val destinationTarget = authorizedTarget(destinationDirectoryUri, requireWrite = true)
+            ?: return@withContext failureFor(destinationDirectoryUri, requireWrite = true)
+        val source = sourceTarget.document
+        val destination = destinationTarget.document
+        if (isTreeRootUri(uri)) return@withContext Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser movida.", uri)
+        val lockKeys = listOf(sourceTarget.treeUri.toString(), destinationTarget.treeUri.toString()).distinct().sorted()
+        withLocks(lockKeys) {
+            // Revalidate grants after acquiring the operation locks.
+            val currentSource = authorizedTarget(uri, requireWrite = true)
+                ?: return@withLocks failureFor(uri, requireWrite = true)
+            val currentDestination = authorizedTarget(destinationDirectoryUri, requireWrite = true)
+                ?: return@withLocks failureFor(destinationDirectoryUri, requireWrite = true)
+            val sourceDocument = currentSource.document
+            val destinationDocument = currentDestination.document
+            if (!destinationDocument.isDirectory) return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "O destino não é um diretório.", uri, destinationDirectoryUri)
+            if (!destinationDocument.canWrite() || !sourceDocument.canWrite()) return@withLocks Result.Failure(FailureKind.PERMISSION_DENIED, "A origem ou o destino não permite escrita.", uri, destinationDirectoryUri)
+            if (sameDocument(sourceDocument.uri, destinationDocument.uri)) return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "A origem e o destino são iguais.", uri, destinationDirectoryUri)
+            if (sourceDocument.isDirectory && (sameDocument(sourceDocument.uri, destinationDocument.uri) ||
+                runCatching { DocumentsContract.isChildDocument(resolver, sourceDocument.uri, destinationDocument.uri) }.getOrDefault(false))) {
+                return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "Uma pasta não pode ser movida para dentro de si mesma ou de seus descendentes.", uri, destinationDirectoryUri)
             }
-            val name = source.name?.takeIf(String::isNotBlank)
-                ?: return@synchronized Result.Failure(FailureKind.FAILURE, "O provedor não informou o nome da origem.", uri, destinationDirectoryUri)
-            if (runCatching { destination.findFile(name) }.getOrNull() != null) return@synchronized Result.Failure(FailureKind.CONFLICT, "O destino já contém um item com esse nome.", uri, destinationDirectoryUri)
+            val name = sourceDocument.name?.takeIf(String::isNotBlank)
+                ?: return@withLocks Result.Failure(FailureKind.FAILURE, "O provedor não informou o nome da origem.", uri, destinationDirectoryUri)
+            if (runCatching { destinationDocument.findFile(name) }.getOrNull() != null) {
+                return@withLocks Result.Failure(FailureKind.CONFLICT, "O destino já contém um item com esse nome.", uri, destinationDirectoryUri)
+            }
             try {
-                val sourceParent = findParentInTree(sourceTarget.treeUri, source.uri)
-                if (sourceParent != null && source.uri.authority == destination.uri.authority &&
-                    DocumentsContract.isDocumentUri(context, source.uri) &&
-                    DocumentsContract.isDocumentUri(context, destination.uri)) {
-                    val movedUri = runCatching {
-                        DocumentsContract.moveDocument(resolver, source.uri, sourceParent.uri, destination.uri)
-                    }.getOrNull()
-                    if (movedUri != null) {
-                        val moved = DocumentFile.fromSingleUri(context, movedUri)
-                        val locatedAtDestination = runCatching { destination.findFile(name) }.getOrNull()
-                        if (moved != null && moved.exists() && moved.name == name &&
-                            locatedAtDestination != null && locatedAtDestination.uri == moved.uri) {
-                            return@synchronized Result.Success(moved.uri, name, moved.isDirectory)
-                        }
-                        return@synchronized Result.Failure(FailureKind.PARTIAL, "O provedor aceitou a movimentação, mas não confirmou o item resultante.", uri, destinationDirectoryUri, recoverable = true)
-                    }
+                val sourceParent = findParentInTree(currentSource.treeUri, sourceDocument.uri)
+                    ?: return@withLocks Result.Failure(FailureKind.UNSUPPORTED, "Não foi possível confirmar a pasta de origem autorizada.", uri, destinationDirectoryUri)
+                if (sourceDocument.uri.authority != destinationDocument.uri.authority ||
+                    !DocumentsContract.isDocumentUri(context, sourceDocument.uri) ||
+                    !DocumentsContract.isDocumentUri(context, destinationDocument.uri)) {
+                    return@withLocks Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece movimentação confirmável entre estas fontes; a origem foi preservada.", uri, destinationDirectoryUri)
                 }
-                Result.Failure(FailureKind.UNSUPPORTED, "O provedor não confirmou suporte à movimentação. A origem foi preservada.", uri, destinationDirectoryUri)
+                val movedUri = try {
+                    DocumentsContract.moveDocument(resolver, sourceDocument.uri, sourceParent.uri, destinationDocument.uri)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: UnsupportedOperationException) {
+                    null
+                }
+                if (movedUri == null) return@withLocks Result.Failure(FailureKind.UNSUPPORTED, "O provedor não confirmou suporte à movimentação. A origem foi preservada.", uri, destinationDirectoryUri)
+                val moved = DocumentFile.fromSingleUri(context, movedUri)
+                val locatedAtDestination = runCatching { destinationDocument.findFile(name) }.getOrNull()
+                if (moved != null && moved.exists() && moved.name == name &&
+                    locatedAtDestination != null && sameDocument(locatedAtDestination.uri, moved.uri)) {
+                    Result.Success(moved.uri, name, moved.isDirectory)
+                } else {
+                    Result.Failure(FailureKind.PARTIAL, "O provedor aceitou a movimentação, mas não confirmou o documento no destino. Verifique ambas as pastas antes de repetir.", uri, destinationDirectoryUri, recoverable = true)
+                }
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a movimentação.", uri, destinationDirectoryUri)
             } catch (e: CancellationException) {
