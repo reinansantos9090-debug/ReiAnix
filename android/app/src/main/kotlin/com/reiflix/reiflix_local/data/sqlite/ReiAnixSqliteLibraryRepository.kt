@@ -129,7 +129,7 @@ class ReiAnixSqliteLibraryRepository(
                     "COALESCE(a.genres,'') LIKE ? COLLATE NOCASE",
                     "COALESCE(a.user_tags,'') LIKE ? COLLATE NOCASE",
                     "COALESCE(a.personal_note,'') LIKE ? COLLATE NOCASE",
-                    "EXISTS (SELECT 1 FROM episodes es WHERE es.anime_id=a.id AND (COALESCE(es.episode_title,'') LIKE ? COLLATE NOCASE OR COALESCE(es.file_name,'') LIKE ? COLLATE NOCASE))",
+                    "EXISTS (SELECT 1 FROM episodes es WHERE es.anime_id=a.id AND (COALESCE(es.episode_title,'') LIKE ? COLLATE NOCASE OR (COALESCE(es.file_name,'') || ' episode ' || COALESCE(CAST(es.number AS TEXT),'') || ' ep ' || COALESCE(CAST(es.number AS TEXT),'') || ' season ' || CAST(es.season AS TEXT) || ' s' || printf('%02d',es.season) || 'e' || printf('%02d',CAST(COALESCE(es.number,0) AS INTEGER))) LIKE ? COLLATE NOCASE))",
                     "EXISTS (SELECT 1 FROM anime_genres ags JOIN genres gs ON gs.id=ags.genre_id LEFT JOIN genre_aliases gas ON gas.genre_id=gs.id WHERE ags.anime_id=a.id AND (gs.canonical_name LIKE ? COLLATE NOCASE OR COALESCE(gas.alias,'') LIKE ? COLLATE NOCASE))",
                 )
                 repeat(11) { candidateArgs += "%$variant%" }
@@ -158,7 +158,12 @@ class ReiAnixSqliteLibraryRepository(
             SELECT a.id, a.title, a.romaji, a.english, a.native, a.aliases, a.description,
                    a.cover_url, a.cover_cache, a.banner_url, a.genres, a.year, a.season,
                    a.status, a.format, a.studio, a.user_tags, a.personal_note, a.lookup_title,
-                   COALESCE((SELECT GROUP_CONCAT(COALESCE(e.episode_title,'') || ' ' || e.file_name, ' ')
+                   COALESCE((SELECT GROUP_CONCAT(COALESCE(e.episode_title,'') || ' ' || e.file_name ||
+                             ' episode ' || COALESCE(CAST(e.number AS TEXT),'') ||
+                             ' ep ' || COALESCE(CAST(e.number AS TEXT),'') ||
+                             ' season ' || CAST(e.season AS TEXT) ||
+                             ' s' || printf('%02d',e.season) || 'e' ||
+                             printf('%02d',CAST(COALESCE(e.number,0) AS INTEGER)), ' ')
                              FROM episodes e WHERE e.anime_id=a.id), '') AS episode_search_text,
                    COALESCE((SELECT GROUP_CONCAT(g.canonical_name || ' ' || COALESCE(ga.alias,''), ' ')
                              FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id
