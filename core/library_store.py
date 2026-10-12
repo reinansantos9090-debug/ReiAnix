@@ -1802,6 +1802,76 @@ class LibraryStore:
         with self._conn() as c:
             return self._merge_duplicate_media_identities_locked(c)
 
+    def reconcile_saf_document_identity_change(self, old_uri, new_uri, name):
+        """Re-key one proven SAF document URI without replacing its episode identity.
+
+        The native provider has already confirmed that old_uri was renamed/moved
+        to new_uri. This method changes only the existing episode locator and its
+        matching SAF observations in one SQLite transaction. It deliberately
+        leaves episode_id, anime_id, progress, watched/history timestamps, metadata,
+        artwork references and AniList associations untouched.
+        """
+        old_uri = str(old_uri or "").strip()
+        new_uri = str(new_uri or "").strip()
+        name = str(name or "").strip()
+        old = urlparse(old_uri)
+        new = urlparse(new_uri)
+        if (old.scheme != "content" or new.scheme != "content" or
+                not old.netloc or old.netloc.casefold() != new.netloc.casefold() or
+                not name or old_uri == new_uri):
+            if old_uri == new_uri and old_uri:
+                with self._conn() as c:
+                    row = c.execute("SELECT id FROM episodes WHERE path=?", (new_uri,)).fetchone()
+                return {"status": "already_reconciled" if row else "no_match",
+                        "episode_id": int(row["id"]) if row else None}
+            return {"status": "rejected", "episode_id": None}
+
+        now = time.time()
+        with self._conn() as c:
+            source = c.execute("SELECT * FROM episodes WHERE path=?", (old_uri,)).fetchone()
+            if source is None:
+                existing = c.execute("SELECT * FROM episodes WHERE path=?", (new_uri,)).fetchone()
+                if existing is not None:
+                    return {"status": "already_reconciled", "episode_id": int(existing["id"])}
+                return {"status": "no_match", "episode_id": None}
+
+            source_folder = str(source["source_folder"] or "")
+            source_kind = self._infer_source_kind(source_folder)
+            observation = c.execute(
+                """SELECT 1 FROM episode_observations
+                   WHERE episode_id=? AND source_kind='saf' AND uri=? LIMIT 1""",
+                (int(source["id"]), old_uri),
+            ).fetchone()
+            if source_kind != "saf" and observation is None:
+                return {"status": "rejected", "episode_id": int(source["id"])}
+
+            conflict = c.execute("SELECT id FROM episodes WHERE path=?", (new_uri,)).fetchone()
+            if conflict is not None and int(conflict["id"]) != int(source["id"]):
+                return {"status": "conflict", "episode_id": int(source["id"])}
+
+            observation_conflict = c.execute(
+                """SELECT 1 FROM episode_observations
+                   WHERE episode_id=? AND source_kind='saf' AND uri=?
+                   AND uri<>? LIMIT 1""",
+                (int(source["id"]), new_uri, old_uri),
+            ).fetchone()
+            if observation_conflict is not None:
+                return {"status": "conflict", "episode_id": int(source["id"])}
+
+            c.execute(
+                """UPDATE episodes
+                   SET path=?, file_name=?, missing=0, availability_state='available'
+                   WHERE id=? AND path=?""",
+                (new_uri, name, int(source["id"]), old_uri),
+            )
+            c.execute(
+                """UPDATE episode_observations
+                   SET uri=?, state='available', error=NULL, last_seen=?, last_checked_at=?
+                   WHERE episode_id=? AND source_kind='saf' AND uri=?""",
+                (new_uri, now, now, int(source["id"]), old_uri),
+            )
+            return {"status": "reconciled", "episode_id": int(source["id"])}
+
     def physical_row(self, path):
         with self._conn() as c:
             row = c.execute("SELECT * FROM episodes WHERE path=?", (path,)).fetchone()
