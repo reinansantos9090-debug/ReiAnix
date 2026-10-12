@@ -123,6 +123,7 @@ class ReiAnixLibraryViewModel(context: Context) :
     private val nativeFileOperations = SafFileOperations(context.applicationContext)
 
     fun authorizedSafTreeUris(): List<Uri> = nativeFileOperations.authorizedTreeUris()
+    fun safTreeDisplayName(uri: Uri): String = nativeFileOperations.treeDisplayName(uri)
 
     suspend fun listSafDirectory(uri: Uri): SafFileOperations.ResultOrItems =
         nativeFileOperations.list(uri)
