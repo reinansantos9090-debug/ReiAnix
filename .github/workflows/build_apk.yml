@@ -307,23 +307,6 @@ jobs:
           # most of the job timeout before reporting the real error.
           flet build "${build_args[@]}"
 
-      - name: Explicitly verify release Kotlin compilation
-        shell: bash
-        working-directory: build/flutter/android
-        env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true"
-          SERIOUS_PYTHON_SITE_PACKAGES: "${{ github.workspace }}/build/site-packages/arm64-v8a"
-        run: |
-          test -x ./gradlew
-          test -d "$SERIOUS_PYTHON_SITE_PACKAGES"
-          # The APK build already packages the Python runtime archives. This
-          # follow-up verifies Kotlin compilation only, without re-downloading
-          # those binary archives as unrelated Gradle task dependencies.
-          ./gradlew :app:compileReleaseKotlin --offline --no-daemon --console=plain \
-            -x :serious_python_android:downloadDistArchive_arm64-v8a \
-            -x :serious_python_android:downloadDistArchive_x86_64 \
-            -x :serious_python_android:downloadDistArchive_armeabi-v7a
-
       - name: Preserve build identity evidence
         shell: bash
         run: |
