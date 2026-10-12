@@ -185,6 +185,11 @@ class ReiAnixSqliteLibraryRepository(
 
         database.read { connection ->
             val matched = mutableListOf<Pair<Long, Int>>()
+            val relevanceMode = terms.isNotEmpty() && sortLabel.isNullOrBlank()
+            val keepCount = (offset.toLong() + limit + 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            val queryText = terms.joinToString(" ")
+            val relevanceOrder = compareByDescending<Pair<Long, Int>> { it.second }.thenBy { it.first }
+
             connection.rawQuery(sql, queryArgs.toTypedArray()).use { cursor ->
                 while (cursor.moveToNext()) {
                     if (terms.isNotEmpty()) {
@@ -197,23 +202,51 @@ class ReiAnixSqliteLibraryRepository(
                         val normalized = normalizeNativeSearchText(searchable)
                         if (!terms.all { term -> normalized.contains(term) }) continue
                     }
+
+                    val id = cursor.getLong(0)
                     val title = normalizeNativeSearchText(cursor.getString(1))
+                    val alternateTitles = listOf(2, 3, 4)
+                        .map { column -> normalizeNativeSearchText(cursor.getString(column)) }
+                        .filter(String::isNotBlank)
                     val aliases = normalizeNativeSearchText(cursor.getString(5))
-                    val queryText = terms.joinToString(" ")
-                    val score = when {
+                    val studio = normalizeNativeSearchText(cursor.getString(15))
+                    val genres = normalizeNativeSearchText(cursor.getString(10) + " " + cursor.getString(20))
+                    var score = when {
                         terms.isEmpty() -> 0
                         title == queryText -> 1000
                         title.startsWith(queryText) -> 800
                         title.contains(queryText) -> 600
+                        alternateTitles.any { it == queryText } -> 520
+                        alternateTitles.any { it.startsWith(queryText) } -> 420
+                        alternateTitles.any { it.contains(queryText) } -> 320
                         aliases.contains(queryText) -> 320
-                        else -> terms.sumOf { term -> if (title.contains(term)) 180 else 20 }
+                        studio == queryText -> 300
+                        else -> 0
                     }
-                    matched += cursor.getLong(0) to score
+                    score += terms.sumOf { term ->
+                        when {
+                            title == term -> 350
+                            title.contains(term) -> 180
+                            alternateTitles.any { it == term } -> 150
+                            alternateTitles.any { it.contains(term) } -> 110
+                            aliases == term -> 140
+                            aliases.contains(term) -> 95
+                            genres == term -> 120
+                            genres.contains(term) -> 80
+                            studio == term -> 50
+                            else -> 20
+                        }
+                    }
+                    matched += id to score
+
+                    if (terms.isNotEmpty() && !relevanceMode && matched.size >= keepCount) break
+                    if (relevanceMode && matched.size > keepCount) {
+                        matched.sortWith(relevanceOrder)
+                        matched.removeAt(matched.lastIndex)
+                    }
                 }
             }
-            val ordered = if (terms.isNotEmpty() && sortLabel.isNullOrBlank()) {
-                matched.sortedWith(compareByDescending<Pair<Long, Int>> { it.second }.thenBy { it.first })
-            } else matched
+            val ordered = if (relevanceMode) matched.sortedWith(relevanceOrder) else matched
             val page = if (terms.isEmpty()) ordered else ordered.drop(offset).take(limit + 1)
             ReiAnixSqliteSearchPage(page.take(limit).map { it.first }, offset, limit, page.size > limit)
         }
