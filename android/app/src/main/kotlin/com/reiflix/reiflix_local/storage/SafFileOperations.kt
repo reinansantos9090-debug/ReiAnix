@@ -35,6 +35,7 @@ class SafFileOperations(private val context: Context) {
             val mimeType: String? = null,
             val canRead: Boolean = true,
             val canWrite: Boolean = false,
+            val catalogReconciliationQueued: Boolean = false,
         ) : Result
         data class Failure(val kind: FailureKind, val message: String, val sourceUri: Uri? = null,
                            val destinationUri: Uri? = null, val recoverable: Boolean = false) : Result
@@ -211,7 +212,12 @@ class SafFileOperations(private val context: Context) {
                     !sameDocument(confirmedUri, renamedUri)) {
                     return@synchronized Result.Failure(FailureKind.PARTIAL, "O provedor retornou uma URI de renomeação que não corresponde ao item encontrado na pasta.", uri, confirmedUri, recoverable = true)
                 }
-                Result.Success(confirmedUri, renamedDocument.name.orEmpty(), renamedDocument.isDirectory)
+                Result.Success(
+                    confirmedUri,
+                    renamedDocument.name.orEmpty(),
+                    renamedDocument.isDirectory,
+                    catalogReconciliationQueued = false,
+                )
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a renomeação.", uri)
             } catch (e: UnsupportedOperationException) {
