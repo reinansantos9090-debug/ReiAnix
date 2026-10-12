@@ -56,25 +56,73 @@ class SafFileOperations(private val context: Context) {
 
     suspend fun list(directoryUri: Uri): ResultOrItems = withContext(Dispatchers.IO) {
         synchronized(lockFor(directoryUri)) {
-            val directory = authorizedDocument(directoryUri, requireWrite = false)
+            val target = authorizedTarget(directoryUri, requireWrite = false)
                 ?: return@synchronized ResultOrItems.Failed(failureFor(directoryUri, requireWrite = false))
+            val directory = target.document
             if (!directory.isDirectory) return@synchronized ResultOrItems.Failed(
                 Result.Failure(FailureKind.INVALID_ITEM, "O item informado não é um diretório.", directoryUri)
             )
             try {
-                val children = directory.listFiles().map { child ->
-                    ItemInfo(
-                        uri = child.uri,
-                        name = child.name.orEmpty(),
-                        isDirectory = child.isDirectory,
-                        size = child.length().takeIf { it >= 0L },
-                        lastModified = child.lastModified().takeIf { it > 0L },
-                        mimeType = child.type,
-                        canRead = child.canRead(),
-                        canWrite = child.canWrite(),
-                    )
+                val documentId = if (isTreeRootUri(directoryUri)) {
+                    DocumentsContract.getTreeDocumentId(directoryUri)
+                } else {
+                    DocumentsContract.getDocumentId(directory.uri)
                 }
-                ResultOrItems.Items(children)
+                val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(target.treeUri, documentId)
+                val cursor = resolver.query(
+                    childrenUri,
+                    arrayOf(
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        DocumentsContract.Document.COLUMN_MIME_TYPE,
+                        DocumentsContract.Document.COLUMN_SIZE,
+                        DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                    ),
+                    null,
+                    null,
+                    null,
+                ) ?: return@synchronized ResultOrItems.Failed(
+                    Result.Failure(FailureKind.UNSUPPORTED, "O provedor não retornou uma consulta para listar esta pasta.", directoryUri)
+                )
+                val items = cursor.use { c ->
+                    val idColumn = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameColumn = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val mimeColumn = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    val sizeColumn = c.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                    val modifiedColumn = c.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                    if (idColumn < 0 || nameColumn < 0 || mimeColumn < 0) {
+                        return@synchronized ResultOrItems.Failed(
+                            Result.Failure(FailureKind.UNSUPPORTED, "O provedor não retornou os metadados mínimos para listar a pasta.", directoryUri)
+                        )
+                    }
+                    buildList {
+                        while (c.moveToNext()) {
+                            val documentIdValue = c.getString(idColumn)?.takeIf { it.isNotBlank() } ?: continue
+                            val itemUri = DocumentsContract.buildDocumentUriUsingTree(target.treeUri, documentIdValue)
+                            val name = c.getString(nameColumn).orEmpty()
+                            val mime = c.getString(mimeColumn)?.takeIf { it.isNotBlank() }
+                            val child = DocumentFile.fromSingleUri(context, itemUri)
+                            val size = if (sizeColumn >= 0 && !c.isNull(sizeColumn)) c.getLong(sizeColumn).takeIf { it >= 0L } else null
+                            val modified = if (modifiedColumn >= 0 && !c.isNull(modifiedColumn)) c.getLong(modifiedColumn).takeIf { it > 0L } else null
+                            add(
+                                ItemInfo(
+                                    uri = itemUri,
+                                    name = name,
+                                    isDirectory = mime == DocumentsContract.Document.MIME_TYPE_DIR,
+                                    size = size,
+                                    lastModified = modified,
+                                    mimeType = mime,
+                                    canRead = runCatching { child?.canRead() == true }.getOrDefault(false),
+                                    canWrite = target.treeUri.let { tree ->
+                                        resolver.persistedUriPermissions.any { it.uri == tree && it.isWritePermission } &&
+                                            runCatching { child?.canWrite() == true }.getOrDefault(false)
+                                    },
+                                )
+                            )
+                        }
+                    }
+                }
+                ResultOrItems.Items(items)
             } catch (e: SecurityException) {
                 ResultOrItems.Failed(Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão da pasta não está mais disponível.", directoryUri))
             } catch (e: CancellationException) {
