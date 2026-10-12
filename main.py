@@ -5469,8 +5469,9 @@ async def main(page: ft.Page):
                             old_uri = str(payload.get('oldUri') or '').strip()
                             new_uri = str(payload.get('newUri') or '').strip()
                             name = str(payload.get('name') or '').strip()
-                            if not old_uri or not new_uri or not name:
-                                raise ValueError('Evento de reconciliação SAF sem URI antiga, URI nova ou nome.')
+                            tree_uri = str(payload.get('treeUri') or '').strip()
+                            if not old_uri or not new_uri or not name or not tree_uri:
+                                raise ValueError('Evento de reconciliação SAF sem árvore, URI antiga, URI nova ou nome.')
                             reconciliation = await asyncio.to_thread(
                                 library.reconcile_saf_document_identity_change,
                                 old_uri,
@@ -5486,6 +5487,12 @@ async def main(page: ft.Page):
                                 )
                                 if compose_library_bridge.enabled:
                                     compose_library_bridge.request_publish("saf_identity_reconciled")
+                                try:
+                                    await bridge.rescan_tree(tree_uri)
+                                except Exception:
+                                    # The canonical URI update is already committed and idempotent.
+                                    # A later scan can refresh relative paths/metadata without losing episode state.
+                                    logger.exception("[SAF_IDENTITY] canonical reconciliation succeeded but follow-up scan could not be requested")
                             else:
                                 # Keep the existing catalog row and its history intact.
                                 # An unprovable mapping is a recoverable state, not a delete.
