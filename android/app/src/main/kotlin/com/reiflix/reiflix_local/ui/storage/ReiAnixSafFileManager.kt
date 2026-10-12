@@ -125,7 +125,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                     roots.forEachIndexed { index, root ->
                         OutlinedButton(onClick = {
                             currentText = root.toString(); parents = emptyList(); movingTarget = null
-                        }, enabled = !busy) { Text("Pasta ${index + 1}") }
+                        }, enabled = !busy) { Text(viewModel.safTreeDisplayName(root).take(22)) }
                     }
                 }
             }
@@ -135,6 +135,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else if (roots.isEmpty()) {
                 Text("Autorize uma pasta pelo fluxo de armazenamento existente.")
+                Button(onClick = onBack) { Text("Voltar e adicionar pasta") }
             } else if (items.isEmpty() && error == null) {
                 Text("Esta pasta está vazia.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
