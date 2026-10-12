@@ -129,10 +129,14 @@ class ReiAnixSqliteLibraryRepository(
                     "COALESCE(a.genres,'') LIKE ? COLLATE NOCASE",
                     "COALESCE(a.user_tags,'') LIKE ? COLLATE NOCASE",
                     "COALESCE(a.personal_note,'') LIKE ? COLLATE NOCASE",
+                    "CAST(COALESCE(a.year,'') AS TEXT) LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.season,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.status,'') LIKE ? COLLATE NOCASE",
+                    "COALESCE(a.format,'') LIKE ? COLLATE NOCASE",
                     "EXISTS (SELECT 1 FROM episodes es WHERE es.anime_id=a.id AND (COALESCE(es.episode_title,'') LIKE ? COLLATE NOCASE OR (COALESCE(es.file_name,'') || ' episode ' || COALESCE(CAST(es.number AS TEXT),'') || ' ep ' || COALESCE(CAST(es.number AS TEXT),'') || ' season ' || CAST(es.season AS TEXT) || ' s' || printf('%02d',es.season) || 'e' || printf('%02d',CAST(COALESCE(es.number,0) AS INTEGER))) LIKE ? COLLATE NOCASE))",
                     "EXISTS (SELECT 1 FROM anime_genres ags JOIN genres gs ON gs.id=ags.genre_id LEFT JOIN genre_aliases gas ON gas.genre_id=gs.id WHERE ags.anime_id=a.id AND (gs.canonical_name LIKE ? COLLATE NOCASE OR COALESCE(gas.alias,'') LIKE ? COLLATE NOCASE))",
                 )
-                repeat(11) { candidateArgs += "%$variant%" }
+                repeat(15) { candidateArgs += "%$variant%" }
                 repeat(4) { candidateArgs += "%$variant%" }
             }
             where += "(" + alternatives.joinToString(" OR ") + ")"
