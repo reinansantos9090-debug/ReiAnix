@@ -108,6 +108,35 @@ class ReiAnixLibraryFiltersTest {
         assertEquals(listOf("anime:7", "anime:11"), result.map { it.stableKey })
     }
 
+    @Test
+    fun titleSortDirectionsAreDeterministicAndMissingTimestampsSortLast() {
+        val alpha = anime(10L, "Alpha").copy(addedAt = 100.0)
+        val beta = anime(20L, "Beta").copy(addedAt = 200.0)
+        val untimestamped = anime(30L, "Gamma").copy(addedAt = null)
+
+        assertEquals(
+            listOf(10L, 20L, 30L),
+            ReiAnixLibraryFilterEngine.filter(
+                listOf(beta, untimestamped, alpha),
+                ReiAnixLibraryFilters(sort = "Nome A-Z"),
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf(20L, 10L, 30L),
+            ReiAnixLibraryFilterEngine.filter(
+                listOf(alpha, untimestamped, beta),
+                ReiAnixLibraryFilters(sort = "Nome Z-A"),
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf(20L, 10L, 30L),
+            ReiAnixLibraryFilterEngine.filter(
+                listOf(untimestamped, alpha, beta),
+                ReiAnixLibraryFilters(sort = "Mais recentes"),
+            ).map { it.id },
+        )
+    }
+
     private fun anime(
         id: Long,
         title: String,
