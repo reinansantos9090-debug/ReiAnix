@@ -1193,6 +1193,49 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertTrue(bounded.watched)
     }
 
+    @Test
+    fun nativeSqliteSearchMatchesAliasesUnicodeEpisodesFiltersAndStablePages() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """UPDATE anime SET english=?, romaji=?, native=?, aliases=?, genres=?
+                   WHERE id=?""".trimIndent(),
+                arrayOf("São Paulo", "Shingeki no Kyojin", "進撃の巨人",
+                    """["Attack on Titan","進撃の巨人"]""", """["Action"]""", 1),
+            )
+            db.execSQL(
+                """INSERT INTO genres(id, canonical_name, normalized_name, created_at, updated_at)
+                   VALUES ('action-id', 'Action', 'action', 1000, 1000)""".trimIndent(),
+            )
+            db.execSQL(
+                """INSERT INTO anime_genres(anime_id, genre_id, source, created_at, updated_at)
+                   VALUES (1, 'action-id', 'local', 1000, 1000)""".trimIndent(),
+            )
+            db.execSQL(
+                """INSERT INTO anime(id, lookup_title, title, added_at, favorite)
+                   VALUES (2, 'another-title', 'Another Title', 2000, 0)""".trimIndent(),
+            )
+        }
+
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        assertEquals(listOf(1L), repository.searchAnimeIds("sao paulo", null, false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("attack on titan", null, false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("進撃の巨人", null, false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("episode 1", null, false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("", "action-id", false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("", null, true, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("", null, false, true, false, null, 36, 0).animeIds)
+        assertTrue(repository.searchAnimeIds("", null, false, false, true, null, 36, 0).animeIds.isEmpty())
+
+        val firstPage = repository.searchAnimeIds("", null, false, false, false, null, 1, 0)
+        val secondPage = repository.searchAnimeIds("", null, false, false, false, null, 1, 1)
+        assertEquals(listOf(2L), firstPage.animeIds)
+        assertTrue(firstPage.hasMore)
+        assertEquals(listOf(1L), secondPage.animeIds)
+        assertFalse(secondPage.hasMore)
+        assertTrue(firstPage.animeIds.intersect(secondPage.animeIds.toSet()).isEmpty())
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()
