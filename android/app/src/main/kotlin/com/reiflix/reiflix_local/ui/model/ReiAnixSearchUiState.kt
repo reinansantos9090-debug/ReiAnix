@@ -24,4 +24,5 @@ data class ReiAnixSearchUiState(
     val results: List<ReiAnixAnimeUiModel> = emptyList(),
     val filters: ReiAnixSearchFilters = ReiAnixSearchFilters(),
     val error: String? = null,
+    val isLoading: Boolean = false,
 )
