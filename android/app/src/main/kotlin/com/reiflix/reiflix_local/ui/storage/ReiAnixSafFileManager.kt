@@ -97,7 +97,12 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                 }) { Icon(Icons.Default.ArrowBack, contentDescription = "Voltar") }
                 Column(Modifier.weight(1f)) {
                     Text(if (movingTarget == null) "Gerenciar arquivos" else "Mover: ${movingTarget?.name}", style = MaterialTheme.typography.titleLarge)
-                    Text(if (movingTarget == null) "Arquivos e pastas das fontes SAF autorizadas" else "Navegue até o destino e confirme.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (movingTarget == null) "Arquivos e pastas das fontes SAF autorizadas"
+                        else "Navegue até o destino e confirme. A identidade do catálogo pode mudar; a preservação do histórico/progresso não é garantida.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (movingTarget == null) {
                     IconButton(enabled = !busy && current != null, onClick = { createDialog = true }) {
@@ -187,7 +192,16 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
     renameTarget?.let { target -> AlertDialog(
         onDismissRequest = { if (!busy) renameTarget = null },
         title = { Text("Renomear item") },
-        text = { OutlinedTextField(renameName, { renameName = it }, label = { Text("Novo nome") }, singleLine = true) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(renameName, { renameName = it }, label = { Text("Novo nome") }, singleLine = true)
+                Text(
+                    "Renomear pode alterar a identidade usada na biblioteca. A atualização será solicitada, mas a preservação de histórico e progresso não está garantida.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
         confirmButton = { TextButton(enabled = !busy && renameName.isNotBlank(), onClick = {
             busy = true
             scope.launch {
