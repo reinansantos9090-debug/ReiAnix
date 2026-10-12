@@ -42,6 +42,13 @@ Movimentações entre provedores/autoridades diferentes são recusadas explicita
 
 ## Validação oficial
 
-O workflow [Build ReiAnix Android APK](https://github.com/reinansantos9090-debug/ReiAnix/actions/workflows/build_apk.yml) é disparado automaticamente no push para `main`. Inclui a suíte Python, preparação do host Flet/Android, compilação Kotlin integrada, verificação do APK e publicação de artefatos quando o job passa.
+A execução oficial do APK para o SHA de implementação `b514dcacaf7a278fe3483b8a122152e80856053b` terminou com `success`:
 
-A suíte Python, `:app:compileReleaseKotlin`, a geração do APK/ZIP e os artefatos precisam ser confirmados nos workflows correspondentes ao SHA final exato; execuções de commits anteriores que foram canceladas não contam como validação. Não executei manualmente a suíte Kotlin/JVM e não foram adicionados testes instrumentados ou de emulador. A validação física em dispositivo Android e em provedores SAF reais permanece pendente.
+- [Build ReiAnix Android APK — run 38315555627](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/38315555627): sucesso no job obrigatório. `Run Python regression suite`, `Validate Python application`, `Build APK`, `Explicitly verify release Kotlin compilation`, verificações do APK e `Final Git integrity check` concluídos com sucesso.
+- [Release Evidence Certification — run 38315555728](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/38315555728): sucesso, incluindo a matriz de 201 verificações; o relatório de certificação foi publicado como artefato.
+- SHA-256 do APK gerado: `c624ccd64987ec48e98ac0f99ee6809e00c334a659be65033ee28b58fac43ce7`.
+- Artefatos Actions confirmados: `ReiAnix-apk-instalacao-direta-5289` (32.335.761 bytes) e `ReiAnix-ZIP-extraia-primeiro-5289` (32.290.129 bytes). O workflow de push usa retenção curta de artefatos; ambos estavam disponíveis ao verificar a execução.
+- O certificado de assinatura observado no APK foi `CN=Android Debug`; este resultado não deve ser descrito como uma assinatura de distribuição privada de produção.
+- O passo `Publish APK and ZIP to rolling GitHub Release` foi `skipped` porque o workflow só o executa em `workflow_dispatch`. Portanto, este push não atualizou os assets da Release persistente; os APK/ZIP validados estão nos artefatos da execução do Actions.
+
+Esta evidência pertence ao SHA de implementação acima. A atualização deste documento é um commit adicional e dispara novos workflows; para declarar o Prompt 14.2 concluído, confira também os resultados das execuções referentes ao HEAD que contém esta documentação. Não executei manualmente a suíte Kotlin/JVM e não foram adicionados testes instrumentados ou de emulador. A validação física em dispositivo Android e em provedores SAF reais permanece pendente.
