@@ -166,12 +166,16 @@ class SafFileOperations(private val context: Context) {
                 val existing = findChildByName(targetTreeUri(parentUri), parent.uri, safeName)
                 if (existing != null) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", existing, parentUri)
                 mutationAttempted = true
-                val createdUri = DocumentsContract.createDocument(
-                    resolver,
-                    parent.uri,
-                    DocumentsContract.Document.MIME_TYPE_DIR,
-                    safeName,
-                ) ?: return@synchronized Result.Failure(
+                val createdUri = try {
+                    DocumentsContract.createDocument(
+                        resolver,
+                        parent.uri,
+                        DocumentsContract.Document.MIME_TYPE_DIR,
+                        safeName,
+                    )
+                } catch (_: UnsupportedOperationException) {
+                    return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à criação de pastas.", parentUri)
+                } ?: return@synchronized Result.Failure(
                     FailureKind.PARTIAL,
                     "O provedor não retornou uma URI após a tentativa de criação. Verifique a pasta antes de repetir.",
                     parentUri,
@@ -212,8 +216,11 @@ class SafFileOperations(private val context: Context) {
                 val conflictUri = findChildByName(target.treeUri, parent.uri, safeName)
                 if (conflictUri != null && !sameDocument(conflictUri, source.uri)) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", uri, conflictUri)
                 mutationAttempted = true
-                val renamedUri = DocumentsContract.renameDocument(resolver, source.uri, safeName)
-                    ?: return@synchronized Result.Failure(
+                val renamedUri = try {
+                    DocumentsContract.renameDocument(resolver, source.uri, safeName)
+                } catch (_: UnsupportedOperationException) {
+                    return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à renomeação.", uri)
+                } ?: return@synchronized Result.Failure(
                         FailureKind.PARTIAL,
                         "O provedor não retornou uma URI após a tentativa de renomeação. Verifique a pasta antes de repetir.",
                         uri,
@@ -305,12 +312,21 @@ class SafFileOperations(private val context: Context) {
                     return@withLocks Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece movimentação confirmável entre estas fontes; a origem foi preservada.", uri, destinationDirectoryUri)
                 }
                 mutationAttempted = true
-                val movedUri = DocumentsContract.moveDocument(
-                    resolver,
-                    sourceDocument.uri,
-                    sourceParent.uri,
-                    destinationDocument.uri,
-                ) ?: return@withLocks Result.Failure(
+                val movedUri = try {
+                    DocumentsContract.moveDocument(
+                        resolver,
+                        sourceDocument.uri,
+                        sourceParent.uri,
+                        destinationDocument.uri,
+                    )
+                } catch (_: UnsupportedOperationException) {
+                    return@withLocks Result.Failure(
+                        FailureKind.UNSUPPORTED,
+                        "O provedor não oferece suporte à movimentação. Verifique a origem antes de tentar outra estratégia.",
+                        uri,
+                        destinationDirectoryUri,
+                    )
+                } ?: return@withLocks Result.Failure(
                     FailureKind.PARTIAL,
                     "O provedor não retornou uma URI após a tentativa de movimentação. Verifique a origem e o destino antes de repetir.",
                     uri,
@@ -346,7 +362,11 @@ class SafFileOperations(private val context: Context) {
                 val source = target.document
                 if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite exclusão.", uri)
                 mutationAttempted = true
-                val deleteReportedSuccess = source.delete()
+                val deleteReportedSuccess = try {
+                    source.delete()
+                } catch (_: UnsupportedOperationException) {
+                    return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à exclusão.", uri)
+                }
                 val afterDelete = try {
                     DocumentFile.fromSingleUri(context, uri)
                 } catch (cancelled: CancellationException) {
