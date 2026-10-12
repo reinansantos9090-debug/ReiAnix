@@ -24,7 +24,7 @@ class ReiAnixAniListIntegrationService(
     private val library: ReiAnixSqliteLibraryRepository,
     private val settings: ReiAnixSqliteSettingsRepository,
 ) {
-    private val autoMatchAttempts = ConcurrentHashMap<Long, Long>()
+    private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
 
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
@@ -172,7 +172,7 @@ class ReiAnixAniListIntegrationService(
                     aliasesJson = remote.synonyms.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     description = remote.description,
                     coverUrl = if (artworkEnabled) remote.coverExtraLargeUrl ?: remote.coverLargeUrl else null,
-                    bannerUrl = remote.bannerUrl,
+                    bannerUrl = remote.bannerUrl.takeIf { artworkEnabled },
                     genresJson = remote.genres.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     year = remote.seasonYear,
                     season = remote.season,
@@ -228,6 +228,7 @@ class ReiAnixAniListIntegrationService(
     private fun normalize(value: String): String = MediaTitleNormalizer.normalizeTitle(value)
 
     companion object {
+        private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = 0.88
         const val AUTO_MATCH_MIN_MARGIN = 0.12
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
