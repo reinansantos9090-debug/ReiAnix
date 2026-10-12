@@ -84,6 +84,12 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
             is SafFileOperations.Result.Failure -> {
                 notice = null
                 error = result.message + if (result.recoverable) " O estado é ambíguo; verifique a pasta antes de repetir a operação." else ""
+                if (result.recoverable) {
+                    // The provider may have mutated storage before confirmation or mailbox failure.
+                    // Refresh for recovery, but do not present the catalog as reconciled.
+                    viewModel.refresh()
+                    current?.let(::refresh)
+                }
             }
         }
     }
