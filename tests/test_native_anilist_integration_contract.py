@@ -63,5 +63,34 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn("best.second < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN", source)
 
 
+    def test_graphql_variables_are_literal_and_transport_payload_is_verified(self):
+        client = (KOTLIN / "data/anilist/ReiAnixAniListClient.kt").read_text(encoding="utf-8")
+        tests = (ROOT / "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClientTest.kt").read_text(encoding="utf-8")
+        for variable in ("search", "page", "perPage", "id"):
+            self.assertIn("${'
+    unittest.main()
+}" + variable, client)
+        self.assertIn("$MEDIA_FIELDS", client)
+        self.assertIn("searchSendsLiteralGraphQlVariablesAndExpectedJsonValues", tests)
+        self.assertIn("idLookupSendsLiteralIdVariableAndExpectedJsonValue", tests)
+        self.assertIn('getJSONObject("variables")', tests)
+
+    def test_search_responses_are_guarded_by_request_identity(self):
+        source = ANILIST_VM.read_text(encoding="utf-8")
+        self.assertIn("val requestId = ++searchRequestId", source)
+        self.assertIn("if (requestId == searchRequestId)", source)
+        self.assertNotIn("_aniListUiState.value.query == query", source)
+        self.assertIn("isSearchLoading", source)
+        self.assertIn("isManualAssociationLoading", source)
+        self.assertIn("isAutoMatchLoading", source)
+
+    def test_association_preserves_manual_metadata_bookkeeping(self):
+        source = ASSOCIATION.read_text(encoding="utf-8")
+        self.assertIn("buildSet<String>", source)
+        self.assertIn("val remoteMetadataFieldsApplied = values.size() > 0", source)
+        self.assertIn('current.metadataSource == "manual" || current.metadataStatus == "manual"', source)
+        self.assertIn("if (remoteMetadataFieldsApplied && !metadataIsManual)", source)
+        self.assertIn("autoMatchRequestedAnimeIds.add(animeId)", ANILIST_VM.read_text(encoding="utf-8"))
+
 if __name__ == "__main__":
     unittest.main()
