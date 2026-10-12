@@ -226,7 +226,9 @@ def test_settings_storage_and_scanner_reuse_the_canonical_storage_route():
     assert "lastScanStatus = decoded.lastScanStatus ?: previous.lastScanStatus" in repository
     assert "onRemoveSaf = onRemoveSaf" in storage
     assert "pendingRemoval = source" in storage
-    assert "onRefreshLibrary = viewModel::refresh" in storage
+    assert "onRefreshLibrary = {" in storage
+    assert "viewModel.refresh()" in storage
+    assert "viewModel.refreshNativeFolders()" in storage
 
 def test_persisted_library_preferences_drive_native_compose_consumers():
     settings_vm = read(
