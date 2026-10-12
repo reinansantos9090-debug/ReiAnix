@@ -229,9 +229,25 @@ class ReiAnixSqliteLibraryRepository(
         update: ReiAnixPlaybackProgressUpdate,
     ): ReiAnixEpisodeRecord = withContext(Dispatchers.IO) {
         database.transaction { connection ->
+            val current = queryEpisode(connection, update.episodeId)
+                ?: throw NoSuchElementException(
+                    "Cannot save playback progress: episode ID does not exist.",
+                )
+
+            // A delayed callback from an older player session must not overwrite
+            // a newer durable position or its watched state.
+            if ((current.lastPlayedAt ?: 0.0) > update.playedAtEpochSeconds) {
+                return@transaction current
+            }
+
+            val currentDuration = current.duration?.takeIf { it.isFinite() && it > 0.0 }
+            val incomingDuration = update.duration?.takeIf { it.isFinite() && it > 0.0 }
+            val duration = incomingDuration ?: currentDuration
+            val boundedProgress = if (duration != null) update.progress.coerceAtMost(duration)
+                else update.progress
             val values = ContentValues().apply {
-                put("progress", update.progress)
-                if (update.duration != null) put("duration", update.duration)
+                put("progress", boundedProgress)
+                if (incomingDuration != null) put("duration", incomingDuration)
                 if (update.watched != null) put("watched", if (update.watched) 1 else 0)
                 put("last_played_at", update.playedAtEpochSeconds)
             }
@@ -242,8 +258,8 @@ class ReiAnixSqliteLibraryRepository(
                 arrayOf(update.episodeId.toString()),
             )
             queryEpisode(connection, update.episodeId)
-                ?: throw NoSuchElementException(
-                    "Cannot save playback progress: episode ID does not exist.",
+                ?: throw IllegalStateException(
+                    "Episode disappeared after saving playback progress.",
                 )
         }
     }
