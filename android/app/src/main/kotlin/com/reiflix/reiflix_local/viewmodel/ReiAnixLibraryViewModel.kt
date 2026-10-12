@@ -142,12 +142,21 @@ class ReiAnixLibraryViewModel(context: Context) :
         operation: String,
     ): SafFileOperations.Result {
         if (result !is SafFileOperations.Result.Success) return result
+        val treeUri = result.treeUri
+            ?: return SafFileOperations.Result.Failure(
+                SafFileOperations.FailureKind.PARTIAL,
+                "A mutação SAF foi confirmada, mas não foi possível identificar a árvore para reconciliar o catálogo. Verifique a biblioteca antes de repetir.",
+                oldUri,
+                result.uri,
+                recoverable = true,
+            )
         val event = JSONObject()
             .put("type", "saf_document_identity_change")
             .put(
                 "payload",
                 JSONObject()
                     .put("operation", operation)
+                    .put("treeUri", treeUri.toString())
                     .put("oldUri", oldUri.toString())
                     .put("newUri", result.uri.toString())
                     .put("name", result.name),
