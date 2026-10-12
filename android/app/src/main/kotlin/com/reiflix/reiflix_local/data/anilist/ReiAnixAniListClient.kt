@@ -39,9 +39,9 @@ class ReiAnixAniListClient(
         if (query.isEmpty()) return AniListResult.Success(emptyList())
         require(limit in 1..50) { "AniList result limit must be between 1 and 50." }
         val gql = """
-            query SearchAnime(${ ' {
-              Page(page: ${ ' {
-                media(search: ${ ' {
+            query SearchAnime(${'$'}search: String, ${'$'}page: Int, ${'$'}perPage: Int) {
+              Page(page: ${'$'}page, perPage: ${'$'}perPage) {
+                media(search: ${'$'}search, type: ANIME, sort: SEARCH_MATCH) {
                   $MEDIA_FIELDS
                 }
               }
@@ -66,8 +66,8 @@ class ReiAnixAniListClient(
     suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
         if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
         val gql = """
-            query AnimeById(${ ' {
-              Media(id: ${ ' { $MEDIA_FIELDS }
+            query AnimeById(${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME) { $MEDIA_FIELDS }
             }
         """.trimIndent()
         return execute(gql, JSONObject().put("id", id)) { data ->
