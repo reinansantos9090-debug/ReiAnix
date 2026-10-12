@@ -51,6 +51,37 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
+    fun searchSendsLiteralGraphQlVariablesAndExpectedJsonValues() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""))
+        val result = ReiAnixAniListClient(transport, 0).searchAnime("Dorohedoro", limit = 7)
+
+        assertEquals(AniListResult.Success(emptyList()), result)
+        val body = transport.requestBody!!
+        val query = body.getString("query")
+        assertTrue(query.contains("\$search"))
+        assertTrue(query.contains("\$page"))
+        assertTrue(query.contains("\$perPage"))
+        assertTrue(query.contains("media(search: \$search, type: ANIME"))
+        val variables = body.getJSONObject("variables")
+        assertEquals("Dorohedoro", variables.getString("search"))
+        assertEquals(1, variables.getInt("page"))
+        assertEquals(7, variables.getInt("perPage"))
+    }
+
+    @Test
+    fun idLookupSendsLiteralIdVariableAndExpectedJsonValue() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":42,"title":{}}}}"""))
+        val result = ReiAnixAniListClient(transport, 0).getAnime(42)
+
+        assertTrue(result is AniListResult.Success)
+        assertEquals(42, (result as AniListResult.Success).value?.id)
+        val body = transport.requestBody!!
+        assertTrue(body.getString("query").contains("\$id"))
+        assertTrue(body.getString("query").contains("Media(id: \$id, type: ANIME)"))
+        assertEquals(42, body.getJSONObject("variables").getInt("id"))
+    }
+
+    @Test
     fun blankSearchReturnsEmptyWithoutNetworkRequest() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, "{}"))
         val result = ReiAnixAniListClient(transport, 0).searchAnime("   ")
