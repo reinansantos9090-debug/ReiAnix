@@ -23,6 +23,9 @@ data class ReiAnixSettingDefinition(
                 else -> throw IllegalArgumentException("Invalid boolean for $key")
             }
             ReiAnixSettingKind.INTEGER -> {
+                require(value.isNotEmpty() && value.all { it.isDigit() }) {
+                    "Invalid integer for $key"
+                }
                 val parsed = value.toIntOrNull()
                     ?: throw IllegalArgumentException("Invalid integer for $key")
                 require(parsed >= 0) { "Negative integer for $key" }

@@ -29,6 +29,17 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
          * state. The error remains observable, while persisted values stay visible
          * until a valid newer snapshot arrives.
          */
+        internal fun rollbackFailedSetting(
+            currentSettings: Map<String, String>,
+            key: String,
+            failedRequestId: String,
+            currentPendingRequestId: String?,
+            confirmedValue: String,
+        ): Map<String, String> {
+            if (currentPendingRequestId != failedRequestId) return currentSettings
+            return currentSettings + (key to confirmedValue)
+        }
+
         internal fun mergeSnapshotState(
             decoded: ReiAnixSettingsUiState,
             previous: ReiAnixSettingsUiState,
@@ -140,6 +151,7 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
             val current = _state.value
             val confirmedValue = confirmedSettings[normalizedKey]
                 ?: current.settings[normalizedKey]
+                ?: ReiAnixSettingsContract.defaultFor(normalizedKey)
                 ?: normalizedValue
             confirmedSettings.putIfAbsent(normalizedKey, confirmedValue)
             pendingSettings[normalizedKey] = PendingSetting(requestId, normalizedKey, normalizedValue, confirmedValue)
@@ -184,12 +196,21 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
                     val pending = pendingSettings[normalizedKey]
                     val rollbackSettings = if (pending != null && pending.requestId == requestId) {
                         pendingSettings.remove(normalizedKey)
-                        current.settings + (
-                            normalizedKey to (confirmedSettings[normalizedKey] ?: pending.confirmedValue)
+                        rollbackFailedSetting(
+                            currentSettings = current.settings,
+                            key = normalizedKey,
+                            failedRequestId = requestId,
+                            currentPendingRequestId = pending.requestId,
+                            confirmedValue = confirmedSettings[normalizedKey] ?: pending.confirmedValue,
                         )
                     } else {
-                        // A failed older request must not overwrite a newer optimistic value.
-                        current.settings
+                        rollbackFailedSetting(
+                            currentSettings = current.settings,
+                            key = normalizedKey,
+                            failedRequestId = requestId,
+                            currentPendingRequestId = pending?.requestId,
+                            confirmedValue = pending?.confirmedValue ?: normalizedValue,
+                        )
                     }
                     _state.value = current.copy(
                         settings = rollbackSettings,

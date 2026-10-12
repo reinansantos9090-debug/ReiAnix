@@ -373,6 +373,79 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun settingsBatchWritesAreAtomicAndUnchangedValuesKeepTheirTimestamp() = runBlocking {
+        createCanonicalFixture()
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        settings.setPreference("player.auto_hide_seconds", "5", 1_700_000_001.0)
+
+        settings.setPreference("player.auto_hide_seconds", "05", 1_700_000_002.0)
+        assertEquals("5", settings.getPreference("player.auto_hide_seconds")!!.value)
+        assertEquals(
+            1_700_000_001.0,
+            settings.getPreference("player.auto_hide_seconds")!!.updatedAt,
+            0.0,
+        )
+
+        val written = settings.setPreferencesAtomically(
+            mapOf("appearance.theme" to "light", "player.resume" to "false"),
+            1_700_000_003.0,
+        )
+        assertEquals("light", written["appearance.theme"]!!.value)
+        assertEquals("false", written["player.resume"]!!.value)
+        val reopened = ReiAnixSqliteSettingsRepository(context)
+        assertEquals("light", reopened.getPreference("appearance.theme")!!.value)
+        assertEquals("false", reopened.getPreference("player.resume")!!.value)
+    }
+
+    @Test
+    fun invalidBatchDoesNotWriteAnyPreference() = runBlocking {
+        createCanonicalFixture()
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        try {
+            settings.setPreferencesAtomically(
+                mapOf("appearance.theme" to "light", "player.auto_hide_seconds" to "7"),
+                1_700_000_004.0,
+            )
+            fail("Invalid preference batch must be rejected.")
+        } catch (expected: IllegalArgumentException) {
+            // All values are validated before the SQLite transaction starts.
+        }
+        assertNull(settings.getPreference("appearance.theme"))
+        assertNull(settings.getPreference("player.auto_hide_seconds"))
+    }
+
+    @Test
+    fun sqliteFailureRollsBackEveryPreferenceInTheBatch() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                CREATE TRIGGER fail_player_resume_insert
+                BEFORE INSERT ON preferences
+                WHEN NEW.key = 'player.resume'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced settings test failure');
+                END
+                """.trimIndent(),
+            )
+        }
+
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        try {
+            settings.setPreferencesAtomically(
+                mapOf("appearance.theme" to "light", "player.resume" to "false"),
+                1_700_000_005.0,
+            )
+            fail("Injected SQLite failure must abort the batch.")
+        } catch (expected: android.database.sqlite.SQLiteException) {
+            // The transaction must roll back the earlier insert as well.
+        }
+        assertNull(settings.getPreference("appearance.theme"))
+        assertNull(settings.getPreference("player.resume"))
+    }
+
+    @Test
     fun metadataUpdatesRespectManualOwnershipAndPreserveUserOwnedFields() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)

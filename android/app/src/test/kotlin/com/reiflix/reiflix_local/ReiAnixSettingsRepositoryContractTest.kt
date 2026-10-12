@@ -102,4 +102,29 @@ class ReiAnixSettingsRepositoryContractTest {
         assertEquals("https://example.com/new-picture.jpg", afterReady.account.picture)
         assertEquals("false", afterReady.settings["player.autoplay"])
     }
+    @Test
+    fun failedOlderSettingRequestCannotOverwriteANewerPendingValue() {
+        val latestSettings = mapOf("appearance.theme" to "light")
+        val afterOldFailure = ReiAnixSettingsRepository.rollbackFailedSetting(
+            currentSettings = latestSettings,
+            key = "appearance.theme",
+            failedRequestId = "request-old",
+            currentPendingRequestId = "request-new",
+            confirmedValue = "dark",
+        )
+        assertEquals(latestSettings, afterOldFailure)
+    }
+
+    @Test
+    fun failedCurrentSettingRequestRollsBackToConfirmedValue() {
+        val afterFailure = ReiAnixSettingsRepository.rollbackFailedSetting(
+            currentSettings = mapOf("appearance.theme" to "light"),
+            key = "appearance.theme",
+            failedRequestId = "request-current",
+            currentPendingRequestId = "request-current",
+            confirmedValue = "dark",
+        )
+        assertEquals(mapOf("appearance.theme" to "dark"), afterFailure)
+    }
+
 }
