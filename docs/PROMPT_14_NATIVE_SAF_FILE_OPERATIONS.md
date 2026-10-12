@@ -15,11 +15,19 @@ A implementação acrescenta um navegador de arquivos Compose acessível pela te
 - A tela `ReiAnixSafFileManagerRoute` é aberta a partir de Organizar. Lista pastas/arquivos e metadados disponíveis, navega entre pastas, cria pastas, renomeia, permite escolher o destino navegando, e exige confirmação explícita para excluir. A interface mostra erros reais e avisa que renomeação/movimentação pode alterar a identidade do catálogo.
 - Após mutação confirmada, a interface solicita a atualização existente do catálogo com `viewModel.refresh()`. Isso é uma solicitação de atualização, não uma prova de sincronização nem de preservação de progresso.
 
+## Reconciliação canônica SAF
+
+Renomeações e movimentações confirmadas pelo provedor enfileiram o evento durável `saf_document_identity_change` na NativeMailbox existente. O processo Python encaminha o evento a `LibraryService.reconcile_saf_document_identity_change`, que delega a `LibraryStore` e atualiza a URI/nome da linha de episódio existente e as observações SAF correspondentes em uma única transação. Não há escrita SQLite no Kotlin nem banco paralelo.
+
+A reconciliação exige URIs `content://` do mesmo authority e uma linha canônica antiga de origem SAF. Ela não cria uma linha se a origem não for encontrada, não sobrescreve outra linha que já use a URI de destino e trata a repetição como idempotente quando a URI nova já está registrada. Como a linha de episódio não é recriada, o ID do episódio/anime, progresso, estado assistido, horário de reprodução, identidade de mídia, metadados, artwork e associações externas permanecem ligados ao registro original. As observações SAF são reendereçadas na mesma transação. Um evento que não prove a correspondência não remove registros; falhas excepcionais são reprocessáveis pela fila.
+
+O estado mostrado pela UI é **reconciliação enfileirada**, não confirmação de que o catálogo já processou o evento. Se a publicação na mailbox falhar depois da mutação física, a UI apresenta um resultado recuperável e orienta a verificar a biblioteca. Exclusão e criação não são usadas para reescrever a identidade de um episódio. A movimentação entre authorities continua recusada.
+
 ## Persistência canônica e limite conhecido
 
 O catálogo continua tendo como fonte de verdade o `LibraryStore`/`LibraryService` Python e os mecanismos de reconciliação existentes. Não foi criada outra base de dados nem um escritor SQLite concorrente.
 
-O contrato nativo de comando disponível não oferece uma operação explícita que associe atomicamente a URI antiga à nova após renomear/mover. Para provedores genéricos, a identidade pode depender da URI/ID do documento; em árvores de armazenamento compartilhado, pode depender do caminho relativo. Assim, esta etapa não pode garantir que progresso, histórico, metadados, capa e associação AniList sejam preservados após qualquer renomeação/movimentação. A UI informa essa limitação e solicita atualização canônica, mas **a reconciliação da identidade permanece pendente de validação/integracão específica**. Uma exclusão só é apresentada como confirmada quando a consulta posterior indica ausência; estados ambíguos exigem reconciliação.
+A reconciliação por URI agora está integrada ao fluxo canônico e coberta por testes de unidade Python adicionados nesta etapa. Ainda não é possível garantir o comportamento de todos os provedores SAF reais: alguns podem retornar URIs/document IDs instáveis, e o evento pode ser interrompido após a mutação física ou antes de a mailbox ser processada. Nesses casos, o registro antigo é preservado quando a correspondência não pode ser provada, e a UI não declara a reconciliação concluída. Exclusão e falhas ambíguas não apagam o estado canônico automaticamente.
 
 Movimentações entre provedores/autoridades diferentes são recusadas explicitamente. Não é implementada cópia seguida de exclusão.
 
