@@ -62,8 +62,8 @@ class ReiAnixSqliteLibraryRepository(
 
     /**
      * Searches the canonical LibraryStore SQLite database and returns persisted anime IDs.
-     * SQL applies filters and ordering; Kotlin verifies normalized text from one streamed
-     * cursor so Unicode and accent-insensitive matching do not depend on SQLite LOWER().
+     * SQL applies filters and selected sorting; Kotlin verifies normalized text from one
+     * streamed cursor so accent-insensitive matching does not depend on SQLite LOWER().
      */
     suspend fun searchAnimeIds(
         query: String,
@@ -147,9 +147,9 @@ class ReiAnixSqliteLibraryRepository(
             "Nome A-Z" -> "a.title COLLATE NOCASE ASC, a.id ASC"
             "Nome Z-A" -> "a.title COLLATE NOCASE DESC, a.id DESC"
             "Assistidos recentemente" -> "(SELECT MAX(e.last_played_at) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Progresso" -> "(SELECT MAX(COALESCE(e.progress,0)/CASE WHEN COALESCE(e.duration,0)>0 THEN e.duration ELSE 1 END) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Episódio" -> "CASE WHEN (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
-            "Temporada + episódio" -> "CASE WHEN (SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, CASE WHEN (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Progresso" -> "(SELECT AVG(CASE WHEN COALESCE(e.missing,0)=0 AND COALESCE(e.duration,0)>0 THEN MIN(1.0, MAX(COALESCE(e.progress,0),0)/e.duration) ELSE 0 END) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Episódio" -> "CASE WHEN (SELECT e.number FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available' ORDER BY e.season ASC, e.number ASC, e.id ASC LIMIT 1) IS NULL THEN 1 ELSE 0 END ASC, (SELECT e.number FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available' ORDER BY e.season ASC, e.number ASC, e.id ASC LIMIT 1) ASC, a.title COLLATE NOCASE ASC, a.id ASC"
+            "Temporada + episódio" -> "CASE WHEN (SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available') IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.season) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available') ASC, CASE WHEN (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available') IS NULL THEN 1 ELSE 0 END ASC, (SELECT MIN(e.number) FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 AND COALESCE(e.availability_state,'available')='available') ASC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Modificação" -> "(SELECT MAX(e.modified_at) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Duração" -> "(SELECT SUM(COALESCE(e.duration,0)) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
             "Tamanho" -> "(SELECT SUM(COALESCE(e.file_size,0)) FROM episodes e WHERE e.anime_id=a.id) DESC, a.title COLLATE NOCASE ASC, a.id ASC"
