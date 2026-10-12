@@ -43,7 +43,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
@@ -114,6 +115,8 @@ import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListUiState
+import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModelFactory
 import com.reiflix.reiflix_local.data.anilist.AniListAnime
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -145,12 +148,19 @@ fun ReiAnixDetailsRoute(
     val state by detailsStateFlow.collectAsStateWithLifecycle(
         initialValue = ReiAnixDetailsUiState(),
     )
-    val aniListState by viewModel.aniListUiState.collectAsStateWithLifecycle()
+    val aniListViewModel: ReiAnixAniListViewModel = viewModel(
+        factory = ReiAnixAniListViewModelFactory(LocalContext.current),
+    )
+    val aniListState by aniListViewModel.uiState.collectAsStateWithLifecycle()
     var showAniListDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     LaunchedEffect(canonicalId, state.status) {
         if (state.status == ReiAnixDetailsLoadStatus.READY) {
-            viewModel.autoMatchAniList(canonicalId)
+            aniListViewModel.autoMatchAniList(canonicalId)
         }
+    }
+
+    LaunchedEffect(aniListState.associationRevision) {
+        if (aniListState.associationRevision > 0L) viewModel.refresh()
     }
 
     // Guard only the short navigation hand-off. NavHost/launchSingleTop remains
@@ -213,9 +223,9 @@ fun ReiAnixDetailsRoute(
     if (showAniListDialog) {
         AniListAssociationDialog(
             state = aniListState,
-            onSearch = viewModel::searchAniList,
+            onSearch = aniListViewModel::searchAniList,
             onAssociate = { selectedId ->
-                viewModel.associateAniListManually(canonicalId, selectedId)
+                aniListViewModel.associateAniListManually(canonicalId, selectedId)
             },
             onDismiss = { showAniListDialog = false },
         )
@@ -1394,10 +1404,11 @@ private fun AniListAssociationDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(
+                    ReiAnixCompactButton(
+                        text = "Pesquisar",
                         enabled = query.isNotBlank() && !state.isLoading,
                         onClick = { onSearch(query) },
-                    ) { Text("Pesquisar") }
+                    )
                     if (state.isLoading) CircularProgressIndicator(modifier = Modifier.size(ReiAnixTokens.Spacing.lg))
                 }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -1415,7 +1426,9 @@ private fun AniListAssociationDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fechar") } },
+        confirmButton = {
+            ReiAnixSecondaryButton(text = "Fechar", onClick = onDismiss)
+        },
     )
 }
 
