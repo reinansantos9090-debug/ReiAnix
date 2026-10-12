@@ -43,7 +43,7 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
         val boundedPosition = durationSeconds?.let(positionSeconds::coerceAtMost) ?: positionSeconds
         val reachedCompletionThreshold = durationSeconds != null && durationSeconds > 0.0 &&
             boundedPosition / durationSeconds >= COMPLETION_RATIO
-        val finalPosition = if ((completed || reachedCompletionThreshold) && durationSeconds != null) {
+        val finalPosition = if (completed && durationSeconds != null) {
             durationSeconds
         } else boundedPosition
         return library.updatePlaybackProgress(

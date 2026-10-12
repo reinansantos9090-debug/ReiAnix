@@ -1011,7 +1011,17 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             playedAtEpochSeconds = 3_000.0,
         )
         assertTrue(completed.watched)
-        assertEquals(120_000L, completed.positionMs)
+        assertEquals(108_000L, completed.positionMs)
+
+        val explicitlyCompleted = reopenedService.saveProgress(
+            episodeId = 7L,
+            positionMs = 110_000L,
+            durationMs = 120_000L,
+            playedAtEpochSeconds = 4_000.0,
+            completed = true,
+        )
+        assertTrue(explicitlyCompleted.watched)
+        assertEquals(120_000L, explicitlyCompleted.positionMs)
 
         val reopenedAgain = ReiAnixConsumptionService(ReiAnixSqliteLibraryRepository(context))
         assertTrue(reopenedAgain.getProgress(7L)!!.watched)
