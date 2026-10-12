@@ -36,6 +36,7 @@ class SafFileOperations(private val context: Context) {
             val canRead: Boolean = true,
             val canWrite: Boolean = false,
             val catalogReconciliationQueued: Boolean = false,
+            val treeUri: Uri? = null,
         ) : Result
         data class Failure(val kind: FailureKind, val message: String, val sourceUri: Uri? = null,
                            val destinationUri: Uri? = null, val recoverable: Boolean = false) : Result
@@ -241,6 +242,7 @@ class SafFileOperations(private val context: Context) {
                     renamedDocument.name.orEmpty(),
                     renamedDocument.isDirectory,
                     catalogReconciliationQueued = false,
+                    treeUri = target.treeUri,
                 )
             } catch (e: SecurityException) {
                 if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A renomeação pode ter ocorrido antes da falha de confirmação. Verifique a pasta antes de repetir.", uri, recoverable = true)
@@ -337,7 +339,12 @@ class SafFileOperations(private val context: Context) {
                 val locatedAtDestination = findChildByName(currentDestination.treeUri, destinationDocument.uri, name)
                 if (moved != null && moved.exists() && moved.name == name &&
                     locatedAtDestination != null && sameDocument(locatedAtDestination, moved.uri)) {
-                    Result.Success(moved.uri, name, moved.isDirectory)
+                    Result.Success(
+                        moved.uri,
+                        name,
+                        moved.isDirectory,
+                        treeUri = currentSource.treeUri,
+                    )
                 } else {
                     Result.Failure(FailureKind.PARTIAL, "O provedor aceitou a movimentação, mas não confirmou o documento no destino. Verifique ambas as pastas antes de repetir.", uri, destinationDirectoryUri, recoverable = true)
                 }
