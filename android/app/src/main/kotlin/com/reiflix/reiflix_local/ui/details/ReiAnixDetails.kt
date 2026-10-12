@@ -216,7 +216,6 @@ fun ReiAnixDetailsRoute(
             onSearch = viewModel::searchAniList,
             onAssociate = { selectedId ->
                 viewModel.associateAniListManually(canonicalId, selectedId)
-                showAniListDialog = false
             },
             onDismiss = { showAniListDialog = false },
         )
