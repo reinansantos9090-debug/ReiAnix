@@ -50,11 +50,11 @@ class ReiAnixLibraryQueryService(
         animeId: Long,
     ): ReiAnixLibraryQueryResult<List<ReiAnixEpisodeRecord>> =
         query("episodesForAnime") {
-            val anime = repository.getAnime(animeId)
-                ?: return@query ReiAnixLibraryQueryResult.NotFound("anime", animeId)
             // Keep the explicit parent lookup so a missing anime differs from an
             // existing anime that legitimately has no episodes.
-            anime.id
+            if (repository.getAnime(animeId) == null) {
+                return@query ReiAnixLibraryQueryResult.NotFound("anime", animeId)
+            }
             val episodes = repository.listEpisodes(animeId)
             if (episodes.isEmpty()) ReiAnixLibraryQueryResult.Empty("episodesForAnime")
             else ReiAnixLibraryQueryResult.Success(episodes)
@@ -89,9 +89,9 @@ class ReiAnixLibraryQueryService(
         animeId: Long,
     ): ReiAnixLibraryQueryResult<List<ReiAnixArtworkRecord>> =
         query("artworkForAnime") {
-            val anime = repository.getAnime(animeId)
-                ?: return@query ReiAnixLibraryQueryResult.NotFound("anime", animeId)
-            anime.id
+            if (repository.getAnime(animeId) == null) {
+                return@query ReiAnixLibraryQueryResult.NotFound("anime", animeId)
+            }
             val artwork = repository.artworkForAnime(animeId)
             if (artwork.isEmpty()) ReiAnixLibraryQueryResult.Empty("artworkForAnime")
             else ReiAnixLibraryQueryResult.Success(artwork)
@@ -105,7 +105,7 @@ class ReiAnixLibraryQueryService(
             block()
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (error: Throwable) {
+        } catch (error: Exception) {
             Log.e(TAG, "Native library query failed: $operation", error)
             ReiAnixLibraryQueryResult.Failure(operation, error)
         }
