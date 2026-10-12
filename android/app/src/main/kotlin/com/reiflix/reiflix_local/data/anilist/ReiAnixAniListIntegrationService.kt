@@ -98,12 +98,17 @@ class ReiAnixAniListIntegrationService(
         }
         autoMatchAttempts[animeId] = now
         val query = local.title.takeIf { it.isNotBlank() } ?: local.lookupTitle
-        val results = when (val result = client.searchAnime(query, 10)) {
-            is AniListResult.Success -> result.value
-            is AniListResult.Failure -> {
-                autoMatchAttempts.remove(animeId)
-                return result
+        val results = try {
+            when (val result = client.searchAnime(query, 10)) {
+                is AniListResult.Success -> result.value
+                is AniListResult.Failure -> {
+                    autoMatchAttempts.remove(animeId)
+                    return result
+                }
             }
+        } catch (cancelled: CancellationException) {
+            autoMatchAttempts.remove(animeId)
+            throw cancelled
         }
         if (results.isEmpty()) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         val localTitles = localTitles(local).map(::normalize).filter(String::isNotBlank).toSet()
