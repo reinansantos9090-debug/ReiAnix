@@ -153,13 +153,11 @@ class ReiAnixAniListIntegrationService(
         margin: Double?,
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
-            // Artwork preference controls whether the remote URL is made eligible
+            // Artwork preference controls whether the remote URL becomes eligible
             // for the existing artwork pipeline. This service never downloads images.
             val artworkEnabled = settingEnabled("artwork.enabled", defaultValue = true)
-            // Apply editorial fields first. If that write fails, the association
-            // remains unchanged. Null/blank remote fields are intentionally no-ops.
-            library.updateAnimeMetadata(
-                ReiAnixAnimeMetadataPatch(
+            library.updateAniListMetadataAndAssociation(
+                patch = ReiAnixAnimeMetadataPatch(
                     animeId = local.id,
                     title = remote.preferredTitle.takeIf { it.isNotBlank() },
                     romaji = remote.titleRomaji,
@@ -180,9 +178,6 @@ class ReiAnixAniListIntegrationService(
                     studio = remote.studios.takeIf { it.isNotEmpty() }?.joinToString(", "),
                     metadataFetchedAt = System.currentTimeMillis() / 1000.0,
                 ),
-            )
-            library.persistAniListAssociation(
-                animeId = local.id,
                 anilistId = remote.id.toLong(),
                 manual = manual,
                 score = score,
