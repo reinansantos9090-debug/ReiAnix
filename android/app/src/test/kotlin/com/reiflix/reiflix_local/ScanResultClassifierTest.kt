@@ -30,7 +30,7 @@ class ScanResultClassifierTest {
 
     @Test fun broadStorageKnownFailuresAndUnknownStatesFailClosed() {
         listOf("FAILED", "UNAVAILABLE", "REVOKED", "DENIED", "ERROR", "MYSTERY", "").forEach { status ->
-            assertEquals(status, "broad status $status", "FAILED",
+            assertEquals("broad status $status", "FAILED",
                 ScanResultClassifier.classifyBroadStorage(status, false, false))
         }
         assertEquals("FAILED", ScanResultClassifier.classifyBroadStorage(null, false, false))
