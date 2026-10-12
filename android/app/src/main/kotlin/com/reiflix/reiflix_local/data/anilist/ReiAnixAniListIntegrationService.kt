@@ -139,6 +139,7 @@ class ReiAnixAniListIntegrationService(
             candidate to score
         }.sortedByDescending { it.second }
         val best = ranked.first()
+        if (best.second <= 0.0) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         val second = ranked.getOrNull(1)?.second ?: 0.0
         val margin = best.second - second
         if (best.second < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
