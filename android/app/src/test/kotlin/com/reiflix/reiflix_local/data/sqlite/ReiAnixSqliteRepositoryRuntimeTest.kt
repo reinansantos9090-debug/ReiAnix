@@ -818,6 +818,45 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(11.0, ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.progress!!, 0.0)
     }
 
+    @Test
+    fun confidentlyParsedNewTitleCreatesLocalAnimeWithoutRemoteAssociation() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val report = repository.indexDiscoveredMedia(
+            NativeLibraryScanSnapshot(
+                operationId = "new-local-anime",
+                source = "saf",
+                scopeRoot = "/media/new-show",
+                expectedLocations = setOf("/media/new-show"),
+                processedLocations = setOf("/media/new-show"),
+                status = "COMPLETED",
+                complete = true,
+                authorizationValid = true,
+                items = listOf(
+                    NativeDiscoveredMedia(
+                        location = "/media/new-show/Brand.New.Show.S01E01.mkv",
+                        fileName = "Brand.New.Show.S01E01.mkv",
+                        scopeLocation = "/media/new-show/Brand.New.Show.S01E01.mkv",
+                        animeTitle = "Brand New Show",
+                        season = 1,
+                        episodeNumber = 1.0,
+                        identificationSource = "sxxexx",
+                        identificationConfidence = "high",
+                        sourceFolder = "/media/new-show",
+                        mediaIdentity = "shared:primary:new-show/Brand.New.Show.S01E01.mkv",
+                    ),
+                ),
+            ),
+        )
+        assertEquals(1, report.inserted)
+        val localAnime = repository.listAnime(limit = 10).single { it.title == "Brand New Show" }
+        assertNull(localAnime.anilistId)
+        assertEquals("local_index", localAnime.metadataSource)
+        val episode = repository.listEpisodes(localAnime.id).single()
+        assertEquals(1.0, episode.number!!, 0.0)
+        assertEquals("/media/new-show/Brand.New.Show.S01E01.mkv", episode.path)
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()

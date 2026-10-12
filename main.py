@@ -4449,6 +4449,26 @@ async def main(page: ft.Page):
             }
             source_kind, default_scope_kind = source_map[event_type]
             documents = payload.get("documents") or []
+            if source_kind == "saf" and payload.get("nativeLibraryIndexOwner") is True:
+                # SAF discovery is committed by the Kotlin indexer after the
+                # complete snapshot is validated. Do not run a second Python
+                # writer for the same physical files.
+                diagnostics.record(
+                    "SCAN_BATCH",
+                    request_id=event_request_id,
+                    scan_id=payload.get("scopeScanId") or payload.get("scanId"),
+                    source=source_kind,
+                    result="NATIVE_KOTLIN_INDEXER_OWNS_PERSISTENCE",
+                    counts={"batchId": payload.get("batchId"), "discovered": len(documents)},
+                )
+                return {
+                    "ignored": True,
+                    "new": 0,
+                    "updated": 0,
+                    "unchanged": 0,
+                    "duplicates": 0,
+                    "errors": [],
+                }
             scope_kind = payload.get("scopeKind") or default_scope_kind
             scope_ref = payload.get("scopeRef") or payload.get("scope") or payload.get("volumeId") or event_type
             source_reference = (

@@ -224,7 +224,7 @@ object NativeScanRunner {
                     .put("source", "saf")
                     .put("scope", SafScanner.treeIdentity(treeUri).identity)
                     .put("volumeId", result.optString("volumeId"))
-                    .put("status", scanStatus)
+                    .put("status", if (nativeIndexingFailed) SafScanner.STATUS_PARTIAL else scanStatus)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
                 NativeScanController.complete(scanId, if (nativeIndexingFailed) SafScanner.STATUS_PARTIAL else scanStatus.ifBlank { SafScanner.STATUS_FAILED }, result)
             } catch (exception: CancellationException) {

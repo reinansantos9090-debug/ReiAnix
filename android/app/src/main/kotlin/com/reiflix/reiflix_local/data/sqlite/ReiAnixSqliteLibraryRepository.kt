@@ -330,11 +330,34 @@ class ReiAnixSqliteLibraryRepository(
                             }
                         }
                     }
-                    if (animeIds.size != 1) {
+                    if (animeIds.size > 1) {
                         ambiguous++
                         continue
                     }
-                    val animeId = animeIds.single()
+                    val animeId = if (animeIds.size == 1) {
+                        animeIds.single()
+                    } else {
+                        // A confidently parsed new local title can become a local-only
+                        // anime row. It is not auto-associated with any remote catalog ID.
+                        val existingLookup = db.rawQuery(
+                            "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1",
+                            arrayOf(title),
+                        ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
+                        if (existingLookup != null) {
+                            ambiguous++
+                            continue
+                        }
+                        val localAnime = ContentValues().apply {
+                            put("lookup_title", title)
+                            put("title", item.animeTitle!!.trim())
+                            put("added_at", System.currentTimeMillis() / 1000.0)
+                            put("metadata_source", "local_index")
+                            put("metadata_status", "local")
+                            put("metadata_confidence", item.identificationConfidence)
+                            put("media_kind", "anime")
+                        }
+                        db.insertOrThrow("anime", null, localAnime)
+                    }
                     val season = item.season ?: 0
                     val logicalCount = when {
                         item.episodeNumber != null -> db.rawQuery(
