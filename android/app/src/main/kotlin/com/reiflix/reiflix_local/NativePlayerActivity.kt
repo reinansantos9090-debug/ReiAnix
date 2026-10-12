@@ -1264,6 +1264,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 " initialPositionMs=" + initialPositionMsForGeneration,
         )
 
+        val requestedStartPositionMs = initialPositionMsForGeneration
+        val allowNativeResumeLookup = restoredPositionMs == null && !intent.hasExtra("positionMs")
         pendingPreparation = playbackWorker.submit {
             try {
                 preflightStartedAtMs = System.currentTimeMillis()
@@ -1310,8 +1312,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
                 // Recover progress only when neither saved Activity state nor an
                 // explicit caller position exists; the persisted episode ID is authoritative.
-                var startupPositionMs = initialPositionMsForGeneration
-                if (restoredPositionMs == null && !intent.hasExtra("positionMs")) {
+                var startupPositionMs = requestedStartPositionMs
+                if (allowNativeResumeLookup) {
                     val canonicalEpisodeId = currentEpisodeId().toLongOrNull()
                     if (canonicalEpisodeId != null && canonicalEpisodeId > 0L) {
                         try {
