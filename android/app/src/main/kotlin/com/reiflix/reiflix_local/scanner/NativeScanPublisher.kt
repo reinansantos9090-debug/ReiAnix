@@ -16,7 +16,7 @@ object NativeScanPublisher {
             val batchId = batchEvent.optString("batchId").ifBlank { UUID.randomUUID().toString() }
             val batchNumber = batchEvent.optInt("batchNumber", 0)
             val reused = batchEvent.optBoolean("reused", false)
-            val prepared = if (reused) null else NativeIndex.prepareBatch(appContext, source, scopeKey, raw, generation, batchId, batchNumber,
+            val prepared = if (reused && source != NativeIndex.SOURCE_SAF) null else NativeIndex.prepareBatch(appContext, source, scopeKey, raw, generation, batchId, batchNumber,
                 JSONObject().put("scanId", scanId).put("requestId", requestId ?: "").put("source", source).put("scopeKind", scopeKind).put("scopeRef", scopeRef))
             val documents = prepared?.documents ?: raw
             val effectiveGeneration = prepared?.generation ?: generation
@@ -27,6 +27,7 @@ object NativeScanPublisher {
                 .put("volumeId", batchEvent.optString("volumeId")).put("generationId", effectiveGenerationId).put("scanGeneration", effectiveGeneration)
                 .put("batchId", batchId).put("batchNumber", batchNumber).put("batchSize", documents.length()).put("processed", documents.length())
                 .put("discovered", raw.length()).put("duplicates", prepared?.duplicates ?: 0).put("reused", reused).put("documents", documents)
+                .put("nativeLibraryIndexOwner", source == NativeIndex.SOURCE_SAF)
             NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", eventType).put("requestId", requestId ?: "").put("payload", payload))
         } catch (exception: Exception) {
             Log.e(TAG, "Native batch publication failed", exception)

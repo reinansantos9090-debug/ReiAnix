@@ -5,6 +5,9 @@ import android.net.Uri
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.storage.NativeIndex
+import com.reiflix.reiflix_local.data.sqlite.NativeDiscoveredMedia
+import com.reiflix.reiflix_local.data.sqlite.NativeLibraryScanSnapshot
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 
@@ -75,17 +78,20 @@ object NativeScanRunner {
                 }
                 val partial = result.optBoolean("partial")
                 val rawScanStatus = result.optString("status").uppercase()
-                val scanStatus = rawScanStatus.takeIf {
-                    it in setOf(
+                val scanStatus = when {
+                    rawScanStatus in setOf(
                         SafScanner.STATUS_REVOKED,
                         SafScanner.STATUS_UNAVAILABLE,
                         SafScanner.STATUS_CANCELLED,
-                        SafScanner.STATUS_PARTIAL,
+                        SafScanner.STATUS_FAILED,
+                    ) -> rawScanStatus
+                    partial || rawScanStatus == SafScanner.STATUS_PARTIAL -> SafScanner.STATUS_PARTIAL
+                    rawScanStatus in setOf(
                         SafScanner.STATUS_EMPTY_COMPLETE,
                         SafScanner.STATUS_COMPLETED,
-                        SafScanner.STATUS_FAILED,
-                    )
-                } ?: SafScanner.STATUS_FAILED
+                    ) -> rawScanStatus
+                    else -> SafScanner.STATUS_FAILED
+                }
                 val status = when (scanStatus) {
                     SafScanner.STATUS_REVOKED, SafScanner.STATUS_UNAVAILABLE -> NativeIndex.STATUS_UNAVAILABLE
                     SafScanner.STATUS_CANCELLED -> NativeIndex.STATUS_CANCELLED
@@ -106,6 +112,110 @@ object NativeScanRunner {
                         .put("status", status)
                         .put("scanId", scanId),
                 )
+                var nativeIndexingFailed = false
+                var nativeIndexingStatus = "SKIPPED_INCOMPLETE"
+                try {
+                        val treeIdentity = SafScanner.treeIdentity(treeUri)
+                        val complete = status == NativeIndex.STATUS_COMPLETED || status == NativeIndex.STATUS_EMPTY_COMPLETE
+                        val scanDocuments = if (complete) {
+                            NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey)
+                        } else {
+                            NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
+                        } ?: throw IllegalStateException("No verified scan snapshot is available for indexing.")
+                        val errors = result.optJSONObject("stats")?.optJSONArray("errors")
+                        val failedLocations = if (errors != null && errors.length() > 0) {
+                            buildSet { for (i in 0 until errors.length()) add(errors.optString(i).ifBlank { "unknown-location" }) }
+                        } else emptySet()
+                        val discovered = buildList {
+                            for (i in 0 until scanDocuments.length()) {
+                                val document = scanDocuments.optJSONObject(i) ?: continue
+                                val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
+                                val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
+                                val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
+                                val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
+                                val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
+                                val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
+                                val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
+                                val size = if (document.has("size") && !document.isNull("size")) document.optLong("size").takeIf { it >= 0L } else null
+                                val modifiedMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt").takeIf { it >= 0L } else null
+                                val ambiguities = parsed.optJSONArray("ambiguities")
+                                add(
+                                    NativeDiscoveredMedia(
+                                        location = uri,
+                                        fileName = name,
+                                        scopeLocation = documentId,
+                                        scopeVerified = document.optBoolean("scopeVerified", false),
+                                        animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
+                                        season = season,
+                                        episodeNumber = episodeNumber,
+                                        absoluteNumber = absoluteNumber,
+                                        episodeType = parsed.optString("kind").takeIf { it.isNotBlank() },
+                                        episodeTitle = parsed.optString("displayTitle").takeIf { it.isNotBlank() },
+                                        identificationSource = parsed.optString("identificationSource").takeIf { it.isNotBlank() },
+                                        identificationConfidence = parsed.optString("confidence").takeIf { it.isNotBlank() },
+                                        mimeType = document.optString("mimeType").takeIf { it.isNotBlank() && it != "null" },
+                                        sizeBytes = size,
+                                        modifiedAtEpochSeconds = modifiedMillis?.div(1000.0),
+                                        sourceFolder = treeIdentity.documentId,
+                                        relativePath = document.optString("relativePath").takeIf { it.isNotBlank() },
+                                        volumeId = document.optString("volumeId").takeIf { it.isNotBlank() },
+                                        volumeUuid = document.optString("volumeUuid").takeIf { it.isNotBlank() },
+                                        mediaIdentity = document.optString("stableId").takeIf { it.isNotBlank() },
+                                        ambiguous = ambiguities != null && ambiguities.length() > 0,
+                                    )
+                                )
+                            }
+                        }
+                        val authorization = SafScanner.inspectTree(appContext, treeUri, requirePersisted = true)
+                        val authorizationValid = authorization.optString("status") in setOf(
+                            SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE,
+                        )
+                        val indexReport = ReiAnixSqliteLibraryRepository(appContext).indexDiscoveredMedia(
+                            NativeLibraryScanSnapshot(
+                                operationId = scanId,
+                                source = NativeIndex.SOURCE_SAF,
+                                scopeRoot = treeIdentity.documentId,
+                                expectedLocations = setOf(treeIdentity.documentId),
+                                processedLocations = if (complete) setOf(treeIdentity.documentId) else emptySet(),
+                                failedLocations = failedLocations,
+                                unprocessedLocations = if (complete) emptySet() else setOf(treeIdentity.documentId),
+                                status = status,
+                                complete = complete,
+                                cancelled = scanStatus == SafScanner.STATUS_CANCELLED,
+                                authorizationValid = authorizationValid,
+                                items = discovered,
+                                scopeReference = reference,
+                                scanGeneration = generationId,
+                            )
+                        )
+                        nativeIndexingStatus = if (indexReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL"
+                        if (complete && !indexReport.reconciliationAuthorized) nativeIndexingFailed = true
+                        result.put("nativeLibraryIndex", JSONObject()
+                            .put("status", nativeIndexingStatus)
+                            .put("inserted", indexReport.inserted)
+                            .put("updated", indexReport.updated)
+                            .put("unchanged", indexReport.unchanged)
+                            .put("ambiguous", indexReport.ambiguous)
+                            .put("rejectedOutOfScope", indexReport.rejectedOutOfScope)
+                            .put("reconciledMissing", indexReport.reconciledMissing)
+                            .put("reconciliationAuthorized", indexReport.reconciliationAuthorized))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (indexError: Exception) {
+                        nativeIndexingFailed = true
+                        nativeIndexingStatus = "FAILED"
+                        Log.e(TAG, "Native SQLite library indexing failed; discovery snapshot is preserved.", indexError)
+                        result.put("nativeLibraryIndex", JSONObject()
+                            .put("status", "FAILED")
+                            .put("errorType", indexError::class.java.simpleName))
+                        NativeMailbox.write(appContext, JSONObject()
+                            .put("type", "native_library_index_error")
+                            .put("requestId", requestId ?: "")
+                            .put("payload", JSONObject().put("scanId", scanId)
+                                .put("scope", runCatching { SafScanner.treeIdentity(treeUri).identity }.getOrDefault(""))
+                                .put("status", "FAILED")
+                                .put("errorType", indexError::class.java.simpleName)))
+                    }
                 result.put("scanGeneration", generationId)
                     .put("generationId", NativeIndex.generationId(NativeIndex.SOURCE_SAF, scanKey, generationId))
                     .put("generationStatus", status)
@@ -119,9 +229,9 @@ object NativeScanRunner {
                     .put("source", "saf")
                     .put("scope", SafScanner.treeIdentity(treeUri).identity)
                     .put("volumeId", result.optString("volumeId"))
-                    .put("status", scanStatus)
+                    .put("status", if (nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) SafScanner.STATUS_PARTIAL else scanStatus)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
-                NativeScanController.complete(scanId, scanStatus.ifBlank { SafScanner.STATUS_FAILED }, result)
+                NativeScanController.complete(scanId, if (nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) SafScanner.STATUS_PARTIAL else scanStatus.ifBlank { SafScanner.STATUS_FAILED }, result)
             } catch (exception: CancellationException) {
                 NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
                 throw exception

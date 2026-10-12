@@ -5,7 +5,9 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import org.json.JSONArray
+import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import org.json.JSONException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -243,6 +245,288 @@ class ReiAnixSqliteLibraryRepository(
                 ?: throw NoSuchElementException(
                     "Cannot save playback progress: episode ID does not exist.",
                 )
+        }
+    }
+
+    /**
+     * Applies discovery facts to the canonical episodes table. Only verified,
+     * in-scope items are touched; destructive missing-state reconciliation is
+     * gated by the complete scan receipt and limited to source_folder descendants.
+     */
+    suspend fun indexDiscoveredMedia(snapshot: NativeLibraryScanSnapshot): NativeLibraryIndexReport =
+        withContext(Dispatchers.IO) {
+            require(snapshot.operationId.isNotBlank()) { "A scan operation ID is required." }
+            require(snapshot.scopeRoot.isNotBlank()) { "An explicit scope root is required." }
+            database.transaction { db ->
+                var inserted = 0
+                var updated = 0
+                var unchanged = 0
+                var ambiguous = 0
+                var rejected = 0
+                var invalidScopeEvidence = false
+                val seenLocations = linkedSetOf<String>()
+                val seenIdentities = linkedSetOf<String>()
+                val inputIdentities = hashSetOf<String>()
+
+                for (item in snapshot.items) {
+                    db.execSQL("SAVEPOINT native_index_item")
+                    try {
+                    if (!item.scopeVerified && !(item.scopeLocation ?: item.location).isWithinScope(snapshot.scopeRoot)) {
+                        rejected++
+                        invalidScopeEvidence = true
+                        continue
+                    }
+                    val stable = item.stableIdentity
+                    if (stable == null || !inputIdentities.add(stable)) {
+                        ambiguous++
+                        continue
+                    }
+                    seenLocations += item.location
+                    seenIdentities += stable
+                    val byIdentity = item.mediaIdentity?.trim()?.takeIf { it.isNotEmpty() }
+                        ?.let { queryEpisodesByColumn(db, "media_identity", it) }.orEmpty()
+                    val byPath = queryEpisodesByColumn(db, "path", item.location)
+                    if (byIdentity.size > 1 || byPath.size > 1) {
+                        ambiguous++
+                        continue
+                    }
+                    val identityRow = byIdentity.singleOrNull()
+                    val pathRow = byPath.singleOrNull()
+                    if (identityRow != null && pathRow != null && identityRow.id != pathRow.id) {
+                        ambiguous++
+                        continue
+                    }
+                    val current = identityRow ?: pathRow
+                    if (current != null) {
+                        val patch = ContentValues()
+                        if (current.path != item.location) patch.put("path", item.location)
+                        if (current.fileName != item.fileName) patch.put("file_name", item.fileName)
+                        item.mimeType?.takeIf { it.isNotBlank() }?.let { if (current.mimeType != it) patch.put("mime_type", it) }
+                        item.sizeBytes?.let { if (current.fileSize != it) patch.put("file_size", it) }
+                        item.modifiedAtEpochSeconds?.let { if (current.modifiedAt != it) patch.put("modified_at", it) }
+                        val folder = item.sourceFolder?.takeIf { it.isNotBlank() } ?: snapshot.scopeRoot
+                        if (current.sourceFolder != folder) patch.put("source_folder", folder)
+                        item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
+                        item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
+                        item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
+                        item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
+                        if (current.manualOverride != true) {
+                            item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
+                            item.episodeTitle?.takeIf { it.isNotBlank() }?.let { if (current.episodeTitle != it) patch.put("episode_title", it) }
+                            item.identificationSource?.takeIf { it.isNotBlank() }?.let { if (current.identificationSource != it) patch.put("identification_source", it) }
+                            item.identificationConfidence?.takeIf { it.isNotBlank() }?.let { if (current.identificationConfidence != it) patch.put("identification_confidence", it) }
+                        }
+                        if (current.missing == true) patch.put("missing", 0)
+                        if (current.availabilityState != "available") patch.put("availability_state", "available")
+                        if (patch.size() == 0) unchanged++ else {
+                            db.update("episodes", patch, "id = ?", arrayOf(current.id.toString()))
+                            updated++
+                        }
+                        recordEpisodeObservation(db, current.id, snapshot, item)
+                        continue
+                    }
+
+                    val title = item.normalizedAnimeTitle()
+                    if (!item.hasConfidentEpisodeIdentity || title.isBlank()) {
+                        ambiguous++
+                        continue
+                    }
+                    val animeIds = db.rawQuery("SELECT id, title, lookup_title FROM anime", null).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) {
+                                val candidateTitle = MediaTitleNormalizer.normalizeTitle(cursor.getString(1))
+                                val lookup = MediaTitleNormalizer.normalizeTitle(cursor.getString(2))
+                                if (title == candidateTitle || title == lookup) add(cursor.getLong(0))
+                            }
+                        }
+                    }
+                    if (animeIds.size > 1) {
+                        ambiguous++
+                        continue
+                    }
+                    val animeId = if (animeIds.size == 1) {
+                        animeIds.single()
+                    } else {
+                        // A confidently parsed new local title can become a local-only
+                        // anime row. It is not auto-associated with any remote catalog ID.
+                        val existingLookup = db.rawQuery(
+                            "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1",
+                            arrayOf(title),
+                        ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
+                        if (existingLookup != null) {
+                            ambiguous++
+                            continue
+                        }
+                        val localAnime = ContentValues().apply {
+                            put("lookup_title", title)
+                            put("title", item.animeTitle!!.trim())
+                            put("added_at", System.currentTimeMillis() / 1000.0)
+                            put("metadata_source", "local_index")
+                            put("media_kind", "series")
+                        }
+                        db.insertOrThrow("anime", null, localAnime)
+                    }
+                    val season = item.season ?: 0
+                    val logicalCount = when {
+                        item.episodeNumber != null -> db.rawQuery(
+                            "SELECT id FROM episodes WHERE anime_id = ? AND season = ? AND number = ?",
+                            arrayOf(animeId.toString(), season.toString(), item.episodeNumber.toString()),
+                        ).use { it.count }
+                        item.absoluteNumber != null -> db.rawQuery(
+                            "SELECT id FROM episodes WHERE anime_id = ? AND absolute_number = ?",
+                            arrayOf(animeId.toString(), item.absoluteNumber.toString()),
+                        ).use { it.count }
+                        else -> 0
+                    }
+                    // A second release for an existing logical episode is a conflict,
+                    // not permission to replace its path or playback history.
+                    if (logicalCount > 0) {
+                        ambiguous++
+                        continue
+                    }
+                    val values = ContentValues().apply {
+                        put("anime_id", animeId)
+                        put("path", item.location)
+                        put("file_name", item.fileName)
+                        put("season", season)
+                        item.episodeNumber?.let { put("number", it) }
+                        item.mimeType?.takeIf { it.isNotBlank() }?.let { put("mime_type", it) }
+                        item.sizeBytes?.let { put("file_size", it) }
+                        item.modifiedAtEpochSeconds?.let { put("modified_at", it) }
+                        put("source_folder", item.sourceFolder?.takeIf { it.isNotBlank() } ?: snapshot.scopeRoot)
+                        putNull("duration")
+                        item.absoluteNumber?.let { put("absolute_number", it) }
+                        item.relativePath?.takeIf { it.isNotBlank() }?.let { put("relative_path", it) }
+                        item.volumeId?.takeIf { it.isNotBlank() }?.let { put("volume_id", it) }
+                        item.volumeUuid?.takeIf { it.isNotBlank() }?.let { put("volume_uuid", it) }
+                        item.episodeType?.takeIf { it.isNotBlank() }?.let { put("episode_type", it) }
+                        item.episodeTitle?.takeIf { it.isNotBlank() }?.let { put("episode_title", it) }
+                        item.identificationSource?.takeIf { it.isNotBlank() }?.let { put("identification_source", it) }
+                        item.identificationConfidence?.takeIf { it.isNotBlank() }?.let { put("identification_confidence", it) }
+                        put("manual_override", 0)
+                        put("missing", 0)
+                        item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { put("media_identity", it) }
+                        put("availability_state", "available")
+                    }
+                    val insertedEpisodeId = db.insertOrThrow("episodes", null, values)
+                    recordEpisodeObservation(db, insertedEpisodeId, snapshot, item)
+                    inserted++
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (itemError: Exception) {
+                        // Roll back only the bad item. Other verified observations in this
+                        // scan can still be committed, but ambiguity blocks reconciliation.
+                        db.execSQL("ROLLBACK TO native_index_item")
+                        ambiguous++
+                    } finally {
+                        db.execSQL("RELEASE native_index_item")
+                    }
+                }
+
+                val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence && ambiguous == 0
+                var missing = 0
+                if (reconcile) {
+                    val root = snapshot.scopeRoot.trim().replace('\\', '/').trimEnd('/')
+                    val prefix = "$root/"
+                    val scopedRows = db.rawQuery(
+                        "SELECT * FROM episodes WHERE source_folder = ? OR substr(source_folder, 1, ?) = ?",
+                        arrayOf(root, prefix.length.toString(), prefix),
+                    ).use { cursor ->
+                        buildList { while (cursor.moveToNext()) add(cursor.toEpisodeRecord()) }
+                    }
+                    for (episode in scopedRows) {
+                        if (episode.path in seenLocations ||
+                            (!episode.mediaIdentity.isNullOrBlank() && episode.mediaIdentity in seenIdentities)
+                        ) continue
+                        if (episode.missing == true && episode.availabilityState == "missing") continue
+                        db.update(
+                            "episodes",
+                            ContentValues().apply { put("missing", 1); put("availability_state", "missing") },
+                            "id = ?",
+                            arrayOf(episode.id.toString()),
+                        )
+                        db.execSQL(
+                            "UPDATE episode_observations SET state = ?, last_checked_at = ? " +
+                                "WHERE episode_id = ? AND source_kind = ? AND scope_kind = ? AND scope_ref = ? AND state = ?",
+                            arrayOf("missing", System.currentTimeMillis() / 1000.0, episode.id, snapshot.source, "root", snapshot.scopeReference, "available"),
+                        )
+                        missing++
+                    }
+                }
+                NativeLibraryIndexReport(
+                    operationId = snapshot.operationId,
+                    inserted = inserted,
+                    updated = updated,
+                    unchanged = unchanged,
+                    ambiguous = ambiguous,
+                    rejectedOutOfScope = rejected,
+                    reconciledMissing = missing,
+                    reconciliationAuthorized = reconcile,
+                )
+            }
+        }
+
+    private fun recordEpisodeObservation(
+        db: SQLiteDatabase,
+        episodeId: Long,
+        snapshot: NativeLibraryScanSnapshot,
+        item: NativeDiscoveredMedia,
+    ) {
+        val now = System.currentTimeMillis() / 1000.0
+        // Keep old URIs as superseded observations when the same stable media
+        // identity is found at a new location; never REPLACE/delete history rows.
+        db.execSQL(
+            "UPDATE episode_observations SET state = ?, last_checked_at = ? " +
+                "WHERE episode_id = ? AND source_kind = ? AND scope_kind = ? AND scope_ref = ? AND uri != ? AND state = ?",
+            arrayOf("superseded", now, episodeId, snapshot.source, "root", snapshot.scopeReference, item.location, "available"),
+        )
+        val identity = item.stableIdentity.orEmpty()
+        val fingerprint = listOf(identity, item.fileName, item.sizeBytes?.toString().orEmpty(),
+            item.modifiedAtEpochSeconds?.toString().orEmpty()).joinToString("|")
+        val values = ContentValues().apply {
+            put("episode_id", episodeId)
+            put("source_kind", snapshot.source)
+            put("scope_kind", "root")
+            put("scope_ref", snapshot.scopeReference)
+            put("uri", item.location)
+            item.volumeId?.takeIf { it.isNotBlank() }?.let { put("volume_id", it) }
+            snapshot.scanGeneration?.let { put("native_generation", it) }
+            put("fingerprint", fingerprint)
+            put("first_seen", now)
+            put("last_seen", now)
+            put("last_checked_at", now)
+            put("state", "available")
+        }
+        db.insertWithOnConflict(
+            "episode_observations",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_IGNORE,
+        )
+        val updateValues = ContentValues().apply {
+            item.volumeId?.takeIf { it.isNotBlank() }?.let { put("volume_id", it) }
+            snapshot.scanGeneration?.let { put("native_generation", it) }
+            put("fingerprint", fingerprint)
+            put("last_seen", now)
+            put("last_checked_at", now)
+            put("state", "available")
+        }
+        db.update(
+            "episode_observations",
+            updateValues,
+            "episode_id = ? AND source_kind = ? AND scope_kind = ? AND scope_ref = ? AND uri = ?",
+            arrayOf(episodeId.toString(), snapshot.source, "root", snapshot.scopeReference, item.location),
+        )
+    }
+
+    private fun queryEpisodesByColumn(
+        db: SQLiteDatabase,
+        column: String,
+        value: String,
+    ): List<ReiAnixEpisodeRecord> {
+        require(column == "media_identity" || column == "path")
+        return db.rawQuery("SELECT * FROM episodes WHERE $column = ?", arrayOf(value)).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.toEpisodeRecord()) }
         }
     }
 
