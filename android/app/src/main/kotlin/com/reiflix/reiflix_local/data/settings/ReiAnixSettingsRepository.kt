@@ -112,7 +112,29 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     fun setSetting(key: String, value: String) {
         val normalizedKey = key.trim()
         if (normalizedKey.isBlank()) return
-        val normalizedValue = value.trim()
+        val normalizedValue = try {
+            ReiAnixSettingsContract.normalize(normalizedKey, value)
+        } catch (exception: IllegalArgumentException) {
+            Log.w(TAG, "Rejected invalid setting value for key=" + normalizedKey)
+            synchronized(stateLock) {
+                val current = _state.value
+                val requestId = UUID.randomUUID().toString()
+                _state.value = current.copy(
+                    operations = upsertOperationLocked(
+                        current.operations,
+                        ReiAnixSettingsOperationUiState(
+                            requestId = requestId,
+                            action = "set:" + normalizedKey,
+                            key = normalizedKey,
+                            state = ReiAnixSettingsOperationState.ERROR,
+                            error = "Valor inválido para esta configuração.",
+                            timestampMs = System.currentTimeMillis(),
+                        ),
+                    ),
+                )
+            }
+            return
+        }
         val requestId = UUID.randomUUID().toString()
         synchronized(stateLock) {
             val current = _state.value
