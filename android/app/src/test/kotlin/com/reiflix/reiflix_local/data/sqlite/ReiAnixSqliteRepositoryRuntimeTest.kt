@@ -1194,6 +1194,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun nativeSearchReportsDatabaseFailureSeparatelyFromNoMatches() = runBlocking {
+        assertFalse(databaseFile.exists())
+        val result = ReiAnixLibraryQueryService(context).searchAnime("missing title")
+        assertTrue(result is ReiAnixLibraryQueryResult.Failure)
+        assertFalse("A failed read must not create a new catalog database.", databaseFile.exists())
+    }
+
+    @Test
     fun nativeSqliteSearchMatchesAliasesUnicodeEpisodesFiltersAndStablePages() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
@@ -1224,6 +1232,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(listOf(1L), repository.searchAnimeIds("episode 1", null, false, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("2026", null, false, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("", "action-id", false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("", "action-id", true, true, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("", null, true, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(1L), repository.searchAnimeIds("", null, false, true, false, null, 36, 0).animeIds)
         assertTrue(repository.searchAnimeIds("", null, false, false, true, null, 36, 0).animeIds.isEmpty())
