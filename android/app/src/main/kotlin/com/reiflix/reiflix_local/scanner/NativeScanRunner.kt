@@ -210,9 +210,6 @@ object NativeScanRunner {
                                 .put("status", "FAILED")
                                 .put("errorType", indexError::class.java.simpleName)))
                     }
-                } else {
-                    result.put("nativeLibraryIndex", JSONObject().put("status", nativeIndexingStatus)
-                        .put("reconciliationAuthorized", false))
                 }
                 result.put("scanGeneration", generationId)
                     .put("generationId", NativeIndex.generationId(NativeIndex.SOURCE_SAF, scanKey, generationId))
