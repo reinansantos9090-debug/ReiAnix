@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.storage
 
+import com.reiflix.reiflix_local.scanner.SafScanner
+
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
