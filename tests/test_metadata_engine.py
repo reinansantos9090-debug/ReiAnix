@@ -28,6 +28,9 @@ class ProfessionalMetadataTests(unittest.TestCase):
         self.service = LibraryService(self.store)
 
     def tearDown(self):
+        # Hydration can finish its change-listener callback just before the
+        # worker exits. Join artwork workers before deleting their temp cache.
+        self.service.artwork.shutdown()
         self.tmp.cleanup()
 
     def _anime(self, title="Attack on Titan", lookup="attack on titan"):
