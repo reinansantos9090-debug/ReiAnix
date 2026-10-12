@@ -37,7 +37,7 @@ Este é um projeto existente em estabilização e migração incremental. Trabal
 - Não adicione upload de artefatos específico de validação com emulador.
 - Se uma validação em emulador for necessária, ela deve ocorrer fora do repositório e sem adicionar infraestrutura de emulador ao projeto.
 - Preserve os workflows e testes permanentes existentes, salvo quando uma mudança explicitamente autorizada e justificada exigir o contrário. Esta regra impede adicionar infraestrutura de emulador; não autoriza remover infraestrutura existente sem justificativa e escopo explícito.
-- Os testes Kotlin/JVM devem continuar manuais conforme a configuração e a decisão do usuário: não os dispare automaticamente nem os execute por conta própria. Não os execute durante as etapas intermediárias se a tarefa não autorizar explicitamente. A validação manual fica reservada ao momento definido pelo usuário.
+- Não dispare manualmente a suíte Kotlin/JVM por iniciativa própria; siga os gatilhos já configurados nos workflows existentes. Se o workflow oficial executar esses testes automaticamente por um gatilho já existente (por exemplo, `pull_request`), não tente impedir essa execução nem descreva a CI como manual. A validação manual adicional fora dos gatilhos existentes fica reservada ao momento definido pelo usuário.
 
 ## Áreas críticas e contratos que devem sobreviver à migração
 
