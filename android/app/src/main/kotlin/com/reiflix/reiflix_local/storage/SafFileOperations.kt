@@ -68,6 +68,8 @@ class SafFileOperations(private val context: Context) {
                 ResultOrItems.Items(children)
             } catch (e: SecurityException) {
                 ResultOrItems.Failed(Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão da pasta não está mais disponível.", directoryUri))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 ResultOrItems.Failed(Result.Failure(FailureKind.FAILURE, safeMessage(e), directoryUri))
             }
@@ -95,6 +97,8 @@ class SafFileOperations(private val context: Context) {
                 Result.Success(created.uri, created.name.orEmpty(), true)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "Sem permissão para criar a pasta.", parentUri)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.Failure(FailureKind.FAILURE, safeMessage(e), parentUri)
             }
@@ -117,6 +121,8 @@ class SafFileOperations(private val context: Context) {
                 Result.Success(renamed.uri, renamed.name.orEmpty(), renamed.isDirectory)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a renomeação.", uri)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.Failure(FailureKind.FAILURE, safeMessage(e), uri)
             }
@@ -152,6 +158,8 @@ class SafFileOperations(private val context: Context) {
                 Result.Failure(FailureKind.UNSUPPORTED, "O provedor não confirmou suporte à movimentação. A origem foi preservada.", uri, destinationDirectoryUri)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a movimentação.", uri, destinationDirectoryUri)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.Failure(FailureKind.FAILURE, safeMessage(e), uri, destinationDirectoryUri)
             }
@@ -169,6 +177,8 @@ class SafFileOperations(private val context: Context) {
                 else Result.Success(uri, source.name.orEmpty(), source.isDirectory)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a exclusão.", uri)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.Failure(FailureKind.FAILURE, safeMessage(e), uri)
             }
