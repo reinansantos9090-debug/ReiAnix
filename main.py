@@ -5487,9 +5487,9 @@ async def main(page: ft.Page):
                                 )
                                 if compose_library_bridge.enabled:
                                     compose_library_bridge.request_publish("saf_identity_reconciled")
-                                async def _request_reconciled_saf_rescan():
+                                async def _request_reconciled_saf_rescan(target_tree_uri=tree_uri):
                                     try:
-                                        await bridge.rescan_tree(tree_uri)
+                                        await bridge.rescan_tree(target_tree_uri)
                                     except Exception:
                                         # The canonical URI update is already committed and idempotent.
                                         # A later scan can refresh relative paths/metadata without losing episode state.
