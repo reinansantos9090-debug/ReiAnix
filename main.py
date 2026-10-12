@@ -5465,6 +5465,36 @@ async def main(page: ft.Page):
                             page.snack_bar = ft.SnackBar(ft.Text(text))
                             page.snack_bar.open = True
                             safe_update()
+                        elif event_type == 'saf_document_identity_change':
+                            old_uri = str(payload.get('oldUri') or '').strip()
+                            new_uri = str(payload.get('newUri') or '').strip()
+                            name = str(payload.get('name') or '').strip()
+                            if not old_uri or not new_uri or not name:
+                                raise ValueError('Evento de reconciliação SAF sem URI antiga, URI nova ou nome.')
+                            reconciliation = await asyncio.to_thread(
+                                library.reconcile_saf_document_identity_change,
+                                old_uri,
+                                new_uri,
+                                name,
+                            )
+                            reconciliation_status = str(reconciliation.get('status') or 'unknown')
+                            if reconciliation_status in {'reconciled', 'already_reconciled'}:
+                                logger.info(
+                                    "[SAF_IDENTITY] status=%s episode_id=%s",
+                                    reconciliation_status,
+                                    reconciliation.get('episode_id'),
+                                )
+                                if compose_library_bridge.enabled:
+                                    compose_library_bridge.request_publish("saf_identity_reconciled")
+                            else:
+                                # Keep the existing catalog row and its history intact.
+                                # An unprovable mapping is a recoverable state, not a delete.
+                                logger.warning(
+                                    "[SAF_IDENTITY] reconciliation not applied status=%s old_uri_present=%s new_uri_present=%s",
+                                    reconciliation_status,
+                                    bool(old_uri),
+                                    bool(new_uri),
+                                )
                         elif event_type == 'saf_scan':
                             try:
                                 saf_selection.finish()
