@@ -239,67 +239,6 @@ class ReiAnixSqliteLibraryRepository(
         }
     }
 
-    /**
-     * Persists an AniList association on the existing anime row. A manual link is
-     * authoritative; automatic matching cannot replace it or silently change an
-     * existing different AniList ID. Local primary keys and playback tables are untouched.
-     */
-    suspend fun persistAniListAssociation(
-        animeId: Long,
-        anilistId: Long,
-        manual: Boolean,
-        score: Double? = null,
-        margin: Double? = null,
-    ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
-        require(animeId > 0L) { "Anime ID must be a positive persisted ID." }
-        require(anilistId > 0L) { "AniList ID must be positive." }
-        require(score == null || (score.isFinite() && score in 0.0..1.0))
-        require(margin == null || (margin.isFinite() && margin in 0.0..1.0))
-        database.transaction { connection ->
-            val current = connection.rawQuery(
-                "SELECT * FROM anime WHERE id = ? LIMIT 1",
-                arrayOf(animeId.toString()),
-            ).use { cursor ->
-                if (cursor.moveToFirst()) cursor.toAnimeRecord()
-                else throw NoSuchElementException("Anime ID does not exist.")
-            }
-            if (!manual && current.anilistMatchManual == true) return@transaction current
-            if (!manual && current.anilistId != null && current.anilistId != anilistId) {
-                return@transaction current
-            }
-            if (!manual && (score == null || score < 0.88 || margin == null || margin < 0.12)) {
-                return@transaction current
-            }
-            val status = if (manual) "manual" else "matched"
-            if (current.anilistId == anilistId &&
-                current.anilistMatchManual == manual &&
-                current.anilistMatchStatus == status &&
-                current.anilistMatchScore == score &&
-                current.anilistMatchMargin == margin
-            ) return@transaction current
-
-            val values = ContentValues().apply {
-                put("anilist_id", anilistId)
-                put("anilist_match_manual", if (manual) 1 else 0)
-                put("anilist_match_status", status)
-                if (score != null) put("anilist_match_score", score)
-                if (margin != null) put("anilist_match_margin", margin)
-                put("metadata_source", "anilist")
-                put("metadata_status", "available")
-                put("metadata_confidence", if (manual) "high" else "high")
-                put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
-            }
-            connection.update("anime", values, "id = ?", arrayOf(animeId.toString()))
-            connection.rawQuery(
-                "SELECT * FROM anime WHERE id = ? LIMIT 1",
-                arrayOf(animeId.toString()),
-            ).use { cursor ->
-                if (cursor.moveToFirst()) cursor.toAnimeRecord()
-                else throw NoSuchElementException("Anime disappeared while saving AniList association.")
-            }
-        }
-    }
-
     suspend fun getEpisode(id: Long): ReiAnixEpisodeRecord? = withContext(Dispatchers.IO) {
         require(id > 0L) { "Episode ID must be a positive persisted ID." }
         database.read { connection ->
