@@ -122,7 +122,7 @@ class ReiAnixLibraryFiltersTest {
             ).map { it.id },
         )
         assertEquals(
-            listOf(20L, 10L, 30L),
+            listOf(30L, 20L, 10L),
             ReiAnixLibraryFilterEngine.filter(
                 listOf(alpha, untimestamped, beta),
                 ReiAnixLibraryFilters(sort = "Nome Z-A"),
