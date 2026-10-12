@@ -64,7 +64,7 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn('manifest.find("queries")', template)
         self.assertIn("android.intent.action.OPEN_DOCUMENT_TREE", template)
 
-    def test_picker_uses_persistable_read_grant(self):
+    def test_picker_requests_persistable_read_and_write_grants(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         picker = source[source.index("private fun openTreePicker"):source.index("override fun onWindowFocusChanged", source.index("private fun openTreePicker"))]
         for token in (
@@ -74,9 +74,35 @@ class TestSafProfessionalContract(unittest.TestCase):
             "Intent.FLAG_GRANT_PREFIX_URI_PERMISSION",
         ):
             self.assertIn(token, picker)
-        self.assertNotIn("Intent.FLAG_GRANT_WRITE_URI_PERMISSION", picker)
+        self.assertIn("Intent.FLAG_GRANT_WRITE_URI_PERMISSION", picker)
 
-    def test_tree_identity_is_authority_document_and_volume_scoped(self):
+
+    def test_native_saf_file_manager_uses_scoped_grants_and_confirms_operations(self):
+        operations = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/SafFileOperations.kt"
+        ).read_text(encoding="utf-8")
+        manager = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixSafFileManager.kt"
+        ).read_text(encoding="utf-8")
+        organize = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt"
+        ).read_text(encoding="utf-8")
+        for token in (
+            "grantAllows",
+            "grant.isWritePermission",
+            "SafScanner.isAuthorizedDocumentForTree",
+            "FailureKind.PARTIAL",
+            "DocumentsContract.moveDocument",
+            "findParentInTree",
+            "CancellationException",
+        ):
+            self.assertIn(token, operations)
+        for token in ("createSafDirectory", "renameSafItem", "moveSafItem", "deleteSafItem",
+                      "viewModel.refresh()", "recoverable"):
+            self.assertIn(token, manager)
+        self.assertIn("ReiAnixSafFileManagerRoute", organize)
+        self.assertIn("Gerenciar arquivos locais (SAF)", organize)
+\n    def test_tree_identity_is_authority_document_and_volume_scoped(self):
         source = SAF.read_text(encoding="utf-8")
         self.assertIn("authority", source)
         self.assertIn("documentId", source)
