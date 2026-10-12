@@ -307,6 +307,12 @@ class ReiAnixSqliteLibraryRepository(
                         item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
                         item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
                         item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
+                        if (current.manualOverride != true) {
+                            item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
+                            item.episodeTitle?.takeIf { it.isNotBlank() }?.let { if (current.episodeTitle != it) patch.put("episode_title", it) }
+                            item.identificationSource?.takeIf { it.isNotBlank() }?.let { if (current.identificationSource != it) patch.put("identification_source", it) }
+                            item.identificationConfidence?.takeIf { it.isNotBlank() }?.let { if (current.identificationConfidence != it) patch.put("identification_confidence", it) }
+                        }
                         if (current.missing == true) patch.put("missing", 0)
                         if (current.availabilityState != "available") patch.put("availability_state", "available")
                         if (patch.size() == 0) unchanged++ else {
@@ -352,9 +358,7 @@ class ReiAnixSqliteLibraryRepository(
                             put("title", item.animeTitle!!.trim())
                             put("added_at", System.currentTimeMillis() / 1000.0)
                             put("metadata_source", "local_index")
-                            put("metadata_status", "local")
-                            put("metadata_confidence", item.identificationConfidence)
-                            put("media_kind", "anime")
+                            put("media_kind", "series")
                         }
                         db.insertOrThrow("anime", null, localAnime)
                     }
@@ -386,6 +390,7 @@ class ReiAnixSqliteLibraryRepository(
                         item.sizeBytes?.let { put("file_size", it) }
                         item.modifiedAtEpochSeconds?.let { put("modified_at", it) }
                         put("source_folder", item.sourceFolder?.takeIf { it.isNotBlank() } ?: snapshot.scopeRoot)
+                        putNull("duration")
                         item.absoluteNumber?.let { put("absolute_number", it) }
                         item.relativePath?.takeIf { it.isNotBlank() }?.let { put("relative_path", it) }
                         item.volumeId?.takeIf { it.isNotBlank() }?.let { put("volume_id", it) }
