@@ -49,6 +49,6 @@ object ScanResultClassifier {
         if (status !in successStates && status !in partialStates && status != CANCELLED) return FAILED
         if (status == CANCELLED || cancelled) return CANCELLED
         if (status in partialStates || partial) return PARTIAL
-        return COMPLETED
+        return if (status == EMPTY_COMPLETE) EMPTY_COMPLETE else COMPLETED
     }
 }
