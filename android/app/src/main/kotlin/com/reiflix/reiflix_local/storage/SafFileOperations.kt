@@ -159,17 +159,24 @@ class SafFileOperations(private val context: Context) {
     suspend fun createDirectory(parentUri: Uri, name: String): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(parentUri)) {
             val safeName = validateName(name) ?: return@synchronized Result.Failure(FailureKind.INVALID_NAME, "Nome de pasta inválido.", parentUri)
+            var mutationAttempted = false
             try {
                 val parent = authorizedDocument(parentUri, requireWrite = true) ?: return@synchronized failureFor(parentUri, requireWrite = true)
                 if (!parent.isDirectory || !parent.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "A pasta de destino não permite escrita.", parentUri)
                 val existing = findChildByName(targetTreeUri(parentUri), parent.uri, safeName)
                 if (existing != null) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", existing, parentUri)
+                mutationAttempted = true
                 val createdUri = DocumentsContract.createDocument(
                     resolver,
                     parent.uri,
                     DocumentsContract.Document.MIME_TYPE_DIR,
                     safeName,
-                ) ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não conseguiu criar a pasta.", parentUri)
+                ) ?: return@synchronized Result.Failure(
+                    FailureKind.PARTIAL,
+                    "O provedor não retornou uma URI após a tentativa de criação. Verifique a pasta antes de repetir.",
+                    parentUri,
+                    recoverable = true,
+                )
                 val confirmedUri = findChildByName(targetTreeUri(parentUri), parent.uri, safeName)
                 val confirmed = confirmedUri?.let { DocumentFile.fromSingleUri(context, it) }
                 if (confirmedUri == null || confirmed == null || !confirmed.exists() || !confirmed.isDirectory || confirmed.name != safeName) {
@@ -177,13 +184,16 @@ class SafFileOperations(private val context: Context) {
                 }
                 Result.Success(confirmedUri, confirmed.name.orEmpty(), true)
             } catch (e: SecurityException) {
-                Result.Failure(FailureKind.PERMISSION_DENIED, "Sem permissão para criar a pasta.", parentUri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A criação pode ter ocorrido antes da falha de autorização posterior. Verifique a pasta antes de repetir.", parentUri, recoverable = true)
+                else Result.Failure(FailureKind.PERMISSION_DENIED, "Sem permissão para criar a pasta.", parentUri)
             } catch (e: UnsupportedOperationException) {
-                Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à criação de pastas.", parentUri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "O provedor falhou após a tentativa de criação; confirme a pasta antes de repetir.", parentUri, recoverable = true)
+                else Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à criação de pastas.", parentUri)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Result.Failure(FailureKind.FAILURE, safeMessage(e), parentUri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A criação pode ter ocorrido, mas a confirmação falhou. Verifique a pasta antes de repetir.", parentUri, recoverable = true)
+                else Result.Failure(FailureKind.FAILURE, safeMessage(e), parentUri)
             }
         }
     }
@@ -192,6 +202,7 @@ class SafFileOperations(private val context: Context) {
         synchronized(lockFor(uri)) {
             val safeName = validateName(newName) ?: return@synchronized Result.Failure(FailureKind.INVALID_NAME, "Nome inválido.", uri)
             if (isTreeRootUri(uri)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser renomeada.", uri)
+            var mutationAttempted = false
             try {
                 val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
                 val source = target.document
@@ -200,8 +211,14 @@ class SafFileOperations(private val context: Context) {
                     ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não permitiu localizar a pasta pai autorizada deste item.", uri)
                 val conflictUri = findChildByName(target.treeUri, parent.uri, safeName)
                 if (conflictUri != null && !sameDocument(conflictUri, source.uri)) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", uri, conflictUri)
+                mutationAttempted = true
                 val renamedUri = DocumentsContract.renameDocument(resolver, source.uri, safeName)
-                    ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor recusou a renomeação.", uri)
+                    ?: return@synchronized Result.Failure(
+                        FailureKind.PARTIAL,
+                        "O provedor não retornou uma URI após a tentativa de renomeação. Verifique a pasta antes de repetir.",
+                        uri,
+                        recoverable = true,
+                    )
                 val confirmedUri = findChildByName(target.treeUri, parent.uri, safeName)
                     ?: return@synchronized Result.Failure(FailureKind.PARTIAL, "A renomeação pode ter ocorrido, mas o novo item não pôde ser confirmado. Verifique a pasta antes de tentar novamente.", uri, recoverable = true)
                 val renamedDocument = DocumentFile.fromSingleUri(context, confirmedUri)
@@ -219,13 +236,16 @@ class SafFileOperations(private val context: Context) {
                     catalogReconciliationQueued = false,
                 )
             } catch (e: SecurityException) {
-                Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a renomeação.", uri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A renomeação pode ter ocorrido antes da falha de confirmação. Verifique a pasta antes de repetir.", uri, recoverable = true)
+                else Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a renomeação.", uri)
             } catch (e: UnsupportedOperationException) {
-                Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à renomeação.", uri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "O provedor falhou após a tentativa de renomeação; verifique o nome atual antes de repetir.", uri, recoverable = true)
+                else Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à renomeação.", uri)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Result.Failure(FailureKind.FAILURE, safeMessage(e), uri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A renomeação pode ter ocorrido, mas a confirmação falhou. Verifique a pasta antes de repetir.", uri, recoverable = true)
+                else Result.Failure(FailureKind.FAILURE, safeMessage(e), uri)
             }
         }
     }
@@ -240,6 +260,7 @@ class SafFileOperations(private val context: Context) {
         if (isTreeRootUri(uri)) return@withContext Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser movida.", uri)
         val lockKeys = listOf(sourceTarget.treeUri.toString(), destinationTarget.treeUri.toString()).distinct().sorted()
         withLocks(lockKeys) {
+            var mutationAttempted = false
             try {
                 // Revalidate grants after acquiring the operation locks.
                 val currentSource = authorizedTarget(uri, requireWrite = true)
@@ -251,9 +272,25 @@ class SafFileOperations(private val context: Context) {
             if (!destinationDocument.isDirectory) return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "O destino não é um diretório.", uri, destinationDirectoryUri)
             if (!destinationDocument.canWrite() || !sourceDocument.canWrite()) return@withLocks Result.Failure(FailureKind.PERMISSION_DENIED, "A origem ou o destino não permite escrita.", uri, destinationDirectoryUri)
             if (sameDocument(sourceDocument.uri, destinationDocument.uri)) return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "A origem e o destino são iguais.", uri, destinationDirectoryUri)
-            if (sourceDocument.isDirectory && (sameDocument(sourceDocument.uri, destinationDocument.uri) ||
-                runCatching { DocumentsContract.isChildDocument(resolver, sourceDocument.uri, destinationDocument.uri) }.getOrDefault(false))) {
-                return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "Uma pasta não pode ser movida para dentro de si mesma ou de seus descendentes.", uri, destinationDirectoryUri)
+            if (sourceDocument.isDirectory) {
+                val destinationIsDescendant = try {
+                    DocumentsContract.isChildDocument(resolver, sourceDocument.uri, destinationDocument.uri)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: SecurityException) {
+                    return@withLocks Result.Failure(FailureKind.PERMISSION_DENIED, "Não foi possível verificar o escopo da pasta de destino.", uri, destinationDirectoryUri)
+                } catch (_: Exception) {
+                    return@withLocks Result.Failure(
+                        FailureKind.UNSUPPORTED,
+                        "O provedor não permite confirmar se o destino está dentro da pasta de origem; a movimentação foi recusada por segurança.",
+                        uri,
+                        destinationDirectoryUri,
+                        recoverable = true,
+                    )
+                }
+                if (destinationIsDescendant) {
+                    return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "Uma pasta não pode ser movida para dentro de si mesma ou de seus descendentes.", uri, destinationDirectoryUri)
+                }
             }
             val name = sourceDocument.name?.takeIf(String::isNotBlank)
                 ?: return@withLocks Result.Failure(FailureKind.FAILURE, "O provedor não informou o nome da origem.", uri, destinationDirectoryUri)
@@ -267,14 +304,19 @@ class SafFileOperations(private val context: Context) {
                     !DocumentsContract.isDocumentUri(context, destinationDocument.uri)) {
                     return@withLocks Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece movimentação confirmável entre estas fontes; a origem foi preservada.", uri, destinationDirectoryUri)
                 }
-                val movedUri = try {
-                    DocumentsContract.moveDocument(resolver, sourceDocument.uri, sourceParent.uri, destinationDocument.uri)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: UnsupportedOperationException) {
-                    null
-                }
-                if (movedUri == null) return@withLocks Result.Failure(FailureKind.UNSUPPORTED, "O provedor não confirmou suporte à movimentação. A origem foi preservada.", uri, destinationDirectoryUri)
+                mutationAttempted = true
+                val movedUri = DocumentsContract.moveDocument(
+                    resolver,
+                    sourceDocument.uri,
+                    sourceParent.uri,
+                    destinationDocument.uri,
+                ) ?: return@withLocks Result.Failure(
+                    FailureKind.PARTIAL,
+                    "O provedor não retornou uma URI após a tentativa de movimentação. Verifique a origem e o destino antes de repetir.",
+                    uri,
+                    destinationDirectoryUri,
+                    recoverable = true,
+                )
                 val moved = DocumentFile.fromSingleUri(context, movedUri)
                 val locatedAtDestination = findChildByName(currentDestination.treeUri, destinationDocument.uri, name)
                 if (moved != null && moved.exists() && moved.name == name &&
@@ -284,23 +326,27 @@ class SafFileOperations(private val context: Context) {
                     Result.Failure(FailureKind.PARTIAL, "O provedor aceitou a movimentação, mas não confirmou o documento no destino. Verifique ambas as pastas antes de repetir.", uri, destinationDirectoryUri, recoverable = true)
                 }
             } catch (e: SecurityException) {
-                Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a movimentação.", uri, destinationDirectoryUri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A movimentação pode ter ocorrido antes da falha de confirmação. Verifique a origem e o destino antes de repetir.", uri, destinationDirectoryUri, recoverable = true)
+                else Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a movimentação.", uri, destinationDirectoryUri)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Result.Failure(FailureKind.FAILURE, safeMessage(e), uri, destinationDirectoryUri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A movimentação pode ter ocorrido, mas a confirmação falhou. Verifique a origem e o destino antes de repetir.", uri, destinationDirectoryUri, recoverable = true)
+                else Result.Failure(FailureKind.FAILURE, safeMessage(e), uri, destinationDirectoryUri)
             }
         }
     }
 
     suspend fun delete(uri: Uri): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(uri)) {
+            var mutationAttempted = false
             try {
                 if (isTreeRootUri(uri)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser excluída.", uri)
                 val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
                 val source = target.document
                 if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite exclusão.", uri)
-                if (!source.delete()) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor recusou a exclusão.", uri)
+                mutationAttempted = true
+                val deleteReportedSuccess = source.delete()
                 val afterDelete = try {
                     DocumentFile.fromSingleUri(context, uri)
                 } catch (cancelled: CancellationException) {
@@ -311,18 +357,25 @@ class SafFileOperations(private val context: Context) {
                 if (afterDelete == null) {
                     Result.Failure(FailureKind.PARTIAL, "O provedor não permitiu verificar o estado após a exclusão; preserve o registro até reconciliar.", uri, recoverable = true)
                 } else if (afterDelete.exists()) {
-                    Result.Failure(FailureKind.PARTIAL, "O provedor não confirmou a exclusão; o registro da biblioteca deve ser preservado.", uri, recoverable = true)
+                    if (!deleteReportedSuccess) {
+                        Result.Failure(FailureKind.UNSUPPORTED, "O provedor recusou a exclusão e o item continua presente.", uri)
+                    } else {
+                        Result.Failure(FailureKind.PARTIAL, "O provedor não confirmou a exclusão; o registro da biblioteca deve ser preservado.", uri, recoverable = true)
+                    }
                 } else {
                     Result.Success(uri, source.name.orEmpty(), source.isDirectory)
                 }
             } catch (e: SecurityException) {
-                Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a exclusão.", uri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A exclusão pode ter ocorrido antes da falha de confirmação. Preserve o registro e verifique o item antes de repetir.", uri, recoverable = true)
+                else Result.Failure(FailureKind.PERMISSION_DENIED, "A permissão foi negada durante a exclusão.", uri)
             } catch (e: UnsupportedOperationException) {
-                Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à exclusão.", uri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "O provedor falhou após a tentativa de exclusão. Verifique o item antes de repetir.", uri, recoverable = true)
+                else Result.Failure(FailureKind.UNSUPPORTED, "O provedor não oferece suporte à exclusão.", uri)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Result.Failure(FailureKind.FAILURE, safeMessage(e), uri)
+                if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A exclusão pode ter ocorrido, mas a confirmação falhou. Preserve o registro até verificar o item.", uri, recoverable = true)
+                else Result.Failure(FailureKind.FAILURE, safeMessage(e), uri)
             }
         }
     }
