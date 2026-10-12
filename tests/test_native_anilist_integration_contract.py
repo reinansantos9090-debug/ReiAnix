@@ -67,7 +67,7 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         client = (KOTLIN / "data/anilist/ReiAnixAniListClient.kt").read_text(encoding="utf-8")
         tests = (ROOT / "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClientTest.kt").read_text(encoding="utf-8")
         for variable in ("search", "page", "perPage", "id"):
-            self.assertIn(chr(36) + variable, client)
+            self.assertIn(chr(36) + "{\'$\'}" + variable, client)
         self.assertIn(chr(36) + "MEDIA_FIELDS", client)
         self.assertIn("searchSendsLiteralGraphQlVariablesAndExpectedJsonValues", tests)
         self.assertIn("idLookupSendsLiteralIdVariableAndExpectedJsonValue", tests)
