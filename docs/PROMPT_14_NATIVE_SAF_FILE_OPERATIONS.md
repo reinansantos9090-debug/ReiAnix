@@ -1,8 +1,8 @@
-# Prompt 14.1 — Finalização do gerenciamento nativo SAF
+# Prompt 14.2 — Correção do workflow e reconciliação canônica SAF
 
 ## Estado real
 
-A implementação acrescenta um navegador de arquivos Compose acessível pela tela **Organizar**, endurece a autorização SAF e continua usando a persistência canônica existente. Esta etapa **não deve ser declarada integralmente concluída** até que o workflow oficial do APK termine com sucesso no HEAD final e que a reconciliação de identidade do catálogo esteja comprovada.
+A implementação corrige a sintaxe dos testes Python, acrescenta o fluxo de reconciliação de URI SAF por meio da NativeMailbox e do `LibraryService`/`LibraryStore` canônicos, e mantém o navegador Compose em Organizar. Esta etapa **não deve ser declarada integralmente concluída** até que o workflow oficial do APK termine com sucesso no SHA final e os resultados da reconciliação sejam validados pelo CI.
 
 ## Implementação
 
@@ -34,11 +34,13 @@ Movimentações entre provedores/autoridades diferentes são recusadas explicita
 ## Testes
 
 - `SafFileOperationsTest` contém sete testes JVM/Robolectric para URIs de sistema de arquivos recusadas, nomes inválidos, ausência de concessão, política de leitura versus escrita, escopo da árvore e cancelamento. Os cenários de concessão são verificados por política pura; não simulam um provedor SAF real.
-- `tests/test_saf_professional.py` e `tests/test_build_tools.py` foram atualizados para validar os contratos de autorização, a integração da tela, os avisos sobre identidade e a concessão opcional de escrita.
+- `tests/test_saf_professional.py`: corrigida a sequência literal `\\n` antes de uma declaração de método, substituindo-a por quebra de linha real; adicionado contrato para o evento de reconciliação canônica.
+- `tests/test_build_tools.py`: corrigido o separador do payload DEX sintético de `b"\\\\n"` para `b"\\n"`, garantindo bytes de newline reais no APK de teste.
+- `tests/test_reconciliation.py`: adicionados testes de reconciliação idempotente com preservação de ID, progresso, estado assistido, timestamp e identidade de mídia, além de conflito de URI que deve preservar ambos os registros.
 - Não foram adicionados testes instrumentados nem testes de emulador.
 
 ## Validação oficial
 
 O workflow [Build ReiAnix Android APK](https://github.com/reinansantos9090-debug/ReiAnix/actions/workflows/build_apk.yml) é disparado automaticamente no push para `main`. Inclui a suíte Python, preparação do host Flet/Android, compilação Kotlin integrada, verificação do APK e publicação de artefatos quando o job passa.
 
-Não executei manualmente o workflow nem a suíte Kotlin/JVM. A conclusão exige verificar o resultado do workflow que corresponda ao SHA final exato. A validação física em dispositivo Android também permanece pendente até ser executada.
+A suíte Python e a compilação Android ainda precisam ser confirmadas no workflow do SHA final exato. Não executei manualmente a suíte Kotlin/JVM e não foram adicionados testes instrumentados ou de emulador. A validação física em dispositivo Android e em provedores SAF reais permanece pendente. Um workflow iniciado ou cancelado por commits subsequentes não é evidência de aprovação.
