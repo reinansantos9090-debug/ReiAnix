@@ -46,7 +46,8 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn("current.anilistId != anilistId", source)
         self.assertIn('optionalString("metadata_manual_fields")', source)
         self.assertIn('values.put("metadata_source", "anilist")', source)
-        for local_column in ('"local_path"', '"favorite"', '"personal_note"', '"user_tags"', '"cover_cache"'):
+        self.assertIn('"cover_cache" !in protectedFields', source)
+        for local_column in ('"local_path"', '"favorite"', '"personal_note"', '"user_tags"'):
             self.assertNotIn(f'values.put({local_column}', source)
 
     def test_anilist_preferences_and_artwork_gate_are_reused(self):
