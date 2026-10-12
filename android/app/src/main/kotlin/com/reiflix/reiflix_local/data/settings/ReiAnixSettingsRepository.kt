@@ -416,6 +416,10 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
             var settings = current.settings
             if (operationState == ReiAnixSettingsOperationState.SUCCESS && key != null) {
                 val pending = pendingSettings[key]
+                // Even an older successful write becomes the last confirmed value.
+                // Keep a newer optimistic value visible, but roll it back to this
+                // confirmed value if the newer request later fails.
+                if (value != null) confirmedSettings[key] = value
                 if (pending != null && pending.requestId == requestId) {
                     val confirmed = value ?: pending.value
                     confirmedSettings[key] = confirmed
