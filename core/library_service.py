@@ -1975,8 +1975,9 @@ class LibraryService:
         return report
 
     def reconcile_saf_document_identity_change(self, old_uri: str, new_uri: str, name: str):
-        """Reconcile a provider-confirmed SAF URI change through canonical storage."""
-        return self.store.reconcile_saf_document_identity_change(old_uri, new_uri, name)
+        """Serialize provider-confirmed SAF identity changes with catalog scans."""
+        with self._scan_lock:
+            return self.store.reconcile_saf_document_identity_change(old_uri, new_uri, name)
 
     def ingest_documents(self, tree_uri: str, documents: list[dict], on_status=lambda _: None, *,
                          folder_name=None, scan_errors=None, scan_stats=None, source_kind="saf",
