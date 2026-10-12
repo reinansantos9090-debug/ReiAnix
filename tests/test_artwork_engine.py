@@ -487,7 +487,13 @@ class ArtworkEngineTests(unittest.TestCase):
         anime = self._media()
         bad = Path(self.tmp.name) / "bad.jpg"
         bad.write_bytes(b"not an image")
-        self.engine.sync_anime_metadata(anime, {"anilist_id": 16498, "cover_url": "https://example/cover.jpg", "cover_cache": str(bad)})
+        # Prevent sync_anime_metadata from racing a real background download
+        # before the deterministic test downloader is installed.
+        self.engine.sync_anime_metadata(
+            anime,
+            {"anilist_id": 16498, "cover_url": "https://example/cover.jpg", "cover_cache": str(bad)},
+            request_download=False,
+        )
         self.engine._downloader = lambda _url: (JPEG, "image/jpeg", 200)
         result = self.engine.request("anime", anime, "poster", blocking=True, force=True)
         self.assertEqual(result["status"], STATUS_READY)
