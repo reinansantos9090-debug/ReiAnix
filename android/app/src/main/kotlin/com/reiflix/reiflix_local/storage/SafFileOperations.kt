@@ -200,6 +200,15 @@ class SafFileOperations(private val context: Context) {
         }
     }
 
+    /** Persisted tree grants offered by the user; roots remain content URIs. */
+    fun authorizedTreeUris(): List<Uri> =
+        resolver.persistedUriPermissions.asSequence()
+            .filter { it.isReadPermission }
+            .map { it.uri }
+            .filter { uri -> runCatching { DocumentsContract.isTreeUri(uri) }.getOrDefault(false) }
+            .distinct()
+            .toList()
+
     sealed interface ResultOrItems {
         data class Items(val value: List<ItemInfo>) : ResultOrItems
         data class Failed(val result: Result.Failure) : ResultOrItems
