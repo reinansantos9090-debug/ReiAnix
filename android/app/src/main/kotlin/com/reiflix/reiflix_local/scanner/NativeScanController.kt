@@ -156,8 +156,8 @@ object NativeScanController {
             cancelled -> ScanLifecycleState.CANCELLED
             normalized in setOf("COMPLETED", "EMPTY_COMPLETE", "SUCCEEDED", "SUCCESS") &&
                 !payload.optBoolean("partial") -> ScanLifecycleState.SUCCEEDED
-            normalized in setOf("FAILED", "REVOKED", "UNAVAILABLE", "DENIED", "ERROR") -> ScanLifecycleState.FAILED
-            else -> ScanLifecycleState.PARTIAL
+            normalized in setOf("PARTIAL", "WAITING_FOR_MEDIASTORE") -> ScanLifecycleState.PARTIAL
+            else -> ScanLifecycleState.FAILED
         }
         val errors = readStrings(stats.optJSONArray("errors"))
         val files = stats.optLong("videos", payload.optLong("videos", current.filesFound)).coerceAtLeast(current.filesFound)
