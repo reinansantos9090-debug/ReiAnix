@@ -61,7 +61,7 @@ class ReiAnixSqliteSettingsRepository(
         }
         database.transaction { connection ->
             val existing = queryPreference(connection, normalizedKey)
-            if (existing?.value == normalizedValue) return@transaction existing
+            if (existing != null && existing.value == normalizedValue) return@transaction existing
             val values = ContentValues().apply {
                 put("value", normalizedValue)
                 put("updated_at", updatedAtEpochSeconds)
