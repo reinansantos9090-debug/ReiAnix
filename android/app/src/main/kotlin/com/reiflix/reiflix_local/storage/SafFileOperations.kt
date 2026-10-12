@@ -26,7 +26,16 @@ class SafFileOperations(private val context: Context) {
     }
 
     sealed interface Result {
-        data class Success(val uri: Uri, val name: String, val isDirectory: Boolean) : Result
+        data class Success(
+            val uri: Uri,
+            val name: String,
+            val isDirectory: Boolean,
+            val size: Long? = null,
+            val lastModified: Long? = null,
+            val mimeType: String? = null,
+            val canRead: Boolean = true,
+            val canWrite: Boolean = false,
+        ) : Result
         data class Failure(val kind: FailureKind, val message: String, val sourceUri: Uri? = null,
                            val destinationUri: Uri? = null, val recoverable: Boolean = false) : Result
     }
@@ -78,7 +87,16 @@ class SafFileOperations(private val context: Context) {
 
     suspend fun info(uri: Uri): Result = withContext(Dispatchers.IO) {
         val document = authorizedDocument(uri, requireWrite = false) ?: return@withContext failureFor(uri, requireWrite = false)
-        Result.Success(document.uri, document.name.orEmpty(), document.isDirectory)
+        Result.Success(
+            uri = document.uri,
+            name = document.name.orEmpty(),
+            isDirectory = document.isDirectory,
+            size = document.length().takeIf { it >= 0L },
+            lastModified = document.lastModified().takeIf { it > 0L },
+            mimeType = document.type,
+            canRead = document.canRead(),
+            canWrite = document.canWrite(),
+        )
     }
 
     suspend fun createDirectory(parentUri: Uri, name: String): Result = withContext(Dispatchers.IO) {
@@ -253,18 +271,25 @@ class SafFileOperations(private val context: Context) {
         if (!isTreeRoot && !isDocument) return null
 
         val grants = resolver.persistedUriPermissions.filter { grant ->
-            runCatching { DocumentsContract.isTreeUri(grant.uri) }.getOrDefault(false) &&
-                grant.isReadPermission &&
-                (!requireWrite || grant.isWritePermission)
+            runCatching { DocumentsContract.isTreeUri(grant.uri) }.getOrDefault(false)
         }
         for (grant in grants) {
+            val treeMatches = if (isTreeRoot) {
+                grant.uri == uri
+            } else {
+                grant.uri.authority.equals(uri.authority, ignoreCase = true)
+            }
+            val withinTree = if (isTreeRoot) {
+                grant.uri == uri
+            } else {
+                runCatching { SafScanner.isAuthorizedDocumentForTree(context, grant.uri, uri) }.getOrDefault(false)
+            }
+            if (!grantAllows(grant.isReadPermission, grant.isWritePermission, requireWrite, treeMatches, withinTree)) continue
             val candidateUri = if (isTreeRoot) {
-                if (grant.uri != uri) continue
                 runCatching {
                     DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
                 }.getOrNull() ?: continue
             } else {
-                if (!SafScanner.isAuthorizedDocumentForTree(context, grant.uri, uri)) continue
                 runCatching {
                     DocumentsContract.buildDocumentUriUsingTree(grant.uri, DocumentsContract.getDocumentId(uri))
                 }.getOrNull() ?: continue
@@ -287,11 +312,16 @@ class SafFileOperations(private val context: Context) {
         }
         val readTarget = authorizedTarget(uri, requireWrite = false)
         if (readTarget == null) {
-            val exists = runCatching { DocumentFile.fromSingleUri(context, uri)?.exists() == true }.getOrDefault(false)
-            return if (!exists) {
-                Result.Failure(FailureKind.NOT_FOUND, "O item não existe ou não está acessível pela URI informada.", uri)
+            val withinAnyGrantedTree = resolver.persistedUriPermissions.any { grant ->
+                grant.isReadPermission &&
+                    runCatching { DocumentsContract.isTreeUri(grant.uri) }.getOrDefault(false) &&
+                    grant.uri.authority.equals(uri.authority, ignoreCase = true) &&
+                    runCatching { SafScanner.isAuthorizedDocumentForTree(context, grant.uri, uri) }.getOrDefault(false)
+            }
+            return if (withinAnyGrantedTree) {
+                Result.Failure(FailureKind.NOT_FOUND, "O documento não existe ou o provedor não consegue mais acessá-lo.", uri)
             } else {
-                Result.Failure(FailureKind.PERMISSION_DENIED, "A URI não pertence a uma árvore SAF autorizada ou a concessão foi revogada.", uri)
+                Result.Failure(FailureKind.PERMISSION_DENIED, "A concessão SAF foi revogada ou a URI não pertence à árvore autorizada.", uri)
             }
         }
         if (requireWrite && authorizedTarget(uri, requireWrite = true) == null) {
@@ -344,6 +374,14 @@ class SafFileOperations(private val context: Context) {
         if (name.isEmpty() || name == "." || name == ".." || name.any { it == '/' || it == '\\' || it.isISOControl() }) return null
         return name.takeIf { it.length <= 255 }
     }
+
+    internal fun grantAllows(
+        grantRead: Boolean,
+        grantWrite: Boolean,
+        requireWrite: Boolean,
+        treeMatches: Boolean,
+        withinTree: Boolean,
+    ): Boolean = grantRead && (!requireWrite || grantWrite) && treeMatches && withinTree
 
     private fun isTreeRootUri(uri: Uri): Boolean =
         runCatching { DocumentsContract.isTreeUri(uri) && !DocumentsContract.isDocumentUri(context, uri) }
