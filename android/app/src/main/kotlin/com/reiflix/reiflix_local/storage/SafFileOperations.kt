@@ -108,10 +108,11 @@ class SafFileOperations(private val context: Context) {
     suspend fun rename(uri: Uri, newName: String): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(uri)) {
             val safeName = validateName(newName) ?: return@synchronized Result.Failure(FailureKind.INVALID_NAME, "Nome inválido.", uri)
-            val source = authorizedDocument(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
+            val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
+            val source = target.document
             if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite renomeação.", uri)
-            val parent = source.parentFile
-                ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não expõe a pasta pai deste item.", uri)
+            val parent = findParentInTree(target.treeUri, source.uri)
+                ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não permitiu localizar a pasta pai autorizada deste item.", uri)
             val conflict = runCatching { parent.findFile(safeName) }.getOrNull()
             if (conflict != null && conflict.uri != source.uri) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", uri, conflict.uri)
             try {
@@ -137,12 +138,15 @@ class SafFileOperations(private val context: Context) {
             if (!destination.isDirectory || !destination.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O destino não permite escrita.", uri, destinationDirectoryUri)
             if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "A origem não permite movimentação.", uri, destinationDirectoryUri)
             if (source.uri == destination.uri) return@synchronized Result.Failure(FailureKind.FAILURE, "A origem e o destino são iguais.", uri, destinationDirectoryUri)
-            if (source.isDirectory && isDescendantOrSame(destination, source.uri)) return@synchronized Result.Failure(FailureKind.FAILURE, "Uma pasta não pode ser movida para dentro de si mesma.", uri, destinationDirectoryUri)
+            if (source.isDirectory && (sameDocument(destination.uri, source.uri) ||
+                runCatching { DocumentsContract.isChildDocument(resolver, source.uri, destination.uri) }.getOrDefault(false))) {
+                return@synchronized Result.Failure(FailureKind.FAILURE, "Uma pasta não pode ser movida para dentro de si mesma ou de seus descendentes.", uri, destinationDirectoryUri)
+            }
             val name = source.name?.takeIf(String::isNotBlank)
                 ?: return@synchronized Result.Failure(FailureKind.FAILURE, "O provedor não informou o nome da origem.", uri, destinationDirectoryUri)
             if (runCatching { destination.findFile(name) }.getOrNull() != null) return@synchronized Result.Failure(FailureKind.CONFLICT, "O destino já contém um item com esse nome.", uri, destinationDirectoryUri)
             try {
-                val sourceParent = source.parentFile
+                val sourceParent = findParentInTree(sourceTarget.treeUri, source.uri)
                 if (sourceParent != null && source.uri.authority == destination.uri.authority &&
                     DocumentsContract.isDocumentUri(context, source.uri) &&
                     DocumentsContract.isDocumentUri(context, destination.uri)) {
@@ -221,9 +225,10 @@ class SafFileOperations(private val context: Context) {
 
     private fun authorizedTarget(uri: Uri, requireWrite: Boolean): AuthorizedTarget? {
         if (uri.scheme != "content" || uri.authority.isNullOrBlank()) return null
-        val isTree = runCatching { DocumentsContract.isTreeUri(uri) }.getOrDefault(false)
+        val hasTreeScope = runCatching { DocumentsContract.isTreeUri(uri) }.getOrDefault(false)
         val isDocument = runCatching { DocumentsContract.isDocumentUri(context, uri) }.getOrDefault(false)
-        if (!isTree && !isDocument) return null
+        val isTreeRoot = hasTreeScope && !isDocument
+        if (!isTreeRoot && !isDocument) return null
 
         val grants = resolver.persistedUriPermissions.filter { grant ->
             runCatching { DocumentsContract.isTreeUri(grant.uri) }.getOrDefault(false) &&
@@ -231,7 +236,7 @@ class SafFileOperations(private val context: Context) {
                 (!requireWrite || grant.isWritePermission)
         }
         for (grant in grants) {
-            val candidateUri = if (isTree) {
+            val candidateUri = if (isTreeRoot) {
                 if (grant.uri != uri) continue
                 runCatching {
                     DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
@@ -242,7 +247,7 @@ class SafFileOperations(private val context: Context) {
                     DocumentsContract.buildDocumentUriUsingTree(grant.uri, DocumentsContract.getDocumentId(uri))
                 }.getOrNull() ?: continue
             }
-            val document = if (isTree) {
+            val document = if (isTreeRoot) {
                 DocumentFile.fromTreeUri(context, uri)
             } else {
                 DocumentFile.fromSingleUri(context, candidateUri)
@@ -279,11 +284,37 @@ class SafFileOperations(private val context: Context) {
         return runCatching { parent.findFile(name) }.getOrNull()?.takeIf { it.exists() && it.name == name }
     }
 
-    private fun isDescendantOrSame(candidate: DocumentFile, ancestorUri: Uri): Boolean {
-        if (candidate.uri == ancestorUri) return true
-        val ancestor = DocumentFile.fromSingleUri(context, ancestorUri) ?: return false
-        return runCatching { ancestor.uri == candidate.uri || ancestor.findFile(candidate.name.orEmpty())?.uri == candidate.uri }
-            .getOrDefault(false)
+    private fun findParentInTree(treeUri: Uri, targetUri: Uri): DocumentFile? {
+        val root = DocumentFile.fromTreeUri(context, treeUri) ?: return null
+        if (sameDocument(root.uri, targetUri)) return null
+        val pending = ArrayDeque<DocumentFile>()
+        val visited = HashSet<String>()
+        pending.add(root)
+        while (pending.isNotEmpty()) {
+            val parent = pending.removeFirst()
+            if (!visited.add(parent.uri.toString())) continue
+            val children = try {
+                parent.listFiles()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: SecurityException) {
+                return null
+            } catch (_: Exception) {
+                return null
+            }
+            for (child in children) {
+                if (sameDocument(child.uri, targetUri)) return parent
+                if (child.isDirectory) pending.add(child)
+            }
+        }
+        return null
+    }
+
+    private fun sameDocument(first: Uri, second: Uri): Boolean {
+        if (first.authority != second.authority) return false
+        val firstId = runCatching { DocumentsContract.getDocumentId(first) }.getOrNull()
+        val secondId = runCatching { DocumentsContract.getDocumentId(second) }.getOrNull()
+        return firstId != null && firstId == secondId
     }
 
     private fun validateName(value: String): String? {
