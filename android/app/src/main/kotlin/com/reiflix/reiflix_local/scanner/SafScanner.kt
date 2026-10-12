@@ -284,7 +284,7 @@ object SafScanner {
                         if(!child.mime.startsWith("video/"))stats.put("mimeFallbacks",stats.getInt("mimeFallbacks")+1)
                         if(child.size==null)stats.put("metadataMissingSize",stats.getInt("metadataMissingSize")+1)
                         if(child.modified==null)stats.put("metadataMissingModified",stats.getInt("metadataMissingModified")+1)
-                        val discovered = JSONObject().put("uri",childUri.toString()).put("treeUri",treeUri.toString()).put("documentId",child.id)
+                        val discovered = JSONObject().put("uri",childUri.toString()).put("treeUri",treeUri.toString()).put("documentId",child.id).put("scopeVerified", true)
                             .put("name",child.name).put("relativePath",relative).put("volumeId",identity.volumeId).put("volumeUuid",identity.volumeId)
                             .put("mimeType",child.mime).put("size",child.size?:JSONObject.NULL).put("modifiedAt",child.modified?:JSONObject.NULL)
                             .put("source","saf").put("scope",identity.identity)

@@ -56,6 +56,19 @@ class NativeLibraryIndexingPolicyTest {
         assertFalse("primary:Other/e01.mkv".isWithinScope("primary:Anime"))
     }
 
+    @Test fun opaqueProviderDocumentIdsNeedExplicitTreeMembershipEvidence() {
+        val unverified = NativeDiscoveredMedia(
+            location = "content://provider/document/child",
+            scopeLocation = "provider-opaque-child-id",
+            fileName = "episode.mkv",
+            scopeVerified = false,
+        )
+        assertFalse(snapshot(items = listOf(unverified)).mayReconcile)
+
+        val providerVerified = unverified.copy(scopeVerified = true)
+        assertTrue(snapshot(items = listOf(providerVerified)).mayReconcile)
+    }
+
     @Test fun weakOrAmbiguousEpisodeIdentityCannotAuthorizeInsertion() {
         val weak = NativeDiscoveredMedia(
             location = "content://provider/doc/1",

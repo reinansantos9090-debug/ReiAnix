@@ -114,8 +114,7 @@ object NativeScanRunner {
                 )
                 var nativeIndexingFailed = false
                 var nativeIndexingStatus = "SKIPPED_INCOMPLETE"
-                {
-                    try {
+                try {
                         val treeIdentity = SafScanner.treeIdentity(treeUri)
                         val complete = status == NativeIndex.STATUS_COMPLETED || status == NativeIndex.STATUS_EMPTY_COMPLETE
                         val scanDocuments = if (complete) {
@@ -145,7 +144,7 @@ object NativeScanRunner {
                                         location = uri,
                                         fileName = name,
                                         scopeLocation = documentId,
-                                        scopeVerified = documentId != null,
+                                        scopeVerified = document.optBoolean("scopeVerified", false),
                                         animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
                                         season = season,
                                         episodeNumber = episodeNumber,
@@ -200,6 +199,8 @@ object NativeScanRunner {
                             .put("rejectedOutOfScope", indexReport.rejectedOutOfScope)
                             .put("reconciledMissing", indexReport.reconciledMissing)
                             .put("reconciliationAuthorized", indexReport.reconciliationAuthorized))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (indexError: Exception) {
                         nativeIndexingFailed = true
                         nativeIndexingStatus = "FAILED"
@@ -215,7 +216,6 @@ object NativeScanRunner {
                                 .put("status", "FAILED")
                                 .put("errorType", indexError::class.java.simpleName)))
                     }
-                }
                 result.put("scanGeneration", generationId)
                     .put("generationId", NativeIndex.generationId(NativeIndex.SOURCE_SAF, scanKey, generationId))
                     .put("generationStatus", status)

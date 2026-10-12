@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import org.json.JSONArray
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import org.json.JSONException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -410,6 +411,8 @@ class ReiAnixSqliteLibraryRepository(
                     val insertedEpisodeId = db.insertOrThrow("episodes", null, values)
                     recordEpisodeObservation(db, insertedEpisodeId, snapshot, item)
                     inserted++
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (itemError: Exception) {
                         // Roll back only the bad item. Other verified observations in this
                         // scan can still be committed, but ambiguity blocks reconciliation.
