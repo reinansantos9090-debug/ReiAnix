@@ -117,10 +117,11 @@ class SafFileOperations(private val context: Context) {
                 if (existing != null) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", existing.uri, parentUri)
                 val created = parent.createDirectory(safeName)
                     ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não conseguiu criar a pasta.", parentUri)
-                if (!created.exists() || !created.isDirectory || created.name != safeName) {
-                    return@synchronized Result.Failure(FailureKind.PARTIAL, "O provedor retornou um resultado de criação não confirmado.", created.uri, parentUri, recoverable = true)
+                val confirmed = parent.findFile(safeName)
+                if (confirmed == null || !confirmed.exists() || !confirmed.isDirectory || confirmed.name != safeName) {
+                    return@synchronized Result.Failure(FailureKind.PARTIAL, "A criação pode ter ocorrido, mas o provedor não confirmou a pasta ao consultá-la novamente.", created.uri, parentUri, recoverable = true)
                 }
-                Result.Success(created.uri, created.name.orEmpty(), true)
+                Result.Success(confirmed.uri, confirmed.name.orEmpty(), true)
             } catch (e: SecurityException) {
                 Result.Failure(FailureKind.PERMISSION_DENIED, "Sem permissão para criar a pasta.", parentUri)
             } catch (e: CancellationException) {
