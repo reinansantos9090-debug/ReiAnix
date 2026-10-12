@@ -182,6 +182,8 @@ object NativeScanRunner {
                                 cancelled = scanStatus == SafScanner.STATUS_CANCELLED,
                                 authorizationValid = authorizationValid,
                                 items = discovered,
+                                scopeReference = reference,
+                                scanGeneration = generationId,
                             )
                         )
                         nativeIndexingStatus = if (indexReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL"

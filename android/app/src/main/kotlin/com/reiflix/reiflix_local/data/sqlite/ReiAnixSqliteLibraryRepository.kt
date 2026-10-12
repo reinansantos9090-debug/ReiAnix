@@ -319,6 +319,7 @@ class ReiAnixSqliteLibraryRepository(
                             db.update("episodes", patch, "id = ?", arrayOf(current.id.toString()))
                             updated++
                         }
+                        recordEpisodeObservation(db, current.id, snapshot, item)
                         continue
                     }
 
@@ -404,7 +405,8 @@ class ReiAnixSqliteLibraryRepository(
                         item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { put("media_identity", it) }
                         put("availability_state", "available")
                     }
-                    db.insertOrThrow("episodes", null, values)
+                    val insertedEpisodeId = db.insertOrThrow("episodes", null, values)
+                    recordEpisodeObservation(db, insertedEpisodeId, snapshot, item)
                     inserted++
                 }
 
@@ -430,6 +432,11 @@ class ReiAnixSqliteLibraryRepository(
                             "id = ?",
                             arrayOf(episode.id.toString()),
                         )
+                        db.execSQL(
+                            "UPDATE episode_observations SET state = ?, last_checked_at = ? " +
+                                "WHERE episode_id = ? AND source_kind = ? AND scope_kind = ? AND scope_ref = ? AND state = ?",
+                            arrayOf("missing", System.currentTimeMillis() / 1000.0, episode.id, snapshot.source, "root", snapshot.scopeReference, "available"),
+                        )
                         missing++
                     }
                 }
@@ -445,6 +452,59 @@ class ReiAnixSqliteLibraryRepository(
                 )
             }
         }
+
+    private fun recordEpisodeObservation(
+        db: SQLiteDatabase,
+        episodeId: Long,
+        snapshot: NativeLibraryScanSnapshot,
+        item: NativeDiscoveredMedia,
+    ) {
+        val now = System.currentTimeMillis() / 1000.0
+        // Keep old URIs as superseded observations when the same stable media
+        // identity is found at a new location; never REPLACE/delete history rows.
+        db.execSQL(
+            "UPDATE episode_observations SET state = ?, last_checked_at = ? " +
+                "WHERE episode_id = ? AND source_kind = ? AND scope_kind = ? AND scope_ref = ? AND uri != ? AND state = ?",
+            arrayOf("superseded", now, episodeId, snapshot.source, "root", snapshot.scopeReference, item.location, "available"),
+        )
+        val identity = item.stableIdentity.orEmpty()
+        val fingerprint = listOf(identity, item.fileName, item.sizeBytes?.toString().orEmpty(),
+            item.modifiedAtEpochSeconds?.toString().orEmpty()).joinToString("|")
+        val values = ContentValues().apply {
+            put("episode_id", episodeId)
+            put("source_kind", snapshot.source)
+            put("scope_kind", "root")
+            put("scope_ref", snapshot.scopeReference)
+            put("uri", item.location)
+            item.volumeId?.takeIf { it.isNotBlank() }?.let { put("volume_id", it) }
+            snapshot.scanGeneration?.let { put("native_generation", it) }
+            put("fingerprint", fingerprint)
+            put("first_seen", now)
+            put("last_seen", now)
+            put("last_checked_at", now)
+            put("state", "available")
+        }
+        db.insertWithOnConflict(
+            "episode_observations",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_IGNORE,
+        )
+        val updateValues = ContentValues().apply {
+            item.volumeId?.takeIf { it.isNotBlank() }?.let { put("volume_id", it) }
+            snapshot.scanGeneration?.let { put("native_generation", it) }
+            put("fingerprint", fingerprint)
+            put("last_seen", now)
+            put("last_checked_at", now)
+            put("state", "available")
+        }
+        db.update(
+            "episode_observations",
+            updateValues,
+            "episode_id = ? AND source_kind = ? AND scope_kind = ? AND scope_ref = ? AND uri = ?",
+            arrayOf(episodeId.toString(), snapshot.source, "root", snapshot.scopeReference, item.location),
+        )
+    }
 
     private fun queryEpisodesByColumn(
         db: SQLiteDatabase,

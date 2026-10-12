@@ -857,6 +857,71 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals("/media/new-show/Brand.New.Show.S01E01.mkv", episode.path)
     }
 
+    @Test
+    fun movedMediaKeepsObservationHistoryAndPlaybackProgress() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "UPDATE episodes SET source_folder = ?, media_identity = ? WHERE id = ?",
+                arrayOf("/media/show", "shared:primary:show/episode-01.mkv", 7L),
+            )
+            db.execSQL(
+                """
+                INSERT INTO episode_observations(
+                    episode_id, source_kind, scope_kind, scope_ref, uri, first_seen, last_seen, state
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf(7L, "saf", "root", "saf://tree", "/media/show/episode-01.mkv", 1000.0, 1000.0, "available"),
+            )
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val report = repository.indexDiscoveredMedia(
+            NativeLibraryScanSnapshot(
+                operationId = "moved-media",
+                source = "saf",
+                scopeRoot = "/media/show",
+                expectedLocations = setOf("/media/show"),
+                processedLocations = setOf("/media/show"),
+                status = "COMPLETED",
+                complete = true,
+                authorizationValid = true,
+                scopeReference = "saf://tree",
+                scanGeneration = 4L,
+                items = listOf(
+                    NativeDiscoveredMedia(
+                        location = "/media/show/episode-01-renamed.mkv",
+                        fileName = "episode-01-renamed.mkv",
+                        scopeLocation = "/media/show/episode-01-renamed.mkv",
+                        animeTitle = "Original Title",
+                        season = 1,
+                        episodeNumber = 1.0,
+                        identificationConfidence = "high",
+                        sourceFolder = "/media/show",
+                        mediaIdentity = "shared:primary:show/episode-01.mkv",
+                    ),
+                ),
+            ),
+        )
+        assertTrue(report.reconciliationAuthorized)
+        assertEquals("/media/show/episode-01-renamed.mkv", repository.getEpisode(7L)!!.path)
+        assertEquals(11.0, repository.getEpisode(7L)!!.progress!!, 0.0)
+
+        val observations = SQLiteDatabase.openDatabase(
+            databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY,
+        ).use { db ->
+            db.rawQuery(
+                "SELECT uri, state FROM episode_observations WHERE episode_id = ? AND scope_ref = ? ORDER BY uri",
+                arrayOf("7", "saf://tree"),
+            ).use { cursor ->
+                buildMap {
+                    while (cursor.moveToNext()) put(cursor.getString(0), cursor.getString(1))
+                }
+            }
+        }
+        assertEquals("superseded", observations["/media/show/episode-01.mkv"])
+        assertEquals("available", observations["/media/show/episode-01-renamed.mkv"])
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()

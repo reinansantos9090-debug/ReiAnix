@@ -15,7 +15,11 @@ data class NativeLibraryScanSnapshot(
     val cancelled: Boolean = false,
     val authorizationValid: Boolean,
     val items: List<NativeDiscoveredMedia>,
+    val scopeReference: String = scopeRoot,
+    val scanGeneration: Long? = null,
 ) {
+    init { require(scanGeneration == null || scanGeneration > 0L) { "scanGeneration must be positive when supplied." } }
+
     val mayReconcile: Boolean
         get() {
             val terminalStatus = status.trim().uppercase()
