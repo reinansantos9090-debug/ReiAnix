@@ -5487,12 +5487,14 @@ async def main(page: ft.Page):
                                 )
                                 if compose_library_bridge.enabled:
                                     compose_library_bridge.request_publish("saf_identity_reconciled")
-                                try:
-                                    await bridge.rescan_tree(tree_uri)
-                                except Exception:
-                                    # The canonical URI update is already committed and idempotent.
-                                    # A later scan can refresh relative paths/metadata without losing episode state.
-                                    logger.exception("[SAF_IDENTITY] canonical reconciliation succeeded but follow-up scan could not be requested")
+                                async def _request_reconciled_saf_rescan():
+                                    try:
+                                        await bridge.rescan_tree(tree_uri)
+                                    except Exception:
+                                        # The canonical URI update is already committed and idempotent.
+                                        # A later scan can refresh relative paths/metadata without losing episode state.
+                                        logger.exception("[SAF_IDENTITY] canonical reconciliation succeeded but follow-up scan could not be requested")
+                                _track_compose_library_task(asyncio.create_task(_request_reconciled_saf_rescan()))
                             else:
                                 # Keep the existing catalog row and its history intact.
                                 # An unprovable mapping is a recoverable state, not a delete.
