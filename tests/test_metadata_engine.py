@@ -261,14 +261,18 @@ class ProfessionalMetadataTests(unittest.TestCase):
         media = {'id': 16498, 'title': {'english': 'Attack on Titan', 'romaji': 'Shingeki no Kyojin'},
                  'coverImage': {'extraLarge': 'https://img.example/a.jpg'}, 'genres': ['Action']}
         downloader = lambda url: (VALID_JPEG, "image/jpeg", 200)
+        artwork_finished = threading.Event()
+        self.service.artwork.set_change_listener(
+            lambda event, payload: artwork_finished.set()
+            if event == "ARTWORK_DOWNLOAD_SUCCEEDED" else None
+        )
         with patch.object(self.service.anilist, 'search', return_value=[media]), patch.object(self.service.artwork, '_downloader', side_effect=downloader) as artwork_downloader:
             result = self.service.hydrate_catalog_metadata(self.service.catalog())
         self.assertEqual(len(result), 1)
-        row = self.store.anime_metadata('attack on titan')
-        # Hydration deliberately schedules artwork downloads without blocking.
-        # Join the existing/coalesced poster task here so this test can verify
-        # the durable cache result rather than race the background worker.
-        self.service.artwork.request('anime', row['id'], 'poster', priority=400, blocking=True)
+        self.assertTrue(
+            artwork_finished.wait(timeout=5),
+            "non-blocking hydration should publish the completed poster download",
+        )
         row = self.store.anime_metadata('attack on titan')
         self.assertEqual(row['anilist_id'], 16498)
         self.assertNotEqual(row['cover_cache'], str(cover))
