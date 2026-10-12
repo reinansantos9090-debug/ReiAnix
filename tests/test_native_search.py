@@ -6,6 +6,8 @@ SEARCH = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search
 ENGINE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/search/ReiAnixSearchEngine.kt"
 VM = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
 NAV = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
+QUERY_SERVICE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryQueryService.kt"
+SQLITE_REPOSITORY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt"
 
 
 class NativeSearchTests(unittest.TestCase):
@@ -26,6 +28,22 @@ class NativeSearchTests(unittest.TestCase):
         self.assertIn("fun setSearchQuery", source)
         self.assertNotIn("LibraryStore(", source)
         self.assertNotIn("SQLiteDatabase", source)
+
+    def test_compose_search_uses_canonical_sqlite_query_service(self):
+        view_model = VM.read_text(encoding="utf-8")
+        service = QUERY_SERVICE.read_text(encoding="utf-8")
+        repository = SQLITE_REPOSITORY.read_text(encoding="utf-8")
+
+        self.assertIn("nativeLibraryQueries.searchAnime(", view_model)
+        self.assertIn("searchText = request.settledQuery", view_model)
+        self.assertIn("ReiAnixLibraryQueryResult.Failure", view_model)
+        self.assertIn("repository.searchAnimeIds(", service)
+        self.assertIn("database.read { connection ->", repository)
+        self.assertIn("connection.rawQuery(sql, queryArgs.toTypedArray())", repository)
+        self.assertIn("ORDER BY $sort", repository)
+        self.assertIn("LIMIT ? OFFSET ?", repository)
+        self.assertIn("requestedQuery != request.settledQuery", view_model)
+        self.assertIn("results = selected", view_model)
 
     def test_search_ui_has_required_states_and_stable_details_identity(self):
         source = SEARCH.read_text(encoding="utf-8")
