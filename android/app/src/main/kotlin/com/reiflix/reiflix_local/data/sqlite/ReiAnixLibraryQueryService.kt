@@ -47,7 +47,7 @@ class ReiAnixLibraryQueryService(
         }
 
     suspend fun searchAnime(
-        query: String,
+        searchText: String,
         genreKey: String? = null,
         favoritesOnly: Boolean = false,
         watchingOnly: Boolean = false,
@@ -56,13 +56,13 @@ class ReiAnixLibraryQueryService(
         limit: Int = DEFAULT_PAGE_SIZE,
         offset: Int = 0,
     ): ReiAnixLibraryQueryResult<ReiAnixSqliteSearchPage> =
-        query("searchAnime") {
+        this.query("searchAnime") {
             require(limit in 1..MAX_PAGE_SIZE) {
                 "Search page size must be between 1 and $MAX_PAGE_SIZE."
             }
             require(offset >= 0) { "Search offset cannot be negative." }
             val page = repository.searchAnimeIds(
-                query = query,
+                query = searchText,
                 genreKey = genreKey,
                 favoritesOnly = favoritesOnly,
                 watchingOnly = watchingOnly,
