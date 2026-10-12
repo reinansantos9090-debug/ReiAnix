@@ -93,6 +93,9 @@ class TestSafProfessionalContract(unittest.TestCase):
             "SafScanner.isAuthorizedDocumentForTree",
             "FailureKind.PARTIAL",
             "DocumentsContract.moveDocument",
+            "DocumentsContract.createDocument",
+            "DocumentsContract.renameDocument",
+            "buildChildDocumentsUriUsingTree",
             "findParentInTree",
             "CancellationException",
         ):
@@ -102,6 +105,8 @@ class TestSafProfessionalContract(unittest.TestCase):
             self.assertIn(token, manager)
         self.assertIn("ReiAnixSafFileManagerRoute", organize)
         self.assertIn("Gerenciar arquivos locais (SAF)", organize)
+        self.assertIn("preservação de histórico e progresso não está garantida", manager)
+        self.assertIn("preserve o registro", operations)
 \n    def test_tree_identity_is_authority_document_and_volume_scoped(self):
         source = SAF.read_text(encoding="utf-8")
         self.assertIn("authority", source)
