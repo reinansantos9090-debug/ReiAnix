@@ -194,14 +194,23 @@ object SafScanner {
                     if(idCol<0||nameCol<0||mimeCol<0){stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("O provedor SAF não retornou os dados mínimos em: "+currentPath);return@use}
                     stats.put("successfulQueries",stats.getInt("successfulQueries")+1)
                     if(c.count==0){stats.put("emptyDirectories",stats.getInt("emptyDirectories")+1);return@use}
-                    data class Child(val id:String,val name:String,val mime:String,val size:Long?,val modified:Long?)
+                    data class Child(
+                        val id:String,
+                        val name:String,
+                        val nameAvailable:Boolean,
+                        val mime:String,
+                        val mimeAvailable:Boolean,
+                        val size:Long?,
+                        val modified:Long?,
+                    )
                     val directoriesToVisit=mutableListOf<Pair<String,String>>()
                     val videoChildren=mutableListOf<Child>()
                     var containsNoMediaMarker=false
                     while(c.moveToNext()){
                         val id=c.getString(idCol)?.trim().orEmpty()
                         if(id.isBlank()){stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("O provedor SAF retornou um documento sem ID em: "+currentPath);continue}
-                        val name=c.getString(nameCol)?.trim().takeUnless{it.isNullOrBlank()} ?: id
+                        val providerName=c.getString(nameCol)?.trim()?.takeIf{it.isNotEmpty()}
+                        val name=providerName ?: id
                         // SAF roots are explicitly selected by the user for the ReiAnix
                         // library. .nomedia is a MediaStore/gallery hint, not a veto on
                         // files the user deliberately included in this tree. Count it for
@@ -211,7 +220,8 @@ object SafScanner {
                             stats.put("nomediaFiles",stats.getInt("nomediaFiles")+1)
                             continue
                         }
-                        val mime=c.getString(mimeCol)?.trim().takeUnless{it.isNullOrBlank()} ?: "application/octet-stream"
+                        val providerMime=c.getString(mimeCol)?.trim()?.takeIf{it.isNotEmpty()}
+                        val mime=providerMime ?: "application/octet-stream"
                         val size=if(sizeCol>=0&&!c.isNull(sizeCol))c.getLong(sizeCol)else null
                         val modified=if(modCol>=0&&!c.isNull(modCol))c.getLong(modCol)else null
                         if(mime==DocumentsContract.Document.MIME_TYPE_DIR){
@@ -223,7 +233,7 @@ object SafScanner {
                         val mimeVideo=mime.startsWith("video/")
                         val extensionVideo=extension in videoExtensions
                         if(!mimeVideo&&!extensionVideo)continue
-                        videoChildren.add(Child(id,name,mime,size,modified))
+                        videoChildren.add(Child(id,name,providerName != null,mime,providerMime != null,size,modified))
                     }
                     val parentUri = runCatching {
                         DocumentsContract.buildDocumentUriUsingTree(treeUri, parentId)
@@ -287,6 +297,8 @@ object SafScanner {
                             sizeBytes = child.size,
                             modifiedAtMillis = child.modified,
                             providerId = child.id,
+                            nameAvailable = child.nameAvailable,
+                            mimeTypeAvailable = child.mimeAvailable,
                         ))
                         stats.put("videos",stats.getInt("videos")+1)
                         if(stats.getInt("files")-lastFiles>=100){lastFiles=stats.getInt("files");onProgress?.invoke(identityPayload(treeUri).put("phase","scanning").put("source","saf").put("directories",stats.getInt("directories")).put("files",lastFiles).put("videos",stats.getInt("videos")).put("currentPath",currentPath))}
