@@ -91,6 +91,12 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("NativeMailbox.write(appContext, event)", view_model)
         self.assertIn("catalogReconciliationQueued", view_model)
         self.assertNotIn("library.sqlite", view_model)
+        operations = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/SafFileOperations.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("mutationAttempted", operations)
+        self.assertNotIn("runCatching { DocumentsContract.isChildDocument", operations)
+        self.assertIn("a movimentação foi recusada por segurança", operations.lower())
 
     def test_native_saf_file_manager_uses_scoped_grants_and_confirms_operations(self):
         operations = (
