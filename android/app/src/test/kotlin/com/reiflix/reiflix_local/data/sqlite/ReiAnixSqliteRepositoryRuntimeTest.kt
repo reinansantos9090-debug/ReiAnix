@@ -1235,6 +1235,22 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(listOf(1L), secondPage.animeIds)
         assertFalse(secondPage.hasMore)
         assertTrue(firstPage.animeIds.intersect(secondPage.animeIds.toSet()).isEmpty())
+
+        val titlePageOne = repository.searchAnimeIds("title", null, false, false, false, null, 1, 0)
+        val titlePageTwo = repository.searchAnimeIds("title", null, false, false, false, null, 1, 1)
+        assertEquals(listOf(1L), titlePageOne.animeIds)
+        assertEquals(listOf(2L), titlePageTwo.animeIds)
+        assertFalse(titlePageOne.animeIds.intersect(titlePageTwo.animeIds.toSet()).isNotEmpty())
+        assertTrue(repository.searchAnimeIds("not a real title", null, false, false, false, null, 36, 0).animeIds.isEmpty())
+
+        assertEquals(
+            listOf(2L, 1L),
+            repository.searchAnimeIds("", null, false, false, false, "Nome A-Z", 36, 0).animeIds,
+        )
+        assertEquals(
+            listOf(1L, 2L),
+            repository.searchAnimeIds("", null, false, false, false, "Nome Z-A", 36, 0).animeIds,
+        )
     }
 
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
