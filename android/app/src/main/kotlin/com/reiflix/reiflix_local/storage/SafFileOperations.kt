@@ -56,13 +56,13 @@ class SafFileOperations(private val context: Context) {
 
     suspend fun list(directoryUri: Uri): ResultOrItems = withContext(Dispatchers.IO) {
         synchronized(lockFor(directoryUri)) {
-            val target = authorizedTarget(directoryUri, requireWrite = false)
-                ?: return@synchronized ResultOrItems.Failed(failureFor(directoryUri, requireWrite = false))
-            val directory = target.document
-            if (!directory.isDirectory) return@synchronized ResultOrItems.Failed(
-                Result.Failure(FailureKind.INVALID_ITEM, "O item informado não é um diretório.", directoryUri)
-            )
             try {
+                val target = authorizedTarget(directoryUri, requireWrite = false)
+                    ?: return@synchronized ResultOrItems.Failed(failureFor(directoryUri, requireWrite = false))
+                val directory = target.document
+                if (!directory.isDirectory) return@synchronized ResultOrItems.Failed(
+                    Result.Failure(FailureKind.INVALID_ITEM, "O item informado não é um diretório.", directoryUri)
+                )
                 val documentId = if (isTreeRootUri(directoryUri)) {
                     DocumentsContract.getTreeDocumentId(directoryUri)
                 } else {
@@ -158,9 +158,9 @@ class SafFileOperations(private val context: Context) {
     suspend fun createDirectory(parentUri: Uri, name: String): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(parentUri)) {
             val safeName = validateName(name) ?: return@synchronized Result.Failure(FailureKind.INVALID_NAME, "Nome de pasta inválido.", parentUri)
-            val parent = authorizedDocument(parentUri, requireWrite = true) ?: return@synchronized failureFor(parentUri, requireWrite = true)
-            if (!parent.isDirectory || !parent.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "A pasta de destino não permite escrita.", parentUri)
             try {
+                val parent = authorizedDocument(parentUri, requireWrite = true) ?: return@synchronized failureFor(parentUri, requireWrite = true)
+                if (!parent.isDirectory || !parent.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "A pasta de destino não permite escrita.", parentUri)
                 val existing = findChildByName(targetTreeUri(parentUri), parent.uri, safeName)
                 if (existing != null) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", existing, parentUri)
                 val createdUri = DocumentsContract.createDocument(
@@ -189,12 +189,12 @@ class SafFileOperations(private val context: Context) {
         synchronized(lockFor(uri)) {
             val safeName = validateName(newName) ?: return@synchronized Result.Failure(FailureKind.INVALID_NAME, "Nome inválido.", uri)
             if (isTreeRootUri(uri)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser renomeada.", uri)
-            val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
-            val source = target.document
-            if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite renomeação.", uri)
-            val parent = findParentInTree(target.treeUri, source.uri)
-                ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não permitiu localizar a pasta pai autorizada deste item.", uri)
             try {
+                val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
+                val source = target.document
+                if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite renomeação.", uri)
+                val parent = findParentInTree(target.treeUri, source.uri)
+                    ?: return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor não permitiu localizar a pasta pai autorizada deste item.", uri)
                 val conflictUri = findChildByName(target.treeUri, parent.uri, safeName)
                 if (conflictUri != null && !sameDocument(conflictUri, source.uri)) return@synchronized Result.Failure(FailureKind.CONFLICT, "Já existe um item com esse nome.", uri, conflictUri)
                 val renamedUri = DocumentsContract.renameDocument(resolver, source.uri, safeName)
@@ -230,13 +230,14 @@ class SafFileOperations(private val context: Context) {
         if (isTreeRootUri(uri)) return@withContext Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser movida.", uri)
         val lockKeys = listOf(sourceTarget.treeUri.toString(), destinationTarget.treeUri.toString()).distinct().sorted()
         withLocks(lockKeys) {
-            // Revalidate grants after acquiring the operation locks.
-            val currentSource = authorizedTarget(uri, requireWrite = true)
-                ?: return@withLocks failureFor(uri, requireWrite = true)
-            val currentDestination = authorizedTarget(destinationDirectoryUri, requireWrite = true)
-                ?: return@withLocks failureFor(destinationDirectoryUri, requireWrite = true)
-            val sourceDocument = currentSource.document
-            val destinationDocument = currentDestination.document
+            try {
+                // Revalidate grants after acquiring the operation locks.
+                val currentSource = authorizedTarget(uri, requireWrite = true)
+                    ?: return@withLocks failureFor(uri, requireWrite = true)
+                val currentDestination = authorizedTarget(destinationDirectoryUri, requireWrite = true)
+                    ?: return@withLocks failureFor(destinationDirectoryUri, requireWrite = true)
+                val sourceDocument = currentSource.document
+                val destinationDocument = currentDestination.document
             if (!destinationDocument.isDirectory) return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "O destino não é um diretório.", uri, destinationDirectoryUri)
             if (!destinationDocument.canWrite() || !sourceDocument.canWrite()) return@withLocks Result.Failure(FailureKind.PERMISSION_DENIED, "A origem ou o destino não permite escrita.", uri, destinationDirectoryUri)
             if (sameDocument(sourceDocument.uri, destinationDocument.uri)) return@withLocks Result.Failure(FailureKind.INVALID_ITEM, "A origem e o destino são iguais.", uri, destinationDirectoryUri)
@@ -246,7 +247,6 @@ class SafFileOperations(private val context: Context) {
             }
             val name = sourceDocument.name?.takeIf(String::isNotBlank)
                 ?: return@withLocks Result.Failure(FailureKind.FAILURE, "O provedor não informou o nome da origem.", uri, destinationDirectoryUri)
-            try {
                 if (findChildByName(currentDestination.treeUri, destinationDocument.uri, name) != null) {
                     return@withLocks Result.Failure(FailureKind.CONFLICT, "O destino já contém um item com esse nome.", uri, destinationDirectoryUri)
                 }
@@ -285,10 +285,10 @@ class SafFileOperations(private val context: Context) {
 
     suspend fun delete(uri: Uri): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(uri)) {
-            if (isTreeRootUri(uri)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser excluída.", uri)
-            val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
-            val source = target.document
             try {
+                if (isTreeRootUri(uri)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser excluída.", uri)
+                val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
+                val source = target.document
                 if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite exclusão.", uri)
                 if (!source.delete()) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "O provedor recusou a exclusão.", uri)
                 val afterDelete = try {
