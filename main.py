@@ -6928,16 +6928,21 @@ async def main(page: ft.Page):
                                 try:
                                     position_seconds = max(0.0, float(payload.get('positionMs') or 0.0)) / 1000.0
                                     duration_seconds = max(0.0, float(payload.get('durationMs') or 0.0)) / 1000.0
-                                    exit_updated = await asyncio.to_thread(
-                                        store.save_progress,
-                                        exit_uri,
-                                        position_seconds,
-                                        duration_seconds,
-                                        episode_id=payload.get("episodeId"),
-                                        media_id=payload.get("mediaId"),
-                                        event_created_at=event.get('createdAt') or event.get('timestamp'),
-                                        session_id=payload.get("playerSessionId"),
-                                    )
+                                    if payload.get("nativeProgressPersisted") is True:
+                                        # The native service already committed this exit checkpoint.
+                                        # Preserve the exit refresh without a second LibraryStore write.
+                                        exit_updated = True
+                                    else:
+                                        exit_updated = await asyncio.to_thread(
+                                            store.save_progress,
+                                            exit_uri,
+                                            position_seconds,
+                                            duration_seconds,
+                                            episode_id=payload.get("episodeId"),
+                                            media_id=payload.get("mediaId"),
+                                            event_created_at=event.get('createdAt') or event.get('timestamp'),
+                                            session_id=payload.get("playerSessionId"),
+                                        )
                                 except (TypeError, ValueError):
                                     exit_updated = False
                             performance.event("player.exited", screen=navigation.current,
