@@ -1821,10 +1821,20 @@ class LibraryStore:
             return {"status": "rejected", "episode_id": None}
         if old_uri == new_uri:
             with self._conn() as c:
-                row = c.execute("SELECT id,file_name FROM episodes WHERE path=?", (new_uri,)).fetchone()
+                row = c.execute(
+                    "SELECT id,file_name,source_folder FROM episodes WHERE path=?",
+                    (new_uri,),
+                ).fetchone()
                 if row is None:
                     return {"status": "no_match", "episode_id": None}
                 episode_id = int(row["id"])
+                observation = c.execute(
+                    """SELECT 1 FROM episode_observations
+                       WHERE episode_id=? AND source_kind='saf' AND uri=? LIMIT 1""",
+                    (episode_id, new_uri),
+                ).fetchone()
+                if self._infer_source_kind(row["source_folder"]) != "saf" and observation is None:
+                    return {"status": "rejected", "episode_id": episode_id}
                 if str(row["file_name"] or "") == name:
                     return {"status": "already_reconciled", "episode_id": episode_id}
                 c.execute(
