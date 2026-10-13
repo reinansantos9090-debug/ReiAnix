@@ -51,7 +51,7 @@ def call_arguments(source: str, call_pattern: str) -> list[str]:
     return results
 
 
-class HomeThumbnailPreferenceTest(unittest.TestCase):
+class TestHomeThumbnailPreference(unittest.TestCase):
     def test_persisted_preference_flows_from_settings_host_into_home_route(self):
         host = read(HOST_PATH)
         navigation = read(NAV_PATH)
