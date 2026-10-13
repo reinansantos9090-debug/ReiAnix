@@ -22,7 +22,7 @@ class NativeMediaControlsTests(unittest.TestCase):
         self.assertIn("mediaControls = PlayerMediaControls(", self.player)
         self.assertIn("MediaSession.Builder(appContext, player)", self.controls)
         self.assertIn("setMediaSessionToken(mediaSession.sessionCompatToken)", self.controls)
-        self.assertIn("notificationManager.setPlayer(player)", self.controls)
+        self.assertIn("setPlayer(player)", self.controls)
 
     def test_notification_actions_and_metadata_follow_real_player(self):
         for token in (
