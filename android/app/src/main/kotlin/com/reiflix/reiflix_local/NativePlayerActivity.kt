@@ -24,6 +24,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
+import android.util.Rational
 import android.graphics.Typeface
 import android.media.AudioManager
 import android.net.Uri
@@ -542,7 +543,6 @@ class NativePlayerActivity : ComponentActivity() {
 
 override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         playerSessionId = savedInstanceState?.getString("player_session_id")?.trim()?.takeIf { it.isNotEmpty() }
             ?: intent.getStringExtra("playerSessionId")?.trim()?.takeIf { it.isNotEmpty() }
             ?: playerSessionId
@@ -2270,10 +2270,68 @@ override fun onCreate(savedInstanceState: Bundle?) {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    private fun canEnterPictureInPicture(): Boolean {
-        return pipEnabled &&
+    private fun canEnterPictureInPicture(): Boolean =
+        pipEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    private fun isPictureInPictureActive(): Boolean =
+        inPictureInPicture ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode)
+
+    private fun canRequestPictureInPicture(): Boolean =
+        canEnterPictureInPicture() &&
+            sessionState == SessionState.ACTIVE &&
+            !errorVisible &&
+            !playbackErrorForGeneration &&
+            ::player.isInitialized &&
+            ::uri.isInitialized &&
+            uri.toString().isNotBlank() &&
+            player.playbackState != Player.STATE_IDLE &&
+            player.playbackState != Player.STATE_ENDED
+
+    private fun requestPictureInPicture() {
+        if (!canRequestPictureInPicture()) {
+            logPlayer(
+                "PLAYER_PIP_REQUEST_REJECTED requestId=" + requestId.ifEmpty { "-" } +
+                    " sessionState=" + sessionState.name +
+                    " playerInitialized=" + ::player.isInitialized +
+                    " playbackState=" + if (::player.isInitialized) player.playbackState else "uninitialized" +
+                    " errorVisible=" + errorVisible,
+            )
+            return
+        }
+        updatePictureInPictureParams()
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canRequestPictureInPicture()) {
+                enterPictureInPictureMode(pictureInPictureParamsForCurrentSession())
+            }
+        }.onFailure { error ->
+            logPlayer("PLAYER_PIP_REQUEST_FAILED requestId=" + requestId.ifEmpty { "-" }, error)
+        }
+    }
+
+    private fun pictureInPictureParamsForCurrentSession(): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+        if (::playerView.isInitialized && playerView.width > 0 && playerView.height > 0) {
+            builder.setSourceRectHint(Rect(playerView.left, playerView.top, playerView.right, playerView.bottom))
+        }
+        if (::player.isInitialized) {
+            val size = player.videoSize
+            val width = size.width.toFloat() * size.pixelWidthHeightRatio
+            val height = size.height.toFloat()
+            if (width.isFinite() && height.isFinite() && width > 0f && height > 0f) {
+                val ratio = (width / height).coerceIn(100f / 239f, 239f / 100f)
+                val numerator = (ratio * 1000f).roundToInt().coerceIn(100, 2390)
+                builder.setAspectRatio(Rational(numerator, 1000))
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(
+                canRequestPictureInPicture() && player.playWhenReady && player.isPlaying,
+            )
+        }
+        return builder.build()
     }
 
     private fun configurePictureInPicture() {
@@ -2282,14 +2340,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun updatePictureInPictureParams() {
         if (!canEnterPictureInPicture()) return
-        val builder = PictureInPictureParams.Builder()
-        if (::playerView.isInitialized && playerView.width > 0 && playerView.height > 0) {
-            builder.setSourceRectHint(Rect(playerView.left, playerView.top, playerView.right, playerView.bottom))
+        runCatching {
+            setPictureInPictureParams(pictureInPictureParamsForCurrentSession())
+        }.onFailure { error ->
+            logPlayer("PLAYER_PIP_PARAMS_UPDATE_FAILED requestId=" + requestId.ifEmpty { "-" }, error)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(::player.isInitialized && player.playWhenReady && player.isPlaying)
-        }
-        setPictureInPictureParams(builder.build())
     }
 
     private fun installBasePlayerView() {
@@ -2697,7 +2752,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         addMoreRow(volumeGestureButton, brightnessGestureButton)
         addMoreRow(doubleTapButton, longPressButton)
         if (canEnterPictureInPicture()) {
-            val pip = actionButton("PIP", 92) { enterPictureInPictureMode() }
+            val pip = actionButton("PIP", 92) { requestPictureInPicture() }
             pip.contentDescription = "Picture in Picture"
             addMoreRow(pip)
         }
@@ -4632,7 +4687,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (!inPictureInPicture) applyImmersiveAfterLayout()
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.refreshZoomForLayout()
         if (::player.isInitialized && !errorVisible && !playbackErrorForGeneration) {
-            if (!inPictureInPicture && playbackWasRequestedBeforeStop &&
+            if (!isPictureInPictureActive() && playbackWasRequestedBeforeStop &&
                 player.playbackState != Player.STATE_ENDED
             ) {
                 player.playWhenReady = true
@@ -4666,7 +4721,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (isFinishing && !isChangingConfigurations) {
             invalidateTransition("onStop_finishing")
         }
-        if (::player.isInitialized && !inPictureInPicture && sessionState == SessionState.ACTIVE) {
+        if (::player.isInitialized && !isPictureInPictureActive() && sessionState == SessionState.ACTIVE) {
             playbackWasRequestedBeforeStop =
                 player.playWhenReady &&
                     player.playbackState != Player.STATE_ENDED &&
