@@ -56,7 +56,7 @@ class NativeMediaControlsTests(unittest.TestCase):
         self.assertIn(".setId(sessionId)", self.controls)
         self.assertIn('metadataTitle.ifBlank { titleProvider().ifBlank { "ReiAnix" } }', self.controls)
         self.assertIn("metadataSubtitle.ifBlank { episodeProvider() }", self.controls)
-        self.assertIn('return "Arquivo local"', self.player)
+        self.assertIn('"Arquivo local"', self.player[self.player.index("private fun currentEpisodeLabel()"):self.player.index("private fun currentMediaId()")])
 
     def test_notification_does_not_restore_an_unverifiable_local_uri(self):
         # A restored Activity could outlive transient SAF grants or create a second player.
