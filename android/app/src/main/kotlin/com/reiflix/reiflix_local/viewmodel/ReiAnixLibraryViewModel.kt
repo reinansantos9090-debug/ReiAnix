@@ -125,6 +125,8 @@ class ReiAnixLibraryViewModel(context: Context) :
      * is migrated with parity and single-writer guarantees.
      */
     private val nativeLibraryQueries = ReiAnixLibraryQueryService(context)
+    /** Favorite membership uses the canonical SQLite store; playback remains in the consumption service. */
+    private val personalListService = com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(context)
     /** SAF mutations operate only on persisted, user-authorized content URIs. */
     private val nativeFileOperations = SafFileOperations(context.applicationContext)
 
@@ -1053,7 +1055,28 @@ class ReiAnixLibraryViewModel(context: Context) :
         )
     }
 
-    fun toggleFavorite(animeId: Long) = repository.toggleFavorite(animeId)
+    /**
+     * Persist personal-list membership in the canonical SQLite database. Do not
+     * route this through episode watched/progress state. Refresh the shared
+     * library projection only after the transaction has succeeded.
+     */
+    fun toggleFavorite(animeId: Long) {
+        if (animeId <= 0L) return
+        viewModelScope.launch {
+            when (personalListService.toggle(animeId)) {
+                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> refresh()
+                com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound,
+                com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict,
+                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Failure -> Unit
+            }
+        }
+    }
+
+    suspend fun personalListItems() = personalListService.list()
+
+    suspend fun addToPersonalList(animeId: Long) = personalListService.add(animeId)
+
+    suspend fun removeFromPersonalList(animeId: Long) = personalListService.remove(animeId)
 
     fun setEpisodeWatched(episodeId: Long, watched: Boolean) =
         repository.setEpisodeWatched(episodeId, watched)
