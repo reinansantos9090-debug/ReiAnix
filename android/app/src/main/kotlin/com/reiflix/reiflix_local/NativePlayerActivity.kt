@@ -805,7 +805,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             mediaControls = PlayerMediaControls(
                 context = this,
                 player = player,
-                sessionId = playerSessionId,
+                sessionId = activityInstanceId,
                 titleProvider = { titleValue },
                 episodeProvider = { currentEpisodeLabel() },
             )
