@@ -1,7 +1,6 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
-import android.database.sqlite.SQLiteException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
