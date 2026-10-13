@@ -53,6 +53,7 @@ class ReiAnixDetailsUiStateProjectionTest {
             artwork = null,
             metadataAvailability = ReiAnixMetadataAvailability.AVAILABLE,
             presentationState = ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING,
+            aliases = listOf("Alternate Title", "  Alternate Two  ", "Alternate Title"),
             seasons = emptyList(),
             specials = emptyList(),
             mediaFiles = emptyList(),
@@ -70,6 +71,10 @@ class ReiAnixDetailsUiStateProjectionTest {
         assertEquals(
             ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING,
             details.anime?.presentationState,
+        )
+        assertEquals(
+            listOf("Alternate Title", "  Alternate Two  ", "Alternate Title"),
+            details.anime?.aliases,
         )
     }
 
