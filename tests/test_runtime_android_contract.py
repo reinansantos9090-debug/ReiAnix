@@ -152,7 +152,7 @@ class RuntimeAndroidContractTests(unittest.TestCase):
             "PLAYER_LONG_PRESS",
             "GESTURE_START",
             "GESTURE_END",
-            "GESTURE_HORIZONTAL_IGNORED",
+            "GestureMode.HORIZONTAL_SEEK",
             "VERTICAL",
             "adjustBrightness",
             "adjustVolumeByFraction",
@@ -169,9 +169,8 @@ class RuntimeAndroidContractTests(unittest.TestCase):
         ):
             self.assertIn(token, source)
         self.assertNotIn("calculateCloudStreamSeekTarget", source)
-        self.assertNotIn("horizontalSeekDelta", source)
-        self.assertNotIn("GestureMode.HORIZONTAL_SEEK", source)
-        self.assertIn("GESTURE_HORIZONTAL_IGNORED", source)
+        self.assertIn("PlayerGesturePolicy.horizontalSeekTarget", source)
+        self.assertIn("GESTURE_END type=horizontal_seek", source)
         self.assertIn("reiflix_skip_opening", source)
         self.assertIn("reiflix_skip_ending", source)
         self.assertIn("showLocalMetadataEditor", source)
