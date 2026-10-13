@@ -462,6 +462,8 @@ class AndroidBridge:
                 # Do not coerce floats/Decimals: int(123.9) silently truncates
                 # and can turn an invalid caller value into a valid seek point.
                 raise ValueError(invalid_position)
+            if parsed_position_ms > 9_223_372_036_854_775_807:
+                raise ValueError(invalid_position)
             normalized_position_ms = max(0, parsed_position_ms)
         return await self._launch(
             "play",
