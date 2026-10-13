@@ -1070,7 +1070,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         viewModelScope.launch {
             _personalListMutationError.value = null
             when (val result = personalListService.toggle(animeId)) {
-                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> refresh()
+                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> repository.publishCatalog()
                 com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
                     _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
                 com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
