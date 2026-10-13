@@ -1060,7 +1060,7 @@ class ReiAnixLibraryViewModel(context: Context) :
     /**
      * Persist personal-list membership in the canonical SQLite database. Do not
      * route this through episode watched/progress state. Refresh the shared
-     * library projection only after the transaction has succeeded.
+     * canonical catalog projection only after the transaction has succeeded.
      */
     fun toggleFavorite(animeId: Long) {
         if (animeId <= 0L) {
@@ -1100,7 +1100,7 @@ class ReiAnixLibraryViewModel(context: Context) :
         _personalListMutationError.value = null
         val result = operation()
         when (result) {
-            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> refresh()
+            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> repository.publishCatalog()
             com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
                 _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
             com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
