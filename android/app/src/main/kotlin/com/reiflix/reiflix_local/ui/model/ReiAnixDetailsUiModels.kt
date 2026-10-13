@@ -34,6 +34,8 @@ data class ReiAnixDetailsAnimeUiModel(
     val nativeTitle: String? = null,
     /** Persisted alternate titles from the canonical local metadata projection. */
     val aliases: List<String> = emptyList(),
+    /** Remote/stored announced count, separate from locally available media count. */
+    val announcedEpisodeCount: Int? = null,
     val status: String? = null,
     val format: String? = null,
     val durationMinutes: Int? = null,
