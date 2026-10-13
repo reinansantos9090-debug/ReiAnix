@@ -84,6 +84,7 @@ fun ReiAnixMyListRoute(
     val filter by viewModel.myListFilter.collectAsStateWithLifecycle()
     val visibleAnimes by viewModel.myListAnimes.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val mutationError by viewModel.personalListMutationError.collectAsStateWithLifecycle()
     val totalSaved = state.favoriteCount
 
     Column(
@@ -112,7 +113,7 @@ fun ReiAnixMyListRoute(
                     totalSaved = totalSaved,
                     filter = filter,
                     isRefreshing = isRefreshing,
-                    errorMessage = state.error ?: "A biblioteca local retornou um erro.",
+                    errorMessage = mutationError ?: state.error ?: "A biblioteca local retornou um erro.",
                     onFilterChange = viewModel::setMyListFilter,
                     onOpenDetails = { animeId ->
                         navController.navigateToDetails(
@@ -145,7 +146,7 @@ fun ReiAnixMyListRoute(
                     totalSaved = totalSaved,
                     filter = filter,
                     isRefreshing = isRefreshing,
-                    errorMessage = "A fonte local configurada não está disponível agora.",
+                    errorMessage = mutationError ?: "A fonte local configurada não está disponível agora.",
                     onFilterChange = viewModel::setMyListFilter,
                     onOpenDetails = { animeId ->
                         navController.navigateToDetails(
@@ -196,6 +197,7 @@ fun ReiAnixMyListRoute(
 
             ReiAnixLibraryLoadStatus.READY -> ReiAnixMyListReadyContent(
                 visibleAnimes = visibleAnimes,
+                errorMessage = mutationError,
                 cardSize = cardSize,
                 totalSaved = totalSaved,
                 filter = filter,
