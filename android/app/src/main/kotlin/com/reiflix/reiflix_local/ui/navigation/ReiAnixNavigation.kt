@@ -54,6 +54,26 @@ object ReiAnixRoutes {
     const val DETAILS_ORIGIN = "details"
     const val BOTTOM_NAV_CONTENT_DESCRIPTION = "ReiAnixBottomNavigation"
 
+    /**
+     * Only destinations that can be opened without route arguments are valid
+     * shell/start destinations. Details and Player require validated arguments
+     * and must be opened through their route builders.
+     */
+    fun isSupportedShellDestination(route: String): Boolean {
+        val normalized = route.trim()
+        return topLevelDestinations.any { it.route == normalized } ||
+            normalized == MY_LIST ||
+            normalized == STORAGE ||
+            normalized == ORGANIZE
+    }
+
+    /**
+     * Prevent a stale/invalid external request from making NavHost fail while
+     * constructing its graph. Callers log when normalization was necessary.
+     */
+    fun normalizeStartDestination(route: String): String =
+        route.trim().takeIf(::isSupportedShellDestination) ?: HOME
+
     private fun encode(value: String): String = Uri.encode(requireArgument(value))
 
     private fun requireArgument(value: String): String =
@@ -113,8 +133,9 @@ private val topLevelDestinations = listOf(
 )
 
 fun NavHostController.navigateToTopLevel(route: String) {
-    require(topLevelDestinations.any { it.route == route }) {
-        "Unknown ReiAnix top-level route: " + route
+    if (topLevelDestinations.none { it.route == route }) {
+        android.util.Log.w("ReiAnixNavigation", "Ignoring unknown top-level route=" + route)
+        return
     }
     navigate(
         route,
@@ -289,6 +310,17 @@ fun ReiAnixNavigationHost(
     onRouteChanged: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> },
     onOpenCollector: () -> Unit = {},
 ) {
+    val effectiveStartDestination = ReiAnixRoutes.normalizeStartDestination(startDestination)
+    LaunchedEffect(startDestination, effectiveStartDestination) {
+        if (startDestination != effectiveStartDestination) {
+            android.util.Log.w(
+                "ReiAnixNavigation",
+                "Unsupported start destination=" + startDestination +
+                    "; using " + effectiveStartDestination,
+            )
+        }
+    }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val detailOrigin = backStackEntry?.arguments
@@ -349,7 +381,7 @@ fun ReiAnixNavigationHost(
         navigationContent = { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = startDestination,
+            startDestination = effectiveStartDestination,
             modifier = androidx.compose.ui.Modifier
                 .fillMaxSize()
                 .padding(innerPadding)

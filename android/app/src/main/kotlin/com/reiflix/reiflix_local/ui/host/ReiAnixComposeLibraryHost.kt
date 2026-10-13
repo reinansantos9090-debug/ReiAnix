@@ -277,12 +277,24 @@ class ReiAnixComposeLibraryHost(
         resetBackStack: Boolean,
     ) {
         val controller = composeNavController ?: return
+        val destination = route.trim()
+
+        // Validate before touching the existing stack. An unsupported request
+        // must not remove the active screen and then fail during navigate().
+        if (!ReiAnixRoutes.isSupportedShellDestination(destination)) {
+            android.util.Log.w(
+                TAG,
+                "Ignoring unsupported Compose shell destination=" + route +
+                    "; current back stack was preserved",
+            )
+            return
+        }
 
         if (resetBackStack) {
             val startDestinationId = controller.graph.findStartDestination().id
             controller.popBackStack(startDestinationId, true)
             controller.navigate(
-                route,
+                destination,
                 navOptions {
                     launchSingleTop = true
                 },
@@ -290,11 +302,11 @@ class ReiAnixComposeLibraryHost(
             return
         }
 
-        when (route) {
+        when (destination) {
             ReiAnixRoutes.HOME,
             ReiAnixRoutes.LIBRARY,
             ReiAnixRoutes.SEARCH,
-            -> controller.navigateToTopLevel(route)
+            -> controller.navigateToTopLevel(destination)
 
             ReiAnixRoutes.MY_LIST -> controller.navigateToMyList()
 
@@ -302,7 +314,7 @@ class ReiAnixComposeLibraryHost(
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.STORAGE,
             -> controller.navigate(
-                route,
+                destination,
                 navOptions {
                     launchSingleTop = true
                 },
