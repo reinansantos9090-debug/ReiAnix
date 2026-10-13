@@ -54,6 +54,7 @@ class ReiAnixDetailsUiStateProjectionTest {
             metadataAvailability = ReiAnixMetadataAvailability.AVAILABLE,
             presentationState = ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING,
             aliases = listOf("Alternate Title", "  Alternate Two  ", "Alternate Title"),
+            announcedEpisodeCount = 24,
             seasons = emptyList(),
             specials = emptyList(),
             mediaFiles = emptyList(),
@@ -76,6 +77,8 @@ class ReiAnixDetailsUiStateProjectionTest {
             listOf("Alternate Title", "  Alternate Two  ", "Alternate Title"),
             details.anime?.aliases,
         )
+        assertEquals(24, details.anime?.announcedEpisodeCount)
+        assertNull(details.anime?.episodeCount)
     }
 
     @Test
