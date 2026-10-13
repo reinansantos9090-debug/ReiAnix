@@ -6091,7 +6091,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             scale.coerceIn(minZoom, maxZoom)
 
         fun normalizePlaybackSpeed(speed: Float): Float =
-            if (speed.isFinite() && speed in SUPPORTED_PLAYBACK_SPEEDS) speed else 1f
+            if (speed.isFinite() && SUPPORTED_PLAYBACK_SPEEDS.any { it == speed }) speed else 1f
 
         private val SUPPORTED_PLAYBACK_SPEEDS = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
