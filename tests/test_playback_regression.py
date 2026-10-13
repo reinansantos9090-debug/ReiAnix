@@ -43,7 +43,7 @@ class PlaybackRegressionTests(unittest.TestCase):
         self.assertIn("position_ms=normalized_position_ms", BRIDGE)
         self.assertIn("isinstance(position_ms, bool)", BRIDGE)
         self.assertIn("isinstance(position_ms, int)", BRIDGE)
-        self.assertIn('re.fullmatch(r"[+-]?\\\\d+", raw_position_ms)', BRIDGE)
+        self.assertIn('re.fullmatch(r"[+-]?\\d+", raw_position_ms)', BRIDGE)
         self.assertNotIn("int(position_ms)", BRIDGE)
         self.assertIn("positionWasExplicit = rawPositionMs != null && parsedPositionMs != null", REQUEST)
         self.assertIn("positionParameterInvalid = rawPositionMs != null && parsedPositionMs == null", REQUEST)
