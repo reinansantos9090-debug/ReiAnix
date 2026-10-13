@@ -4993,12 +4993,27 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar marcadores") { _, _ ->
+                val openingStartMs = parseTimestampMs(openingStart.text?.toString())
+                val openingEndMs = parseTimestampMs(openingEnd.text?.toString())
+                val endingStartMs = parseTimestampMs(endingStart.text?.toString())
+                val endingEndMs = parseTimestampMs(endingEnd.text?.toString())
+                val durationMs = player.duration.takeIf { ::player.isInitialized && it > 0L }
+                val fields = listOf(openingStart, openingEnd, endingStart, endingEnd)
+                val parsed = listOf(openingStartMs, openingEndMs, endingStartMs, endingEndMs)
+                if (fields.zip(parsed).any { (field, value) -> !field.text.isNullOrBlank() && value == null } ||
+                    !PlayerLocalMetadataStore.isValidSegment(openingStartMs, openingEndMs, durationMs) ||
+                    !PlayerLocalMetadataStore.isValidSegment(endingStartMs, endingEndMs, durationMs)
+                ) {
+                    showFeedback("Marcadores inválidos: confira os intervalos e a duração do vídeo")
+                    return@setPositiveButton
+                }
                 localMetadata = localMetadataStore.setSegments(
                     uri.toString(),
-                    parseTimestampMs(openingStart.text?.toString()),
-                    parseTimestampMs(openingEnd.text?.toString()),
-                    parseTimestampMs(endingStart.text?.toString()),
-                    parseTimestampMs(endingEnd.text?.toString()),
+                    openingStartMs,
+                    openingEndMs,
+                    endingStartMs,
+                    endingEndMs,
+                    durationMs,
                 )
                 updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
                 showFeedback("Marcadores salvos")
