@@ -67,7 +67,7 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithText("ReiAnix Test").assertIsDisplayed()
         composeRule.onNodeWithText("2026").assertIsDisplayed()
         composeRule.onNodeWithText("Nota 8.6/10").assertIsDisplayed()
-        composeRule.onNodeWithText("12 episódios").assertIsDisplayed()
+        composeRule.onNodeWithText("Biblioteca: 12 episódios locais").assertIsDisplayed()
         composeRule.onNodeWithText("Action").assertIsDisplayed()
         composeRule.onNodeWithText("Drama").assertIsDisplayed()
         composeRule.onNodeWithText("Continuar").performClick()
