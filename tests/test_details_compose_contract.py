@@ -80,8 +80,10 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertIn('announcedEpisodeCount = metadata.intOrNull("episodes_count")', mapper)
         self.assertIn("val announcedEpisodeCount: Int? = null", model)
         self.assertIn("announcedEpisodeCount = anime.announcedEpisodeCount", details_model)
-        self.assertIn('add("Biblioteca: $count episódios locais")', details)
-        self.assertIn('add("AniList: $count episódios esperados")', details)
+        self.assertIn('else "Biblioteca: $count episódios locais"', details)
+        self.assertIn('else "AniList: $count episódios esperados"', details)
+        self.assertIn('"Biblioteca: 1 episódio local"', details)
+        self.assertIn('"AniList: 1 episódio esperado"', details)
 
     def test_details_preserves_and_presents_persisted_alternate_titles(self):
         details = DETAILS.read_text(encoding="utf-8")
