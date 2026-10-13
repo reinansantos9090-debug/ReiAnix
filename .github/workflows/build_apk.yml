@@ -350,7 +350,7 @@ jobs:
       - name: Execute Kotlin JVM unit tests (no emulator)
         shell: bash
         env:
-          SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/flutter/site-packages
+          SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/site-packages/arm64-v8a
           GRADLE_USER_HOME: ${{ runner.temp }}/reianix-kotlin-gradle-home
           GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=false"
         run: |
