@@ -104,7 +104,7 @@ class ReiAnixPersonalListService(
                 } ?: return@transaction null
 
                 val target = !exists
-                val changed = db.execSQL(
+                db.execSQL(
                     "UPDATE anime SET favorite = ? WHERE id = ?",
                     arrayOf(if (target) 1 else 0, animeId),
                 )
