@@ -66,6 +66,49 @@ class FletLaunchCompatibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("created_at=", value)
         self.assertEqual(request_id, parse_qs(urlsplit(value).query)["request_id"][0])
 
+    async def test_android_bridge_preserves_absent_explicit_zero_and_positive_positions(self):
+        class Page:
+            platform = "android"
+            url_launcher = None
+
+        class RecordingBridge(AndroidBridge):
+            def __init__(self, data_dir, page):
+                super().__init__(data_dir, page)
+                self.urls = []
+
+            def _write_internal_command(self, *, request_id, action, created_at, url):
+                super()._write_internal_command(request_id=request_id, action=action, created_at=created_at, url=url)
+                self.urls.append(url)
+                for event_name in ("COMMAND_RECEIVED", "PLAYER_HANDOFF_DISPATCHED"):
+                    self.observe_native_event({
+                        "type": "diagnostic", "requestId": request_id,
+                        "payload": {"event": event_name, "requestId": request_id,
+                                    "action": action, "timestamp": created_at},
+                    })
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            bridge = RecordingBridge(data_dir, Page())
+            await bridge.play("content://media/external/video/1", "Episódio", episode_id=42)
+            await bridge.play("content://media/external/video/1", "Episódio", 0, episode_id=42)
+            await bridge.play("content://media/external/video/1", "Episódio", 12345, episode_id=42)
+            absent = parse_qs(urlsplit(bridge.urls[0]).query)
+            zero = parse_qs(urlsplit(bridge.urls[1]).query)
+            positive = parse_qs(urlsplit(bridge.urls[2]).query)
+
+        self.assertNotIn("position_ms", absent)
+        self.assertEqual(["0"], zero["position_ms"])
+        self.assertEqual(["12345"], positive["position_ms"])
+
+    async def test_android_bridge_rejects_invalid_explicit_position(self):
+        class Page:
+            platform = "android"
+            url_launcher = None
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            bridge = AndroidBridge(data_dir, Page())
+            with self.assertRaisesRegex(ValueError, "position_ms"):
+                await bridge.play("content://media/external/video/1", "Episódio", "not-a-number", episode_id=42)
+
     async def test_android_bridge_play_waits_for_player_handoff_confirmation(self):
         class Page:
             platform = "android"

@@ -29,6 +29,8 @@ data class NativePlayerRequest(
     val positionMs: Long,
     /** Whether the caller supplied a resume point, rather than relying on native history. */
     val positionWasExplicit: Boolean = false,
+    /** True when position_ms was supplied but was not a parseable integer. */
+    val positionParameterInvalid: Boolean = false,
     val canNext: Boolean,
     val canPrevious: Boolean,
     val autoplay: Boolean,
@@ -109,8 +111,10 @@ data class NativePlayerRequest(
          * Pure parser used by JVM tests and by the Android URI adapter.
          * Keeping parsing independent of Uri makes the boundary deterministic.
          */
-        fun fromQueryParameters(get: (String) -> String?): NativePlayerRequest =
-            NativePlayerRequest(
+        fun fromQueryParameters(get: (String) -> String?): NativePlayerRequest {
+            val rawPositionMs = get("position_ms")
+            val parsedPositionMs = rawPositionMs?.toLongOrNull()
+            return NativePlayerRequest(
                 requestId = get("request_id").orEmpty().trim(),
                 commandCreatedAtMs = get("created_at")?.toLongOrNull()?.takeIf { it > 0L } ?: 0L,
                 episodeUri = get("uri").orEmpty().trim(),
@@ -128,8 +132,9 @@ data class NativePlayerRequest(
                     ?.takeIf { it == "NEXT" || it == "PREVIOUS" }
                     ?: "NONE",
                 title = get("title") ?: "Episódio",
-                positionMs = get("position_ms")?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
-                positionWasExplicit = get("position_ms") != null,
+                positionMs = parsedPositionMs?.coerceAtLeast(0L) ?: 0L,
+                positionWasExplicit = rawPositionMs != null && parsedPositionMs != null,
+                positionParameterInvalid = rawPositionMs != null && parsedPositionMs == null,
                 canNext = get("can_next")?.toBooleanStrictOrNull() ?: false,
                 canPrevious = get("can_previous")?.toBooleanStrictOrNull() ?: false,
                 autoplay = get("autoplay")?.toBooleanStrictOrNull() ?: true,
@@ -157,5 +162,6 @@ data class NativePlayerRequest(
                 audioSubtitleBottomPadding = get("setting_audio_subtitle_bottom_padding")?.toIntOrNull()?.coerceIn(0, 50) ?: 8,
                 audioSubtitleEmbeddedStyle = get("setting_audio_subtitle_embedded_style")?.toBooleanStrictOrNull() ?: true,
             )
+        }
     }
 }

@@ -87,6 +87,8 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingPlayIntentData: String? = null
     private var pendingPlayTitle: String? = null
     private var pendingPlayPositionMs: Long = 0L
+    private var pendingPlayPositionSpecified: Boolean = false
+    private var pendingPlayPositionInvalid: Boolean = false
     private var pendingPlayCanNext = false
     private var pendingPlayCanPrevious = false
     private var pendingPlayAutoplay = true
@@ -183,6 +185,8 @@ class MainActivity : FlutterFragmentActivity() {
         private const val STATE_PENDING_PLAY_INTENT_DATA = "reiflix.pendingPlayIntentData"
         private const val STATE_PENDING_PLAY_TITLE = "reiflix.pendingPlayTitle"
         private const val STATE_PENDING_PLAY_POSITION_MS = "reiflix.pendingPlayPositionMs"
+        private const val STATE_PENDING_PLAY_POSITION_SPECIFIED = "reiflix.pendingPlayPositionSpecified"
+        private const val STATE_PENDING_PLAY_POSITION_INVALID = "reiflix.pendingPlayPositionInvalid"
         private const val STATE_PENDING_PLAY_CAN_NEXT = "reiflix.pendingPlayCanNext"
         private const val STATE_PENDING_PLAY_CAN_PREVIOUS = "reiflix.pendingPlayCanPrevious"
         private const val STATE_PENDING_PLAY_AUTOPLAY = "reiflix.pendingPlayAutoplay"
@@ -883,6 +887,8 @@ class MainActivity : FlutterFragmentActivity() {
         pendingPlayIntentData = savedInstanceState?.getString(STATE_PENDING_PLAY_INTENT_DATA)
         pendingPlayTitle = savedInstanceState?.getString(STATE_PENDING_PLAY_TITLE)
         pendingPlayPositionMs = savedInstanceState?.getLong(STATE_PENDING_PLAY_POSITION_MS, 0L) ?: 0L
+        pendingPlayPositionSpecified = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_POSITION_SPECIFIED) ?: false
+        pendingPlayPositionInvalid = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_POSITION_INVALID) ?: false
         pendingPlayCanNext = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_CAN_NEXT) ?: false
         pendingPlayCanPrevious = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_CAN_PREVIOUS) ?: false
         pendingPlayAutoplay = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_AUTOPLAY) ?: true
@@ -1027,6 +1033,17 @@ class MainActivity : FlutterFragmentActivity() {
                             clearPendingPlay()
                             return
                         }
+                        if (preservedPlayData == null && pendingPlayPositionInvalid) {
+                            publishNativeCommandError(
+                                pendingRequestId,
+                                "play",
+                                "request_validation",
+                                "INVALID_POSITION_MS",
+                                "A posição inicial enviada para o player não é válida.",
+                            )
+                            clearPendingPlay()
+                            return
+                        }
                         val playData = preservedPlayData ?: Uri.parse("reiflix://native").buildUpon()
                             .appendQueryParameter("action", "play")
                             .appendQueryParameter("request_id", pendingRequestId.orEmpty())
@@ -1034,7 +1051,11 @@ class MainActivity : FlutterFragmentActivity() {
                             .appendQueryParameter("episode_id", pendingPlayEpisodeId.orEmpty())
                             .appendQueryParameter("anime_id", pendingPlayAnimeId.orEmpty())
                             .appendQueryParameter("title", pendingPlayTitle ?: "Episódio")
-                            .appendQueryParameter("position_ms", pendingPlayPositionMs.toString())
+                            .apply {
+                                if (pendingPlayPositionSpecified) {
+                                    appendQueryParameter("position_ms", pendingPlayPositionMs.toString())
+                                }
+                            }
                             .appendQueryParameter("can_next", pendingPlayCanNext.toString())
                             .appendQueryParameter("can_previous", pendingPlayCanPrevious.toString())
                             .appendQueryParameter("autoplay", pendingPlayAutoplay.toString())
@@ -1171,6 +1192,8 @@ class MainActivity : FlutterFragmentActivity() {
         outState.putString(STATE_PENDING_PLAY_INTENT_DATA, pendingPlayIntentData)
         outState.putString(STATE_PENDING_PLAY_TITLE, pendingPlayTitle)
         outState.putLong(STATE_PENDING_PLAY_POSITION_MS, pendingPlayPositionMs)
+        outState.putBoolean(STATE_PENDING_PLAY_POSITION_SPECIFIED, pendingPlayPositionSpecified)
+        outState.putBoolean(STATE_PENDING_PLAY_POSITION_INVALID, pendingPlayPositionInvalid)
         outState.putBoolean(STATE_PENDING_PLAY_CAN_NEXT, pendingPlayCanNext)
         outState.putBoolean(STATE_PENDING_PLAY_CAN_PREVIOUS, pendingPlayCanPrevious)
         outState.putBoolean(STATE_PENDING_PLAY_AUTOPLAY, pendingPlayAutoplay)
@@ -1703,7 +1726,11 @@ class MainActivity : FlutterFragmentActivity() {
                         pendingPlayEpisodeId = data.getQueryParameter("episode_id")?.trim()?.takeIf { it.isNotEmpty() }
                         pendingPlayAnimeId = data.getQueryParameter("anime_id")?.trim()?.takeIf { it.isNotEmpty() }
                         pendingPlayTitle = data.getQueryParameter("title") ?: "Episódio"
-                        pendingPlayPositionMs = data.getQueryParameter("position_ms")?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                        val rawPositionMs = data.getQueryParameter("position_ms")
+                        val parsedPositionMs = rawPositionMs?.toLongOrNull()
+                        pendingPlayPositionMs = parsedPositionMs?.coerceAtLeast(0L) ?: 0L
+                        pendingPlayPositionSpecified = rawPositionMs != null && parsedPositionMs != null
+                        pendingPlayPositionInvalid = rawPositionMs != null && parsedPositionMs == null
                         pendingPlayCanNext = data.getQueryParameter("can_next")?.toBooleanStrictOrNull() ?: false
                         pendingPlayCanPrevious = data.getQueryParameter("can_previous")?.toBooleanStrictOrNull() ?: false
                         pendingPlayAutoplay = data.getQueryParameter("autoplay")?.toBooleanStrictOrNull() ?: true
@@ -2359,6 +2386,17 @@ class MainActivity : FlutterFragmentActivity() {
                 "Não foi possível iniciar o player porque a requisição não possui identificador.")
             return false
         }
+        if (playerRequest.positionParameterInvalid) {
+            Log.e(tag, "PLAY_HANDOFF_FAILED requestId=" + requestId + " reason=invalid_position_ms")
+            publishNativeCommandError(
+                requestId,
+                "play",
+                "request_validation",
+                "INVALID_POSITION_MS",
+                "A posição inicial enviada para o player não é válida.",
+            )
+            return false
+        }
         if (episodeUri.isBlank()) {
             Log.e(tag, "PLAY_HANDOFF_FAILED requestId=" + requestId + " reason=missing_uri")
             nativeRequestState.markOperationState(requestId, "play", NativeRequestState.OperationState.FAILED)
@@ -2771,6 +2809,8 @@ class MainActivity : FlutterFragmentActivity() {
         pendingPlayIntentData = null
         pendingPlayTitle = null
         pendingPlayPositionMs = 0L
+        pendingPlayPositionSpecified = false
+        pendingPlayPositionInvalid = false
         pendingPlayCanNext = false
         pendingPlayCanPrevious = false
         pendingPlayAutoplay = true

@@ -199,6 +199,10 @@ object NativeCommandDispatcher {
             publishFailure(command, "INVALID_PLAY_REQUEST", "O comando de reprodução não possui uma requisição válida.")
             return
         }
+        if (request.positionParameterInvalid) {
+            publishFailure(command, "INVALID_POSITION_MS", "A posição inicial enviada para o player não é válida.")
+            return
+        }
 
         val localUri = runCatching { Uri.parse(request.episodeUri) }.getOrNull()
         if (localUri == null || localUri.scheme?.lowercase() !in setOf("content", "file")) {

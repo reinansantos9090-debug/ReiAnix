@@ -39,11 +39,25 @@ class PlaybackRegressionTests(unittest.TestCase):
         self.assertIn("anime_id=anime_id", MAIN)
 
     def test_bridge_carries_resume_and_identity_to_native_request(self):
-        self.assertIn("position_ms=max(0, int(position_ms))", BRIDGE)
+        self.assertIn("position_ms: int | None = None", BRIDGE)
+        self.assertIn("position_ms=normalized_position_ms", BRIDGE)
+        self.assertIn("positionWasExplicit = rawPositionMs != null && parsedPositionMs != null", REQUEST)
+        self.assertIn("positionParameterInvalid = rawPositionMs != null && parsedPositionMs == null", REQUEST)
         self.assertIn("episode_id=str(episode_id)", BRIDGE)
         self.assertIn("anime_id=str(anime_id)", BRIDGE)
         self.assertIn('putExtra("episodeId", episodeId)', REQUEST)
         self.assertIn('putExtra("animeId", animeId)', REQUEST)
+
+    def test_resume_contract_omits_default_zero_but_preserves_explicit_zero(self):
+        self.assertIn("launch_position_ms = None", MAIN)
+        self.assertIn("launch_position_ms = 0", MAIN)
+        self.assertIn("target_position_ms = None", MAIN)
+        self.assertIn("target_watched", MAIN)
+        prepare = PLAYER[PLAYER.index("private fun prepareCurrentMedia"):PLAYER.index("private fun createPlayerListener")]
+        self.assertIn("restoredPositionMs ?: intent.getLongExtra(\"positionMs\", 0L)", prepare)
+        self.assertIn("!intent.getBooleanExtra(\"positionMsSpecified\", intent.hasExtra(\"positionMs\"))", prepare)
+        reuse = PLAYER[PLAYER.index("override fun onNewIntent"):PLAYER.index("private fun currentEpisodeId")]
+        self.assertIn("restoredPositionMs = null", reuse)
 
     def test_native_player_trace_contains_resume_and_identity_stages(self):
         for token in (

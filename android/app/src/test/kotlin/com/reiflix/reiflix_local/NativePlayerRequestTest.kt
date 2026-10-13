@@ -48,6 +48,7 @@ class NativePlayerRequestTest {
         assertEquals("Episode 1", request.title)
         assertEquals(0L, request.positionMs)
         assertTrue(request.positionWasExplicit)
+        assertFalse(request.positionParameterInvalid)
         assertTrue(request.canNext)
         assertFalse(request.canPrevious)
         assertFalse(request.autoplay)
@@ -105,6 +106,7 @@ class NativePlayerRequestTest {
         assertEquals("84", request.episodeId)
         assertEquals("12", request.animeId)
         assertFalse(request.positionWasExplicit)
+        assertFalse(request.positionParameterInvalid)
         assertTrue(request.canNext)
         assertTrue(request.canPrevious)
         assertTrue(request.autoplay)
@@ -129,6 +131,29 @@ class NativePlayerRequestTest {
         assertEquals("1080p", request.maxVideoResolution)
         assertEquals(60, request.maxVideoFrameRate)
         assertEquals(6, request.maxAudioChannels)
+    }
+
+    @Test
+    fun malformedPositionIsNotMistakenForAnAbsentPosition() {
+        val request = NativePlayerRequest.fromQueryParameters(
+            mapOf("request_id" to "req-invalid-position", "position_ms" to "not-a-number")::get,
+        )
+        assertEquals(0L, request.positionMs)
+        assertFalse(request.positionWasExplicit)
+        assertTrue(request.positionParameterInvalid)
+    }
+
+    @Test
+    fun explicitZeroAndPositivePositionsRemainDistinctFromAbsence() {
+        val absent = NativePlayerRequest.fromQueryParameters(mapOf("request_id" to "absent")::get)
+        val zero = NativePlayerRequest.fromQueryParameters(mapOf("request_id" to "zero", "position_ms" to "0")::get)
+        val positive = NativePlayerRequest.fromQueryParameters(mapOf("request_id" to "positive", "position_ms" to "2345")::get)
+        assertFalse(absent.positionWasExplicit)
+        assertFalse(absent.positionParameterInvalid)
+        assertTrue(zero.positionWasExplicit)
+        assertEquals(0L, zero.positionMs)
+        assertTrue(positive.positionWasExplicit)
+        assertEquals(2345L, positive.positionMs)
     }
 
     @Test

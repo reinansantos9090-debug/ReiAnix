@@ -1640,7 +1640,7 @@ async def main(page: ft.Page):
     async def start_native_player(
         path,
         title,
-        position_ms=0,
+        position_ms: int | None = None,
         *,
         episode_id=None,
         anime_id=None,
@@ -2064,6 +2064,7 @@ async def main(page: ft.Page):
                         result="MEDIA_URI_MISSING" if not launch_path else "FILE_NOT_FOUND",
                     )
                     return
+                progress_invalid = False
                 if settings.get("player.resume"):
                     raw_progress = fresh_episode.get("progress")
                     raw_duration = fresh_episode.get("duration")
@@ -2094,7 +2095,10 @@ async def main(page: ft.Page):
                         launch_progress_seconds = 0.0
                     else:
                         launch_progress_seconds = raw_progress_seconds
-                if launch_progress_seconds > 0.0:
+                # Completed episodes restart at zero instead of treating terminal progress as resume state.
+                if bool(fresh_episode.get("watched")):
+                    launch_progress_seconds = 0.0
+                if launch_progress_seconds > 0.0 and not bool(fresh_episode.get("watched")):
                     player_resume_context["value"] = {
                         "session_id": launch_session_id,
                         "episode_id": fresh_episode.get("id"),
@@ -2150,10 +2154,21 @@ async def main(page: ft.Page):
                         "anime_id": launch_anime_id,
                     },
                 )
+                if (
+                    not settings.get("player.resume")
+                    or bool(fresh_episode.get("watched"))
+                    or progress_invalid
+                ):
+                    launch_position_ms = 0
+                elif launch_progress_seconds > 0.0:
+                    launch_position_ms = int(max(0.0, launch_progress_seconds) * 1000)
+                else:
+                    # Omit the parameter so the native player can consult canonical SQLite.
+                    launch_position_ms = None
                 request_id = await start_native_player(
                     launch_path,
                     title,
-                    int(max(0.0, launch_progress_seconds) * 1000),
+                    launch_position_ms,
                     episode_id=fresh_episode.get("id"),
                     anime_id=launch_anime_id,
                     player_session_id=launch_session_id,
@@ -6614,11 +6629,21 @@ async def main(page: ft.Page):
                                         or target.get("title")
                                         or "Episódio local"
                                     )
-                                    resume_enabled = settings.get("player.resume")
-                                    target_position_ms = (
-                                        max(0.0, float(target.get("progress") or 0.0)) * 1000.0
-                                        if resume_enabled else 0.0
-                                    )
+                                    resume_enabled = bool(settings.get("player.resume"))
+                                    target_watched = bool(target.get("watched"))
+                                    try:
+                                        target_progress_seconds = float(target.get("progress") or 0.0)
+                                    except (TypeError, ValueError, OverflowError):
+                                        target_progress_seconds = 0.0
+                                    if not math.isfinite(target_progress_seconds) or target_progress_seconds < 0.0:
+                                        target_progress_seconds = 0.0
+                                    if not resume_enabled or target_watched:
+                                        target_position_ms = 0
+                                    elif target_progress_seconds > 0.0:
+                                        target_position_ms = int(target_progress_seconds * 1000.0)
+                                    else:
+                                        # No explicit zero: native SQLite may have newer canonical progress.
+                                        target_position_ms = None
                                     target_navigation = {
                                         "can_next": bool(navigation_snapshot.get(
                                             "next_can_next" if direction > 0 else "previous_can_next"
@@ -6724,7 +6749,7 @@ async def main(page: ft.Page):
                                     target_request_id = await start_native_player(
                                         target_path,
                                         target_title,
-                                        int(target_position_ms),
+                                        target_position_ms,
                                         episode_id=target.get("id"),
                                         anime_id=target.get("anime_id"),
                                         navigation_snapshot=target_navigation,

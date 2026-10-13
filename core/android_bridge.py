@@ -429,7 +429,7 @@ class AndroidBridge:
     async def sign_in(self, server_client_id: str): return await self._launch("google_sign_in", server_client_id=server_client_id)
     async def sign_out(self): return await self._launch("google_sign_out")
 
-    async def play(self, uri: str, title: str, position_ms: int = 0, *, can_next=False,
+    async def play(self, uri: str, title: str, position_ms: int | None = None, *, can_next=False,
                    can_previous=False, autoplay=False, player_settings=None,
                    episode_id=None, anime_id=None, player_session_id=None,
                    origin_request_id=None, origin_created_at_ms=0, origin_transition_generation=0,
@@ -445,11 +445,19 @@ class AndroidBridge:
                 raise ValueError
         except (TypeError, ValueError) as exc:
             raise ValueError("A reprodução requer um episode_id válido.") from exc
+        normalized_position_ms = None
+        if position_ms is not None:
+            if isinstance(position_ms, bool):
+                raise ValueError("position_ms deve ser um inteiro não negativo quando informado.")
+            try:
+                normalized_position_ms = max(0, int(position_ms))
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("position_ms deve ser um inteiro não negativo quando informado.") from exc
         return await self._launch(
             "play",
             uri=normalized_uri,
             title=title,
-            position_ms=max(0, int(position_ms)),
+            position_ms=normalized_position_ms,
             can_next=str(bool(can_next)).lower(),
             can_previous=str(bool(can_previous)).lower(),
             autoplay=str(bool(autoplay)).lower(),
