@@ -1063,9 +1063,24 @@ private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
         anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
             DetailsExpandableSynopsis(description)
         }
+        val knownTitles = sequenceOf(
+            anime.title,
+            anime.romajiTitle,
+            anime.englishTitle,
+            anime.nativeTitle,
+        ).mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+            .map { it.lowercase(Locale.ROOT) }
+            .toSet()
+        val alternateTitles = anime.aliases.asSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .filter { it.lowercase(Locale.ROOT) !in knownTitles }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .toList()
         val details = buildList {
             anime.studio?.trim()?.takeIf { it.isNotBlank() }?.let { add("Estúdio" to it) }
             anime.seasonLabel?.trim()?.takeIf { it.isNotBlank() }?.let { add("Temporada" to seasonLabel(it)) }
+            alternateTitles.takeIf { it.isNotEmpty() }?.let { add("Títulos alternativos" to it.joinToString(" • ")) }
         }
         if (details.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
