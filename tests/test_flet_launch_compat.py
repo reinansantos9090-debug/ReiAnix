@@ -91,23 +91,47 @@ class FletLaunchCompatibilityTests(unittest.IsolatedAsyncioTestCase):
             await bridge.play("content://media/external/video/1", "Episódio", episode_id=42)
             await bridge.play("content://media/external/video/1", "Episódio", 0, episode_id=42)
             await bridge.play("content://media/external/video/1", "Episódio", 12345, episode_id=42)
+            await bridge.play("content://media/external/video/1", "Episódio", -15, episode_id=42)
+            await bridge.play("content://media/external/video/1", "Episódio", "678", episode_id=42)
             absent = parse_qs(urlsplit(bridge.urls[0]).query)
             zero = parse_qs(urlsplit(bridge.urls[1]).query)
             positive = parse_qs(urlsplit(bridge.urls[2]).query)
+            negative = parse_qs(urlsplit(bridge.urls[3]).query)
+            integer_string = parse_qs(urlsplit(bridge.urls[4]).query)
 
         self.assertNotIn("position_ms", absent)
         self.assertEqual(["0"], zero["position_ms"])
         self.assertEqual(["12345"], positive["position_ms"])
+        self.assertEqual(["0"], negative["position_ms"])
+        self.assertEqual(["678"], integer_string["position_ms"])
 
-    async def test_android_bridge_rejects_invalid_explicit_position(self):
+    async def test_android_bridge_rejects_fractional_boolean_and_non_finite_positions(self):
         class Page:
             platform = "android"
             url_launcher = None
 
+        invalid_positions = (
+            123.9,
+            123.0,
+            True,
+            "123.9",
+            "not-a-number",
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            object(),
+        )
         with tempfile.TemporaryDirectory() as data_dir:
             bridge = AndroidBridge(data_dir, Page())
-            with self.assertRaisesRegex(ValueError, "position_ms"):
-                await bridge.play("content://media/external/video/1", "Episódio", "not-a-number", episode_id=42)
+            for position in invalid_positions:
+                with self.subTest(position=repr(position)):
+                    with self.assertRaisesRegex(ValueError, "position_ms"):
+                        await bridge.play(
+                            "content://media/external/video/1",
+                            "Episódio",
+                            position,
+                            episode_id=42,
+                        )
 
     async def test_android_bridge_play_waits_for_player_handoff_confirmation(self):
         class Page:
