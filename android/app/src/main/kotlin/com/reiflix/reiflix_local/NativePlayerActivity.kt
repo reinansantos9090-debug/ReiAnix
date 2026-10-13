@@ -75,6 +75,8 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.Format
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import com.reiflix.reiflix_local.player.PlayerMediaControls
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
@@ -124,6 +126,7 @@ class NativePlayerActivity : ComponentActivity() {
     private lateinit var lockButton: TextView
     private lateinit var systemUiController: SystemUiController
     private lateinit var localMetadataStore: PlayerLocalMetadataStore
+    private var mediaControls: PlayerMediaControls? = null
     private val consumptionService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixConsumptionService(applicationContext)
     }
@@ -799,6 +802,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     .build(),
                 true,
             )
+            mediaControls = PlayerMediaControls(
+                context = this,
+                player = player,
+                sessionId = playerSessionId,
+                titleProvider = { titleValue },
+                episodeProvider = { currentEpisodeLabel() },
+            )
             // PlayerView owns the video surface/subtitle rendering. Attach the
             // real ExoPlayer before assigning media or preparing it.
             playerView.player = player
@@ -1149,6 +1159,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun currentEpisodeId(): String = intent.getStringExtra("episodeId")?.trim().orEmpty()
 
+    private fun currentEpisodeLabel(): String {
+        val explicitTitle = intent.getStringExtra("episodeTitle")?.trim().orEmpty()
+        if (explicitTitle.isNotBlank()) return explicitTitle
+        val episodeNumber = intent.getStringExtra("episodeNumber")?.trim().orEmpty()
+        if (episodeNumber.isNotBlank()) return "Episódio $episodeNumber"
+        val episodeId = currentEpisodeId()
+        if (episodeId.isNotBlank()) return "Episódio $episodeId"
+        return if (::uri.isInitialized) uri.lastPathSegment?.substringAfterLast("/")?.ifBlank { null } ?: "Arquivo local"
+            else "Arquivo local"
+    }
+
     private fun currentMediaId(): String {
         val episodeId = currentEpisodeId()
         if (episodeId.isNotBlank()) return "episode:$episodeId"
@@ -1163,6 +1184,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val mediaItemBuilder = MediaItem.Builder()
             .setUri(mediaUri)
             .setMediaId(currentMediaId())
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(titleValue.ifBlank { "ReiAnix" })
+                    .setArtist(currentEpisodeLabel())
+                    .setDisplayTitle(currentEpisodeLabel().ifBlank { titleValue })
+                    .build(),
+            )
         mimeType?.takeIf { it.startsWith("video/") }?.let { mediaItemBuilder.setMimeType(it) }
         if (subtitleTracks.isNotEmpty()) {
             mediaItemBuilder.setSubtitleConfigurations(
@@ -4854,6 +4882,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         playbackWorker.shutdown()
         progressWorker.shutdown()
         mediaMetadataWorker.shutdownNow()
+        mediaControls?.release()
+        mediaControls = null
         if (::player.isInitialized) {
             activePlayerListener?.let { player.removeListener(it) }
             activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }
