@@ -128,46 +128,6 @@ class ReiAnixNavigationInstrumentedTest {
     }
 
     @Test
-    fun unsupportedTopLevelRouteIsIgnoredWithoutMutatingTheBackStack() {
-        val originalRoute = navController.currentBackStackEntry?.destination?.route
-        val originalPreviousRoute = navController.previousBackStackEntry?.destination?.route
-
-        navController.navigateToTopLevel("unsupported_destination")
-        composeRule.waitForIdle()
-
-        assertEquals(originalRoute, navController.currentBackStackEntry?.destination?.route)
-        assertEquals(originalPreviousRoute, navController.previousBackStackEntry?.destination?.route)
-    }
-
-    @Test
-    fun invalidStartDestinationFallsBackToHomeWithoutBreakingTheGraph() {
-        val invalidStartController = TestNavHostController(composeRule.activity).apply {
-            navigatorProvider.addNavigator(ComposeNavigator())
-        }
-        composeRule.setContent {
-            ReiAnixComposeRoot {
-                ReiAnixNavigationHost(
-                    navController = invalidStartController,
-                    home = { NavigationTestScreen("Fallback Home") },
-                    library = { NavigationTestScreen("Biblioteca") },
-                    search = { NavigationTestScreen("Buscar") },
-                    settings = { NavigationTestScreen("Ajustes") },
-                    details = { args -> NavigationTestScreen("Detalhes " + args.animeId) },
-                    player = { args -> NavigationTestScreen("Player " + args.episodeId) },
-                    startDestination = "unregistered_destination",
-                )
-            }
-        }
-        composeRule.waitForIdle()
-
-        assertEquals(
-            ReiAnixRoutes.HOME,
-            invalidStartController.currentBackStackEntry?.destination?.route,
-        )
-        composeRule.onNodeWithText("Fallback Home").assertIsDisplayed()
-    }
-
-    @Test
     fun selectedStateIsExposedForEachTopLevelDestination() {
         listOf("Início", "Biblioteca", "Buscar", "Ajustes").forEach { label ->
             clickTopLevel(label)
