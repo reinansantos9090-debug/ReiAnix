@@ -60,13 +60,15 @@ class PlayerLocalMetadataStore(context: Context) {
         openingEndMs: Long?,
         endingStartMs: Long?,
         endingEndMs: Long?,
+        durationMs: Long? = null,
     ): Metadata {
         val normalized = normalizeMediaId(mediaId)
         if (normalized.isBlank()) return Metadata.empty()
         val current = get(normalized)
+        val validDuration = durationMs?.takeIf { it > 0L }
         val updated = current.copy(
-            opening = segmentOrNull(openingStartMs, openingEndMs),
-            ending = segmentOrNull(endingStartMs, endingEndMs),
+            opening = segmentOrNull(openingStartMs, openingEndMs, validDuration),
+            ending = segmentOrNull(endingStartMs, endingEndMs, validDuration),
         )
         write(updateRoot(readRoot(), updated))
         return updated
@@ -118,8 +120,15 @@ class PlayerLocalMetadataStore(context: Context) {
             return digest.joinToString("") { "%02x".format(it) }
         }
 
-        private fun segmentOrNull(startMs: Long?, endMs: Long?): Segment? =
-            if (startMs != null && endMs != null && startMs >= 0L && endMs > startMs) {
+        internal fun isValidSegment(startMs: Long?, endMs: Long?, durationMs: Long? = null): Boolean {
+            if (startMs == null && endMs == null) return true
+            if (startMs == null || endMs == null || startMs < 0L || endMs <= startMs) return false
+            val duration = durationMs?.takeIf { it > 0L }
+            return duration == null || endMs <= duration
+        }
+
+        private fun segmentOrNull(startMs: Long?, endMs: Long?, durationMs: Long? = null): Segment? =
+            if (isValidSegment(startMs, endMs, durationMs) && startMs != null && endMs != null) {
                 Segment(startMs, endMs)
             } else {
                 null
