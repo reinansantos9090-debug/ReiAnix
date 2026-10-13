@@ -20,7 +20,7 @@ class HomeThumbnailPreferenceTest(unittest.TestCase):
             "private fun ReiAnixHomeObservedScreen(",
             "@Composable\nprivate fun ColumnScope.HomeObservedContent(",
         )
-        self.assertEqual(observed.count("HomeObservedContent("), 5)
+        self.assertEqual(observed.count("HomeObservedContent("), 4)
         self.assertEqual(observed.count("showThumbnails = showThumbnails"), 4)
 
     def test_legacy_home_forwards_thumbnail_preference_for_every_library_state(self):
@@ -30,7 +30,7 @@ class HomeThumbnailPreferenceTest(unittest.TestCase):
             "fun ReiAnixHomeScreen(",
             "@Composable\nprivate fun HomeHeader(",
         )
-        self.assertEqual(legacy.count("HomeContent("), 5)
+        self.assertEqual(legacy.count("HomeContent("), 4)
         self.assertEqual(legacy.count("showThumbnails = showThumbnails"), 4)
 
     def test_both_home_content_paths_forward_preference_to_shared_sections(self):
