@@ -32,6 +32,8 @@ data class ReiAnixDetailsAnimeUiModel(
     val romajiTitle: String? = null,
     val englishTitle: String? = null,
     val nativeTitle: String? = null,
+    /** Persisted alternate titles from the canonical local metadata projection. */
+    val aliases: List<String> = emptyList(),
     val status: String? = null,
     val format: String? = null,
     val durationMinutes: Int? = null,
@@ -93,6 +95,7 @@ object ReiAnixDetailsUiStateProjection {
                     romajiTitle = anime.romajiTitle,
                     englishTitle = anime.englishTitle,
                     nativeTitle = anime.nativeTitle,
+                    aliases = anime.aliases,
                     status = anime.status,
                     format = anime.format,
                     durationMinutes = anime.durationMinutes,
