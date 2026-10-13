@@ -69,5 +69,16 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertNotIn("descriptionOriginal", source)
         self.assertNotIn("description_original", source)
 
+
+    def test_details_preserves_and_presents_persisted_alternate_titles(self):
+        details = DETAILS.read_text(encoding="utf-8")
+        model = DETAILS_MODEL.read_text(encoding="utf-8")
+        self.assertIn("val aliases: List<String> = emptyList()", model)
+        self.assertIn("aliases = anime.aliases", model)
+        self.assertIn('add("Títulos alternativos" to it.joinToString(" • "))', details)
+        self.assertIn("distinctBy { it.lowercase(Locale.ROOT) }", details)
+        self.assertIn("filter { it.lowercase(Locale.ROOT) !in knownTitles }", details)
+
+
 if __name__ == "__main__":
     unittest.main()
