@@ -289,15 +289,14 @@ class PlaybackContractTests(unittest.TestCase):
 
     def test_player_gestures_and_lock_affordance_are_explicit(self):
         for token in (
-            'GESTURE_HORIZONTAL_IGNORED',
+            'GestureMode.HORIZONTAL_SEEK',
             'LOCK_AFFORDANCE_TIMEOUT_MS',
             'lockAffordanceHider',
             'if (locked) {',
         ):
             self.assertIn(token, self.player)
         self.assertNotIn("TrackSelectionDialogBuilder", self.player)
-        self.assertNotIn("horizontalSeekDelta", self.player)
-        self.assertNotIn("setting_gestures_horizontal_swipe_seek", self.player)
+        self.assertIn("PlayerGesturePolicy.horizontalSeekTarget", self.player)
 
     def test_lifecycle_rotation_pip_and_exit_are_single_activity_contracts(self):
         for token in (
