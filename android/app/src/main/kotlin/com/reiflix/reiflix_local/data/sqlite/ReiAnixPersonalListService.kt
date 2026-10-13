@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
 import android.database.sqlite.SQLiteException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -66,9 +67,9 @@ class ReiAnixPersonalListService(
                 }
             }
         })
-    } catch (error: SQLiteException) {
-        Result.Failure(error)
-    } catch (error: IllegalStateException) {
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
         Result.Failure(error)
     } }
 
@@ -79,9 +80,9 @@ class ReiAnixPersonalListService(
         return try {
             val anime = library.getAnime(animeId) ?: return Result.NotFound
             Result.Success(anime.favorite == true)
-        } catch (error: SQLiteException) {
-            Result.Failure(error)
-        } catch (error: IllegalStateException) {
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
             Result.Failure(error)
         }
     }
@@ -113,9 +114,9 @@ class ReiAnixPersonalListService(
                 // same transaction and the requested value is now canonical.
                 target
             }?.let { Result.Success(it) } ?: Result.NotFound
-        } catch (error: SQLiteException) {
-            Result.Failure(error)
-        } catch (error: IllegalStateException) {
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
             Result.Failure(error)
         } }
     }
@@ -141,9 +142,9 @@ class ReiAnixPersonalListService(
                 )
                 included
             }?.let { Result.Success(it) } ?: Result.NotFound
-        } catch (error: SQLiteException) {
-            Result.Failure(error)
-        } catch (error: IllegalStateException) {
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
             Result.Failure(error)
         } }
     }
