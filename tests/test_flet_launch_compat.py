@@ -119,6 +119,8 @@ class FletLaunchCompatibilityTests(unittest.IsolatedAsyncioTestCase):
             float("nan"),
             float("inf"),
             float("-inf"),
+            2**63,
+            str(2**63),
             object(),
         )
         with tempfile.TemporaryDirectory() as data_dir:
