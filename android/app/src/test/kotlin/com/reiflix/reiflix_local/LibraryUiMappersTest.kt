@@ -90,6 +90,29 @@ class LibraryUiMappersTest {
     }
 
     @Test
+    fun announcedEpisodeCountComesFromStoredMetadataNotLocalEpisodeCount() {
+        val source = animeSource(
+            id = 21L,
+            meta = mapOf(
+                "metadata_status" to "available",
+                "episodes_count" to 24,
+            ),
+            seasons = listOf(
+                mapOf<String, Any?>(
+                    "season" to 1,
+                    "season_name" to "Temporada 1",
+                    "episodes" to listOf(episode(2101, 1, 0.0, 1200.0, "unwatched")),
+                ),
+            ),
+        )
+
+        val model = LibraryUiMappers.anime(source)
+
+        assertEquals(24, model.announcedEpisodeCount)
+        assertEquals(1, model.availableContentCount)
+    }
+
+    @Test
     fun scoreIsMappedOnlyWhenPresentInTheRealMetadataProjection() {
         val withScore = animeSource(
             id = 12L,
