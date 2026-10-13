@@ -19,7 +19,7 @@ class PlayerGestureUxTests(unittest.TestCase):
         self.assertIn("GestureMode.DOUBLE_TAP", self.player)
         self.assertIn("GestureMode.PINCH", self.player)
         self.assertIn("GestureMode.PAN", self.player)
-        self.assertNotIn("GestureMode.HORIZONTAL_SEEK", self.player)
+        self.assertIn("GestureMode.HORIZONTAL_SEEK", self.player)
         self.assertIn("GestureMode.VERTICAL", self.player)
         self.assertNotIn("manualDoubleTap", self.player)
         self.assertNotIn("lastTapUpTime", self.player)
@@ -79,10 +79,12 @@ class PlayerGestureUxTests(unittest.TestCase):
         self.assertNotIn("Gesto de volume desligado", self.player[self.player.index("private fun handleVerticalGesture"):self.player.index("private fun cancelGestureDetector")])
         self.assertNotIn("Gesto de brilho desligado", self.player[self.player.index("private fun handleVerticalGesture"):self.player.index("private fun cancelGestureDetector")])
 
-    def test_horizontal_swipe_is_ignored_for_seek(self):
-        self.assertIn("GESTURE_HORIZONTAL_IGNORED", self.player)
-        self.assertNotIn("horizontalSeekDelta", self.player)
-        self.assertNotIn("GestureMode.HORIZONTAL_SEEK", self.player)
+    def test_horizontal_swipe_previews_and_commits_a_bounded_seek(self):
+        self.assertIn("GestureMode.HORIZONTAL_SEEK", self.player)
+        self.assertIn("updateHorizontalSeekPreview(dx)", self.player)
+        self.assertIn("PlayerGesturePolicy.horizontalSeekTarget", self.player)
+        self.assertIn("player.seekTo(target)", self.player)
+        self.assertIn("GESTURE_END type=horizontal_seek", self.player)
 
     def test_reusable_feedback_overlay_and_overlay_cancellation(self):
         self.assertEqual(1, self.player.count("private lateinit var feedback: TextView"))
