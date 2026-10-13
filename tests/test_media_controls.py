@@ -21,7 +21,7 @@ class NativeMediaControlsTests(unittest.TestCase):
         self.assertEqual(1, self.player.count("ExoPlayer.Builder(this).build()"))
         self.assertIn("mediaControls = PlayerMediaControls(", self.player)
         self.assertIn("MediaSession.Builder(appContext, player)", self.controls)
-        self.assertIn("setMediaSessionToken(mediaSession.sessionCompatToken)", self.controls)
+        self.assertIn("setMediaSessionToken(mediaSession.platformToken)", self.controls)
         self.assertIn("setPlayer(player)", self.controls)
 
     def test_notification_actions_and_metadata_follow_real_player(self):
