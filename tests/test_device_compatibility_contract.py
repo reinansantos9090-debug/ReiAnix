@@ -113,7 +113,7 @@ class DeviceCompatibilityContractTests(unittest.TestCase):
         self.assertIn("isSystemGestureEdge", player)
         self.assertIn("PlayerGesturePolicy.Direction.HORIZONTAL", player)
         self.assertIn("GestureMode.HORIZONTAL_SEEK", player)
-        self.assertNotIn("type=horizontal_seek", player)
+        self.assertIn("type=horizontal_seek", player)
         self.assertIn("ACTION_POINTER_DOWN", player)
         self.assertIn("ACTION_POINTER_UP", player)
         self.assertIn("ACTION_CANCEL", player)
