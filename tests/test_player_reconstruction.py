@@ -39,13 +39,12 @@ class PlayerReconstructionTests(unittest.TestCase):
             "PLAYER_DOUBLE_TAP",
             "gestureConsumed",
             "pinchActive",
-            "GESTURE_HORIZONTAL_IGNORED",
+            "GestureMode.HORIZONTAL_SEEK",
             "vertical_ignored_or_applied",
         ):
             self.assertIn(token, self.player)
-        self.assertNotIn("HORIZONTAL_SEEK", self.player)
-        self.assertNotIn("GestureMode.HORIZONTAL_SEEK", self.player)
-        self.assertIn("GESTURE_HORIZONTAL_IGNORED", self.player)
+        self.assertIn("PlayerGesturePolicy.horizontalSeekTarget", self.player)
+        self.assertIn("GESTURE_START type=horizontal_seek", self.player)
 
     def test_double_tap_seek_uses_canonical_intent_settings_and_configured_delta(self):
         self.assertIn("private var doubleTapEnabled = true", self.player)
