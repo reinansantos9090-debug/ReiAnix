@@ -64,13 +64,26 @@ class PlayerLocalMetadataStore(context: Context) {
     ): Metadata {
         val normalized = normalizeMediaId(mediaId)
         if (normalized.isBlank()) return Metadata.empty()
-        val current = get(normalized)
+
+        // Validate the complete request before reading/modifying the persisted record.
+        // A null/null pair means an explicit clear; a partial or invalid pair rejects
+        // the whole operation so a malformed marker can never erase a valid one.
         val validDuration = durationMs?.takeIf { it > 0L }
+        require(isValidSegment(openingStartMs, openingEndMs, validDuration)) {
+            "Invalid opening marker interval"
+        }
+        require(isValidSegment(endingStartMs, endingEndMs, validDuration)) {
+            "Invalid ending marker interval"
+        }
+
+        val current = get(normalized)
         val updated = current.copy(
             opening = segmentOrNull(openingStartMs, openingEndMs, validDuration),
             ending = segmentOrNull(endingStartMs, endingEndMs, validDuration),
         )
-        write(updateRoot(readRoot(), updated))
+        check(write(updateRoot(readRoot(), updated))) {
+            "Unable to persist local player markers"
+        }
         return updated
     }
 
@@ -217,24 +230,23 @@ class PlayerLocalMetadataStore(context: Context) {
 
     private fun readRoot(): JSONObject = readFile(file)
 
-    private fun write(root: JSONObject) {
-        val parent = file.parentFile ?: return
+    private fun write(root: JSONObject): Boolean {
+        val parent = file.parentFile ?: return false
         if (!parent.exists() && !parent.mkdirs()) {
             Log.w(TAG, "PLAYER_METADATA_DIRECTORY_CREATE_FAILED")
-            return
+            return false
         }
         val temp = File(parent, file.name + ".tmp")
-        runCatching {
+        return runCatching {
             temp.writeText(root.toString(), Charsets.UTF_8)
+            // Keep the old file intact if replacement fails; never delete it first.
             if (!temp.renameTo(file)) {
-                file.delete()
-                if (!temp.renameTo(file)) {
-                    throw IllegalStateException("Unable to replace local player metadata file")
-                }
+                throw IllegalStateException("Unable to replace local player metadata file")
             }
+            true
         }.onFailure {
             temp.delete()
             Log.e(TAG, "PLAYER_METADATA_WRITE_FAILED", it)
-        }
+        }.getOrDefault(false)
     }
 }

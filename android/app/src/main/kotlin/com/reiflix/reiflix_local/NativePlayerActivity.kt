@@ -5008,14 +5008,22 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     showFeedback("Marcadores inválidos: confira os intervalos e a duração do vídeo")
                     return@setPositiveButton
                 }
-                localMetadata = localMetadataStore.setSegments(
-                    uri.toString(),
-                    openingStartMs,
-                    openingEndMs,
-                    endingStartMs,
-                    endingEndMs,
-                    durationMs,
-                )
+                try {
+                    localMetadata = localMetadataStore.setSegments(
+                        uri.toString(),
+                        openingStartMs,
+                        openingEndMs,
+                        endingStartMs,
+                        endingEndMs,
+                        durationMs,
+                    )
+                } catch (_: IllegalArgumentException) {
+                    showFeedback("Marcadores inválidos: confira os intervalos e a duração do vídeo")
+                    return@setPositiveButton
+                } catch (_: IllegalStateException) {
+                    showFeedback("Não foi possível salvar os marcadores locais")
+                    return@setPositiveButton
+                }
                 updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
                 showFeedback("Marcadores salvos")
             }
