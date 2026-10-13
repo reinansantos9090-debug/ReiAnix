@@ -106,6 +106,19 @@ class PlayerGesturePolicyTest {
     }
 
     @Test
+    fun horizontalSeekUsesViewportDeltaAndClampsToDuration() {
+        assertEquals(160_000L, NativePlayerActivity.PlayerGesturePolicy.horizontalSeekTarget(100_000L, 500f, 1000f, 500_000L))
+        assertEquals(0L, NativePlayerActivity.PlayerGesturePolicy.horizontalSeekTarget(5_000L, -1000f, 1000f, 500_000L))
+        assertEquals(500_000L, NativePlayerActivity.PlayerGesturePolicy.horizontalSeekTarget(490_000L, 1000f, 1000f, 500_000L))
+    }
+
+    @Test
+    fun horizontalSeekRejectsInvalidViewportAndNonFiniteMovement() {
+        assertEquals(10_000L, NativePlayerActivity.PlayerGesturePolicy.horizontalSeekTarget(10_000L, 100f, 0f, 100_000L))
+        assertEquals(10_000L, NativePlayerActivity.PlayerGesturePolicy.horizontalSeekTarget(10_000L, Float.NaN, 1000f, 100_000L))
+    }
+
+    @Test
     fun movementAndVerticalDeltaUseRelativeViewportValues() {
         assertEquals(
             true,
