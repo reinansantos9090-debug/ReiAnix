@@ -407,6 +407,14 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         send(ReiAnixLibraryCommandCodec.Action.TOGGLE_FAVORITE, animeId = animeId)
     }
 
+    /**
+     * Ask the existing Python bridge to republish the canonical catalog snapshot
+     * after a native SQLite mutation. Unlike refresh(), this never requests a scan.
+     */
+    fun publishCatalog() {
+        send(ReiAnixLibraryCommandCodec.Action.PUBLISH_CATALOG)
+    }
+
     fun setEpisodeWatched(episodeId: Long, watched: Boolean) {
         send(
             ReiAnixLibraryCommandCodec.Action.SET_WATCHED,
