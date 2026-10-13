@@ -106,6 +106,15 @@ class PlayerGesturePolicyTest {
     }
 
     @Test
+    fun playbackSpeedFallsBackToNormalForInvalidOrUnsupportedValues() {
+        assertEquals(1f, NativePlayerActivity.PlayerGesturePolicy.normalizePlaybackSpeed(Float.NaN), 0.0001f)
+        assertEquals(1f, NativePlayerActivity.PlayerGesturePolicy.normalizePlaybackSpeed(0f), 0.0001f)
+        assertEquals(1f, NativePlayerActivity.PlayerGesturePolicy.normalizePlaybackSpeed(3f), 0.0001f)
+        assertEquals(1.5f, NativePlayerActivity.PlayerGesturePolicy.normalizePlaybackSpeed(1.5f), 0.0001f)
+        assertEquals(1.75f, NativePlayerActivity.PlayerGesturePolicy.normalizePlaybackSpeed(1.75f), 0.0001f)
+    }
+
+    @Test
     fun horizontalSeekUsesViewportDeltaAndClampsToDuration() {
         assertEquals(160_000L, NativePlayerActivity.PlayerGesturePolicy.horizontalSeekTarget(100_000L, 500f, 1000f, 500_000L))
         assertEquals(0L, NativePlayerActivity.PlayerGesturePolicy.horizontalSeekTarget(5_000L, -1000f, 1000f, 500_000L))
