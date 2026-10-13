@@ -51,6 +51,23 @@ class NativeMediaControlsTests(unittest.TestCase):
         self.assertIn("if (::player.isInitialized && !isPictureInPictureActive() && sessionState == SessionState.ACTIVE)", self.player)
         self.assertIn("player.pause()", self.player)
 
+    def test_session_identity_and_metadata_have_safe_fallbacks(self):
+        self.assertIn("sessionId = activityInstanceId,", self.player)
+        self.assertIn(".setId(sessionId)", self.controls)
+        self.assertIn('metadataTitle.ifBlank { titleProvider().ifBlank { "ReiAnix" } }', self.controls)
+        self.assertIn("metadataSubtitle.ifBlank { episodeProvider() }", self.controls)
+        self.assertIn('return "Arquivo local"', self.player)
+
+    def test_notification_does_not_restore_an_unverifiable_local_uri(self):
+        # A restored Activity could outlive transient SAF grants or create a second player.
+        self.assertIn("override fun createCurrentContentIntent(player: Player): PendingIntent? = null", self.controls)
+        self.assertIn("createCurrentContentIntent() returns null intencionalmente", (ROOT / "docs/MEDIA_CONTROLS.md").read_text(encoding="utf-8"))
+        self.assertIn("notificationManager.setPlayer(null)", self.controls)
+
+    def test_artwork_is_explicitly_deferred_without_a_native_cache_reference(self):
+        self.assertIn("): Bitmap? = null", self.controls)
+        self.assertIn("não recebe um identificador de cache local ou uma URI de capa estável", (ROOT / "docs/MEDIA_CONTROLS.md").read_text(encoding="utf-8"))
+
     def test_media3_session_dependency_matches_existing_media3_version(self):
         self.assertIn('implementation("androidx.media3:media3-session:1.11.1")', self.gradle)
         self.assertIn('implementation("androidx.media3:media3-exoplayer:1.11.1")', self.gradle)
