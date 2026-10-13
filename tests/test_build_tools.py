@@ -1018,6 +1018,22 @@ class TestNativePlayerHardening(unittest.TestCase):
         self.assertIn('implementation("androidx.media3:media3-exoplayer:1.11.1")', gradle)
         self.assertIn('implementation("androidx.media3:media3-ui:1.11.1")', gradle)
 
+    def test_pip_entry_requires_a_live_session_and_updates_video_aspect_ratio(self):
+        player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("private fun canRequestPictureInPicture()", player)
+        self.assertIn("sessionState == SessionState.ACTIVE", player)
+        self.assertIn("player.playbackState != Player.STATE_ENDED", player)
+        self.assertIn("enterPictureInPictureMode(pictureInPictureParamsForCurrentSession())", player)
+        self.assertIn("builder.setAspectRatio(Rational(numerator, 1000))", player)
+        self.assertIn("builder.setAutoEnterEnabled(", player)
+        self.assertIn("private fun isPictureInPictureActive()", player)
+
+    def test_player_does_not_apply_orientation_before_reading_rotation_preference(self):
+        player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
+        on_create = player[player.index("override fun onCreate(savedInstanceState: Bundle?)"):player.index("override fun onNewIntent(newIntent: Intent)")]
+        self.assertNotIn("requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR", on_create)
+        self.assertIn("applyConfiguredRotation()", on_create)
+
 
 class TestFletAsyncCallbacks(unittest.TestCase):
     def test_organize_view_does_not_pass_coroutine_objects_to_page_run_task(self):
