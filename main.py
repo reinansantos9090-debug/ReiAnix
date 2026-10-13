@@ -4334,6 +4334,10 @@ async def main(page: ft.Page):
                     )
                 else:
                     command_status = "QUEUED"
+            elif action == "publish_catalog":
+                # Native Kotlin already committed the canonical SQLite mutation.
+                # Republish its projection without scheduling a filesystem scan.
+                on_catalog_changed(refresh_details=False)
             elif action == "refresh":
                 source = str(payload.get("source") or "").strip() or None
                 transition = await scan_coordinator.request(
@@ -4848,6 +4852,7 @@ async def main(page: ft.Page):
                                 'dismiss_storage_onboarding',
                                 'remove_saf',
                                 'refresh',
+                                'publish_catalog',
                                 'load_library_page',
                                 'open_media',
                             }
