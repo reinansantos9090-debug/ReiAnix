@@ -455,7 +455,7 @@ class AndroidBridge:
                 parsed_position_ms = position_ms
             elif isinstance(position_ms, str):
                 raw_position_ms = position_ms.strip()
-                if not re.fullmatch(r"[+-]?\\d+", raw_position_ms):
+                if not re.fullmatch(r"[+-]?\d+", raw_position_ms):
                     raise ValueError(invalid_position)
                 parsed_position_ms = int(raw_position_ms)
             else:
