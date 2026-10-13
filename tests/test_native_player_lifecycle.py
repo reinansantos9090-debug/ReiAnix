@@ -107,14 +107,17 @@ class NativePlayerLifecycleTests(unittest.TestCase):
             self.player.index("override fun onResume()"):
             self.player.index("override fun onPause()")
         ]
-        self.assertIn("!inPictureInPicture", stop)
+        self.assertIn("!isPictureInPictureActive()", stop)
         self.assertIn("playbackWasRequestedBeforeStop", stop)
         self.assertIn("player.pause()", stop)
         self.assertIn("PLAYER_BACKGROUND_PAUSE", stop)
-        self.assertIn("!inPictureInPicture", resume)
+        self.assertIn("!isPictureInPictureActive()", resume)
         self.assertIn("playbackWasRequestedBeforeStop", resume)
         self.assertIn("player.playWhenReady = true", resume)
         self.assertIn("PLAYER_FOREGROUND_RESUME", resume)
+        pip_helper = self.player[self.player.index("private fun isPictureInPictureActive()"):self.player.index("private fun canRequestPictureInPicture()")]
+        self.assertIn("inPictureInPicture ||", pip_helper)
+        self.assertIn("isInPictureInPictureMode", pip_helper)
 
     def test_completion_does_not_create_a_second_player_or_playlist(self):
         playback = self.player[
