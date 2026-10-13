@@ -65,6 +65,16 @@ class RuntimeRegressionTests(unittest.TestCase):
         self.assertIn("on_select_anime(item)", home)
         self.assertNotIn('key=f"anime:{anime.get(\'id\', \'-\')}"', home)
 
+
+    def test_native_home_thumbnail_preference_contracts(self):
+        from tests import test_home_thumbnail_preference as preference_tests
+
+        preference_tests.test_persisted_preference_flows_from_settings_host_into_home_route()
+        preference_tests.test_observed_home_forwards_preference_at_each_catalog_render_callsite()
+        preference_tests.test_legacy_home_forwards_preference_at_each_catalog_render_callsite()
+        preference_tests.test_both_content_adapters_forward_preference_to_shared_home_sections()
+        preference_tests.test_continue_watching_applies_preference_to_local_and_remote_artwork()
+
     def test_home_artwork_work_is_concurrency_limited(self):
         home = self.read(HOME)
         self.assertIn("artwork_concurrency = asyncio.Semaphore(1)", home)
