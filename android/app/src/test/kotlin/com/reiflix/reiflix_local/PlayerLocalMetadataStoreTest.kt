@@ -20,6 +20,15 @@ class PlayerLocalMetadataStoreTest {
     }
 
     @Test
+    fun markerRangesMustBeCompleteOrderedAndWithinKnownDuration() {
+        assertTrue(PlayerLocalMetadataStore.isValidSegment(null, null, 100_000L))
+        assertTrue(PlayerLocalMetadataStore.isValidSegment(10_000L, 20_000L, 100_000L))
+        assertEquals(false, PlayerLocalMetadataStore.isValidSegment(20_000L, 10_000L, 100_000L))
+        assertEquals(false, PlayerLocalMetadataStore.isValidSegment(10_000L, null, 100_000L))
+        assertEquals(false, PlayerLocalMetadataStore.isValidSegment(10_000L, 120_000L, 100_000L))
+    }
+
+    @Test
     fun playerMetadataJsonRoundTripKeepsNullMarkersExplicit() {
         val json = JSONObject()
             .put("openingStartMs", 60_000L)
