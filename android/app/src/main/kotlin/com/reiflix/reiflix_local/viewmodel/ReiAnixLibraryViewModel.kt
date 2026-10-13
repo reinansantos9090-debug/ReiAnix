@@ -127,6 +127,8 @@ class ReiAnixLibraryViewModel(context: Context) :
     private val nativeLibraryQueries = ReiAnixLibraryQueryService(context)
     /** Favorite membership uses the canonical SQLite store; playback remains in the consumption service. */
     private val personalListService = com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(context)
+    private val _personalListMutationError = MutableStateFlow<String?>(null)
+    val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
     /** SAF mutations operate only on persisted, user-authorized content URIs. */
     private val nativeFileOperations = SafFileOperations(context.applicationContext)
 
@@ -1061,22 +1063,56 @@ class ReiAnixLibraryViewModel(context: Context) :
      * library projection only after the transaction has succeeded.
      */
     fun toggleFavorite(animeId: Long) {
-        if (animeId <= 0L) return
+        if (animeId <= 0L) {
+            _personalListMutationError.value = "Não foi possível alterar Minha Lista: identificador inválido."
+            return
+        }
         viewModelScope.launch {
-            when (personalListService.toggle(animeId)) {
+            _personalListMutationError.value = null
+            when (val result = personalListService.toggle(animeId)) {
                 is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> refresh()
-                com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound,
-                com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict,
-                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Failure -> Unit
+                com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
+                    _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
+                com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
+                    _personalListMutationError.value = "Minha Lista foi alterada por outra operação. Atualize e tente novamente."
+                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Failure ->
+                    _personalListMutationError.value = result.cause.message
+                        ?.takeIf(String::isNotBlank)
+                        ?.let { "Não foi possível salvar Minha Lista: $it" }
+                        ?: "Não foi possível salvar Minha Lista."
             }
         }
     }
 
     suspend fun personalListItems() = personalListService.list()
 
-    suspend fun addToPersonalList(animeId: Long) = personalListService.add(animeId)
+    suspend fun addToPersonalList(animeId: Long) = updatePersonalListMembership {
+        personalListService.add(animeId)
+    }
 
-    suspend fun removeFromPersonalList(animeId: Long) = personalListService.remove(animeId)
+    suspend fun removeFromPersonalList(animeId: Long) = updatePersonalListMembership {
+        personalListService.remove(animeId)
+    }
+
+    private suspend fun updatePersonalListMembership(
+        operation: suspend () -> com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result<Boolean>,
+    ): com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result<Boolean> {
+        _personalListMutationError.value = null
+        val result = operation()
+        when (result) {
+            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> refresh()
+            com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
+                _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
+            com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
+                _personalListMutationError.value = "Minha Lista foi alterada por outra operação. Atualize e tente novamente."
+            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Failure ->
+                _personalListMutationError.value = result.cause.message
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { "Não foi possível salvar Minha Lista: $it" }
+                    ?: "Não foi possível salvar Minha Lista."
+        }
+        return result
+    }
 
     fun setEpisodeWatched(episodeId: Long, watched: Boolean) =
         repository.setEpisodeWatched(episodeId, watched)
