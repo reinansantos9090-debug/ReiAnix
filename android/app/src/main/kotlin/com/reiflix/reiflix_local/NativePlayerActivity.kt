@@ -2296,7 +2296,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 "PLAYER_PIP_REQUEST_REJECTED requestId=" + requestId.ifEmpty { "-" } +
                     " sessionState=" + sessionState.name +
                     " playerInitialized=" + ::player.isInitialized +
-                    " playbackState=" + if (::player.isInitialized) player.playbackState else "uninitialized" +
+                    " playbackState=" + (if (::player.isInitialized) player.playbackState.toString() else "uninitialized") +
                     " errorVisible=" + errorVisible,
             )
             return
