@@ -621,6 +621,7 @@ class ComposeLibraryBridge:
                     or source.get("description_original")
                 ),
                 "status": meta.get("status") or source.get("status"),
+                "episodes_count": meta.get("episodes_count") if meta.get("episodes_count") is not None else source.get("episodes_count"),
                 "format": meta.get("format") or source.get("format"),
                 "duration": meta.get("duration") if meta.get("duration") is not None else source.get("duration"),
                 "studio": meta.get("studio") or source.get("studio"),
