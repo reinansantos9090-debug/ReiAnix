@@ -4997,7 +4997,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val openingEndMs = parseTimestampMs(openingEnd.text?.toString())
                 val endingStartMs = parseTimestampMs(endingStart.text?.toString())
                 val endingEndMs = parseTimestampMs(endingEnd.text?.toString())
-                val durationMs = player.duration.takeIf { ::player.isInitialized && it > 0L }
+                val durationMs = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
                 val fields = listOf(openingStart, openingEnd, endingStart, endingEnd)
                 val parsed = listOf(openingStartMs, openingEndMs, endingStartMs, endingEndMs)
                 if (fields.zip(parsed).any { (field, value) -> !field.text.isNullOrBlank() && value == null } ||
