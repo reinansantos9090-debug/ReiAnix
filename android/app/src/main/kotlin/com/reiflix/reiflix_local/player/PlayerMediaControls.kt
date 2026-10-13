@@ -8,6 +8,7 @@ import android.os.Build
 import android.app.PendingIntent
 import androidx.core.content.getSystemService
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerNotificationManager
 
@@ -16,6 +17,7 @@ import androidx.media3.ui.PlayerNotificationManager
  * local video player. It deliberately does not keep playback alive after the
  * player Activity is destroyed.
  */
+@OptIn(UnstableApi::class)
 class PlayerMediaControls(
     context: Context,
     private val player: Player,
@@ -58,7 +60,7 @@ class PlayerMediaControls(
             })
             .build()
             .apply {
-                setMediaSessionToken(mediaSession.sessionCompatToken)
+                setMediaSessionToken(mediaSession.platformToken)
                 setUseNextAction(false)
                 setUsePreviousAction(false)
                 setUseFastForwardAction(true)
