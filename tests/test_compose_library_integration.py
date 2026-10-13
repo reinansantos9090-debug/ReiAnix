@@ -27,9 +27,17 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("if event_type == 'compose_library_command':", MAIN)
         self.assertIn("_track_compose_library_task", dispatch)
         self.assertIn('namespace="compose_library"', dispatch)
-        for action in ("toggle_favorite", "set_watched", "refresh", "load_library_page", "open_media"):
+        for action in ("toggle_favorite", "set_watched", "refresh", "publish_catalog", "load_library_page", "open_media"):
             self.assertIn('action == "' + action + '":', worker)
         self.assertIn("'load_library_page'", dispatch)
+
+    def test_native_catalog_publication_does_not_request_a_scan(self):
+        block = self._command_worker_block()
+        start = block.index('elif action == "publish_catalog":')
+        end = block.index('elif action == "refresh":', start)
+        publish = block[start:end]
+        self.assertIn("on_catalog_changed(refresh_details=False)", publish)
+        self.assertNotIn("scan_coordinator.request", publish)
 
     def test_compose_library_commands_ack_before_slow_work(self):
         block = self._command_dispatch_block()
