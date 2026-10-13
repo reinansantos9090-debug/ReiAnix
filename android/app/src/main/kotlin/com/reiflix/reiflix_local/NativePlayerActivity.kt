@@ -93,6 +93,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 /** Full-screen Media3 player for one persisted local, SAF, or MediaStore URI. */
 @OptIn(UnstableApi::class)
@@ -5290,6 +5291,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         PINCH,
         PAN,
         VERTICAL,
+        HORIZONTAL_SEEK,
     }
 
     private inner class GestureLayer(context: Context) : View(context) {
@@ -5447,6 +5449,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private var systemGestureEdge = false
         private var pinchActive = false
         private var lastVerticalY: Float? = null
+        private var horizontalSeekStartPositionMs = 0L
+        private var horizontalSeekTargetMs = 0L
+        private var lastSeekPreviewAtMs = 0L
         private var lastPanX: Float? = null
         private var lastPanY: Float? = null
         private var zoomScale = 1f
@@ -5539,11 +5544,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-                    if (gestureConsumed || systemGestureEdge) return true
+                    if (systemGestureEdge) return true
                     if (locked) return true
+                    if (gestureConsumed &&
+                        gestureMode != GestureMode.VERTICAL &&
+                        gestureMode != GestureMode.HORIZONTAL_SEEK &&
+                        gestureMode != GestureMode.PAN
+                    ) return true
 
                     val dx = event.x - downX
                     val dy = event.y - downY
+
+                    if (gestureMode == GestureMode.HORIZONTAL_SEEK) {
+                        updateHorizontalSeekPreview(dx)
+                        return true
+                    }
 
                     if (zoomScale > 1.01f && PlayerGesturePolicy.isMeaningfulMovement(
                             dx,
@@ -5594,14 +5609,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         PlayerGesturePolicy.Direction.HORIZONTAL -> {
-                            gestureConsumed = true
-                            gestureMode = GestureMode.IDLE
-                            cancelGestureDetector(event)
-                            restoreLongPressSpeed()
-                            logPlayer(
-                                "GESTURE_HORIZONTAL_IGNORED requestId=" +
-                                    requestId.ifEmpty { "-" },
-                            )
+                            if (!::player.isInitialized || player.duration <= 0L || episodeChangePending) {
+                                gestureConsumed = true
+                                gestureMode = GestureMode.IDLE
+                                cancelGestureDetector(event)
+                                restoreLongPressSpeed()
+                                logPlayer("GESTURE_HORIZONTAL_SEEK_IGNORED reason=duration_or_transition requestId=" + requestId.ifEmpty { "-" })
+                            } else {
+                                gestureConsumed = true
+                                gestureMode = GestureMode.HORIZONTAL_SEEK
+                                horizontalSeekStartPositionMs = player.currentPosition.coerceIn(0L, player.duration)
+                                horizontalSeekTargetMs = horizontalSeekStartPositionMs
+                                cancelGestureDetector(event)
+                                restoreLongPressSpeed()
+                                touchControls()
+                                updateHorizontalSeekPreview(dx)
+                                logPlayer("GESTURE_START type=horizontal_seek requestId=" + requestId.ifEmpty { "-" })
+                            }
                         }
 
                         PlayerGesturePolicy.Direction.NONE -> Unit
@@ -5629,6 +5653,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         GestureMode.DOUBLE_TAP -> {
+                            resetTransientState()
+                            return true
+                        }
+
+                        GestureMode.HORIZONTAL_SEEK -> {
+                            if (::player.isInitialized && !episodeChangePending && player.duration > 0L) {
+                                val target = horizontalSeekTargetMs.coerceIn(0L, player.duration)
+                                player.seekTo(target)
+                                saveProgress("player_progress")
+                                showFeedback("Ir para " + formatTime(target))
+                                logPlayer("GESTURE_END type=horizontal_seek positionMs=" + target + " requestId=" + requestId.ifEmpty { "-" })
+                                touchControls()
+                            }
                             resetTransientState()
                             return true
                         }
@@ -5664,6 +5701,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 x > width - gestureSafeRight ||
                 y < gestureSafeTop ||
                 y > height - gestureSafeBottom
+
+        private fun updateHorizontalSeekPreview(deltaX: Float) {
+            if (!::player.isInitialized || player.duration <= 0L || width <= 0) return
+            horizontalSeekTargetMs = PlayerGesturePolicy.horizontalSeekTarget(
+                startPositionMs = horizontalSeekStartPositionMs,
+                deltaX = deltaX,
+                viewportWidth = width.toFloat(),
+                durationMs = player.duration,
+            )
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastSeekPreviewAtMs >= SEEK_PREVIEW_INTERVAL_MS) {
+                lastSeekPreviewAtMs = now
+                val deltaSeconds = (horizontalSeekTargetMs - horizontalSeekStartPositionMs) / 1000L
+                val deltaLabel = if (deltaSeconds < 0L) "−" else "+"
+                showFeedback("Buscar " + formatTime(horizontalSeekTargetMs) + " (" + deltaLabel + abs(deltaSeconds) + "s)", 350L)
+            }
+        }
 
         private fun handleVerticalGestureDelta(startX: Float, deltaY: Float) {
             if (height <= 0) return
@@ -5942,6 +5996,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             lastPanX = null
             lastPanY = null
             lastVerticalY = null
+            horizontalSeekTargetMs = horizontalSeekStartPositionMs
             systemGestureEdge = false
         }
 
@@ -6042,12 +6097,33 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 translationY.coerceIn(-bounds.maxY, bounds.maxY),
             )
 
-        fun seekTarget(currentPositionMs: Long, deltaMs: Long, durationMs: Long): Long =
-            if (durationMs <= 0L) {
-                currentPositionMs.coerceAtLeast(0L)
-            } else {
-                (currentPositionMs + deltaMs).coerceIn(0L, durationMs)
+        fun seekTarget(currentPositionMs: Long, deltaMs: Long, durationMs: Long): Long {
+            if (durationMs <= 0L) return currentPositionMs.coerceAtLeast(0L)
+            val current = currentPositionMs.coerceIn(0L, durationMs)
+            val target = when {
+                deltaMs > 0L && current > Long.MAX_VALUE - deltaMs -> Long.MAX_VALUE
+                deltaMs < 0L && current < Long.MIN_VALUE - deltaMs -> Long.MIN_VALUE
+                else -> current + deltaMs
             }
+            return target.coerceIn(0L, durationMs)
+        }
+
+        fun horizontalSeekTarget(
+            startPositionMs: Long,
+            deltaX: Float,
+            viewportWidth: Float,
+            durationMs: Long,
+            seekMsPerWidth: Long = 120_000L,
+        ): Long {
+            val upperBound = durationMs.takeIf { it > 0L } ?: Long.MAX_VALUE
+            val start = startPositionMs.coerceIn(0L, upperBound)
+            if (!deltaX.isFinite() || !viewportWidth.isFinite() || viewportWidth <= 0f || seekMsPerWidth <= 0L) {
+                return start
+            }
+            val rawDelta = (deltaX.toDouble() / viewportWidth.toDouble()) * seekMsPerWidth.toDouble()
+            val boundedDelta = rawDelta.coerceIn(-start.toDouble(), (upperBound - start).toDouble())
+            return seekTarget(start, boundedDelta.roundToLong(), upperBound)
+        }
 
         fun verticalDeltaFraction(deltaY: Float, viewportHeight: Int): Float =
             if (viewportHeight <= 0) {
@@ -6109,6 +6185,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private const val MAX_SCALE_FACTOR = 1.10f
         private const val ZOOM_SNAP_THRESHOLD = 1.05f
         private const val ZOOM_FEEDBACK_INTERVAL_MS = 80L
+        private const val SEEK_PREVIEW_INTERVAL_MS = 80L
         private const val MAX_RETRY_ATTEMPTS = 2
         private const val LOCK_AFFORDANCE_TIMEOUT_MS = 2_200L
     }
