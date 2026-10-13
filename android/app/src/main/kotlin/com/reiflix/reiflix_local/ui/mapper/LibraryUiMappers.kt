@@ -78,6 +78,8 @@ object LibraryUiMappers {
             durationMinutes = metadata.intOrNull("duration"),
             studio = metadata.stringOrNull("studio"),
             seasonLabel = metadata.stringOrNull("season"),
+            announcedEpisodeCount = metadata.intOrNull("episodes_count")
+                ?: source.intOrNull("episodes_count"),
         )
     }
 
