@@ -1280,12 +1280,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertTrue(initial is ReiAnixPersonalListService.Result.Success)
         assertEquals(
             listOf(1L),
-            (initial as ReiAnixPersonalListService.Result.Success).value.map { it.animeId },
+            (initial as ReiAnixPersonalListService.Result.Success<List<ReiAnixPersonalListService.Item>>).value.map { it.animeId },
         )
 
         assertTrue(service.remove(1L) is ReiAnixPersonalListService.Result.Success)
         assertTrue(service.remove(1L) is ReiAnixPersonalListService.Result.Success)
-        assertTrue((service.list() as ReiAnixPersonalListService.Result.Success).value.isEmpty())
+        assertTrue((service.list() as ReiAnixPersonalListService.Result.Success<List<ReiAnixPersonalListService.Item>>).value.isEmpty())
 
         val episodeAfterRemoval = repository.getEpisode(7L)
         assertNotNull(episodeAfterRemoval)
@@ -1297,9 +1297,9 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertTrue(service.add(1L) is ReiAnixPersonalListService.Result.Success)
         assertEquals(
             listOf(1L),
-            (service.list() as ReiAnixPersonalListService.Result.Success).value.map { it.animeId },
+            (service.list() as ReiAnixPersonalListService.Result.Success<List<ReiAnixPersonalListService.Item>>).value.map { it.animeId },
         )
-        assertEquals(true, (service.contains(1L) as ReiAnixPersonalListService.Result.Success).value)
+        assertEquals(true, (service.contains(1L) as ReiAnixPersonalListService.Result.Success<Boolean>).value)
     }
 
     @Test
@@ -1311,7 +1311,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertTrue(service.add(999L) is ReiAnixPersonalListService.Result.NotFound)
         assertEquals(
             listOf(1L),
-            (service.list() as ReiAnixPersonalListService.Result.Success).value.map { it.animeId },
+            (service.list() as ReiAnixPersonalListService.Result.Success<List<ReiAnixPersonalListService.Item>>).value.map { it.animeId },
         )
     }
 
