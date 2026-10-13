@@ -47,6 +47,7 @@ internal object ReiAnixLibraryCommandCodec {
         TOGGLE_FAVORITE("toggle_favorite"),
         SET_WATCHED("set_watched"),
         REFRESH("refresh"),
+        PUBLISH_CATALOG("publish_catalog"),
         LOAD_LIBRARY_PAGE("load_library_page"),
         OPEN_MEDIA("open_media"),
         SELECT_SAF("select_saf"),
