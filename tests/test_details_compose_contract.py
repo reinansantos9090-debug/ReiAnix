@@ -70,6 +70,19 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertNotIn("description_original", source)
 
 
+    def test_details_distinguishes_announced_count_from_local_files(self):
+        bridge = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")
+        mapper = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mapper/LibraryUiMappers.kt").read_text(encoding="utf-8")
+        model = EPISODE_MODEL.read_text(encoding="utf-8")
+        details_model = DETAILS_MODEL.read_text(encoding="utf-8")
+        details = DETAILS.read_text(encoding="utf-8")
+        self.assertIn('"episodes_count": meta.get("episodes_count")', bridge)
+        self.assertIn('announcedEpisodeCount = metadata.intOrNull("episodes_count")', mapper)
+        self.assertIn("val announcedEpisodeCount: Int? = null", model)
+        self.assertIn("announcedEpisodeCount = anime.announcedEpisodeCount", details_model)
+        self.assertIn('add("Biblioteca: $count episódios locais")', details)
+        self.assertIn('add("AniList: $count episódios esperados")', details)
+
     def test_details_preserves_and_presents_persisted_alternate_titles(self):
         details = DETAILS.read_text(encoding="utf-8")
         model = DETAILS_MODEL.read_text(encoding="utf-8")
