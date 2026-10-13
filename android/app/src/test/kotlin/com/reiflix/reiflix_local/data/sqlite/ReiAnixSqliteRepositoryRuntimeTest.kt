@@ -1278,10 +1278,17 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
         val initial = service.list()
         assertTrue(initial is ReiAnixPersonalListService.Result.Success)
-        assertEquals(
-            listOf(1L),
-            (initial as ReiAnixPersonalListService.Result.Success<List<ReiAnixPersonalListService.Item>>).value.map { it.animeId },
-        )
+        val initialItems =
+            (initial as ReiAnixPersonalListService.Result.Success<List<ReiAnixPersonalListService.Item>>).value
+        assertEquals(listOf(1L), initialItems.map { it.animeId })
+        assertNull("The canonical schema has no favorite-added timestamp.", initialItems.single().favoritedAtEpochSeconds)
+
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "UPDATE episodes SET progress = ?, watched = ?, last_played_at = ? WHERE id = ?",
+                arrayOf(11.0, 1, 1_700_000_000.0, 7L),
+            )
+        }
 
         assertTrue(service.remove(1L) is ReiAnixPersonalListService.Result.Success)
         assertTrue(service.remove(1L) is ReiAnixPersonalListService.Result.Success)
@@ -1290,8 +1297,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val episodeAfterRemoval = repository.getEpisode(7L)
         assertNotNull(episodeAfterRemoval)
         assertEquals(11.0, episodeAfterRemoval?.progress ?: -1.0, 0.0)
-        assertEquals(false, episodeAfterRemoval?.watched)
-        assertNull(episodeAfterRemoval?.lastPlayedAt)
+        assertEquals(true, episodeAfterRemoval?.watched)
+        assertEquals(1_700_000_000.0, episodeAfterRemoval?.lastPlayedAt ?: -1.0, 0.0)
 
         assertTrue(service.add(1L) is ReiAnixPersonalListService.Result.Success)
         assertTrue(service.add(1L) is ReiAnixPersonalListService.Result.Success)
@@ -1300,6 +1307,21 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             (service.list() as ReiAnixPersonalListService.Result.Success<List<ReiAnixPersonalListService.Item>>).value.map { it.animeId },
         )
         assertEquals(true, (service.contains(1L) as ReiAnixPersonalListService.Result.Success<Boolean>).value)
+
+        val firstToggle = service.toggle(1L)
+        assertTrue(firstToggle is ReiAnixPersonalListService.Result.Success)
+        assertEquals(false, (firstToggle as ReiAnixPersonalListService.Result.Success<Boolean>).value)
+        assertEquals(false, (service.contains(1L) as ReiAnixPersonalListService.Result.Success<Boolean>).value)
+
+        val secondToggle = service.toggle(1L)
+        assertTrue(secondToggle is ReiAnixPersonalListService.Result.Success)
+        assertEquals(true, (secondToggle as ReiAnixPersonalListService.Result.Success<Boolean>).value)
+        assertEquals(true, (service.contains(1L) as ReiAnixPersonalListService.Result.Success<Boolean>).value)
+
+        val episodeAfterAllMembershipChanges = repository.getEpisode(7L)
+        assertEquals(11.0, episodeAfterAllMembershipChanges?.progress ?: -1.0, 0.0)
+        assertEquals(true, episodeAfterAllMembershipChanges?.watched)
+        assertEquals(1_700_000_000.0, episodeAfterAllMembershipChanges?.lastPlayedAt ?: -1.0, 0.0)
     }
 
     @Test
