@@ -1270,6 +1270,58 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         )
     }
 
+    @Test
+    fun personalListMembershipIsIdempotentAndIndependentFromPlaybackProgress() = runBlocking {
+        createCanonicalFixture()
+        val service = ReiAnixPersonalListService(context)
+        val repository = ReiAnixSqliteLibraryRepository(context)
+
+        val initial = service.list()
+        assertTrue(initial is ReiAnixPersonalListService.Result.Success)
+        assertEquals(
+            listOf(1L),
+            (initial as ReiAnixPersonalListService.Result.Success).value.map { it.animeId },
+        )
+
+        assertTrue(service.remove(1L) is ReiAnixPersonalListService.Result.Success)
+        assertTrue(service.remove(1L) is ReiAnixPersonalListService.Result.Success)
+        assertTrue((service.list() as ReiAnixPersonalListService.Result.Success).value.isEmpty())
+
+        val episodeAfterRemoval = repository.getEpisode(7L)
+        assertNotNull(episodeAfterRemoval)
+        assertEquals(11.0, episodeAfterRemoval?.progress ?: -1.0, 0.0)
+        assertEquals(false, episodeAfterRemoval?.watched)
+        assertNull(episodeAfterRemoval?.lastPlayedAt)
+
+        assertTrue(service.add(1L) is ReiAnixPersonalListService.Result.Success)
+        assertTrue(service.add(1L) is ReiAnixPersonalListService.Result.Success)
+        assertEquals(
+            listOf(1L),
+            (service.list() as ReiAnixPersonalListService.Result.Success).value.map { it.animeId },
+        )
+        assertEquals(true, (service.contains(1L) as ReiAnixPersonalListService.Result.Success).value)
+    }
+
+    @Test
+    fun personalListRejectsMissingAndInvalidAnimeIdsWithoutChangingCatalog() = runBlocking {
+        createCanonicalFixture()
+        val service = ReiAnixPersonalListService(context)
+
+        assertTrue(service.add(0L) is ReiAnixPersonalListService.Result.Failure)
+        assertTrue(service.add(999L) is ReiAnixPersonalListService.Result.NotFound)
+        assertEquals(
+            listOf(1L),
+            (service.list() as ReiAnixPersonalListService.Result.Success).value.map { it.animeId },
+        )
+    }
+
+    @Test
+    fun personalListReportsUnavailableDatabaseInsteadOfTreatingItAsEmpty() = runBlocking {
+        val result = ReiAnixPersonalListService(context).list()
+        assertTrue(result is ReiAnixPersonalListService.Result.Failure)
+        assertFalse(databaseFile.exists())
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()
