@@ -68,7 +68,7 @@ class RegressionBaselineTests(unittest.TestCase):
         self.assertIn("cache_cover",anilist)
         self.assertIn("class ArtworkEngine",artwork)
 
-    def test_player_contracts_and_horizontal_swipe_seek_is_forbidden(self):
+    def test_player_contracts_and_horizontal_swipe_seek_is_supported(self):
         player=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
         main=self.read("main.py")
         for token in ("player_error","player_exited"):
@@ -79,7 +79,7 @@ class RegressionBaselineTests(unittest.TestCase):
             "PLAYER_DOUBLE_TAP",
             "PLAYER_LONG_PRESS",
             "VERTICAL",
-            "GESTURE_HORIZONTAL_IGNORED",
+            "GestureMode.HORIZONTAL_SEEK",
             "seekTarget",
             "adjustBrightness",
             "adjustVolumeByFraction",
@@ -87,16 +87,13 @@ class RegressionBaselineTests(unittest.TestCase):
             "restoreSystemUiBeforeExit",
         ):
             self.assertIn(token,player)
-        self.assertNotIn("HORIZONTAL_SEEK", player)
-        self.assertNotIn("horizontalSeekDelta", player)
-        self.assertNotIn("gestures.horizontal_swipe_seek", main)
+        self.assertIn("PlayerGesturePolicy.horizontalSeekTarget", player)
+        self.assertIn("GESTURE_END type=horizontal_seek", player)
 
 
-    # Compatibility alias kept because the blocking contract runner invokes the
-    # historical test name directly. The assertion body follows the current
-    # earlier validation stage 04 rule: generic horizontal swipe must not seek.
+    # Compatibility alias retained for the existing contract runner.
     def test_player_contracts_and_horizontal_seek_are_present(self):
-        self.test_player_contracts_and_horizontal_swipe_seek_is_forbidden()
+        self.test_player_contracts_and_horizontal_swipe_seek_is_supported()
 
     def test_existing_ui_async_guardrails_are_present(self):
         home=self.read("views/home_view.py")
