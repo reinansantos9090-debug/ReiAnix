@@ -52,6 +52,7 @@ class ReiAnixDetailsInstrumentedTest {
                             favorite = true,
                             artwork = ReiAnixArtworkUiModel(null, null),
                             episodeCount = 12,
+                            announcedEpisodeCount = 24,
                             playbackTargetEpisodeId = 71L,
                             shouldContinue = true,
                         ),
@@ -68,6 +69,7 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithText("2026").assertIsDisplayed()
         composeRule.onNodeWithText("Nota 8.6/10").assertIsDisplayed()
         composeRule.onNodeWithText("Biblioteca: 12 episódios locais").assertIsDisplayed()
+        composeRule.onNodeWithText("AniList: 24 episódios esperados").assertIsDisplayed()
         composeRule.onNodeWithText("Action").assertIsDisplayed()
         composeRule.onNodeWithText("Drama").assertIsDisplayed()
         composeRule.onNodeWithText("Continuar").performClick()
