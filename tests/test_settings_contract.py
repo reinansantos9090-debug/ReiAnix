@@ -89,9 +89,8 @@ class SettingsContractTests(unittest.TestCase):
 
     def test_player_contracts_stay_intact(self):
         player = self.read(PLAYER)
-        self.assertIn("GESTURE_HORIZONTAL_IGNORED", player)
-        self.assertNotIn("horizontalSeekDelta", player)
-        self.assertNotIn("setting_gestures_horizontal_swipe_seek", player)
+        self.assertIn("GestureMode.HORIZONTAL_SEEK", player)
+        self.assertIn("PlayerGesturePolicy.horizontalSeekTarget", player)
         self.assertIn("ExoPlayer.Builder(this).build()", player)
         self.assertIn("MediaItem.Builder()", player)
         self.assertIn("restoreSystemUiBeforeExit", player)
