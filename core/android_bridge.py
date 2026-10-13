@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -447,12 +448,21 @@ class AndroidBridge:
             raise ValueError("A reprodução requer um episode_id válido.") from exc
         normalized_position_ms = None
         if position_ms is not None:
+            invalid_position = "position_ms deve ser um inteiro não negativo quando informado."
             if isinstance(position_ms, bool):
-                raise ValueError("position_ms deve ser um inteiro não negativo quando informado.")
-            try:
-                normalized_position_ms = max(0, int(position_ms))
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise ValueError("position_ms deve ser um inteiro não negativo quando informado.") from exc
+                raise ValueError(invalid_position)
+            if isinstance(position_ms, int):
+                parsed_position_ms = position_ms
+            elif isinstance(position_ms, str):
+                raw_position_ms = position_ms.strip()
+                if not re.fullmatch(r"[+-]?\\d+", raw_position_ms):
+                    raise ValueError(invalid_position)
+                parsed_position_ms = int(raw_position_ms)
+            else:
+                # Do not coerce floats/Decimals: int(123.9) silently truncates
+                # and can turn an invalid caller value into a valid seek point.
+                raise ValueError(invalid_position)
+            normalized_position_ms = max(0, parsed_position_ms)
         return await self._launch(
             "play",
             uri=normalized_uri,
