@@ -4912,8 +4912,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun updateMetadataControls(positionMs: Long) {
         if (!::root.isInitialized) return
         val position = positionMs.coerceAtLeast(0L)
-        val opening = localMetadata.opening
-        val ending = localMetadata.ending
+        val duration = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
+        val opening = localMetadata.opening?.takeIf { duration == null || it.endMs <= duration }
+        val ending = localMetadata.ending?.takeIf { duration == null || it.endMs <= duration }
         findViewByTag<TextView>("reiflix_skip_opening")?.visibility =
             if (opening != null && position >= opening.startMs && position < opening.endMs) View.VISIBLE else View.GONE
         findViewByTag<TextView>("reiflix_skip_ending")?.visibility =
