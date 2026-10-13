@@ -70,8 +70,14 @@ class DeviceCompatibilityContractTests(unittest.TestCase):
         self.assertNotIn("windowOptOutEdgeToEdgeEnforcement", manifest)
         workflow = INSTRUMENTED_WORKFLOW.read_text(encoding="utf-8")
         player = PLAYER_ACTIVITY.read_text(encoding="utf-8")
-        self.assertIn("SCREEN_ORIENTATION_FULL_SENSOR", player)
-        self.assertIn("requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR", player)
+        rotation_start = player.index("private fun applyConfiguredRotation()")
+        rotation_end = player.index("private fun aspectLabelFromSetting", rotation_start)
+        rotation = player[rotation_start:rotation_end]
+        self.assertIn('requestedOrientation = when (intent.getStringExtra("setting_player_rotation") ?: "auto")', rotation)
+        self.assertIn('"portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT', rotation)
+        self.assertIn('"landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE', rotation)
+        self.assertIn('else -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR', rotation)
+        self.assertNotIn("requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR", rotation)
 
     def test_home_filter_dialog_uses_logical_window_width(self):
         source = HOME.read_text(encoding="utf-8")
