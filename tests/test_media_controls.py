@@ -61,7 +61,7 @@ class NativeMediaControlsTests(unittest.TestCase):
     def test_notification_does_not_restore_an_unverifiable_local_uri(self):
         # A restored Activity could outlive transient SAF grants or create a second player.
         self.assertIn("override fun createCurrentContentIntent(player: Player): PendingIntent? = null", self.controls)
-        self.assertIn("createCurrentContentIntent() returns null intencionalmente", (ROOT / "docs/MEDIA_CONTROLS.md").read_text(encoding="utf-8"))
+        self.assertIn("createCurrentContentIntent() retorna null intencionalmente", (ROOT / "docs/MEDIA_CONTROLS.md").read_text(encoding="utf-8"))
         self.assertIn("notificationManager.setPlayer(null)", self.controls)
 
     def test_artwork_is_explicitly_deferred_without_a_native_cache_reference(self):
