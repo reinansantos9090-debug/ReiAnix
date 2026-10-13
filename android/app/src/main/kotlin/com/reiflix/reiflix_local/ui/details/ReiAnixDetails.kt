@@ -725,7 +725,10 @@ private fun DetailsHero(
         anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { add(statusLabel(it)) }
         anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { add(formatLabel(it)) }
         anime.episodeCount?.takeIf { it > 0 }?.let { count ->
-            add(if (count == 1) "1 episódio" else "$count episódios")
+            add("Biblioteca: $count episódios locais")
+        }
+        anime.announcedEpisodeCount?.takeIf { it > 0 }?.let { count ->
+            add("AniList: $count episódios esperados")
         }
         anime.seasons.size.takeIf { it > 0 }?.let { count ->
             add(if (count == 1) "1 temporada" else "$count temporadas")
