@@ -1015,8 +1015,11 @@ class TestNativePlayerHardening(unittest.TestCase):
 
     def test_player_uses_media3_dependencies(self):
         gradle = (ROOT / "android" / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+        prepare = (ROOT / "scripts" / "prepare_flet_template.py").read_text(encoding="utf-8")
         self.assertIn('implementation("androidx.media3:media3-exoplayer:1.11.1")', gradle)
         self.assertIn('implementation("androidx.media3:media3-ui:1.11.1")', gradle)
+        self.assertIn('implementation("androidx.media3:media3-session:1.11.1")', gradle)
+        self.assertIn('"androidx.media3:media3-session:1.11.1"', prepare)
 
     def test_pip_entry_requires_a_live_session_and_updates_video_aspect_ratio(self):
         player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
