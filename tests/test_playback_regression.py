@@ -54,7 +54,8 @@ class PlaybackRegressionTests(unittest.TestCase):
         self.assertIn("target_position_ms = None", MAIN)
         self.assertIn("target_watched", MAIN)
         prepare = PLAYER[PLAYER.index("private fun prepareCurrentMedia"):PLAYER.index("private fun createPlayerListener")]
-        self.assertIn("restoredPositionMs ?: intent.getLongExtra(\"positionMs\", 0L)", prepare)
+        self.assertIn("initialPositionMsForGeneration = (restoredPositionMs", prepare)
+        self.assertIn("?: intent.getLongExtra(\"positionMs\", 0L)", prepare)
         self.assertIn("!intent.getBooleanExtra(\"positionMsSpecified\", intent.hasExtra(\"positionMs\"))", prepare)
         reuse = PLAYER[PLAYER.index("override fun onNewIntent"):PLAYER.index("private fun currentEpisodeId")]
         self.assertIn("restoredPositionMs = null", reuse)
