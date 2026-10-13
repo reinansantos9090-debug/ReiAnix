@@ -2,6 +2,8 @@ package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
 import android.database.sqlite.SQLiteException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Native API for the personal list currently represented by LibraryStore's
@@ -24,7 +26,8 @@ class ReiAnixPersonalListService(
         val animeId: Long,
         val anilistId: Long?,
         val title: String,
-        val addedAtEpochSeconds: Double,
+        /** No canonical favorite-association timestamp exists in the current schema. */
+        val favoritedAtEpochSeconds: Double? = null,
     )
 
     sealed interface Result<out T> {
@@ -34,14 +37,14 @@ class ReiAnixPersonalListService(
         data class Failure(val cause: Throwable) : Result<Nothing>
     }
 
-    suspend fun list(): Result<List<Item>> = try {
+    suspend fun list(): Result<List<Item>> = withContext(Dispatchers.IO) { try {
         Result.Success(database.read { db ->
             db.rawQuery(
                 """
-                SELECT id, anilist_id, title, added_at
+                SELECT id, anilist_id, title
                 FROM anime
                 WHERE COALESCE(favorite, 0) = 1
-                ORDER BY added_at DESC, id ASC
+                ORDER BY title COLLATE NOCASE ASC, id ASC
                 """.trimIndent(),
                 null,
             ).use { cursor ->
@@ -49,7 +52,6 @@ class ReiAnixPersonalListService(
                     val idColumn = cursor.getColumnIndexOrThrow("id")
                     val anilistColumn = cursor.getColumnIndexOrThrow("anilist_id")
                     val titleColumn = cursor.getColumnIndexOrThrow("title")
-                    val addedAtColumn = cursor.getColumnIndexOrThrow("added_at")
                     while (cursor.moveToNext()) {
                         add(
                             Item(
@@ -57,8 +59,7 @@ class ReiAnixPersonalListService(
                                 anilistId = if (cursor.isNull(anilistColumn)) null
                                     else cursor.getLong(anilistColumn),
                                 title = cursor.getString(titleColumn).orEmpty(),
-                                addedAtEpochSeconds = if (cursor.isNull(addedAtColumn)) 0.0
-                                    else cursor.getDouble(addedAtColumn),
+                                favoritedAtEpochSeconds = null,
                             ),
                         )
                     }
@@ -69,7 +70,7 @@ class ReiAnixPersonalListService(
         Result.Failure(error)
     } catch (error: IllegalStateException) {
         Result.Failure(error)
-    }
+    } }
 
     suspend fun contains(animeId: Long): Result<Boolean> {
         if (animeId <= 0L) return Result.Failure(
@@ -93,7 +94,7 @@ class ReiAnixPersonalListService(
         if (animeId <= 0L) return Result.Failure(
             IllegalArgumentException("animeId must be a positive persisted ID."),
         )
-        return try {
+        return withContext(Dispatchers.IO) { try {
             database.transaction { db ->
                 val exists = db.rawQuery(
                     "SELECT favorite FROM anime WHERE id = ? LIMIT 1",
@@ -116,14 +117,14 @@ class ReiAnixPersonalListService(
             Result.Failure(error)
         } catch (error: IllegalStateException) {
             Result.Failure(error)
-        }
+        } }
     }
 
     private suspend fun setMembership(animeId: Long, included: Boolean): Result<Boolean> {
         if (animeId <= 0L) return Result.Failure(
             IllegalArgumentException("animeId must be a positive persisted ID."),
         )
-        return try {
+        return withContext(Dispatchers.IO) { try {
             database.transaction { db ->
                 val current = db.rawQuery(
                     "SELECT favorite FROM anime WHERE id = ? LIMIT 1",
@@ -144,6 +145,6 @@ class ReiAnixPersonalListService(
             Result.Failure(error)
         } catch (error: IllegalStateException) {
             Result.Failure(error)
-        }
+        } }
     }
 }
