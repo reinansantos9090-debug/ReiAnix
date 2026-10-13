@@ -14,7 +14,8 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
         val episodeId: Long, val positionMs: Long?, val durationMs: Long?,
         val watched: Boolean, val lastPlayedAtEpochSeconds: Double?,
     ) {
-        val hasSavedPosition: Boolean get() = positionMs != null && lastPlayedAtEpochSeconds != null
+        // Legacy rows may retain a valid progress value without last_played_at.
+        val hasSavedPosition: Boolean get() = positionMs != null
         val isInProgress: Boolean get() = (positionMs ?: 0L) > 0L && !watched
     }
 

@@ -12,6 +12,18 @@ class ReiAnixConsumptionServicePolicyTest {
         assertFalse(neverPlayed.hasSavedPosition); assertTrue(savedZero.hasSavedPosition)
         assertTrue(neverPlayed.positionMs == null); assertTrue(savedZero.positionMs == 0L)
     }
+    @Test fun legacyProgressRemainsResumableWithoutPlayedAtTimestamp() {
+        val legacy = ReiAnixConsumptionService.Progress(
+            episodeId = 4L,
+            positionMs = 42_000L,
+            durationMs = 120_000L,
+            watched = false,
+            lastPlayedAtEpochSeconds = null,
+        )
+        assertTrue(legacy.hasSavedPosition)
+        assertTrue(legacy.isInProgress)
+    }
+
     @Test fun watchedAndInProgressStatesAreMutuallyExclusive() {
         val active = ReiAnixConsumptionService.Progress(2L, 20_000L, 100_000L, false, 12.0)
         val completed = ReiAnixConsumptionService.Progress(2L, 95_000L, 100_000L, true, 13.0)

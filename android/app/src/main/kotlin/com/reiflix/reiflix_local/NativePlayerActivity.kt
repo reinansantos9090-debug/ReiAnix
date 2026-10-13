@@ -1265,7 +1265,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
 
         val requestedStartPositionMs = initialPositionMsForGeneration
-        val allowNativeResumeLookup = restoredPositionMs == null && !intent.hasExtra("positionMs")
+        val allowNativeResumeLookup = restoredPositionMs == null &&
+                    !intent.getBooleanExtra("positionMsSpecified", intent.hasExtra("positionMs"))
         pendingPreparation = playbackWorker.submit {
             try {
                 preflightStartedAtMs = System.currentTimeMillis()

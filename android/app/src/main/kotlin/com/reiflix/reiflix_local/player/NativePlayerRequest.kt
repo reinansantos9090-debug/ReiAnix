@@ -27,6 +27,8 @@ data class NativePlayerRequest(
     val transitionDirection: String,
     val title: String,
     val positionMs: Long,
+    /** Whether the caller supplied a resume point, rather than relying on native history. */
+    val positionWasExplicit: Boolean = false,
     val canNext: Boolean,
     val canPrevious: Boolean,
     val autoplay: Boolean,
@@ -71,6 +73,7 @@ data class NativePlayerRequest(
             .putExtra("transitionDirection", transitionDirection)
             .putExtra("title", title)
             .putExtra("positionMs", positionMs)
+            .putExtra("positionMsSpecified", positionWasExplicit)
             .putExtra("canNext", canNext)
             .putExtra("canPrevious", canPrevious)
             .putExtra("autoplay", autoplay)
@@ -126,6 +129,7 @@ data class NativePlayerRequest(
                     ?: "NONE",
                 title = get("title") ?: "Episódio",
                 positionMs = get("position_ms")?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
+                positionWasExplicit = get("position_ms") != null,
                 canNext = get("can_next")?.toBooleanStrictOrNull() ?: false,
                 canPrevious = get("can_previous")?.toBooleanStrictOrNull() ?: false,
                 autoplay = get("autoplay")?.toBooleanStrictOrNull() ?: true,
