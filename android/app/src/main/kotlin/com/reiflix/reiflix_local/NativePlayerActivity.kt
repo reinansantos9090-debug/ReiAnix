@@ -818,12 +818,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             autoplayNext = savedInstanceState?.takeIf { it.containsKey("autoplay_next") }?.getBoolean("autoplay_next")
                 ?: intent.getBooleanExtra("autoplay", true)
 
-            val savedSpeed = savedInstanceState?.takeIf { it.containsKey("playback_speed") }
+            val requestedSpeed = savedInstanceState?.takeIf { it.containsKey("playback_speed") }
                 ?.getFloat("playback_speed")
                 ?: intent.getFloatExtra("setting_player_default_speed", 1f)
-            if (savedSpeed > 0f && savedSpeed.isFinite()) {
-                player.setPlaybackSpeed(savedSpeed)
-            }
+            player.setPlaybackSpeed(PlayerGesturePolicy.normalizePlaybackSpeed(requestedSpeed))
 
             val savedResize = savedInstanceState?.takeIf { it.containsKey("resize_mode") }
                 ?.getInt("resize_mode", AspectRatioFrameLayout.RESIZE_MODE_FIT)
@@ -1065,8 +1063,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             "setting_player_default_speed",
             if (::player.isInitialized) player.playbackParameters.speed else 1f,
         )
-        if (incomingDefaultSpeed.isFinite() && incomingDefaultSpeed > 0f) {
-            if (::player.isInitialized) player.setPlaybackSpeed(incomingDefaultSpeed)
+        if (::player.isInitialized) {
+            player.setPlaybackSpeed(PlayerGesturePolicy.normalizePlaybackSpeed(incomingDefaultSpeed))
         }
         if (incomingLockMode != locked) {
             setLocked(incomingLockMode, persist = false, announce = false)
@@ -6075,6 +6073,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         fun clampZoom(scale: Float, minZoom: Float, maxZoom: Float): Float =
             scale.coerceIn(minZoom, maxZoom)
+
+        fun normalizePlaybackSpeed(speed: Float): Float =
+            if (speed.isFinite() && speed in SUPPORTED_PLAYBACK_SPEEDS) speed else 1f
+
+        private val SUPPORTED_PLAYBACK_SPEEDS = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
         fun panBounds(
             displayedWidth: Float,
