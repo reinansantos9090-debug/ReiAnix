@@ -98,6 +98,7 @@ object ReiAnixDetailsUiStateProjection {
                     englishTitle = anime.englishTitle,
                     nativeTitle = anime.nativeTitle,
                     aliases = anime.aliases,
+                    announcedEpisodeCount = anime.announcedEpisodeCount,
                     status = anime.status,
                     format = anime.format,
                     durationMinutes = anime.durationMinutes,
