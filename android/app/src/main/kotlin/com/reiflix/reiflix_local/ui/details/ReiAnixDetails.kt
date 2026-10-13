@@ -1072,7 +1072,7 @@ private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
             .map { it.lowercase(Locale.ROOT) }
             .toSet()
         val alternateTitles = anime.aliases.asSequence()
-            .map(String::trim)
+            .map { it.trim() }
             .filter(String::isNotEmpty)
             .filter { it.lowercase(Locale.ROOT) !in knownTitles }
             .distinctBy { it.lowercase(Locale.ROOT) }
