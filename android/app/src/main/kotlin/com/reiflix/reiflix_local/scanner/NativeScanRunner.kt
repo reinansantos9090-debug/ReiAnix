@@ -452,7 +452,7 @@ object NativeScanRunner {
                     NativeScanController.complete(
                         scanId,
                         when {
-                            committedIndexReport.get() != null -> terminalResult?.optString("status").orEmpty().ifBlank { scanStatusSafe() }
+                            committedIndexReport.get() != null -> terminalResult?.optString("status").orEmpty().ifBlank { SafScanner.STATUS_COMPLETED }
                             published -> SafScanner.STATUS_PARTIAL
                             else -> SafScanner.STATUS_FAILED
                         },
