@@ -431,7 +431,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
         }
 
-        val settings = ReiAnixSqliteSettingsRepository(context)
+        val settings = ReiAnixSqliteSettingsRepository(database)
         try {
             settings.setPreferencesAtomically(
                 mapOf("appearance.theme" to "light", "player.resume" to "false"),

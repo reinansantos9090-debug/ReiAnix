@@ -196,7 +196,8 @@ class ReiAnixSqliteLibraryRepository(
                             for (column in 1..18) {
                                 if (!cursor.isNull(column)) append(cursor.getString(column)).append(' ')
                             }
-                            append(cursor.getString(19)).append(' ').append(cursor.getString(20))
+                            if (!cursor.isNull(19)) append(cursor.getString(19)).append(' ')
+                            if (!cursor.isNull(20)) append(cursor.getString(20))
                         }
                         val normalized = normalizeNativeSearchText(searchable)
                         if (!terms.all { term -> normalized.contains(term) }) continue
