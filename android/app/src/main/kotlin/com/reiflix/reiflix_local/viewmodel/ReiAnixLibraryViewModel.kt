@@ -166,8 +166,14 @@ class ReiAnixLibraryViewModel(context: Context) :
                     .put("newUri", result.uri.toString())
                     .put("name", result.name),
             )
-        val queued = withContext(Dispatchers.IO) {
-            NativeMailbox.write(appContext, event)
+        val queued = try {
+            withContext(Dispatchers.IO) {
+                NativeMailbox.write(appContext, event)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            false
         }
         return if (queued) {
             result.copy(catalogReconciliationQueued = true)

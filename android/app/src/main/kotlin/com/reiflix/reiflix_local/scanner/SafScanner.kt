@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -311,7 +312,12 @@ object SafScanner {
                 errors.put("A autorização do provedor SAF foi negada ao ler: "+currentPath)
                 revokedDuringScan=!hasPersistedReadPermission(context,treeUri)
                 Log.w(TAG,"SAF SecurityException",e)
-            }catch(e:Exception){stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("Não foi possível ler: "+currentPath);Log.w(TAG,"SAF provider query failed",e)}
+            }catch(e:Exception){
+                if (e is CancellationException) throw e
+                stats.put("failedQueries",stats.getInt("failedQueries")+1)
+                errors.put("Não foi possível ler: "+currentPath)
+                Log.w(TAG,"SAF provider query failed",e)
+            }
             if(stats.getInt("directories")-lastDirs>=25){lastDirs=stats.getInt("directories");onProgress?.invoke(identityPayload(treeUri).put("phase","scanning").put("source","saf").put("directories",lastDirs).put("files",stats.getInt("files")).put("videos",stats.getInt("videos")).put("currentPath",currentPath))}
         }
         if(shouldCancel())cancelled=true
