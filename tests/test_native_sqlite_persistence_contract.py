@@ -84,6 +84,36 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("fun stagedDocuments(", native_index)
         self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
 
+    def test_native_saf_finalization_records_scan_without_second_catalog_reconciliation(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            store = LibraryStore(data_dir)
+            tree_uri = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
+            store.add_folder(tree_uri, name="Anime", kind="saf", authorization="granted")
+            service = LibraryService(store)
+
+            with patch.object(store, "reconcile_scope_generation", side_effect=AssertionError("duplicate reconciliation")) as reconcile:
+                result = service.finish_ingest_documents(
+                    tree_uri,
+                    source_kind="saf",
+                    scan_id="native-owned-scan",
+                    scope_kind="root",
+                    scope_ref=tree_uri,
+                    scan_generation=1,
+                    generation_id="native:1",
+                    status="completed",
+                    enforce_library_source=False,
+                    native_persistence_owner=True,
+                )
+
+            reconcile.assert_not_called()
+            self.assertIsInstance(result.catalog, list)
+            folder = next(item for item in store.folders() if item["path"] == tree_uri)
+            self.assertEqual(folder["authorization"], "granted")
+            scan = store.scan_by_id("native-owned-scan")
+            self.assertIsNotNone(scan)
+
     def test_metadata_patch_updates_catalog_fields_without_overwriting_user_state(self):
         library = LIBRARY.read_text(encoding="utf-8")
         method_start = library.index("suspend fun updateAnimeMetadata(")
