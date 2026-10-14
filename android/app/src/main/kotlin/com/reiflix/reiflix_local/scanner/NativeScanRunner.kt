@@ -433,9 +433,9 @@ object NativeScanRunner {
                                         }
                                     } else {
                                         Log.e(TAG, "SQLite reported COMMITTED without a report; fallback remains disabled.")
-                                        NativeIndex.markNativeCatalogOutcomeUnknown(
+                                        NativeIndex.markNativeCatalogCommittedWithoutReport(
                                             appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
-                                            "SQLite commit was reported without a usable index report.",
+                                            "SQLite commit was confirmed but its index report was unavailable.",
                                         )
                                     }
                                 }
@@ -511,7 +511,7 @@ object NativeScanRunner {
                                 else -> "OUTCOME_UNKNOWN"
                             }
 
-                            if (!rollbackConfirmed) {
+                            if (!rollbackConfirmed && !committedWithoutReport) {
                                 runCatching {
                                     NativeIndex.markNativeCatalogOutcomeUnknown(
                                         appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
