@@ -9,6 +9,7 @@ import com.reiflix.reiflix_local.data.sqlite.NativeDiscoveredMedia
 import com.reiflix.reiflix_local.data.sqlite.NativeLibraryScanSnapshot
 import com.reiflix.reiflix_local.data.sqlite.NativeLibraryIndexReport
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteTransactionOutcome
 import org.json.JSONObject
 import org.json.JSONArray
 import kotlinx.coroutines.CancellationException
@@ -169,6 +170,7 @@ object NativeScanRunner {
         // Set inside the repository immediately after endTransaction() returns. This
         // distinguishes a rollback from cancellation of withContext result delivery.
         val committedIndexReport = AtomicReference<NativeLibraryIndexReport?>(null)
+        val indexTransactionOutcome = AtomicReference<ReiAnixSqliteTransactionOutcome?>(null)
 
         fun recoveryDocuments(): JSONArray? {
             val prior = terminalResult
@@ -417,13 +419,42 @@ object NativeScanRunner {
                                 appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
                             )
                         ) { "Could not persist the native catalog transaction start receipt." }
-                        val indexReport = ReiAnixSqliteLibraryRepository(appContext).indexDiscoveredMedia(snapshot) { report ->
-                            committedIndexReport.set(report)
-                            if (!NativeIndex.markNativeCatalogCommitted(
-                                    appContext, NativeIndex.SOURCE_SAF, scanKey, generationId, report,
-                                )
-                            ) {
-                                Log.e(TAG, "Native SQLite commit succeeded but its durable commit receipt could not be recorded.")
+                        val indexReport = ReiAnixSqliteLibraryRepository(appContext).indexDiscoveredMedia(snapshot) { outcome, report ->
+                            indexTransactionOutcome.set(outcome)
+                            when (outcome) {
+                                ReiAnixSqliteTransactionOutcome.COMMITTED -> {
+                                    if (report != null) {
+                                        committedIndexReport.set(report)
+                                        if (!NativeIndex.markNativeCatalogCommitted(
+                                                appContext, NativeIndex.SOURCE_SAF, scanKey, generationId, report,
+                                            )
+                                        ) {
+                                            Log.e(TAG, "Native SQLite commit succeeded but its durable commit receipt could not be recorded.")
+                                        }
+                                    } else {
+                                        Log.e(TAG, "SQLite reported COMMITTED without a report; fallback remains disabled.")
+                                        NativeIndex.markNativeCatalogOutcomeUnknown(
+                                            appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
+                                            "SQLite commit was reported without a usable index report.",
+                                        )
+                                    }
+                                }
+                                ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
+                                    runCatching {
+                                        NativeIndex.markNativeCatalogNotCommitted(
+                                            appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
+                                            "SQLite transaction rolled back before a commit was confirmed.",
+                                        )
+                                    }.onFailure { Log.w(TAG, "Could not persist the confirmed rollback receipt.", it) }
+                                }
+                                ReiAnixSqliteTransactionOutcome.UNKNOWN -> {
+                                    runCatching {
+                                        NativeIndex.markNativeCatalogOutcomeUnknown(
+                                            appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
+                                            "SQLite transaction finalization did not provide a definitive outcome.",
+                                        )
+                                    }.onFailure { Log.w(TAG, "Could not persist the unknown transaction outcome.", it) }
+                                }
                             }
                         }
                         nativeIndexingStatus = if (indexReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL"
@@ -466,60 +497,72 @@ object NativeScanRunner {
                                 .put("resultDeliveryCancelled", nativeIndexingCancelled))
                                 .put("nativeLibraryIndexOwner", true)
                         } else {
-                            // No commit receipt is observed; the transaction helper has exited
-                            // without the post-commit callback, so ownership can safely transfer.
                             nativeIndexingCancelled = indexError is CancellationException
                             nativeIndexingFailed = true
-                            nativeIndexingStatus = if (nativeIndexingCancelled) "CANCELLED_AFTER_ROLLBACK" else "FAILED"
-                            Log.e(TAG, "Native SQLite library indexing failed; discovery snapshot is preserved.", indexError)
-                            if (committedReport == null) {
-                            runCatching {
-                                NativeIndex.markNativeCatalogNotCommitted(
-                                    appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
-                                    indexError.message ?: indexError::class.java.simpleName,
-                                )
-                            }.onFailure { Log.w(TAG, "Could not persist the native rollback receipt; restart recovery will be conservative.", it) }
-                        }
-                        val fallbackAvailable = fallbackDocuments != null
-                            // A failed canonical catalog write must never leave a completed nested
-                            // scan status behind. Without a verified snapshot, preserve existing rows
-                            // and require a controlled rescan rather than attempting reconciliation.
+                            Log.e(TAG, "Native SQLite library indexing did not return a confirmed commit report.", indexError)
+                            val transactionOutcome = indexTransactionOutcome.get()
+                            val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK
+                            val committedWithoutReport = transactionOutcome == ReiAnixSqliteTransactionOutcome.COMMITTED
+                            val fallbackAvailable = rollbackConfirmed && fallbackDocuments != null
+                            nativeIndexingStatus = when {
+                                committedWithoutReport -> "COMMITTED_REPORT_UNAVAILABLE"
+                                rollbackConfirmed && nativeIndexingCancelled -> "CANCELLED_AFTER_ROLLBACK"
+                                rollbackConfirmed -> "FAILED_ROLLED_BACK"
+                                else -> "OUTCOME_UNKNOWN"
+                            }
+
+                            if (!rollbackConfirmed) {
+                                runCatching {
+                                    NativeIndex.markNativeCatalogOutcomeUnknown(
+                                        appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
+                                        indexError.message ?: "SQLite transaction outcome could not be confirmed.",
+                                    )
+                                }.onFailure { Log.w(TAG, "Could not persist the conservative transaction outcome.", it) }
+                            }
+
+                            val recovery = when {
+                                fallbackAvailable -> "LEGACY_INGESTION_REQUIRED"
+                                rollbackConfirmed -> "DISCOVERY_SNAPSHOT_UNAVAILABLE"
+                                committedWithoutReport -> "NATIVE_COMMIT_CONFIRMED"
+                                else -> "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED"
+                            }
+                            val recoveryMessage = when {
+                                fallbackAvailable && nativeIndexingCancelled ->
+                                    "native SQLite transaction rolled back after cancellation; serialized fallback ingestion required"
+                                fallbackAvailable ->
+                                    "native SQLite transaction rolled back; serialized fallback ingestion required"
+                                rollbackConfirmed ->
+                                    "native SQLite transaction rolled back but verified discovery snapshot is unavailable; preserve catalog and rescan"
+                                committedWithoutReport ->
+                                    "native SQLite transaction committed but its report is unavailable; fallback disabled; controlled rescan required"
+                                else ->
+                                    "native SQLite transaction outcome unknown; fallback disabled to avoid a second writer; preserve catalog and rescan"
+                            }
                             val fallbackStats = result.optJSONObject("stats") ?: JSONObject()
                             fallbackStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)
                             val fallbackErrors = fallbackStats.optJSONArray("errors")
                                 ?: org.json.JSONArray().also { fallbackStats.put("errors", it) }
-                            fallbackErrors.put(
-                                when {
-                                    nativeIndexingCancelled && fallbackAvailable ->
-                                        "native SQLite indexing cancelled after rollback; serialized fallback ingestion required"
-                                    nativeIndexingCancelled ->
-                                        "native SQLite indexing cancelled after rollback; verified discovery snapshot unavailable; preserve catalog and rescan"
-                                    fallbackAvailable ->
-                                        "native SQLite indexing failed; serialized fallback ingestion required"
-                                    else ->
-                                        "native SQLite indexing failed; verified discovery snapshot unavailable; preserve catalog and rescan"
-                                }
-                            )
+                            fallbackErrors.put(recoveryMessage)
                             result.put("stats", fallbackStats)
                                 .put("cancelled", nativeIndexingCancelled)
                             result.put("nativeLibraryIndex", JSONObject()
-                                .put("status", "FAILED")
+                                .put("status", nativeIndexingStatus)
                                 .put("errorType", indexError::class.java.simpleName)
-                                .put("recovery", if (fallbackAvailable) "LEGACY_INGESTION_REQUIRED" else "DISCOVERY_SNAPSHOT_UNAVAILABLE"))
-                                // The transaction helper ends the failed SQLite transaction before this
-                                // catch runs. Publish the same scan's snapshot for one serialized
-                                // fallback writer; never claim native ownership after a rollback.
-                                .put("nativeLibraryIndexOwner", false)
-                                .put("documents", fallbackDocuments ?: org.json.JSONArray())
-                            // This diagnostic is secondary. Its failure must not prevent the terminal
-                            // event from carrying the recovery snapshot to the serialized writer.
+                                .put("commitOutcome", transactionOutcome?.name ?: "UNKNOWN")
+                                .put("recovery", recovery))
+                                .put("nativeLibraryIndexOwner", !rollbackConfirmed)
+                                .put("documents", if (rollbackConfirmed) fallbackDocuments ?: JSONArray() else JSONArray())
+
+                            // The diagnostic is secondary; the terminal event remains the recovery
+                            // channel for either a confirmed rollback or an uncertain transaction.
                             runCatching {
                                 NativeMailbox.write(appContext, JSONObject()
                                     .put("type", "native_library_index_error")
                                     .put("requestId", requestId ?: "")
                                     .put("payload", JSONObject().put("scanId", scanId)
                                         .put("scope", runCatching { SafScanner.treeIdentity(treeUri).identity }.getOrDefault(""))
-                                        .put("status", "FAILED")
+                                        .put("status", nativeIndexingStatus)
+                                        .put("commitOutcome", transactionOutcome?.name ?: "UNKNOWN")
                                         .put("errorType", indexError::class.java.simpleName)))
                             }.onFailure { mailboxError ->
                                 Log.w(TAG, "Could not publish native index diagnostic; terminal SAF event retains recovery state.", mailboxError)
