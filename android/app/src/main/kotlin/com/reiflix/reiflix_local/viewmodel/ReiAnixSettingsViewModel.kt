@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.viewmodel
 
 import android.content.Context
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsRepository
@@ -13,10 +14,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @Keep
-class ReiAnixSettingsViewModel(context: Context) :
-    ReiAnixViewModel<ReiAnixSettingsUiState>() {
+class ReiAnixSettingsViewModel(
+    context: Context,
+    dependencies: ReiAnixAppDependencies? = null,
+) : ReiAnixViewModel<ReiAnixSettingsUiState>() {
 
-    private val repository = ReiAnixSettingsRepository(context)
+    private val repository = ReiAnixSettingsRepository(
+        context,
+        sharedSqliteSettingsRepository = dependencies?.sqliteSettingsRepository,
+    )
     override val uiState: StateFlow<ReiAnixSettingsUiState> = repository.state
 
     /**
