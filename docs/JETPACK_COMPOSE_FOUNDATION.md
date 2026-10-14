@@ -11,8 +11,13 @@ MainActivity is still a FlutterFragmentActivity supplied by the Flet-generated A
 Compose shell is the visible application surface for the migrated routes, but the app is not yet an
 independent Android runtime: library/settings projections and several domain operations still use
 NativeMailbox and Python services. Prompt 24 must not remove the generated host until those contracts
-have native equivalents. The Compose host now owns Back at its Home root and closes the Activity
-instead of forwarding the root Back action to the hidden Flet navigator.
+have native equivalents. Back ownership is split deliberately during the migration. Navigation Compose removes one native
+back-stack entry for an internal destination; top-level native routes return to Home (Storage returns
+to Settings). At the Home root, `ReiAnixComposeLibraryHost.handleBack()` returns `false`, allowing
+`MainActivity`'s single guarded callback to forward one `flutterEngine.navigationChannel.popRoute()`
+to the existing Flet/Python `NavigationController`. That legacy controller remains responsible for
+the established exit policy while the generated Flet host is active. Compose does not finish the
+Activity or define a second exit-confirmation policy.
 
 NativePlayerActivity remains a View-based ComponentActivity using Media3. No player UI migration is
 performed here.

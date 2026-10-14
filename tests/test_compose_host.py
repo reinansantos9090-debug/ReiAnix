@@ -127,6 +127,38 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("engine.navigationChannel.popRoute()", source)
         self.assertIn("setId(R.id.reianix_compose_app_shell)", host)
 
+    def test_home_back_contract_delegates_once_without_activity_exit(self):
+        host = HOST.read_text(encoding="utf-8")
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        handler_start = host.index("fun handleBack(): Boolean")
+        handler_end = host.index("fun dispose()", handler_start)
+        handler = host[handler_start:handler_end]
+        dispatch_start = activity.index("private fun installSystemBackHandler")
+        dispatch_end = activity.index("private fun persistedSafTreeUris", dispatch_start)
+        dispatch = activity[dispatch_start:dispatch_end]
+
+        self.assertIn("ReiAnixRoutes.HOME -> false", handler)
+        self.assertIn("canonical Flet/Python NavigationController", handler)
+        self.assertNotIn("activity.finish()", handler)
+        self.assertNotIn("finishAndRemoveTask()", handler)
+        self.assertNotIn("finishAffinity()", handler)
+        self.assertNotIn("Toast", handler)
+        self.assertEqual(dispatch.count("engine.navigationChannel.popRoute()"), 1)
+        self.assertIn("if (systemBackDispatchPosted)", dispatch)
+        self.assertIn("finally {", dispatch)
+        self.assertIn("window.decorView.post { systemBackDispatchPosted = false }", dispatch)
+
+    def test_compose_internal_back_pops_only_one_native_stack_entry(self):
+        host = HOST.read_text(encoding="utf-8")
+        handler_start = host.index("fun handleBack(): Boolean")
+        handler_end = host.index("fun dispose()", handler_start)
+        handler = host[handler_start:handler_end]
+
+        self.assertIn("if (controller.previousBackStackEntry != null)", handler)
+        self.assertEqual(handler.count("controller.popBackStack()"), 1)
+        self.assertIn("controller.navigateToTopLevel(ReiAnixRoutes.HOME)", handler)
+        self.assertIn("controller.navigateToTopLevel(ReiAnixRoutes.SETTINGS)", handler)
+
     def test_compose_navigation_uses_stable_saveable_scoping(self):
         host = HOST.read_text(encoding="utf-8")
         search = (

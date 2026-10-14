@@ -14,10 +14,10 @@ class BackLifecycleTests(unittest.TestCase):
     def read(self, path):
         return path.read_text(encoding="utf-8")
 
-    def test_main_activity_forwards_system_back_to_flet_without_finishing_or_mailbox_navigation(self):
+    def test_main_activity_forwards_one_unconsumed_system_back_and_clears_guard(self):
         source = self.read(MAIN_ACTIVITY)
         self.assertIn("import androidx.activity.OnBackPressedCallback", source)
-        self.assertIn("onBackPressedDispatcher.addCallback(", source)
+        self.assertEqual(source.count("onBackPressedDispatcher.addCallback("), 1)
         self.assertIn("engine.navigationChannel.popRoute()", source)
         self.assertIn("BACK_PHYSICAL_RECEIVED", source)
         self.assertIn("BACK_FLUTTER_POP_SENT", source)
@@ -25,8 +25,14 @@ class BackLifecycleTests(unittest.TestCase):
         handler = source[source.index("private fun installSystemBackHandler"):source.index("private fun persistedSafTreeUris")]
         self.assertNotIn("finish()", handler)
         self.assertLess(handler.index("systemBackDispatchPosted = true"), handler.index("composeLibraryHost.handleBack()"))
+        self.assertIn("if (systemBackDispatchPosted)", handler)
+        self.assertEqual(handler.count("engine.navigationChannel.popRoute()"), 1)
         self.assertIn("try {", handler)
         self.assertIn("finally {", handler)
+        self.assertIn("window.decorView.post { systemBackDispatchPosted = false }", handler)
+        self.assertLess(handler.index("engine.navigationChannel.popRoute()"), handler.index("finally {"))
+        self.assertIn("if (composeLibraryHost.handleBack())", handler)
+        self.assertIn("return", handler[handler.index("if (composeLibraryHost.handleBack())"):handler.index("val engine = flutterEngine")])
 
     def test_flet_view_pop_dispatches_exactly_one_logical_back_operation(self):
         source = self.read(MAIN)
@@ -73,11 +79,16 @@ class BackLifecycleTests(unittest.TestCase):
     def test_compose_root_does_not_bypass_the_canonical_exit_policy(self):
         host = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
         activity = self.read(MAIN_ACTIVITY)
+        root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
         self.assertNotIn("Pressione voltar novamente para sair", host)
         self.assertNotIn("Toast.makeText", host)
         self.assertNotIn("finishAndRemoveTask", host)
-        self.assertIn("ReiAnixRoutes.HOME -> false", host)
+        self.assertNotIn("finishAffinity(", host)
+        self.assertNotIn("activity.finish()", root)
+        self.assertIn("ReiAnixRoutes.HOME -> false", root)
+        self.assertIn("Python NavigationController", root)
         self.assertIn("engine.navigationChannel.popRoute()", activity)
+        self.assertIn("page.on_view_pop = handle_flet_view_pop", self.read(MAIN))
 
     def test_player_finish_is_idempotent_while_exiting(self):
         source = self.read(PLAYER_ACTIVITY)
