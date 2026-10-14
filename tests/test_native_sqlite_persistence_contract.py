@@ -94,7 +94,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         # A failed native transaction must relinquish ownership and carry the same
         # generation's verified discovery snapshot to the serialized legacy fallback.
         self.assertIn('put("nativeLibraryIndexOwner", false)', runner)
-        self.assertIn('put("documents", if (rollbackConfirmed) fallbackDocuments ?: JSONArray() else JSONArray())', runner)
+        self.assertIn('put("documents", if (fallbackAvailable) fallbackDocuments ?: JSONArray() else JSONArray())', runner)
         self.assertIn("LEGACY_INGESTION_REQUIRED", runner)
         self.assertIn('fallbackStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
         self.assertIn("serialized fallback ingestion required", runner)
@@ -107,7 +107,10 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("ReiAnixSqliteTransactionOutcome.ROLLED_BACK", database_source)
         self.assertIn("ReiAnixSqliteTransactionOutcome.UNKNOWN", database_source)
         self.assertIn("val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK", runner)
-        self.assertIn("val fallbackAvailable = rollbackConfirmed && fallbackDocuments != null", runner)
+        self.assertIn("val ownershipTransferred = rollbackConfirmed && rollbackReceiptPersisted.get()", runner)
+        self.assertIn("val fallbackAvailable = ownershipTransferred && fallbackDocuments != null", runner)
+        self.assertIn("ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED", runner)
+        self.assertIn("if (!persisted)", runner)
         self.assertIn("markNativeCatalogOutcomeUnknown", runner)
         self.assertIn("markNativeCatalogCommittedWithoutReport", runner)
         self.assertIn("committedIndexReport.set(report)", runner)
