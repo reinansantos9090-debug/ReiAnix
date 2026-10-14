@@ -597,6 +597,58 @@ object NativeIndex {
         documents
     }
 
+    /**
+     * Returns verified positive discoveries for recovery without treating them as a complete
+     * inventory. It first uses the persisted committed/staged contracts, then handles the narrow
+     * crash window in which finishGeneration atomically moved the current staging file to its
+     * generation-specific .ndjson path but failed before the JSON index metadata was saved.
+     * This last path is allowed only for recovery protocol v1 and before a native commit is
+     * confirmed, so its data can only be used for partial, non-destructive ingestion.
+     */
+    fun recoveryDocuments(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+    ): JSONArray? = synchronized(this) {
+        if (generation <= 0L) return@synchronized null
+        val state = read(context)
+        val scope = scopes(state).optJSONObject(scopeKey) ?: return@synchronized null
+        if (scope.optString("source") != source ||
+            scope.optString("scopeKey") != scopeKey ||
+            scope.optLong("generation", 0L) != generation
+        ) return@synchronized null
+
+        committedDocuments(context, source, scopeKey)?.let { return@synchronized it }
+        stagedDocuments(context, source, scopeKey, generation)?.let { return@synchronized it }
+
+        if (scope.optInt("recoveryProtocolVersion", 0) != 1 ||
+            scope.optString("nativeCatalogWriteOutcome") !in setOf("NOT_STARTED", "NOT_COMMITTED")
+        ) return@synchronized null
+
+        val batchDir = runCatching { batchDirectory(context).canonicalFile }.getOrNull()
+            ?: return@synchronized null
+        val expected = committedFile(context, source, scopeKey, generation)
+        val target = runCatching { expected.canonicalFile }.getOrNull() ?: return@synchronized null
+        if (target.parentFile != batchDir ||
+            target.name != expected.name ||
+            !target.name.endsWith(".ndjson") ||
+            !target.isFile
+        ) return@synchronized null
+
+        val documents = JSONArray()
+        val readable = runCatching {
+            BufferedReader(InputStreamReader(FileInputStream(target), Charsets.UTF_8)).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isBlank()) continue
+                    documents.put(JSONObject(line))
+                }
+            }
+        }.isSuccess
+        if (readable) documents else null
+    }
+
     fun prepare(context: Context, source: String, scopeKey: String, input: JSONArray, complete: Boolean,
                 metadata: JSONObject = JSONObject(), generation: Long = 0L, status: String = ""): NativePrepared = synchronized(this) {
         val state = read(context)
@@ -858,10 +910,8 @@ object NativeIndex {
                     scope.optString("committedGenerationId") == scope.optString("generationId")
 
             val documents = when (outcome) {
-                "NOT_STARTED", "NOT_COMMITTED" -> {
-                    if (completeSnapshotPublished) committedDocuments(context, SOURCE_SAF, key)
-                    else stagedDocuments(context, SOURCE_SAF, key, generation)
-                }
+                "NOT_STARTED", "NOT_COMMITTED" ->
+                    recoveryDocuments(context, SOURCE_SAF, key, generation)
                 else -> null
             }
             pending.put(

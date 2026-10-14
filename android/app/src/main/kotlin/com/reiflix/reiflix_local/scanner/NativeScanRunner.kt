@@ -194,7 +194,9 @@ object NativeScanRunner {
             }
             if (committedIndexReport.get() != null) return null
             return runCatching {
-                if (scanGenerationFinished && publishedCompleteGeneration) {
+                NativeIndex.recoveryDocuments(
+                    appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
+                ) ?: if (scanGenerationFinished && publishedCompleteGeneration) {
                     NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey)
                 } else {
                     NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
@@ -487,7 +489,19 @@ object NativeScanRunner {
                             }
                         }
                         nativeIndexingStatus = if (indexReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL"
-                        if (complete && !indexReport.reconciliationAuthorized) nativeIndexingFailed = true
+                        if (complete && !indexReport.reconciliationAuthorized) {
+                            nativeIndexingFailed = true
+                            val partialStats = result.optJSONObject("stats") ?: JSONObject()
+                            partialStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)
+                            val partialErrors = partialStats.optJSONArray("errors")
+                                ?: JSONArray().also { partialStats.put("errors", it) }
+                            val reconciliationMessage =
+                                "native SQLite preserved positive discoveries but did not authorize full reconciliation; previous rows were preserved"
+                            if ((0 until partialErrors.length()).none { partialErrors.optString(it) == reconciliationMessage }) {
+                                partialErrors.put(reconciliationMessage)
+                            }
+                            result.put("stats", partialStats)
+                        }
                         result.put("nativeLibraryIndex", JSONObject()
                             .put("status", nativeIndexingStatus)
                             .put("inserted", indexReport.inserted)
