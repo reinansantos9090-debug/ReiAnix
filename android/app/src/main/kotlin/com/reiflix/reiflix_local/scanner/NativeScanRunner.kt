@@ -10,6 +10,7 @@ import com.reiflix.reiflix_local.data.sqlite.NativeLibraryScanSnapshot
 import com.reiflix.reiflix_local.data.sqlite.NativeLibraryIndexReport
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import org.json.JSONObject
+import org.json.JSONArray
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.atomic.AtomicReference
 
@@ -37,9 +38,83 @@ object NativeScanRunner {
         // Once discovery generation publication succeeds, later mailbox failures must not
         // discard its committed snapshot; a controlled rescan can recover UI/catalog state.
         var scanGenerationFinished = false
+        var publishedCompleteGeneration = false
+        var terminalEventPublished = false
+        var terminalResult: JSONObject? = null
         // Set inside the repository immediately after endTransaction() returns. This
         // distinguishes a rollback from cancellation of withContext result delivery.
         val committedIndexReport = AtomicReference<NativeLibraryIndexReport?>(null)
+
+        fun recoveryDocuments(): JSONArray? {
+            val prior = terminalResult
+            val priorRecovery = prior?.optJSONObject("nativeLibraryIndex")?.optString("recovery").orEmpty()
+            if (prior != null && prior.optBoolean("nativeLibraryIndexOwner").not() &&
+                priorRecovery != "DISCOVERY_SNAPSHOT_UNAVAILABLE"
+            ) {
+                prior.optJSONArray("documents")?.let { return it }
+            }
+            if (committedIndexReport.get() != null) return null
+            return runCatching {
+                if (scanGenerationFinished && publishedCompleteGeneration) {
+                    NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey)
+                } else {
+                    NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
+                }
+            }.onFailure { error ->
+                Log.w(TAG, "Could not read a verified SAF discovery snapshot for recovery.", error)
+            }.getOrNull()
+        }
+
+        fun publishRecoveryTerminal(message: String, cancelled: Boolean): Boolean {
+            val committedReport = committedIndexReport.get()
+            val payload = terminalResult ?: SafScanner.identityPayload(treeUri)
+            val documents = if (committedReport == null) recoveryDocuments() else null
+            if (committedReport == null) {
+                val stats = payload.optJSONObject("stats") ?: JSONObject()
+                stats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true).put("cancelled", cancelled)
+                val errors = stats.optJSONArray("errors") ?: JSONArray().also { stats.put("errors", it) }
+                if ((0 until errors.length()).none { errors.optString(it) == message }) errors.put(message)
+                payload.put("stats", stats)
+                    .put("documents", documents ?: JSONArray())
+                    .put("nativeLibraryIndexOwner", false)
+                    .put("status", SafScanner.STATUS_PARTIAL)
+                    .put("partial", true)
+                    .put("cancelled", cancelled)
+                val indexState = payload.optJSONObject("nativeLibraryIndex") ?: JSONObject()
+                indexState.put("recovery", if (documents != null) "LEGACY_INGESTION_REQUIRED" else "DISCOVERY_SNAPSHOT_UNAVAILABLE")
+                    .put("terminalError", message)
+                payload.put("nativeLibraryIndex", indexState)
+            } else {
+                // A confirmed native commit remains authoritative; never fall back to Python
+                // just because final event delivery failed after SQLite committed.
+                val indexState = payload.optJSONObject("nativeLibraryIndex") ?: JSONObject()
+                indexState.put("commitOutcome", "COMMITTED")
+                    .put("terminalDeliveryError", message)
+                payload.put("nativeLibraryIndex", indexState)
+                    .put("nativeLibraryIndexOwner", true)
+            }
+            payload.put("requestId", requestId ?: "")
+                .put("scanId", scanId)
+                .put("scanGeneration", generationId)
+                .put("generationId", NativeIndex.generationId(NativeIndex.SOURCE_SAF, scanKey, generationId))
+                .put("scopeKind", "root")
+                .put("scopeRef", reference)
+                .put("source", "saf")
+                .put("scope", runCatching { SafScanner.treeIdentity(treeUri).identity }.getOrDefault(""))
+            val written = runCatching {
+                NativeMailbox.writeOrThrow(
+                    appContext,
+                    JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", payload),
+                )
+            }.onFailure { error ->
+                Log.e(TAG, "Could not publish terminal SAF recovery state; retaining staging data.", error)
+            }.isSuccess
+            if (written) {
+                terminalResult = payload
+                terminalEventPublished = true
+            }
+            return written
+        }
 
             try {
                 NativeIndex.markGenerationRunning(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
@@ -84,6 +159,7 @@ object NativeScanRunner {
                         batch,
                     )
                 }
+                terminalResult = result
                 val partial = result.optBoolean("partial")
                 val rawScanStatus = result.optString("status").uppercase()
                 val scanStatus = when {
@@ -121,6 +197,7 @@ object NativeScanRunner {
                         .put("scanId", scanId),
                 )
                 scanGenerationFinished = true
+                publishedCompleteGeneration = status == NativeIndex.STATUS_COMPLETED || status == NativeIndex.STATUS_EMPTY_COMPLETE
                 var nativeIndexingFailed = false
                 var nativeIndexingCancelled = false
                 var cancellationAfterCommittedIndex = false
@@ -313,6 +390,7 @@ object NativeScanRunner {
                     .put("volumeId", result.optString("volumeId"))
                     .put("status", if (nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) SafScanner.STATUS_PARTIAL else scanStatus)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
+                terminalEventPublished = true
                 NativeScanController.complete(
                     scanId,
                     when {
@@ -326,29 +404,61 @@ object NativeScanRunner {
                     throw CancellationException("SAF native indexing cancellation was handled according to the confirmed transaction outcome.")
                 }
             } catch (exception: CancellationException) {
-                // If a post-commit receipt exists, the terminal outcome was already published;
-                // do not overwrite its successful controller state with a false cancellation.
-                if (committedIndexReport.get() == null) {
-                    NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
+                if (!terminalEventPublished) {
+                    val published = publishRecoveryTerminal(
+                        if (recoveryDocuments() != null) {
+                            "SAF scan cancelled; verified discoveries were handed to serialized partial ingestion."
+                        } else {
+                            "SAF scan cancelled before a verified discovery snapshot was available; catalog preserved; rescan required."
+                        },
+                        cancelled = true,
+                    )
+                    if (published && committedIndexReport.get() == null && !scanGenerationFinished) {
+                        runCatching {
+                            NativeIndex.failGeneration(
+                                appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
+                                "SAF scan cancelled after publishing a non-destructive recovery receipt.",
+                                JSONObject().put("treeUri", reference),
+                            )
+                        }.onFailure { Log.w(TAG, "Could not finalize cancelled SAF generation metadata.", it) }
+                    }
+                    if (committedIndexReport.get() == null) {
+                        NativeScanController.complete(
+                            scanId,
+                            "CANCELLED",
+                            terminalResult ?: JSONObject().put("cancelled", true),
+                        )
+                    }
                 }
                 throw exception
             } catch (exception: Exception) {
                 Log.e(TAG, "SAF scan failed", exception)
-                NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", exception::class.java.simpleName))
-                // A published generation owns a durable discovery snapshot. If terminal
-                // mailbox delivery fails later, keep that snapshot for a controlled rescan instead
-                // of cleaning the batch files that may be needed for recovery.
-                if (!scanGenerationFinished) {
-                    NativeIndex.failGeneration(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
-                        exception.message ?: "SAF scan failed",
-                        JSONObject().put("treeUri", reference))
+                if (!terminalEventPublished) {
+                    val message = if (recoveryDocuments() != null) {
+                        "SAF scan failed; verified discoveries were handed to serialized partial ingestion."
+                    } else {
+                        "SAF scan failed before a verified discovery snapshot was available; catalog preserved; rescan required."
+                    }
+                    val published = publishRecoveryTerminal(message, cancelled = false)
+                    if (published && committedIndexReport.get() == null && !scanGenerationFinished) {
+                        runCatching {
+                            NativeIndex.failGeneration(
+                                appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
+                                exception.message ?: "SAF scan failed after publishing a non-destructive recovery receipt.",
+                                JSONObject().put("treeUri", reference),
+                            )
+                        }.onFailure { Log.w(TAG, "Could not finalize failed SAF generation metadata.", it) }
+                    }
+                    NativeScanController.complete(
+                        scanId,
+                        when {
+                            committedIndexReport.get() != null -> terminalResult?.optString("status").orEmpty().ifBlank { scanStatusSafe() }
+                            published -> SafScanner.STATUS_PARTIAL
+                            else -> SafScanner.STATUS_FAILED
+                        },
+                        terminalResult ?: JSONObject().put("errorType", exception::class.java.simpleName),
+                    )
                 }
-                NativeMailbox.write(appContext, JSONObject().put("type", "saf_error")
-                    .put("requestId", requestId ?: "")
-                    .put("message", "Não foi possível atualizar esta pasta autorizada.")
-                    .put("payload", SafScanner.identityPayload(treeUri).put("scanId", scanId)
-                        .put("generationId", "native:" + generationId).put("status", NativeIndex.STATUS_FAILED)
-                        .put("source", "saf")))
             } finally {
                 NativeScanController.finish(scanId)
             }
