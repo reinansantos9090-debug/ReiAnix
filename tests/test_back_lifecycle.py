@@ -88,7 +88,7 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn("ReiAnixRoutes.HOME -> false", root)
         self.assertIn("Python NavigationController", root)
         self.assertIn("engine.navigationChannel.popRoute()", activity)
-        self.assertIn("page.on_view_pop = handle_flet_view_pop", self.read(MAIN))
+        self.assertEqual(activity.count("engine.navigationChannel.popRoute()"), 1)
 
     def test_player_finish_is_idempotent_while_exiting(self):
         source = self.read(PLAYER_ACTIVITY)
