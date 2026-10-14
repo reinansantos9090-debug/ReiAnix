@@ -17,7 +17,7 @@ import java.util.Locale
  * database. Ordinary repository operations reject a schema that fails the
  * contract; inspectSchema() remains diagnostic and returns the incompatibilities.
  */
-internal enum class ReiAnixSqliteTransactionOutcome {
+enum class ReiAnixSqliteTransactionOutcome {
     COMMITTED,
     ROLLED_BACK,
     UNKNOWN,
