@@ -135,6 +135,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("fun pendingSafRecovery(context: Context): JSONArray", native_index)
         self.assertIn("fun recoveryDocuments(", native_index)
         self.assertIn('target.name.endsWith(".ndjson")', native_index)
+        self.assertIn('documents.length() == recordedProcessed', native_index)
+        self.assertIn('documents.length() == 0', native_index)
         self.assertIn('scope.optString("nativeCatalogWriteOutcome") !in setOf("NOT_STARTED", "NOT_COMMITTED")', native_index)
         self.assertIn("NativeIndex.recoveryDocuments(", runner)
         self.assertIn('partialStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)

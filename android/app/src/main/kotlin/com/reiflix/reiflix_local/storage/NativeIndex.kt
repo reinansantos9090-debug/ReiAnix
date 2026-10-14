@@ -646,7 +646,23 @@ object NativeIndex {
                 }
             }
         }.isSuccess
-        if (readable) documents else null
+        if (!readable) return@synchronized null
+
+        // A moved file whose positive-count receipt disagrees is truncated/corrupt and must not
+        // be handed to a second writer. The only count-less acceptable case is an empty file:
+        // finishGeneration creates that exact generation file for a verified empty scan, and its
+        // recovery receipt remains PARTIAL/non-destructive (it never authorizes missing-state
+        // reconciliation).
+        val counts = scope.optJSONObject("counts")
+        val recordedProcessed = counts?.takeIf { it.has("processed") }?.optInt("processed", -1)
+        val countMatches = when {
+            recordedProcessed != null && recordedProcessed >= 0 ->
+                documents.length() == recordedProcessed
+            recordedProcessed == null ->
+                documents.length() == 0
+            else -> false
+        }
+        if (countMatches) documents else null
     }
 
     fun prepare(context: Context, source: String, scopeKey: String, input: JSONArray, complete: Boolean,
