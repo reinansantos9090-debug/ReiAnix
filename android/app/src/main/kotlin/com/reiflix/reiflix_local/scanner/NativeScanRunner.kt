@@ -173,8 +173,17 @@ object NativeScanRunner {
         val committedIndexReport = AtomicReference<NativeLibraryIndexReport?>(null)
         val indexTransactionOutcome = AtomicReference<ReiAnixSqliteTransactionOutcome?>(null)
         val rollbackReceiptPersisted = AtomicBoolean(false)
+        val nativeIndexingCheckpointAttempted = AtomicBoolean(false)
+
+        fun canTransferToFallback(): Boolean {
+            if (committedIndexReport.get() != null) return false
+            if (!nativeIndexingCheckpointAttempted.get()) return true
+            return indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK &&
+                rollbackReceiptPersisted.get()
+        }
 
         fun recoveryDocuments(): JSONArray? {
+            if (!canTransferToFallback()) return null
             val prior = terminalResult
             val priorRecovery = prior?.optJSONObject("nativeLibraryIndex")?.optString("recovery").orEmpty()
             if (prior != null && prior.has("nativeLibraryIndexOwner") &&
@@ -198,20 +207,32 @@ object NativeScanRunner {
         fun publishRecoveryTerminal(message: String, cancelled: Boolean): Boolean {
             val committedReport = committedIndexReport.get()
             val payload = terminalResult ?: SafScanner.identityPayload(treeUri)
-            val documents = if (committedReport == null) recoveryDocuments() else null
+            val fallbackOwnershipAllowed = committedReport == null && canTransferToFallback()
+            val documents = if (fallbackOwnershipAllowed) recoveryDocuments() else null
             if (committedReport == null) {
                 val stats = payload.optJSONObject("stats") ?: JSONObject()
                 stats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true).put("cancelled", cancelled)
                 val errors = stats.optJSONArray("errors") ?: JSONArray().also { stats.put("errors", it) }
                 if ((0 until errors.length()).none { errors.optString(it) == message }) errors.put(message)
+                val outcome = indexTransactionOutcome.get()
+                val recovery = when {
+                    !fallbackOwnershipAllowed && outcome == ReiAnixSqliteTransactionOutcome.COMMITTED ->
+                        "NATIVE_COMMIT_CONFIRMED"
+                    !fallbackOwnershipAllowed && outcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
+                        "ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED"
+                    !fallbackOwnershipAllowed -> "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED"
+                    documents != null -> "LEGACY_INGESTION_REQUIRED"
+                    else -> "DISCOVERY_SNAPSHOT_UNAVAILABLE"
+                }
                 payload.put("stats", stats)
                     .put("documents", documents ?: JSONArray())
-                    .put("nativeLibraryIndexOwner", false)
+                    .put("nativeLibraryIndexOwner", !fallbackOwnershipAllowed)
                     .put("status", SafScanner.STATUS_PARTIAL)
                     .put("partial", true)
                     .put("cancelled", cancelled)
                 val indexState = payload.optJSONObject("nativeLibraryIndex") ?: JSONObject()
-                indexState.put("recovery", if (documents != null) "LEGACY_INGESTION_REQUIRED" else "DISCOVERY_SNAPSHOT_UNAVAILABLE")
+                indexState.put("recovery", recovery)
+                    .put("commitOutcome", outcome?.name ?: if (nativeIndexingCheckpointAttempted.get()) "UNKNOWN" else "NOT_STARTED")
                     .put("terminalError", message)
                 payload.put("nativeLibraryIndex", indexState)
             } else {
@@ -416,6 +437,7 @@ object NativeScanRunner {
                                 scopeReference = reference,
                                 scanGeneration = generationId,
                             )
+                        nativeIndexingCheckpointAttempted.set(true)
                         check(
                             NativeIndex.markNativeCatalogIndexing(
                                 appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
@@ -613,14 +635,21 @@ object NativeScanRunner {
                 }
             } catch (exception: CancellationException) {
                 if (!terminalEventPublished) {
-                    val published = publishRecoveryTerminal(
-                        if (recoveryDocuments() != null) {
+                    val canTransfer = canTransferToFallback()
+                    val snapshotAvailable = canTransfer && recoveryDocuments() != null
+                    val message = when {
+                        !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
+                            "SAF scan cancelled after confirmed SQLite commit; fallback disabled."
+                        !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
+                            "SAF scan cancelled after rollback, but the matching recovery receipt was not persisted; fallback disabled; rescan required."
+                        !canTransfer ->
+                            "SAF scan cancelled with an unconfirmed SQLite transaction outcome; catalog preserved; rescan required."
+                        snapshotAvailable ->
                             "SAF scan cancelled; verified discoveries were handed to serialized partial ingestion."
-                        } else {
+                        else ->
                             "SAF scan cancelled before a verified discovery snapshot was available; catalog preserved; rescan required."
-                        },
-                        cancelled = true,
-                    )
+                    }
+                    val published = publishRecoveryTerminal(message, cancelled = true)
                     if (published && committedIndexReport.get() == null && !scanGenerationFinished) {
                         runCatching {
                             NativeIndex.failGeneration(
@@ -642,10 +671,19 @@ object NativeScanRunner {
             } catch (exception: Exception) {
                 Log.e(TAG, "SAF scan failed", exception)
                 if (!terminalEventPublished) {
-                    val message = if (recoveryDocuments() != null) {
-                        "SAF scan failed; verified discoveries were handed to serialized partial ingestion."
-                    } else {
-                        "SAF scan failed before a verified discovery snapshot was available; catalog preserved; rescan required."
+                    val canTransfer = canTransferToFallback()
+                    val snapshotAvailable = canTransfer && recoveryDocuments() != null
+                    val message = when {
+                        !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
+                            "SAF scan failed after confirmed SQLite commit; fallback disabled."
+                        !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
+                            "SAF scan failed after rollback, but the matching recovery receipt was not persisted; fallback disabled; rescan required."
+                        !canTransfer ->
+                            "SAF scan failed with an unconfirmed SQLite transaction outcome; catalog preserved; rescan required."
+                        snapshotAvailable ->
+                            "SAF scan failed; verified discoveries were handed to serialized partial ingestion."
+                        else ->
+                            "SAF scan failed before a verified discovery snapshot was available; catalog preserved; rescan required."
                     }
                     val published = publishRecoveryTerminal(message, cancelled = false)
                     if (published && committedIndexReport.get() == null && !scanGenerationFinished) {
