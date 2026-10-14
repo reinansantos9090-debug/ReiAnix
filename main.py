@@ -5551,6 +5551,7 @@ async def main(page: ft.Page):
                                         scan_errors=stats.get('errors', []),
                                         scan_stats=stats,
                                         enforce_library_source=True,
+                                        native_persistence_owner=payload.get('nativeLibraryIndexOwner') is True,
                                     )
                                     catalog=final_result.catalog
                                 videos = int(stats.get('videos') or 0)
