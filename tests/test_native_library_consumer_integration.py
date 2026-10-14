@@ -33,9 +33,13 @@ class NativeLibraryConsumerIntegrationTest(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         trigger_section = workflow.split("concurrency:", 1)[0]
         self.assertIn("workflow_dispatch:", trigger_section)
-        self.assertIn("pull_request:", trigger_section)
+        self.assertNotIn("pull_request:", trigger_section)
         self.assertNotIn("push:", trigger_section)
         self.assertNotIn("workflow_run:", trigger_section)
+        # The workflow remains executable on explicit demand; the tests themselves
+        # must not be triggered implicitly by PR or push events.
+        self.assertIn("Execute Kotlin JVM unit tests", workflow)
+        self.assertIn(":app:testDebugUnitTest", workflow)
 
 
 if __name__ == "__main__":
