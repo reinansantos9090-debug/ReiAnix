@@ -2,7 +2,7 @@ case_id	path	library_root	anime_title	season	episode_number	absolute_number	kind
 explicit_sxxexx	One Piece S02E03.mkv	-	One Piece	2	3	-	regular	high	true
 word_episode_marker	Frieren Episode 1.mkv	-	Frieren	1	1	-	regular	high	true
 ova_marker	Show OVA 01.mkv	-	Show	-	1	-	ova	high	true
-movie_marker	Show Movie.mkv	-	Show	-	-	movie	high	true
+movie_marker	Show Movie.mkv	-	Show	-	-	-	movie	high	true
 folder_context_without_episode	/library/Naruto/Season 2/teaser.mkv	/library	Naruto	2	-	-	unknown	low	true
 numeric_only_in_folder	/library/Naruto/Season 1/03.mkv	/library	Naruto	1	-	-	unknown	low	true
 unsupported_extension_still_parses	Show Episode 12.xyz	-	Show	1	12	-	regular	high	false
