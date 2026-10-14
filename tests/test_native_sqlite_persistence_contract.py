@@ -93,7 +93,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
         # A failed native transaction must relinquish ownership and carry the same
         # generation's verified discovery snapshot to the serialized legacy fallback.
-        self.assertIn('put("nativeLibraryIndexOwner", false)', runner)
+        self.assertIn('put("nativeLibraryIndexOwner", !ownershipTransferred)', runner)
+        self.assertIn('put("nativeLibraryIndexOwner", !fallbackOwnershipAllowed)', runner)
         self.assertIn('put("documents", if (fallbackAvailable) fallbackDocuments ?: JSONArray() else JSONArray())', runner)
         self.assertIn("LEGACY_INGESTION_REQUIRED", runner)
         self.assertIn('fallbackStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
