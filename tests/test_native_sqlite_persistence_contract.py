@@ -88,6 +88,12 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("sourceFolder = reference", runner)
         self.assertIn("fun stagedDocuments(", native_index)
         self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
+        # A failed native transaction must relinquish ownership and carry the same
+        # generation's verified discovery snapshot to the serialized legacy fallback.
+        self.assertIn('put("nativeLibraryIndexOwner", false)', runner)
+        self.assertIn('put("documents", fallbackDocuments ?: org.json.JSONArray())', runner)
+        self.assertIn("LEGACY_INGESTION_REQUIRED", runner)
+        self.assertIn('if payload.get("documents") and payload.get("nativeLibraryIndexOwner") is not True', main)
 
     def test_native_saf_finalization_records_scan_without_second_catalog_reconciliation(self):
         from unittest.mock import patch
@@ -120,6 +126,71 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             self.assertEqual(folder["authorization"], "granted")
             scan = store.scan_by_id("native-owned-scan")
             self.assertIsNotNone(scan)
+
+    def test_native_index_rollback_snapshot_is_recoverable_once_without_destructive_reconciliation(self):
+        from core.library_service import LibraryService
+        from core.library_store import LibraryStore
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            store = LibraryStore(data_dir)
+            source = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
+            previous = {
+                "uri": "content://media/previous",
+                "name": "Show S01E01.mkv",
+                "relativePath": "Show/Show S01E01.mkv",
+                "mimeType": "video/x-matroska",
+                "size": 1024,
+                "modifiedAt": 1000,
+                "volumeId": "primary",
+                "volumeUuid": "primary",
+            }
+            recovered = {
+                "uri": "content://media/recovered",
+                "name": "Show S01E02.mkv",
+                "relativePath": "Show/Show S01E02.mkv",
+                "mimeType": "video/x-matroska",
+                "size": 2048,
+                "modifiedAt": 2000,
+                "volumeId": "primary",
+                "volumeUuid": "primary",
+            }
+            service = LibraryService(store)
+            service.ingest_documents(source, [previous], scan_id="before-native-failure", scope_kind="root", scope_ref=source)
+            # This models the terminal event emitted only after the native SQLite
+            # transaction has rolled back. The partial receipt must not authorize
+            # reconciliation, while the discovered item is still persisted.
+            service.ingest_documents(
+                source,
+                [recovered],
+                scan_id="native-index-failed",
+                source_kind="saf",
+                scope_kind="root",
+                scope_ref=source,
+                scan_generation=12,
+                scan_stats={"status": "partial", "partial": True, "generationId": "native:12"},
+                scan_errors=["native SQLite index failed; serialized fallback used"],
+            )
+            first = store.physical_row(recovered["uri"])
+            self.assertIsNotNone(first)
+            self.assertFalse(first["missing"])
+            self.assertFalse(store.physical_row(previous["uri"])["missing"])
+
+            # Replaying the same terminal scan is idempotent and cannot create a
+            # second episode or observation for the recovered physical identity.
+            service.ingest_documents(
+                source,
+                [recovered],
+                scan_id="native-index-failed",
+                source_kind="saf",
+                scope_kind="root",
+                scope_ref=source,
+                scan_generation=12,
+                scan_stats={"status": "partial", "partial": True, "generationId": "native:12"},
+                scan_errors=["native SQLite index failed; serialized fallback used"],
+            )
+            rows = [episode for anime in store.catalog() for season in anime["seasons"] for episode in season["episodes"]]
+            self.assertEqual(2, len(rows))
+            self.assertEqual("partial", store.scan_by_id("native-index-failed")["status"])
 
     def test_metadata_patch_updates_catalog_fields_without_overwriting_user_state(self):
         library = LIBRARY.read_text(encoding="utf-8")
