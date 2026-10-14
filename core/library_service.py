@@ -1569,8 +1569,8 @@ class LibraryService:
             self.store.update_scan_progress(run_id, result.__dict__, request_id=request_id, source=source_kind, volume_id=scope_ref if scope_kind=="volume" else None, scope=scope_ref, batch_id=batch_id, batch_number=batch_number, batch_size=batch_size if batch_size is not None else len(documents or []), discovered=len(documents or []), processed=result.files, inserted=result.new, elapsed_ms=elapsed_ms, errors=result.errors)
             return {"scan_id":scan_id,"request_id":request_id,"generation_id":generation_id or scan_id,"batch_id":batch_id,"batch_number":batch_number,"batch_size":batch_size if batch_size is not None else len(documents or []),"files":result.files,"videos":result.videos,"processed":result.files,"discovered":len(documents or []),"inserted":result.new,"new":result.new,"updated":result.updated,"unchanged":result.unchanged,"duplicates":result.duplicates,"removed":0,"ignored":result.ignored,"unknown":result.unknown,"errors":result.errors,"elapsed_ms":elapsed_ms,"elapsedMs":elapsed_ms}
 
-    def finish_ingest_documents(self, tree_uri: str, *, source_kind="saf", scan_id=None, scope_kind="global", scope_ref=None, scan_generation=None, generation_id=None, status="completed", folder_name=None, scan_errors=None, scan_stats=None, enforce_library_source=False):
-        """Finalize a native scan; only a trusted COMPLETE generation reconciles."""
+    def finish_ingest_documents(self, tree_uri: str, *, source_kind="saf", scan_id=None, scope_kind="global", scope_ref=None, scan_generation=None, generation_id=None, status="completed", folder_name=None, scan_errors=None, scan_stats=None, enforce_library_source=False, native_persistence_owner=False):
+        """Finalize scan bookkeeping; only the persistence owner may reconcile catalog rows."""
         with self._scan_lock:
             scan_id = scan_id or str(uuid.uuid4()); scope_ref = scope_ref or tree_uri
             if enforce_library_source:
@@ -1594,9 +1594,15 @@ class LibraryService:
             generation = int(scan_generation) if scan_generation is not None else None
             reconciled = 0
             if complete:
-                reconciled = self.store.reconcile_scope_generation(tree_uri, source_kind=source_kind, scope_kind=scope_kind, scope_ref=scope_ref, native_generation=generation, complete=True)
-                for anime_id in sorted(self.store.generation_anime_ids(source_kind=source_kind, scope_kind=scope_kind, scope_ref=scope_ref, native_generation=generation)): self.artwork.reindex_entity(anime_id)
-                reconciliation = self.reconcile_existing_library(dry_run=False) if enforce_library_source else None
+                if not native_persistence_owner:
+                    reconciled = self.store.reconcile_scope_generation(tree_uri, source_kind=source_kind, scope_kind=scope_kind, scope_ref=scope_ref, native_generation=generation, complete=True)
+                    for anime_id in sorted(self.store.generation_anime_ids(source_kind=source_kind, scope_kind=scope_kind, scope_ref=scope_ref, native_generation=generation)): self.artwork.reindex_entity(anime_id)
+                    reconciliation = self.reconcile_existing_library(dry_run=False) if enforce_library_source else None
+                else:
+                    # Kotlin has already committed the canonical episodes transaction.
+                    # Keep Python's scan-history/folder bookkeeping, but never perform a
+                    # second catalog reconciliation or metadata-driven catalog mutation.
+                    logger.info("[NATIVE_INDEX] scan=%s owns catalog persistence; Python finalizer records scan state only", scan_id)
                 self.store.update_folder_status(tree_uri, "granted")
             row = self.store.scan_by_id(scan_id) or {}
             result = ScanResult(catalog=[], scan_id=scan_id, status=final_status)
