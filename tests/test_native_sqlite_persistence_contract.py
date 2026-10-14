@@ -94,12 +94,12 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         # A failed native transaction must relinquish ownership and carry the same
         # generation's verified discovery snapshot to the serialized legacy fallback.
         self.assertIn('put("nativeLibraryIndexOwner", false)', runner)
-        self.assertIn('put("documents", fallbackDocuments ?: org.json.JSONArray())', runner)
+        self.assertIn('put("documents", if (rollbackConfirmed) fallbackDocuments ?: JSONArray() else JSONArray())', runner)
         self.assertIn("LEGACY_INGESTION_REQUIRED", runner)
         self.assertIn('fallbackStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
         self.assertIn("serialized fallback ingestion required", runner)
         self.assertIn("DISCOVERY_SNAPSHOT_UNAVAILABLE", runner)
-        self.assertIn("verified discovery snapshot unavailable; preserve catalog and rescan", runner)
+        self.assertIn("verified discovery snapshot is unavailable; preserve catalog and rescan", runner)
         self.assertIn("nativeIndexingCancelled = indexError is CancellationException", runner)
         self.assertIn("SAF native indexing cancellation was handled according to the confirmed transaction outcome.", runner)
         self.assertIn("onTransactionOutcome", repository)
