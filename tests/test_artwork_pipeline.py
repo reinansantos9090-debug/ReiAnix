@@ -67,14 +67,14 @@ class ArtworkPipelineTests(unittest.TestCase):
         self.assertIn("fallbackExternalUrl: String?", artwork)
         self.assertNotIn('listOf("artwork_external_url", "cover_url", "banner_url", "external_url")', mapper)
 
-    def test_compose_artwork_consumes_materialized_local_paths_only(self):
+    def test_compose_artwork_accepts_remote_fallback_after_local_paths(self):
         artwork = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt")
         self.assertIn("fun localArtworkCandidates", artwork)
         self.assertIn('scheme.equals("http", ignoreCase = true)', artwork)
         self.assertIn('scheme.equals("https", ignoreCase = true)', artwork)
         coil_data = artwork[artwork.index("private fun coilData"):artwork.index("@Composable\nfun ReiAnixPoster")]
-        self.assertNotIn('source.startsWith("http://"', coil_data)
-        self.assertNotIn('source.startsWith("https://"', coil_data)
+        self.assertIn('source.startsWith("http://"', coil_data)
+        self.assertIn('source.startsWith("https://"', coil_data)
 
     def test_metadata_hydration_never_waits_for_artwork_download(self):
         service = self.read("core/library_service.py")
