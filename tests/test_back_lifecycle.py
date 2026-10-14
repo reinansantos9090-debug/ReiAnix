@@ -70,12 +70,14 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn("systemUiController.applyNormal(useContextAppearance = false)", player[exit_start:exit_end])
         self.assertIn("systemUiController.applyImmersive()", player)
 
-    def test_compose_root_does_not_own_a_second_exit_confirmation_policy(self):
+    def test_compose_root_does_not_bypass_the_canonical_exit_policy(self):
         host = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
+        activity = self.read(MAIN_ACTIVITY)
         self.assertNotIn("Pressione voltar novamente para sair", host)
         self.assertNotIn("Toast.makeText", host)
         self.assertNotIn("finishAndRemoveTask", host)
         self.assertIn("ReiAnixRoutes.HOME -> false", host)
+        self.assertIn("engine.navigationChannel.popRoute()", activity)
 
     def test_player_finish_is_idempotent_while_exiting(self):
         source = self.read(PLAYER_ACTIVITY)

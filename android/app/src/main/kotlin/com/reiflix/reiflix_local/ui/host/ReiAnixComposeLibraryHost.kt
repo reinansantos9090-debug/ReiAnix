@@ -243,12 +243,10 @@ class ReiAnixComposeLibraryHost(
 
         val route = controller.currentBackStackEntry?.destination?.route
         return when (route) {
-            // Home is the native shell root. Do not delegate Back to the hidden
-            // Flet navigator: finishing the Activity closes the native application.
-            ReiAnixRoutes.HOME -> {
-                activity.finish()
-                true
-            }
+            // The Python NavigationController still owns the established root-exit
+            // policy while Flet remains the host/runtime. Let MainActivity dispatch
+            // exactly one popRoute instead of bypassing that policy with finish().
+            ReiAnixRoutes.HOME -> false
             ReiAnixRoutes.LIBRARY,
             ReiAnixRoutes.SEARCH,
             ReiAnixRoutes.SETTINGS,

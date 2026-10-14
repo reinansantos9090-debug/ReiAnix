@@ -57,8 +57,9 @@ the bottom navigation. Details/Player use stable encoded IDs plus origin
 metadata, while Navigation Compose owns tab save/restore semantics.
 
 The existing Flet/Android bridges remain authoritative for capabilities not yet migrated. The native Compose
-shell uses the existing host boundary rather than a second Activity. The shell's visible-route Back behavior
-is native-owned, but that change alone does not certify Python/Flet independence.
+shell uses the existing host boundary rather than a second Activity. Back behavior is shared by contract: Compose owns nested native destinations, while the canonical
+Python NavigationController still owns Home-root exit policy until the host migration is complete.
+This does not certify Python/Flet independence.
 
 ## Coroutine/lifecycle boundary
 
