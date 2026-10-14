@@ -1489,11 +1489,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
         try {
             val appContext = applicationContext
             mediaMetadataWorker.submit {
+                val sanitizedUri = localUri.scheme + "://" + (localUri.authority ?: "local") + "/[REDACTED]"
                 android.util.Log.i(
                     TAG,
                     "MEDIA_METADATA_DEFERRED_START requestId=" + requestId.ifEmpty { "-" } +
                         " generation=" + generation +
-                        " uri=" + localUri,
+                        " uri=" + sanitizedUri,
                 )
                 val displayName = displayNameForUri(appContext, localUri)
                 val providerMime = runCatching { appContext.contentResolver.getType(localUri) }.getOrNull()
@@ -1504,7 +1505,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }.getOrElse { error ->
                     android.util.Log.w(
                         TAG,
-                        "SUBTITLE_RESOLVE_FAILED generation=$generation uri=$localUri",
+                        "SUBTITLE_RESOLVE_FAILED generation=$generation uri=$sanitizedUri",
                         error,
                     )
                     emptyList()
