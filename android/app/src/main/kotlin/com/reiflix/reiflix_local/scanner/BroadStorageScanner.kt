@@ -417,6 +417,7 @@ object BroadStorageScanner {
                 errorsByVolume[root.volumeId]?.put(error)
                 null
             } catch (exception: Exception) {
+                if (exception is kotlinx.coroutines.CancellationException) throw exception
                 val error = JSONObject()
                     .put("type", "OS_ERROR")
                     .put("message", exception.message ?: exception::class.java.simpleName)

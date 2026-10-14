@@ -14,6 +14,7 @@ import android.os.Looper
 import android.os.storage.StorageManager
 import android.provider.MediaStore
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
@@ -338,6 +339,7 @@ object MediaStoreScanner {
                 errors.put("O acesso ao volume $volumeName foi negado.")
                 if(activeGeneration>0) NativeIndex.finishGeneration(context,SOURCE,activeScopeKey,activeGeneration,NativeIndex.STATUS_FAILED,JSONObject().put("error",security.message ?: "MediaStore permission/query denied"))
             }catch(exception:Exception){
+                if (exception is CancellationException) throw exception
                 Log.w(TAG,"MediaStore query failed for volume $volumeName",exception)
                 errors.put("Não foi possível consultar o volume $volumeName.")
                 if(activeGeneration>0) NativeIndex.finishGeneration(context,SOURCE,activeScopeKey,activeGeneration,NativeIndex.STATUS_FAILED,JSONObject().put("error",exception.message ?: "MediaStore query failed"))
