@@ -2432,8 +2432,9 @@ class MainActivity : FlutterFragmentActivity() {
             localUri.scheme.equals("content", true) -> "saf_or_local_provider"
             else -> "broad_storage"
         }
+        val sanitizedUri = localUri.scheme + "://" + (authority.ifEmpty { "local" }) + "/[REDACTED]"
         Log.i(tag, "PLAY_HANDOFF requestId=" + requestId.ifEmpty { "-" } +
-            " uri_original=" + episodeUri + " uri_normalized=" + localUri +
+            " uri_sanitized=" + sanitizedUri +
             " scheme=" + localUri.scheme + " authority=" + authority.ifEmpty { "-" } +
             " source=" + mediaSource + " activityResumed=" + activityResumed + " task=" + taskId)
 
