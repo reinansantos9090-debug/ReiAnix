@@ -156,7 +156,9 @@ object NativeScanRunner {
                                         mimeType = document.optString("mimeType").takeIf { it.isNotBlank() && it != "null" },
                                         sizeBytes = size,
                                         modifiedAtEpochSeconds = modifiedMillis?.div(1000.0),
-                                        sourceFolder = treeIdentity.documentId,
+                                        // Persist the same canonical source reference used by LibraryStore;
+                                        // the SAF document ID remains separate scan-scope evidence above.
+                                        sourceFolder = reference,
                                         relativePath = document.optString("relativePath").takeIf { it.isNotBlank() },
                                         volumeId = document.optString("volumeId").takeIf { it.isNotBlank() },
                                         volumeUuid = document.optString("volumeUuid").takeIf { it.isNotBlank() },
