@@ -16,8 +16,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -49,7 +51,10 @@ fun ReiAnixLoadingState(
     Column(
         modifier = modifier
             .padding(ReiAnixTokens.Spacing.xxl)
-            .semantics { contentDescription = title },
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                contentDescription = "$title. $message"
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
@@ -79,7 +84,10 @@ fun ReiAnixEmptyState(
     Column(
         modifier = modifier
             .padding(ReiAnixTokens.Spacing.xxl)
-            .semantics { contentDescription = title + ". " + message },
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                contentDescription = title + ". " + message
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
@@ -145,7 +153,10 @@ fun ReiAnixScannerInProgressState(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(ReiAnixTokens.Spacing.md)
-                .semantics { contentDescription = "Varredura em andamento. " + normalizedState },
+                .semantics {
+                    liveRegion = LiveRegionMode.Polite
+                    contentDescription = "Varredura em andamento. " + normalizedState
+                },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
         ) {
@@ -262,7 +273,11 @@ fun ReiAnixRecoverableErrorState(
 ) {
     Column(
         modifier = modifier
-            .padding(ReiAnixTokens.Spacing.xxl),
+            .padding(ReiAnixTokens.Spacing.xxl)
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                contentDescription = "$title. $message"
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {

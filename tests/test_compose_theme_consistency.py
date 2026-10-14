@@ -65,12 +65,12 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
             "val surfaceNavigation = Color(0xFF000000)",
             "val divider = Color(0xFF202020)",
             "val border = Color(0xFF202020)",
-            "val outline = Color(0xFF606060)",
+            "val outline = Color(0xFF757575)",
             "val lightOutline = Color(0xFF767676)",
             "val text = Color(0xFFFFFFFF)",
             "val textMuted = Color(0xFFB3B3B3)",
-            "val textTertiary = Color(0xFF777777)",
-            "val textDisabled = Color(0xFF666666)",
+            "val textTertiary = Color(0xFF9E9E9E)",
+            "val textDisabled = Color(0xFF888888)",
             "val primary = Color(0xFF2579FF)",
         }
         for token in expected_tokens:
