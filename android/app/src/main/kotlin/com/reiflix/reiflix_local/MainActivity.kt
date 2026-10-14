@@ -869,6 +869,9 @@ class MainActivity : FlutterFragmentActivity() {
         PerformanceDiagnostics.attach(this)
         PerformanceDiagnostics.sampleMemory(this, "main_on_create")
         installSystemBackHandler()
+        // Publish durable recovery receipts before the legacy bridge begins draining the mailbox.
+        runCatching { NativeScanRunner.recoverInterruptedSafScans(applicationContext) }
+            .onFailure { Log.e(tag, "Could not recover interrupted SAF generations.", it) }
         nativeRequestState.bind(this)
         NativeCommandDispatcher.start(this)
         nativeRequestState.restore(
@@ -1807,7 +1810,8 @@ class MainActivity : FlutterFragmentActivity() {
         }
         val generationId = NativeIndex.startGeneration(
             this, NativeIndex.SOURCE_SAF, scanKey,
-            SafScanner.identityPayload(treeUri).put("scopeKind", "root").put("scopeRef", SafScanner.treeIdentity(treeUri).identity).put("scanId", scanId)
+            SafScanner.identityPayload(treeUri).put("scopeKind", "root").put("scopeRef", SafScanner.treeIdentity(treeUri).identity)
+                .put("scanId", scanId).put("requestId", requestId ?: "")
         )
         val appContext = applicationContext
         NativeScanController.launch(scanId) {
@@ -2432,8 +2436,9 @@ class MainActivity : FlutterFragmentActivity() {
             localUri.scheme.equals("content", true) -> "saf_or_local_provider"
             else -> "broad_storage"
         }
+        val sanitizedUri = localUri.scheme + "://" + (authority.ifEmpty { "local" }) + "/[REDACTED]"
         Log.i(tag, "PLAY_HANDOFF requestId=" + requestId.ifEmpty { "-" } +
-            " uri_original=" + episodeUri + " uri_normalized=" + localUri +
+            " uri_sanitized=" + sanitizedUri +
             " scheme=" + localUri.scheme + " authority=" + authority.ifEmpty { "-" } +
             " source=" + mediaSource + " activityResumed=" + activityResumed + " task=" + taskId)
 

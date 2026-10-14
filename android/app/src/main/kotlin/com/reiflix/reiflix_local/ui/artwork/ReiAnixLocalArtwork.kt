@@ -222,13 +222,18 @@ fun ReiAnixLocalArtwork(
     }
 }
 
+internal fun bucketDimensionPx(dimension: Int, step: Int = 32): Int {
+    if (dimension <= 0) return 0
+    return ((dimension + step / 2) / step) * step
+}
+
 internal fun buildArtworkMemoryCacheKey(
     stableIdentity: String,
     source: String,
     widthPx: Int,
     heightPx: Int,
 ): String =
-    "reianix-artwork|" + stableIdentity + "|" + source + "|" + widthPx + "x" + heightPx
+    "reianix-artwork|" + stableIdentity + "|" + source + "|" + bucketDimensionPx(widthPx) + "x" + bucketDimensionPx(heightPx)
 
 internal fun buildArtworkDiskCacheKey(source: String): String =
     "reianix-artwork-disk|" + source

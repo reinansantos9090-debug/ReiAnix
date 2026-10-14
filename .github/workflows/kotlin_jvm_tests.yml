@@ -1,9 +1,8 @@
 name: ReiAnix Kotlin JVM Validation
 
 on:
+  # Kotlin/JVM tests are intentionally manual and must be dispatched explicitly.
   workflow_dispatch:
-  pull_request:
-    branches: [main]
 
 concurrency:
   group: reianix-kotlin-jvm-${{ github.ref }}

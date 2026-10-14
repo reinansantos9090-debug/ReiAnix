@@ -331,6 +331,13 @@ object NativeIndex {
             .put("unchanged", 0)
             .put("duplicates", 0)
             .put("removed", 0)
+            // A durable protocol marker lets the next process distinguish scans interrupted
+            // before indexing, confirmed commits, rollbacks, and uncertain commit outcomes.
+            .put("recoveryProtocolVersion", 1)
+            .put("nativeCatalogWriteOutcome", "NOT_STARTED")
+            .put("nativeCatalogWriteReport", JSONObject.NULL)
+            .put("nativeCatalogWriteError", "")
+            .put("recoveryEventPublished", false)
         write(context, state)
         cleanupUnreferencedBatchFiles(context, state)
         val staging = stagingFile(context, source, scopeKey, generation)
@@ -590,6 +597,74 @@ object NativeIndex {
         documents
     }
 
+    /**
+     * Returns verified positive discoveries for recovery without treating them as a complete
+     * inventory. It first uses the persisted committed/staged contracts, then handles the narrow
+     * crash window in which finishGeneration atomically moved the current staging file to its
+     * generation-specific .ndjson path but failed before the JSON index metadata was saved.
+     * This last path is allowed only for recovery protocol v1 and before a native commit is
+     * confirmed, so its data can only be used for partial, non-destructive ingestion.
+     */
+    fun recoveryDocuments(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+    ): JSONArray? = synchronized(this) {
+        if (generation <= 0L) return@synchronized null
+        val state = read(context)
+        val scope = scopes(state).optJSONObject(scopeKey) ?: return@synchronized null
+        if (scope.optString("source") != source ||
+            scope.optString("scopeKey") != scopeKey ||
+            scope.optLong("generation", 0L) != generation
+        ) return@synchronized null
+
+        committedDocuments(context, source, scopeKey)?.let { return@synchronized it }
+        stagedDocuments(context, source, scopeKey, generation)?.let { return@synchronized it }
+
+        if (scope.optInt("recoveryProtocolVersion", 0) != 1 ||
+            scope.optString("nativeCatalogWriteOutcome") !in setOf("NOT_STARTED", "NOT_COMMITTED")
+        ) return@synchronized null
+
+        val batchDir = runCatching { batchDirectory(context).canonicalFile }.getOrNull()
+            ?: return@synchronized null
+        val expected = committedFile(context, source, scopeKey, generation)
+        val target = runCatching { expected.canonicalFile }.getOrNull() ?: return@synchronized null
+        if (target.parentFile != batchDir ||
+            target.name != expected.name ||
+            !target.name.endsWith(".ndjson") ||
+            !target.isFile
+        ) return@synchronized null
+
+        val documents = JSONArray()
+        val readable = runCatching {
+            BufferedReader(InputStreamReader(FileInputStream(target), Charsets.UTF_8)).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isBlank()) continue
+                    documents.put(JSONObject(line))
+                }
+            }
+        }.isSuccess
+        if (!readable) return@synchronized null
+
+        // A moved file whose positive-count receipt disagrees is truncated/corrupt and must not
+        // be handed to a second writer. The only count-less acceptable case is an empty file:
+        // finishGeneration creates that exact generation file for a verified empty scan, and its
+        // recovery receipt remains PARTIAL/non-destructive (it never authorizes missing-state
+        // reconciliation).
+        val counts = scope.optJSONObject("counts")
+        val recordedProcessed = counts?.takeIf { it.has("processed") }?.optInt("processed", -1)
+        val countMatches = when {
+            recordedProcessed != null && recordedProcessed >= 0 ->
+                documents.length() == recordedProcessed
+            recordedProcessed == null ->
+                documents.length() == 0
+            else -> false
+        }
+        if (countMatches) documents else null
+    }
+
     fun prepare(context: Context, source: String, scopeKey: String, input: JSONArray, complete: Boolean,
                 metadata: JSONObject = JSONObject(), generation: Long = 0L, status: String = ""): NativePrepared = synchronized(this) {
         val state = read(context)
@@ -717,6 +792,164 @@ object NativeIndex {
             .put("metadata", JSONObject(metadata.toString()))
         write(context, state)
         cleanupUnreferencedBatchFiles(context, state)
+    }
+
+    fun markNativeCatalogIndexing(context: Context, source: String, scopeKey: String, generation: Long): Boolean =
+        updateNativeCatalogWriteOutcome(
+            context, source, scopeKey, generation,
+            outcome = "IN_PROGRESS",
+            report = null,
+            error = "",
+        )
+
+    fun markNativeCatalogNotCommitted(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+        error: String,
+    ): Boolean = updateNativeCatalogWriteOutcome(
+        context, source, scopeKey, generation,
+        outcome = "NOT_COMMITTED",
+        report = null,
+        error = error,
+    )
+
+    fun markNativeCatalogOutcomeUnknown(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+        error: String,
+    ): Boolean = updateNativeCatalogWriteOutcome(
+        context, source, scopeKey, generation,
+        outcome = "UNKNOWN",
+        report = null,
+        error = error,
+    )
+
+    fun markNativeCatalogCommitted(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+        report: com.reiflix.reiflix_local.data.sqlite.NativeLibraryIndexReport,
+    ): Boolean = updateNativeCatalogWriteOutcome(
+        context, source, scopeKey, generation,
+        outcome = "COMMITTED",
+        report = JSONObject()
+            .put("operationId", report.operationId)
+            .put("inserted", report.inserted)
+            .put("updated", report.updated)
+            .put("unchanged", report.unchanged)
+            .put("ambiguous", report.ambiguous)
+            .put("rejectedOutOfScope", report.rejectedOutOfScope)
+            .put("reconciledMissing", report.reconciledMissing)
+            .put("reconciliationAuthorized", report.reconciliationAuthorized),
+        error = "",
+    )
+
+    fun markNativeCatalogCommittedWithoutReport(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+        error: String,
+    ): Boolean = updateNativeCatalogWriteOutcome(
+        context, source, scopeKey, generation,
+        outcome = "COMMITTED",
+        report = JSONObject(),
+        error = error,
+    )
+
+    private fun updateNativeCatalogWriteOutcome(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+        outcome: String,
+        report: JSONObject?,
+        error: String,
+    ): Boolean = synchronized(this) {
+        val state = read(context)
+        val scope = scopes(state).optJSONObject(scopeKey) ?: return@synchronized false
+        if (scope.optString("source") != source || scope.optLong("generation", 0L) != generation) {
+            return@synchronized false
+        }
+        scope.put("nativeCatalogWriteOutcome", outcome)
+            .put("nativeCatalogWriteReport", report ?: JSONObject.NULL)
+            .put("nativeCatalogWriteError", error)
+            .put("recoveryEventPublished", false)
+        write(context, state)
+        true
+    }
+
+    fun markRecoveryEventPublished(context: Context, source: String, scopeKey: String, generation: Long): Boolean =
+        synchronized(this) {
+            val state = read(context)
+            val scope = scopes(state).optJSONObject(scopeKey) ?: return@synchronized false
+            if (scope.optString("source") != source || scope.optLong("generation", 0L) != generation) {
+                return@synchronized false
+            }
+            scope.put("recoveryEventPublished", true)
+                .put("recoveryEventPublishedAt", System.currentTimeMillis())
+            write(context, state)
+            true
+        }
+
+    /**
+     * Returns SAF generations whose terminal event was not durably recorded.
+     * Only entries created by the recovery-aware protocol are exposed. An IN_PROGRESS
+     * catalog write is deliberately classified as unknown, never as a safe Python fallback.
+     */
+    fun pendingSafRecovery(context: Context): JSONArray = synchronized(this) {
+        val state = read(context)
+        val scopeMap = scopes(state)
+        val pending = JSONArray()
+        val keys = scopeMap.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val scope = scopeMap.optJSONObject(key) ?: continue
+            if (scope.optString("source") != SOURCE_SAF ||
+                scope.optInt("recoveryProtocolVersion", 0) != 1 ||
+                scope.optBoolean("recoveryEventPublished")
+            ) continue
+
+            val generation = scope.optLong("generation", 0L)
+            val scanId = scope.optString("scanId").trim()
+            if (generation <= 0L || scanId.isBlank()) continue
+            val currentStatus = scope.optString("status")
+            val outcome = scope.optString("nativeCatalogWriteOutcome").trim().ifBlank { "UNKNOWN" }
+            val completeSnapshotPublished =
+                isCompleteStatus(currentStatus) &&
+                    isCompleteStatus(scope.optString("committedStatus")) &&
+                    scope.optString("committedGenerationId") == scope.optString("generationId")
+
+            val documents = when (outcome) {
+                "NOT_STARTED", "NOT_COMMITTED" ->
+                    recoveryDocuments(context, SOURCE_SAF, key, generation)
+                else -> null
+            }
+            pending.put(
+                JSONObject()
+                    .put("source", SOURCE_SAF)
+                    .put("scopeKey", key)
+                    .put("generation", generation)
+                    .put("generationId", scope.optString("generationId"))
+                    .put("scanId", scanId)
+                    .put("status", currentStatus)
+                    .put("treeUri", scope.optJSONObject("metadata")?.optString("treeUri").orEmpty())
+                    .put("scopeRef", scope.optJSONObject("metadata")?.optString("scopeRef").orEmpty())
+                    .put("metadata", scope.optJSONObject("metadata") ?: JSONObject())
+                    .put("nativeCatalogWriteOutcome", outcome)
+                    .put("nativeCatalogWriteReport", scope.optJSONObject("nativeCatalogWriteReport") ?: JSONObject())
+                    .put("nativeCatalogWriteError", scope.optString("nativeCatalogWriteError"))
+                    .put("snapshotAvailable", documents != null)
+                    .put("documents", documents ?: JSONArray())
+                    .put("completeSnapshotPublished", completeSnapshotPublished)
+            )
+        }
+        pending
     }
 
     fun forEachCachedBatch(

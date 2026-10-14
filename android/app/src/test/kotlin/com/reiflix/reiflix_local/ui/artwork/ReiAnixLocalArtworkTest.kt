@@ -25,7 +25,7 @@ class ReiAnixLocalArtworkTest {
     @Test
     fun artworkCacheKeysStayStableAcrossRecompositionInputs() {
         val memoryA = buildArtworkMemoryCacheKey("anime:10:poster", "https://img/a.jpg", 320, 480)
-        val memoryB = buildArtworkMemoryCacheKey("anime:10:poster", "https://img/a.jpg", 320, 480)
+        val memoryB = buildArtworkMemoryCacheKey("anime:10:poster", "https://img/a.jpg", 322, 484)
         val memoryDifferentSize = buildArtworkMemoryCacheKey("anime:10:poster", "https://img/a.jpg", 512, 768)
         val diskA = buildArtworkDiskCacheKey("https://img/a.jpg")
         val diskB = buildArtworkDiskCacheKey("https://img/a.jpg")
@@ -33,6 +33,14 @@ class ReiAnixLocalArtworkTest {
         assertEquals(memoryA, memoryB)
         assertEquals(diskA, diskB)
         assertNotEquals(memoryA, memoryDifferentSize)
+    }
+
+    @Test
+    fun bucketDimensionPxRoundsToNearestStep() {
+        assertEquals(320, bucketDimensionPx(320))
+        assertEquals(320, bucketDimensionPx(322))
+        assertEquals(512, bucketDimensionPx(512))
+        assertEquals(0, bucketDimensionPx(0))
     }
 
     @Test

@@ -52,6 +52,42 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun transactionOutcomeCallbackDistinguishesCommittedAndRolledBackWrites() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        val outcomes = mutableListOf<ReiAnixSqliteTransactionOutcome>()
+
+        database.transaction(onOutcome = { outcomes += it }) { connection ->
+            connection.execSQL(
+                "INSERT INTO preferences(key, value, updated_at) VALUES(?, ?, ?)",
+                arrayOf("native.test.transaction_outcome", "committed", 1.0),
+            )
+        }
+        assertEquals(listOf(ReiAnixSqliteTransactionOutcome.COMMITTED), outcomes)
+
+        outcomes.clear()
+        try {
+            database.transaction(onOutcome = { outcomes += it }) { connection ->
+                connection.execSQL(
+                    "UPDATE preferences SET value = ? WHERE key = ?",
+                    arrayOf("rolled-back", "native.test.transaction_outcome"),
+                )
+                throw IllegalStateException("force rollback for outcome callback test")
+            }
+            fail("The transaction block must propagate its original failure.")
+        } catch (expected: IllegalStateException) {
+            assertEquals("force rollback for outcome callback test", expected.message)
+        }
+
+        assertEquals(listOf(ReiAnixSqliteTransactionOutcome.ROLLED_BACK), outcomes)
+        assertEquals(
+            "committed",
+            ReiAnixSqliteSettingsRepository(context)
+                .getPreference("native.test.transaction_outcome")?.value,
+        )
+    }
+
+    @Test
     fun missingCanonicalDatabaseIsNotCreatedOrReportedAsAnEmptyLibrary() = runBlocking {
         assertFalse(databaseFile.exists())
         try {
