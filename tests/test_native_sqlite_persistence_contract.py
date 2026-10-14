@@ -105,6 +105,10 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn('put("commitOutcome", "COMMITTED")', runner)
         self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
         self.assertIn("if (!scanGenerationFinished)", runner)
+        self.assertIn("fun recoveryDocuments(): JSONArray?", runner)
+        self.assertIn("fun publishRecoveryTerminal(message: String, cancelled: Boolean)", runner)
+        self.assertIn('priorRecovery == "LEGACY_INGESTION_REQUIRED"', runner)
+        self.assertIn("terminalEventPublished = true", runner)
         self.assertRegex(
             main,
             r"""if\s+payload\.get\((['"])documents\1\)\s+and\s+payload\.get\((['"])nativeLibraryIndexOwner\2\)\s+is\s+not\s+True\s*:""",
