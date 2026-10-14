@@ -781,6 +781,19 @@ object NativeIndex {
         error = "",
     )
 
+    fun markNativeCatalogCommittedWithoutReport(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+        error: String,
+    ): Boolean = updateNativeCatalogWriteOutcome(
+        context, source, scopeKey, generation,
+        outcome = "COMMITTED",
+        report = JSONObject(),
+        error = error,
+    )
+
     private fun updateNativeCatalogWriteOutcome(
         context: Context,
         source: String,
