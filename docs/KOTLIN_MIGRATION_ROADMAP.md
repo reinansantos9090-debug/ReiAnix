@@ -19,6 +19,27 @@ As etapas são unidades funcionais completas, não prompts artificiais para arqu
 9. Runtime e build híbridos só podem ser removidos depois que os fluxos essenciais funcionarem no caminho nativo. A porcentagem de linguagens do GitHub não é critério de conclusão.
 10. Cada PR funcional futuro deve ter diff revisado, contagem real de linhas/arquivos/pastas modificados, critérios de aceitação, limitações e artefatos reais quando previstos pelos workflows.
 
+## Estado transversal — Prompt 02/29: fundação de execução nativa
+
+Este trabalho é uma fundação arquitetural transversal necessária ao corte gradual para Kotlin. Ele não substitui nem marca como concluído o pacote funcional MIG-02 — Contratos de domínio e baseline de paridade, descrito adiante: inventariar as operações concretas de LibraryStore/LibraryService e comprovar paridade continuam sendo trabalho pendente e são a próxima etapa.
+
+Referência verificada: main em 40e8c86be49282774ec45060aea9374155a14ca9; a implementação parte da head do PR #166, 5e8e6e92f077a1a0a23c57794867c4ac517f5bb6, que carrega os documentos de auditoria e roadmap do Prompt 01.
+
+Escopo implementado neste PR:
+- Registrar ReiAnixApplication no manifesto do overlay e no manifesto real gerado pelo hook Flet, mantendo a ancestralidade FlutterApplication e a entrada MainActivity : FlutterFragmentActivity.
+- Criar ReiAnixAppDependencies, uma composition root manual por processo, com dependências lazy(SYNCHRONIZED) e sem trabalho de banco, scan ou rede no startup.
+- Compartilhar a instância Kotlin de ReiAnixSqliteDatabase e ReiAnixSqliteLibraryRepository entre leitores de Biblioteca, favoritos, settings nativas, AniList, consumo/progresso e indexação de snapshots pelo NativeScanRunner, sem trocar o writer Python dos comandos que ainda passam pela mailbox.
+- Injetar o grafo nas factories dos ViewModels da Activity existente; manter os repositórios de projeção/IPC sob o lifecycle dos respectivos ViewModels e manter o serviço de consumo ligado ao lifecycle da Activity do player.
+- Cobrir por testes de contrato Python já integrados ao workflow a Application do manifesto renderizado e os pontos de integração essenciais.
+
+Problemas tratados: a construção via Context repetia objetos SQLite independentes com locks distintos dentro de serviços que precisam operar coordenadamente; a Activity, os ViewModels e o player não possuíam um composition root explícito; a Application do manifesto gerado pelo Flet não tinha um contrato do ReiAnix que registrasse o grafo nativo.
+
+Limites ainda abertos: a aplicação continua híbrida; main.py, LibraryStore, LibraryService, ScanCoordinator, os adapters JSON/NativeMailbox, parte de metadados/artwork e backup/recovery continuam com consumidores reais. O compartilhamento da instância Kotlin não resolve por si só o ownership concorrente de operações Python/Kotlin nem transforma o SQLite em writer exclusivamente Kotlin. Nenhuma operação de domínio é migrada integralmente nesta etapa.
+
+Aceitação da etapa: o código e os testes de contrato foram adicionados, mas o critério de entrega só é satisfeito pelo build/teste Python obrigatório concluído com sucesso para o SHA final, com APK e ZIP confirmados nos artefatos quando previstos. Use o check run ligado ao head atual do PR e o relatório de entrega; nunca reutilize o sucesso de outro SHA. O workflow Kotlin/JVM permanece manual e não deve ser disparado nesta etapa; não foi criado nem acionado teste de emulador.
+
+Próximo pacote funcional: MIG-02 — contratos de domínio e baseline de paridade, sem alterar o schema v29. O grafo de dependências agora fornece a estrutura para os consumidores nativos, mas não comprova a paridade funcional de parsing, identidade, metadata ou reconciliação.
+
 ## 3. Dependências de alto nível
 
 - **Contratos, SQLite e domínio (MIG-02 a MIG-04)** sustentam os subsistemas posteriores porque definem IDs, transações, schema, modelos, erros e ownership.
