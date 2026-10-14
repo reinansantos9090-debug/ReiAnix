@@ -67,6 +67,10 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn('"episodes"', library)
         self.assertIn("database.transaction", library)
         self.assertIn("withContext(Dispatchers.IO)", library)
+        # Scanner scope identity may be an opaque SAF document ID; persisted source_folder
+        # and missing-state reconciliation must use the configured tree URI instead.
+        self.assertIn("snapshot.scopeReference", library)
+        self.assertIn("val root = snapshot.scopeReference.trim().ifBlank", library)
 
 
     def test_saf_scan_has_one_persistence_writer_and_indexes_partial_positive_results(self):
