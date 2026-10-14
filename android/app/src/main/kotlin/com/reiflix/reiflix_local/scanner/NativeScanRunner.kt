@@ -32,6 +32,9 @@ object NativeScanRunner {
         generationId: Long,
     ) {
         val appContext = context.applicationContext
+        // Once discovery generation publication succeeds, later mailbox failures must not
+        // discard its committed snapshot; a controlled rescan can recover UI/catalog state.
+        var scanGenerationFinished = false
 
             try {
                 NativeIndex.markGenerationRunning(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
@@ -112,7 +115,9 @@ object NativeScanRunner {
                         .put("status", status)
                         .put("scanId", scanId),
                 )
+                scanGenerationFinished = true
                 var nativeIndexingFailed = false
+                var nativeIndexingCancelled = false
                 var nativeIndexingStatus = "SKIPPED_INCOMPLETE"
                 // Retain this scan generation's verified discovery snapshot until the SQLite
                 // transaction commits. If that transaction rolls back, the terminal event can
@@ -211,11 +216,13 @@ object NativeScanRunner {
                         // The host may still refresh its read-only UI projection, but must not
                         // invoke LibraryStore's ingestion/finalization writer for this run.
                         result.put("nativeLibraryIndexOwner", true)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
                     } catch (indexError: Exception) {
+                        // Cancellation is also a transaction failure: the native transaction
+                        // has rolled back before control reaches this catch. Transfer any verified
+                        // discovery snapshot before propagating cancellation to the caller.
+                        nativeIndexingCancelled = indexError is CancellationException
                         nativeIndexingFailed = true
-                        nativeIndexingStatus = "FAILED"
+                        nativeIndexingStatus = if (nativeIndexingCancelled) "CANCELLED_AFTER_ROLLBACK" else "FAILED"
                         Log.e(TAG, "Native SQLite library indexing failed; discovery snapshot is preserved.", indexError)
                         val fallbackAvailable = fallbackDocuments != null
                         // A failed canonical catalog write must never leave a completed nested
@@ -226,13 +233,19 @@ object NativeScanRunner {
                         val fallbackErrors = fallbackStats.optJSONArray("errors")
                             ?: org.json.JSONArray().also { fallbackStats.put("errors", it) }
                         fallbackErrors.put(
-                            if (fallbackAvailable) {
-                                "native SQLite indexing failed; serialized fallback ingestion required"
-                            } else {
-                                "native SQLite indexing failed; verified discovery snapshot unavailable; preserve catalog and rescan"
+                            when {
+                                nativeIndexingCancelled && fallbackAvailable ->
+                                    "native SQLite indexing cancelled after rollback; serialized fallback ingestion required"
+                                nativeIndexingCancelled ->
+                                    "native SQLite indexing cancelled after rollback; verified discovery snapshot unavailable; preserve catalog and rescan"
+                                fallbackAvailable ->
+                                    "native SQLite indexing failed; serialized fallback ingestion required"
+                                else ->
+                                    "native SQLite indexing failed; verified discovery snapshot unavailable; preserve catalog and rescan"
                             }
                         )
                         result.put("stats", fallbackStats)
+                            .put("cancelled", nativeIndexingCancelled)
                         result.put("nativeLibraryIndex", JSONObject()
                             .put("status", "FAILED")
                             .put("errorType", indexError::class.java.simpleName)
@@ -242,13 +255,19 @@ object NativeScanRunner {
                             // fallback writer; never claim native ownership after a rollback.
                             .put("nativeLibraryIndexOwner", false)
                             .put("documents", fallbackDocuments ?: org.json.JSONArray())
-                        NativeMailbox.write(appContext, JSONObject()
-                            .put("type", "native_library_index_error")
-                            .put("requestId", requestId ?: "")
-                            .put("payload", JSONObject().put("scanId", scanId)
-                                .put("scope", runCatching { SafScanner.treeIdentity(treeUri).identity }.getOrDefault(""))
-                                .put("status", "FAILED")
-                                .put("errorType", indexError::class.java.simpleName)))
+                        // This diagnostic is secondary. Its failure must not prevent the terminal
+                        // event from carrying the recovery snapshot to the serialized writer.
+                        runCatching {
+                            NativeMailbox.write(appContext, JSONObject()
+                                .put("type", "native_library_index_error")
+                                .put("requestId", requestId ?: "")
+                                .put("payload", JSONObject().put("scanId", scanId)
+                                    .put("scope", runCatching { SafScanner.treeIdentity(treeUri).identity }.getOrDefault(""))
+                                    .put("status", "FAILED")
+                                    .put("errorType", indexError::class.java.simpleName)))
+                        }.onFailure { mailboxError ->
+                            Log.w(TAG, "Could not publish native index diagnostic; terminal SAF event retains recovery state.", mailboxError)
+                        }
                     }
                 result.put("scanGeneration", generationId)
                     .put("generationId", NativeIndex.generationId(NativeIndex.SOURCE_SAF, scanKey, generationId))
@@ -265,16 +284,32 @@ object NativeScanRunner {
                     .put("volumeId", result.optString("volumeId"))
                     .put("status", if (nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) SafScanner.STATUS_PARTIAL else scanStatus)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
-                NativeScanController.complete(scanId, if (nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) SafScanner.STATUS_PARTIAL else scanStatus.ifBlank { SafScanner.STATUS_FAILED }, result)
+                NativeScanController.complete(
+                    scanId,
+                    when {
+                        nativeIndexingCancelled -> SafScanner.STATUS_CANCELLED
+                        nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE) -> SafScanner.STATUS_PARTIAL
+                        else -> scanStatus.ifBlank { SafScanner.STATUS_FAILED }
+                    },
+                    result,
+                )
+                if (nativeIndexingCancelled) {
+                    throw CancellationException("SAF native indexing was cancelled after rollback recovery was published.")
+                }
             } catch (exception: CancellationException) {
                 NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
                 throw exception
             } catch (exception: Exception) {
                 Log.e(TAG, "SAF scan failed", exception)
                 NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", exception::class.java.simpleName))
-                NativeIndex.failGeneration(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
-                    exception.message ?: "SAF scan failed",
-                    JSONObject().put("treeUri", reference))
+                // A published generation owns a durable discovery snapshot. If terminal
+                // mailbox delivery fails later, keep that snapshot for a controlled rescan instead
+                // of cleaning the batch files that may be needed for recovery.
+                if (!scanGenerationFinished) {
+                    NativeIndex.failGeneration(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
+                        exception.message ?: "SAF scan failed",
+                        JSONObject().put("treeUri", reference))
+                }
                 NativeMailbox.write(appContext, JSONObject().put("type", "saf_error")
                     .put("requestId", requestId ?: "")
                     .put("message", "Não foi possível atualizar esta pasta autorizada.")
