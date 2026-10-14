@@ -76,6 +76,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
     def test_saf_scan_has_one_persistence_writer_and_indexes_partial_positive_results(self):
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        repository = LIBRARY.read_text(encoding="utf-8")
         native_index = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
 
@@ -98,7 +99,11 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("DISCOVERY_SNAPSHOT_UNAVAILABLE", runner)
         self.assertIn("verified discovery snapshot unavailable; preserve catalog and rescan", runner)
         self.assertIn("nativeIndexingCancelled = indexError is CancellationException", runner)
-        self.assertIn("SAF native indexing was cancelled after rollback recovery was published.", runner)
+        self.assertIn("SAF native indexing cancellation was handled according to the confirmed transaction outcome.", runner)
+        self.assertIn("onTransactionCommitted?.invoke(report)", repository)
+        self.assertIn("committedIndexReport.set(report)", runner)
+        self.assertIn('put("commitOutcome", "COMMITTED")', runner)
+        self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
         self.assertIn("if (!scanGenerationFinished)", runner)
         self.assertRegex(
             main,
