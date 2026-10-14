@@ -109,6 +109,11 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK", runner)
         self.assertIn("val ownershipTransferred = rollbackConfirmed && rollbackReceiptPersisted.get()", runner)
         self.assertIn("val fallbackAvailable = ownershipTransferred && fallbackDocuments != null", runner)
+        self.assertIn("fun canTransferToFallback(): Boolean", runner)
+        self.assertIn("if (!canTransferToFallback()) return null", runner)
+        self.assertIn("val fallbackOwnershipAllowed = committedReport == null && canTransferToFallback()", runner)
+        self.assertIn('put("nativeLibraryIndexOwner", !fallbackOwnershipAllowed)', runner)
+        self.assertIn("nativeIndexingCheckpointAttempted.set(true)", runner)
         self.assertIn("ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED", runner)
         self.assertIn("if (!persisted)", runner)
         self.assertIn("markNativeCatalogOutcomeUnknown", runner)
@@ -248,6 +253,32 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
                 enforce_library_source=True,
                 native_persistence_owner=False,
             )
+            self.assertFalse(store.physical_row(previous["uri"])["missing"])
+            self.assertFalse(store.physical_row(recovered["uri"])["missing"])
+
+            # An uncertain SQLite transaction cannot trigger a second writer or
+            # destructive reconciliation; the native catalog remains authoritative.
+            with patch.object(store, "reconcile_scope_generation", side_effect=AssertionError("unknown outcome must not reconcile")) as reconcile:
+                service.finish_ingest_documents(
+                    source,
+                    source_kind="saf",
+                    scan_id="native-index-outcome-unknown",
+                    scope_kind="root",
+                    scope_ref=source,
+                    scan_generation=14,
+                    generation_id="native:14",
+                    status="partial",
+                    scan_errors=["native SQLite transaction outcome unknown; rescan required"],
+                    scan_stats={
+                        "status": "partial",
+                        "partial": True,
+                        "generationId": "native:14",
+                        "nativeLibraryIndex": {"commitOutcome": "UNKNOWN"},
+                    },
+                    enforce_library_source=True,
+                    native_persistence_owner=True,
+                )
+            reconcile.assert_not_called()
             self.assertFalse(store.physical_row(previous["uri"])["missing"])
             self.assertFalse(store.physical_row(recovered["uri"])["missing"])
 
