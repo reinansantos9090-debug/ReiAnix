@@ -1,7 +1,6 @@
 package com.reiflix.reiflix_local
 
 import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
 import com.reiflix.reiflix_local.player.DeviceInteractionProfile
 import com.reiflix.reiflix_local.player.LocalSubtitleResolver
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
@@ -128,7 +127,7 @@ class NativePlayerActivity : ComponentActivity() {
     private lateinit var localMetadataStore: PlayerLocalMetadataStore
     private var mediaControls: PlayerMediaControls? = null
     private val consumptionService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        ReiAnixConsumptionService(applicationContext)
+        ReiAnixAppDependencies.from(applicationContext).consumptionService
     }
 
     private var locked = false

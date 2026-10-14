@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.scanner
 
 import android.content.Context
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import android.net.Uri
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -8,7 +9,6 @@ import com.reiflix.reiflix_local.storage.NativeIndex
 import com.reiflix.reiflix_local.data.sqlite.NativeDiscoveredMedia
 import com.reiflix.reiflix_local.data.sqlite.NativeLibraryScanSnapshot
 import com.reiflix.reiflix_local.data.sqlite.NativeLibraryIndexReport
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteTransactionOutcome
 import org.json.JSONObject
 import org.json.JSONArray
@@ -445,7 +445,7 @@ object NativeScanRunner {
                                 appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
                             )
                         ) { "Could not persist the native catalog transaction start receipt." }
-                        val indexReport = ReiAnixSqliteLibraryRepository(appContext).indexDiscoveredMedia(snapshot) { outcome, report ->
+                        val indexReport = ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.indexDiscoveredMedia(snapshot) { outcome, report ->
                             indexTransactionOutcome.set(outcome)
                             when (outcome) {
                                 ReiAnixSqliteTransactionOutcome.COMMITTED -> {
