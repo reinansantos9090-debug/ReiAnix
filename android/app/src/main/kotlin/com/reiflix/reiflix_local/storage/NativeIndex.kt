@@ -747,6 +747,19 @@ object NativeIndex {
         error = error,
     )
 
+    fun markNativeCatalogOutcomeUnknown(
+        context: Context,
+        source: String,
+        scopeKey: String,
+        generation: Long,
+        error: String,
+    ): Boolean = updateNativeCatalogWriteOutcome(
+        context, source, scopeKey, generation,
+        outcome = "UNKNOWN",
+        report = null,
+        error = error,
+    )
+
     fun markNativeCatalogCommitted(
         context: Context,
         source: String,
