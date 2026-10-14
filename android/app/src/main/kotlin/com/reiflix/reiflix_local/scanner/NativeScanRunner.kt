@@ -510,7 +510,7 @@ object NativeScanRunner {
                             // transfer ownership to Python and create a second writer.
                             nativeIndexingCancelled = indexError is CancellationException
                             cancellationAfterCommittedIndex = nativeIndexingCancelled
-                            nativeIndexingFailed = complete && !committedReport.reconciliationAuthorized
+                            nativeIndexingFailed = publishedCompleteGeneration && !committedReport.reconciliationAuthorized
                             nativeIndexingStatus = if (committedReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL"
                             Log.w(TAG, "Native SQLite commit was confirmed although its result was not delivered to the caller.", indexError)
                             result.put("nativeLibraryIndex", JSONObject()
