@@ -42,7 +42,7 @@ class ReiAnixLocalArtworkTest {
             artworkCandidates("/cache/poster.jpg", null, "https://img/a.jpg", "https://img/b.jpg"),
         )
         assertEquals(
-            listOf("/cache/poster.jpg", "https://img/b.jpg"),
+            listOf("/cache/poster.jpg", "https://img/a.jpg", "https://img/b.jpg"),
             artworkCandidates("https://img/a.jpg", "/cache/poster.jpg", "https://img/a.jpg", "https://img/b.jpg"),
         )
         assertEquals(
