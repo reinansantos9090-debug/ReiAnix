@@ -199,6 +199,11 @@ object NativeScanRunner {
                             .put("rejectedOutOfScope", indexReport.rejectedOutOfScope)
                             .put("reconciledMissing", indexReport.reconciledMissing)
                             .put("reconciliationAuthorized", indexReport.reconciliationAuthorized))
+                        // SQLite indexing above is the persistence owner for this scan,
+                        // even when conservative policy blocks missing-state reconciliation.
+                        // The host may still refresh its read-only UI projection, but must not
+                        // invoke LibraryStore's ingestion/finalization writer for this run.
+                        result.put("nativeLibraryIndexOwner", true)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (indexError: Exception) {
