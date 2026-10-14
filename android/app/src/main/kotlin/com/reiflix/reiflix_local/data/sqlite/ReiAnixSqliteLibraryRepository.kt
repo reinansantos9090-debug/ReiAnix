@@ -497,11 +497,24 @@ class ReiAnixSqliteLibraryRepository(
      */
     suspend fun indexDiscoveredMedia(
         snapshot: NativeLibraryScanSnapshot,
-        onTransactionCommitted: ((NativeLibraryIndexReport) -> Unit)? = null,
+        onTransactionOutcome: ((
+            ReiAnixSqliteTransactionOutcome,
+            NativeLibraryIndexReport?,
+        ) -> Unit)? = null,
     ): NativeLibraryIndexReport = withContext(Dispatchers.IO) {
             require(snapshot.operationId.isNotBlank()) { "A scan operation ID is required." }
             require(snapshot.scopeRoot.isNotBlank()) { "An explicit scope root is required." }
-            val report = database.transaction { db ->
+            var transactionReport: NativeLibraryIndexReport? = null
+            val report = database.transaction(
+                onOutcome = { outcome ->
+                    val committedReport = if (outcome == ReiAnixSqliteTransactionOutcome.COMMITTED) {
+                        transactionReport
+                    } else {
+                        null
+                    }
+                    runCatching { onTransactionOutcome?.invoke(outcome, committedReport) }
+                },
+            ) { db ->
                 var inserted = 0
                 var updated = 0
                 var unchanged = 0
@@ -716,12 +729,8 @@ class ReiAnixSqliteLibraryRepository(
                     rejectedOutOfScope = rejected,
                     reconciledMissing = missing,
                     reconciliationAuthorized = reconcile,
-                )
+                ).also { transactionReport = it }
             }
-            // Invoked only after database.transaction has returned from endTransaction(),
-            // making the committed-versus-rolled-back outcome observable even if withContext
-            // later cancels delivery of the return value to its caller.
-            onTransactionCommitted?.invoke(report)
             report
         }
 
