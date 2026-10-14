@@ -22,8 +22,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
@@ -116,6 +120,11 @@ private fun ReiAnixBottomNavigation(
             NavigationBarItem(
                 selected = selected,
                 onClick = { onDestinationClick(destination.route) },
+                modifier = Modifier.semantics {
+                    contentDescription = destination.contentDescription
+                    stateDescription = if (selected) "Selecionado" else "Não selecionado"
+                    role = Role.Tab
+                },
                 icon = {
                     Icon(
                         imageVector = if (selected) {

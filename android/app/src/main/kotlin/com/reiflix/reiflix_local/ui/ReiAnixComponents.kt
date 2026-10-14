@@ -207,8 +207,11 @@ fun ReiAnixPrimaryButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
-            .heightIn(min = ReiAnixTokens.Dimensions.buttonMinHeight)
-            .semantics { role = Role.Button },
+            .heightIn(min = ReiAnixTokens.Dimensions.touchTarget)
+            .semantics {
+                role = Role.Button
+                stateDescription = if (enabled) "Habilitado" else "Desabilitado"
+            },
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
@@ -248,8 +251,11 @@ fun ReiAnixSecondaryButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
-            .heightIn(min = ReiAnixTokens.Dimensions.buttonMinHeight)
-            .semantics { role = Role.Button },
+            .heightIn(min = ReiAnixTokens.Dimensions.touchTarget)
+            .semantics {
+                role = Role.Button
+                stateDescription = if (enabled) "Habilitado" else "Desabilitado"
+            },
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = MaterialTheme.colorScheme.surface,
@@ -293,7 +299,10 @@ fun ReiAnixCompactButton(
         enabled = enabled,
         modifier = modifier
             .heightIn(min = ReiAnixTokens.Dimensions.touchTarget)
-            .semantics { role = Role.Button },
+            .semantics {
+                role = Role.Button
+                stateDescription = if (enabled) "Habilitado" else "Desabilitado"
+            },
         shape = ReiAnixTokens.Shapes.button,
         contentPadding = contentPadding,
     ) {
@@ -543,6 +552,7 @@ fun ReiAnixIconActionButton(
             .semantics {
                 this.contentDescription = contentDescription
                 role = Role.Button
+                stateDescription = if (enabled) "Habilitado" else "Desabilitado"
             },
     ) {
         Icon(

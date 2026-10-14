@@ -329,6 +329,7 @@ private fun PlayerSeekIconButton(
             .size(ReiAnixTokens.PlayerDimensions.seekButtonSize)
             .semantics {
                 contentDescription = description
+                stateDescription = if (enabled) "Habilitado" else "Desabilitado"
                 role = Role.Button
             },
     ) {
@@ -596,6 +597,7 @@ private fun RowScope.PlayerBottomAction(
                 .size(ReiAnixTokens.PlayerDimensions.actionButtonSize)
                 .semantics {
                     this.contentDescription = contentDescription
+                    stateDescription = if (enabled) "Habilitado" else "Desabilitado"
                     role = Role.Button
                 },
         ) {
