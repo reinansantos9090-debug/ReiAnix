@@ -105,7 +105,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("committedIndexReport.set(report)", runner)
         self.assertIn('put("commitOutcome", "COMMITTED")', runner)
         self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
-        self.assertIn("if (!scanGenerationFinished)", runner)
+        self.assertIn("!scanGenerationFinished", runner)
+        self.assertIn("published && committedIndexReport.get() == null && !scanGenerationFinished", runner)
         self.assertIn("fun recoveryDocuments(): JSONArray?", runner)
         self.assertIn("fun publishRecoveryTerminal(message: String, cancelled: Boolean)", runner)
         self.assertIn('priorRecovery == "LEGACY_INGESTION_REQUIRED"', runner)
@@ -276,11 +277,15 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("unitTests.includeAndroidResources = true", template)
         self.assertNotIn(":app:testDebugUnitTest", template)
 
-    def test_kotlin_jvm_workflow_runs_on_pr_and_remains_dispatchable(self):
+    def test_kotlin_jvm_workflow_runs_only_when_manually_dispatched(self):
         workflow = KOTLIN_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("pull_request:", workflow)
-        self.assertIn("branches: [main]", workflow)
+        trigger_section = workflow.split("concurrency:", 1)[0]
+        self.assertIn("workflow_dispatch:", trigger_section)
+        self.assertNotIn("pull_request:", trigger_section)
+        self.assertNotIn("pull_request_target:", trigger_section)
+        self.assertNotIn("push:", trigger_section)
+        self.assertNotIn("schedule:", trigger_section)
+        self.assertNotIn("workflow_run:", trigger_section)
         lines = workflow.splitlines()
         on_index = lines.index("on:")
         event_lines = []
@@ -294,9 +299,9 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             match = re.fullmatch(r"  ([a-z_]+):", line)
             if match:
                 events.append(match.group(1))
-        self.assertEqual(["workflow_dispatch", "pull_request"], events)
-        for forbidden in ("pull_request_target", "push", "schedule", "workflow_run"):
-            self.assertNotIn(forbidden, events)
+        self.assertEqual(["workflow_dispatch"], events)
+        self.assertIn("Execute Kotlin JVM unit tests", workflow)
+        self.assertIn(":app:testDebugUnitTest", workflow)
 
         template = TEMPLATE.read_text(encoding="utf-8")
         self.assertNotIn("kotlin_jvm_tests.yml", template)
