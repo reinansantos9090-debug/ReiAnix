@@ -7,10 +7,12 @@ shared Material 3 visual design system without migrating any complete applicatio
 
 ## Current entry boundary
 
-MainActivity remains the existing FlutterFragmentActivity entry used by the Flet-generated Android
-host. Compose runs in the same Android module and, from earlier validation stage 03 onward, is attached through the
-existing Compose host boundary as the native App Shell is activated. The legacy Flet UI remains
-available outside the migrated shell until each individual surface is explicitly cut over.
+MainActivity is still a FlutterFragmentActivity supplied by the Flet-generated Android host. The
+Compose shell is the visible application surface for the migrated routes, but the app is not yet an
+independent Android runtime: library/settings projections and several domain operations still use
+NativeMailbox and Python services. Prompt 24 must not remove the generated host until those contracts
+have native equivalents. The Compose host now owns Back at its Home root and closes the Activity
+instead of forwarding the root Back action to the hidden Flet navigator.
 
 NativePlayerActivity remains a View-based ComponentActivity using Media3. No player UI migration is
 performed here.
@@ -55,8 +57,8 @@ the bottom navigation. Details/Player use stable encoded IDs plus origin
 metadata, while Navigation Compose owns tab save/restore semantics.
 
 The existing Flet/Android bridges remain authoritative for capabilities not yet migrated. The native Compose
-shell is attached through the existing library-host boundary during the incremental cutover rather than
-creating a second Android entry Activity.
+shell uses the existing host boundary rather than a second Activity. The shell's visible-route Back behavior
+is native-owned, but that change alone does not certify Python/Flet independence.
 
 ## Coroutine/lifecycle boundary
 

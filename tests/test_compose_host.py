@@ -118,7 +118,8 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("fun handleBack(): Boolean", host)
         self.assertIn("controller.previousBackStackEntry != null", host)
         self.assertIn("navigateToRequestedDestination", host)
-        self.assertIn("ReiAnixRoutes.HOME -> false", host)
+        self.assertIn("ReiAnixRoutes.HOME -> {", host)
+        self.assertIn("activity.finish()", host)
         self.assertNotIn("private fun handleHomeBack()", host)
         self.assertNotIn("activity.finishAndRemoveTask()", host)
         self.assertNotIn("HOME_DOUBLE_BACK_WINDOW_MS", host)
@@ -143,12 +144,12 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("class MainActivity : FlutterFragmentActivity()", source)
         self.assertNotIn("class MainActivity : ComponentActivity()", source)
 
-    def test_compose_root_back_delegates_to_the_canonical_flet_exit_policy(self):
-        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+    def test_compose_root_back_is_owned_by_the_native_shell(self):
         host = HOST.read_text(encoding="utf-8")
         root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
-        self.assertIn("ReiAnixRoutes.HOME -> false", root)
-        self.assertIn("engine.navigationChannel.popRoute()", source)
+        self.assertIn("ReiAnixRoutes.HOME -> {", root)
+        self.assertIn("activity.finish()", root)
+        self.assertNotIn("NativeMailbox", root)
         self.assertNotIn("finishAndRemoveTask", root)
         self.assertNotIn("Toast", root)
 

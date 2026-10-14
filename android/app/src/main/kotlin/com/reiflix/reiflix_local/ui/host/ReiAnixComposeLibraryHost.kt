@@ -231,9 +231,9 @@ class ReiAnixComposeLibraryHost(
     }
 
     /**
-     * Back is consumed by the Compose stack only when Compose owns a non-root route.
-     * At the real Home root the Activity falls through to the canonical Flet popRoute
-     * bridge, so exit confirmation/exit remain owned by NavigationController.
+     * The native Compose shell owns Back for every route it displays. Nested routes
+     * pop through Navigation Compose; at Home, the Android Activity finishes instead
+     * of sending a legacy route event to the hidden Flet navigation controller.
      */
     fun handleBack(): Boolean {
         val controller = composeNavController ?: return false
@@ -243,9 +243,12 @@ class ReiAnixComposeLibraryHost(
 
         val route = controller.currentBackStackEntry?.destination?.route
         return when (route) {
-            // Home is the canonical application root. Do not create a second native
-            // exit policy here; MainActivity forwards the same Back to Flet.
-            ReiAnixRoutes.HOME -> false
+            // Home is the native shell root. Do not delegate Back to the hidden
+            // Flet navigator: finishing the Activity closes the native application.
+            ReiAnixRoutes.HOME -> {
+                activity.finish()
+                true
+            }
             ReiAnixRoutes.LIBRARY,
             ReiAnixRoutes.SEARCH,
             ReiAnixRoutes.SETTINGS,
