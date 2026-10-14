@@ -546,7 +546,9 @@ class ReiAnixSqliteLibraryRepository(
                         item.mimeType?.takeIf { it.isNotBlank() }?.let { if (current.mimeType != it) patch.put("mime_type", it) }
                         item.sizeBytes?.let { if (current.fileSize != it) patch.put("file_size", it) }
                         item.modifiedAtEpochSeconds?.let { if (current.modifiedAt != it) patch.put("modified_at", it) }
-                        val folder = item.sourceFolder?.takeIf { it.isNotBlank() } ?: snapshot.scopeRoot
+                        val folder = item.sourceFolder?.takeIf { it.isNotBlank() }
+                            ?: snapshot.scopeReference.trim().takeIf { it.isNotEmpty() }
+                            ?: snapshot.scopeRoot
                         if (current.sourceFolder != folder) patch.put("source_folder", folder)
                         item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
                         item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
@@ -635,7 +637,12 @@ class ReiAnixSqliteLibraryRepository(
                         item.mimeType?.takeIf { it.isNotBlank() }?.let { put("mime_type", it) }
                         item.sizeBytes?.let { put("file_size", it) }
                         item.modifiedAtEpochSeconds?.let { put("modified_at", it) }
-                        put("source_folder", item.sourceFolder?.takeIf { it.isNotBlank() } ?: snapshot.scopeRoot)
+                        put(
+                            "source_folder",
+                            item.sourceFolder?.takeIf { it.isNotBlank() }
+                                ?: snapshot.scopeReference.trim().takeIf { it.isNotEmpty() }
+                                ?: snapshot.scopeRoot,
+                        )
                         putNull("duration")
                         item.absoluteNumber?.let { put("absolute_number", it) }
                         item.relativePath?.takeIf { it.isNotBlank() }?.let { put("relative_path", it) }
@@ -668,7 +675,10 @@ class ReiAnixSqliteLibraryRepository(
                 val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence && ambiguous == 0
                 var missing = 0
                 if (reconcile) {
-                    val root = snapshot.scopeRoot.trim().replace('\\', '/').trimEnd('/')
+                    // scopeRoot is scanner evidence (e.g. SAF document ID); scopeReference is the
+                    // persisted source key used by LibraryStore (e.g. the granted tree URI).
+                    val root = snapshot.scopeReference.trim().ifBlank { snapshot.scopeRoot.trim() }
+                        .replace('\\', '/').trimEnd('/')
                     val prefix = "$root/"
                     val scopedRows = db.rawQuery(
                         "SELECT * FROM episodes WHERE source_folder = ? OR substr(source_folder, 1, ?) = ?",
