@@ -97,6 +97,9 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("serialized fallback ingestion required", runner)
         self.assertIn("DISCOVERY_SNAPSHOT_UNAVAILABLE", runner)
         self.assertIn("verified discovery snapshot unavailable; preserve catalog and rescan", runner)
+        self.assertIn("nativeIndexingCancelled = indexError is CancellationException", runner)
+        self.assertIn("SAF native indexing was cancelled after rollback recovery was published.", runner)
+        self.assertIn("if (!scanGenerationFinished)", runner)
         self.assertRegex(
             main,
             r"""if\s+payload\.get\((['"])documents\1\)\s+and\s+payload\.get\((['"])nativeLibraryIndexOwner\2\)\s+is\s+not\s+True\s*:""",
@@ -198,6 +201,24 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             rows = [episode for anime in store.catalog() for season in anime["seasons"] for episode in season["episodes"]]
             self.assertEqual(2, len(rows))
             self.assertEqual("partial", store.scan_by_id("native-index-failed")["status"])
+
+            # If no verified snapshot can be recovered, finalization receives an empty
+            # partial receipt. It must preserve previously known physical rows.
+            service.finish_ingest_documents(
+                source,
+                source_kind="saf",
+                scan_id="native-index-snapshot-unavailable",
+                scope_kind="root",
+                scope_ref=source,
+                scan_generation=13,
+                status="partial",
+                scan_errors=["verified discovery snapshot unavailable; controlled rescan required"],
+                scan_stats={"status": "partial", "partial": True, "generationId": "native:13"},
+                enforce_library_source=True,
+                native_persistence_owner=False,
+            )
+            self.assertFalse(store.physical_row(previous["uri"])["missing"])
+            self.assertFalse(store.physical_row(recovered["uri"])["missing"])
 
     def test_metadata_patch_updates_catalog_fields_without_overwriting_user_state(self):
         library = LIBRARY.read_text(encoding="utf-8")
