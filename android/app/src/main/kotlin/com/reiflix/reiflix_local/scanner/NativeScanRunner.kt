@@ -218,6 +218,16 @@ object NativeScanRunner {
                         nativeIndexingStatus = "FAILED"
                         Log.e(TAG, "Native SQLite library indexing failed; discovery snapshot is preserved.", indexError)
                         val fallbackAvailable = fallbackDocuments != null
+                        if (fallbackAvailable) {
+                            // Python's batch-ingestion path reads nested stats to decide whether
+                            // reconciliation is allowed; top-level PARTIAL alone is insufficient.
+                            val fallbackStats = result.optJSONObject("stats") ?: JSONObject()
+                            fallbackStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)
+                            val fallbackErrors = fallbackStats.optJSONArray("errors")
+                                ?: org.json.JSONArray().also { fallbackStats.put("errors", it) }
+                            fallbackErrors.put("native SQLite indexing failed; serialized fallback ingestion required")
+                            result.put("stats", fallbackStats)
+                        }
                         result.put("nativeLibraryIndex", JSONObject()
                             .put("status", "FAILED")
                             .put("errorType", indexError::class.java.simpleName)
