@@ -114,6 +114,10 @@ object NativeScanRunner {
                 )
                 var nativeIndexingFailed = false
                 var nativeIndexingStatus = "SKIPPED_INCOMPLETE"
+                // Retain this scan generation's verified discovery snapshot until the SQLite
+                // transaction commits. If that transaction rolls back, the terminal event can
+                // hand the same snapshot to the legacy ingestion path as a serialized fallback.
+                var fallbackDocuments: org.json.JSONArray? = null
                 try {
                         val treeIdentity = SafScanner.treeIdentity(treeUri)
                         val complete = status == NativeIndex.STATUS_COMPLETED || status == NativeIndex.STATUS_EMPTY_COMPLETE
@@ -122,6 +126,7 @@ object NativeScanRunner {
                         } else {
                             NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
                         } ?: throw IllegalStateException("No verified scan snapshot is available for indexing.")
+                        fallbackDocuments = scanDocuments
                         val errors = result.optJSONObject("stats")?.optJSONArray("errors")
                         val failedLocations = if (errors != null && errors.length() > 0) {
                             buildSet { for (i in 0 until errors.length()) add(errors.optString(i).ifBlank { "unknown-location" }) }
@@ -212,9 +217,16 @@ object NativeScanRunner {
                         nativeIndexingFailed = true
                         nativeIndexingStatus = "FAILED"
                         Log.e(TAG, "Native SQLite library indexing failed; discovery snapshot is preserved.", indexError)
+                        val fallbackAvailable = fallbackDocuments != null
                         result.put("nativeLibraryIndex", JSONObject()
                             .put("status", "FAILED")
-                            .put("errorType", indexError::class.java.simpleName))
+                            .put("errorType", indexError::class.java.simpleName)
+                            .put("recovery", if (fallbackAvailable) "LEGACY_INGESTION_REQUIRED" else "DISCOVERY_SNAPSHOT_UNAVAILABLE"))
+                            // The transaction helper ends the failed SQLite transaction before this
+                            // catch runs. Publish the same scan's snapshot for one serialized
+                            // fallback writer; never claim native ownership after a rollback.
+                            .put("nativeLibraryIndexOwner", false)
+                            .put("documents", fallbackDocuments ?: org.json.JSONArray())
                         NativeMailbox.write(appContext, JSONObject()
                             .put("type", "native_library_index_error")
                             .put("requestId", requestId ?: "")
