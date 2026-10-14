@@ -78,6 +78,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         repository = LIBRARY.read_text(encoding="utf-8")
         native_index = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
 
         self.assertIn('nativeLibraryIndexOwner", source == NativeIndex.SOURCE_SAF', publisher)
@@ -109,6 +110,15 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("fun publishRecoveryTerminal(message: String, cancelled: Boolean)", runner)
         self.assertIn('priorRecovery == "LEGACY_INGESTION_REQUIRED"', runner)
         self.assertIn("terminalEventPublished = true", runner)
+        self.assertIn("recoveryProtocolVersion", native_index)
+        self.assertIn("markNativeCatalogIndexing", runner)
+        self.assertIn("markNativeCatalogNotCommitted", runner)
+        self.assertIn("markNativeCatalogCommitted", runner)
+        self.assertIn("fun pendingSafRecovery(context: Context): JSONArray", native_index)
+        self.assertIn("fun recoverInterruptedSafScans(context: Context)", runner)
+        self.assertIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
+        self.assertIn("COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED", runner)
+        self.assertIn("recoveryEventPublished", native_index)
         self.assertRegex(
             main,
             r"""if\s+payload\.get\((['"])documents\1\)\s+and\s+payload\.get\((['"])nativeLibraryIndexOwner\2\)\s+is\s+not\s+True\s*:""",
