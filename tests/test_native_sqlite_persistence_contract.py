@@ -85,6 +85,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("NativeIndex.committedDocuments", runner)
         self.assertIn("NativeIndex.stagedDocuments", runner)
         self.assertIn("indexDiscoveredMedia", runner)
+        self.assertIn("sourceFolder = reference", runner)
         self.assertIn("fun stagedDocuments(", native_index)
         self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
 
