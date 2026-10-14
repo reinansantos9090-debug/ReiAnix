@@ -36,18 +36,22 @@ class ReiAnixLocalArtworkTest {
     }
 
     @Test
-    fun composeArtworkUsesOnlyMaterializedLocalCandidates() {
+    fun composeArtworkPrefersLocalCandidatesBeforeRemoteFallbacks() {
         assertEquals(
-            listOf("/cache/poster.jpg"),
-            localArtworkCandidates("https://img/a.jpg", "/cache/poster.jpg"),
+            listOf("/cache/poster.jpg", "https://img/a.jpg", "https://img/b.jpg"),
+            artworkCandidates("/cache/poster.jpg", null, "https://img/a.jpg", "https://img/b.jpg"),
+        )
+        assertEquals(
+            listOf("/cache/poster.jpg", "https://img/b.jpg"),
+            artworkCandidates("https://img/a.jpg", "/cache/poster.jpg", "https://img/a.jpg", "https://img/b.jpg"),
+        )
+        assertEquals(
+            listOf("content://media/poster/10", "https://img/a.jpg"),
+            artworkCandidates("content://media/poster/10", null, "https://img/a.jpg", "file://invalid-remote"),
         )
         assertEquals(
             emptyList<String>(),
-            localArtworkCandidates("https://img/a.jpg", "https://img/b.jpg"),
-        )
-        assertEquals(
-            listOf("content://media/poster/10"),
-            localArtworkCandidates("content://media/poster/10", null),
+            artworkCandidates("https://img/a.jpg", "https://img/b.jpg", null, "file://invalid-remote"),
         )
     }
 }
