@@ -1570,7 +1570,7 @@ class LibraryService:
             return {"scan_id":scan_id,"request_id":request_id,"generation_id":generation_id or scan_id,"batch_id":batch_id,"batch_number":batch_number,"batch_size":batch_size if batch_size is not None else len(documents or []),"files":result.files,"videos":result.videos,"processed":result.files,"discovered":len(documents or []),"inserted":result.new,"new":result.new,"updated":result.updated,"unchanged":result.unchanged,"duplicates":result.duplicates,"removed":0,"ignored":result.ignored,"unknown":result.unknown,"errors":result.errors,"elapsed_ms":elapsed_ms,"elapsedMs":elapsed_ms}
 
     def finish_ingest_documents(self, tree_uri: str, *, source_kind="saf", scan_id=None, scope_kind="global", scope_ref=None, scan_generation=None, generation_id=None, status="completed", folder_name=None, scan_errors=None, scan_stats=None, enforce_library_source=False, native_persistence_owner=False):
-        """Finalize scan bookkeeping; only the persistence owner may reconcile catalog rows."""
+        """Finalize scan bookkeeping; only a trusted COMPLETE generation reconciles when Python owns catalog persistence."""
         with self._scan_lock:
             scan_id = scan_id or str(uuid.uuid4()); scope_ref = scope_ref or tree_uri
             if enforce_library_source:
