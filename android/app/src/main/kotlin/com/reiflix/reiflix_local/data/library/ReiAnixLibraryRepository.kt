@@ -228,6 +228,8 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private val stateMutex = Mutex()
     private val pageGeneration = AtomicLong(0L)
     private val refreshInFlight = AtomicBoolean(false)
+    /** Keeps the active refresh flag and the latest requested post-refresh page filters atomic. */
+    private val refreshRequestGuard = Any()
     private val pageRequestGuard = Any()
     private data class InFlightPage(
         val generation: Long,
@@ -277,15 +279,19 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         watchingOnly: Boolean = false,
         completedOnly: Boolean = false,
     ) {
-        if (!refreshInFlight.compareAndSet(false, true)) return
-        pendingRefreshPage = RefreshPageRequest(
-            query = query,
-            genre = genre,
-            sort = sort,
-            favoritesOnly = favoritesOnly,
-            watchingOnly = watchingOnly,
-            completedOnly = completedOnly,
-        )
+        synchronized(refreshRequestGuard) {
+            // A refresh already in progress still satisfies the scan request, but
+            // the most recent UI filters must win when its result is published.
+            pendingRefreshPage = RefreshPageRequest(
+                query = query,
+                genre = genre,
+                sort = sort,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+            )
+            if (!refreshInFlight.compareAndSet(false, true)) return
+        }
         send(ReiAnixLibraryCommandCodec.Action.REFRESH)
     }
 
@@ -479,8 +485,10 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                     }
                 }
                 if (action == ReiAnixLibraryCommandCodec.Action.REFRESH) {
-                    refreshInFlight.set(false)
-                    pendingRefreshPage = null
+                    synchronized(refreshRequestGuard) {
+                        refreshInFlight.set(false)
+                        pendingRefreshPage = null
+                    }
                 }
                 if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE) {
                     synchronized(pageRequestGuard) { inFlightPage = null }
@@ -589,21 +597,26 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         if (action == ReiAnixLibraryCommandCodec.Action.REFRESH.value &&
             result.status !in setOf("QUEUED", "RUNNING")
         ) {
-            refreshInFlight.set(false)
-            val request = pendingRefreshPage
-            pendingRefreshPage = null
-            if (result.status == "COMPLETED" && request != null) {
-                loadLibraryPage(
-                    page = 0,
-                    pageSize = 36,
-                    query = request.query,
-                    genre = request.genre,
-                    sort = request.sort,
-                    favoritesOnly = request.favoritesOnly,
-                    watchingOnly = request.watchingOnly,
-                    completedOnly = request.completedOnly,
-                    reset = true,
-                )
+            synchronized(refreshRequestGuard) {
+                refreshInFlight.set(false)
+                val request = pendingRefreshPage
+                pendingRefreshPage = null
+                if (result.status == "COMPLETED" && request != null) {
+                    // Allocate the next page generation while still holding the
+                    // refresh guard. A newer refresh can then supersede this page,
+                    // but an older result cannot be scheduled after it.
+                    loadLibraryPage(
+                        page = 0,
+                        pageSize = 36,
+                        query = request.query,
+                        genre = request.genre,
+                        sort = request.sort,
+                        favoritesOnly = request.favoritesOnly,
+                        watchingOnly = request.watchingOnly,
+                        completedOnly = request.completedOnly,
+                        reset = true,
+                    )
+                }
             }
         }
 
@@ -658,8 +671,10 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         snapshotObserver.stopWatching()
         commandResultObserver.stopWatching()
         scope.coroutineContext[Job]?.cancel()
-        refreshInFlight.set(false)
-        pendingRefreshPage = null
+        synchronized(refreshRequestGuard) {
+            refreshInFlight.set(false)
+            pendingRefreshPage = null
+        }
         synchronized(pageRequestGuard) { inFlightPage = null }
     }
 }
