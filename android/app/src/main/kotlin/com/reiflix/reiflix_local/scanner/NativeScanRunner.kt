@@ -321,6 +321,8 @@ object NativeScanRunner {
                     status,
                     JSONObject()
                         .put("treeUri", reference)
+                        .put("scopeRef", reference)
+                        .put("requestId", requestId ?: "")
                         .put("stats", result.optJSONObject("stats") ?: JSONObject())
                         .put("status", status)
                         .put("scanId", scanId),
