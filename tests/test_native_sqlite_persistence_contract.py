@@ -91,6 +91,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
 
     def test_native_saf_finalization_records_scan_without_second_catalog_reconciliation(self):
         from unittest.mock import patch
+        from core.library_store import LibraryStore
 
         with tempfile.TemporaryDirectory() as data_dir:
             store = LibraryStore(data_dir)
