@@ -138,7 +138,18 @@ class ComposeHostTests(unittest.TestCase):
         dispatch = activity[dispatch_start:dispatch_end]
 
         self.assertIn("ReiAnixRoutes.HOME -> false", handler)
-        self.assertIn("canonical Flet/Python NavigationController", handler)
+        # Normalize comment text so the contract may span Kotlin comment lines;
+        # assert the documented ownership semantically rather than requiring a
+        # brittle, exact phrase.
+        ownership_comment = " ".join(
+            line.split("//", 1)[1].strip()
+            for line in handler.splitlines()
+            if "//" in line
+        )
+        self.assertRegex(
+            ownership_comment,
+            r"Python NavigationController.*root-exit.*policy.*Flet remains the host/runtime",
+        )
         self.assertNotIn("activity.finish()", handler)
         self.assertNotIn("finishAndRemoveTask()", handler)
         self.assertNotIn("finishAffinity()", handler)
