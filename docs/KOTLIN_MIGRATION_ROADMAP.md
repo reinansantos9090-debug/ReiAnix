@@ -71,7 +71,9 @@ Próximo pacote funcional: MIG-02 — contratos de domínio e baseline de parida
 
 **Critérios objetivos de aceitação:** Matriz de operação→implementação→efeito persistido; corpus para identidade cobrindo casos edge; divergências documentadas; nenhuma criação de banco paralelo.
 
-**Verificações:** Testes Python existentes via CI normal e revisão estática. Testes Kotlin/JVM continuam manuais e não devem ser executados neste prompt; sem testes instrumentados/emulador.
+**Entrega do Prompt 03/29:** docs/KOTLIN_DOMAIN_PARITY_BASELINE.md contém a matriz de operações reais e suas lacunas; dois TSVs em android/app/src/test/resources formam o corpus comum Python/Kotlin para parsing e identidade física. tests/test_media_domain_parity_baseline.py valida o lado Python no workflow normal e MediaDomainParityBaselineTest.kt consome os mesmos recursos para execução Kotlin/JVM manual/autorizada. A documentação distingue campos mapeados de operações de escrita realmente migradas. Essa entrega estabelece baseline, não declara paridade integral de LibraryStore/LibraryService.
+
+**Verificações:** Testes Python existentes via CI normal e revisão estática. Testes Kotlin/JVM continuam manuais e não devem ser executados nesta etapa; sem testes instrumentados/emulador. Schema v29 e os dados existentes não são alterados.
 
 **Prioridade:** P0.
 
