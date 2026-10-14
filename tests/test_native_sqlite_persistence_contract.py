@@ -93,6 +93,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn('put("nativeLibraryIndexOwner", false)', runner)
         self.assertIn('put("documents", fallbackDocuments ?: org.json.JSONArray())', runner)
         self.assertIn("LEGACY_INGESTION_REQUIRED", runner)
+        self.assertIn('fallbackStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
+        self.assertIn("serialized fallback ingestion required", runner)
         self.assertIn('if payload.get("documents") and payload.get("nativeLibraryIndexOwner") is not True', main)
 
     def test_native_saf_finalization_records_scan_without_second_catalog_reconciliation(self):
