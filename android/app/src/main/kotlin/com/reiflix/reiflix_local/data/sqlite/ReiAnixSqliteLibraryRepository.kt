@@ -162,16 +162,15 @@ class ReiAnixSqliteLibraryRepository(
             SELECT a.id, a.title, a.romaji, a.english, a.native, a.aliases, a.description,
                    a.cover_url, a.cover_cache, a.banner_url, a.genres, a.year, a.season,
                    a.status, a.format, a.studio, a.user_tags, a.personal_note, a.lookup_title,
-                   COALESCE((SELECT GROUP_CONCAT(COALESCE(e.episode_title,'') || ' ' || e.file_name || ' ' || COALESCE(e.source_folder,'') ||
+                   ${if (terms.isEmpty()) "'' AS episode_search_text, '' AS genre_search_text" else """
+                   COALESCE((SELECT GROUP_CONCAT(COALESCE(e.episode_title,'') || ' ' || e.file_name ||
                              ' episode ' || COALESCE(CAST(e.number AS TEXT),'') ||
-                             ' ep ' || COALESCE(CAST(e.number AS TEXT),'') ||
-                             ' season ' || CAST(e.season AS TEXT) ||
-                             ' s' || printf('%02d',e.season) || 'e' ||
-                             printf('%02d',CAST(COALESCE(e.number,0) AS INTEGER)), ' ')
+                             ' ep ' || COALESCE(CAST(e.number AS TEXT),''), ' ')
                              FROM episodes e WHERE e.anime_id=a.id), '') AS episode_search_text,
                    COALESCE((SELECT GROUP_CONCAT(g.canonical_name || ' ' || COALESCE(ga.alias,''), ' ')
                              FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id
                              LEFT JOIN genre_aliases ga ON ga.genre_id=g.id WHERE ag.anime_id=a.id), '') AS genre_search_text
+                   """.trimIndent()}
             FROM anime a
             ${if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")}
             ORDER BY $sort
