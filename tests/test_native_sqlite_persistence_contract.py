@@ -76,7 +76,10 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
     def test_saf_scan_has_one_persistence_writer_and_indexes_partial_positive_results(self):
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        repository = LIBRARY.read_text(encoding="utf-8")
+        database_source = DATABASE.read_text(encoding="utf-8")
         native_index = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
 
         self.assertIn('nativeLibraryIndexOwner", source == NativeIndex.SOURCE_SAF', publisher)
@@ -88,6 +91,64 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("sourceFolder = reference", runner)
         self.assertIn("fun stagedDocuments(", native_index)
         self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
+        # A failed native transaction must relinquish ownership and carry the same
+        # generation's verified discovery snapshot to the serialized legacy fallback.
+        self.assertIn('put("nativeLibraryIndexOwner", !ownershipTransferred)', runner)
+        self.assertIn('put("nativeLibraryIndexOwner", !fallbackOwnershipAllowed)', runner)
+        self.assertIn('put("documents", if (fallbackAvailable) fallbackDocuments ?: JSONArray() else JSONArray())', runner)
+        self.assertIn("LEGACY_INGESTION_REQUIRED", runner)
+        self.assertIn('fallbackStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
+        self.assertIn("serialized fallback ingestion required", runner)
+        self.assertIn("DISCOVERY_SNAPSHOT_UNAVAILABLE", runner)
+        self.assertIn("verified discovery snapshot is unavailable; preserve catalog and rescan", runner)
+        self.assertIn("nativeIndexingCancelled = indexError is CancellationException", runner)
+        self.assertIn("SAF native indexing cancellation was handled according to the confirmed transaction outcome.", runner)
+        self.assertIn("onTransactionOutcome", repository)
+        self.assertIn("ReiAnixSqliteTransactionOutcome.COMMITTED", database_source)
+        self.assertIn("ReiAnixSqliteTransactionOutcome.ROLLED_BACK", database_source)
+        self.assertIn("ReiAnixSqliteTransactionOutcome.UNKNOWN", database_source)
+        self.assertIn("val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK", runner)
+        self.assertIn("val ownershipTransferred = rollbackConfirmed && rollbackReceiptPersisted.get()", runner)
+        self.assertIn("val fallbackAvailable = ownershipTransferred && fallbackDocuments != null", runner)
+        self.assertIn("fun canTransferToFallback(): Boolean", runner)
+        self.assertIn("if (!canTransferToFallback()) return null", runner)
+        self.assertIn("val fallbackOwnershipAllowed = committedReport == null && canTransferToFallback()", runner)
+        self.assertIn('put("nativeLibraryIndexOwner", !fallbackOwnershipAllowed)', runner)
+        self.assertIn("nativeIndexingCheckpointAttempted.set(true)", runner)
+        self.assertIn("ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED", runner)
+        self.assertIn("if (!persisted)", runner)
+        self.assertIn("markNativeCatalogOutcomeUnknown", runner)
+        self.assertIn("markNativeCatalogCommittedWithoutReport", runner)
+        self.assertIn("committedIndexReport.set(report)", runner)
+        self.assertIn('put("commitOutcome", "COMMITTED")', runner)
+        self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
+        self.assertIn("!scanGenerationFinished", runner)
+        self.assertIn("published && committedIndexReport.get() == null && !scanGenerationFinished", runner)
+        self.assertIn("fun recoveryDocuments(): JSONArray?", runner)
+        self.assertIn("fun publishRecoveryTerminal(message: String, cancelled: Boolean)", runner)
+        self.assertIn('priorRecovery == "LEGACY_INGESTION_REQUIRED"', runner)
+        self.assertIn("terminalEventPublished = true", runner)
+        self.assertIn("recoveryProtocolVersion", native_index)
+        self.assertIn("markNativeCatalogIndexing", runner)
+        self.assertIn("markNativeCatalogNotCommitted", runner)
+        self.assertIn("markNativeCatalogCommitted", runner)
+        self.assertIn("fun pendingSafRecovery(context: Context): JSONArray", native_index)
+        self.assertIn("fun recoveryDocuments(", native_index)
+        self.assertIn('target.name.endsWith(".ndjson")', native_index)
+        self.assertIn('documents.length() == recordedProcessed', native_index)
+        self.assertIn('documents.length() == 0', native_index)
+        self.assertIn('scope.optString("nativeCatalogWriteOutcome") !in setOf("NOT_STARTED", "NOT_COMMITTED")', native_index)
+        self.assertIn("NativeIndex.recoveryDocuments(", runner)
+        self.assertIn('partialStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
+        self.assertIn("full reconciliation; previous rows were preserved", runner)
+        self.assertIn("fun recoverInterruptedSafScans(context: Context)", runner)
+        self.assertIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
+        self.assertIn("COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED", runner)
+        self.assertIn("recoveryEventPublished", native_index)
+        self.assertRegex(
+            main,
+            r"""if\s+payload\.get\((['"])documents\1\)\s+and\s+payload\.get\((['"])nativeLibraryIndexOwner\2\)\s+is\s+not\s+True\s*:""",
+        )
 
     def test_native_saf_finalization_records_scan_without_second_catalog_reconciliation(self):
         from unittest.mock import patch
@@ -120,6 +181,116 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             self.assertEqual(folder["authorization"], "granted")
             scan = store.scan_by_id("native-owned-scan")
             self.assertIsNotNone(scan)
+
+    def test_native_index_rollback_snapshot_is_recoverable_once_without_destructive_reconciliation(self):
+        from unittest.mock import patch
+        from core.library_service import LibraryService
+        from core.library_store import LibraryStore
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            store = LibraryStore(data_dir)
+            source = "content://com.android.externalstorage.documents/tree/primary%3AAnime"
+            previous = {
+                "uri": "content://media/previous",
+                "name": "Show S01E01.mkv",
+                "relativePath": "Show/Show S01E01.mkv",
+                "mimeType": "video/x-matroska",
+                "size": 1024,
+                "modifiedAt": 1000,
+                "volumeId": "primary",
+                "volumeUuid": "primary",
+            }
+            recovered = {
+                "uri": "content://media/recovered",
+                "name": "Show S01E02.mkv",
+                "relativePath": "Show/Show S01E02.mkv",
+                "mimeType": "video/x-matroska",
+                "size": 2048,
+                "modifiedAt": 2000,
+                "volumeId": "primary",
+                "volumeUuid": "primary",
+            }
+            service = LibraryService(store)
+            service.ingest_documents(source, [previous], scan_id="before-native-failure", scope_kind="root", scope_ref=source)
+            # This models the terminal event emitted only after the native SQLite
+            # transaction has rolled back. The partial receipt must not authorize
+            # reconciliation, while the discovered item is still persisted.
+            service.ingest_documents(
+                source,
+                [recovered],
+                scan_id="native-index-failed",
+                source_kind="saf",
+                scope_kind="root",
+                scope_ref=source,
+                scan_generation=12,
+                scan_stats={"status": "partial", "partial": True, "generationId": "native:12"},
+                scan_errors=["native SQLite index failed; serialized fallback used"],
+            )
+            first = store.physical_row(recovered["uri"])
+            self.assertIsNotNone(first)
+            self.assertFalse(first["missing"])
+            self.assertFalse(store.physical_row(previous["uri"])["missing"])
+
+            # Replaying the same terminal scan is idempotent and cannot create a
+            # second episode or observation for the recovered physical identity.
+            service.ingest_documents(
+                source,
+                [recovered],
+                scan_id="native-index-failed",
+                source_kind="saf",
+                scope_kind="root",
+                scope_ref=source,
+                scan_generation=12,
+                scan_stats={"status": "partial", "partial": True, "generationId": "native:12"},
+                scan_errors=["native SQLite index failed; serialized fallback used"],
+            )
+            rows = [episode for anime in store.catalog() for season in anime["seasons"] for episode in season["episodes"]]
+            self.assertEqual(2, len(rows))
+            self.assertEqual("partial", store.scan_by_id("native-index-failed")["status"])
+
+            # If no verified snapshot can be recovered, finalization receives an empty
+            # partial receipt. It must preserve previously known physical rows.
+            service.finish_ingest_documents(
+                source,
+                source_kind="saf",
+                scan_id="native-index-snapshot-unavailable",
+                scope_kind="root",
+                scope_ref=source,
+                scan_generation=13,
+                status="partial",
+                scan_errors=["verified discovery snapshot unavailable; controlled rescan required"],
+                scan_stats={"status": "partial", "partial": True, "generationId": "native:13"},
+                enforce_library_source=True,
+                native_persistence_owner=False,
+            )
+            self.assertFalse(store.physical_row(previous["uri"])["missing"])
+            self.assertFalse(store.physical_row(recovered["uri"])["missing"])
+
+            # An uncertain SQLite transaction cannot trigger a second writer or
+            # destructive reconciliation; the native catalog remains authoritative.
+            with patch.object(store, "reconcile_scope_generation", side_effect=AssertionError("unknown outcome must not reconcile")) as reconcile:
+                service.finish_ingest_documents(
+                    source,
+                    source_kind="saf",
+                    scan_id="native-index-outcome-unknown",
+                    scope_kind="root",
+                    scope_ref=source,
+                    scan_generation=14,
+                    generation_id="native:14",
+                    status="partial",
+                    scan_errors=["native SQLite transaction outcome unknown; rescan required"],
+                    scan_stats={
+                        "status": "partial",
+                        "partial": True,
+                        "generationId": "native:14",
+                        "nativeLibraryIndex": {"commitOutcome": "UNKNOWN"},
+                    },
+                    enforce_library_source=True,
+                    native_persistence_owner=True,
+                )
+            reconcile.assert_not_called()
+            self.assertFalse(store.physical_row(previous["uri"])["missing"])
+            self.assertFalse(store.physical_row(recovered["uri"])["missing"])
 
     def test_metadata_patch_updates_catalog_fields_without_overwriting_user_state(self):
         library = LIBRARY.read_text(encoding="utf-8")
@@ -158,11 +329,15 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("unitTests.includeAndroidResources = true", template)
         self.assertNotIn(":app:testDebugUnitTest", template)
 
-    def test_kotlin_jvm_workflow_runs_on_pr_and_remains_dispatchable(self):
+    def test_kotlin_jvm_workflow_runs_only_when_manually_dispatched(self):
         workflow = KOTLIN_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("pull_request:", workflow)
-        self.assertIn("branches: [main]", workflow)
+        trigger_section = workflow.split("concurrency:", 1)[0]
+        self.assertIn("workflow_dispatch:", trigger_section)
+        self.assertNotIn("pull_request:", trigger_section)
+        self.assertNotIn("pull_request_target:", trigger_section)
+        self.assertNotIn("push:", trigger_section)
+        self.assertNotIn("schedule:", trigger_section)
+        self.assertNotIn("workflow_run:", trigger_section)
         lines = workflow.splitlines()
         on_index = lines.index("on:")
         event_lines = []
@@ -176,9 +351,9 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             match = re.fullmatch(r"  ([a-z_]+):", line)
             if match:
                 events.append(match.group(1))
-        self.assertEqual(["workflow_dispatch", "pull_request"], events)
-        for forbidden in ("pull_request_target", "push", "schedule", "workflow_run"):
-            self.assertNotIn(forbidden, events)
+        self.assertEqual(["workflow_dispatch"], events)
+        self.assertIn("Execute Kotlin JVM unit tests", workflow)
+        self.assertIn(":app:testDebugUnitTest", workflow)
 
         template = TEMPLATE.read_text(encoding="utf-8")
         self.assertNotIn("kotlin_jvm_tests.yml", template)

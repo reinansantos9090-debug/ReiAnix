@@ -17,6 +17,12 @@ import java.util.Locale
  * database. Ordinary repository operations reject a schema that fails the
  * contract; inspectSchema() remains diagnostic and returns the incompatibilities.
  */
+enum class ReiAnixSqliteTransactionOutcome {
+    COMMITTED,
+    ROLLED_BACK,
+    UNKNOWN,
+}
+
 class ReiAnixSqliteDatabase(context: Context) {
     private val appContext = context.applicationContext
     private val databaseFile = File(File(appContext.filesDir, "data"), DATABASE_FILE_NAME)
@@ -36,22 +42,52 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
         }
 
-    internal fun <T> transaction(block: (SQLiteDatabase) -> T): T =
-        synchronized(connectionLock) {
-            val database = openExisting(readOnly = false)
+    /**
+     * Notifies the caller only after endTransaction() gives a definitive result.
+     * A failure in endTransaction() is UNKNOWN: callers must not start a second writer.
+     * Notification is best-effort and must never turn a committed transaction into an
+     * apparent rollback.
+     */
+    internal fun <T> transaction(
+        onOutcome: ((ReiAnixSqliteTransactionOutcome) -> Unit)? = null,
+        block: (SQLiteDatabase) -> T,
+    ): T = synchronized(connectionLock) {
+        val database = openExisting(readOnly = false)
+        try {
+            database.beginTransactionNonExclusive()
+            var successRequested = false
             try {
-                database.beginTransactionNonExclusive()
-                try {
-                    val result = block(database)
-                    database.setTransactionSuccessful()
-                    result
-                } finally {
-                    database.endTransaction()
-                }
+                val result = block(database)
+                database.setTransactionSuccessful()
+                successRequested = true
+                result
             } finally {
-                database.close()
+                try {
+                    database.endTransaction()
+                    notifyTransactionOutcome(
+                        onOutcome,
+                        if (successRequested) {
+                            ReiAnixSqliteTransactionOutcome.COMMITTED
+                        } else {
+                            ReiAnixSqliteTransactionOutcome.ROLLED_BACK
+                        },
+                    )
+                } catch (endError: Throwable) {
+                    notifyTransactionOutcome(onOutcome, ReiAnixSqliteTransactionOutcome.UNKNOWN)
+                    throw endError
+                }
             }
+        } finally {
+            database.close()
         }
+    }
+
+    private fun notifyTransactionOutcome(
+        onOutcome: ((ReiAnixSqliteTransactionOutcome) -> Unit)?,
+        outcome: ReiAnixSqliteTransactionOutcome,
+    ) {
+        runCatching { onOutcome?.invoke(outcome) }
+    }
 
     internal fun inspectSchema(): ReiAnixSqliteSchemaSnapshot =
         synchronized(connectionLock) {
