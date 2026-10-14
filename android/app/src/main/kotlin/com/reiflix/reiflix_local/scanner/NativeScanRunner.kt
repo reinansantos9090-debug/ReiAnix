@@ -48,8 +48,9 @@ object NativeScanRunner {
         fun recoveryDocuments(): JSONArray? {
             val prior = terminalResult
             val priorRecovery = prior?.optJSONObject("nativeLibraryIndex")?.optString("recovery").orEmpty()
-            if (prior != null && prior.optBoolean("nativeLibraryIndexOwner").not() &&
-                priorRecovery != "DISCOVERY_SNAPSHOT_UNAVAILABLE"
+            if (prior != null && prior.has("nativeLibraryIndexOwner") &&
+                !prior.optBoolean("nativeLibraryIndexOwner") &&
+                priorRecovery == "LEGACY_INGESTION_REQUIRED"
             ) {
                 prior.optJSONArray("documents")?.let { return it }
             }
