@@ -124,8 +124,9 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
 
     /**
      * Optimistically updates Compose, then sends the mutation through the existing
-     * SettingsStore writer. Canonical preference reads come from the existing SQLite table;
-     * command results and the snapshot still provide acknowledgement/account/storage state.
+     * SettingsStore writer. Compose does not keep a second preference store: canonical
+     * preference reads come from the existing SQLite table, while command results and the
+     * snapshot provide acknowledgement/account/storage state.
      */
     fun setSetting(key: String, value: String) {
         val normalizedKey = key.trim()
