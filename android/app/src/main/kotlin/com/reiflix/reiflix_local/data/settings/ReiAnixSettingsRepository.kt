@@ -4,12 +4,14 @@ import android.content.Context
 import android.os.FileObserver
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import org.json.JSONObject
 import java.util.UUID
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,6 +61,11 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         }
     }
     private val appContext = context.applicationContext
+    // Reads the existing LibraryStore preferences table. Writes remain on the
+    // single legacy SettingsStore path until the command/runtime cutover is complete.
+    private val sqliteSettingsRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixSqliteSettingsRepository(appContext)
+    }
     private val dataDirectory = File(appContext.filesDir, "data")
     private val bridgeDirectory = File(dataDirectory, "reianix-compose")
     private val snapshotFile = File(bridgeDirectory, "settings.json")
@@ -116,9 +123,9 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     }
 
     /**
-     * Optimistically updates Compose, then persists through the existing Python SettingsStore.
-     * Compose does not keep a second preference store; the confirmed value is reconciled
-     * by command result and the canonical snapshot.
+     * Optimistically updates Compose, then sends the mutation through the existing
+     * SettingsStore writer. Canonical preference reads come from the existing SQLite table;
+     * command results and the snapshot still provide acknowledgement/account/storage state.
      */
     fun setSetting(key: String, value: String) {
         val normalizedKey = key.trim()
@@ -318,6 +325,17 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     }
 
     private suspend fun loadSnapshot() {
+        // The JSON file is a projection for account/storage/action state, not a
+        // second settings database. Prefer the canonical preferences table when it
+        // is available, and retain snapshot compatibility if the database cannot be read.
+        val persistedPreferences = try {
+            sqliteSettingsRepository.allPreferences()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Canonical SQLite settings are unavailable; using the last valid settings projection.", error)
+            null
+        }
         val raw = runCatching {
             if (!snapshotFile.isFile) return
             snapshotFile.readText(Charsets.UTF_8)
@@ -333,7 +351,12 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
         synchronized(stateLock) {
             runCatching { ReiAnixSettingsSnapshotCodec.decode(raw, _state.value.revision) }
                 .onSuccess { decoded ->
-                    val base = ReiAnixSettingsUiState.fromSnapshot(decoded)
+                    val snapshotState = ReiAnixSettingsUiState.fromSnapshot(decoded)
+                    val base = if (snapshotState.status == ReiAnixSettingsLoadStatus.READY && persistedPreferences != null) {
+                        snapshotState.copy(settings = snapshotState.settings + persistedPreferences)
+                    } else {
+                        snapshotState
+                    }
                     if (base.status == ReiAnixSettingsLoadStatus.READY) {
                         confirmedSettings.clear()
                         confirmedSettings.putAll(base.settings)
