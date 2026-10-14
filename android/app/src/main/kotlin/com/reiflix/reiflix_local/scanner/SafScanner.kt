@@ -143,9 +143,11 @@ object SafScanner {
      */
     private fun isDocumentWithinTree(context:Context,treeUri:Uri,documentId:String):Boolean =
         runCatching {
-            if (!hasPersistedReadPermission(context, treeUri)) return@runCatching false
+            if (documentId.isBlank()) return@runCatching false
             val tree = treeIdentity(treeUri)
             if (documentId == tree.documentId) return@runCatching true
+            if (documentId.startsWith(tree.documentId + "/") || documentId.startsWith(tree.documentId + ":")) return@runCatching true
+            if (!hasPersistedReadPermission(context, treeUri)) return@runCatching false
             val rootDocument = DocumentsContract.buildDocumentUriUsingTree(treeUri, tree.documentId)
             val candidate = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
             DocumentsContract.isChildDocument(context.contentResolver, rootDocument, candidate)

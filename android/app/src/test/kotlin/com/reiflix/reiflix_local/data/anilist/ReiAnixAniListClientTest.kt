@@ -55,7 +55,7 @@ class ReiAnixAniListClientTest {
         val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""))
         val result = ReiAnixAniListClient(transport, 0).searchAnime("Dorohedoro", limit = 7)
 
-        assertEquals(AniListResult.Success(emptyList()), result)
+        assertEquals(AniListResult.Success(emptyList<AniListAnime>()), result)
         val body = transport.requestBody!!
         val query = body.getString("query")
         assertTrue(query.contains("\$search"))
@@ -85,7 +85,7 @@ class ReiAnixAniListClientTest {
     fun blankSearchReturnsEmptyWithoutNetworkRequest() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, "{}"))
         val result = ReiAnixAniListClient(transport, 0).searchAnime("   ")
-        assertEquals(AniListResult.Success(emptyList()), result)
+        assertEquals(AniListResult.Success(emptyList<AniListAnime>()), result)
         assertEquals(0, transport.calls)
     }
 
@@ -93,7 +93,7 @@ class ReiAnixAniListClientTest {
     fun emptyResultsAreSuccessNotNetworkFailure() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""))
         val result = ReiAnixAniListClient(transport, 0).searchAnime("does not exist")
-        assertEquals(AniListResult.Success(emptyList()), result)
+        assertEquals(AniListResult.Success(emptyList<AniListAnime>()), result)
     }
 
     @Test

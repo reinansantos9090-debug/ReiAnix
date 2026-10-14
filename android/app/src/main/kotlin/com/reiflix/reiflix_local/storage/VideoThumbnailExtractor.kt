@@ -159,15 +159,10 @@ object VideoThumbnailExtractor {
     }
 
     private fun isValidCachedThumbnail(file: File): Boolean = runCatching {
+        if (!file.isFile || file.length() <= 0L) return false
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, options)
-        if (options.outWidth <= 0 || options.outHeight <= 0) {
-            false
-        } else {
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-            if (bitmap != null) bitmap.recycle()
-            bitmap != null
-        }
+        options.outWidth > 0 && options.outHeight > 0
     }.getOrDefault(false)
 
     private fun extractLocked(

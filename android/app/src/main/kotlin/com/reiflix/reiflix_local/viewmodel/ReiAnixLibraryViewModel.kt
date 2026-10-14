@@ -865,7 +865,9 @@ class ReiAnixLibraryViewModel(context: Context) :
             var offset = 0
             var hasMore = true
             var queryError: String? = null
-            while (hasMore && queryError == null) {
+            var pagesFetched = 0
+            val maxPages = 2
+            while (hasMore && queryError == null && pagesFetched < maxPages) {
                 when (val result = nativeLibraryQueries.searchAnime(
                     searchText = request.settledQuery,
                     genreKey = filters.selectedGenreKey,
@@ -881,6 +883,7 @@ class ReiAnixLibraryViewModel(context: Context) :
                         selectedIds += page.animeIds
                         hasMore = page.hasMore
                         offset += page.limit
+                        pagesFetched++
                     }
                     is ReiAnixLibraryQueryResult.Empty -> hasMore = false
                     is ReiAnixLibraryQueryResult.Failure -> {
