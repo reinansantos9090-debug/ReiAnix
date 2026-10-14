@@ -36,8 +36,14 @@ O último workflow de build APK observado para o commit de referência terminou 
 5. Migrar backup/recuperação e demais serviços legados somente depois de substituir e validar suas invariantes de integridade.
 6. Executar o workflow Kotlin/JVM e as verificações disponíveis após mudanças de código; validar em dispositivo os fluxos que exigem Android real.
 
-## Alterações desta auditoria
+## Correções funcionais do Prompt 25.1
 
-Este commit registra a matriz de cobertura e os bloqueios com base nas evidências consultadas. Não altera código de runtime, esquema SQLite, dados do usuário, manifesto, dependências ou gatilhos de CI. Nenhuma pasta foi removida; a nova documentação fica em `docs/`.
+Commit de correção de artwork: `b69b37152978e37e52d47bc2fb3b5ae3165f4369`.
+Commit de sincronização de refresh: `7efeba658b5ab98bba50812121675d0966e050b5`.
 
-A migração nativa independente **não está certificada** por esta auditoria: o APK aprovado no CI continua sendo construído pelo host Flet/Flutter. O Prompt 25 não deve ser declarado integralmente concluído enquanto as integrações essenciais listadas acima permanecerem dependentes do runtime Python.
+- `ui/artwork/ReiAnixLocalArtwork.kt`: a resolução agora tenta primeiro as fontes locais/materializadas e depois URLs HTTP(S) válidas configuradas como arte externa/fallback. URLs remotas são convertidas em `Uri` para o Coil em vez de serem interpretadas como caminhos de arquivo. O ArtworkEngine continua sendo a autoridade de descoberta/materialização/cache persistente; o ajuste só corrige o fallback de apresentação.
+- `data/library/ReiAnixLibraryRepository.kt`: chamadas de refresh feitas durante uma varredura em andamento atualizam os filtros pendentes, sem iniciar um segundo comando de scan. A conclusão aplica os filtros mais recentes e aloca a geração da página dentro da mesma seção crítica, reduzindo a possibilidade de uma solicitação antiga sobrepor a intenção mais recente da interface.
+- `ui/artwork/ReiAnixLocalArtworkTest.kt`: o teste JVM existente foi atualizado para cobrir prioridade local, fallback HTTP(S), deduplicação e rejeição de esquemas não remotos. Nenhum novo arquivo de teste foi criado.
+- Nenhum arquivo de `androidTest` foi adicionado ou removido; nenhum workflow, gatilho, keystore, manifesto, dependência ou esquema SQLite foi alterado.
+
+Essas correções são locais e não substituem a auditoria arquitetural. O repositório ainda mantém dependências funcionais do Python/Flet na ingestão/reconciliação canônica, nas configurações e no processamento canônico do consumo. Portanto, a migração nativa independente continua **não certificada**. Build/testes locais não foram executados neste ambiente; o resultado dos workflows do SHA final deve ser registrado após sua conclusão.
