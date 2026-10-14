@@ -1,0 +1,87 @@
+package com.reiflix.reiflix_local
+
+import android.content.Context
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+
+/**
+ * Process-scoped composition root for native services that safely share state.
+ *
+ * Construction is cheap and does not open SQLite, start a scan, issue network
+ * requests, or initialize artwork workers. Each service is instantiated on first
+ * use and receives the same SQLite/database objects where the existing contracts
+ * permit sharing. Legacy projection repositories remain owned by their ViewModels.
+ */
+class ReiAnixAppDependencies(context: Context) {
+    private val appContext = context.applicationContext
+
+    val sqliteDatabase: ReiAnixSqliteDatabase by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixSqliteDatabase(appContext)
+    }
+
+    val sqliteLibraryRepository: ReiAnixSqliteLibraryRepository by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixSqliteLibraryRepository(sqliteDatabase)
+    }
+
+    val sqliteSettingsRepository: ReiAnixSqliteSettingsRepository by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixSqliteSettingsRepository(sqliteDatabase)
+    }
+
+    val libraryQueryService: ReiAnixLibraryQueryService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixLibraryQueryService(appContext, sqliteLibraryRepository)
+    }
+
+    val personalListService: ReiAnixPersonalListService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixPersonalListService(sqliteDatabase, sqliteLibraryRepository)
+    }
+
+    val consumptionService: ReiAnixConsumptionService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixConsumptionService(sqliteLibraryRepository)
+    }
+
+    val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixAniListClient()
+    }
+
+    val aniListIntegrationService: ReiAnixAniListIntegrationService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixAniListIntegrationService(
+            client = aniListClient,
+            library = sqliteLibraryRepository,
+            settings = sqliteSettingsRepository,
+        )
+    }
+
+    companion object {
+        /**
+         * Resolves only the graph installed by the actual Android Application.
+         * A missing manifest registration is an integration error, never a silent
+         * fallback to a second process graph.
+         */
+        fun from(context: Context): ReiAnixAppDependencies =
+            existingOrNull(context)
+                ?: throw IllegalStateException(
+                    "ReiAnixApplication is not registered in the rendered AndroidManifest.",
+                )
+
+        internal fun existingOrNull(context: Context): ReiAnixAppDependencies? =
+            (context.applicationContext as? ReiAnixApplication)?.dependencies
+    }
+}
