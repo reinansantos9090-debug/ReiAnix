@@ -495,11 +495,13 @@ class ReiAnixSqliteLibraryRepository(
      * in-scope items are touched; destructive missing-state reconciliation is
      * gated by the complete scan receipt and limited to source_folder descendants.
      */
-    suspend fun indexDiscoveredMedia(snapshot: NativeLibraryScanSnapshot): NativeLibraryIndexReport =
-        withContext(Dispatchers.IO) {
+    suspend fun indexDiscoveredMedia(
+        snapshot: NativeLibraryScanSnapshot,
+        onTransactionCommitted: ((NativeLibraryIndexReport) -> Unit)? = null,
+    ): NativeLibraryIndexReport = withContext(Dispatchers.IO) {
             require(snapshot.operationId.isNotBlank()) { "A scan operation ID is required." }
             require(snapshot.scopeRoot.isNotBlank()) { "An explicit scope root is required." }
-            database.transaction { db ->
+            val report = database.transaction { db ->
                 var inserted = 0
                 var updated = 0
                 var unchanged = 0
@@ -716,6 +718,11 @@ class ReiAnixSqliteLibraryRepository(
                     reconciliationAuthorized = reconcile,
                 )
             }
+            // Invoked only after database.transaction has returned from endTransaction(),
+            // making the committed-versus-rolled-back outcome observable even if withContext
+            // later cancels delivery of the return value to its caller.
+            onTransactionCommitted?.invoke(report)
+            report
         }
 
     private fun recordEpisodeObservation(
