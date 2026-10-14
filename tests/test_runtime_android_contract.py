@@ -13,6 +13,36 @@ PLAYER_LAYOUT = ROOT / "android/app/src/main/res/layout/native_player_view.xml"
 
 
 class RuntimeAndroidContractTests(unittest.TestCase):
+    def test_native_application_composition_is_shared_lazy_and_keeps_hybrid_host(self):
+        application = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt").read_text(encoding="utf-8")
+        dependencies = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
+        main = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        player = PLAYER_ACTIVITY.read_text(encoding="utf-8")
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        library_view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        scan_runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+
+        self.assertIn("class ReiAnixApplication : FlutterApplication()", application)
+        self.assertIn("super.onCreate()", application)
+        self.assertIn('android:name=".ReiAnixApplication"', manifest)
+        self.assertIn("class MainActivity : FlutterFragmentActivity()", main)
+        self.assertIn("ReiAnixAppDependencies.from(applicationContext)", main)
+        self.assertIn("class ReiAnixAppDependencies(context: Context)", dependencies)
+        self.assertIn("by lazy(LazyThreadSafetyMode.SYNCHRONIZED)", dependencies)
+        for contract in (
+            "ReiAnixSqliteLibraryRepository(sqliteDatabase)",
+            "ReiAnixSqliteSettingsRepository(sqliteDatabase)",
+            "ReiAnixPersonalListService(sqliteDatabase, sqliteLibraryRepository)",
+            "ReiAnixConsumptionService(sqliteLibraryRepository)",
+            "ReiAnixAniListIntegrationService(",
+        ):
+            self.assertIn(contract, dependencies)
+        self.assertIn("private val repository = ReiAnixLibraryRepository(context)", library_view_model)
+        self.assertIn("dependencies?.libraryQueryService", library_view_model)
+        self.assertIn("ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.indexDiscoveredMedia", scan_runner)
+        self.assertIn("ReiAnixAppDependencies.from(applicationContext).consumptionService", player)
+        self.assertNotIn("NativeScanRunner", dependencies)
+
     def test_python_normalizer_preserves_content_uri_identity(self):
         source = "content://media/external/video/media/42"
         self.assertEqual(AndroidBridge.normalize_local_media_reference(source), source)
