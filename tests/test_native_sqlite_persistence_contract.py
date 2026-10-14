@@ -174,6 +174,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             self.assertIsNotNone(scan)
 
     def test_native_index_rollback_snapshot_is_recoverable_once_without_destructive_reconciliation(self):
+        from unittest.mock import patch
         from core.library_service import LibraryService
         from core.library_store import LibraryStore
 
