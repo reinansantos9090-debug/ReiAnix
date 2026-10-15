@@ -184,32 +184,35 @@ class ReiAnixAniListIntegrationService(
             // Artwork preference controls whether the remote URL becomes eligible
             // for the existing artwork pipeline. This service never downloads images.
             val artworkEnabled = settingEnabled("artwork.enabled", defaultValue = true)
-            val remoteOriginalDescription = remote.description
-                ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
-                ?.takeIf(String::isNotBlank)
-            val existingOriginalDescription = local.descriptionOriginal
-                ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
-                ?.takeIf(String::isNotBlank)
-            val existingDescription = local.description
-                ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
-                ?.takeIf(String::isNotBlank)
-            val displayDescription = if (remoteOriginalDescription == null) {
-                null
-            } else {
-                val localizer = descriptionLocalizer
-                val existingTranslationIsValid = localizer != null &&
-                    existingOriginalDescription == remoteOriginalDescription &&
-                    existingDescription != null &&
-                    localizer.isValidTranslation(remoteOriginalDescription, existingDescription) &&
-                    localizer.isPtBrDescription(existingDescription)
-                when {
-                    existingTranslationIsValid -> existingDescription
-                    localizer == null -> remoteOriginalDescription
-                    else -> {
-                        val cached = localizer.getCachedDescriptionPtBr(remoteOriginalDescription)
-                        cached ?: localizer.localizeToPtBr(remoteOriginalDescription) ?: remoteOriginalDescription
+            val (remoteOriginalDescription, displayDescription) = withContext(Dispatchers.IO) {
+                val remoteOriginal = remote.description
+                    ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                    ?.takeIf(String::isNotBlank)
+                val existingOriginal = local.descriptionOriginal
+                    ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                    ?.takeIf(String::isNotBlank)
+                val existingDescription = local.description
+                    ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                    ?.takeIf(String::isNotBlank)
+                val displayDescription = if (remoteOriginal == null) {
+                    null
+                } else {
+                    val localizer = descriptionLocalizer
+                    val existingTranslationIsValid = localizer != null &&
+                        existingOriginal == remoteOriginal &&
+                        existingDescription != null &&
+                        localizer.isValidTranslation(remoteOriginal, existingDescription) &&
+                        localizer.isPtBrDescription(existingDescription)
+                    when {
+                        existingTranslationIsValid -> existingDescription
+                        localizer == null -> remoteOriginal
+                        else -> {
+                            val cached = localizer.getCachedDescriptionPtBr(remoteOriginal)
+                            cached ?: localizer.localizeToPtBr(remoteOriginal) ?: remoteOriginal
+                        }
                     }
                 }
+                remoteOriginal to displayDescription
             }
             val updated = library.updateAniListMetadataAndAssociation(
                 patch = ReiAnixAnimeMetadataPatch(
