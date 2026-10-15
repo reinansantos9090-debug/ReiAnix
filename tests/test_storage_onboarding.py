@@ -922,6 +922,18 @@ if __name__ == "__main__":
 
 
 class TestAuthorizedStorageDiscovery(unittest.TestCase):
+    def test_native_saf_selection_persists_identity_fields_by_name(self):
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = source.index("private fun handleTreePickerResult")
+        picker = source[start:source.index("private fun ", start + 30)]
+        call = picker[picker.index("upsertSafFolder("):picker.index(")", picker.index("upsertSafFolder(")) + 1]
+        self.assertIn('authorization = "granted"', call)
+        self.assertIn("safAuthority =", call)
+        self.assertIn("safDocumentId =", call)
+        self.assertIn("safVolumeId =", call)
+        self.assertIn("safIdentity =", call)
+        self.assertNotIn("selectedIdentity.optString(\"authority\").takeIf", call.splitlines()[2])
+
     def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         start = source.index("override fun onResume()")
