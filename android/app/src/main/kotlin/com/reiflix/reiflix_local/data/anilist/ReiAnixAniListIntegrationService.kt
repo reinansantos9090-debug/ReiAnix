@@ -10,6 +10,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -23,6 +24,7 @@ class ReiAnixAniListIntegrationService(
     private val client: ReiAnixAniListClient,
     private val library: ReiAnixSqliteLibraryRepository,
     private val settings: ReiAnixSqliteSettingsRepository,
+    private val descriptionLocalizer: ReiAnixAniListDescriptionLocalizer? = null,
 ) {
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
 
@@ -30,6 +32,9 @@ class ReiAnixAniListIntegrationService(
         client = ReiAnixAniListClient(),
         library = ReiAnixSqliteLibraryRepository(context),
         settings = ReiAnixSqliteSettingsRepository(context),
+        descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
+            File(context.applicationContext.filesDir, "data/cache/anilist_description_ptbr.json"),
+        ),
     )
 
     suspend fun search(term: String, limit: Int = 10): AniListResult<List<AniListAnime>> {
@@ -163,6 +168,33 @@ class ReiAnixAniListIntegrationService(
             // Artwork preference controls whether the remote URL becomes eligible
             // for the existing artwork pipeline. This service never downloads images.
             val artworkEnabled = settingEnabled("artwork.enabled", defaultValue = true)
+            val remoteOriginalDescription = remote.description
+                ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                ?.takeIf(String::isNotBlank)
+            val existingOriginalDescription = local.descriptionOriginal
+                ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                ?.takeIf(String::isNotBlank)
+            val existingDescription = local.description
+                ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                ?.takeIf(String::isNotBlank)
+            val displayDescription = if (remoteOriginalDescription == null) {
+                null
+            } else {
+                val localizer = descriptionLocalizer
+                val existingTranslationIsValid = localizer != null &&
+                    existingOriginalDescription == remoteOriginalDescription &&
+                    existingDescription != null &&
+                    localizer.isValidTranslation(remoteOriginalDescription, existingDescription) &&
+                    localizer.isPtBrDescription(existingDescription)
+                when {
+                    existingTranslationIsValid -> existingDescription
+                    localizer == null -> remoteOriginalDescription
+                    else -> {
+                        val cached = localizer.getCachedDescriptionPtBr(remoteOriginalDescription)
+                        cached ?: localizer.localizeToPtBr(remoteOriginalDescription) ?: remoteOriginalDescription
+                    }
+                }
+            }
             library.updateAniListMetadataAndAssociation(
                 patch = ReiAnixAnimeMetadataPatch(
                     animeId = local.id,
@@ -171,7 +203,8 @@ class ReiAnixAniListIntegrationService(
                     english = remote.titleEnglish,
                     nativeTitle = remote.titleNative,
                     aliasesJson = remote.synonyms.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
-                    description = remote.description,
+                    description = displayDescription,
+                    descriptionOriginal = remoteOriginalDescription,
                     coverUrl = if (artworkEnabled) remote.coverExtraLargeUrl ?: remote.coverLargeUrl else null,
                     bannerUrl = remote.bannerUrl.takeIf { artworkEnabled },
                     genresJson = remote.genres.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
