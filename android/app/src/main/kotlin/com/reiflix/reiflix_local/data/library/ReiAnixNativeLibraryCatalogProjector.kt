@@ -76,12 +76,18 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
         }
         val animeArtwork = row.animeArtwork
-        val primaryLocalArtwork = animeArtwork.firstOrNull { !it.localPath.isNullOrBlank() }?.localPath
-        val primaryExternalArtwork = animeArtwork.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
         val backdrop = animeArtwork.firstOrNull {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
         }
+        val posterCandidates = animeArtwork.filterNot {
+            it.artworkType.equals("backdrop", ignoreCase = true) ||
+                it.artworkType.equals("banner", ignoreCase = true)
+        }
+        val primaryLocalArtwork = posterCandidates.firstOrNull { !it.localPath.isNullOrBlank() }?.localPath
+            ?: anime.coverCache
+        val primaryExternalArtwork = posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
+            ?: anime.coverUrl
         val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name }
             else parseStringArray(anime.genresJson)
         val genreIds = if (row.genres.isNotEmpty()) row.genres.map { it.id } else emptyList()
