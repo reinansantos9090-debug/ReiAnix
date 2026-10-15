@@ -45,10 +45,9 @@ private const val TAG = "ReiAnixLocalArtwork"
 /**
  * One process-wide Coil loader for Compose artwork.
  *
- * ArtworkEngine remains responsible for persistent artwork discovery and
- * materialization. Coil is the asynchronous renderer/transport for the current
- * viewport; its memory/disk caches only optimize presentation and do not replace
- * the ReiAnix artwork persistence source of truth.
+ * ReiAnixArtworkService owns persistent artwork materialization for Compose.
+ * Coil renders local results and may temporarily use an external URL while native
+ * download completes; Coil caches do not replace canonical SQLite artwork records.
  */
 private object ReiAnixArtworkImageLoader {
     @Volatile
