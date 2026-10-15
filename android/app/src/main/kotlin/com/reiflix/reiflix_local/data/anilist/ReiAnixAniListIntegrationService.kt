@@ -136,44 +136,31 @@ class ReiAnixAniListIntegrationService(
             throw cancelled
         }
         if (results.isEmpty()) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
-        val localTitles = localTitles(local).map(::normalize).filter(String::isNotBlank).toSet()
-        val ranked = results.map { candidate ->
-            val remoteTitles = buildList {
-                add(candidate.titleRomaji.orEmpty())
-                add(candidate.titleEnglish.orEmpty())
-                add(candidate.titleNative.orEmpty())
-                addAll(candidate.synonyms)
-            }.map(::normalize).filter(String::isNotBlank).toSet()
-            val exact = localTitles.intersect(remoteTitles).isNotEmpty()
-            var score = if (exact) 0.96 else 0.0
-            if (exact) {
-                // Contradictory catalog facts lower confidence; matching facts only
-                // break ties and never turn a weak title match into an automatic link.
-                if (local.year != null && candidate.seasonYear != null) {
-                    score += if (local.year == candidate.seasonYear) 0.02 else -0.30
-                }
-                if (!local.format.isNullOrBlank() && !candidate.format.isNullOrBlank()) {
-                    score += if (local.format.equals(candidate.format, ignoreCase = true)) 0.01 else -0.18
-                }
-                if (local.episodesCount != null && candidate.episodes != null) {
-                    score += if (local.episodesCount == candidate.episodes) 0.01 else -0.15
-                }
-                score = score.coerceIn(0.0, 1.0)
-            }
-            candidate to score
-        }.sortedByDescending { it.second }
+        val ranked = ReiAnixAniListMatcher.rank(
+            localTitle = query,
+            candidates = results,
+            context = ReiAnixAniListMatcher.Context(
+                year = local.year,
+                mediaKind = local.mediaKind,
+            ),
+        )
+        if (ranked.isEmpty()) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         val best = ranked.first()
-        if (best.second <= 0.0) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
-        val second = ranked.getOrNull(1)?.second ?: 0.0
-        val margin = best.second - second
-        if (best.second < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
-            return AniListResult.Success(AniListAutoMatchResult.Ambiguous(ranked.take(5).map { it.first }))
+        if (best.score <= 0.0) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        val second = ranked.getOrNull(1)?.score ?: 0.0
+        val margin = best.score - second
+        if (best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
+            return AniListResult.Success(
+                AniListAutoMatchResult.Ambiguous(ranked.take(5).map { it.anime }),
+            )
         }
-        val persisted = when (val result = applyRemote(local, best.first, manual = false, score = best.second, margin = margin)) {
+        val persisted = when (
+            val result = applyRemote(local, best.anime, manual = false, score = best.score, margin = margin)
+        ) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> return result
         }
-        return AniListResult.Success(AniListAutoMatchResult.Matched(persisted, best.first))
+        return AniListResult.Success(AniListAutoMatchResult.Matched(persisted, best.anime))
     }
 
     private suspend fun applyRemote(
@@ -314,8 +301,8 @@ class ReiAnixAniListIntegrationService(
     companion object {
         private const val TAG = "ReiAnixAniList"
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
-        const val AUTO_MATCH_MIN_SCORE = 0.88
-        const val AUTO_MATCH_MIN_MARGIN = 0.12
+        const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
+        const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     }
 }
