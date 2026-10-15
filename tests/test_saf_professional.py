@@ -409,6 +409,25 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("pendingSafReleaseWaiters.remove(normalizedReference)", release)
         self.assertIn('.put("requestId", waiterId)', release)
 
+    def test_saf_release_releases_and_verifies_all_persisted_read_write_modes(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        release = source[
+            source.index("private fun releaseTree("):
+            source.index("private fun verifyTree(", source.index("private fun releaseTree("))
+        ]
+        self.assertIn("fun matchingPersistedTreeGrants()", release)
+        self.assertIn("grant.isReadPermission", release)
+        self.assertIn("grant.isWritePermission", release)
+        self.assertIn("Intent.FLAG_GRANT_READ_URI_PERMISSION", release)
+        self.assertIn("Intent.FLAG_GRANT_WRITE_URI_PERMISSION", release)
+        self.assertIn("val remainingGrants = matchingPersistedTreeGrants()", release)
+        self.assertIn("if (remainingGrants.isNotEmpty())", release)
+        self.assertIn("val permissionAlreadyAbsent = persistedGrants.isEmpty()", release)
+        self.assertNotIn(
+            "releasePersistableUriPermission(\n                    treeUri,\n                    Intent.FLAG_GRANT_READ_URI_PERMISSION,",
+            release,
+        )
+
     def test_cancelled_global_scan_remains_cancelled_in_the_compose_command_result(self):
         source = MAIN.read_text(encoding="utf-8")
         start = source.index("elif event_type == 'saf_library_scan_complete':")
