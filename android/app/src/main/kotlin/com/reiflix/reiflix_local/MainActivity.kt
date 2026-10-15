@@ -1893,9 +1893,9 @@ class MainActivity : FlutterFragmentActivity() {
 
                 val status = when {
                     configuredScopes == 0 -> "FAILED"
-                    successfulScopes == configuredScopes -> "COMPLETED"
+                    cancelledScopes > 0 && successfulScopes == 0 && failedScopes == 0 -> "CANCELLED"
+                    successfulScopes == configuredScopes && failedScopes == 0 -> "COMPLETED"
                     successfulScopes > 0 -> "PARTIAL"
-                    cancelledScopes > 0 && failedScopes == 0 -> "CANCELLED"
                     else -> "FAILED"
                 }
                 NativeMailbox.writeOrThrow(
