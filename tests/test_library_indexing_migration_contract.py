@@ -39,6 +39,11 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
 
         self.assertIn("nativeLibraryIndexOwner", migration)
         self.assertIn("mayReconcile", migration)
+        runner = (KOTLIN / "scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        self.assertIn("discoveredMediaFromSnapshot(documents, scopeRef)", runner)
+        self.assertIn("preserving the receipt without transferring writes to Python", runner)
+        self.assertIn('".put("documents", JSONArray())"', runner.replace("\n", ""))
+        self.assertNotIn("LEGACY_INGESTION_REQUIRED", runner)
         self.assertIn("core/scan_coordinator.py", migration)
         self.assertIn("ComposeLibraryBridge", migration)
         self.assertIn("Prompt 05/29", roadmap)
