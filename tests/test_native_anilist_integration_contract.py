@@ -58,9 +58,13 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn("coverUrl = if (artworkEnabled)", source)
         self.assertIn("bannerUrl = remote.bannerUrl.takeIf { artworkEnabled }", source)
         self.assertIn("private val autoMatchAttemptTimestamps", source)
-        self.assertIn("MediaTitleNormalizer.normalizeTitle(value)", source)
-        self.assertIn("best.second <= 0.0", source)
-        self.assertIn("best.second < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN", source)
+        matcher = (KOTLIN / "data/anilist/ReiAnixAniListMatcher.kt").read_text(encoding="utf-8")
+        self.assertIn("ReiAnixAniListMatcher.rank(", source)
+        self.assertIn("best.score <= 0.0", source)
+        self.assertIn("best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN", source)
+        self.assertIn("AUTO_CONFIRM_SCORE = 0.86", matcher)
+        self.assertIn("AUTO_CONFIRM_MARGIN = 0.05", matcher)
+        self.assertIn("MINIMUM_SCORE = 0.48", matcher)
 
 
     def test_graphql_variables_are_literal_and_transport_payload_is_verified(self):
