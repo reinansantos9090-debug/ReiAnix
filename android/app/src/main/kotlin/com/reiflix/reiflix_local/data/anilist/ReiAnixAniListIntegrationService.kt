@@ -214,10 +214,9 @@ class ReiAnixAniListIntegrationService(
 
             when (val result = autoMatch(local.id)) {
                 is AniListResult.Success -> when (result.value) {
-                    is AniListAutoMatchResult.Matched,
-                    AniListAutoMatchResult.NoMatch,
-                    is AniListAutoMatchResult.Ambiguous,
-                    -> changedOutcomes++
+                    is AniListAutoMatchResult.Matched -> changedOutcomes++
+                    AniListAutoMatchResult.NoMatch -> changedOutcomes++
+                    is AniListAutoMatchResult.Ambiguous -> changedOutcomes++
                     else -> Unit
                 }
                 is AniListResult.Failure -> if (result.error !is AniListError.InvalidRequest) {
