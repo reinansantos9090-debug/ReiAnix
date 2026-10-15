@@ -607,6 +607,119 @@ class ReiAnixSqliteLibraryRepository(
         }
 
     /**
+     * Re-keys one provider-confirmed SAF document URI without replacing the canonical
+     * episode row. This preserves history, playback progress, metadata and artwork.
+     */
+    suspend fun reconcileSafDocumentIdentityChange(
+        oldUri: String,
+        newUri: String,
+        name: String,
+        treeUri: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val oldReference = oldUri.trim()
+        val newReference = newUri.trim()
+        val newName = name.trim()
+        val treeReference = treeUri.trim()
+        val old = runCatching { Uri.parse(oldReference) }.getOrNull()
+        val new = runCatching { Uri.parse(newReference) }.getOrNull()
+        val tree = runCatching { Uri.parse(treeReference) }.getOrNull()
+        fun result(status: String, episodeId: Long? = null) = JSONObject()
+            .put("status", status)
+            .put("episode_id", episodeId ?: JSONObject.NULL)
+
+        if (
+            old == null || new == null || tree == null ||
+            !old.scheme.equals("content", ignoreCase = true) ||
+            !new.scheme.equals("content", ignoreCase = true) ||
+            !tree.scheme.equals("content", ignoreCase = true) ||
+            old.authority.isNullOrBlank() || new.authority.isNullOrBlank() ||
+            !DocumentsContract.isTreeUri(tree) || newName.isBlank()
+        ) return@withContext result("rejected")
+        if (!old.authority.equals(new.authority, ignoreCase = true)) return@withContext result("rejected")
+
+        val now = System.currentTimeMillis() / 1000.0
+        database.transaction { connection ->
+            fun isSafObservation(episodeId: Long, uri: String): Boolean =
+                connection.rawQuery(
+                    "SELECT 1 FROM episode_observations WHERE episode_id=? AND source_kind='saf' AND uri=? LIMIT 1",
+                    arrayOf(episodeId.toString(), uri),
+                ).use { it.moveToFirst() }
+
+            fun belongsToTree(sourceFolder: String?): Boolean {
+                val source = sourceFolder.orEmpty()
+                return source == treeReference || source.startsWith("$treeReference/") ||
+                    source.startsWith(treeReference)
+            }
+
+            if (oldReference == newReference) {
+                val source = connection.rawQuery(
+                    "SELECT id,file_name,source_folder FROM episodes WHERE path=? LIMIT 1",
+                    arrayOf(newReference),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) Triple(cursor.getLong(0), cursor.getString(1).orEmpty(), cursor.getString(2).orEmpty()) else null
+                } ?: return@transaction result("no_match")
+                if (!belongsToTree(source.third) && !isSafObservation(source.first, newReference)) {
+                    return@transaction result("rejected", source.first)
+                }
+                if (source.second == newName) return@transaction result("already_reconciled", source.first)
+                connection.execSQL(
+                    "UPDATE episodes SET file_name=?,missing=0,availability_state='available' WHERE id=? AND path=?",
+                    arrayOf(newName, source.first, newReference),
+                )
+                return@transaction result("reconciled", source.first)
+            }
+
+            val source = connection.rawQuery(
+                "SELECT id,file_name,source_folder FROM episodes WHERE path=? LIMIT 1",
+                arrayOf(oldReference),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) Triple(cursor.getLong(0), cursor.getString(1).orEmpty(), cursor.getString(2).orEmpty()) else null
+            }
+            if (source == null) {
+                val target = connection.rawQuery(
+                    "SELECT id,source_folder FROM episodes WHERE path=? LIMIT 1",
+                    arrayOf(newReference),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) Pair(cursor.getLong(0), cursor.getString(1).orEmpty()) else null
+                }
+                return@transaction when {
+                    target == null -> result("no_match")
+                    belongsToTree(target.second) || isSafObservation(target.first, newReference) ->
+                        result("already_reconciled", target.first)
+                    else -> result("conflict", target.first)
+                }
+            }
+            val episodeId = source.first
+            if (!belongsToTree(source.third) && !isSafObservation(episodeId, oldReference)) {
+                return@transaction result("rejected", episodeId)
+            }
+
+            val targetId = connection.rawQuery(
+                "SELECT id FROM episodes WHERE path=? LIMIT 1",
+                arrayOf(newReference),
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
+            if (targetId != null && targetId != episodeId) return@transaction result("conflict", episodeId)
+
+            val observationConflict = connection.rawQuery(
+                "SELECT 1 FROM episode_observations WHERE episode_id=? AND source_kind='saf' AND uri=? AND uri<>? LIMIT 1",
+                arrayOf(episodeId.toString(), newReference, oldReference),
+            ).use { it.moveToFirst() }
+            if (observationConflict) return@transaction result("conflict", episodeId)
+
+            connection.execSQL(
+                "UPDATE episodes SET path=?,file_name=?,missing=0,availability_state='available' WHERE id=? AND path=?",
+                arrayOf(newReference, newName, episodeId, oldReference),
+            )
+            connection.execSQL(
+                "UPDATE episode_observations SET uri=?,state='available',error=NULL,last_seen=?,last_checked_at=? " +
+                    "WHERE episode_id=? AND source_kind='saf' AND uri=?",
+                arrayOf(newReference, now, now, episodeId, oldReference),
+            )
+            result("reconciled", episodeId)
+        }
+    }
+
+    /**
      * Persists Android's authoritative volume snapshot in the existing preferences
      * table and reconciles episode availability in the same canonical SQLite file.
      * This mirrors the old LibraryStore operation without creating another store.
