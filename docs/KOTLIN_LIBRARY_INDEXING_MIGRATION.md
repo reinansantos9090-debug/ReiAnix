@@ -52,17 +52,24 @@ O serviço não cria banco, schema, scanner, repositório ou coordenador adicion
 
 ## 4. Consumidores Compose e dependências restantes
 
-Os ViewModels continuam a usar consultas Kotlin do SQLite para dados nativos já migrados (detalhes, episódios, histórico, pastas e artwork). O refresh Android dispara a execução Kotlin e publica os estados terminais depois do processamento/persistência.
+O estado dos registros de anime, episódios e continuação de reprodução do `ReiAnixLibraryViewModel` agora é projetado em Kotlin diretamente do SQLite canônico:
 
-Entretanto, a projeção geral de Home/Biblioteca e as páginas filtradas ainda passam pelo adapter `data/library/ReiAnixLibraryRepository.kt`, pelo snapshot `files/data/reianix-compose/library.json` e por `ComposeLibraryBridge` no runtime híbrido. O evento terminal via `NativeMailbox` continua sendo necessário para esse consumidor legado atualizar a projeção. Essa dependência de apresentação/IPC é explícita, não é tratada como um writer canônico adicional e não está declarada como migração integral da UI; a remoção do snapshot pertence ao cutover nativo dos consumidores de telas.
+- `ReiAnixSqliteLibraryRepository.loadLibraryCatalogRows()` lê anime, episódios, associações de gêneros e artwork em consultas SQL agrupadas; a consulta não depende de listas de IDs em parâmetros e não cria um segundo catálogo persistente.
+- `ReiAnixNativeLibraryCatalogProjector` converte os registros nativos nos modelos Compose já existentes, mantendo as chaves de anime/episódios, o progresso, o estado de disponibilidade, a arte e o alvo de reprodução.
+- `ReiAnixLibraryViewModel.uiState` combina esses dados canônicos com o estado de armazenamento, onboarding e diagnóstico. Se a leitura SQLite falhar, o erro é exposto e o último catálogo válido é preservado; um erro de consulta nunca é convertido em biblioteca vazia.
+- `pagedLibraryState` usa `loadNativeLibraryPage()` e o `ReiAnixLibraryFilterEngine` Kotlin existente para filtrar, ordenar e paginar a projeção SQLite. As páginas não são mais solicitadas ao `ReiAnixLibraryRepository.loadLibraryPage` Python/IPC.
+- A mudança terminal observável de `NativeScanController.progress` aciona nova leitura após a persistência. A fonte de verdade continua sendo o SQLite; o Flow de progresso serve como sinal de invalidação, não como transporte dos registros.
 
-Também permanecem:
-- `core/scan_coordinator.py` continua como compatibilidade de eventos/estado legado e fallback não Android. O retry do observer MediaStore no Android agora dispara uma intent nativa; eventos terminais ainda podem passar pelo coordenador Python para atualizar a projeção híbrida enquanto esse consumidor não for substituído.
-- `core/library_service.py` para consumidores não Android, caminhos de desenvolvimento e compatibilidade com eventos produzidos por versões antigas do APK. A versão atual não transfere snapshots positivos de recuperação ao writer Python.
-- `NativeMailbox` para terminal events e outros subsistemas que ainda têm consumidores ativos.
-- MediaStore/BroadStorage continuam diagnósticos sob o contrato atual de fontes; não são promovidos automaticamente a fontes canônicas de biblioteca, pois isso poderia indexar duas vezes os mesmos vídeos que já estão numa pasta SAF configurada.
+Home, Biblioteca, Detalhes, Minha Lista, Pesquisa e Organizar consomem os modelos expostos pelo ViewModel; a Pesquisa também mantém suas consultas/IDs nativas por `ReiAnixLibraryQueryService`. O estado legado recebido pela ponte não fornece mais os registros de anime/episódio usados pela projeção principal.
 
-Esses pontos não justificam apagar arquivos Python/globalmente a esta altura. O corte deve ser realizado quando os produtores e consumidores substitutos estiverem conectados e a compatibilidade do fluxo estiver provada.
+Ainda permanecem fronteiras híbridas, sem que sejam confundidas com a propriedade dos registros:
+- `ReiAnixLibraryRepository` continua atendendo comandos de compatibilidade, onboarding/armazenamento e alguns estados de operação ainda não migrados.
+- `NativeMailbox` e `ComposeLibraryBridge` continuam sendo usados por eventos terminais, diagnóstico e outros subsistemas com consumidores ativos; a ponte não é o escritor canônico da indexação SAF.
+- `core/scan_coordinator.py` continua para consumidores não Android e compatibilidade de eventos/versões antigas do APK. O gatilho Android do observer MediaStore e a indexação/recovery de snapshots atuais são nativos.
+- `core/library_service.py` permanece para caminhos não Android, desenvolvimento e eventos de APKs antigos; o runner atual não envia snapshots positivos ao escritor Python.
+- MediaStore/BroadStorage continuam diagnósticos sob o contrato atual e não são convertidos automaticamente em fontes canônicas adicionais, para não duplicar arquivos já enumerados por SAF.
+
+Essas dependências remanescentes devem ser removidas apenas quando seus contratos específicos e consumidores forem substituídos. Não foi removido globalmente Python, Flet, Flutter ou NativeMailbox, pois ainda possuem consumidores fora do caminho de registros principal descrito acima.
 
 ## 5. Integridade e validação
 
