@@ -48,7 +48,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             val protectedFields = currentAndManualFields.second
             if (!manual && current.anilistMatchManual == true) return@transaction current
             if (!manual && current.anilistId != null && current.anilistId != anilistId) return@transaction current
-            if (!manual && (score == null || score < 0.88 || margin == null || margin < 0.12)) {
+            if (!manual && (score == null || score < 0.86 || margin == null || margin < 0.05)) {
                 return@transaction current
             }
 
