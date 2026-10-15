@@ -55,6 +55,7 @@ class ReiAnixLibraryQueryService(
         sortLabel: String? = null,
         limit: Int = DEFAULT_PAGE_SIZE,
         offset: Int = 0,
+        libraryOnly: Boolean = false,
     ): ReiAnixLibraryQueryResult<ReiAnixSqliteSearchPage> =
         this.query("searchAnime") {
             require(limit in 1..MAX_PAGE_SIZE) {
@@ -70,6 +71,7 @@ class ReiAnixLibraryQueryService(
                 sortLabel = sortLabel,
                 limit = limit,
                 offset = offset,
+                libraryOnly = libraryOnly,
             )
             if (page.animeIds.isEmpty()) ReiAnixLibraryQueryResult.Empty("searchAnime")
             else ReiAnixLibraryQueryResult.Success(page)

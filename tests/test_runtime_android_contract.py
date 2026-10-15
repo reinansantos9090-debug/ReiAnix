@@ -39,7 +39,9 @@ class RuntimeAndroidContractTests(unittest.TestCase):
             self.assertIn(contract, dependencies)
         self.assertIn("private val repository = ReiAnixLibraryRepository(context)", library_view_model)
         self.assertIn("dependencies?.libraryQueryService", library_view_model)
-        self.assertIn("ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.indexDiscoveredMedia", scan_runner)
+        self.assertIn("ReiAnixAppDependencies.from(appContext).libraryService.indexDiscoveredMedia", scan_runner)
+        library_service = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryService.kt").read_text(encoding="utf-8")
+        self.assertIn("repository.indexDiscoveredMedia(snapshot, onTransactionOutcome)", library_service)
         self.assertIn("ReiAnixAppDependencies.from(applicationContext).consumptionService", player)
         self.assertNotIn("NativeScanRunner", dependencies)
 

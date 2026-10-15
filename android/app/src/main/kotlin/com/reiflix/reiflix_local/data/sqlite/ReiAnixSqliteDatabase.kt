@@ -43,6 +43,32 @@ class ReiAnixSqliteDatabase(context: Context) {
         }
 
     /**
+     * Reads several related tables from one SQLite snapshot where the platform
+     * supports read-only transactions. Older Android releases keep the existing
+     * read-only behavior; Android 15+ pins all projection queries to one snapshot.
+     */
+    internal fun <T> readConsistentSnapshot(block: (SQLiteDatabase) -> T): T =
+        synchronized(connectionLock) {
+            val database = openExisting(readOnly = true)
+            try {
+                if (android.os.Build.VERSION.SDK_INT < 35) {
+                    block(database)
+                } else {
+                    database.beginTransactionReadOnly()
+                    try {
+                        val result = block(database)
+                        database.setTransactionSuccessful()
+                        result
+                    } finally {
+                        database.endTransaction()
+                    }
+                }
+            } finally {
+                database.close()
+            }
+        }
+
+    /**
      * Notifies the caller only after endTransaction() gives a definitive result.
      * A failure in endTransaction() is UNKNOWN: callers must not start a second writer.
      * Notification is best-effort and must never turn a committed transaction into an

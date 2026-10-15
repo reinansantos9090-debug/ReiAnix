@@ -1125,4 +1125,6 @@ class NativeMainActivityDecompositionTests(unittest.TestCase):
         self.assertIn("MediaStoreRetryScheduler.schedule(", main)
         self.assertIn("AtomicBoolean(false)", scheduler)
         self.assertIn("MediaStoreScanner.hasReadPermission(appContext)", scheduler)
-        self.assertIn("NativeMailbox.write(", scheduler)
+        self.assertIn("MainActivity.createNativeStorageActionIntent(", scheduler)
+        self.assertIn('action = "scan_media_store"', scheduler)
+        self.assertNotIn('put("type", "scan_request")', scheduler)

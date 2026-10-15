@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
@@ -17,6 +18,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
+import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
@@ -37,10 +39,15 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -91,6 +98,7 @@ class ReiAnixLibraryViewModel(
 
     
     companion object {
+        private const val TAG = "ReiAnixLibraryViewModel"
         const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
         const val SEARCH_DEBOUNCE_MS = 180L
 
@@ -127,6 +135,19 @@ class ReiAnixLibraryViewModel(
         }
     }
 
+    private data class NativeCatalogState(
+        val status: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus =
+            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+        val animes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel> = emptyList(),
+        val continueWatching: List<ReiAnixContinueWatchingUiModel> = emptyList(),
+        val error: String? = null,
+    )
+
+    private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
+    private val nativeCatalogReloadMutex = Mutex()
+    private val nativePageGeneration = AtomicLong(0L)
+    private val nativePagedLibraryState = MutableStateFlow(ReiAnixLibraryPagedUiState())
+
     private val repository = ReiAnixLibraryRepository(context)
     /**
      * All native library consumers below share one repository/database instance.
@@ -137,6 +158,8 @@ class ReiAnixLibraryViewModel(
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository(context)
     private val nativeLibraryQueries = dependencies?.libraryQueryService
         ?: ReiAnixLibraryQueryService(context, nativeLibraryRepository)
+    private val nativeLibraryService = dependencies?.libraryService
+        ?: ReiAnixLibraryService(nativeLibraryRepository)
     private val personalListService = dependencies?.personalListService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(
             nativeLibraryRepository.database,
@@ -187,7 +210,7 @@ class ReiAnixLibraryViewModel(
             }
 
             val reconciliation = withContext(Dispatchers.IO) {
-                nativeLibraryRepository.reconcileSafDocumentIdentityChange(
+                nativeLibraryService.reconcileSafDocumentIdentityChange(
                     oldUri = oldUri.toString(),
                     newUri = result.uri.toString(),
                     name = result.name,
@@ -319,10 +342,81 @@ class ReiAnixLibraryViewModel(
         animeId: Long,
     ): ReiAnixLibraryQueryResult<List<ReiAnixArtworkRecord>> =
         nativeLibraryQueries.artworkForAnime(animeId)
-    override val uiState: StateFlow<ReiAnixLibraryUiState> = repository.state
+    override val uiState: StateFlow<ReiAnixLibraryUiState> = combine(
+        repository.state,
+        nativeCatalogState,
+        NativeScanController.progress,
+    ) { bridgeState, catalog, scans ->
+        val mergedStatus = when {
+            catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING ->
+                if (bridgeState.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR) {
+                    bridgeState.status
+                } else {
+                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
+                }
+            catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
+                catalog.animes.isNotEmpty() ->
+                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+            else -> catalog.status
+        }
 
-    /** Bounded Library pages; the canonical domain remains owned by the repository/SQLite. */
-    val pagedLibraryState: StateFlow<ReiAnixLibraryPagedUiState> = repository.pagedLibraryState
+        // Current Android scan progress and terminal status come from the native
+        // coordinator. The compatibility snapshot still owns storage/onboarding,
+        // but can no longer leave Compose in "scanning" after Kotlin has finished.
+        val safScans = scans.values.filter { it.source.equals("saf", ignoreCase = true) }
+        val activeSafScan = safScans
+            .filter { !it.state.isTerminal }
+            .maxByOrNull { it.startedAtMillis }
+        val latestSafScan = safScans
+            .maxByOrNull { it.finishedAtMillis ?: it.startedAtMillis }
+        val selectedScan = activeSafScan ?: latestSafScan
+        val nativeScanState = when (selectedScan?.state) {
+            ScanLifecycleState.PREPARING -> "PREPARING"
+            ScanLifecycleState.RUNNING -> "RUNNING"
+            ScanLifecycleState.CANCELLATION_REQUESTED -> "CANCELLING"
+            ScanLifecycleState.CANCELLED -> "CANCELLED"
+            ScanLifecycleState.SUCCEEDED -> "COMPLETED"
+            ScanLifecycleState.PARTIAL -> "PARTIAL"
+            ScanLifecycleState.FAILED -> "FAILED"
+            ScanLifecycleState.IDLE, null -> bridgeState.scanState
+        }
+        val nativeLastScanStatus = when (latestSafScan?.state) {
+            ScanLifecycleState.CANCELLED -> "CANCELLED"
+            ScanLifecycleState.SUCCEEDED -> "COMPLETED"
+            ScanLifecycleState.PARTIAL -> "PARTIAL"
+            ScanLifecycleState.FAILED -> "FAILED"
+            else -> bridgeState.lastScanStatus
+        }
+        val nativeScanInProgress = when {
+            latestSafScan == null -> bridgeState.scanInProgress
+            else -> activeSafScan != null
+        }
+
+        bridgeState.copy(
+            status = mergedStatus,
+            animes = catalog.animes,
+            continueWatching = catalog.continueWatching,
+            scanInProgress = nativeScanInProgress,
+            scanState = nativeScanState,
+            lastScanStatus = nativeLastScanStatus,
+            // Availability still describes the configured storage/source contract;
+            // a successful SQLite read must not masquerade as granted storage access.
+            sourceAvailable = bridgeState.sourceAvailable,
+            sourceState = bridgeState.sourceState,
+            error = catalog.error ?: bridgeState.error,
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        repository.state.value.copy(
+            status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+            animes = emptyList(),
+            continueWatching = emptyList(),
+        ),
+    )
+
+    /** Filtered Library pages are now projected from Kotlin records read from canonical SQLite. */
+    val pagedLibraryState: StateFlow<ReiAnixLibraryPagedUiState> = nativePagedLibraryState.asStateFlow()
 
     private var libraryFilterJob: Job? = null
 
@@ -343,7 +437,7 @@ class ReiAnixLibraryViewModel(
         if (configuredLibraryPageSize == normalized) return
         configuredLibraryPageSize = normalized
         val filters = libraryFilters.value
-        repository.loadLibraryPage(
+        loadNativeLibraryPage(
             page = 0,
             pageSize = configuredLibraryPageSize,
             query = filters.query,
@@ -942,6 +1036,7 @@ class ReiAnixLibraryViewModel(
                     sortLabel = filters.sort,
                     limit = ReiAnixLibraryQueryService.MAX_PAGE_SIZE,
                     offset = offset,
+                    libraryOnly = true,
                 )) {
                     is ReiAnixLibraryQueryResult.Success -> {
                         val page = result.value
@@ -1050,13 +1145,38 @@ class ReiAnixLibraryViewModel(
     }
 
     init {
+        // Populate catalog data even when the bridge snapshot does not exist yet.
+        viewModelScope.launch { refreshNativeCatalog() }
+
+        // Load catalog records directly from the canonical SQLite repository. The legacy
+        // snapshot is retained only for storage/onboarding and diagnostic scan state.
+        viewModelScope.launch {
+            NativeScanController.progress
+                .map { snapshots ->
+                    snapshots.filterValues { it.state.isTerminal }
+                        .mapValues { (_, snapshot) -> snapshot.finishedAtMillis }
+                }
+                .distinctUntilChanged()
+                .drop(1)
+                .collectLatest { refreshNativeCatalog() }
+        }
+        // Legacy commands can still mutate unrelated fields; their revision is only an
+        // invalidation signal. Actual anime/episode values are always reread from SQLite.
+        viewModelScope.launch {
+            repository.state
+                .map { it.revision }
+                .distinctUntilChanged()
+                .drop(1)
+                .collectLatest { refreshNativeCatalog() }
+        }
+
         libraryFilterJob?.cancel()
         libraryFilterJob = viewModelScope.launch {
             libraryFilters
                 .debounce(SEARCH_DEBOUNCE_MS)
                 .distinctUntilChanged()
                 .collectLatest { filters ->
-                    repository.loadLibraryPage(
+                    loadNativeLibraryPage(
                         page = 0,
                         pageSize = configuredLibraryPageSize,
                         query = filters.query,
@@ -1071,11 +1191,224 @@ class ReiAnixLibraryViewModel(
         }
     }
 
+    private suspend fun refreshNativeCatalog() {
+        nativeCatalogReloadMutex.withLock {
+            try {
+                val rows = nativeLibraryRepository.loadLibraryCatalogRows()
+                val projected = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
+                    .project(rows)
+                nativeCatalogState.value = NativeCatalogState(
+                    status = if (projected.animes.isEmpty()) {
+                        com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                    } else {
+                        com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                    },
+                    animes = projected.animes,
+                    continueWatching = projected.continueWatching,
+                )
+                val filters = libraryFilters.value
+                loadNativeLibraryPage(
+                    page = 0,
+                    pageSize = configuredLibraryPageSize,
+                    query = filters.query,
+                    genre = filters.selectedGenreKey ?: "Todos",
+                    sort = filters.sort,
+                    favoritesOnly = filters.favoritesOnly,
+                    watchingOnly = filters.watchingOnly,
+                    completedOnly = filters.completedOnly,
+                    reset = true,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "Native canonical library projection failed", error)
+                val previous = nativeCatalogState.value
+                nativeCatalogState.value = previous.copy(
+                    status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
+                    error = error.message ?: error::class.java.simpleName,
+                )
+                if (previous.animes.isEmpty()) {
+                    nativePagedLibraryState.value = nativePagedLibraryState.value.copy(
+                        status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
+                        isLoading = false,
+                        error = error.message ?: "Não foi possível ler a biblioteca SQLite.",
+                    )
+                } else {
+                    nativePagedLibraryState.value = nativePagedLibraryState.value.copy(
+                        isLoading = false,
+                        error = error.message ?: "A atualização da biblioteca falhou; dados anteriores foram preservados.",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun loadNativeLibraryPage(
+        page: Int = 0,
+        pageSize: Int = configuredLibraryPageSize,
+        query: String = "",
+        genre: String = "Todos",
+        sort: String = "Mais recentes",
+        favoritesOnly: Boolean = false,
+        watchingOnly: Boolean = false,
+        completedOnly: Boolean = false,
+        reset: Boolean = page == 0,
+    ) {
+        val requestedPage = page.coerceAtLeast(0)
+        val normalizedPageSize = pageSize.coerceIn(12, 72)
+        val generation = if (reset) {
+            nativePageGeneration.incrementAndGet()
+        } else {
+            nativePageGeneration.get().let { current ->
+                if (current > 0L) current else nativePageGeneration.incrementAndGet()
+            }
+        }
+        val normalizedGenre = genre.takeIf { it != "Todos" }?.trim()
+        val previous = nativePagedLibraryState.value
+        nativePagedLibraryState.value = if (reset) {
+            ReiAnixLibraryPagedUiState(
+                status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+                isLoading = true,
+                pageSize = normalizedPageSize,
+                generation = generation,
+                query = query.trim(),
+                genreKey = normalizedGenre,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                sort = sort.trim().ifEmpty { "Mais recentes" },
+            )
+        } else if (previous.generation == generation) {
+            previous.copy(
+                isLoading = true,
+                pageSize = normalizedPageSize,
+                query = query.trim(),
+                genreKey = normalizedGenre,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                sort = sort.trim().ifEmpty { "Mais recentes" },
+                error = null,
+            )
+        } else {
+            previous
+        }
+
+        viewModelScope.launch(Dispatchers.Default) {
+            val catalog = nativeCatalogState.value
+            if (catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING) return@launch
+            if (generation != nativePageGeneration.get()) return@launch
+
+            val offsetLong = requestedPage.toLong() * normalizedPageSize.toLong()
+            val offset = offsetLong.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            val current = nativePagedLibraryState.value
+            if (current.generation != generation) return@launch
+            when (val result = nativeLibraryQueries.searchAnime(
+                searchText = query,
+                genreKey = normalizedGenre,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                sortLabel = sort,
+                limit = normalizedPageSize,
+                offset = offset,
+                libraryOnly = true,
+            )) {
+                is ReiAnixLibraryQueryResult.Success -> {
+                    val pageResult = result.value
+                    val byId = catalog.animes.associateBy { it.id }
+                    val missingIds = pageResult.animeIds.filterNot(byId::containsKey)
+                    if (missingIds.isNotEmpty()) {
+                        nativePagedLibraryState.value = current.copy(
+                            status = if (current.animes.isEmpty()) {
+                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                            } else current.status,
+                            isLoading = false,
+                            error = "A consulta SQLite encontrou alterações concorrentes; a biblioteca será relida.",
+                        )
+                        refreshNativeCatalog()
+                        return@launch
+                    }
+                    val pageItems = pageResult.animeIds.mapNotNull(byId::get)
+                    if (generation != nativePageGeneration.get()) return@launch
+                    val currentState = nativePagedLibraryState.value
+                    if (currentState.generation != generation) return@launch
+                    val pageAnimes = if (reset || requestedPage == 0) {
+                        pageItems
+                    } else {
+                        (currentState.animes + pageItems).distinctBy { it.id }
+                    }
+                    nativePagedLibraryState.value = currentState.copy(
+                        status = if (pageResult.totalCount > 0) {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                        } else {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                        },
+                        animes = pageAnimes,
+                        totalCount = pageResult.totalCount,
+                        hasMore = pageResult.hasMore,
+                        loadedPage = requestedPage,
+                        isLoading = false,
+                        pageSize = normalizedPageSize,
+                        requestId = null,
+                        error = null,
+                    )
+                }
+                is ReiAnixLibraryQueryResult.Empty -> {
+                    if (generation != nativePageGeneration.get()) return@launch
+                    val currentState = nativePagedLibraryState.value
+                    if (currentState.generation != generation) return@launch
+                    nativePagedLibraryState.value = currentState.copy(
+                        status = if (requestedPage == 0) {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                        } else currentState.status,
+                        animes = if (requestedPage == 0) emptyList() else currentState.animes,
+                        totalCount = if (requestedPage == 0) 0 else currentState.totalCount,
+                        hasMore = false,
+                        loadedPage = if (requestedPage == 0) 0 else currentState.loadedPage,
+                        isLoading = false,
+                        pageSize = normalizedPageSize,
+                        requestId = null,
+                        error = null,
+                    )
+                }
+                is ReiAnixLibraryQueryResult.Failure -> {
+                    val currentState = nativePagedLibraryState.value
+                    if (currentState.generation == generation) {
+                        nativePagedLibraryState.value = currentState.copy(
+                            status = if (currentState.animes.isEmpty()) {
+                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                            } else currentState.status,
+                            isLoading = false,
+                            requestId = null,
+                            error = result.cause.message
+                                ?.takeIf(String::isNotBlank)
+                                ?: "Não foi possível consultar a biblioteca SQLite.",
+                        )
+                    }
+                }
+                is ReiAnixLibraryQueryResult.NotFound -> {
+                    val currentState = nativePagedLibraryState.value
+                    if (currentState.generation == generation) {
+                        nativePagedLibraryState.value = currentState.copy(
+                            status = if (currentState.animes.isEmpty()) {
+                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                            } else currentState.status,
+                            isLoading = false,
+                            requestId = null,
+                            error = "A consulta da biblioteca retornou um resultado inconsistente.",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     fun loadNextLibraryPage() {
         val page = pagedLibraryState.value
         if (!page.hasMore || page.isLoading || page.loadedPage < 0) return
         val filters = libraryFilters.value
-        repository.loadLibraryPage(
+        loadNativeLibraryPage(
             page = page.loadedPage + 1,
             pageSize = configuredLibraryPageSize,
             query = filters.query,
@@ -1175,7 +1508,10 @@ class ReiAnixLibraryViewModel(
         viewModelScope.launch {
             _personalListMutationError.value = null
             when (val result = personalListService.toggle(animeId)) {
-                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> repository.publishCatalog()
+                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> {
+                    refreshNativeCatalog()
+                    repository.publishCatalog()
+                }
                 com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
                     _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
                 com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
@@ -1205,7 +1541,10 @@ class ReiAnixLibraryViewModel(
         _personalListMutationError.value = null
         val result = operation()
         when (result) {
-            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> repository.publishCatalog()
+            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> {
+                refreshNativeCatalog()
+                repository.publishCatalog()
+            }
             com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
                 _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
             com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
@@ -1228,8 +1567,9 @@ class ReiAnixLibraryViewModel(
             _consumptionMutationError.value = null
             try {
                 consumptionService.setWatched(episodeId, watched)
-                // The projection bridge now only republishes the committed canonical
-                // row; the watched-state mutation itself is performed once by Kotlin.
+                refreshNativeCatalog()
+                // The projection bridge only republishes compatibility/diagnostic state;
+                // the watched-state mutation itself is performed once by Kotlin.
                 repository.publishCatalog()
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
