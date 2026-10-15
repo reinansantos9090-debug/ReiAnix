@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.job
 import kotlin.coroutines.coroutineContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -153,7 +154,7 @@ class ReiAnixAniListDescriptionLocalizer(
         }
         if (normalized.any { it.code in 0x4E00..0x9FFF }) return "zh-CN" to 0.99
 
-        val tokens = Regex("[^\\W\\d_]+").findAll(normalized.lowercase(Locale.ROOT))
+        val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
             .map { it.value }.toList()
         if (tokens.isEmpty()) return "unknown" to 0.0
         val unique = tokens.toSet()
@@ -183,7 +184,7 @@ class ReiAnixAniListDescriptionLocalizer(
             (trimmed.startsWith("[") && trimmed.endsWith("]"))
         ) {
             try {
-                JSONObject(trimmed)
+                if (trimmed.startsWith("{")) JSONObject(trimmed) else JSONArray(trimmed)
                 return false
             } catch (_: Exception) {
                 // Not a JSON response envelope.
