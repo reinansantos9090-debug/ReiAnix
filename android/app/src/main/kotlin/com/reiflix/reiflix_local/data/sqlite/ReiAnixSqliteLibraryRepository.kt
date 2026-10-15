@@ -665,7 +665,6 @@ class ReiAnixSqliteLibraryRepository(
         val ignored = stats.optInt("ignored", 0).coerceAtLeast(0)
         val duplicates = stats.optInt("duplicates", 0).coerceAtLeast(0)
         val unknown = stats.optInt("unknown", 0).coerceAtLeast(0)
-        val reportErrors = JSONArray(errors.toList()).toString()
         val folderAuthorization = when (normalizedStatus) {
             "COMPLETED", "COMPLETE", "EMPTY_COMPLETE", "PARTIAL" -> "granted"
             "UNAVAILABLE" -> "unavailable"
