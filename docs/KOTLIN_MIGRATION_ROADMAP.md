@@ -231,7 +231,7 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 **Objetivo:** Consolidar consultas remotas e regras de associação no serviço Kotlin consumido pelo Compose.
 
-**Escopo implementado nesta branch:** GraphQL search/lookup/refresh, associação manual/automática, matching fuzzy portado, normalização HTML, sinopse PT-BR, títulos alternativos, gêneros, estúdios, formato, ano, episódios, status, cache, limites e cancelamento. A hidratação nativa lê o catálogo SQLite e persiste resultados/estados de tentativa.
+**Escopo implementado nesta branch:** GraphQL search/lookup/refresh, associação manual/automática, matching fuzzy portado, normalização HTML, sinopse PT-BR, títulos alternativos, gêneros, estúdios, formato, ano, episódios, status, cache, limites e cancelamento. A hidratação nativa é acionada pelo host Compose, isolada do ViewModel de pesquisa; lê o catálogo SQLite e persiste resultados/estados de tentativa. Estados não encontrados/ambíguos são terminais, enquanto falhas de rede/limite/JSON são registradas, mas voltam a ser elegíveis em um ciclo posterior.
 
 **Arquivos principais:** core/anilist.py (compatibilidade Flet); core/library_service.py (fallback legado e reconciliação de artwork somente no modo Compose); ReiAnixAniListClient.kt; ReiAnixAniListIntegrationService.kt; ReiAnixAniListDescriptionLocalizer.kt; ReiAnixAniListMatcher.kt; ReiAnixSqliteAniListAssociation.kt; ReiAnixSqliteLibraryRepository.kt; ReiAnixLibraryViewModel.kt; ReiAnixAppDependencies.kt; docs/KOTLIN_ANILIST_MIGRATION.md; docs/ANILIST_MATCHING.md.
 
