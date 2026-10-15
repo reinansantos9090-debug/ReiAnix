@@ -18,6 +18,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
+import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
@@ -344,11 +345,8 @@ class ReiAnixLibraryViewModel(
     override val uiState: StateFlow<ReiAnixLibraryUiState> = combine(
         repository.state,
         nativeCatalogState,
-    ) { bridgeState, catalog ->
-        val ready = catalog.status in setOf(
-            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY,
-            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY,
-        )
+        NativeScanController.progress,
+    ) { bridgeState, catalog, scans ->
         val mergedStatus = when {
             catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING ->
                 if (bridgeState.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR) {
@@ -361,10 +359,46 @@ class ReiAnixLibraryViewModel(
                 com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
             else -> catalog.status
         }
+
+        // Current Android scan progress and terminal status come from the native
+        // coordinator. The compatibility snapshot still owns storage/onboarding,
+        // but can no longer leave Compose in "scanning" after Kotlin has finished.
+        val safScans = scans.values.filter { it.source.equals("saf", ignoreCase = true) }
+        val activeSafScan = safScans
+            .filter { !it.state.isTerminal }
+            .maxByOrNull { it.startedAtMillis }
+        val latestSafScan = safScans
+            .maxByOrNull { it.finishedAtMillis ?: it.startedAtMillis }
+        val selectedScan = activeSafScan ?: latestSafScan
+        val nativeScanState = when (selectedScan?.state) {
+            ScanLifecycleState.PREPARING -> "PREPARING"
+            ScanLifecycleState.RUNNING -> "RUNNING"
+            ScanLifecycleState.CANCELLATION_REQUESTED -> "CANCELLING"
+            ScanLifecycleState.CANCELLED -> "CANCELLED"
+            ScanLifecycleState.SUCCEEDED -> "COMPLETED"
+            ScanLifecycleState.PARTIAL -> "PARTIAL"
+            ScanLifecycleState.FAILED -> "FAILED"
+            ScanLifecycleState.IDLE, null -> bridgeState.scanState
+        }
+        val nativeLastScanStatus = when (latestSafScan?.state) {
+            ScanLifecycleState.CANCELLED -> "CANCELLED"
+            ScanLifecycleState.SUCCEEDED -> "COMPLETED"
+            ScanLifecycleState.PARTIAL -> "PARTIAL"
+            ScanLifecycleState.FAILED -> "FAILED"
+            else -> bridgeState.lastScanStatus
+        }
+        val nativeScanInProgress = when {
+            latestSafScan == null -> bridgeState.scanInProgress
+            else -> activeSafScan != null
+        }
+
         bridgeState.copy(
             status = mergedStatus,
             animes = catalog.animes,
             continueWatching = catalog.continueWatching,
+            scanInProgress = nativeScanInProgress,
+            scanState = nativeScanState,
+            lastScanStatus = nativeLastScanStatus,
             // Availability still describes the configured storage/source contract;
             // a successful SQLite read must not masquerade as granted storage access.
             sourceAvailable = bridgeState.sourceAvailable,
