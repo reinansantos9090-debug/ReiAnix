@@ -474,5 +474,18 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("ORDER BY season ASC, number ASC, id ASC", library)
 
 
+    def test_native_saf_scan_records_scan_run_in_kotlin_before_python_projection(self):
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn("suspend fun finishNativeScanRun(", repository)
+        self.assertIn('"scan_runs"', repository)
+        self.assertIn("finishNativeScanRun(", runner)
+        self.assertIn('put("nativeScanRunOwner", persistNativeScanRun(payload))', runner)
+        self.assertIn("payload.get('nativeScanRunOwner') is True", main)
+        self.assertIn("catalog = await asyncio.to_thread(library.store.catalog)", main)
+        self.assertIn("library.finish_ingest_documents", main)  # compatibility/recovery fallback only
+
 if __name__ == "__main__":
     unittest.main()
