@@ -105,9 +105,10 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         end = main.index("if event_type == 'compose_settings_set':", start)
         handler = main[start:end]
 
-        self.assertIn('"type", "anilist_artwork_sync"', service)
+        self.assertIn('"type", "anilist_metadata_committed"', service)
         self.assertIn('"type", "anilist_artwork_sync"', dependencies)
         self.assertIn("NativeMailbox.write(", dependencies)
+        self.assertIn("if request_artwork and (", handler)
         self.assertIn("library.artwork.sync_anime_metadata(", handler)
         self.assertIn("request_download=True", handler)
         self.assertIn('library.artwork.request(', handler)
