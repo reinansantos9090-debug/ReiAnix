@@ -6,6 +6,8 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import java.io.File
+import java.util.UUID
+import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
