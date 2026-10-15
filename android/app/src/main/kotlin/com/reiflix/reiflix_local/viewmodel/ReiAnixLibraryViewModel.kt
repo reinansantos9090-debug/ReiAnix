@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -1094,22 +1095,34 @@ class ReiAnixLibraryViewModel(
 
     fun dismissStorageOnboarding() = repository.dismissStorageOnboarding()
 
-    /** Remove a configured source from canonical SQLite while preserving media and playback history. */
+    /**
+     * Requests native release first. MainActivity owns the permission -> canonical SQLite
+     * removal transaction and calls onSafRemovalTerminal only after the durable result.
+     */
+    private val pendingSafRemovalReferences = ConcurrentHashMap.newKeySet<String>()
+
     fun removeSafTree(reference: String) {
         val normalized = reference.trim()
         if (normalized.isBlank()) return
-        viewModelScope.launch {
-            try {
-                nativeLibraryRepository.removeSafFolder(normalized)
-                refreshNativeFolders()
-                repository.publishCatalog()
-                appContext.startActivity(MainActivity.createNativeStorageActionIntent(appContext, "release_tree", normalized))
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.e("ReiAnixLibraryViewModel", "Could not remove configured SAF source", error)
-            }
+        if (!pendingSafRemovalReferences.add(normalized)) {
+            Log.i("ReiAnixLibraryViewModel", "Ignoring duplicate SAF removal request while pending")
+            return
         }
+        try {
+            appContext.startActivity(
+                MainActivity.createNativeStorageActionIntent(appContext, "release_tree", normalized),
+            )
+        } catch (error: Exception) {
+            pendingSafRemovalReferences.remove(normalized)
+            Log.e("ReiAnixLibraryViewModel", "Could not dispatch native SAF removal", error)
+        }
+    }
+
+    /** Refresh Compose only after MainActivity publishes a terminal native result. */
+    fun onSafRemovalTerminal(reference: String) {
+        pendingSafRemovalReferences.remove(reference.trim())
+        refreshNativeFolders()
+        repository.publishCatalog()
     }
 
     fun setLibrarySearchQuery(value: String) {
