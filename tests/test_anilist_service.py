@@ -142,7 +142,7 @@ class LibraryAniListCacheTests(unittest.TestCase):
             self.assertEqual(store.association("naruto"), 20)
             self.assertEqual(store.library_summary()["animes"], 1)
 
-    def test_native_hydration_disables_python_anilist_writes_but_keeps_artwork(self):
+    def test_native_hydration_disables_python_anilist_and_artwork_writes(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             anime_id = store.upsert_anime("attack on titan", {
@@ -176,8 +176,8 @@ class LibraryAniListCacheTests(unittest.TestCase):
             search.assert_not_called()
             by_id.assert_not_called()
             refresh.assert_not_called()
-            sync_artwork.assert_called()
-            request_artwork.assert_called_once()
+            sync_artwork.assert_not_called()
+            request_artwork.assert_not_called()
 
     def test_association_mismatch_forces_refresh(self):
         with tempfile.TemporaryDirectory() as directory:
