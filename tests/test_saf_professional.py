@@ -311,7 +311,8 @@ class TestSafProfessionalContract(unittest.TestCase):
         start = source.index("private fun scanConfiguredSafRoots(")
         end = source.index("private fun scanTree(", start)
         block = source[start:end]
-        terminal_event = block.index('.put("type", "saf_library_scan_complete")')
+        status_calculation = block.index("val status = when {")
+        terminal_event = block.index('.put("type", "saf_library_scan_complete")', status_calculation)
         for awaited in (
             "awaitAndRecordSource(sourceKey, scanId)",
             "awaitAndRecordSource(MediaStoreScanner.SOURCE, mediaScanId)",
@@ -338,6 +339,25 @@ class TestSafProfessionalContract(unittest.TestCase):
             self.assertIn("NativeScanController.activeScanId(", block)
             self.assertIn('put("phase", "already_running")', block)
             self.assertIn("NativeScanController.launch(scanId)", block)
+
+    def test_resumed_refresh_includes_authorized_sources_and_does_not_consume_active_scan_hints(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        resumed = source[
+            source.index('"scan_library" -> {'):
+            source.index('"play" -> {', source.index('"scan_library" -> {'))
+        ]
+        self.assertIn("includeAuthorizedDiagnostics = true", resumed)
+
+        media_scan = source[
+            source.index("private fun scanMediaStore("):
+            source.index("private fun cancelNativeScans(", source.index("private fun scanMediaStore("))
+        ]
+        self.assertLess(
+            media_scan.index("if (!NativeScanController.begin(scanId, MediaStoreScanner.SOURCE))"),
+            media_scan.index("MediaStoreScanner.clearChangeNotification()"),
+        )
+        self.assertIn('put("phase", "already_running")', media_scan)
+
 
     def test_python_refresh_error_uses_global_source_count_not_saf_folder_count(self):
         source = MAIN.read_text(encoding="utf-8")
