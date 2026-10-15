@@ -404,8 +404,10 @@ class MainActivity : FlutterFragmentActivity() {
 
     }
     /**
-     * Native lifecycle events dispatch directly to Kotlin scanners. Python's
-     * ScanCoordinator remains only for legacy Flet-originated requests.
+     * Native lifecycle events dispatch directly to Kotlin scanners. The global
+     * completion event includes terminal results for SAF roots and every authorized
+     * MediaStore/BroadStorage source selected for this request. Python's ScanCoordinator
+     * remains only for legacy Flet-originated requests.
      */
     private fun publishScanRequest(
         origin: String,
@@ -1047,6 +1049,7 @@ class MainActivity : FlutterFragmentActivity() {
                         pendingRequestId,
                         "USER_REFRESH",
                         "compose_library_refresh",
+                        includeAuthorizedDiagnostics = true,
                     )
                 }
                 "play" -> {
@@ -1835,7 +1838,6 @@ class MainActivity : FlutterFragmentActivity() {
                 "Não foi possível executar a operação Android solicitada. Tente novamente.")
         }
     }
-    /** Native discovery for configured SAF roots; MediaStore/BroadStorage remain diagnostic sources. */
     /**
      * Aggregates every source included in one library refresh. The terminal event is
      * emitted only after each requested source has a terminal NativeScanController snapshot.
@@ -2573,7 +2575,6 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun scanMediaStore(requestId: String? = null): String? {
-        MediaStoreScanner.clearChangeNotification()
         val scanId = UUID.randomUUID().toString()
         if (!MediaStoreScanner.hasReadPermission(this)) {
             publishStorageStatus()
@@ -2594,6 +2595,8 @@ class MainActivity : FlutterFragmentActivity() {
                     .put("activeScanId", activeScanId ?: "")))
             return activeScanId
         }
+        // Consume incremental change hints only when this request owns a new full scan.
+        MediaStoreScanner.clearChangeNotification()
         val launched = NativeScanController.launch(scanId) {
             NativeScanRunner.runMediaStoreScan(applicationContext, scanId, requestId)
         }
