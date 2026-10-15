@@ -85,12 +85,19 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn('nativeLibraryIndexOwner", true', publisher)
         self.assertIn('if payload.get("nativeLibraryIndexOwner") is True:', main)
         self.assertNotIn('if source_kind == "saf" and payload.get("nativeLibraryIndexOwner") is True:', main)
-        self.assertIn("indexNativeVolumeSnapshot", runner)
-        self.assertIn("Completed scanner generation has no verified committed snapshot", runner)
-        self.assertIn("if (!complete && documents.length() == 0) return null", runner)
-        self.assertIn("scopeVerified = true", runner)
-        self.assertIn('result.put("nativeLibraryIndexReports", nativeIndexReports)', runner)
-        self.assertNotIn("runCatching {\n                            ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.indexDiscoveredMedia(snapshot)", runner)
+        broad_start = runner.index("suspend fun runBroadScan(")
+        media_start = runner.index("suspend fun runMediaStoreScan(", broad_start)
+        broad_scan = runner[broad_start:media_start]
+        media_scan = runner[media_start:]
+        # These scans are diagnostic-only in the existing domain contract. Their
+        # native batches must never be ingested by Python or become library sources.
+        self.assertNotIn("indexDiscoveredMedia", broad_scan)
+        self.assertNotIn("indexDiscoveredMedia", media_scan)
+        self.assertIn('result.put("nativeLibraryIndexOwner", true)', broad_scan)
+        self.assertIn('result.put("nativeLibraryIndexOwner", true)', media_scan)
+        self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
+        self.assertIn("NativeIndex.committedDocuments", runner)
+        self.assertIn("indexDiscoveredMedia", runner[:broad_start])
         self.assertIn("NATIVE_KOTLIN_INDEXER_OWNS_PERSISTENCE", main)
         self.assertIn("NativeIndex.committedDocuments", runner)
         self.assertIn("NativeIndex.stagedDocuments", runner)
