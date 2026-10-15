@@ -1171,21 +1171,18 @@ class ReiAnixSqliteLibraryRepository(
                 buildList {
                     while (cursor.moveToNext()) {
                         add(
-                            Triple(
-                                cursor.getLong(cursor.getColumnIndexOrThrow("anime_id")),
+                            cursor.getLong(cursor.getColumnIndexOrThrow("anime_id")) to
                                 ReiAnixLibraryCatalogGenre(
                                     id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
                                     name = cursor.getString(cursor.getColumnIndexOrThrow("canonical_name")),
                                 ),
-                                cursor.getString(cursor.getColumnIndexOrThrow("canonical_name")),
-                            )
                         )
                     }
                 }
             }
 
             val episodesByAnime = episodes.groupBy { it.animeId }
-            val genresByAnime = genres.groupBy { it.first }.mapValues { (_, rows) -> rows.map { it.second } }
+            val genresByAnime = genres.groupBy({ it.first }, { it.second })
             val artworkByAnime = artwork
                 .filter { it.entityType == "anime" || it.entityType == "movie" }
                 .mapNotNull { item -> item.entityId.toLongOrNull()?.let { it to item } }
@@ -1195,7 +1192,7 @@ class ReiAnixSqliteLibraryRepository(
                     if (item.entityType != "episode" || item.artworkType != "episode_thumbnail") continue
                     val episodeId = item.entityId.toLongOrNull() ?: continue
                     if (item.localPath.isNullOrBlank() && item.externalUrl.isNullOrBlank()) continue
-                    putIfAbsent(episodeId, item)
+                    if (!containsKey(episodeId)) put(episodeId, item)
                 }
             }
 
