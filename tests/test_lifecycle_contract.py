@@ -343,7 +343,9 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertNotIn("private fun scheduleMediaStoreScanRequest", source)
         self.assertNotIn("this@MainActivity", scheduler)
         self.assertNotIn("activityResumed", scheduler)
-        self.assertIn("NativeMailbox.write(", scheduler)
+        self.assertIn("MainActivity.createNativeStorageActionIntent(", scheduler)
+        self.assertIn('action = "scan_media_store"', scheduler)
+        self.assertNotIn('put("type", "scan_request")', scheduler)
         self.assertIn("appContext", scheduler)
 
     def test_player_pip_exit_respects_immersive_policy(self):
