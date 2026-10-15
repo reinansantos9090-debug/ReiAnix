@@ -373,6 +373,7 @@ object NativeCommandDispatcher {
                                 .put("rotation", result.rotation)
                                 .put("title", result.title ?: "")
                                 .put("mimeType", result.mimeType ?: "")
+                                .put("canonicalArtworkRegistered", result.canonicalArtworkRegistered)
                                 .put("source", "media_metadata_retriever"),
                         ),
                 )
