@@ -6,7 +6,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.job
 import org.json.JSONObject
@@ -32,6 +34,7 @@ class ReiAnixAniListDescriptionLocalizer(
     private val transport: AniListTranslationTransport = HttpUrlConnectionAniListTranslationTransport(),
 ) {
     private val cacheMutex = Mutex()
+    private val translationPermits = Semaphore(MAX_CONCURRENT_TRANSLATIONS)
     private val keyLocks = ConcurrentHashMap<String, Mutex>()
 
     suspend fun localizeToPtBr(description: String, sourceLanguage: String? = null): String? {
@@ -65,7 +68,7 @@ class ReiAnixAniListDescriptionLocalizer(
                 return@withLock null
             }
 
-            val translated = translateDescription(original, source)
+            val translated = translationPermits.withPermit { translateDescription(original, source) }
             if (translated != null &&
                 isValidTranslation(original, translated) &&
                 isPtBrDescription(translated)
@@ -231,11 +234,13 @@ class ReiAnixAniListDescriptionLocalizer(
             }
             if (response.statusCode !in 200..299) {
                 // Retry only when the service explicitly asks the client to wait.
+                val retryAfter = response.retryAfterSeconds
                 if (attempt < MAX_TRANSLATION_ATTEMPTS &&
                     (response.statusCode == 429 || response.statusCode >= 500) &&
-                    response.retryAfterSeconds != null
+                    retryAfter != null &&
+                    retryAfter in 0L..MAX_RETRY_AFTER_SECONDS
                 ) {
-                    delay(response.retryAfterSeconds.coerceIn(1L, MAX_RETRY_AFTER_SECONDS) * 1000L)
+                    delay(retryAfter * 1000L)
                     continue
                 }
                 return null
@@ -367,6 +372,7 @@ class ReiAnixAniListDescriptionLocalizer(
         const val MAX_TRANSLATION_BYTES = 480
         const val MAX_CACHE_ENTRIES = 4096
         const val MAX_TRANSLATION_ATTEMPTS = 3
+        const val MAX_CONCURRENT_TRANSLATIONS = 2
         const val MAX_RETRY_AFTER_SECONDS = 8L
         const val FAILED_RETRY_WINDOW_SECONDS = 30 * 60.0
 
