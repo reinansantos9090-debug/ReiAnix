@@ -1,0 +1,78 @@
+# Migração da indexação e reconciliação da biblioteca para Kotlin
+
+## Estado desta implementação
+
+Implementação do Prompt 05 no branch `migration/prompt-05-native-library-indexing-20261015`, baseada na `main` observada em `e115d69e9d970defb075c812b34663f17cbbefb4`.
+
+O caminho Android de descoberta SAF e indexação canônica é executado em Kotlin. O Prompt 05 adiciona `ReiAnixLibraryService` como a entrada de domínio para as mutações do subsistema e conecta o scanner, o histórico de varredura, as alterações de volume e a reconciliação de identidade SAF ao mesmo repositório SQLite compartilhado. Isto não significa que todo o runtime Python/Flet ou todos os consumidores de projeção da biblioteca tenham sido removidos.
+
+## 1. Arquitetura e ownership
+
+- `MainActivity` é a entrada de lifecycle, permissões e intents no Android; ela não contém as regras de reconciliação.
+- `NativeScanController` continua sendo o único coordenador Kotlin de execuções iniciadas pelo fluxo Android: reserva uma execução por chave de origem, mantém estados observáveis, rejeita pedidos duplicados incompatíveis e oferece cancelamento cooperativo.
+- `NativeScanRunner` executa os scanners de descoberta SAF/MediaStore/BroadStorage, controla as gerações persistidas, publica progresso e gerencia o protocolo de recuperação.
+- `NativeIndex` é o índice físico/staging durável usado para lotes e recuperação. Ele não substitui o catálogo canônico.
+- `ReiAnixLibraryService` é a camada de serviço Kotlin para mutações da varredura. Usa o mesmo `ReiAnixSqliteLibraryRepository` e serializa chamadas de mutação do serviço, sem manter locks durante a travessia do armazenamento.
+- `ReiAnixSqliteLibraryRepository.indexDiscoveredMedia` permanece a implementação transacional da reconciliação. O novo serviço não replica SQL ou regras de identidade.
+- `ReiAnixLibraryQueryService` é a camada de consulta sobre a mesma base, não um writer adicional.
+- `ReiAnixAppDependencies` fornece uma única instância compartilhada de repositório e serviço Kotlin.
+- `NativeMailbox` continua sendo transporte de compatibilidade e de estado terminal enquanto o runtime híbrido e o pipeline de projeção ainda possuem consumidores.
+
+Fluxo do caminho SAF normal:
+
+`MainActivity → NativeScanController → NativeScanRunner → NativeIndex (descoberta/staging) → NativeLibraryScanSnapshot → ReiAnixLibraryService → ReiAnixSqliteLibraryRepository.indexDiscoveredMedia → SQLite canônico → registro terminal de scan_runs → evento terminal de compatibilidade`.
+
+O caminho não entrega a persistência normal dos resultados a Python. `nativeLibraryIndexOwner` só é verdadeiro quando o Kotlin assume a responsabilidade da escrita canônica; o tratamento legado só pode ingerir resultados positivos depois de rollback nativo confirmado e receipt compatível. Resultado de transação desconhecido não autoriza um segundo writer.
+
+## 2. Validação e reconciliação
+
+O contrato `NativeLibraryScanSnapshot` exige IDs/escopo explícitos, estados processados e sinalização de falhas/cancelamento. `mayReconcile` só permite reconciliar ausências após uma geração declarada completa, autorização válida, cobertura das localizações esperadas, ausência de erros/itens não processados e comprovação de pertencimento ao escopo.
+
+`indexDiscoveredMedia`:
+- rejeita observações fora do escopo e identidades ambíguas;
+- procura a linha existente por identidade estável e por localização, tratando conflito entre resultados como ambiguidade;
+- atualiza apenas fatos de descoberta (localização, nome, MIME, tamanho, mtime, fonte/volume e disponibilidade);
+- preserva IDs, progresso, watched, histórico, metadados AniList, capas/miniaturas e campos manuais;
+- só insere episódio novo quando a identificação da obra/episódio tem confiança explícita suficiente, sem associar por nome aproximado ou sobrescrever um episódio lógico existente;
+- registra observações e mantém referências antigas como superseded em vez de apagar o histórico de localização;
+- marca arquivos ausentes como indisponíveis, sem excluir linhas nem dados associados, somente quando `mayReconcile` autoriza a operação.
+
+Uma permissão revogada, árvore inacessível, cancelamento, falha de provider, localização incompleta, ambiguidade ou resultado parcial bloqueia a reconciliação destrutiva. Descobertas positivas comprovadas podem ser persistidas, mas o restante do catálogo é preservado. A identificação de episódios continua usando o parser Kotlin disponível; a indexação não faz requisições AniList obrigatórias e não aguarda ArtworkEngine para persistir vídeos locais.
+
+## 3. Serviço de biblioteca nativo
+
+`ReiAnixLibraryService` recebe consumidores reais do fluxo:
+- `NativeScanRunner` usa o serviço para indexar os snapshots SAF e para registrar o `scan_runs` terminal após a decisão confirmada da transação;
+- `MainActivity` usa o serviço para persistir transições de volume no mesmo SQLite;
+- `ReiAnixLibraryViewModel` usa o serviço para reconciliar mudança de identidade SAF após uma mutação de arquivo confirmada pelo provider.
+
+O serviço não cria banco, schema, scanner, repositório ou coordenador adicional. As operações de persistência continuam implementadas no repositório canônico; o serviço fornece a fronteira única de domínio e serialização para as mutações pertencentes a este subsistema.
+
+## 4. Consumidores Compose e dependências restantes
+
+Os ViewModels continuam a usar consultas Kotlin do SQLite para dados nativos já migrados (detalhes, episódios, histórico, pastas e artwork). O refresh Android dispara a execução Kotlin e publica os estados terminais depois do processamento/persistência.
+
+Entretanto, a projeção geral de Home/Biblioteca e as páginas filtradas ainda passam pelo adapter `data/library/ReiAnixLibraryRepository.kt`, pelo snapshot `files/data/reianix-compose/library.json` e por `ComposeLibraryBridge` no runtime híbrido. O evento terminal via `NativeMailbox` continua sendo necessário para esse consumidor legado atualizar a projeção. Essa dependência de apresentação/IPC é explícita, não é tratada como um writer canônico adicional e não está declarada como migração integral da UI; a remoção do snapshot pertence ao cutover nativo dos consumidores de telas.
+
+Também permanecem:
+- `core/scan_coordinator.py` como compatibilidade de eventos/estado legado e fallback não Android; as requisições originadas pelo fluxo Android usam `NativeScanController`.
+- `core/library_service.py` para consumidores híbridos não migrados e ingestão de recuperação positiva somente quando uma transação Kotlin foi comprovadamente revertida e o receipt permite transferir ownership.
+- `NativeMailbox` para terminal events e outros subsistemas que ainda têm consumidores ativos.
+- MediaStore/BroadStorage continuam diagnósticos sob o contrato atual de fontes; não são promovidos automaticamente a fontes canônicas de biblioteca, pois isso poderia indexar duas vezes os mesmos vídeos que já estão numa pasta SAF configurada.
+
+Esses pontos não justificam apagar arquivos Python/globalmente a esta altura. O corte deve ser realizado quando os produtores e consumidores substitutos estiverem conectados e a compatibilidade do fluxo estiver provada.
+
+## 5. Integridade e validação
+
+Banco único: `filesDir/data/library.sqlite3`, schema existente v29; sem nova tabela, banco, Room ou alteração de schema nesta mudança.
+
+A indexação e reconciliação são executadas dentro da transação que já existe no repositório. O protocolo de recovery conserva o resultado COMMITTED/ROLLED_BACK/UNKNOWN e evita transferir a escrita em caso de resultado desconhecido. O serviço serializa suas próprias chamadas de mutação, e não segura a exclusividade durante descoberta, trabalho de rede ou entre fases.
+
+Verificações de entrega:
+- comparar o diff final de cada commit deste branch;
+- verificar o resultado dos workflows automáticos para o SHA final da PR;
+- confirmar a geração de APK/ZIP nos artifacts do run do SHA final, quando publicados pelo workflow obrigatório;
+- não executar manualmente testes Kotlin/JVM, não acionar o workflow manual Kotlin/JVM e não adicionar testes instrumentados/emulador;
+- registrar limites de runtime que exigem validação no aparelho sem inventar confirmação.
+
+Critério técnico já satisfeito no código para o fluxo SAF normal: scanner nativo, indexação transacional no SQLite canônico, política de reconciliação não destrutiva e registro terminal de execução pertencem a Kotlin. O critério de cutover integral de todo o subsistema/UI só poderá ser afirmado depois que as dependências de projeção/compatibilidade acima forem substituídas; o resultado da CI do SHA final ainda é a evidência de build necessária para esta PR.
