@@ -140,6 +140,8 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertNotIn('network_error",\n            "rate_limited', service)
         self.assertIn('allow_anilist_metadata=not compose_library_bridge.enabled', main)
         self.assertIn('needs_metadata = allow_anilist_metadata and not materialized', python_service)
+        self.assertIn('if allow_anilist_metadata and cached.get("id"):', python_service)
+        self.assertIn('if allow_anilist_metadata and anilist_id and cached.get("id")', python_service)
         self.assertIn('request_download=True', python_service)
 
     def test_malformed_graphql_search_data_is_not_reported_as_empty_results(self):
