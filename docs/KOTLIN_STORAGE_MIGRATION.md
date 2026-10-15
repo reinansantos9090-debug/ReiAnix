@@ -2,7 +2,7 @@
 
 Este documento registra a arquitetura e o estado verificável da migração do armazenamento para Kotlin.
 
-**Status de aceitação: EM ANDAMENTO.** A seleção SAF, a gravação da identidade da pasta, a remoção de fontes e a atualização manual Compose são encaminhadas a Kotlin. O scanner SAF persiste/reconcilia o catálogo e, no fluxo normal com ownership nativo confirmado, registra também o histórico em `scan_runs` antes de publicar o evento terminal. A etapa ainda não está concluída: o transporte terminal/projeção compatível usa NativeMailbox/main.py; o finalizador Python permanece como fallback de recuperação quando o ownership/resultado transacional nativo não pode ser comprovado; fluxos Flet legados e a reconciliação de identidade documental ainda têm consumidores Python.
+**Status de aceitação: EM ANDAMENTO.** A seleção SAF, a gravação da identidade da pasta, a remoção de fontes e a atualização manual Compose são encaminhadas a Kotlin. O scanner SAF persiste/reconcilia o catálogo e, no fluxo normal com ownership nativo confirmado, registra também o histórico em `scan_runs` antes de publicar o evento terminal. A etapa ainda não está concluída: o transporte terminal/projeção compatível usa NativeMailbox/main.py; fluxos Flet legados e a reconciliação de identidade documental de APKs antigos ainda têm consumidores Python. O runner atual não transfere snapshots positivos de recovery ao writer Python; ownership transacional desconhecido preserva os dados e exige rescan controlado.
 
 ---
 
@@ -110,12 +110,12 @@ O ReiAnix utiliza três mecanismos principais de acesso ao armazenamento no Andr
 
 ### Dependências híbridas ainda ativas — etapa não concluída
 - NativeScanRunner/NativeScanPublisher publicam progresso e término por NativeMailbox, consumido por main.py para atualizar a projeção compatível e os estados de UI.
-- O finalizador `LibraryService.finish_ingest_documents` continua como fallback somente quando Kotlin não pode confirmar ownership nativo ou quando uma finalização nativa falha; receipts recuperáveis com ownership nativo confirmado agora registram `scan_runs` em Kotlin antes de publicar o evento.
+- `LibraryService.finish_ingest_documents` continua como compatibilidade para eventos de APKs antigos, clientes sem runtime Android e caminhos de desenvolvimento. A versão atual executa em Kotlin a recuperação de snapshots positivos quando o receipt confirma `NOT_STARTED`/`NOT_COMMITTED`; `UNKNOWN` não é transferido a um writer Python. Falha ao finalizar `scan_runs` em Kotlin continua explícita por `nativeScanRunOwner`, sem alterar o ownership da mutação canônica.
 - Eventos `saf_document_identity_change` de APKs antigos ainda podem usar o finalizador de compatibilidade Python; a versão atual do ViewModel já executa a mutação canônica em Kotlin antes de publicar o evento. Alguns caminhos de desenvolvimento sem bridge Android mantêm fallback Python.
 - Algumas telas Compose ainda consomem snapshots JSON legados; NativeMailbox não pode ser removido globalmente enquanto outros subsistemas o usam.
 
 ### Critérios restantes
-- Validar por CI os caminhos de recuperação com commit confirmado, commit incerto e snapshot positivo sem commit; manter o fallback Python apenas para casos em que a propriedade da gravação nativa não pode ser comprovada.
+- Validar por CI os caminhos de recuperação com commit confirmado, commit incerto e snapshot positivo sem commit; os snapshots do runner atual permanecem exclusivamente sob ownership Kotlin.
 - Remover gradualmente o fallback de reconciliação e o ScanCoordinator Python somente quando não houver consumidores de APKs antigos ou de desenvolvimento que ainda precisem dele.
 - Manter a projeção compatível sem delegar descoberta, mutação de catálogo ou finalização normal do scan ao Python.
 - Comprovar por CI no SHA final que resultados completos, parciais, cancelados ou sem autorização preservam dados anteriores e não geram duplicações.
