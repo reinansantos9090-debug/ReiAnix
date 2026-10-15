@@ -774,6 +774,8 @@ object NativeScanRunner {
                     .put("scanId", scanId).put("scopeKind", "global").put("scopeRef", "broad-storage")
                     .put("generationId", "native-scoped")
                     .put("generationStatus", generationStatus)
+                // BroadStorage is diagnostic-only under the existing library-source contract.
+                result.put("nativeLibraryIndexOwner", true)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "broad_storage_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
                 NativeScanController.complete(scanId, terminalStatus, result)
