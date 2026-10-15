@@ -12,7 +12,9 @@ import com.reiflix.reiflix_local.scanner.MediaStoreRetryScheduler
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
+import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import com.reiflix.reiflix_local.scanner.SafScanner
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.storage.NativeIndex
 import com.reiflix.reiflix_local.storage.StorageAuthorization
 import com.reiflix.reiflix_local.storage.StorageLifecycleState
@@ -401,8 +403,10 @@ class MainActivity : FlutterFragmentActivity() {
         private const val SAF_PICKER_WATCHDOG_RETRY_MS = 250L
 
     }
-    /** Native lifecycle/observer events only request a logical scan. The Python
-     * ScanCoordinator decides whether and when a scanner actually runs. */
+    /**
+     * Native lifecycle events dispatch directly to Kotlin scanners. Python's
+     * ScanCoordinator remains only for legacy Flet-originated requests.
+     */
     private fun publishScanRequest(
         origin: String,
         source: String? = null,
@@ -411,32 +415,28 @@ class MainActivity : FlutterFragmentActivity() {
         reason: String = "",
         triggerRequestId: String? = null,
     ) {
-        val requestId = UUID.randomUUID().toString()
-        NativeMailbox.write(
-            this,
-            JSONObject()
-                .put("type", "scan_request")
-                .put("requestId", requestId)
-                .put(
-                    "payload",
-                    JSONObject()
-                        .put("origin", origin)
-                        .put("source", source ?: "")
-                        .put("scopeRef", scopeRef ?: "")
-                        .put("full", full)
-                        .put("reason", reason)
-                        .put("triggerRequestId", triggerRequestId ?: ""),
-                ),
-        )
+        val requestId = triggerRequestId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
         Log.i(
             tag,
-            "SCAN_REQUEST requestId=" + requestId +
+            "NATIVE_SCAN_REQUEST requestId=" + requestId +
                 " origin=" + origin +
-                " source=" + (source ?: "all") +
+                " source=" + (source ?: "configured_saf_roots") +
                 " scopeRef=" + (scopeRef ?: "-") +
                 " full=" + full +
                 " reason=" + (reason.ifBlank { "-" }),
         )
+        when {
+            source == "saf" && !scopeRef.isNullOrBlank() -> scanTree(scopeRef, requestId)
+            source == "saf" || (source == null && origin.uppercase() != "PERMISSION_CHANGE") ->
+                scanConfiguredSafRoots(requestId, origin)
+            source == "mediastore" -> scanMediaStore(requestId)
+            source == "broad_storage" -> scanAllStorage(requestId)
+            source == null && origin.uppercase() == "PERMISSION_CHANGE" -> {
+                scanMediaStore(requestId)
+                scanAllStorage(requestId)
+            }
+            else -> Log.w(tag, "Ignoring unsupported native scan source=$source origin=$origin")
+        }
     }
     private var storageReceiverRegistered = false
     private var systemBackDispatchPosted = false
@@ -1554,6 +1554,11 @@ class MainActivity : FlutterFragmentActivity() {
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
                     openTreePicker(requestId)
                 }
+                "scan_library" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    scanConfiguredSafRoots(requestId, "USER_REFRESH")
+                }
                 "scan_tree" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
@@ -1885,6 +1890,7 @@ class MainActivity : FlutterFragmentActivity() {
         }
         return scanId
     }
+
     private fun requestMediaAccess() {
         if (!activityResumed) {
             // queueLifecycleAction("request_media_access") remains the lifecycle contract;

@@ -409,6 +409,103 @@ class ReiAnixSqliteLibraryRepository(
             }
         }
 
+    /**
+     * Persists a user-authorized SAF root in the existing canonical folders table.
+     * This mirrors the legacy identity-aware upsert without creating a parallel store.
+     */
+    suspend fun upsertSafFolder(
+        path: String,
+        name: String?,
+        authorization: String = "granted",
+        accountId: String? = null,
+        safAuthority: String? = null,
+        safDocumentId: String? = null,
+        safVolumeId: String? = null,
+        safIdentity: String? = null,
+    ): String = withContext(Dispatchers.IO) {
+        val reference = path.trim()
+        require(reference.isNotEmpty()) { "SAF folder URI cannot be empty." }
+        require(reference.startsWith("content://")) { "SAF folder must remain a content URI." }
+        val normalizedName = name?.trim()?.takeIf { it.isNotEmpty() }
+            ?: reference.substringAfterLast('/').ifBlank { reference }
+
+        database.transaction { connection ->
+            if (!safIdentity.isNullOrBlank()) {
+                val existingPath = connection.rawQuery(
+                    "SELECT path FROM folders WHERE saf_identity = ? LIMIT 1",
+                    arrayOf(safIdentity),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                if (!existingPath.isNullOrBlank() && existingPath != reference) {
+                    connection.execSQL(
+                        """UPDATE folders SET name = ?, kind = 'saf', authorization = ?,
+                           account_id = COALESCE(?, account_id),
+                           saf_authority = COALESCE(?, saf_authority),
+                           saf_document_id = COALESCE(?, saf_document_id),
+                           saf_volume_id = COALESCE(?, saf_volume_id),
+                           saf_identity = ?, last_error = NULL, last_scan_at = NULL
+                           WHERE path = ?""",
+                        arrayOf(
+                            normalizedName, authorization, accountId, safAuthority,
+                            safDocumentId, safVolumeId, safIdentity, existingPath,
+                        ),
+                    )
+                    return@transaction existingPath
+                }
+            }
+            connection.execSQL(
+                """INSERT INTO folders(
+                       path, name, kind, authorization, account_id, added_at,
+                       saf_authority, saf_document_id, saf_volume_id, saf_identity
+                   ) VALUES (?, ?, 'saf', ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(path) DO UPDATE SET
+                       name = excluded.name,
+                       kind = 'saf',
+                       authorization = excluded.authorization,
+                       account_id = COALESCE(excluded.account_id, folders.account_id),
+                       saf_authority = COALESCE(excluded.saf_authority, folders.saf_authority),
+                       saf_document_id = COALESCE(excluded.saf_document_id, folders.saf_document_id),
+                       saf_volume_id = COALESCE(excluded.saf_volume_id, folders.saf_volume_id),
+                       saf_identity = COALESCE(excluded.saf_identity, folders.saf_identity),
+                       last_error = NULL""",
+                arrayOf(
+                    reference, normalizedName, authorization, accountId,
+                    System.currentTimeMillis() / 1000.0, safAuthority,
+                    safDocumentId, safVolumeId, safIdentity,
+                ),
+            )
+            reference
+        }
+    }
+
+    suspend fun updateFolderAuthorization(
+        path: String,
+        authorization: String,
+        error: String? = null,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val reference = path.trim()
+        if (reference.isEmpty()) return@withContext false
+        database.transaction { connection ->
+            val exists = connection.rawQuery(
+                "SELECT 1 FROM folders WHERE path = ? LIMIT 1",
+                arrayOf(reference),
+            ).use { it.moveToFirst() }
+            if (!exists) return@transaction false
+            connection.execSQL(
+                "UPDATE folders SET authorization = ?, last_error = ? WHERE path = ?",
+                arrayOf(authorization, error, reference),
+            )
+            true
+        }
+    }
+
+    suspend fun removeFolder(path: String): Boolean = withContext(Dispatchers.IO) {
+        val reference = path.trim()
+        if (reference.isEmpty()) return@withContext false
+        database.transaction { connection ->
+            connection.delete("folders", "path = ?", arrayOf(reference)) > 0
+        }
+    }
+
     suspend fun listFolders(): List<ReiAnixFolderRecord> = withContext(Dispatchers.IO) {
         database.read { connection ->
             connection.rawQuery(

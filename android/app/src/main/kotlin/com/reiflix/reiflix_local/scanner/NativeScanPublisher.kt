@@ -27,7 +27,8 @@ object NativeScanPublisher {
                 .put("volumeId", batchEvent.optString("volumeId")).put("generationId", effectiveGenerationId).put("scanGeneration", effectiveGeneration)
                 .put("batchId", batchId).put("batchNumber", batchNumber).put("batchSize", documents.length()).put("processed", documents.length())
                 .put("discovered", raw.length()).put("duplicates", prepared?.duplicates ?: 0).put("reused", reused).put("documents", documents)
-                .put("nativeLibraryIndexOwner", source == NativeIndex.SOURCE_SAF)
+                // Native scanner batches are observations only for Python; catalog writes remain Kotlin-owned.
+                .put("nativeLibraryIndexOwner", true)
             NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", eventType).put("requestId", requestId ?: "").put("payload", payload))
         } catch (exception: Exception) {
             if (exception is kotlinx.coroutines.CancellationException) throw exception
