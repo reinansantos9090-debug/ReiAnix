@@ -167,7 +167,7 @@ class ReiAnixAniListIntegrationService(
             ),
         )
         if (ranked.isEmpty()) {
-            library.recordAniListAutoMatchOutcome(animeId, "not_found")
+            recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
         val best = ranked.first()
