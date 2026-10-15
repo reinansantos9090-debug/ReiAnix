@@ -33,7 +33,7 @@ class ReiAnixAniListIntegrationService(
         library = ReiAnixSqliteLibraryRepository(context),
         settings = ReiAnixSqliteSettingsRepository(context),
         descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
-            File(context.applicationContext.filesDir, "data/cache/anilist_description_ptbr.json"),
+            File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
         ),
     )
 
