@@ -645,9 +645,8 @@ object NativeScanRunner {
                 var nativeIndexingCancelled = false
                 var cancellationAfterCommittedIndex = false
                 var nativeIndexingStatus = "SKIPPED_INCOMPLETE"
-                // Retain this scan generation's verified discovery snapshot until the SQLite
-                // transaction commits. If that transaction rolls back, the terminal event can
-                // hand the same snapshot to the legacy ingestion path as a serialized fallback.
+                // Retain this generation's verified positive snapshot for native recovery only.
+                // It is never transferred to Python as a catalog mutation fallback.
                 var fallbackDocuments: org.json.JSONArray? = null
                 try {
                         val treeIdentity = SafScanner.treeIdentity(treeUri)
