@@ -784,11 +784,13 @@ class MainActivity : FlutterFragmentActivity() {
                 val configuredReference = try {
                     withContext(Dispatchers.IO) {
                         appDependencies.sqliteLibraryRepository.upsertSafFolder(
-                            uri.toString(), selectedName,
-                            selectedIdentity.optString("authority").takeIf { it.isNotBlank() },
-                            selectedIdentity.optString("documentId").takeIf { it.isNotBlank() },
-                            selectedIdentity.optString("volumeId").takeIf { it.isNotBlank() },
-                            selectedIdentity.optString("identity").takeIf { it.isNotBlank() },
+                            path = uri.toString(),
+                            name = selectedName,
+                            authorization = "granted",
+                            safAuthority = selectedIdentity.optString("authority").takeIf { it.isNotBlank() },
+                            safDocumentId = selectedIdentity.optString("documentId").takeIf { it.isNotBlank() },
+                            safVolumeId = selectedIdentity.optString("volumeId").takeIf { it.isNotBlank() },
+                            safIdentity = selectedIdentity.optString("identity").takeIf { it.isNotBlank() },
                         )
                     }
                 } catch (cancelled: CancellationException) {
@@ -2388,23 +2390,68 @@ class MainActivity : FlutterFragmentActivity() {
                 Log.i(tag, "SAF permission already absent; treating release as completed")
             }
             val alreadyAbsent = !SafScanner.hasPersistedReadPermission(this, treeUri)
-            nativeRequestState.markOperationState(
-                requestId,
-                "release_tree",
-                NativeRequestState.OperationState.COMPLETED,
-            )
-            NativeMailbox.write(
-                this,
-                JSONObject().put("type", "saf_released")
-                    .put("requestId", requestId ?: "")
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("treeUri", reference)
-                            .put("alreadyAbsent", alreadyAbsent)
-                            .put("nativeFolderConfigOwner", nativeFolderConfigOwner),
-                    ),
-            )
+
+            fun publishReleased() {
+                nativeRequestState.markOperationState(
+                    requestId,
+                    "release_tree",
+                    NativeRequestState.OperationState.COMPLETED,
+                )
+                NativeMailbox.write(
+                    this,
+                    JSONObject().put("type", "saf_released")
+                        .put("requestId", requestId ?: "")
+                        .put(
+                            "payload",
+                            JSONObject()
+                                .put("treeUri", reference)
+                                .put("alreadyAbsent", alreadyAbsent)
+                                .put("nativeFolderConfigOwner", nativeFolderConfigOwner),
+                        ),
+                )
+            }
+
+            if (nativeFolderConfigOwner) {
+                lifecycleScope.launch {
+                    try {
+                        // Remove the configured source through the same canonical SQLite
+                        // repository only after Android confirms the persisted grant is gone.
+                        appDependencies.sqliteLibraryRepository.removeSafFolder(reference)
+                        publishReleased()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (exception: Exception) {
+                        runCatching {
+                            appDependencies.sqliteLibraryRepository.updateSafFolderAccess(
+                                reference,
+                                "unavailable",
+                                "Permission released but canonical source removal failed.",
+                            )
+                        }
+                        nativeRequestState.markOperationState(
+                            requestId,
+                            "release_tree",
+                            NativeRequestState.OperationState.FAILED,
+                        )
+                        Log.e(tag, "SAF permission was released but canonical source removal failed", exception)
+                        NativeMailbox.write(
+                            this@MainActivity,
+                            JSONObject().put("type", "saf_error")
+                                .put("requestId", requestId ?: "")
+                                .put("message", "A permissão foi liberada, mas a pasta não pôde ser removida da biblioteca.")
+                                .put(
+                                    "payload",
+                                    JSONObject()
+                                        .put("treeUri", reference)
+                                        .put("status", SafScanner.STATUS_FAILED)
+                                        .put("nativeFolderConfigOwner", true),
+                                ),
+                        )
+                    }
+                }
+            } else {
+                publishReleased()
+            }
         } catch (exception: Exception) {
             nativeRequestState.markOperationState(
                 requestId,
