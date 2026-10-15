@@ -60,10 +60,11 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn("private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()", source)
         matcher = (KOTLIN / "data/anilist/ReiAnixAniListMatcher.kt").read_text(encoding="utf-8")
         self.assertIn("ReiAnixAniListMatcher.rank(", source)
-        self.assertIn("best.score <= 0.0", source)
+        self.assertIn("best.score < ReiAnixAniListMatcher.MINIMUM_SCORE", source)
         self.assertIn("best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN", source)
         self.assertIn("AUTO_CONFIRM_SCORE = 0.86", matcher)
         self.assertIn("AUTO_CONFIRM_MARGIN = 0.05", matcher)
+        self.assertIn("const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE", source)
         self.assertIn("MINIMUM_SCORE = 0.48", matcher)
 
 
