@@ -185,9 +185,19 @@ class MainActivity : FlutterFragmentActivity() {
         private const val BRIDGE_PROTOCOL_VERSION = 2
 
         @JvmStatic
-        fun createNativeStorageActionIntent(context: Context, action: String, treeUri: String? = null): Intent {
+        fun createNativeStorageActionIntent(
+            context: Context,
+            action: String,
+            treeUri: String? = null,
+            reason: String? = null,
+            triggerRequestId: String? = null,
+        ): Intent {
             val normalized = action.trim()
-            require(normalized in setOf("select_tree", "request_media_access", "open_broad_storage_settings", "check_storage_access", "release_tree")) {
+            require(normalized in setOf(
+                "select_tree", "request_media_access", "open_broad_storage_settings",
+                "check_storage_access", "release_tree", "scan_library", "scan_tree",
+                "scan_media_store", "scan_all_storage",
+            )) {
                 "Unsupported native storage action."
             }
             require(normalized != "release_tree" || !treeUri.isNullOrBlank()) {
@@ -199,6 +209,10 @@ class MainActivity : FlutterFragmentActivity() {
                 .appendQueryParameter("protocol_version", BRIDGE_PROTOCOL_VERSION.toString())
                 .appendQueryParameter("created_at", System.currentTimeMillis().toString())
             treeUri?.trim()?.takeIf { it.isNotEmpty() }?.let { builder.appendQueryParameter("tree_uri", it) }
+            reason?.trim()?.takeIf { it.isNotEmpty() }?.let { builder.appendQueryParameter("reason", it) }
+            triggerRequestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                builder.appendQueryParameter("trigger_request_id", it)
+            }
             if (normalized == "release_tree") builder.appendQueryParameter("native_folder_config_owner", "true")
             return Intent(Intent.ACTION_VIEW, builder.build(), context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
