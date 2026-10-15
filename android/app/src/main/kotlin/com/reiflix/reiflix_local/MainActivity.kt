@@ -1809,7 +1809,7 @@ class MainActivity : FlutterFragmentActivity() {
                 progress[scanId]?.state?.isTerminal == true
             }
             val state = terminalProgress[scanId]?.state
-            val successful = if (state == ScanLifecycleState.COMPLETED || state == ScanLifecycleState.PARTIAL) 1 else 0
+            val successful = if (state == ScanLifecycleState.SUCCEEDED || state == ScanLifecycleState.PARTIAL) 1 else 0
             publishNativeLibraryScanComplete(
                 requestId,
                 origin,
@@ -1846,7 +1846,7 @@ class MainActivity : FlutterFragmentActivity() {
             }
             val successful = scanIds.count { scanId ->
                 val state = terminalProgress[scanId]?.state
-                state == ScanLifecycleState.COMPLETED || state == ScanLifecycleState.PARTIAL
+                state == ScanLifecycleState.SUCCEEDED || state == ScanLifecycleState.PARTIAL
             }
             publishNativeLibraryScanComplete(
                 requestId,
