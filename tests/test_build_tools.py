@@ -728,11 +728,13 @@ E: manifest
         activity = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
         self.assertIn('async def release_tree(self, tree_uri: str)', bridge)
-        self.assertIn('"release_tree" -> {', activity)
+        self.assertIn("native_folder_config_owner=True", bridge)
         self.assertIn('"release_tree" -> {', activity)
         self.assertIn("releaseTree(", activity)
         self.assertIn('intent.data?.getQueryParameter("tree_uri")', activity)
         self.assertIn("releasePersistableUriPermission", activity)
+        self.assertIn("removeSafFolder(reference)", activity)
+        self.assertIn("nativeFolderConfigOwner", activity)
         self.assertIn("await bridge.release_tree(reference)", main)
 
     def test_settings_exposes_folder_removal_callback(self):
