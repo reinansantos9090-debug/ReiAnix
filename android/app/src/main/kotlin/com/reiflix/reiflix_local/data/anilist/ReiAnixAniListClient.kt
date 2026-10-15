@@ -53,10 +53,14 @@ class ReiAnixAniListClient(
             .put("perPage", limit)) { data ->
             val page = data.optJSONObject("Page")
                 ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing Page object"))
-            val media = page.optJSONArray("media") ?: JSONArray()
+            val media = page.optJSONArray("media")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing media array in AniList search response"),
+                )
             AniListResult.Success(buildList {
                 for (i in 0 until media.length()) {
-                    val item = media.optJSONObject(i) ?: continue
+                    val item = media.optJSONObject(i)
+                        ?: return@buildList
                     parseAnime(item)?.let(::add)
                 }
             })
