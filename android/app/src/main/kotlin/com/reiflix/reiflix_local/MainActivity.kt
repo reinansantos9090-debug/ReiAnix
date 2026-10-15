@@ -189,6 +189,7 @@ class MainActivity : FlutterFragmentActivity() {
             context: Context,
             action: String,
             treeUri: String? = null,
+            requestId: String? = null,
             reason: String? = null,
             triggerRequestId: String? = null,
         ): Intent {
@@ -205,7 +206,7 @@ class MainActivity : FlutterFragmentActivity() {
             }
             val builder = Uri.parse("reiflix://native").buildUpon()
                 .appendQueryParameter("action", normalized)
-                .appendQueryParameter("request_id", UUID.randomUUID().toString())
+                .appendQueryParameter("request_id", requestId?.trim()?.takeIf { it.isNotEmpty() } ?: UUID.randomUUID().toString())
                 .appendQueryParameter("protocol_version", BRIDGE_PROTOCOL_VERSION.toString())
                 .appendQueryParameter("created_at", System.currentTimeMillis().toString())
             treeUri?.trim()?.takeIf { it.isNotEmpty() }?.let { builder.appendQueryParameter("tree_uri", it) }
