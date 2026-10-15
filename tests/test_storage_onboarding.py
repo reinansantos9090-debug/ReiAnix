@@ -927,7 +927,7 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         start = source.index("private fun handleTreePickerResult")
         picker = source[start:source.index("private fun ", start + 30)]
         call_start = picker.index("upsertSafFolder(")
-        call_end = picker.index("\\n                        )", call_start)
+        call_end = picker.index("\n                        )", call_start)
         call = picker[call_start:call_end]
         self.assertIn('authorization = "granted"', call)
         self.assertIn("safAuthority =", call)
