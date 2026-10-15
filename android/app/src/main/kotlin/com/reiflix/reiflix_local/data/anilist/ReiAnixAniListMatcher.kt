@@ -36,7 +36,7 @@ internal object ReiAnixAniListMatcher {
         RankedCandidate(candidate, score, kind)
     }.sortedWith(
         compareByDescending<RankedCandidate> { it.score }
-            .thenBy { it.anime.titleEnglish ?: it.anime.titleRomaji ?: "" .lowercase(Locale.ROOT) }
+            .thenBy { (it.anime.titleEnglish ?: it.anime.titleRomaji ?: "").lowercase(Locale.ROOT) }
             .thenBy { it.anime.id },
     )
 
@@ -178,17 +178,17 @@ internal object ReiAnixAniListMatcher {
 
     private fun isPunctuationOrSymbol(character: Char): Boolean {
         val type = Character.getType(character)
-        return type == Character.CONNECTOR_PUNCTUATION ||
-            type == Character.DASH_PUNCTUATION ||
-            type == Character.START_PUNCTUATION ||
-            type == Character.END_PUNCTUATION ||
-            type == Character.INITIAL_QUOTE_PUNCTUATION ||
-            type == Character.FINAL_QUOTE_PUNCTUATION ||
-            type == Character.OTHER_PUNCTUATION ||
-            type == Character.MATH_SYMBOL ||
-            type == Character.CURRENCY_SYMBOL ||
-            type == Character.MODIFIER_SYMBOL ||
-            type == Character.OTHER_SYMBOL
+        return type == Character.CONNECTOR_PUNCTUATION.toInt() ||
+            type == Character.DASH_PUNCTUATION.toInt() ||
+            type == Character.START_PUNCTUATION.toInt() ||
+            type == Character.END_PUNCTUATION.toInt() ||
+            type == Character.INITIAL_QUOTE_PUNCTUATION.toInt() ||
+            type == Character.FINAL_QUOTE_PUNCTUATION.toInt() ||
+            type == Character.OTHER_PUNCTUATION.toInt() ||
+            type == Character.MATH_SYMBOL.toInt() ||
+            type == Character.CURRENCY_SYMBOL.toInt() ||
+            type == Character.MODIFIER_SYMBOL.toInt() ||
+            type == Character.OTHER_SYMBOL.toInt()
     }
 
     private fun expectedFormat(context: Context): String? = when (
@@ -227,9 +227,9 @@ internal object ReiAnixAniListMatcher {
     private val SERIES_FORMATS = setOf("TV", "TV_SHORT", "ONA")
     private val WHITESPACE = Regex("\\s+")
     private val COMBINING_MARKS = setOf(
-        Character.NON_SPACING_MARK,
-        Character.COMBINING_SPACING_MARK,
-        Character.ENCLOSING_MARK,
+        Character.NON_SPACING_MARK.toInt(),
+        Character.COMBINING_SPACING_MARK.toInt(),
+        Character.ENCLOSING_MARK.toInt(),
     )
     private val LEADING_BRACKET_GROUP = Regex("^\\s*\\[[^\\]]{1,120}]\\s*")
     private val BRACKET_GROUP = Regex("\\[[^\\]]{0,120}]")
