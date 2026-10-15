@@ -474,8 +474,10 @@ async def main(page: ft.Page):
                         reason=f"scan_terminal:{state.value}",
                     )
                 scan_started = home_refresh_context.get("scan_started_at")
+                terminal_cancelled = state == ScanState.CANCELLED
                 diagnostics.record(
-                    "HOME_REFRESH_SCAN_COMPLETED" if terminal_success else "HOME_REFRESH_FAILED",
+                    "HOME_REFRESH_SCAN_COMPLETED" if terminal_success
+                    else ("HOME_REFRESH_CANCELLED" if terminal_cancelled else "HOME_REFRESH_FAILED"),
                     refresh_id=home_refresh_context["refresh_id"],
                     request_id=snapshot.request_id,
                     status=state.value,
@@ -483,15 +485,19 @@ async def main(page: ft.Page):
                     scan_source=snapshot.source or "all",
                     duration_ms=int((time.monotonic() - scan_started) * 1000) if scan_started else None,
                 )
-                performance.counter("home.refresh.scan_completed" if terminal_success else "home.refresh.failed")
+                performance.counter(
+                    "home.refresh.scan_completed" if terminal_success
+                    else ("home.refresh.cancelled" if terminal_cancelled else "home.refresh.failed")
+                )
                 if not terminal_success:
                     home_refresh_context["active"] = False
                     home_refresh_context["db_updated"] = False
                     home_refresh_context["request_id"] = None
-                    _publish_home_refresh_state("ERROR")
+                    terminal_ui_state = "CANCELLED" if terminal_cancelled else "ERROR"
+                    _publish_home_refresh_state(terminal_ui_state)
                     resetter = home_state.get("_reset_refresh_state")
                     if callable(resetter):
-                        resetter("ERROR", 1.6)
+                        resetter(terminal_ui_state, 1.6)
                 elif navigation.current != "home":
                     # The scan may finish while Home is not mounted. Keep the
                     # logical refresh alive until its durable catalog update has
@@ -653,6 +659,31 @@ async def main(page: ft.Page):
         resetter = home_state.get("_reset_refresh_state")
         if callable(resetter):
             resetter("ERROR", 1.6)
+
+    def _cancel_home_refresh(reason, *, request_id=None, source=None):
+        if not home_refresh_context["active"]:
+            return
+        refresh_id = home_refresh_context.get("refresh_id")
+        refresh_source = home_refresh_context.get("source") or "button"
+        diagnostics.record(
+            "HOME_REFRESH_CANCELLED",
+            refresh_id=refresh_id,
+            request_id=request_id,
+            source=refresh_source,
+            operation_source=source,
+            transition_reason=str(reason),
+        )
+        performance.counter("home.refresh.cancelled")
+        _set_home_refresh_phase("CANCELLED", request_id=request_id, reason=str(reason))
+        home_refresh_context["active"] = False
+        home_refresh_context["db_updated"] = False
+        home_refresh_context["scan_terminal"] = True
+        home_refresh_context["request_id"] = None
+        home_state["_manual_refresh_pending"] = False
+        _publish_home_refresh_state("CANCELLED")
+        resetter = home_state.get("_reset_refresh_state")
+        if callable(resetter):
+            resetter("CANCELLED", 1.6)
 
     def _home_refresh_ui_updated():
         if not home_refresh_context["active"]:
@@ -5600,11 +5631,18 @@ async def main(page: ft.Page):
                                             ),
                                         )
                                 elif is_user_refresh:
-                                    _fail_home_refresh(
-                                        "native_scan_cancelled" if native_status == "CANCELLED" else "native_scan_failed",
-                                        request_id=event_request_id,
-                                        source="saf",
-                                    )
+                                    if native_status == "CANCELLED":
+                                        _cancel_home_refresh(
+                                            "native_scan_cancelled",
+                                            request_id=event_request_id,
+                                            source="saf",
+                                        )
+                                    else:
+                                        _fail_home_refresh(
+                                            "native_scan_failed",
+                                            request_id=event_request_id,
+                                            source="saf",
+                                        )
                             diagnostics.record(
                                 "NATIVE_LIBRARY_SCAN_COMPLETE",
                                 request_id=event_request_id,
