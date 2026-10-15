@@ -101,6 +101,7 @@ object SafScanner {
         } catch(e:SecurityException) {
             base.put("status",if(hasPersistedReadPermission(context,treeUri))STATUS_UNAVAILABLE else STATUS_REVOKED).put("error",e.message?:"provider_denied")
         } catch(e:Exception) {
+            if (e is CancellationException) throw e
             Log.w(TAG,"SAF tree inspection failed",e); base.put("status",STATUS_UNAVAILABLE).put("error",e.message?:"provider_unavailable")
         }
     }
