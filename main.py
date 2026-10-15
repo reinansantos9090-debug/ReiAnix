@@ -7319,21 +7319,23 @@ async def main(page: ft.Page):
                                 )
                                 if tree_uri:
                                     _merge_authoritative_saf_root(tree_uri)
+                            native_storage_owner = payload.get('nativeStorageOwner') is True
                             if tree_uri:
                                 if payload.get('granted'):
                                     if payload.get('selected'):
-                                        store.add_folder(
-                                            tree_uri,
-                                            name=payload.get('name') or tree_uri.rsplit('/', 1)[-1],
-                                            kind='saf',
-                                            authorization='granted',
-                                            account_id=store.account().get('id'),
-                                            saf_authority=payload.get('authority') or None,
-                                            saf_document_id=payload.get('documentId') or None,
-                                            saf_volume_id=payload.get('volumeId') or None,
-                                            saf_identity=canonical_saf_identity,
-                                        )
-                                    else:
+                                        if not native_storage_owner:
+                                            store.add_folder(
+                                                tree_uri,
+                                                name=payload.get('name') or tree_uri.rsplit('/', 1)[-1],
+                                                kind='saf',
+                                                authorization='granted',
+                                                account_id=store.account().get('id'),
+                                                saf_authority=payload.get('authority') or None,
+                                                saf_document_id=payload.get('documentId') or None,
+                                                saf_volume_id=payload.get('volumeId') or None,
+                                                saf_identity=canonical_saf_identity,
+                                            )
+                                    elif not native_storage_owner:
                                         store.update_folder_status(tree_uri, 'granted')
                                         store.update_saf_identity(
                                             tree_uri,
@@ -7343,11 +7345,12 @@ async def main(page: ft.Page):
                                             canonical_saf_identity,
                                         )
                                 else:
-                                    store.update_folder_status(
-                                        tree_uri,
-                                        'revoked',
-                                        'A permissão desta pasta foi removida.',
-                                    )
+                                    if not native_storage_owner:
+                                        store.update_folder_status(
+                                            tree_uri,
+                                            'revoked',
+                                            'A permissão desta pasta foi removida.',
+                                        )
                                     store.mark_source_unavailable(tree_uri, 'saf_permission_revoked')
 
                                 if compose_library_bridge.enabled:
@@ -7361,7 +7364,8 @@ async def main(page: ft.Page):
                                             source="saf",
                                             result=str(tree_uri),
                                         )
-                                    _repair_configured_saf_source_identities()
+                                    if not native_storage_owner:
+                                        _repair_configured_saf_source_identities()
                                     valid_after_selection = bool(_configured_valid_library_saf_roots())
                                     if valid_after_selection:
                                         if storage_onboarding["startup_gate"]:
@@ -7449,7 +7453,8 @@ async def main(page: ft.Page):
                             tree_uri = payload.get('treeUri')
                             if tree_uri and tree_uri in pending_folder_removals:
                                 remove_request_id = pending_folder_removals.pop(tree_uri, None)
-                                store.remove_folder(tree_uri)
+                                if payload.get('nativeStorageOwner') is not True:
+                                    store.remove_folder(tree_uri)
                                 on_catalog_changed()
                                 if remove_request_id:
                                     compose_library_bridge.write_command_result(
