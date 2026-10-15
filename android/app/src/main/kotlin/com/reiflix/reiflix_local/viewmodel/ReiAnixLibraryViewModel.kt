@@ -1110,6 +1110,9 @@ class ReiAnixLibraryViewModel(
     }
 
     init {
+        // Populate catalog data even when the bridge snapshot does not exist yet.
+        viewModelScope.launch { refreshNativeCatalog() }
+
         // Load catalog records directly from the canonical SQLite repository. The legacy
         // snapshot is retained only for storage/onboarding and diagnostic scan state.
         viewModelScope.launch {
@@ -1225,14 +1228,6 @@ class ReiAnixLibraryViewModel(
             }
         }
         val normalizedGenre = genre.takeIf { it != "Todos" }?.trim()
-        val filters = ReiAnixLibraryFilters(
-            query = query,
-            selectedGenreKey = normalizedGenre,
-            favoritesOnly = favoritesOnly,
-            watchingOnly = watchingOnly,
-            completedOnly = completedOnly,
-            sort = sort,
-        )
         val previous = nativePagedLibraryState.value
         nativePagedLibraryState.value = if (reset) {
             ReiAnixLibraryPagedUiState(
@@ -1268,39 +1263,108 @@ class ReiAnixLibraryViewModel(
             if (catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING) return@launch
             if (generation != nativePageGeneration.get()) return@launch
 
-            val filtered = ReiAnixLibraryFilterEngine.filter(catalog.animes, filters)
-            val startIndex = requestedPage.toLong() * normalizedPageSize.toLong()
-            val pageItems = if (startIndex >= filtered.size) {
-                emptyList()
-            } else {
-                filtered.drop(startIndex.toInt()).take(normalizedPageSize)
-            }
-            if (generation != nativePageGeneration.get()) return@launch
+            val offsetLong = requestedPage.toLong() * normalizedPageSize.toLong()
+            val offset = offsetLong.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             val current = nativePagedLibraryState.value
             if (current.generation != generation) return@launch
-            val pageAnimes = if (reset || requestedPage == 0) {
-                pageItems
-            } else {
-                (current.animes + pageItems).distinctBy { it.id }
+            when (val result = nativeLibraryQueries.searchAnime(
+                searchText = query,
+                genreKey = normalizedGenre,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                sortLabel = sort,
+                limit = normalizedPageSize,
+                offset = offset,
+                libraryOnly = true,
+            )) {
+                is ReiAnixLibraryQueryResult.Success -> {
+                    val pageResult = result.value
+                    val byId = catalog.animes.associateBy { it.id }
+                    val missingIds = pageResult.animeIds.filterNot(byId::containsKey)
+                    if (missingIds.isNotEmpty()) {
+                        nativePagedLibraryState.value = current.copy(
+                            status = if (current.animes.isEmpty()) {
+                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                            } else current.status,
+                            isLoading = false,
+                            error = "A consulta SQLite encontrou alterações concorrentes; a biblioteca será relida.",
+                        )
+                        refreshNativeCatalog()
+                        return@launch
+                    }
+                    val pageItems = pageResult.animeIds.mapNotNull(byId::get)
+                    if (generation != nativePageGeneration.get()) return@launch
+                    val currentState = nativePagedLibraryState.value
+                    if (currentState.generation != generation) return@launch
+                    val pageAnimes = if (reset || requestedPage == 0) {
+                        pageItems
+                    } else {
+                        (currentState.animes + pageItems).distinctBy { it.id }
+                    }
+                    nativePagedLibraryState.value = currentState.copy(
+                        status = if (pageResult.totalCount > 0) {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                        } else {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                        },
+                        animes = pageAnimes,
+                        totalCount = pageResult.totalCount,
+                        hasMore = pageResult.hasMore,
+                        loadedPage = requestedPage,
+                        isLoading = false,
+                        pageSize = normalizedPageSize,
+                        requestId = null,
+                        error = null,
+                    )
+                }
+                is ReiAnixLibraryQueryResult.Empty -> {
+                    if (generation != nativePageGeneration.get()) return@launch
+                    val currentState = nativePagedLibraryState.value
+                    if (currentState.generation != generation) return@launch
+                    nativePagedLibraryState.value = currentState.copy(
+                        status = if (requestedPage == 0) {
+                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                        } else currentState.status,
+                        animes = if (requestedPage == 0) emptyList() else currentState.animes,
+                        totalCount = if (requestedPage == 0) 0 else currentState.totalCount,
+                        hasMore = false,
+                        loadedPage = if (requestedPage == 0) 0 else currentState.loadedPage,
+                        isLoading = false,
+                        pageSize = normalizedPageSize,
+                        requestId = null,
+                        error = null,
+                    )
+                }
+                is ReiAnixLibraryQueryResult.Failure -> {
+                    val currentState = nativePagedLibraryState.value
+                    if (currentState.generation == generation) {
+                        nativePagedLibraryState.value = currentState.copy(
+                            status = if (currentState.animes.isEmpty()) {
+                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                            } else currentState.status,
+                            isLoading = false,
+                            requestId = null,
+                            error = result.cause.message
+                                ?.takeIf(String::isNotBlank)
+                                ?: "Não foi possível consultar a biblioteca SQLite.",
+                        )
+                    }
+                }
+                is ReiAnixLibraryQueryResult.NotFound -> {
+                    val currentState = nativePagedLibraryState.value
+                    if (currentState.generation == generation) {
+                        nativePagedLibraryState.value = currentState.copy(
+                            status = if (currentState.animes.isEmpty()) {
+                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                            } else currentState.status,
+                            isLoading = false,
+                            requestId = null,
+                            error = "A consulta da biblioteca retornou um resultado inconsistente.",
+                        )
+                    }
+                }
             }
-            val status = when {
-                catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
-                    catalog.animes.isEmpty() ->
-                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
-                filtered.isEmpty() -> com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
-                else -> com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
-            }
-            nativePagedLibraryState.value = current.copy(
-                status = status,
-                animes = pageAnimes,
-                totalCount = filtered.size,
-                hasMore = startIndex + pageItems.size < filtered.size,
-                loadedPage = requestedPage,
-                isLoading = false,
-                pageSize = normalizedPageSize,
-                requestId = null,
-                error = catalog.error,
-            )
         }
     }
 
