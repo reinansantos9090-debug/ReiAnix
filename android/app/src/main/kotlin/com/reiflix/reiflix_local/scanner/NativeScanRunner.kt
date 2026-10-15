@@ -305,7 +305,7 @@ object NativeScanRunner {
         val rollbackReceiptPersisted = AtomicBoolean(false)
         val nativeIndexingCheckpointAttempted = AtomicBoolean(false)
 
-        fun canTransferToFallback(): Boolean {
+        fun canRecoverInKotlin(): Boolean {
             if (committedIndexReport.get() != null) return false
             if (!nativeIndexingCheckpointAttempted.get()) return true
             return indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK &&
@@ -313,7 +313,7 @@ object NativeScanRunner {
         }
 
         suspend fun persistNativeScanRun(payload: JSONObject): Boolean {
-            // A legacy positive-only fallback must retain Python's existing finalizer.
+            // Native Kotlin owns scan bookkeeping when catalog indexing is owned here; a verified rollback schedules a later native retry.
             // When Kotlin owns catalog persistence, it also owns the normal scan-run row.
             if (!payload.optBoolean("nativeLibraryIndexOwner")) return false
             return try {
@@ -338,13 +338,13 @@ object NativeScanRunner {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (exception: Exception) {
-                Log.e(TAG, "Native scan history finalization failed; retaining compatibility fallback.", exception)
+                Log.e(TAG, "Native scan history finalization failed; catalog ownership remains Kotlin and recovery stays receipt-gated.", exception)
                 false
             }
         }
 
         fun recoveryDocuments(): JSONArray? {
-            if (!canTransferToFallback()) return null
+            if (!canRecoverInKotlin()) return null
             val prior = terminalResult
             val priorRecovery = prior?.optJSONObject("nativeLibraryIndex")?.optString("recovery").orEmpty()
             if (prior != null && prior.has("nativeLibraryIndexOwner") &&
@@ -370,26 +370,60 @@ object NativeScanRunner {
         suspend fun publishRecoveryTerminal(message: String, cancelled: Boolean): Boolean {
             val committedReport = committedIndexReport.get()
             val payload = terminalResult ?: SafScanner.identityPayload(treeUri)
-            val fallbackOwnershipAllowed = committedReport == null && canTransferToFallback()
-            val documents = if (fallbackOwnershipAllowed) recoveryDocuments() else null
+            var recoverablePositiveSnapshot = false
+            var preserveRecoveryReceipt = false
+
             if (committedReport == null) {
+                val outcomeBeforeRecovery = indexTransactionOutcome.get()
+                val canReadPositiveSnapshot = canRecoverInKotlin() && recoveryDocuments() != null
+                if (!nativeIndexingCheckpointAttempted.get() && canReadPositiveSnapshot) {
+                    // No catalog transaction was started. Persist this fact before publishing
+                    // terminal state so pendingSafRecovery can safely retry positive discoveries
+                    // through Kotlin after the process/activity is restarted.
+                    rollbackReceiptPersisted.set(
+                        runCatching {
+                            NativeIndex.markNativeCatalogNotCommitted(
+                                appContext,
+                                NativeIndex.SOURCE_SAF,
+                                scanKey,
+                                generationId,
+                                "No canonical SQLite transaction was started; verified positive discoveries remain recoverable in Kotlin.",
+                            )
+                        }.onFailure {
+                            Log.w(TAG, "Could not persist the pre-transaction recovery receipt; rescan remains required.", it)
+                        }.getOrDefault(false),
+                    )
+                }
+                recoverablePositiveSnapshot = canReadPositiveSnapshot &&
+                    ((outcomeBeforeRecovery == ReiAnixSqliteTransactionOutcome.ROLLED_BACK &&
+                        rollbackReceiptPersisted.get()) ||
+                        (!nativeIndexingCheckpointAttempted.get() && rollbackReceiptPersisted.get()))
+                preserveRecoveryReceipt = recoverablePositiveSnapshot
+
                 val stats = payload.optJSONObject("stats") ?: JSONObject()
-                stats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true).put("cancelled", cancelled)
+                stats.put("status", SafScanner.STATUS_PARTIAL)
+                    .put("partial", true)
+                    .put("cancelled", cancelled)
                 val errors = stats.optJSONArray("errors") ?: JSONArray().also { stats.put("errors", it) }
                 if ((0 until errors.length()).none { errors.optString(it) == message }) errors.put(message)
+
                 val outcome = indexTransactionOutcome.get()
                 val recovery = when {
-                    !fallbackOwnershipAllowed && outcome == ReiAnixSqliteTransactionOutcome.COMMITTED ->
-                        "NATIVE_COMMIT_CONFIRMED"
-                    !fallbackOwnershipAllowed && outcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
+                    outcome == ReiAnixSqliteTransactionOutcome.COMMITTED ->
+                        "NATIVE_COMMIT_CONFIRMED_REPORT_UNAVAILABLE"
+                    recoverablePositiveSnapshot ->
+                        "NATIVE_POSITIVE_RECOVERY_PENDING"
+                    outcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
                         "ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED"
-                    !fallbackOwnershipAllowed -> "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED"
-                    documents != null -> "LEGACY_INGESTION_REQUIRED"
-                    else -> "DISCOVERY_SNAPSHOT_UNAVAILABLE"
+                    outcome == null && !nativeIndexingCheckpointAttempted.get() ->
+                        "NATIVE_DISCOVERY_SNAPSHOT_UNAVAILABLE_RESCAN_REQUIRED"
+                    else -> "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED"
                 }
+
                 payload.put("stats", stats)
-                    .put("documents", documents ?: JSONArray())
-                    .put("nativeLibraryIndexOwner", !fallbackOwnershipAllowed)
+                    // Discovery documents never cross to Python as a catalog-write fallback.
+                    .put("documents", JSONArray())
+                    .put("nativeLibraryIndexOwner", true)
                     .put("status", SafScanner.STATUS_PARTIAL)
                     .put("partial", true)
                     .put("cancelled", cancelled)
@@ -400,7 +434,7 @@ object NativeScanRunner {
                 payload.put("nativeLibraryIndex", indexState)
             } else {
                 // A confirmed native commit remains authoritative; never fall back to Python
-                // just because final event delivery failed after SQLite committed.
+                // just because terminal event delivery failed after SQLite committed.
                 val indexState = payload.optJSONObject("nativeLibraryIndex") ?: JSONObject()
                 indexState.put("commitOutcome", "COMMITTED")
                     .put("terminalDeliveryError", message)
@@ -422,14 +456,16 @@ object NativeScanRunner {
                     JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", payload),
                 )
             }.onFailure { error ->
-                Log.e(TAG, "Could not publish terminal SAF recovery state; retaining staging data.", error)
+                Log.e(TAG, "Could not publish terminal SAF recovery state; retaining the native receipt.", error)
             }.isSuccess
             if (written) {
                 terminalResult = payload
                 terminalEventPublished = true
-                runCatching {
-                    NativeIndex.markRecoveryEventPublished(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
-                }.onFailure { Log.w(TAG, "Recovery event was published but its receipt marker could not be persisted.", it) }
+                if (!preserveRecoveryReceipt) {
+                    runCatching {
+                        NativeIndex.markRecoveryEventPublished(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
+                    }.onFailure { Log.w(TAG, "Recovery event was published but its receipt marker could not be persisted.", it) }
+                }
             }
             return written
         }
@@ -771,7 +807,7 @@ object NativeScanRunner {
                 }
             } catch (exception: CancellationException) {
                 if (!terminalEventPublished) {
-                    val canTransfer = canTransferToFallback()
+                    val canTransfer = canRecoverInKotlin()
                     val snapshotAvailable = canTransfer && recoveryDocuments() != null
                     val message = when {
                         !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
@@ -807,7 +843,7 @@ object NativeScanRunner {
             } catch (exception: Exception) {
                 Log.e(TAG, "SAF scan failed", exception)
                 if (!terminalEventPublished) {
-                    val canTransfer = canTransferToFallback()
+                    val canTransfer = canRecoverInKotlin()
                     val snapshotAvailable = canTransfer && recoveryDocuments() != null
                     val message = when {
                         !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
