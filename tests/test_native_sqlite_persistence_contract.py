@@ -152,8 +152,11 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("NativeIndex.recoveryDocuments(", runner)
         self.assertIn('partialStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
         self.assertIn("full reconciliation; previous rows were preserved", runner)
-        self.assertIn("fun recoverInterruptedSafScans(context: Context)", runner)
+        self.assertIn("suspend fun recoverInterruptedSafScans(context: Context)", runner)
         self.assertIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
+        self.assertIn("withContext(Dispatchers.IO)", activity)
+        self.assertIn("NativeCommandDispatcher.start(this@MainActivity)", activity)
+        self.assertIn('put("nativeScanRunOwner", nativeScanRunOwner)', runner)
         self.assertIn("COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED", runner)
         self.assertIn("recoveryEventPublished", native_index)
         self.assertRegex(
