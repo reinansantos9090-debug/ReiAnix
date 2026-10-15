@@ -129,7 +129,6 @@ class ReiAnixAniListIntegrationService(
             when (val result = client.searchAnime(query, 10)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> {
-                    autoMatchAttempts.remove(animeId)
                     val outcome = when (val error = result.error) {
                         is AniListError.RateLimited -> "rate_limited"
                         is AniListError.Network -> "network_error"
@@ -139,11 +138,15 @@ class ReiAnixAniListIntegrationService(
                             else -> "invalid_response"
                         }
                         is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
-                        is AniListError.InvalidRequest -> return result
+                        is AniListError.InvalidRequest -> {
+                            autoMatchAttempts.remove(animeId)
+                            return result
+                        }
                     }
-                    // Do not hide a failed outcome write: without the persisted state
-                    // the next catalog refresh would repeat the same remote request.
-                    library.recordAniListAutoMatchOutcome(animeId, outcome)
+                    // Keep the per-process cooldown after a transient remote failure.
+                    // The persisted status is diagnostic, not permanently terminal:
+                    // a later refresh/restart can retry without hammering the API.
+                    recordAutoMatchOutcome(animeId, outcome)
                     return result
                 }
             }
@@ -152,7 +155,7 @@ class ReiAnixAniListIntegrationService(
             throw cancelled
         }
         if (results.isEmpty()) {
-            library.recordAniListAutoMatchOutcome(animeId, "not_found")
+            recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
         val ranked = ReiAnixAniListMatcher.rank(
@@ -175,7 +178,7 @@ class ReiAnixAniListIntegrationService(
         val second = ranked.getOrNull(1)?.score ?: 0.0
         val margin = best.score - second
         if (best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
-            library.recordAniListAutoMatchOutcome(
+            recordAutoMatchOutcome(
                 animeId,
                 "ambiguous",
                 score = best.score,
@@ -192,6 +195,23 @@ class ReiAnixAniListIntegrationService(
             is AniListResult.Failure -> return result
         }
         return AniListResult.Success(AniListAutoMatchResult.Matched(persisted, best.anime))
+    }
+
+    private suspend fun recordAutoMatchOutcome(
+        animeId: Long,
+        status: String,
+        score: Double? = null,
+        margin: Double? = null,
+    ) {
+        library.recordAniListAutoMatchOutcome(
+            animeId = animeId,
+            status = status,
+            score = score,
+            margin = margin,
+        )
+        // Publish even unresolved rows so the native projection can show their
+        // persisted status. A false requestArtwork flag prevents unrelated image work.
+        enqueueMetadataCommit(animeId, requestArtwork = false)
     }
 
     /**
@@ -350,9 +370,6 @@ class ReiAnixAniListIntegrationService(
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
         private val AUTO_MATCH_TERMINAL_STATUSES = setOf(
             "not_found",
-            "network_error",
-            "rate_limited",
-            "invalid_response",
             "ambiguous",
         )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
