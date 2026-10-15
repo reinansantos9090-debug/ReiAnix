@@ -97,6 +97,9 @@ object NativeScanController {
     fun isRunning(sourceKey: String): Boolean =
         sourceOwners.containsKey(sourceKey)
 
+    /** Returns the current owner for a source so aggregate refreshes can await an existing scan. */
+    fun activeScanId(sourceKey: String): String? = sourceOwners[sourceKey]
+
     fun cancelAll(): List<String> {
         val ids = tokens.keys.toList()
         ids.forEach { requestCancel(it, "Cancelamento geral solicitado") }
