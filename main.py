@@ -3678,6 +3678,19 @@ async def main(page: ft.Page):
             safe_update()
             await bridge.check_storage_access()
             return "Verificando as permissões do armazenamento…", True
+        if bridge.available:
+            request_id = await bridge.scan_library()
+            if _home_refresh_context is not None:
+                _home_refresh_context["request_id"] = request_id
+            diagnostics.record(
+                "NATIVE_LIBRARY_SCAN_REQUESTED",
+                request_id=request_id,
+                source="configured_saf_roots",
+                reason="explicit_user_refresh",
+            )
+            return "Atualização nativa iniciada. Verificando as pastas autorizadas…", True
+        # Non-Android development fallback only. The installed Android app uses
+        # MainActivity/NativeScanController as the single scan coordinator.
         transition = await scan_coordinator.request(
             ScanOrigin.USER_REFRESH,
             source=None,
