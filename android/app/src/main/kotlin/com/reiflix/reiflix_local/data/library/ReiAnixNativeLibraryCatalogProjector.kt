@@ -21,6 +21,9 @@ internal object ReiAnixNativeLibraryCatalogProjector {
 
     fun project(rows: List<ReiAnixLibraryCatalogRow>): ReiAnixNativeLibraryCatalogSnapshot {
         val animes = rows.map(::projectAnime)
+        val lastPlayedByEpisodeId = rows.asSequence()
+            .flatMap { it.episodes.asSequence() }
+            .associate { it.id to (it.lastPlayedAt ?: 0.0) }
         val continueWatching = buildList {
             for (anime in animes) {
                 val playable = if (anime.mediaKind == ReiAnixMediaKind.MOVIE) {
@@ -49,13 +52,8 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 }
             }
         }.sortedWith(
-            compareByDescending<ReiAnixContinueWatchingUiModel> { item ->
-                animes.asSequence()
-                    .firstOrNull { it.id == item.animeId }
-                    ?.contentEpisodes
-                    ?.firstOrNull { it.id == item.episodeId }
-                    ?.lastPlayedAt ?: 0.0
-            }.thenByDescending { it.episodeId },
+            compareByDescending<ReiAnixContinueWatchingUiModel> { lastPlayedByEpisodeId[it.episodeId] ?: 0.0 }
+                .thenByDescending { it.episodeId },
         ).take(CONTINUE_WATCHING_LIMIT)
 
         return ReiAnixNativeLibraryCatalogSnapshot(
@@ -247,7 +245,6 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         }
         if (completed.isNotEmpty()) {
             val furthest = completed.maxWithOrNull(episodeIdentityComparator) ?: return regular.first()
-            val furthestKey = episodeIdentityComparator.compare(furthest, furthest)
             val next = regular.filter { episodeIdentityComparator.compare(it, furthest) > 0 }
                 .minWithOrNull(episodeIdentityComparator)
             if (next != null) return next
