@@ -1981,9 +1981,11 @@ class MainActivity : FlutterFragmentActivity() {
         }
         val scanKey = "saf:$reference"
         if (!NativeScanController.begin(scanId, scanKey)) {
+            val activeScanId = NativeScanController.activeScanId(scanKey)
             NativeMailbox.write(this, JSONObject().put("type", "saf_scan_progress")
+                .put("requestId", requestId ?: "")
                 .put("payload", JSONObject().put("treeUri", reference).put("requestId", requestId ?: "").put("phase", "already_running")))
-            return null
+            return activeScanId
         }
         val generationId = NativeIndex.startGeneration(
             this, NativeIndex.SOURCE_SAF, scanKey,
