@@ -495,7 +495,7 @@ class MainActivity : FlutterFragmentActivity() {
                 lifecycleScope.launch {
                     try {
                         val volumeState = withContext(Dispatchers.IO) {
-                            appDependencies.sqliteLibraryRepository.recordNativeVolumeChange(payload)
+                            appDependencies.libraryService.recordNativeVolumeChange(payload)
                         }
                         payload.put("nativeStorageOwner", true)
                             .put("nativeVolumeStateIgnored", volumeState.optBoolean("ignored"))
