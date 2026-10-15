@@ -4656,57 +4656,68 @@ async def main(page: ft.Page):
                             if len(native_operation_states) > 128:
                                 native_operation_states.pop(next(iter(native_operation_states)))
                         if event_type == 'anilist_metadata_committed':
-                            # Kotlin committed AniList metadata to the canonical SQLite
-                            # repository. This event only refreshes the Compose projection
-                            # and optionally asks the existing ArtworkEngine to materialize
-                            # URLs; it never searches AniList or writes editorial metadata.
+                            # Kotlin has already committed metadata and queued native image work.
+                            # This message refreshes the current projection only.
                             try:
                                 anime_id = int(payload.get('animeId') or 0)
                             except (TypeError, ValueError):
                                 anime_id = 0
-                            request_artwork = payload.get('requestArtwork') is True
                             if anime_id <= 0:
                                 logger.warning("[ANILIST_METADATA] request rejected reason=invalid_anime_id")
                             else:
                                 metadata = store.anime_metadata_by_id(anime_id)
                                 if not isinstance(metadata, dict):
-                                    logger.info("[ANILIST_METADATA] request skipped animeId=%s reason=metadata_unavailable", anime_id)
+                                    logger.info("[ANILIST_METADATA] projection refresh skipped animeId=%s reason=metadata_unavailable", anime_id)
                                 else:
-                                    has_artwork_urls = bool(
-                                        str(metadata.get('cover_url') or '').strip()
-                                        or str(metadata.get('banner_url') or '').strip()
-                                    )
-                                    if request_artwork and metadata.get('anilist_id') and has_artwork_urls:
-                                        library.artwork.sync_anime_metadata(
-                                            anime_id,
-                                            metadata,
-                                            request_download=True,
-                                        )
-                                        banner_url = str(metadata.get('banner_url') or '').strip()
-                                        if banner_url:
-                                            entity_type = (
-                                                "movie"
-                                                if str(metadata.get("media_kind") or "series").casefold() == "movie"
-                                                else "anime"
-                                            )
-                                            library.artwork.request(
-                                                entity_type,
-                                                anime_id,
-                                                "backdrop",
-                                                priority=90,
-                                                allow_network=True,
-                                                blocking=False,
-                                            )
-                                    # Publish even without a cover, so native Home/Library
-                                    # reflects non-artwork metadata and persisted lookup state.
                                     compose_library_bridge.request_publish(
                                         f"anilist_metadata_updated:{anime_id}"
                                     )
                                     logger.info(
-                                        "[ANILIST_METADATA] request handled animeId=%s artwork_requested=%s",
+                                        "[ANILIST_METADATA] projection refreshed animeId=%s artwork_owner=kotlin",
                                         anime_id,
-                                        request_artwork and has_artwork_urls,
                                     )
+                        if event_type == 'artwork_published':
+                            artwork_event = str(payload.get('event') or '').strip().upper()
+                            entity_type = str(payload.get('entity_type') or '').strip().lower()
+                            artwork_type = str(payload.get('artwork_type') or '').strip().lower()
+                            local_path = str(payload.get('local_path') or '').strip()
+                            try:
+                                entity_id = int(payload.get('entity_id') or 0)
+                            except (TypeError, ValueError):
+                                entity_id = 0
+                            if (
+                                artwork_event == 'ARTWORK_PUBLISHED'
+                                and entity_type in {'anime', 'movie', 'episode', 'season', 'special'}
+                                and entity_id > 0
+                                and artwork_type
+                                and local_path
+                                and os.path.isfile(local_path)
+                            ):
+                                changed = False
+                                for target_state in (home_state, details_state):
+                                    updater = target_state.get('_update_artwork')
+                                    if not callable(updater):
+                                        continue
+                                    try:
+                                        changed = bool(
+                                            updater(entity_type, entity_id, artwork_type, local_path)
+                                        ) or changed
+                                    except Exception:
+                                        logger.exception(
+                                            "[ARTWORK] native incremental UI update failed entity=%s id=%s type=%s",
+                                            entity_type, entity_id, artwork_type,
+                                        )
+                                if compose_library_bridge.enabled:
+                                    compose_library_bridge.request_publish(
+                                        f"artwork_ready:{entity_type}:{entity_id}:{artwork_type}"
+                                    )
+                                if changed:
+                                    safe_update()
+                            else:
+                                logger.warning(
+                                    "[ARTWORK] native publication rejected entity=%s id=%s type=%s",
+                                    entity_type or "-", entity_id, artwork_type or "-",
+                                )
                         if event_type == 'compose_settings_set':
                             setting_key = str(payload.get('key') or '').strip()
                             setting_value = payload.get('value')
@@ -5986,8 +5997,11 @@ async def main(page: ft.Page):
                                 "title": str(payload.get('title') or ''),
                                 "mimeType": str(payload.get('mimeType') or ''),
                             }
-                            registered = False
-                            if uri and thumbnail_path:
+                            # Compose thumbnails were already recorded by Kotlin in the
+                            # canonical artwork table. Retain the Python writer only as
+                            # a compatibility fallback for the legacy Flet-only runtime.
+                            registered = payload.get('canonicalArtworkRegistered') is True
+                            if not registered and not compose_library_bridge.enabled and uri and thumbnail_path:
                                 registered = await asyncio.to_thread(
                                     library.register_generated_thumbnail,
                                     uri,
