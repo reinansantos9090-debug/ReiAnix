@@ -76,7 +76,7 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
     def test_native_synopsis_localization_preserves_source_and_legacy_cache_contract(self):
         localizer = (KOTLIN / "data/anilist/ReiAnixAniListDescriptionLocalizer.kt").read_text(encoding="utf-8")
         models = (KOTLIN / "data/sqlite/ReiAnixSqliteModels.kt").read_text(encoding="utf-8")
-        dependencies = (KOTLIN.parent / "ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
+        dependencies = (KOTLIN / "ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
         source_persistence = ASSOCIATION.read_text(encoding="utf-8")
         service = SERVICE.read_text(encoding="utf-8")
 
