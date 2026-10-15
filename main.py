@@ -4650,6 +4650,50 @@ async def main(page: ft.Page):
                             native_operation_states[str(event_request_id)] = operation_state
                             if len(native_operation_states) > 128:
                                 native_operation_states.pop(next(iter(native_operation_states)))
+                        if event_type == 'anilist_artwork_sync':
+                            # AniList search/metadata are native now. This narrow mailbox
+                            # event asks the existing ArtworkEngine to materialize the
+                            # already-persisted URLs; it never performs an AniList request.
+                            try:
+                                anime_id = int(payload.get('animeId') or 0)
+                            except (TypeError, ValueError):
+                                anime_id = 0
+                            if anime_id <= 0:
+                                logger.warning("[ANILIST_ARTWORK] request rejected reason=invalid_anime_id")
+                            else:
+                                metadata = store.anime_metadata_by_id(anime_id)
+                                if not isinstance(metadata, dict) or not metadata.get('anilist_id'):
+                                    logger.info("[ANILIST_ARTWORK] request skipped animeId=%s reason=metadata_unavailable", anime_id)
+                                elif not (
+                                    str(metadata.get('cover_url') or '').strip()
+                                    or str(metadata.get('banner_url') or '').strip()
+                                ):
+                                    logger.info("[ANILIST_ARTWORK] request skipped animeId=%s reason=no_remote_artwork_url", anime_id)
+                                else:
+                                    library.artwork.sync_anime_metadata(
+                                        anime_id,
+                                        metadata,
+                                        request_download=True,
+                                    )
+                                    banner_url = str(metadata.get('banner_url') or '').strip()
+                                    if banner_url:
+                                        entity_type = (
+                                            "movie"
+                                            if str(metadata.get("media_kind") or "series").casefold() == "movie"
+                                            else "anime"
+                                        )
+                                        library.artwork.request(
+                                            entity_type,
+                                            anime_id,
+                                            "backdrop",
+                                            priority=90,
+                                            allow_network=True,
+                                            blocking=False,
+                                        )
+                                    compose_library_bridge.request_publish(
+                                        f"artwork_state:anime:{anime_id}:poster"
+                                    )
+                                    logger.info("[ANILIST_ARTWORK] request handled animeId=%s", anime_id)
                         if event_type == 'compose_settings_set':
                             setting_key = str(payload.get('key') or '').strip()
                             setting_value = payload.get('value')
