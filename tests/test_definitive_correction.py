@@ -844,6 +844,10 @@ class DefinitiveCorrectionTests(unittest.TestCase):
         self.assertIn('persistCanonicalPlayerSetting(', player)
         self.assertIn('"player.aspect_ratio"', player)
         self.assertIn('persistCanonicalPlayerSetting("player.lock_mode"', player)
+        self.assertIn("ReiAnixSqliteSettingsRepository(applicationContext)", player)
+        self.assertIn("setPreference(normalizedKey, normalizedValue)", player)
+        self.assertIn('.put("nativePersisted", true)', player)
+        self.assertIn("lifecycleScope.launch(Dispatchers.IO)", player)
         self.assertIn("topBar.visibility = View.GONE", player)
         self.assertIn("hideLegacyPrimaryControls()", player)
 
