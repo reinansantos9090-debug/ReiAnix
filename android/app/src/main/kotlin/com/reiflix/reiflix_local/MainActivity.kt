@@ -2757,7 +2757,7 @@ class MainActivity : FlutterFragmentActivity() {
                 pendingSafReleaseWaiters.remove(normalizedReference)?.toList().orEmpty()
             }
             val ids = pending.filter { it.isNotBlank() }.distinct()
-            return ids.ifEmpty { requestId?.trim()?.takeIf { it.isNotEmpty() }?.let(::listOf).orEmpty() }
+            return ids.ifEmpty { requestId?.trim()?.takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty() }
         }
 
         fun publishReleaseError(
