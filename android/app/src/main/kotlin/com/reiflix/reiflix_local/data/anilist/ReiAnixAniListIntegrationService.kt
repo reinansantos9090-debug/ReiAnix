@@ -166,7 +166,7 @@ class ReiAnixAniListIntegrationService(
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
         val best = ranked.first()
-        if (best.score <= 0.0) {
+        if (best.score < ReiAnixAniListMatcher.MINIMUM_SCORE) {
             library.recordAniListAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
@@ -211,9 +211,6 @@ class ReiAnixAniListIntegrationService(
                 local.metadataStatus == "manual"
             ) continue
             if (local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES) continue
-            if (local.metadataStatus !in AUTO_MATCH_ELIGIBLE_METADATA_STATUSES &&
-                local.metadataSource != null
-            ) continue
 
             when (val result = autoMatch(local.id)) {
                 is AniListResult.Success -> when (result.value) {
@@ -362,9 +359,6 @@ class ReiAnixAniListIntegrationService(
             "rate_limited",
             "invalid_response",
             "ambiguous",
-        )
-        private val AUTO_MATCH_ELIGIBLE_METADATA_STATUSES = setOf(
-            null, "", "unresolved", "error", "ambiguous", "stale",
         )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     }
