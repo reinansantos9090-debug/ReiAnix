@@ -5577,9 +5577,18 @@ async def main(page: ft.Page):
                                         "refresh",
                                         "FAILED",
                                         error=(
-                                            "Nenhuma pasta SAF configurada pôde ser varrida."
-                                            if payload.get('configuredScopes') == 0
-                                            else "A varredura nativa não pôde ser concluída."
+                                            "Nenhuma fonte de armazenamento autorizada estava disponível para varredura."
+                                            if payload.get("noSourcesAvailable") is True
+                                            else (
+                                                "A operação de varredura foi interrompida antes de iniciar as fontes."
+                                                if payload.get("errorCode") == "ACTIVITY_NOT_RESUMED"
+                                                else (
+                                                    "Nenhuma fonte solicitada concluiu a varredura com sucesso."
+                                                    if int(payload.get("requestedSources") or 0) > 0
+                                                    and int(payload.get("successfulScopes") or 0) == 0
+                                                    else "A varredura nativa não pôde ser concluída."
+                                                )
+                                            )
                                         ),
                                     )
                                 elif is_user_refresh:
@@ -5598,6 +5607,7 @@ async def main(page: ft.Page):
                                     "successfulScopes": int(payload.get('successfulScopes') or 0),
                                     "failedScopes": int(payload.get('failedScopes') or 0),
                                     "cancelledScopes": int(payload.get('cancelledScopes') or 0),
+                                    "requestedSources": int(payload.get('requestedSources') or 0),
                                 },
                             )
                         elif event_type == 'saf_scan':
