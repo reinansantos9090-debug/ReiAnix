@@ -44,6 +44,8 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         self.assertIn("preserving the receipt without transferring writes to Python", runner)
         self.assertIn('.put("documents", JSONArray())', runner)
         self.assertNotIn('.put("documents", documents)', runner)
+        self.assertIn('== "NATIVE_POSITIVE_RECOVERY_PENDING"', runner)
+        self.assertIn("if (!nativePositiveRecoveryPending)", runner)
         self.assertNotIn("LEGACY_INGESTION_REQUIRED", runner)
         self.assertIn("core/scan_coordinator.py", migration)
         self.assertIn("ComposeLibraryBridge", migration)
