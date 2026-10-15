@@ -73,6 +73,31 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn("idLookupSendsLiteralIdVariableAndExpectedJsonValue", tests)
         self.assertIn('getJSONObject("variables")', tests)
 
+    def test_native_synopsis_localization_preserves_source_and_legacy_cache_contract(self):
+        localizer = (KOTLIN / "data/anilist/ReiAnixAniListDescriptionLocalizer.kt").read_text(encoding="utf-8")
+        models = (KOTLIN / "data/sqlite/ReiAnixSqliteModels.kt").read_text(encoding="utf-8")
+        dependencies = (KOTLIN.parent / "ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
+        source_persistence = ASSOCIATION.read_text(encoding="utf-8")
+        service = SERVICE.read_text(encoding="utf-8")
+
+        self.assertIn("localizer.localizeToPtBr(remoteOriginalDescription)", service)
+        self.assertIn("localizer.getCachedDescriptionPtBr(remoteOriginalDescription)", service)
+        self.assertIn("descriptionOriginal = remoteOriginalDescription", service)
+        self.assertIn("val descriptionOriginal: String? = null", models)
+        self.assertIn('values.put("description_original", it)', source_persistence)
+        self.assertIn('"data/covers/anilist_description_ptbr.json"', service)
+        self.assertIn('"data/covers/anilist_description_ptbr.json"', dependencies)
+        self.assertIn("TRANSLATION_ENDPOINT = \"https://api.mymemory.translated.net/get\"", localizer)
+        self.assertIn("MAX_TRANSLATION_BYTES = 480", localizer)
+        self.assertIn("MAX_CACHE_ENTRIES = 4096", localizer)
+        self.assertIn("CancellationException", localizer)
+
+    def test_malformed_graphql_search_data_is_not_reported_as_empty_results(self):
+        client = (KOTLIN / "data/anilist/ReiAnixAniListClient.kt").read_text(encoding="utf-8")
+        self.assertIn("Missing media array in AniList search response", client)
+        self.assertIn("Invalid anime item in AniList search response", client)
+        self.assertIn("Missing Media field in AniList detail response", client)
+
     def test_search_responses_are_guarded_by_request_identity(self):
         source = ANILIST_VM.read_text(encoding="utf-8")
         self.assertIn("val requestId = ++searchRequestId", source)
