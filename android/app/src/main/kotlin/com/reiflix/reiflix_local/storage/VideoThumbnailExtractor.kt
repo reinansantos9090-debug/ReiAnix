@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.storage
 
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -28,6 +29,7 @@ object VideoThumbnailExtractor {
         val rotation: Int = 0,
         val title: String? = null,
         val mimeType: String? = null,
+        val canonicalArtworkRegistered: Boolean = false,
     )
 
     private data class CachedResult(
@@ -47,6 +49,7 @@ object VideoThumbnailExtractor {
     private const val CACHE_METADATA_VERSION = 1
 
     private val inFlight = ConcurrentHashMap<String, Any>()
+    private val latestKeyByUri = ConcurrentHashMap<String, String>()
     private val extractionPermits = Semaphore(2)
     private const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
     private const val MAX_FRAME_DIMENSION = 320
@@ -68,6 +71,10 @@ object VideoThumbnailExtractor {
 
         val identity = mediaIdentity?.trim().takeUnless { it.isNullOrEmpty() } ?: uri.toString()
         val key = cacheKey(identity, size, modifiedAt)
+        latestKeyByUri[uri.toString()] = key
+        if (latestKeyByUri.size > 2048) {
+            latestKeyByUri.keys.asSequence().filter { it != uri.toString() }.take(1024).forEach(latestKeyByUri::remove)
+        }
         val target = File(cacheDir, key + ".jpg")
         val requestId = "thumb-" + key.take(12)
         NativeMailbox.writeBestEffort(
@@ -107,7 +114,7 @@ object VideoThumbnailExtractor {
                             ),
                     )
                 }
-                return cached.result
+                return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
             }
         }
         NativeMailbox.writeBestEffort(
@@ -121,7 +128,7 @@ object VideoThumbnailExtractor {
         synchronized(lock) {
             if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
                 val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
-                if (cached != null) return cached.result
+                if (cached != null) return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
             }
             runCatching {
                 if (target.exists()) target.delete()
@@ -139,7 +146,7 @@ object VideoThumbnailExtractor {
                 )
                 if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
                     val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
-                    if (cached != null) return cached.result
+                    if (cached != null) return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
                 }
                 val result = extractLocked(context, uri, target, key, size, modifiedAt)
                 NativeMailbox.writeBestEffort(
@@ -150,12 +157,43 @@ object VideoThumbnailExtractor {
                             .put("requestId", requestId)
                             .put("durationMs", (android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000.0)),
                 )
-                return result
+                return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, result)
             } finally {
                 if (permitAcquired) extractionPermits.release()
                 inFlight.remove(key, lock)
             }
         }
+    }
+
+    private fun registerGeneratedArtwork(
+        context: Context,
+        uri: Uri,
+        identity: String,
+        size: Long,
+        modifiedAt: Long,
+        result: Result,
+    ): Result {
+        // A delayed extraction for an older source revision must not overwrite
+        // the artwork row produced for the latest URI version.
+        if (latestKeyByUri[uri.toString()] != cacheKey(identity, size, modifiedAt)) {
+            return result.copy(canonicalArtworkRegistered = false)
+        }
+        val registered = runCatching {
+            ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.artworkService
+                ?.registerGeneratedThumbnail(
+                    mediaUri = uri.toString(),
+                    thumbnailPath = result.path,
+                    size = size,
+                    modifiedAt = modifiedAt,
+                    mediaIdentity = identity,
+                    durationMs = result.durationMs,
+                ) == true
+        }.getOrElse { error ->
+            android.util.Log.w("VideoThumbnailExtractor", "Canonical thumbnail registration failed", error)
+            false
+        }
+        return result.copy(canonicalArtworkRegistered = registered)
     }
 
     private fun isValidCachedThumbnail(file: File): Boolean = runCatching {
