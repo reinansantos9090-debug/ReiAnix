@@ -916,7 +916,7 @@ object NativeScanRunner {
                     val message = when {
                         !canRecover && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
                             "SAF scan cancelled after confirmed SQLite commit; fallback disabled."
-                        !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
+                        !canRecover && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
                             "SAF scan cancelled after rollback, but the matching recovery receipt was not persisted; fallback disabled; rescan required."
                         !canRecover ->
                             "SAF scan cancelled with an unconfirmed SQLite transaction outcome; catalog preserved; rescan required."
@@ -947,14 +947,14 @@ object NativeScanRunner {
             } catch (exception: Exception) {
                 Log.e(TAG, "SAF scan failed", exception)
                 if (!terminalEventPublished) {
-                    val canTransfer = canRecoverInKotlin()
-                    val snapshotAvailable = canTransfer && recoveryDocuments() != null
+                    val canRecover = canRecoverInKotlin()
+                    val snapshotAvailable = canRecover && recoveryDocuments()?.length()?.let { it > 0 } == true
                     val message = when {
-                        !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
+                        !canRecover && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
                             "SAF scan failed after confirmed SQLite commit; fallback disabled."
-                        !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
+                        !canRecover && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
                             "SAF scan failed after rollback, but the matching recovery receipt was not persisted; fallback disabled; rescan required."
-                        !canTransfer ->
+                        !canRecover ->
                             "SAF scan failed with an unconfirmed SQLite transaction outcome; catalog preserved; rescan required."
                         snapshotAvailable ->
                             "SAF scan failed; verified discoveries were retained for native positive-only recovery."
