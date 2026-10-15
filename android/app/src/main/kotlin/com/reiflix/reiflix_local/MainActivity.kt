@@ -1881,6 +1881,7 @@ class MainActivity : FlutterFragmentActivity() {
         lifecycleScope.launch {
             val repository = appDependencies.sqliteLibraryRepository
             val scanIds = mutableListOf<String>()
+            val pendingSources = mutableListOf<Pair<String, String>>()
             val sourceResults = JSONArray()
             var successfulScopes = 0
             var failedScopes = 0
@@ -2015,7 +2016,7 @@ class MainActivity : FlutterFragmentActivity() {
                         recordSourceStartFailure(sourceKey, "scan_not_started")
                         continue
                     }
-                    awaitAndRecordSource(sourceKey, scanId)
+                    pendingSources += sourceKey to scanId
                 }
 
                 if (includeAuthorizedDiagnostics) {
@@ -2025,7 +2026,7 @@ class MainActivity : FlutterFragmentActivity() {
                         if (mediaScanId == null) {
                             recordSourceStartFailure(MediaStoreScanner.SOURCE, "scan_not_started")
                         } else {
-                            awaitAndRecordSource(MediaStoreScanner.SOURCE, mediaScanId)
+                            pendingSources += MediaStoreScanner.SOURCE to mediaScanId
                         }
                     }
                     if (BroadStorageScanner.hasAccess(this@MainActivity)) {
@@ -2034,9 +2035,16 @@ class MainActivity : FlutterFragmentActivity() {
                         if (broadScanId == null) {
                             recordSourceStartFailure(BroadStorageScanner.SOURCE, "scan_not_started")
                         } else {
-                            awaitAndRecordSource(BroadStorageScanner.SOURCE, broadScanId)
+                            pendingSources += BroadStorageScanner.SOURCE to broadScanId
                         }
                     }
+                }
+
+                // Start each eligible source before awaiting any of them. A global
+                // cancellation can then reach every active generation, while each source
+                // retains its independent terminal result.
+                for ((source, scanId) in pendingSources) {
+                    awaitAndRecordSource(source, scanId)
                 }
 
                 val status = when {
