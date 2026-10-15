@@ -345,11 +345,12 @@ class TestSafProfessionalContract(unittest.TestCase):
 
     def test_resumed_refresh_includes_authorized_sources_and_does_not_consume_active_scan_hints(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        resumed = source[
-            source.index('"scan_library" -> {'):
-            source.index('"play" -> {', source.index('"scan_library" -> {'))
-        ]
-        self.assertIn("includeAuthorizedDiagnostics = true", resumed)
+        first_dispatch = source.index('"scan_library" -> {')
+        second_dispatch = source.index('"scan_library" -> {', first_dispatch + 1)
+        queued_refresh = source[first_dispatch:source.index('"play" -> {', first_dispatch)]
+        direct_refresh = source[second_dispatch:source.index('"scan_tree" -> {', second_dispatch)]
+        self.assertIn("includeAuthorizedDiagnostics = true", queued_refresh)
+        self.assertIn("includeAuthorizedDiagnostics = true", direct_refresh)
 
         media_scan = source[
             source.index("private fun scanMediaStore("):
