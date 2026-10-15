@@ -435,48 +435,7 @@ object NativeScanRunner {
                         val failedLocations = if (errors != null && errors.length() > 0) {
                             buildSet { for (i in 0 until errors.length()) add(errors.optString(i).ifBlank { "unknown-location" }) }
                         } else emptySet()
-                        val discovered = buildList {
-                            for (i in 0 until scanDocuments.length()) {
-                                val document = scanDocuments.optJSONObject(i) ?: continue
-                                val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
-                                val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
-                                val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
-                                val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
-                                val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
-                                val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
-                                val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
-                                val size = if (document.has("size") && !document.isNull("size")) document.optLong("size").takeIf { it >= 0L } else null
-                                val modifiedMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt").takeIf { it >= 0L } else null
-                                val ambiguities = parsed.optJSONArray("ambiguities")
-                                add(
-                                    NativeDiscoveredMedia(
-                                        location = uri,
-                                        fileName = name,
-                                        scopeLocation = documentId,
-                                        scopeVerified = document.optBoolean("scopeVerified", false),
-                                        animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
-                                        season = season,
-                                        episodeNumber = episodeNumber,
-                                        absoluteNumber = absoluteNumber,
-                                        episodeType = parsed.optString("kind").takeIf { it.isNotBlank() },
-                                        episodeTitle = parsed.optString("displayTitle").takeIf { it.isNotBlank() },
-                                        identificationSource = parsed.optString("identificationSource").takeIf { it.isNotBlank() },
-                                        identificationConfidence = parsed.optString("confidence").takeIf { it.isNotBlank() },
-                                        mimeType = document.optString("mimeType").takeIf { it.isNotBlank() && it != "null" },
-                                        sizeBytes = size,
-                                        modifiedAtEpochSeconds = modifiedMillis?.div(1000.0),
-                                        // Persist the same canonical source reference used by LibraryStore;
-                                        // the SAF document ID remains separate scan-scope evidence above.
-                                        sourceFolder = reference,
-                                        relativePath = document.optString("relativePath").takeIf { it.isNotBlank() },
-                                        volumeId = document.optString("volumeId").takeIf { it.isNotBlank() },
-                                        volumeUuid = document.optString("volumeUuid").takeIf { it.isNotBlank() },
-                                        mediaIdentity = document.optString("stableId").takeIf { it.isNotBlank() },
-                                        ambiguous = ambiguities != null && ambiguities.length() > 0,
-                                    )
-                                )
-                            }
-                        }
+                        val discovered = discoveredMediaFromSnapshot(scanDocuments, reference)
                         val authorization = SafScanner.inspectTree(appContext, treeUri, requirePersisted = true)
                         val authorizationValid = authorization.optString("status") in setOf(
                             SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE,
@@ -945,3 +904,49 @@ object NativeScanRunner {
 
     }
 }
+
+private fun discoveredMediaFromSnapshot(
+    scanDocuments: JSONArray,
+    sourceFolder: String,
+): List<NativeDiscoveredMedia> = buildList {
+                    for (i in 0 until scanDocuments.length()) {
+                        val document = scanDocuments.optJSONObject(i) ?: continue
+                        val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
+                        val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
+                        val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
+                        val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
+                        val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
+                        val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
+                        val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
+                        val size = if (document.has("size") && !document.isNull("size")) document.optLong("size").takeIf { it >= 0L } else null
+                        val modifiedMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt").takeIf { it >= 0L } else null
+                        val ambiguities = parsed.optJSONArray("ambiguities")
+                        add(
+                            NativeDiscoveredMedia(
+                                location = uri,
+                                fileName = name,
+                                scopeLocation = documentId,
+                                scopeVerified = document.optBoolean("scopeVerified", false),
+                                animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
+                                season = season,
+                                episodeNumber = episodeNumber,
+                                absoluteNumber = absoluteNumber,
+                                episodeType = parsed.optString("kind").takeIf { it.isNotBlank() },
+                                episodeTitle = parsed.optString("displayTitle").takeIf { it.isNotBlank() },
+                                identificationSource = parsed.optString("identificationSource").takeIf { it.isNotBlank() },
+                                identificationConfidence = parsed.optString("confidence").takeIf { it.isNotBlank() },
+                                mimeType = document.optString("mimeType").takeIf { it.isNotBlank() && it != "null" },
+                                sizeBytes = size,
+                                modifiedAtEpochSeconds = modifiedMillis?.div(1000.0),
+                                // Persist the same canonical source reference used by LibraryStore;
+                                // the SAF document ID remains separate scan-scope evidence above.
+                                sourceFolder = sourceFolder,
+                                relativePath = document.optString("relativePath").takeIf { it.isNotBlank() },
+                                volumeId = document.optString("volumeId").takeIf { it.isNotBlank() },
+                                volumeUuid = document.optString("volumeUuid").takeIf { it.isNotBlank() },
+                                mediaIdentity = document.optString("stableId").takeIf { it.isNotBlank() },
+                                ambiguous = ambiguities != null && ambiguities.length() > 0,
+                            )
+                        )
+                    }
+                }
