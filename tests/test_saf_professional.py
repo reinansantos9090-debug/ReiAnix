@@ -93,7 +93,11 @@ class TestSafProfessionalContract(unittest.TestCase):
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt"
         ).read_text(encoding="utf-8")
         self.assertIn("reconcileSafDocumentIdentityChange(", native_repository)
-        self.assertIn("nativeLibraryRepository.reconcileSafDocumentIdentityChange(", view_model)
+        self.assertIn("nativeLibraryService.reconcileSafDocumentIdentityChange(", view_model)
+        native_library_service = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryService.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("repository.reconcileSafDocumentIdentityChange(", native_library_service)
         self.assertIn("nativeIdentityOwner", view_model)
         self.assertIn("saf_document_identity_change", main)
         self.assertIn("payload.get('nativeIdentityOwner') is True", main)
