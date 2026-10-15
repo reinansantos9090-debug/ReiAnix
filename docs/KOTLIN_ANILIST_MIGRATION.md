@@ -4,7 +4,7 @@
 
 Este documento registra o fluxo AniList utilizado pelos consumidores nativos do ReiAnix. A implementação de produção para Compose está composta por android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClient.kt, ReiAnixAniListIntegrationService.kt, ReiAnixAniListDescriptionLocalizer.kt, o ReiAnixSqliteLibraryRepository canônico e ReiAnixAppDependencies.
 
-A migração não remove o runtime híbrido nem o ArtworkEngine neste pacote. core/anilist.py permanece disponível para consumidores Flet/legados. No modo Compose, `main.py` chama `hydrate_catalog_metadata(..., allow_anilist_metadata=False)`: o worker Python não pesquisa AniList, não faz matching nem localiza/grava sinopses; ele reconcilia somente a materialização de imagens já persistidas pelo Kotlin. No modo Flet legado, o parâmetro continua no padrão verdadeiro e preserva o fluxo existente. Após o commit SQLite, Kotlin publica um evento mínimo ao NativeMailbox e o ArtworkEngine existente materializa as URLs. O evento não executa AniList nem grava metadata editorial.
+A migração não remove o runtime híbrido nem os consumidores Python legados. core/anilist.py e core/artwork.py permanecem disponíveis para jornadas Flet ainda ativas. No modo Compose, main.py chama hydrate_catalog_metadata(..., allow_anilist_metadata=False): o worker Python não pesquisa AniList, não faz matching nem materializa imagens. O evento anilist_metadata_committed apenas atualiza a projeção, enquanto ReiAnixArtworkService em Kotlin materializa as URLs persistidas usando o mesmo SQLite v29. No modo Flet legado, o parâmetro continua verdadeiro por padrão e mantém a compatibilidade até esses consumidores serem migrados.
 
 ## Cliente GraphQL
 
@@ -50,18 +50,18 @@ Não houve alteração no schema SQLite v29, criação de outro banco ou adiçã
 
 ## Integração com imagens
 
-Depois que a transação SQLite retorna com a metadata/associação atualizada, o serviço Kotlin sempre publica anilist_metadata_committed pelo NativeMailbox, fora da transação e em Dispatchers.IO. O payload inclui somente o ID local e a opção requestArtwork. O consumidor em main.py lê os campos já persistidos e sempre solicita a atualização da projeção Compose para a metadata; apenas quando requestArtwork está habilitado e há URLs de imagem chama o ArtworkEngine existente para sincronizar URLs e materializar poster/backdrop.
+Depois que a transação SQLite retorna com a metadata/associação atualizada, o serviço Kotlin agenda ReiAnixArtworkService.requestAnimeArtwork quando requestArtwork estiver habilitado e, em seguida, publica anilist_metadata_committed pelo NativeMailbox. A mensagem contém somente o ID local e define requestArtwork=false; seu consumidor em main.py atualiza a projeção Compose, sem delegar downloads nem sincronização de artwork ao Python.
 
-O evento contém somente um ID local e um request ID; não carrega sinopse, credenciais ou a resposta GraphQL. A falha de publicação não desfaz uma metadata já confirmada. O renderer Compose ainda pode usar a URL externa como fallback enquanto o ArtworkEngine materializa a cópia local. O motor produtor Python permanece uma dependência conhecida e não é considerado migrado por este prompt.
+O evento contém somente um ID local e um request ID; não carrega sinopse, credenciais ou a resposta GraphQL. A falha de publicação não desfaz metadata já confirmada. O serviço nativo valida o arquivo, atualiza artwork e anime.cover_cache na base existente e publica ARTWORK_PUBLISHED depois do commit. Coil ainda pode usar a URL remota como fallback visual, mas esse fallback não substitui o cache persistente.
 
 ## Limites de migração mantidos explicitamente
 
-core/anilist.py e core/library_service.py continuam sendo usados por caminhos legados/Flet e não foram excluídos para evitar regressão de fallback enquanto o runtime híbrido existe. A implementação nativa substitui operações AniList chamadas pelo fluxo de Compose; o cleanup final dessas rotas antigas depende da remoção dos consumidores híbridos nos pacotes posteriores. core/artwork.py continua responsável pela materialização persistente conforme o escopo que proíbe reescrevê-lo nesta etapa.
+core/anilist.py e core/library_service.py continuam presentes para os fluxos Flet/legados. O caminho Compose passou a usar ReiAnixArtworkService para materializar capas e banners; core/artwork.py permanece somente enquanto os consumidores Flet legítimos ainda chamam ArtworkEngine. A remoção integral do runtime híbrido depende da migração dessas telas e rotas legadas em fases posteriores.
 
 Não foram introduzidas bibliotecas HTTP/GraphQL adicionais, mecanismos de autenticação novos, esquema de banco, caches de pesquisa paralelos, testes de emulador ou mudança no workflow para executar testes Kotlin/JVM manualmente.
 
 ## Verificações e evidências
 
-A suíte de regressão Python já contém contratos estáticos para cliente, ViewModel, associação transacional e preservação de metadata manual. Foram adicionadas as verificações estáticas do localizer/cache, do payload de sinopse original, da validação das respostas GraphQL e do evento de handoff para o ArtworkEngine. Os testes Kotlin/JVM do cliente e do localizer foram ampliados, mas continuam manuais por regra do projeto e não são executados manualmente como parte desta alteração.
+A suíte de regressão Python contém contratos do cliente, ViewModel, associação transacional, preservação de metadata manual e validação do pipeline nativo de artwork. Os testes Kotlin/JVM do cliente e do localizer continuam reservados para execução manual; não são executados automaticamente como parte desta alteração.
 
 O resultado final de build, regressão Python, workflows, SHA e artefatos APK/ZIP deve ser lido no resultado do GitHub Actions do commit final desta alteração; este documento não presume sucesso de um commit ou execução anterior.
