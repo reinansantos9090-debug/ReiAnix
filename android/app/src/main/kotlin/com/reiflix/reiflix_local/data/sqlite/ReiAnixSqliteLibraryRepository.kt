@@ -607,6 +607,112 @@ class ReiAnixSqliteLibraryRepository(
         }
 
     /**
+     * Persists Android's authoritative volume snapshot in the existing preferences
+     * table and reconciles episode availability in the same canonical SQLite file.
+     * This mirrors the old LibraryStore operation without creating another store.
+     */
+    suspend fun recordNativeVolumeChange(payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        val eventAt = sequenceOf(
+            payload.optDouble("eventTimestamp", 0.0),
+            payload.optDouble("timestamp", 0.0),
+            payload.optDouble("observedAt", 0.0),
+        ).firstOrNull { it > 0.0 } ?: 0.0
+        val now = System.currentTimeMillis() / 1000.0
+        database.transaction { connection ->
+            fun preference(key: String, fallback: String): String =
+                connection.rawQuery(
+                    "SELECT value FROM preferences WHERE key=? LIMIT 1",
+                    arrayOf(key),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) ?: fallback else fallback }
+
+            val lastEventAt = preference("native_volume_event_at", "0").toDoubleOrNull() ?: 0.0
+            val previous = runCatching { JSONObject(preference("native_volume_states", "{}")) }
+                .getOrElse { JSONObject() }
+            if (eventAt > 0.0 && lastEventAt > 0.0 && eventAt < lastEventAt) {
+                return@transaction JSONObject(previous.toString()).put("ignored", true)
+            }
+
+            val merged = JSONObject(previous.toString())
+            val current = payload.optJSONArray("current") ?: JSONArray()
+            val removed = payload.optJSONArray("removed") ?: JSONArray()
+            val mountedStates = setOf("mounted", "mounted_ro", "mounted_rofs")
+
+            fun markUnavailable(volumeId: String, reason: String) {
+                if (volumeId.isBlank()) return
+                val episodeIds = linkedSetOf<Long>()
+                connection.rawQuery(
+                    "SELECT DISTINCT episode_id FROM episode_observations WHERE volume_id=?",
+                    arrayOf(volumeId),
+                ).use { cursor -> while (cursor.moveToNext()) episodeIds.add(cursor.getLong(0)) }
+                episodeIds.forEach { episodeId ->
+                    connection.execSQL(
+                        "UPDATE episode_observations SET state='volume_unavailable',error=?,last_checked_at=? " +
+                            "WHERE volume_id=? AND episode_id=? AND state != 'missing'",
+                        arrayOf(reason, now, volumeId, episodeId),
+                    )
+                    recomputeEpisodeAvailability(connection, episodeId)
+                }
+                connection.execSQL(
+                    "UPDATE episodes SET missing=1,availability_state='volume_unavailable' " +
+                        "WHERE volume_id=? AND availability_state != 'scope_removed' " +
+                        "AND id NOT IN (SELECT episode_id FROM episode_observations WHERE volume_id=?)",
+                    arrayOf(volumeId, volumeId),
+                )
+            }
+
+            for (index in 0 until current.length()) {
+                val item = current.optJSONObject(index) ?: continue
+                val volumeId = item.optString("volumeId").trim()
+                if (volumeId.isBlank()) continue
+                val state = item.optString("state", "unknown").trim().lowercase().ifBlank { "unknown" }
+                val available = if (item.has("available")) item.optBoolean("available", false) else state in mountedStates
+                val stateRecord = JSONObject()
+                    .put("volumeId", volumeId)
+                    .put("uuid", item.optString("uuid"))
+                    .put("state", state)
+                    .put("available", available)
+                    .put("removable", item.optBoolean("removable"))
+                    .put("emulated", item.optBoolean("emulated"))
+                    .put("primary", item.optBoolean("primary"))
+                    .put("directory", item.optString("directory"))
+                    .put("description", item.optString("description"))
+                    .put("observed_at", now)
+                merged.put(volumeId, stateRecord)
+                if (!available) markUnavailable(volumeId, state)
+            }
+
+            for (index in 0 until removed.length()) {
+                val item = removed.optJSONObject(index) ?: continue
+                val volumeId = item.optString("volumeId").ifBlank { item.optString("uuid") }.trim()
+                if (volumeId.isBlank()) continue
+                val stateRecord = merged.optJSONObject(volumeId)?.let { JSONObject(it.toString()) }
+                    ?: JSONObject().put("volumeId", volumeId)
+                stateRecord.put("volumeId", volumeId)
+                    .put("state", "unavailable")
+                    .put("available", false)
+                    .put("unavailable_at", now)
+                    .put("reason", payload.optString("reason", "volume_removed"))
+                merged.put(volumeId, stateRecord)
+                markUnavailable(volumeId, payload.optString("reason", "volume_removed"))
+            }
+
+            connection.execSQL(
+                "INSERT INTO preferences(key,value,updated_at) VALUES(?,?,?) " +
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+                arrayOf("native_volume_states", merged.toString(), now),
+            )
+            if (eventAt > 0.0) {
+                connection.execSQL(
+                    "INSERT INTO preferences(key,value,updated_at) VALUES(?,?,?) " +
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+                    arrayOf("native_volume_event_at", maxOf(eventAt, lastEventAt).toString(), now),
+                )
+            }
+            JSONObject(merged.toString()).put("ignored", false)
+        }
+    }
+
+    /**
      * Finalizes native SAF scan bookkeeping in the canonical schema. The scan-run
      * row is operational metadata; catalog writes/reconciliation remain in the
      * preceding indexDiscoveredMedia transaction.
