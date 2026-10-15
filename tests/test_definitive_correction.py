@@ -871,7 +871,9 @@ class DefinitiveCorrectionTests(unittest.TestCase):
         self.assertIn("await asyncio.to_thread(", main)
         self.assertIn("library.hydrate_catalog_metadata", main)
         self.assertIn("on_item=publish_item", main)
-        self.assertIn("def hydrate_catalog_metadata(self, catalog, on_item=None):", service)
+        self.assertIn("def hydrate_catalog_metadata(self, catalog, on_item=None, *, allow_anilist_metadata=True):", service)
+        self.assertIn("allow_anilist_metadata=not compose_library_bridge.enabled", main)
+        self.assertIn("needs_metadata = allow_anilist_metadata and not materialized", service)
         self.assertIn("on_item(result)", service)
 
     def test_source_files_parse(self):
