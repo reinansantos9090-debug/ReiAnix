@@ -10,6 +10,8 @@ O caminho Android de descoberta SAF e indexação canônica é executado em Kotl
 
 - `MainActivity` é a entrada de lifecycle, permissões e intents no Android; ela não contém as regras de reconciliação.
 - `NativeScanController` continua sendo o único coordenador Kotlin de execuções iniciadas pelo fluxo Android: reserva uma execução por chave de origem, mantém estados observáveis, rejeita pedidos duplicados incompatíveis e oferece cancelamento cooperativo.
+- `MediaStoreRetryScheduler` envia uma intent nativa para `MainActivity` após a janela de deduplicação do observer; não publica mais um evento `scan_request` para o Python decidir e iniciar a varredura.
+- `MainActivity` encaminha essa ação pelo entry point nativo e `NativeScanController` controla a execução específica de MediaStore.
 - `NativeScanRunner` executa os scanners de descoberta SAF/MediaStore/BroadStorage, controla as gerações persistidas, publica progresso e gerencia o protocolo de recuperação.
 - `NativeIndex` é o índice físico/staging durável usado para lotes e recuperação. Ele não substitui o catálogo canônico.
 - `ReiAnixLibraryService` é a camada de serviço Kotlin para mutações da varredura. Usa o mesmo `ReiAnixSqliteLibraryRepository` e serializa chamadas de mutação do serviço, sem manter locks durante a travessia do armazenamento.
@@ -55,7 +57,7 @@ Os ViewModels continuam a usar consultas Kotlin do SQLite para dados nativos já
 Entretanto, a projeção geral de Home/Biblioteca e as páginas filtradas ainda passam pelo adapter `data/library/ReiAnixLibraryRepository.kt`, pelo snapshot `files/data/reianix-compose/library.json` e por `ComposeLibraryBridge` no runtime híbrido. O evento terminal via `NativeMailbox` continua sendo necessário para esse consumidor legado atualizar a projeção. Essa dependência de apresentação/IPC é explícita, não é tratada como um writer canônico adicional e não está declarada como migração integral da UI; a remoção do snapshot pertence ao cutover nativo dos consumidores de telas.
 
 Também permanecem:
-- `core/scan_coordinator.py` como compatibilidade de eventos/estado legado e fallback não Android; as requisições originadas pelo fluxo Android usam `NativeScanController`.
+- `core/scan_coordinator.py` continua como compatibilidade de eventos/estado legado e fallback não Android. O retry do observer MediaStore no Android agora dispara uma intent nativa; eventos terminais ainda podem passar pelo coordenador Python para atualizar a projeção híbrida enquanto esse consumidor não for substituído.
 - `core/library_service.py` para consumidores híbridos não migrados e ingestão de recuperação positiva somente quando uma transação Kotlin foi comprovadamente revertida e o receipt permite transferir ownership.
 - `NativeMailbox` para terminal events e outros subsistemas que ainda têm consumidores ativos.
 - MediaStore/BroadStorage continuam diagnósticos sob o contrato atual de fontes; não são promovidos automaticamente a fontes canônicas de biblioteca, pois isso poderia indexar duas vezes os mesmos vídeos que já estão numa pasta SAF configurada.
