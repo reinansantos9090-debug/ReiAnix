@@ -57,13 +57,19 @@ class ReiAnixAniListClient(
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("Missing media array in AniList search response"),
                 )
-            AniListResult.Success(buildList {
-                for (i in 0 until media.length()) {
-                    val item = media.optJSONObject(i)
-                        ?: return@buildList
-                    parseAnime(item)?.let(::add)
-                }
-            })
+            val results = ArrayList<AniListAnime>(media.length())
+            for (i in 0 until media.length()) {
+                val item = media.optJSONObject(i)
+                    ?: return@execute AniListResult.Failure(
+                        AniListError.InvalidResponse("Invalid anime item in AniList search response"),
+                    )
+                val anime = parseAnime(item)
+                    ?: return@execute AniListResult.Failure(
+                        AniListError.InvalidResponse("Anime item is missing a valid AniList ID"),
+                    )
+                results += anime
+            }
+            AniListResult.Success(results)
         }
     }
 
