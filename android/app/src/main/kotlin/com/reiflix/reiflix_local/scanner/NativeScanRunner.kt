@@ -440,14 +440,6 @@ object NativeScanRunner {
 
         fun recoveryDocuments(): JSONArray? {
             if (!canRecoverInKotlin()) return null
-            val prior = terminalResult
-            val priorRecovery = prior?.optJSONObject("nativeLibraryIndex")?.optString("recovery").orEmpty()
-            if (prior != null && prior.has("nativeLibraryIndexOwner") &&
-                !prior.optBoolean("nativeLibraryIndexOwner") &&
-                priorRecovery == "LEGACY_INGESTION_REQUIRED"
-            ) {
-                prior.optJSONArray("documents")?.let { return it }
-            }
             if (committedIndexReport.get() != null) return null
             return runCatching {
                 NativeIndex.recoveryDocuments(
@@ -491,8 +483,8 @@ object NativeScanRunner {
                 }
                 recoverablePositiveSnapshot = canReadPositiveSnapshot &&
                     ((outcomeBeforeRecovery == ReiAnixSqliteTransactionOutcome.ROLLED_BACK &&
-                        rollbackReceiptPersisted.get()) ||
-                        (!nativeIndexingCheckpointAttempted.get() && rollbackReceiptPersisted.get()))
+                        rollbackReceiptPersisted.get() && recoveryDocuments()?.length()?.let { it > 0 } == true) ||
+                        (!nativeIndexingCheckpointAttempted.get() && rollbackReceiptPersisted.get() && recoveryDocuments()?.length()?.let { it > 0 } == true))
                 preserveRecoveryReceipt = recoverablePositiveSnapshot
 
                 val stats = payload.optJSONObject("stats") ?: JSONObject()
@@ -799,7 +791,7 @@ object NativeScanRunner {
                             val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK
                             val committedWithoutReport = transactionOutcome == ReiAnixSqliteTransactionOutcome.COMMITTED
                             var recoverablePositiveSnapshot = rollbackConfirmed &&
-                                rollbackReceiptPersisted.get() && fallbackDocuments != null
+                                rollbackReceiptPersisted.get() && (fallbackDocuments?.length() ?: 0) > 0
 
                             if (!nativeIndexingCheckpointAttempted.get() && fallbackDocuments != null) {
                                 // Nothing entered the canonical SQLite transaction, so the verified
@@ -813,7 +805,7 @@ object NativeScanRunner {
                                     }.onFailure { Log.w(TAG, "Could not persist the pre-transaction native recovery receipt.", it) }
                                         .getOrDefault(false),
                                 )
-                                recoverablePositiveSnapshot = rollbackReceiptPersisted.get()
+                                recoverablePositiveSnapshot = rollbackReceiptPersisted.get() && (fallbackDocuments?.length() ?: 0) > 0
                             }
 
                             nativeIndexingStatus = when {
@@ -919,14 +911,14 @@ object NativeScanRunner {
                 }
             } catch (exception: CancellationException) {
                 if (!terminalEventPublished) {
-                    val canTransfer = canRecoverInKotlin()
-                    val snapshotAvailable = canTransfer && recoveryDocuments() != null
+                    val canRecover = canRecoverInKotlin()
+                    val snapshotAvailable = canRecover && recoveryDocuments()?.length()?.let { it > 0 } == true
                     val message = when {
-                        !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
+                        !canRecover && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.COMMITTED ->
                             "SAF scan cancelled after confirmed SQLite commit; fallback disabled."
                         !canTransfer && indexTransactionOutcome.get() == ReiAnixSqliteTransactionOutcome.ROLLED_BACK ->
                             "SAF scan cancelled after rollback, but the matching recovery receipt was not persisted; fallback disabled; rescan required."
-                        !canTransfer ->
+                        !canRecover ->
                             "SAF scan cancelled with an unconfirmed SQLite transaction outcome; catalog preserved; rescan required."
                         snapshotAvailable ->
                             "SAF scan cancelled; verified discoveries were retained for native positive-only recovery."
