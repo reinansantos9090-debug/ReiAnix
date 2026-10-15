@@ -1156,7 +1156,7 @@ class ReiAnixSqliteLibraryRepository(
                     while (cursor.moveToNext()) add(cursor.toAnimeRecord())
                 }
             }
-            if (animes.isEmpty()) return@read emptyList()
+            if (animes.isEmpty()) return@readConsistentSnapshot emptyList<ReiAnixLibraryCatalogRow>()
 
             val episodes = connection.rawQuery(
                 """
