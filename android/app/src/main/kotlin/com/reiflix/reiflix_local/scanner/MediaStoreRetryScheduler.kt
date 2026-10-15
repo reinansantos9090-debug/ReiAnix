@@ -5,7 +5,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -24,6 +23,7 @@ object MediaStoreRetryScheduler {
                     MainActivity.createNativeStorageActionIntent(
                         appContext,
                         action = "scan_media_store",
+                        requestId = requestId,
                         reason = reason,
                         triggerRequestId = triggerRequestId,
                     ),
