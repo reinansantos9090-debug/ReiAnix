@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.data.sqlite
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
+import android.net.Uri
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Before
@@ -1358,6 +1359,80 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(11.0, episodeAfterAllMembershipChanges?.progress ?: -1.0, 0.0)
         assertEquals(true, episodeAfterAllMembershipChanges?.watched)
         assertEquals(1_700_000_000.0, episodeAfterAllMembershipChanges?.lastPlayedAt ?: -1.0, 0.0)
+    }
+
+    @Test
+    fun nativeLibraryMutationsPreserveCanonicalStateAndPathIdentity() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+
+        val byPath = repository.findEpisodeByPathOrFileUri("/media/show/episode-01.mkv")
+        val byFileUri = repository.findEpisodeByPathOrFileUri(
+            Uri.fromFile(File("/media/show/episode-01.mkv")).toString(),
+        )
+        assertEquals(7L, byPath?.id)
+        assertEquals(byPath?.id, byFileUri?.id)
+        assertEquals("catalog-key", repository.getAnimeByLookupTitle("catalog-key")?.lookupTitle)
+
+        repository.setAnimeFavorite(1L, favorite = false)
+        assertEquals(false, repository.getAnime(1L)?.favorite)
+        repository.setAnimeFavorite(1L, favorite = true)
+        assertEquals(true, repository.getAnime(1L)?.favorite)
+
+        assertEquals(false, repository.toggleAnimePinned(1L))
+        assertEquals(true, repository.toggleAnimePinned(1L))
+        assertEquals("updated personal note", repository.setAnimePersonalNote(1L, "  updated personal note  "))
+        assertEquals(
+            listOf("Action hero", "drama"),
+            repository.setAnimeUserTags(1L, listOf("  Action   hero ", "action hero", " drama ")),
+        )
+
+        val manual = repository.setManualMetadataByLookupTitle(
+            lookupTitle = "catalog-key",
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                title = "Manual title",
+                english = "Manual English title",
+                year = 2026,
+            ),
+        )
+        assertEquals("Manual title", manual.title)
+        assertEquals("Manual English title", manual.english)
+        assertTrue(manual.metadataManualFieldsJson.orEmpty().contains("english"))
+        assertEquals("keep this note", manual.personalNote.let { if (it == null) "keep this note" else it })
+        assertEquals(true, manual.favorite)
+        assertEquals(listOf("Action hero", "drama"), org.json.JSONArray(manual.userTagsJson))
+
+        val remote = repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                title = "Remote title must not replace manual title",
+                coverUrl = "",
+            ),
+        )
+        assertEquals("Manual title", remote.title)
+        assertEquals("https://example.invalid/old-cover.jpg", remote.coverUrl)
+
+        val watched = repository.setEpisodeWatchedState(
+            episodeId = 7L,
+            watched = true,
+            playedAtEpochSeconds = 1_800_000_000.0,
+        )
+        assertEquals(true, watched.watched)
+        assertEquals(1200.0, watched.progress ?: -1.0, 0.0)
+        val unwatched = repository.setEpisodeWatchedState(
+            episodeId = 7L,
+            watched = false,
+            playedAtEpochSeconds = 1_800_000_001.0,
+        )
+        assertEquals(false, unwatched.watched)
+        assertEquals(0.0, unwatched.progress ?: -1.0, 0.0)
+        assertEquals(1_800_000_001.0, unwatched.lastPlayedAt ?: -1.0, 0.0)
+
+        val reopened = ReiAnixSqliteLibraryRepository(context)
+        assertEquals("Manual title", reopened.getAnime(1L)?.title)
+        assertEquals("updated personal note", reopened.getAnime(1L)?.personalNote)
+        assertEquals(0.0, reopened.getEpisode(7L)?.progress ?: -1.0, 0.0)
     }
 
     @Test
