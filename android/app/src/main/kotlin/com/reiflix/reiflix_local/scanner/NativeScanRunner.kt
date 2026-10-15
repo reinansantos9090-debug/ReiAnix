@@ -61,7 +61,13 @@ object NativeScanRunner {
             // Recovery snapshots are positive evidence only. Re-index them in Kotlin with an
             // intentionally partial snapshot so a process interruption can never authorize
             // missing-file reconciliation. Unknown write outcomes never reach this path.
+            var preserveRecoveryReceipt = false
             if (snapshotAvailable) {
+                val recoveryOutcome = AtomicReference<ReiAnixSqliteTransactionOutcome?>(null)
+                val rollbackReceiptPersisted = AtomicBoolean(false)
+                val recoveryReport = AtomicReference<NativeLibraryIndexReport?>(null)
+                var recoveryCheckpointAttempted = false
+                var indexedReport: NativeLibraryIndexReport? = null
                 try {
                     val recoveredTreeUri = Uri.parse(treeUri)
                     val treeIdentity = SafScanner.treeIdentity(recoveredTreeUri)
@@ -71,7 +77,7 @@ object NativeScanRunner {
                     val authorization = runCatching {
                         SafScanner.inspectTree(appContext, recoveredTreeUri, requirePersisted = true)
                     }.getOrElse { error ->
-                        Log.w(TAG, "Recovered SAF snapshot is being retained as positive evidence after authorization inspection failed.", error)
+                        Log.w(TAG, "Recovered SAF snapshot is retained as positive evidence after authorization inspection failed.", error)
                         JSONObject().put("status", SafScanner.STATUS_UNAVAILABLE)
                     }
                     val scopeRef = item.optString("scopeRef").trim().ifBlank { treeUri }
@@ -96,10 +102,9 @@ object NativeScanRunner {
                     check(NativeIndex.markNativeCatalogIndexing(
                         appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
                     )) { "Could not persist recovery indexing receipt for the verified SAF snapshot." }
+                    recoveryCheckpointAttempted = true
 
-                    val recoveryOutcome = AtomicReference<ReiAnixSqliteTransactionOutcome?>(null)
-                    val recoveryReport = AtomicReference<NativeLibraryIndexReport?>(null)
-                    val indexedReport = ReiAnixAppDependencies.from(appContext).libraryService
+                    indexedReport = ReiAnixAppDependencies.from(appContext).libraryService
                         .indexDiscoveredMedia(recoveredSnapshot) { transactionOutcome, transactionReport ->
                             recoveryOutcome.set(transactionOutcome)
                             when (transactionOutcome) {
@@ -120,12 +125,14 @@ object NativeScanRunner {
                                     }
                                 }
                                 ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
-                                    if (!NativeIndex.markNativeCatalogNotCommitted(
+                                    rollbackReceiptPersisted.set(
+                                        NativeIndex.markNativeCatalogNotCommitted(
                                             appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
                                             "Recovery SQLite transaction rolled back before a commit was confirmed.",
-                                        )
-                                    ) {
-                                        Log.w(TAG, "Could not persist recovery rollback receipt; ownership remains native and no legacy ingestion is emitted.")
+                                        ),
+                                    )
+                                    if (!rollbackReceiptPersisted.get()) {
+                                        Log.w(TAG, "Could not persist recovery rollback receipt; no data will be sent to a legacy writer.")
                                     }
                                 }
                                 ReiAnixSqliteTransactionOutcome.UNKNOWN -> {
@@ -136,27 +143,105 @@ object NativeScanRunner {
                                 }
                             }
                         }
-                    if (recoveryOutcome.get() != ReiAnixSqliteTransactionOutcome.COMMITTED) {
-                        Log.w(TAG, "Could not confirm native positive-only recovery indexing; preserving the receipt for a later recovery attempt.")
-                        continue
+
+                    when (recoveryOutcome.get()) {
+                        ReiAnixSqliteTransactionOutcome.COMMITTED -> {
+                            val committedReport = recoveryReport.get() ?: indexedReport
+                            outcome = "COMMITTED"
+                            if (committedReport != null) {
+                                report = JSONObject()
+                                    .put("status", if (committedReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL")
+                                    .put("operationId", committedReport.operationId)
+                                    .put("inserted", committedReport.inserted)
+                                    .put("updated", committedReport.updated)
+                                    .put("unchanged", committedReport.unchanged)
+                                    .put("ambiguous", committedReport.ambiguous)
+                                    .put("rejectedOutOfScope", committedReport.rejectedOutOfScope)
+                                    .put("reconciledMissing", committedReport.reconciledMissing)
+                                    .put("reconciliationAuthorized", committedReport.reconciliationAuthorized)
+                            } else {
+                                report = JSONObject().put("status", "COMMITTED_REPORT_UNAVAILABLE")
+                            }
+                        }
+                        ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
+                            outcome = "NOT_COMMITTED"
+                            preserveRecoveryReceipt = rollbackReceiptPersisted.get()
+                            report = JSONObject().put(
+                                "status",
+                                if (preserveRecoveryReceipt) "NATIVE_POSITIVE_RECOVERY_PENDING" else "ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED",
+                            )
+                        }
+                        ReiAnixSqliteTransactionOutcome.UNKNOWN -> {
+                            outcome = "UNKNOWN"
+                            NativeIndex.markNativeCatalogOutcomeUnknown(
+                                appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
+                                "Recovery SQLite transaction outcome is unknown; controlled rescan required.",
+                            )
+                            report = JSONObject().put("status", "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED")
+                        }
+                        null -> {
+                            // If the receipt had already been moved to IN_PROGRESS, absence of an
+                            // outcome callback cannot safely be interpreted as a rollback.
+                            if (recoveryCheckpointAttempted) {
+                                outcome = "UNKNOWN"
+                                NativeIndex.markNativeCatalogOutcomeUnknown(
+                                    appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
+                                    "Recovery did not report a definitive SQLite transaction outcome.",
+                                )
+                                report = JSONObject().put("status", "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED")
+                            } else {
+                                outcome = "NOT_COMMITTED"
+                                preserveRecoveryReceipt = true
+                                report = JSONObject().put("status", "NATIVE_POSITIVE_RECOVERY_PENDING")
+                            }
+                        }
                     }
-                    val committedReport = recoveryReport.get() ?: indexedReport
-                    outcome = "COMMITTED"
-                    report = JSONObject()
-                        .put("status", if (committedReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL")
-                        .put("operationId", committedReport.operationId)
-                        .put("inserted", committedReport.inserted)
-                        .put("updated", committedReport.updated)
-                        .put("unchanged", committedReport.unchanged)
-                        .put("ambiguous", committedReport.ambiguous)
-                        .put("rejectedOutOfScope", committedReport.rejectedOutOfScope)
-                        .put("reconciledMissing", committedReport.reconciledMissing)
-                        .put("reconciliationAuthorized", committedReport.reconciliationAuthorized)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (exception: Exception) {
-                    Log.e(TAG, "Could not recover interrupted SAF discoveries in Kotlin; preserving receipt without transferring writes to Python.", exception)
-                    continue
+                    Log.e(TAG, "Could not recover interrupted SAF discoveries in Kotlin; preserving the receipt without transferring writes to Python.", exception)
+                    when (recoveryOutcome.get()) {
+                        ReiAnixSqliteTransactionOutcome.COMMITTED -> {
+                            outcome = "COMMITTED"
+                            report = recoveryReport.get()?.let { committedReport ->
+                                JSONObject()
+                                    .put("status", "COMMITTED_REPORT_UNAVAILABLE")
+                                    .put("operationId", committedReport.operationId)
+                                    .put("inserted", committedReport.inserted)
+                                    .put("updated", committedReport.updated)
+                                    .put("unchanged", committedReport.unchanged)
+                                    .put("ambiguous", committedReport.ambiguous)
+                                    .put("rejectedOutOfScope", committedReport.rejectedOutOfScope)
+                                    .put("reconciledMissing", committedReport.reconciledMissing)
+                                    .put("reconciliationAuthorized", committedReport.reconciliationAuthorized)
+                            } ?: JSONObject().put("status", "COMMITTED_REPORT_UNAVAILABLE")
+                        }
+                        ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
+                            outcome = "NOT_COMMITTED"
+                            preserveRecoveryReceipt = rollbackReceiptPersisted.get()
+                            report = JSONObject().put(
+                                "status",
+                                if (preserveRecoveryReceipt) "NATIVE_POSITIVE_RECOVERY_PENDING" else "ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED",
+                            )
+                        }
+                        else -> {
+                            outcome = "UNKNOWN"
+                            if (recoveryCheckpointAttempted) {
+                                NativeIndex.markNativeCatalogOutcomeUnknown(
+                                    appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
+                                    "Recovery failed without a confirmed SQLite transaction outcome.",
+                                )
+                                report = JSONObject().put("status", "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED")
+                            } else {
+                                // No transaction was started. Keep the original NOT_STARTED /
+                                // NOT_COMMITTED receipt eligible for a later native retry.
+                                preserveRecoveryReceipt = true
+                                outcome = item.optString("nativeCatalogWriteOutcome")
+                                    .ifBlank { "NOT_COMMITTED" }
+                                report = JSONObject().put("status", "NATIVE_POSITIVE_RECOVERY_PENDING")
+                            }
+                        }
+                    }
                 }
             }
 
