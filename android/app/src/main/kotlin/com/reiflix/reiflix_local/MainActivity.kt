@@ -897,11 +897,21 @@ class MainActivity : FlutterFragmentActivity() {
         PerformanceDiagnostics.attach(this)
         PerformanceDiagnostics.sampleMemory(this, "main_on_create")
         installSystemBackHandler()
-        // Publish durable recovery receipts before the legacy bridge begins draining the mailbox.
-        runCatching { NativeScanRunner.recoverInterruptedSafScans(applicationContext) }
-            .onFailure { Log.e(tag, "Could not recover interrupted SAF generations.", it) }
         nativeRequestState.bind(this)
-        NativeCommandDispatcher.start(this)
+        // Recovery may touch SQLite and large persisted receipts. Keep it off the main
+        // thread, then start the mailbox dispatcher after durable recovery receipts exist.
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    NativeScanRunner.recoverInterruptedSafScans(applicationContext)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exception: Exception) {
+                Log.e(tag, "Could not recover interrupted SAF generations.", exception)
+            }
+            NativeCommandDispatcher.start(this@MainActivity)
+        }
         nativeRequestState.restore(
             savedInstanceState?.getString(STATE_LAST_NATIVE_REQUEST_ID),
             savedInstanceState?.getString(STATE_PENDING_LIFECYCLE_ACTION),
