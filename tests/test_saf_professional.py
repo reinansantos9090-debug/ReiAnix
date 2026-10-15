@@ -408,6 +408,17 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn("pendingSafReleaseWaiters.remove(normalizedReference)", release)
         self.assertIn('.put("requestId", waiterId)', release)
 
+    def test_cancelled_global_scan_remains_cancelled_in_the_compose_command_result(self):
+        source = MAIN.read_text(encoding="utf-8")
+        start = source.index("elif event_type == 'saf_library_scan_complete':")
+        end = source.index("elif event_type == 'saf_scan':", start)
+        block = source[start:end]
+        self.assertIn('if native_status == "CANCELLED":', block)
+        self.assertIn('"refresh",\n                                            "CANCELLED"', block)
+        self.assertIn('"native_scan_cancelled" if native_status == "CANCELLED" else "native_scan_failed"', block)
+        self.assertNotIn('if native_status == "CANCELLED":\n                                        compose_library_bridge.write_command_result(\n                                            event_request_id,\n                                            "refresh",\n                                            "FAILED"', block)
+
+
     def test_python_refresh_error_uses_global_source_count_not_saf_folder_count(self):
         source = MAIN.read_text(encoding="utf-8")
         block = source[source.index("elif event_type == 'saf_library_scan_complete':"):source.index("elif event_type == 'saf_scan':", source.index("elif event_type == 'saf_library_scan_complete':"))]
