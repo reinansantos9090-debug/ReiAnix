@@ -50,7 +50,7 @@ Não houve alteração no schema SQLite v29, criação de outro banco ou adiçã
 
 ## Integração com imagens
 
-Depois que a transação SQLite retorna com a metadata/associação atualizada, o serviço Kotlin publica anilist_artwork_sync pelo NativeMailbox. A publicação acontece fora da transação e é executada em Dispatchers.IO. O consumidor em main.py lê a metadata já persistida e chama o ArtworkEngine existente para sincronizar as URLs e pedir a materialização de poster/backdrop; a atualização incremental da projeção usa o mecanismo existente do bridge.
+Depois que a transação SQLite retorna com a metadata/associação atualizada, o serviço Kotlin sempre publica anilist_metadata_committed pelo NativeMailbox, fora da transação e em Dispatchers.IO. O payload inclui somente o ID local e a opção requestArtwork. O consumidor em main.py lê os campos já persistidos e sempre solicita a atualização da projeção Compose para a metadata; apenas quando requestArtwork está habilitado e há URLs de imagem chama o ArtworkEngine existente para sincronizar URLs e materializar poster/backdrop.
 
 O evento contém somente um ID local e um request ID; não carrega sinopse, credenciais ou a resposta GraphQL. A falha de publicação não desfaz uma metadata já confirmada. O renderer Compose ainda pode usar a URL externa como fallback enquanto o ArtworkEngine materializa a cópia local. O motor produtor Python permanece uma dependência conhecida e não é considerado migrado por este prompt.
 
