@@ -1147,7 +1147,7 @@ class ReiAnixSqliteLibraryRepository(
      * under the same legacy projection rules.
      */
     suspend fun loadLibraryCatalogRows(): List<ReiAnixLibraryCatalogRow> = withContext(Dispatchers.IO) {
-        database.read { connection ->
+        database.readConsistentSnapshot { connection ->
             val animes = connection.rawQuery(
                 "SELECT * FROM anime ORDER BY added_at DESC, title COLLATE NOCASE ASC, id DESC",
                 null,
