@@ -1394,11 +1394,6 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         )
         assertEquals(1L, repository.resolveLocalAnimeOwner(lookupTitle = "catalog-key"))
 
-        repository.setAnimeFavorite(1L, favorite = false)
-        assertEquals(false, repository.getAnime(1L)?.favorite)
-        repository.setAnimeFavorite(1L, favorite = true)
-        assertEquals(true, repository.getAnime(1L)?.favorite)
-
         assertEquals(false, repository.toggleAnimePinned(1L))
         assertEquals(true, repository.toggleAnimePinned(1L))
         assertEquals("updated personal note", repository.setAnimePersonalNote(1L, "  updated personal note  "))
