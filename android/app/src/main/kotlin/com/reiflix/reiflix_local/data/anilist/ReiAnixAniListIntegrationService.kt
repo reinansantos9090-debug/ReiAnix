@@ -6,6 +6,8 @@ import com.reiflix.reiflix_local.bridge.NativeMailbox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
@@ -203,6 +205,7 @@ class ReiAnixAniListIntegrationService(
         val rows = library.loadLibraryCatalogRows()
         var changedOutcomes = 0
         for (row in rows) {
+            currentCoroutineContext().ensureActive()
             val local = row.anime
             if (local.id <= 0L ||
                 local.anilistId != null ||
