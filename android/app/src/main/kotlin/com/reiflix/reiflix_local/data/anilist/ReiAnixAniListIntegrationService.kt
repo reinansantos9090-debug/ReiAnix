@@ -1,7 +1,11 @@
 package com.reiflix.reiflix_local.data.anilist
 
 import android.content.Context
+import android.util.Log
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
@@ -10,8 +14,10 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import org.json.JSONObject
 import java.io.File
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -25,6 +31,7 @@ class ReiAnixAniListIntegrationService(
     private val library: ReiAnixSqliteLibraryRepository,
     private val settings: ReiAnixSqliteSettingsRepository,
     private val descriptionLocalizer: ReiAnixAniListDescriptionLocalizer? = null,
+    private val artworkRequestPublisher: ((Long) -> Boolean)? = null,
 ) {
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
 
@@ -35,6 +42,15 @@ class ReiAnixAniListIntegrationService(
         descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
             File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
         ),
+        artworkRequestPublisher = { animeId ->
+            NativeMailbox.write(
+                context.applicationContext,
+                JSONObject()
+                    .put("type", "anilist_artwork_sync")
+                    .put("requestId", UUID.randomUUID().toString())
+                    .put("payload", JSONObject().put("animeId", animeId)),
+            )
+        },
     )
 
     suspend fun search(term: String, limit: Int = 10): AniListResult<List<AniListAnime>> {
@@ -195,7 +211,7 @@ class ReiAnixAniListIntegrationService(
                     }
                 }
             }
-            library.updateAniListMetadataAndAssociation(
+            val updated = library.updateAniListMetadataAndAssociation(
                 patch = ReiAnixAnimeMetadataPatch(
                     animeId = local.id,
                     title = remote.preferredTitle.takeIf { it.isNotBlank() },
@@ -222,17 +238,45 @@ class ReiAnixAniListIntegrationService(
                 manual = manual,
                 score = score,
                 margin = margin,
-            ).let { updated ->
-                if (!manual && updated.anilistId != remote.id.toLong()) {
-                    AniListResult.Failure(AniListError.InvalidRequest("Automatic match was not applied because a manual or existing association has priority."))
-                } else {
-                    AniListResult.Success(updated)
-                }
+            )
+            if (!manual && updated.anilistId != remote.id.toLong()) {
+                return AniListResult.Failure(
+                    AniListError.InvalidRequest(
+                        "Automatic match was not applied because a manual or existing association has priority.",
+                    ),
+                )
             }
+            if (artworkEnabled && (
+                    !remote.coverExtraLargeUrl.isNullOrBlank() ||
+                        !remote.coverLargeUrl.isNullOrBlank() ||
+                        !remote.bannerUrl.isNullOrBlank()
+                )
+            ) {
+                enqueueArtworkRefresh(updated.id)
+            }
+            AniListResult.Success(updated)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
             AniListResult.Failure(AniListError.InvalidResponse(error.message ?: "Could not persist AniList metadata."))
+        }
+    }
+
+    /**
+     * Requests materialization from the existing ArtworkEngine only after the
+     * canonical metadata transaction has committed. A queue failure does not
+     * invalidate durable metadata; the Compose renderer can still use its remote
+     * URL fallback and a later sync can retry materialization.
+     */
+    private suspend fun enqueueArtworkRefresh(animeId: Long) {
+        val publisher = artworkRequestPublisher ?: return
+        try {
+            val published = withContext(Dispatchers.IO) { publisher(animeId) }
+            if (!published) Log.w(TAG, "Could not enqueue artwork refresh after AniList metadata commit")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not enqueue artwork refresh after AniList metadata commit", error)
         }
     }
 
@@ -262,6 +306,7 @@ class ReiAnixAniListIntegrationService(
     private fun normalize(value: String): String = MediaTitleNormalizer.normalizeTitle(value)
 
     companion object {
+        private const val TAG = "ReiAnixAniList"
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = 0.88
         const val AUTO_MATCH_MIN_MARGIN = 0.12
