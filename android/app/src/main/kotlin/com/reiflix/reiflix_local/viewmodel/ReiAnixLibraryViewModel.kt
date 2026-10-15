@@ -1263,10 +1263,10 @@ class ReiAnixLibraryViewModel(
         nativeAniListHydrationPending = false
         nativeAniListHydrationJob = viewModelScope.launch {
             try {
-                val matched = withContext(Dispatchers.Default) {
+                val changedOutcomes = withContext(Dispatchers.Default) {
                     integration.reconcileUnmatchedLibraryMetadata()
                 }
-                if (matched > 0) refreshNativeCatalog()
+                if (changedOutcomes > 0) refreshNativeCatalog()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
