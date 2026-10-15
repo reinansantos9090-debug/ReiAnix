@@ -349,7 +349,7 @@ class ReiAnixAniListIntegrationService(
 
     companion object {
         private const val TAG = "ReiAnixAniList"
-        private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
+        private val autoMatchAttempts = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
         private val AUTO_MATCH_TERMINAL_STATUSES = setOf(
