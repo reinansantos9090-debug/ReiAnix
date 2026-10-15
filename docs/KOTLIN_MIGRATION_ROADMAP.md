@@ -58,6 +58,11 @@ Referência de execução desta etapa: branch `implementation/prompt-03-sqlite-d
 
 A resolução nativa agora atualiza a linha local `anime`, escreve o mesmo ID na tabela canônica `associations` e remove a linha correspondente de `pending_matches` na mesma transação. A escolha pendente é persistida como match manual, em linha com `LibraryService.resolve_match`. A resolução falha antes de gravar quando a chave local não existe; testes de regressão cobrem a consulta pública imediatamente após a resolução, a preservação da pendência para anime inexistente e rollback quando a gravação em `associations` falha. Nenhum schema, versão do banco, writer Python, tela ou subsistema externo é alterado por esta correção.
 
+### Correção complementar do Prompt 03.2 — validação do estado de pendência AniList
+
+A operação Kotlin lê `pending_matches` e `associations` dentro da mesma transação das gravações. Uma pendência correspondente autoriza a resolução; sem pendência, só uma associação anterior positiva e coerente com `anime.anilist_id` autoriza a substituição. Quando nenhuma condição existe, a chamada é rejeitada antes de modificar qualquer linha. Os testes JVM existentes agora incluem a rejeição sem escrita e a troca autorizada sem pendência, preservando também a cobertura anterior de resolução pendente, anime local inexistente e rollback.
+
+A inspeção do código Python revelou uma diferença importante: `LibraryStore.anilist_match(lookup)` consulta a linha em `anime` e retorna um registro mesmo quando `anilist_id` está vazio; portanto, a mera existência da linha local não comprova uma associação efetiva. Para atender à precondição explícita deste prompt e impedir resoluções obsoletas, o Kotlin valida o ID persistido e sua coerência com `associations`. Nenhum código Python foi alterado neste prompt; a semântica legada permanece documentada como uma questão de paridade futura, fora do escopo desta correção.
 A validação automática do commit corretivo e os artefatos correspondentes devem ser registrados apenas depois que o run de PR referente ao SHA final terminar.
 
 ### Limite de ownership que permanece explícito
