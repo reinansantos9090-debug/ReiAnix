@@ -32,7 +32,7 @@ object NativeScanRunner {
      * An unconfirmed native transaction is never handed to Python; it is recorded as partial
      * and requires a controlled native rescan.
      */
-    fun recoverInterruptedSafScans(context: Context) {
+    suspend fun recoverInterruptedSafScans(context: Context) {
         val appContext = context.applicationContext
         val pending = runCatching { NativeIndex.pendingSafRecovery(appContext) }
             .onFailure { Log.e(TAG, "Could not inspect persisted SAF recovery state.", it) }
@@ -121,6 +121,32 @@ object NativeScanRunner {
                     .put("rejectedOutOfScope", report.optInt("rejectedOutOfScope", 0))
                     .put("reconciledMissing", report.optInt("reconciledMissing", 0))
                     .put("reconciliationAuthorized", report.optBoolean("reconciliationAuthorized")))
+
+            val nativeScanRunOwner = if (payload.optBoolean("nativeLibraryIndexOwner")) {
+                try {
+                    ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.finishNativeScanRun(
+                        scanId = scanId,
+                        requestId = metadata.optString("requestId").takeIf { it.isNotBlank() },
+                        sourceKind = NativeIndex.SOURCE_SAF,
+                        scopeKind = "root",
+                        scopeRef = payload.optString("scopeRef").ifBlank { treeUri },
+                        nativeGeneration = generation,
+                        generationId = payload.optString("generationId"),
+                        status = terminalStatus,
+                        stats = stats,
+                        indexReport = payload.optJSONObject("nativeLibraryIndex"),
+                        startedAtMillis = null,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (exception: Exception) {
+                    Log.e(TAG, "Could not finalize recovered SAF scan in Kotlin; retaining compatibility fallback.", exception)
+                    false
+                }
+            } else {
+                false
+            }
+            payload.put("nativeScanRunOwner", nativeScanRunOwner)
 
             val written = runCatching {
                 NativeMailbox.writeOrThrow(
