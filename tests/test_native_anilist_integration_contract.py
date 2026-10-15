@@ -92,6 +92,24 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn("MAX_CACHE_ENTRIES = 4096", localizer)
         self.assertIn("CancellationException", localizer)
 
+    def test_native_anilist_metadata_handoff_only_requests_existing_artwork_engine(self):
+        service = SERVICE.read_text(encoding="utf-8")
+        dependencies = (KOTLIN / "ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        start = main.index("if event_type == 'anilist_artwork_sync':")
+        end = main.index("if event_type == 'compose_settings_set':", start)
+        handler = main[start:end]
+
+        self.assertIn('"type", "anilist_artwork_sync"', service)
+        self.assertIn('"type", "anilist_artwork_sync"', dependencies)
+        self.assertIn("NativeMailbox.write(", dependencies)
+        self.assertIn("library.artwork.sync_anime_metadata(", handler)
+        self.assertIn("request_download=True", handler)
+        self.assertIn('library.artwork.request(', handler)
+        self.assertIn("compose_library_bridge.request_publish(", handler)
+        self.assertNotIn("library.anilist", handler)
+        self.assertNotIn("AniListClient", handler)
+
     def test_malformed_graphql_search_data_is_not_reported_as_empty_results(self):
         client = (KOTLIN / "data/anilist/ReiAnixAniListClient.kt").read_text(encoding="utf-8")
         self.assertIn("Missing media array in AniList search response", client)
