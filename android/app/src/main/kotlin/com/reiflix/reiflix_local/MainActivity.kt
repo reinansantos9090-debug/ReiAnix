@@ -524,7 +524,8 @@ class MainActivity : FlutterFragmentActivity() {
                     full = false,
                     reason = action,
                 )
-            }            } else if (action == Intent.ACTION_MEDIA_UNMOUNTED ||
+            }
+            if (action == Intent.ACTION_MEDIA_UNMOUNTED ||
                 action == Intent.ACTION_MEDIA_EJECT ||
                 action == Intent.ACTION_MEDIA_REMOVED ||
                 action == Intent.ACTION_MEDIA_BAD_REMOVAL) {
