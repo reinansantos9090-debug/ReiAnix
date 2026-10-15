@@ -66,40 +66,41 @@ class ReiAnixAniListDescriptionLocalizer(
         return try {
             lock.withLock {
                 cachedTranslation(original, source)?.let { return@withLock it }
-            val now = epochSeconds()
-            val existing = readCacheEntry(key)
-            val retryAfter = existing?.optDouble("retry_after", 0.0) ?: 0.0
-            if (existing?.optString("status") == "failed" && now < retryAfter) {
-                return@withLock null
-            }
+                val now = epochSeconds()
+                val existing = readCacheEntry(key)
+                val retryAfter = existing?.optDouble("retry_after", 0.0) ?: 0.0
+                if (existing?.optString("status") == "failed" && now < retryAfter) {
+                    return@withLock null
+                }
 
-            val translated = translationPermits.withPermit { translateDescription(original, source) }
-            if (translated != null &&
-                isValidTranslation(original, translated) &&
-                isPtBrDescription(translated)
-            ) {
-                cacheEntry(
-                    key,
-                    JSONObject()
-                        .put("status", "ok")
-                        .put("translated", translated)
-                        .put("source_language", source)
-                        .put("target_language", TARGET_LANGUAGE)
-                        .put("updated_at", epochSeconds()),
-                )
-                translated
-            } else {
-                // Bound repeated failures without treating the failure as a translation.
-                cacheEntry(
-                    key,
-                    JSONObject()
-                        .put("status", "failed")
-                        .put("source_language", source)
-                        .put("target_language", TARGET_LANGUAGE)
-                        .put("updated_at", epochSeconds())
-                        .put("retry_after", epochSeconds() + FAILED_RETRY_WINDOW_SECONDS),
-                )
-                null
+                val translated = translationPermits.withPermit { translateDescription(original, source) }
+                if (translated != null &&
+                    isValidTranslation(original, translated) &&
+                    isPtBrDescription(translated)
+                ) {
+                    cacheEntry(
+                        key,
+                        JSONObject()
+                            .put("status", "ok")
+                            .put("translated", translated)
+                            .put("source_language", source)
+                            .put("target_language", TARGET_LANGUAGE)
+                            .put("updated_at", epochSeconds()),
+                    )
+                    translated
+                } else {
+                    // Bound repeated failures without treating the failure as a translation.
+                    cacheEntry(
+                        key,
+                        JSONObject()
+                            .put("status", "failed")
+                            .put("source_language", source)
+                            .put("target_language", TARGET_LANGUAGE)
+                            .put("updated_at", epochSeconds())
+                            .put("retry_after", epochSeconds() + FAILED_RETRY_WINDOW_SECONDS),
+                    )
+                    null
+                }
             }
         } finally {
             evictUnusedKeyLocksIfNeeded()
