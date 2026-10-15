@@ -108,7 +108,7 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn('"type", "anilist_metadata_committed"', service)
         self.assertIn('"type", "anilist_metadata_committed"', dependencies)
         self.assertIn("NativeMailbox.write(", dependencies)
-        self.assertIn("if request_artwork and has_artwork_urls:", handler)
+        self.assertIn("if request_artwork and metadata.get('anilist_id') and has_artwork_urls:", handler)
         self.assertIn("library.artwork.sync_anime_metadata(", handler)
         self.assertIn("request_download=True", handler)
         self.assertIn('library.artwork.request(', handler)
