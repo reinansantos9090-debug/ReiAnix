@@ -104,7 +104,7 @@ suspend fun ReiAnixSqliteLibraryRepository.resolveLocalAnimeOwner(
     val identity = mediaIdentity.orEmpty().trim()
     val normalizedPath = path.orEmpty().trim()
     val source = sourceFolder.orEmpty().trim()
-    val relative = relativePath.orEmpty().trim().replace('\\\\', '/').trim('/')
+    val relative = relativePath.orEmpty().trim().replace('\\', '/').trim('/')
     val volume = volumeId.orEmpty().trim()
     val lookup = lookupTitle.orEmpty().trim()
     database.read { connection ->
