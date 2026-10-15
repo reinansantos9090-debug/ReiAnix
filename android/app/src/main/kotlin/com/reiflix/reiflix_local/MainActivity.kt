@@ -2552,20 +2552,21 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun scanAllStorage(requestId: String? = null): String? {
+        val appContext = applicationContext
         val scanId = UUID.randomUUID().toString()
         if (!BroadStorageScanner.hasAccess(this)) {
             publishStorageStatus()
-            NativeMailbox.write(this, JSONObject().put("type", "broad_storage_permission")
+            NativeMailbox.write(appContext, JSONObject().put("type", "broad_storage_permission")
                 .put("requestId", requestId ?: "")
                 .put("payload", JSONObject().put("granted", false).put("source", BroadStorageScanner.SOURCE)))
             return null
         }
-        NativeMailbox.write(this, JSONObject().put("type", "broad_storage_permission")
+        NativeMailbox.write(appContext, JSONObject().put("type", "broad_storage_permission")
             .put("requestId", requestId ?: "")
             .put("payload", JSONObject().put("granted", true).put("source", BroadStorageScanner.SOURCE)))
         if (!NativeScanController.begin(scanId, BroadStorageScanner.SOURCE)) {
             val activeScanId = NativeScanController.activeScanId(BroadStorageScanner.SOURCE)
-            NativeMailbox.write(this, JSONObject().put("type", "broad_storage_scan_progress")
+            NativeMailbox.write(appContext, JSONObject().put("type", "broad_storage_scan_progress")
                 .put("requestId", requestId ?: "")
                 .put("payload", JSONObject()
                     .put("source", BroadStorageScanner.SOURCE)
@@ -2575,7 +2576,7 @@ class MainActivity : FlutterFragmentActivity() {
             return activeScanId
         }
         val launched = NativeScanController.launch(scanId) {
-            NativeScanRunner.runBroadScan(applicationContext, scanId, requestId)
+            NativeScanRunner.runBroadScan(appContext, scanId, requestId)
         }
         if (launched || NativeScanController.snapshot(scanId)?.state?.isTerminal == true) return scanId
         NativeScanController.finish(scanId)
@@ -2583,10 +2584,11 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun scanMediaStore(requestId: String? = null): String? {
+        val appContext = applicationContext
         val scanId = UUID.randomUUID().toString()
         if (!MediaStoreScanner.hasReadPermission(this)) {
             publishStorageStatus()
-            NativeMailbox.write(this, JSONObject().put("type", "mediastore_error")
+            NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_error")
                 .put("requestId", requestId ?: "")
                 .put("message", "A permissão para ler vídeos ainda não foi concedida.")
                 .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE).put("status", "DENIED").put("access", "denied")))
@@ -2594,7 +2596,7 @@ class MainActivity : FlutterFragmentActivity() {
         }
         if (!NativeScanController.begin(scanId, MediaStoreScanner.SOURCE)) {
             val activeScanId = NativeScanController.activeScanId(MediaStoreScanner.SOURCE)
-            NativeMailbox.write(this, JSONObject().put("type", "mediastore_scan_progress")
+            NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_scan_progress")
                 .put("requestId", requestId ?: "")
                 .put("payload", JSONObject()
                     .put("source", MediaStoreScanner.SOURCE)
@@ -2606,7 +2608,7 @@ class MainActivity : FlutterFragmentActivity() {
         // Consume incremental change hints only when this request owns a new full scan.
         MediaStoreScanner.clearChangeNotification()
         val launched = NativeScanController.launch(scanId) {
-            NativeScanRunner.runMediaStoreScan(applicationContext, scanId, requestId)
+            NativeScanRunner.runMediaStoreScan(appContext, scanId, requestId)
         }
         if (launched || NativeScanController.snapshot(scanId)?.state?.isTerminal == true) return scanId
         NativeScanController.finish(scanId)
