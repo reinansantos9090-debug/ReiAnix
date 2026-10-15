@@ -1,7 +1,10 @@
 package com.reiflix.reiflix_local.data.library
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.FileObserver
+import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
@@ -279,9 +282,9 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         watchingOnly: Boolean = false,
         completedOnly: Boolean = false,
     ) {
+        val requestId = UUID.randomUUID().toString()
         synchronized(refreshRequestGuard) {
-            // A refresh already in progress still satisfies the scan request, but
-            // the most recent UI filters must win when its result is published.
+            // Keep the newest filters while one native discovery request is in flight.
             pendingRefreshPage = RefreshPageRequest(
                 query = query,
                 genre = genre,
@@ -292,7 +295,45 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             )
             if (!refreshInFlight.compareAndSet(false, true)) return
         }
-        send(ReiAnixLibraryCommandCodec.Action.REFRESH)
+        val commandUri = Uri.parse("reiflix://native").buildUpon()
+            .appendQueryParameter("action", "scan_library")
+            .appendQueryParameter("request_id", requestId)
+            .appendQueryParameter("protocol_version", "2")
+            .appendQueryParameter("created_at", System.currentTimeMillis().toString())
+            .appendQueryParameter("created_monotonic_ns", System.nanoTime().toString())
+            .build()
+        try {
+            appContext.startActivity(
+                Intent(Intent.ACTION_VIEW, commandUri)
+                    .setClass(appContext, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            scope.launch {
+                stateMutex.withLock {
+                    _state.value = _state.value.copy(
+                        lastCommandId = requestId,
+                        lastCommandAction = ReiAnixLibraryCommandCodec.Action.REFRESH.value,
+                        lastCommandStatus = "QUEUED",
+                        lastCommandError = null,
+                    )
+                }
+            }
+        } catch (exception: Exception) {
+            synchronized(refreshRequestGuard) {
+                pendingRefreshPage = null
+                refreshInFlight.set(false)
+            }
+            scope.launch {
+                stateMutex.withLock {
+                    _state.value = _state.value.copy(
+                        lastCommandId = requestId,
+                        lastCommandAction = ReiAnixLibraryCommandCodec.Action.REFRESH.value,
+                        lastCommandStatus = "FAILED",
+                        lastCommandError = exception.message ?: "Não foi possível iniciar a varredura nativa.",
+                    )
+                }
+            }
+        }
     }
 
     fun loadLibraryPage(
