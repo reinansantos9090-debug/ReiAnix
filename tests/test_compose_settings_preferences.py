@@ -40,6 +40,9 @@ def test_settings_controls_use_existing_preference_contract():
     assert "compose_settings_set" in repository
     assert "NativeMailbox.write(" in repository
     assert "setPreference(normalizedKey, normalizedValue)" in repository
+    assert "setPreferencesAtomically(defaults)" in repository
+    assert "resetSettingsNatively" in repository
+    assert "compose_settings_bulk_applied" in repository
     assert "nativePersisted" in repository
     assert "SETTINGS_PERSISTED" in repository
     assert "effective[key] = pending.value" not in repository
@@ -53,6 +56,9 @@ def test_settings_controls_use_existing_preference_contract():
     assert "if native_persisted:" in main
     assert "settings.invalidate_cache" in main
     assert "SETTINGS_RUNTIME_APPLY_FAILED" in main
+    assert "compose_settings_bulk_applied" in main
+    assert "_run_compose_settings_bulk_applied" in main
+    assert "SETTINGS_RUNTIME_BULK_APPLIED" in main
     assert "if not native_persisted:" in main
     assert "setting_key" in main
     assert "apply_settings_runtime(setting_key, normalized)" in main
