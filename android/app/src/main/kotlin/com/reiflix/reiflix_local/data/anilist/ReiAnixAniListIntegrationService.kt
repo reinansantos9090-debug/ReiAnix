@@ -14,7 +14,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
-import org.json.JSONObject
+
 import java.io.File
 import java.util.Locale
 import java.util.UUID
