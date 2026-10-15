@@ -87,6 +87,75 @@ suspend fun ReiAnixSqliteLibraryRepository.findEpisodesByMediaIdentity(
     }
 }
 
+/**
+ * Mirrors LibraryStore.resolve_local_anime_owner. Strong persisted identities win;
+ * the local lookup title is consulted only as the final fallback. An ambiguous
+ * identity is not arbitrarily assigned to the first anime row.
+ */
+suspend fun ReiAnixSqliteLibraryRepository.resolveLocalAnimeOwner(
+    animeId: Long? = null,
+    mediaIdentity: String? = null,
+    path: String? = null,
+    sourceFolder: String? = null,
+    relativePath: String? = null,
+    volumeId: String? = null,
+    lookupTitle: String? = null,
+): Long? = withContext(Dispatchers.IO) {
+    val identity = mediaIdentity.orEmpty().trim()
+    val normalizedPath = path.orEmpty().trim()
+    val source = sourceFolder.orEmpty().trim()
+    val relative = relativePath.orEmpty().trim().replace('\\\\', '/').trim('/')
+    val volume = volumeId.orEmpty().trim()
+    val lookup = lookupTitle.orEmpty().trim()
+    database.read { connection ->
+        if (animeId != null && animeId > 0L) {
+            connection.rawQuery(
+                "SELECT id FROM anime WHERE id = ? LIMIT 1",
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) return@read cursor.getLong(0)
+            }
+        }
+        fun uniqueOwner(sql: String, args: Array<String>): Long? =
+            connection.rawQuery(sql, args).use { cursor ->
+                val ids = linkedSetOf<Long>()
+                while (cursor.moveToNext()) if (!cursor.isNull(0)) ids += cursor.getLong(0)
+                ids.singleOrNull()
+            }
+
+        if (identity.isNotEmpty()) {
+            uniqueOwner(
+                "SELECT DISTINCT anime_id FROM episodes WHERE media_identity = ? ORDER BY anime_id",
+                arrayOf(identity),
+            )?.let { return@read it }
+        }
+        if (normalizedPath.isNotEmpty()) {
+            uniqueOwner(
+                "SELECT DISTINCT anime_id FROM episodes WHERE path = ? ORDER BY anime_id",
+                arrayOf(normalizedPath),
+            )?.let { return@read it }
+        }
+        if (source.isNotEmpty() && relative.isNotEmpty()) {
+            val sql = if (volume.isNotEmpty()) {
+                "SELECT DISTINCT anime_id FROM episodes WHERE source_folder = ? AND relative_path = ? AND volume_id = ? ORDER BY anime_id"
+            } else {
+                "SELECT DISTINCT anime_id FROM episodes WHERE source_folder = ? AND relative_path = ? ORDER BY anime_id"
+            }
+            val args = if (volume.isNotEmpty()) arrayOf(source, relative, volume) else arrayOf(source, relative)
+            uniqueOwner(sql, args)?.let { return@read it }
+        }
+        if (lookup.isNotEmpty()) {
+            connection.rawQuery(
+                "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1",
+                arrayOf(lookup),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) return@read cursor.getLong(0)
+            }
+        }
+        null
+    }
+}
+
 /** Idempotent favorite mutation for callers that already know the target state. */
 suspend fun ReiAnixSqliteLibraryRepository.setAnimeFavorite(
     animeId: Long,
