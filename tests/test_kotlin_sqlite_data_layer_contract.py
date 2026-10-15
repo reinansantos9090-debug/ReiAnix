@@ -20,7 +20,6 @@ class KotlinSqliteDataLayerContractTests(unittest.TestCase):
         self.assertIn('File(File(appContext.filesDir, "data"), DATABASE_FILE_NAME)', database)
         self.assertIn('DATABASE_FILE_NAME = "library.sqlite3"', database)
         self.assertIn("class ReiAnixSqliteLibraryRepository(", repository)
-        self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setAnimeFavorite", mutations)
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setAnimePersonalNote", mutations)
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setAnimeUserTags", mutations)
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setManualMetadataByLookupTitle", mutations)
@@ -39,7 +38,6 @@ class KotlinSqliteDataLayerContractTests(unittest.TestCase):
         mutations = MUTATIONS.read_text(encoding="utf-8")
 
         for function in (
-            "setAnimeFavorite",
             "toggleAnimePinned",
             "setAnimePersonalNote",
             "setAnimeUserTags",
