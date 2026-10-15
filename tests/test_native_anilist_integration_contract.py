@@ -114,6 +114,22 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertNotIn("library.anilist", handler)
         self.assertNotIn("AniListClient", handler)
 
+    def test_native_library_owns_catalog_metadata_hydration_in_compose_mode(self):
+        service = SERVICE.read_text(encoding="utf-8")
+        association = ASSOCIATION.read_text(encoding="utf-8")
+        view_model = (KOTLIN / "viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        python_service = (ROOT / "core/library_service.py").read_text(encoding="utf-8")
+
+        self.assertIn("reconcileUnmatchedLibraryMetadata()", service)
+        self.assertIn('AUTO_MATCH_TERMINAL_STATUSES', service)
+        self.assertIn('recordAniListAutoMatchOutcome', service)
+        self.assertIn('fun recordAniListAutoMatchOutcome(', association)
+        self.assertIn('scheduleNativeAniListReconciliation()', view_model)
+        self.assertIn('allow_anilist_metadata=not compose_library_bridge.enabled', main)
+        self.assertIn('needs_metadata = allow_anilist_metadata and not materialized', python_service)
+        self.assertIn('request_download=True', python_service)
+
     def test_malformed_graphql_search_data_is_not_reported_as_empty_results(self):
         client = (KOTLIN / "data/anilist/ReiAnixAniListClient.kt").read_text(encoding="utf-8")
         self.assertIn("Missing media array in AniList search response", client)
