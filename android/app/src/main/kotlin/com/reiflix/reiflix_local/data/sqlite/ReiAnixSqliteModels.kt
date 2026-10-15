@@ -142,6 +142,7 @@ data class ReiAnixAnimeMetadataPatch(
     val nativeTitle: String? = null,
     val aliasesJson: String? = null,
     val description: String? = null,
+    val descriptionOriginal: String? = null,
     val coverUrl: String? = null,
     val coverCache: String? = null,
     val bannerUrl: String? = null,
@@ -164,7 +165,7 @@ data class ReiAnixAnimeMetadataPatch(
         require(
             title != null || romaji != null || english != null ||
                 nativeTitle != null || aliasesJson != null || description != null ||
-                coverUrl != null || coverCache != null || bannerUrl != null ||
+                descriptionOriginal != null || coverUrl != null || coverCache != null || bannerUrl != null ||
                 genresJson != null || year != null || season != null || status != null ||
                 episodesCount != null || duration != null || score != null || format != null ||
                 studio != null || metadataFetchedAt != null,
