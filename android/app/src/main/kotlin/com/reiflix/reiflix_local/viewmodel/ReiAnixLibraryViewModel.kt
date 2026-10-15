@@ -365,12 +365,10 @@ class ReiAnixLibraryViewModel(
             status = mergedStatus,
             animes = catalog.animes,
             continueWatching = catalog.continueWatching,
-            sourceAvailable = when {
-                ready -> true
-                catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING ->
-                    bridgeState.sourceAvailable
-                else -> catalog.animes.isNotEmpty()
-            },
+            // Availability still describes the configured storage/source contract;
+            // a successful SQLite read must not masquerade as granted storage access.
+            sourceAvailable = bridgeState.sourceAvailable,
+            sourceState = bridgeState.sourceState,
             error = catalog.error ?: bridgeState.error,
         )
     }.stateIn(
