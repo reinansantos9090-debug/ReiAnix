@@ -110,16 +110,16 @@ class ReiAnixAniListDescriptionLocalizer(
         val raw = description.orEmpty()
             .replace("\r\n", "\n")
             .replace('\r', '\n')
-            .replace(Regex("(?i)<br\s*/?>"), "\n\n")
-            .replace(Regex("(?i)</p>\s*<p\b[^>]*>"), "\n\n")
+            .replace(Regex("(?i)<br\\s*/?>"), "\n\n")
+            .replace(Regex("(?i)</p>\\s*<p\\b[^>]*>"), "\n\n")
         val htmlText = Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString()
         return htmlText.replace("\u00a0", " ")
             .replace(Regex("[\t ]+"), " ")
             .replace(Regex(" *\n *"), "\n")
             .replace(Regex("\n{3,}"), "\n\n")
             .trim()
-            .split(Regex("\n\s*\n"))
-            .map { paragraph -> paragraph.split(Regex("\s+")).filter(String::isNotBlank).joinToString(" ") }
+            .split(Regex("\n\\s*\n"))
+            .map { paragraph -> paragraph.split(Regex("\\s+")).filter(String::isNotBlank).joinToString(" ") }
             .filter(String::isNotBlank)
             .joinToString("\n\n")
     }
@@ -163,7 +163,7 @@ class ReiAnixAniListDescriptionLocalizer(
         val translated = normalizeDescription(translatedText)
         if (source.isEmpty() || translated.isEmpty()) return false
         if (translated.equals(source, ignoreCase = true)) return false
-        if (Regex("(?i)<(?:html|body|script|json)\b").containsMatchIn(translatedText)) return false
+        if (Regex("(?i)<(?:html|body|script|json)\\b").containsMatchIn(translatedText)) return false
         val trimmed = translatedText.trim()
         if ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
             (trimmed.startsWith("[") && trimmed.endsWith("]"))
@@ -264,7 +264,7 @@ class ReiAnixAniListDescriptionLocalizer(
     }
 
     private fun splitUtf8Chunks(paragraph: String, maxBytes: Int): List<String>? {
-        val words = paragraph.trim().split(Regex("\s+")).filter(String::isNotBlank)
+        val words = paragraph.trim().split(Regex("\\s+")).filter(String::isNotBlank)
         if (words.isEmpty()) return emptyList()
         val chunks = mutableListOf<String>()
         var current = StringBuilder()
