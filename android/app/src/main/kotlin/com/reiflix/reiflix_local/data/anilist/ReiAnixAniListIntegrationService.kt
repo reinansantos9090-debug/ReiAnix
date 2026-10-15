@@ -67,7 +67,10 @@ class ReiAnixAniListIntegrationService(
         val local = library.getAnime(animeId)
             ?: return AniListResult.Failure(AniListError.InvalidRequest("Local anime does not exist."))
         val remoteId = local.anilistId
-            ?: return AniListResult.Failure(AniListError.InvalidRequest("This local anime has no AniList association."))
+            ?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+            ?: return AniListResult.Failure(
+                AniListError.InvalidRequest("This local anime has no valid AniList association."),
+            )
         val remote = when (val result = client.getAnime(remoteId.toInt())) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> return result
