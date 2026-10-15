@@ -156,20 +156,6 @@ suspend fun ReiAnixSqliteLibraryRepository.resolveLocalAnimeOwner(
     }
 }
 
-/** Idempotent favorite mutation for callers that already know the target state. */
-suspend fun ReiAnixSqliteLibraryRepository.setAnimeFavorite(
-    animeId: Long,
-    favorite: Boolean,
-): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
-    require(animeId > 0L) { "Anime ID must be a positive persisted ID." }
-    database.transaction { connection ->
-        connection.requireAnime(animeId)
-        val values = ContentValues().apply { put("favorite", if (favorite) 1 else 0) }
-        connection.update("anime", values, "id = ?", arrayOf(animeId.toString()))
-        connection.requireAnime(animeId)
-    }
-}
-
 /** Mirrors LibraryStore.toggle_pinned while keeping the read and write atomic. */
 suspend fun ReiAnixSqliteLibraryRepository.toggleAnimePinned(
     animeId: Long,
