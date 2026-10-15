@@ -80,8 +80,8 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         source_persistence = ASSOCIATION.read_text(encoding="utf-8")
         service = SERVICE.read_text(encoding="utf-8")
 
-        self.assertIn("localizer.localizeToPtBr(remoteOriginalDescription)", service)
-        self.assertIn("localizer.getCachedDescriptionPtBr(remoteOriginalDescription)", service)
+        self.assertIn("localizer.localizeToPtBr(remoteOriginal)", service)
+        self.assertIn("localizer.getCachedDescriptionPtBr(remoteOriginal)", service)
         self.assertIn("descriptionOriginal = remoteOriginalDescription", service)
         self.assertIn("val descriptionOriginal: String? = null", models)
         self.assertIn('values.put("description_original", it)', source_persistence)
