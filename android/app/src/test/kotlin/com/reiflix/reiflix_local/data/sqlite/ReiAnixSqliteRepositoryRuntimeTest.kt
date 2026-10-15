@@ -1431,6 +1431,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         )
         assertEquals("Manual title", remote.title)
         assertEquals("https://example.invalid/old-cover.jpg", remote.coverUrl)
+        assertTrue(repository.clearManualMetadataByLookupTitle("catalog-key", setOf("english")))
+        val afterManualFieldClear = repository.getAnime(1L)
+        assertEquals("Manual title", afterManualFieldClear?.title)
+        assertTrue(afterManualFieldClear?.metadataManualFieldsJson.orEmpty().contains("title"))
+        assertTrue(afterManualFieldClear?.metadataManualFieldsJson.orEmpty().contains("cover_url"))
+        assertFalse(afterManualFieldClear?.metadataManualFieldsJson.orEmpty().contains("english"))
 
         val watched = repository.setEpisodeWatchedState(
             episodeId = 7L,
