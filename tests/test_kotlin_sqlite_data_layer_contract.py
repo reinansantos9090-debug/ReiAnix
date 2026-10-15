@@ -25,6 +25,11 @@ class KotlinSqliteDataLayerContractTests(unittest.TestCase):
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setAnimeUserTags", mutations)
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setManualMetadataByLookupTitle", mutations)
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setEpisodeWatchedState", mutations)
+        self.assertIn("setAniListMatchByLookupTitle", mutations)
+        self.assertIn("clearAniListMatchByLookupTitle", mutations)
+        self.assertIn("setPendingAniListMatch", mutations)
+        self.assertIn("resolvePendingAniListMatch", mutations)
+        self.assertIn("clearAniListMetadataCache", mutations)
         self.assertNotIn("RoomDatabase", mutations)
         self.assertNotIn("CREATE TABLE", mutations.upper())
         self.assertNotIn("CREATE_IF_NECESSARY", database)
@@ -40,6 +45,9 @@ class KotlinSqliteDataLayerContractTests(unittest.TestCase):
             "setManualMetadataByLookupTitle",
             "clearManualMetadataByLookupTitle",
             "setEpisodeWatchedState",
+            "setAniListMatchByLookupTitle",
+            "setPendingAniListMatch",
+            "clearAniListMatchByLookupTitle",
         ):
             start = mutations.find(f"fun ReiAnixSqliteLibraryRepository.{function}(")
             self.assertGreaterEqual(start, 0, f"Missing native mutation: {function}")
