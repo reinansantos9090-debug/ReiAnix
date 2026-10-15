@@ -67,6 +67,7 @@ Foi adicionado `ReiAnixSqliteLibraryMutations.kt` como extensão do repositório
 | `getAnimeByLookupTitle` | Consulta exata por chave local, com parâmetro vinculado. |
 | `findEpisodeByPathOrFileUri` | Consulta de caminho exato; reconhece equivalência entre caminho absoluto e `file://`. Não inventa equivalências SAF/content URI; recusa resultados ambíguos. |
 | `findEpisodesByMediaIdentity` | Consulta pela identidade de mídia persistida, sem gerar IDs substitutos. |
+| `resolveLocalAnimeOwner` | Resolve primeiro pelo ID/identidade/caminho/fonte + caminho relativo/volume e usa a chave local só como último fallback; não escolhe arbitrariamente um proprietário ambíguo. |
 | `setAnimeFavorite` | Define o estado desejado dentro de transação. A operação de favorito já era nativa via `ReiAnixPersonalListService`; a nova função fornece também a operação idempotente para consumidores que necessitem definir o estado. |
 | `toggleAnimePinned` | Alterna o campo canônico `anime.is_pinned` em uma transação; falha para ID inexistente. |
 | `setAnimePersonalNote` | Persiste no campo canônico, mantém o limite de 2.000 caracteres e normaliza nota vazia para `NULL`. |
@@ -74,6 +75,11 @@ Foi adicionado `ReiAnixSqliteLibraryMutations.kt` como extensão do repositório
 | `setManualMetadataByLookupTitle` | Atualiza apenas a allowlist de campos editoriais manuais e marca a propriedade manual na mesma transação. Exige correspondência entre chave local e ID persistido. |
 | `clearManualMetadataByLookupTitle` | Remove apenas os marcadores de propriedade manual; não apaga os valores editoriais armazenados. Recusa JSON de propriedade inválido em vez de apagar a proteção. |
 | `setEpisodeWatchedState` | Atualiza estado assistido, progresso e timestamp na mesma transação; corresponde ao contrato de `LibraryStore.set_watched`: marcar como não assistido redefine o progresso a zero; marcar como assistido define o progresso à duração conhecida. |
+| `getAniListMatchByLookupTitle` | Lê o estado persistido de associação da obra local sem inferir uma identidade pelo título de apresentação. |
+| `setAniListMatchByLookupTitle` / `clearAniListMatchByLookupTitle` | Atualizam, de forma atômica, os campos de match da obra e a tabela `associations`; limpar o match também remove uma correspondência pendente, preservando campos editoriais e pessoais. |
+| `setPendingAniListMatch` / `listPendingAniListMatches` | Gravam e leem JSON de candidatos na tabela canônica existente, validando o formato e mantendo ordenação estável. |
+| `resolvePendingAniListMatch` | Grava a associação e remove o item pendente na mesma transação. |
+| `setMetadataStatusByLookupTitle` / `clearAniListMetadataCache` | Atualizam estado de metadata e expiram a frescura de metadata/cache sem apagar linhas, associações ou capas locais válidas. |
 
 Os métodos acima não criam nem removem registros e não introduzem novas tabelas. A inserção/atualização em lote de mídia descoberta já ocorre pelo indexador nativo existente, em vez de se introduzir uma segunda implementação de scanner.
 
