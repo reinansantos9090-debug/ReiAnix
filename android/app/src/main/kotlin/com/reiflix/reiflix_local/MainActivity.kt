@@ -2817,20 +2817,47 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
+        fun matchingPersistedTreeGrants(): List<android.content.UriPermission> {
+            val expectedIdentity = SafScanner.treeIdentity(treeUri)
+            return contentResolver.persistedUriPermissions.filter { grant ->
+                val grantIdentity = runCatching { SafScanner.treeIdentity(grant.uri) }.getOrNull()
+                    ?: return@filter false
+                grantIdentity.authority == expectedIdentity.authority &&
+                    grantIdentity.documentId == expectedIdentity.documentId &&
+                    (grant.isReadPermission || grant.isWritePermission)
+            }
+        }
+
         try {
-            val hadPersistedReadGrant = SafScanner.hasPersistedReadPermission(this, treeUri)
-            if (hadPersistedReadGrant) {
-                contentResolver.releasePersistableUriPermission(
-                    treeUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            // A SAF tree can retain both read and write grants. Release exactly the
+            // modes Android says are persisted, including grants whose URI string is
+            // equivalent but not byte-for-byte identical to the configured reference.
+            val persistedGrants = matchingPersistedTreeGrants()
+            persistedGrants.forEach { grant ->
+                var modeFlags = 0
+                if (grant.isReadPermission) {
+                    modeFlags = modeFlags or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                }
+                if (grant.isWritePermission) {
+                    modeFlags = modeFlags or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                }
+                if (modeFlags != 0) {
+                    contentResolver.releasePersistableUriPermission(grant.uri, modeFlags)
+                }
+            }
+            val remainingGrants = matchingPersistedTreeGrants()
+            if (remainingGrants.isNotEmpty()) {
+                val remainingModes = remainingGrants.joinToString { grant ->
+                    buildList {
+                        if (grant.isReadPermission) add("read")
+                        if (grant.isWritePermission) add("write")
+                    }.joinToString("+")
+                }
+                throw IllegalStateException(
+                    "Android still reports persisted SAF permissions for this tree: $remainingModes",
                 )
-            } else {
-                Log.i(tag, "SAF permission already absent; treating release as idempotent")
             }
-            if (SafScanner.hasPersistedReadPermission(this, treeUri)) {
-                throw IllegalStateException("Android still reports the SAF read grant after release.")
-            }
-            val permissionAlreadyAbsent = !hadPersistedReadGrant
+            val permissionAlreadyAbsent = persistedGrants.isEmpty()
 
             fun publishReleased(sourceAlreadyAbsent: Boolean) {
                 val waiters = takeWaitingRequestIds()
