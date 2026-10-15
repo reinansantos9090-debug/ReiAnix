@@ -1546,6 +1546,94 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun pendingResolutionWithoutPendingOrExistingAssociationIsRejectedWithoutWrites() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val originalMatch = repository.getAniListMatchByLookupTitle("catalog-key")
+        val originalAnime = repository.getAnime(1L)
+        assertNotNull(originalMatch)
+        assertNull(originalMatch?.anilistId)
+        assertNotNull(originalAnime)
+        assertTrue(repository.listPendingAniListMatches().isEmpty())
+
+        var rejectedAsStale = false
+        try {
+            repository.resolvePendingAniListMatch("catalog-key", 5678L)
+        } catch (expected: IllegalStateException) {
+            rejectedAsStale = expected.message.orEmpty().contains("Este candidato não está mais pendente.")
+        }
+        assertTrue("A stale resolution without a previous mapping must be rejected.", rejectedAsStale)
+        assertEquals(originalMatch, repository.getAniListMatchByLookupTitle("catalog-key"))
+        assertEquals(originalAnime, repository.getAnime(1L))
+        assertTrue(repository.listPendingAniListMatches().isEmpty())
+
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT COUNT(*) FROM anime", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+            db.rawQuery("SELECT COUNT(*) FROM associations", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+            db.rawQuery("SELECT COUNT(*) FROM pending_matches", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+        }
+    }
+
+    @Test
+    fun pendingResolutionWithoutPendingButWithConsistentPreviousAssociationCanReplaceIt() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        assertTrue(
+            repository.setAniListMatchByLookupTitle(
+                lookupTitle = "catalog-key",
+                anilistId = 1234L,
+                status = "manual",
+                score = 0.96,
+                margin = 0.18,
+                manual = true,
+            ),
+        )
+        assertTrue(repository.listPendingAniListMatches().isEmpty())
+
+        repository.resolvePendingAniListMatch("catalog-key", 5678L)
+
+        val resolved = repository.getAniListMatchByLookupTitle("catalog-key")
+        assertEquals(5678L, resolved?.anilistId)
+        assertEquals("manual", resolved?.status)
+        assertEquals(1.0, resolved?.score ?: -1.0, 0.0)
+        assertEquals(1.0, resolved?.margin ?: -1.0, 0.0)
+        assertEquals(true, resolved?.manual)
+        assertTrue(repository.listPendingAniListMatches().isEmpty())
+        val anime = repository.getAnime(1L)
+        assertEquals(5678L, anime?.anilistId)
+        assertEquals("Original Title", anime?.title)
+        assertEquals("keep this note", anime?.personalNote)
+        assertEquals(true, anime?.favorite)
+        assertTrue(anime?.metadataManualFieldsJson.orEmpty().contains("title"))
+
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                "SELECT anilist_id FROM associations WHERE lookup_title = ?",
+                arrayOf("catalog-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(5678L, cursor.getLong(0))
+                assertFalse(cursor.moveToNext())
+            }
+            db.rawQuery(
+                "SELECT COUNT(*) FROM pending_matches WHERE lookup_title = ?",
+                arrayOf("catalog-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+        }
+    }
+    @Test
     fun pendingResolutionWithMissingLocalAnimePreservesPendingRowAndCreatesNoAssociation() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
