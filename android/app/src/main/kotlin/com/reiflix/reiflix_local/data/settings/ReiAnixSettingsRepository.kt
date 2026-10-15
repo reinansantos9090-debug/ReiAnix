@@ -342,6 +342,10 @@ class ReiAnixSettingsRepository(
             "open_broad_storage_settings", "backup_create", "backup_restore", "backup_integrity",
             "backup_reconcile", "diagnostic_export",
         )) return
+        if (normalizedAction == "reset_player" || normalizedAction == "reset_all_settings") {
+            resetSettingsNatively(normalizedAction)
+            return
+        }
         dispatchCommand(normalizedAction, normalizedAction) { requestId ->
             JSONObject()
                 .put("type", "compose_settings_action")
@@ -357,6 +361,129 @@ class ReiAnixSettingsRepository(
                 .put("type", "compose_account_action")
                 .put("requestId", requestId)
                 .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
+        }
+    }
+
+    private fun resetSettingsNatively(action: String) {
+        val keys = ReiAnixSettingsContract.definitions.keys
+            .filter { action == "reset_all_settings" || it.startsWith("player.") }
+            .sorted()
+        val defaults = keys.associateWith { key ->
+            ReiAnixSettingsContract.defaultFor(key)
+                ?: throw IllegalStateException("Missing default for known setting: $key")
+        }
+        val requestId = UUID.randomUUID().toString()
+        synchronized(stateLock) {
+            val current = _state.value
+            _state.value = current.copy(
+                operations = upsertOperationLocked(
+                    current.operations,
+                    ReiAnixSettingsOperationUiState(
+                        requestId = requestId,
+                        action = action,
+                        state = ReiAnixSettingsOperationState.QUEUED,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+
+        scope.launch {
+            val locks = keys.map { settingLocks.computeIfAbsent(it) { Mutex() } }
+            try {
+                withSettingLocks(locks) {
+                    val persisted = sqliteSettingsRepository.setPreferencesAtomically(defaults)
+                        .mapValues { (_, record) -> record.value }
+                    synchronized(stateLock) {
+                        confirmedSettings.putAll(persisted)
+                        val current = _state.value
+                        _state.value = current.copy(
+                            settings = current.settings + persisted,
+                            operations = upsertOperationLocked(
+                                current.operations,
+                                (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(
+                                    requestId, action,
+                                )).copy(
+                                    state = ReiAnixSettingsOperationState.SUCCESS,
+                                    message = "Configurações restauradas aos valores padrão.",
+                                    error = null,
+                                    timestampMs = System.currentTimeMillis(),
+                                ),
+                            ),
+                        )
+                    }
+                    val notification = JSONObject().put("settings", JSONObject().apply {
+                        persisted.forEach { (key, value) -> put(key, value) }
+                    })
+                    val published = runCatching {
+                        NativeMailbox.write(
+                            appContext,
+                            JSONObject()
+                                .put("type", "compose_settings_bulk_applied")
+                                .put("requestId", requestId)
+                                .put("payload", notification.put("requestId", requestId)),
+                        )
+                    }.getOrElse { false }
+                    Log.i(
+                        TAG,
+                        "SETTINGS_RESET_PERSISTED requestId=" + requestId +
+                            " action=" + action +
+                            " count=" + persisted.size +
+                            " runtimeNotificationPublished=" + published,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                synchronized(stateLock) {
+                    val current = _state.value
+                    val existing = current.operations[requestId]
+                    if (existing != null) {
+                        _state.value = current.copy(
+                            operations = upsertOperationLocked(
+                                current.operations,
+                                existing.copy(
+                                    state = ReiAnixSettingsOperationState.CANCELLED,
+                                    error = "A restauração das configurações foi cancelada.",
+                                    timestampMs = System.currentTimeMillis(),
+                                ),
+                            ),
+                        )
+                    }
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "SETTINGS_RESET_FAILED requestId=" + requestId + " action=" + action, error)
+                synchronized(stateLock) {
+                    val current = _state.value
+                    val existing = current.operations[requestId]
+                    if (existing != null) {
+                        _state.value = current.copy(
+                            operations = upsertOperationLocked(
+                                current.operations,
+                                existing.copy(
+                                    state = ReiAnixSettingsOperationState.ERROR,
+                                    error = "Não foi possível restaurar as configurações no SQLite.",
+                                    timestampMs = System.currentTimeMillis(),
+                                ),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun <T> withSettingLocks(
+        locks: List<Mutex>,
+        index: Int = 0,
+        block: suspend () -> T,
+    ): T {
+        if (index >= locks.size) return block()
+        val lock = locks[index]
+        lock.lock()
+        return try {
+            withSettingLocks(locks, index + 1, block)
+        } finally {
+            lock.unlock()
         }
     }
 
