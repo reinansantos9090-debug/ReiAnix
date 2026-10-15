@@ -1879,6 +1879,39 @@ class MainActivity : FlutterFragmentActivity() {
                         continue
                     }
 
+                    val inspection = SafScanner.inspectTree(this@MainActivity, treeUri!!, requirePersisted = true)
+                    val inspectionStatus = inspection.optString("status")
+                    if (inspectionStatus != SafScanner.STATUS_COMPLETED) {
+                        val revoked = inspectionStatus == SafScanner.STATUS_REVOKED
+                        val authorization = if (revoked) "revoked" else "unavailable"
+                        val error = inspection.optString("error", if (revoked) "persisted_permission_missing" else "provider_unavailable")
+                        withContext(Dispatchers.IO) {
+                            repository.updateSafFolderAccess(reference, authorization, error)
+                        }
+                        val identity = SafScanner.identityPayload(treeUri)
+                            .put("treeUri", reference)
+                            .put("status", if (revoked) SafScanner.STATUS_REVOKED else SafScanner.STATUS_UNAVAILABLE)
+                            .put("error", error)
+                            .put("nativeFolderConfigOwner", true)
+                        if (revoked) {
+                            NativeMailbox.writeBestEffort(
+                                this@MainActivity,
+                                JSONObject().put("type", "saf_permission")
+                                    .put("requestId", requestId ?: "")
+                                    .put("payload", identity.put("granted", false)),
+                            )
+                        } else {
+                            NativeMailbox.writeBestEffort(
+                                this@MainActivity,
+                                JSONObject().put("type", "saf_error")
+                                    .put("requestId", requestId ?: "")
+                                    .put("message", "O provedor desta pasta está indisponível no momento.")
+                                    .put("payload", identity),
+                            )
+                        }
+                        failedScopes++
+                        continue
+                    }
                     publishNativeDiagnostic(
                         "NATIVE_SAF_SCAN_REQUESTED",
                         requestId,
