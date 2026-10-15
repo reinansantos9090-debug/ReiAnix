@@ -81,8 +81,21 @@ class ReiAnixAniListClient(
             }
         """.trimIndent()
         return execute(gql, JSONObject().put("id", id)) { data ->
+            if (!data.has("Media")) {
+                return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing Media field in AniList detail response"),
+                )
+            }
+            if (data.isNull("Media")) return@execute AniListResult.Success(null)
             val media = data.optJSONObject("Media")
-            AniListResult.Success(media?.let(::parseAnime))
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Invalid Media object in AniList detail response"),
+                )
+            val anime = parseAnime(media)
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("AniList detail is missing a valid media ID"),
+                )
+            AniListResult.Success(anime)
         }
     }
 
