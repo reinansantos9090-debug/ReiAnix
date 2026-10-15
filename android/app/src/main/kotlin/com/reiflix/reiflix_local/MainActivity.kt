@@ -1916,10 +1916,33 @@ class MainActivity : FlutterFragmentActivity() {
                                 .put("cancelledScopes", cancelledScopes),
                         ),
                 )
+                val operationState = when (status) {
+                    "FAILED" -> NativeRequestState.OperationState.FAILED
+                    "CANCELLED" -> NativeRequestState.OperationState.CANCELLED
+                    else -> NativeRequestState.OperationState.COMPLETED
+                }
+                nativeRequestState.markOperationState(requestId, "scan_library", operationState)
+                publishNativeDiagnostic(
+                    if (operationState == NativeRequestState.OperationState.COMPLETED) "OPERATION_COMPLETED" else "OPERATION_FAILED",
+                    requestId,
+                    "scan_library",
+                    operationState.name,
+                    result = status,
+                )
             } catch (cancelled: CancellationException) {
+                nativeRequestState.markOperationState(requestId, "scan_library", NativeRequestState.OperationState.CANCELLED)
+                publishNativeDiagnostic("OPERATION_CANCELLED", requestId, "scan_library", NativeRequestState.OperationState.CANCELLED.name)
                 throw cancelled
             } catch (exception: Exception) {
                 Log.e(tag, "Native storage discovery failed origin=$origin reason=$reason", exception)
+                nativeRequestState.markOperationState(requestId, "scan_library", NativeRequestState.OperationState.FAILED)
+                publishNativeDiagnostic(
+                    "OPERATION_FAILED",
+                    requestId,
+                    "scan_library",
+                    NativeRequestState.OperationState.FAILED.name,
+                    result = exception::class.java.simpleName,
+                )
                 NativeMailbox.writeBestEffort(
                     this@MainActivity,
                     JSONObject()
