@@ -1,0 +1,9 @@
+case_id	operation	uri	relative_path	volume_name	tree_uri	expected_identity
+file_uri_primary_storage	document	file:///storage/emulated/0/Movies/Anime/E01.mkv	-	-	-	shared:primary:movies/anime/e01.mkv
+mediastore_primary_alias	document	content://media/external/video/media/7	Movies/Anime/E01.mkv	external_primary	-	shared:primary:movies/anime/e01.mkv
+saf_primary_tree	document	content://com.android.externalstorage.documents/tree/primary%3AMovies/document/primary%3AMovies%2FAnime%2FE01.mkv	Anime/E01.mkv	-	content://com.android.externalstorage.documents/tree/primary%3AMovies	shared:primary:movies/anime/e01.mkv
+cloud_provider_scoped_identity	document	content://com.google.android.apps.docs.storage/document/root%3Afoo	Movies/Anime/E01.mkv	-	content://com.google.android.apps.docs.storage/tree/root%3Afoo	uri:com.google.android.apps.docs.storage:document/root:foo
+content_uri_without_shared_volume	document	content://example.test/video/42	-	-	-	uri:example.test:video/42
+non_content_remote_uri_is_unresolved	document	https://example.invalid/video.mkv	-	-	-	-
+relative_full_primary_path	relative	-	/storage/emulated/0/Movies/Series/E01.mkv	-	-	shared:primary:movies/series/e01.mkv
+relative_external_alias	relative	-	Movies/Series/E01.mkv	external	-	shared:primary:movies/series/e01.mkv
