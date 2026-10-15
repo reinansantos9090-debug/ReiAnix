@@ -5572,28 +5572,36 @@ async def main(page: ft.Page):
                                     )
                             else:
                                 if compose_primary_ui and is_user_refresh and event_request_id:
-                                    compose_library_bridge.write_command_result(
-                                        event_request_id,
-                                        "refresh",
-                                        "FAILED",
-                                        error=(
-                                            "Nenhuma fonte de armazenamento autorizada estava disponível para varredura."
-                                            if payload.get("noSourcesAvailable") is True
-                                            else (
-                                                "A operação de varredura foi interrompida antes de iniciar as fontes."
-                                                if payload.get("errorCode") == "ACTIVITY_NOT_RESUMED"
+                                    if native_status == "CANCELLED":
+                                        compose_library_bridge.write_command_result(
+                                            event_request_id,
+                                            "refresh",
+                                            "CANCELLED",
+                                            message="Varredura nativa cancelada.",
+                                        )
+                                    else:
+                                        compose_library_bridge.write_command_result(
+                                            event_request_id,
+                                            "refresh",
+                                            "FAILED",
+                                            error=(
+                                                "Nenhuma fonte de armazenamento autorizada estava disponível para varredura."
+                                                if payload.get("noSourcesAvailable") is True
                                                 else (
-                                                    "Nenhuma fonte solicitada concluiu a varredura com sucesso."
-                                                    if int(payload.get("requestedSources") or 0) > 0
-                                                    and int(payload.get("successfulScopes") or 0) == 0
-                                                    else "A varredura nativa não pôde ser concluída."
+                                                    "A operação de varredura foi interrompida antes de iniciar as fontes."
+                                                    if payload.get("errorCode") == "ACTIVITY_NOT_RESUMED"
+                                                    else (
+                                                        "Nenhuma fonte solicitada concluiu a varredura com sucesso."
+                                                        if int(payload.get("requestedSources") or 0) > 0
+                                                        and int(payload.get("successfulScopes") or 0) == 0
+                                                        else "A varredura nativa não pôde ser concluída."
+                                                    )
                                                 )
-                                            )
-                                        ),
-                                    )
+                                            ),
+                                        )
                                 elif is_user_refresh:
                                     _fail_home_refresh(
-                                        "native_scan_failed",
+                                        "native_scan_cancelled" if native_status == "CANCELLED" else "native_scan_failed",
                                         request_id=event_request_id,
                                         source="saf",
                                     )
