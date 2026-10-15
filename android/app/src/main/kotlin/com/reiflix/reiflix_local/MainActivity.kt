@@ -404,7 +404,7 @@ class MainActivity : FlutterFragmentActivity() {
                 " reason=" + (reason.ifBlank { "-" }),
         )
         when {
-            source == "saf" && !scopeRef.isNullOrBlank() -> scanTree(scopeRef, requestId)
+            source == "saf" && !scopeRef.isNullOrBlank() -> scanSafRootAndPublish(scopeRef, requestId, origin)
             source == "saf" || (source == null && origin.uppercase() != "PERMISSION_CHANGE") ->
                 scanConfiguredSafRoots(requestId, origin)
             source == "mediastore" -> scanMediaStore(requestId)
@@ -787,31 +787,54 @@ class MainActivity : FlutterFragmentActivity() {
                 .put("status", SafScanner.STATUS_COMPLETED)
                 .put("name", SafScanner.displayName(this, uri))
                 .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED))
-            clearSafPickerPending(requestId, SafPickerPhase.COMPLETED)
-            NativeMailbox.write(this, JSONObject().put("type", "saf_permission")
-                .put("requestId", requestId ?: "").put("payload", payload))
-            try {
-                publishNativeDiagnostic(
-                    "PERMISSION_CHANGE",
-                    requestId,
-                    action = "select_tree",
-                    result = "saf_granted",
-                )
-                publishNativeDiagnostic(
-                    "STARTUP_SCAN_REQUESTED",
-                    requestId,
-                    action = "scan",
-                    result = "permission_change",
-                )
-                publishNativeDiagnostic(
-                    "STORAGE_SCAN_STARTED",
-                    requestId,
-                    action = "select_tree",
-                    result = "permission_change",
-                )
-                publishScanRequest("PERMISSION_CHANGE", "saf", uri.toString(), false, "saf_granted", requestId)
-            } catch (exception: Exception) {
-                Log.e(tag, "SAF_PICKER_SCAN_TRIGGER_FAILED requestId=" + (requestId ?: "-"), exception)
+            lifecycleScope.launch {
+                try {
+                    ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository.upsertSafFolder(
+                        path = uri.toString(),
+                        name = payload.optString("name"),
+                        authorization = "granted",
+                        safAuthority = payload.optString("authority"),
+                        safDocumentId = payload.optString("documentId"),
+                        safVolumeId = payload.optString("volumeId"),
+                        safIdentity = payload.optString("identity"),
+                    )
+                    payload.put("nativeStorageOwner", true)
+                    clearSafPickerPending(requestId, SafPickerPhase.COMPLETED)
+                    NativeMailbox.write(this@MainActivity, JSONObject().put("type", "saf_permission")
+                        .put("requestId", requestId ?: "").put("payload", payload))
+                    publishNativeDiagnostic(
+                        "PERMISSION_CHANGE",
+                        requestId,
+                        action = "select_tree",
+                        result = "saf_granted",
+                    )
+                    publishNativeDiagnostic(
+                        "STARTUP_SCAN_REQUESTED",
+                        requestId,
+                        action = "scan",
+                        result = "permission_change",
+                    )
+                    publishNativeDiagnostic(
+                        "STORAGE_SCAN_STARTED",
+                        requestId,
+                        action = "select_tree",
+                        result = "permission_change",
+                    )
+                    publishScanRequest("PERMISSION_CHANGE", "saf", uri.toString(), false, "saf_granted", requestId)
+                } catch (exception: kotlinx.coroutines.CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    clearSafPickerPending(requestId, SafPickerPhase.FAILED)
+                    Log.e(tag, "SAF folder persistence failed requestId=" + (requestId ?: "-"), exception)
+                    publishSafPickerError(
+                        requestId,
+                        "A pasta foi autorizada, mas não foi possível salvar a configuração da biblioteca.",
+                        stage = "persist",
+                        code = "PERSISTENCE_FAILED",
+                        status = SafScanner.STATUS_FAILED,
+                        treeUri = uri,
+                    )
+                }
             }
         } catch (exception: IllegalArgumentException) {
             clearSafPickerPending(requestId, SafPickerPhase.FAILED)
@@ -1775,6 +1798,28 @@ class MainActivity : FlutterFragmentActivity() {
                 "Não foi possível executar a operação Android solicitada. Tente novamente.")
         }
     }
+    private fun scanSafRootAndPublish(reference: String, requestId: String?, origin: String) {
+        lifecycleScope.launch {
+            val scanId = scanTree(reference, requestId)
+            if (scanId == null) {
+                publishNativeLibraryScanComplete(requestId, origin, "FAILED", emptyList(), 0)
+                return@launch
+            }
+            val terminalProgress = NativeScanController.progress.first { progress ->
+                progress[scanId]?.state?.isTerminal == true
+            }
+            val state = terminalProgress[scanId]?.state
+            val successful = if (state == ScanLifecycleState.COMPLETED || state == ScanLifecycleState.PARTIAL) 1 else 0
+            publishNativeLibraryScanComplete(
+                requestId,
+                origin,
+                if (successful > 0) "COMPLETED" else "FAILED",
+                listOf(scanId),
+                successful,
+            )
+        }
+    }
+
     private fun scanConfiguredSafRoots(requestId: String?, origin: String) {
         lifecycleScope.launch {
             val roots = try {
