@@ -120,7 +120,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("ReiAnixSqliteTransactionOutcome.UNKNOWN", database_source)
         self.assertIn("val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK", runner)
         self.assertIn("val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK", runner)
-        self.assertIn("val recoverablePositiveSnapshot = rollbackReceiptPersisted.get()", runner)
+        self.assertIn("var recoverablePositiveSnapshot = rollbackConfirmed &&", runner)
         self.assertIn("fun canRecoverInKotlin(): Boolean", runner)
         self.assertIn("if (!canRecoverInKotlin()) return null", runner)
         self.assertIn("val canReadPositiveSnapshot = canRecoverInKotlin() && recoveryDocuments() != null", runner)
