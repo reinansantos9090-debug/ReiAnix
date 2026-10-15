@@ -415,8 +415,17 @@ class TestSafProfessionalContract(unittest.TestCase):
         block = source[start:end]
         self.assertIn('if native_status == "CANCELLED":', block)
         self.assertIn('"refresh",\n                                            "CANCELLED"', block)
-        self.assertIn('"native_scan_cancelled" if native_status == "CANCELLED" else "native_scan_failed"', block)
+        self.assertIn('_cancel_home_refresh(', block)
         self.assertNotIn('if native_status == "CANCELLED":\n                                        compose_library_bridge.write_command_result(\n                                            event_request_id,\n                                            "refresh",\n                                            "FAILED"', block)
+
+        self.assertIn("def _cancel_home_refresh(", source)
+        self.assertIn('_set_home_refresh_phase("CANCELLED"', source)
+        coordinator = source[
+            source.index("def _scan_coordinator_state_changed("):
+            source.index("ScanCoordinator(", source.index("def _scan_coordinator_state_changed("))
+        ]
+        self.assertIn('terminal_ui_state = "CANCELLED" if terminal_cancelled else "ERROR"', coordinator)
+        self.assertIn("resetter(terminal_ui_state, 1.6)", coordinator)
 
 
     def test_python_refresh_error_uses_global_source_count_not_saf_folder_count(self):
