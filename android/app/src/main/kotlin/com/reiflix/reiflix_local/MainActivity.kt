@@ -480,32 +480,51 @@ class MainActivity : FlutterFragmentActivity() {
                 applicationContext,
                 NativeIndex.volumeSnapshot(applicationContext),
             )
+            val discoveryEvent = action == Intent.ACTION_MEDIA_MOUNTED ||
+                action == Intent.ACTION_MEDIA_SCANNER_FINISHED
             if (changes.optBoolean("changed")) {
                 val payload = JSONObject(changes.toString())
                     .put("source", "android_storage")
                     .put("reason", action)
                     .put("timestamp", System.currentTimeMillis())
                     .put("volumeEventUri", intent.data?.toString() ?: "")
-                NativeMailbox.write(this@MainActivity, JSONObject()
-                    .put("type", "volume_changed")
-                    .put("payload", payload))
-            }
-
-            // Mirror Nova's media/volume lifecycle integration: a mount or the
-            // completion of Android's MediaScanner is a discovery trigger. Never
-            // launch a permission UI from a broadcast; only start scans when the
-            // current Activity is RESUMED and the corresponding source is actually
-            // authorized.
-            val discoveryEvent = action == Intent.ACTION_MEDIA_MOUNTED ||
-                action == Intent.ACTION_MEDIA_SCANNER_FINISHED
-            if (discoveryEvent && activityResumed) {
+                    .put("nativeScanDispatchOwner", true)
+                lifecycleScope.launch {
+                    try {
+                        val volumeState = withContext(Dispatchers.IO) {
+                            appDependencies.sqliteLibraryRepository.recordNativeVolumeChange(payload)
+                        }
+                        payload.put("nativeStorageOwner", true)
+                            .put("nativeVolumeStateIgnored", volumeState.optBoolean("ignored"))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (exception: Exception) {
+                        // Preserve a safe compatibility fallback if the canonical write fails.
+                        payload.put("nativeStorageOwner", false)
+                            .put("nativeVolumePersistenceError", exception::class.java.simpleName)
+                        Log.e(tag, "Could not persist native volume availability; delegating only this failed write", exception)
+                    }
+                    NativeMailbox.writeBestEffort(
+                        this@MainActivity,
+                        JSONObject().put("type", "volume_changed").put("payload", payload),
+                    )
+                    if (discoveryEvent && activityResumed) {
+                        publishScanRequest(
+                            "VOLUME_MOUNT",
+                            source = null,
+                            full = false,
+                            reason = action,
+                        )
+                    }
+                }
+            } else if (discoveryEvent && activityResumed) {
                 publishScanRequest(
                     "VOLUME_MOUNT",
                     source = null,
                     full = false,
                     reason = action,
                 )
-            } else if (action == Intent.ACTION_MEDIA_UNMOUNTED ||
+            }            } else if (action == Intent.ACTION_MEDIA_UNMOUNTED ||
                 action == Intent.ACTION_MEDIA_EJECT ||
                 action == Intent.ACTION_MEDIA_REMOVED ||
                 action == Intent.ACTION_MEDIA_BAD_REMOVAL) {
