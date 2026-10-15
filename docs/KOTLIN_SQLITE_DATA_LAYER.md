@@ -68,7 +68,6 @@ Foi adicionado `ReiAnixSqliteLibraryMutations.kt` como extensão do repositório
 | `findEpisodeByPathOrFileUri` | Consulta de caminho exato; reconhece equivalência entre caminho absoluto e `file://`. Não inventa equivalências SAF/content URI; recusa resultados ambíguos. |
 | `findEpisodesByMediaIdentity` | Consulta pela identidade de mídia persistida, sem gerar IDs substitutos. |
 | `resolveLocalAnimeOwner` | Resolve primeiro pelo ID/identidade/caminho/fonte + caminho relativo/volume e usa a chave local só como último fallback; não escolhe arbitrariamente um proprietário ambíguo. |
-| `setAnimeFavorite` | Define o estado desejado dentro de transação. A operação de favorito já era nativa via `ReiAnixPersonalListService`; a nova função fornece também a operação idempotente para consumidores que necessitem definir o estado. |
 | `toggleAnimePinned` | Alterna o campo canônico `anime.is_pinned` em uma transação; falha para ID inexistente. |
 | `setAnimePersonalNote` | Persiste no campo canônico, mantém o limite de 2.000 caracteres e normaliza nota vazia para `NULL`. |
 | `setAnimeUserTags` | Persiste JSON no campo `anime.user_tags`, normaliza espaços, deduplica sem diferenciar maiúsculas/minúsculas e não cria tabela alternativa. |
@@ -87,7 +86,7 @@ Os métodos acima não criam nem removem registros e não introduzem novas tabel
 
 ### Biblioteca e listas pessoais
 
-A mudança de favorito já estava no caminho Kotlin: `ReiAnixLibraryViewModel.toggleFavorite` usa `ReiAnixPersonalListService`, que modifica o campo `anime.favorite` do banco canônico. A ponte de projeção `ReiAnixLibraryRepository` é usada depois da gravação para republicar o catálogo apresentado, não para repetir a mutação de favorito.
+A mudança de favorito já estava no caminho Kotlin: `ReiAnixLibraryViewModel.toggleFavorite` usa `ReiAnixPersonalListService`, que modifica o campo `anime.favorite` do banco canônico. Esse serviço permanece o único writer da operação de favoritos. A ponte de projeção `ReiAnixLibraryRepository` é usada depois da gravação para republicar o catálogo apresentado, não para repetir a mutação de favorito.
 
 O ViewModel passou a usar explicitamente a instância compartilhada de `ReiAnixSqliteLibraryRepository` do grafo nativo para os serviços de consulta, lista pessoal e consumo. O fallback de construção também compartilha uma instância de repositório/database dentro daquele ViewModel, evitando locks independentes entre os serviços que participam do mesmo fluxo.
 
