@@ -544,7 +544,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         )
 
         assertEquals("The original synopsis.", updated.descriptionOriginal)
-        assertEquals(before.localPath, updated.localPath)
+        assertEquals(before.favorite, updated.favorite)
         assertEquals(before.lookupTitle, updated.lookupTitle)
     }
 
