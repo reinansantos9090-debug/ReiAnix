@@ -951,22 +951,6 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         self.assertIn("elif event_type == 'saf_library_scan_complete':", main)
         self.assertIn('compose_library_bridge.write_command_result(', main)
 
-    def test_compose_library_refresh_dispatches_native_scan_and_terminal_result(self):
-        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
-        refresh_start = repository.index("fun refresh(")
-        refresh = repository[refresh_start:repository.index("fun loadLibraryPage(", refresh_start)]
-        self.assertIn('appendQueryParameter("action", "scan_library")', refresh)
-        self.assertIn("MainActivity::class.java", refresh)
-        self.assertNotIn("send(ReiAnixLibraryCommandCodec.Action.REFRESH)", refresh)
-
-        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        self.assertIn('"scan_library" -> {', activity)
-        self.assertIn('"type", "saf_library_scan_complete"', activity)
-
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("elif event_type == 'saf_library_scan_complete':", main)
-        self.assertIn('compose_library_bridge.write_command_result(', main)
-
     def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         start = source.index("override fun onResume()")
