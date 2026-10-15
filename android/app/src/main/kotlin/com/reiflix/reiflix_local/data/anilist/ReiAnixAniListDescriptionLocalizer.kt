@@ -37,7 +37,10 @@ class ReiAnixAniListDescriptionLocalizer(
     private val translationPermits = Semaphore(MAX_CONCURRENT_TRANSLATIONS)
     private val keyLocks = ConcurrentHashMap<String, Mutex>()
 
-    suspend fun localizeToPtBr(description: String, sourceLanguage: String? = null): String? {
+    suspend fun localizeToPtBr(description: String, sourceLanguage: String? = null): String? =
+        withContext(Dispatchers.IO) { localizeToPtBrOnIo(description, sourceLanguage) }
+
+    private suspend fun localizeToPtBrOnIo(description: String, sourceLanguage: String?): String? {
         val original = normalizeDescription(description)
         if (original.isEmpty()) return null
 
@@ -99,7 +102,10 @@ class ReiAnixAniListDescriptionLocalizer(
         }
     }
 
-    suspend fun getCachedDescriptionPtBr(description: String, sourceLanguage: String? = null): String? {
+    suspend fun getCachedDescriptionPtBr(description: String, sourceLanguage: String? = null): String? =
+        withContext(Dispatchers.IO) { getCachedDescriptionPtBrOnIo(description, sourceLanguage) }
+
+    private suspend fun getCachedDescriptionPtBrOnIo(description: String, sourceLanguage: String?): String? {
         val original = normalizeDescription(description)
         if (original.isEmpty()) return null
         var source = normalizeSourceLanguage(sourceLanguage)
