@@ -1374,6 +1374,26 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(byPath?.id, byFileUri?.id)
         assertEquals("catalog-key", repository.getAnimeByLookupTitle("catalog-key")?.lookupTitle)
 
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "UPDATE episodes SET media_identity = ?, source_folder = ?, relative_path = ?, volume_id = ? WHERE id = ?",
+                arrayOf("persisted-media-identity", "/media/show", "Season 1/Episode 01.mkv", "volume-1", 7L),
+            )
+        }
+        assertEquals(
+            1L,
+            repository.resolveLocalAnimeOwner(mediaIdentity = "persisted-media-identity"),
+        )
+        assertEquals(
+            1L,
+            repository.resolveLocalAnimeOwner(
+                sourceFolder = "/media/show",
+                relativePath = "Season 1/Episode 01.mkv",
+                volumeId = "volume-1",
+            ),
+        )
+        assertEquals(1L, repository.resolveLocalAnimeOwner(lookupTitle = "catalog-key"))
+
         repository.setAnimeFavorite(1L, favorite = false)
         assertEquals(false, repository.getAnime(1L)?.favorite)
         repository.setAnimeFavorite(1L, favorite = true)
