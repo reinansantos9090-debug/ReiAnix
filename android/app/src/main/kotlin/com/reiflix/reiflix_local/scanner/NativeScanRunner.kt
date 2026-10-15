@@ -51,13 +51,117 @@ object NativeScanRunner {
             val active = NativeScanController.snapshot(scanId)
             if (active != null && !active.state.isTerminal) continue
 
-            val outcome = item.optString("nativeCatalogWriteOutcome").ifBlank { "UNKNOWN" }
-            val committed = outcome == "COMMITTED"
-            val uncertain = outcome !in setOf("NOT_STARTED", "NOT_COMMITTED", "COMMITTED")
+            var outcome = item.optString("nativeCatalogWriteOutcome").ifBlank { "UNKNOWN" }
             val snapshotAvailable = item.optBoolean("snapshotAvailable") &&
                 outcome in setOf("NOT_STARTED", "NOT_COMMITTED")
             val documents = if (snapshotAvailable) item.optJSONArray("documents") ?: JSONArray() else JSONArray()
-            val report = item.optJSONObject("nativeCatalogWriteReport") ?: JSONObject()
+            var report = item.optJSONObject("nativeCatalogWriteReport")?.let { JSONObject(it.toString()) }
+                ?: JSONObject()
+
+            // Recovery snapshots are positive evidence only. Re-index them in Kotlin with an
+            // intentionally partial snapshot so a process interruption can never authorize
+            // missing-file reconciliation. Unknown write outcomes never reach this path.
+            if (snapshotAvailable) {
+                try {
+                    val recoveredTreeUri = Uri.parse(treeUri)
+                    val treeIdentity = SafScanner.treeIdentity(recoveredTreeUri)
+                    check(treeIdentity.documentId.isNotBlank()) {
+                        "Recovered SAF snapshot has no validated scope identity."
+                    }
+                    val authorization = runCatching {
+                        SafScanner.inspectTree(appContext, recoveredTreeUri, requirePersisted = true)
+                    }.getOrElse { error ->
+                        Log.w(TAG, "Recovered SAF snapshot is being retained as positive evidence after authorization inspection failed.", error)
+                        JSONObject().put("status", SafScanner.STATUS_UNAVAILABLE)
+                    }
+                    val scopeRef = item.optString("scopeRef").trim().ifBlank { treeUri }
+                    val recoveredSnapshot = NativeLibraryScanSnapshot(
+                        operationId = scanId,
+                        source = NativeIndex.SOURCE_SAF,
+                        scopeRoot = treeIdentity.documentId,
+                        expectedLocations = setOf(treeIdentity.documentId),
+                        processedLocations = emptySet(),
+                        failedLocations = emptySet(),
+                        unprocessedLocations = setOf(treeIdentity.documentId),
+                        status = SafScanner.STATUS_PARTIAL,
+                        complete = false,
+                        cancelled = item.optString("status").equals(NativeIndex.STATUS_CANCELLED, ignoreCase = true),
+                        authorizationValid = authorization.optString("status") in setOf(
+                            SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE,
+                        ),
+                        items = discoveredMediaFromSnapshot(documents, scopeRef),
+                        scopeReference = scopeRef,
+                        scanGeneration = generation,
+                    )
+                    check(NativeIndex.markNativeCatalogIndexing(
+                        appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
+                    )) { "Could not persist recovery indexing receipt for the verified SAF snapshot." }
+
+                    val recoveryOutcome = AtomicReference<ReiAnixSqliteTransactionOutcome?>(null)
+                    val recoveryReport = AtomicReference<NativeLibraryIndexReport?>(null)
+                    val indexedReport = ReiAnixAppDependencies.from(appContext).libraryService
+                        .indexDiscoveredMedia(recoveredSnapshot) { transactionOutcome, transactionReport ->
+                            recoveryOutcome.set(transactionOutcome)
+                            when (transactionOutcome) {
+                                ReiAnixSqliteTransactionOutcome.COMMITTED -> {
+                                    if (transactionReport != null) {
+                                        recoveryReport.set(transactionReport)
+                                        if (!NativeIndex.markNativeCatalogCommitted(
+                                                appContext, NativeIndex.SOURCE_SAF, scopeKey, generation, transactionReport,
+                                            )
+                                        ) {
+                                            Log.e(TAG, "Recovery SQLite commit succeeded but its durable commit receipt could not be recorded.")
+                                        }
+                                    } else {
+                                        NativeIndex.markNativeCatalogCommittedWithoutReport(
+                                            appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
+                                            "Recovery SQLite commit was confirmed but its report was unavailable.",
+                                        )
+                                    }
+                                }
+                                ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
+                                    if (!NativeIndex.markNativeCatalogNotCommitted(
+                                            appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
+                                            "Recovery SQLite transaction rolled back before a commit was confirmed.",
+                                        )
+                                    ) {
+                                        Log.w(TAG, "Could not persist recovery rollback receipt; ownership remains native and no legacy ingestion is emitted.")
+                                    }
+                                }
+                                ReiAnixSqliteTransactionOutcome.UNKNOWN -> {
+                                    NativeIndex.markNativeCatalogOutcomeUnknown(
+                                        appContext, NativeIndex.SOURCE_SAF, scopeKey, generation,
+                                        "Recovery SQLite transaction finalization did not provide a definitive outcome.",
+                                    )
+                                }
+                            }
+                        }
+                    if (recoveryOutcome.get() != ReiAnixSqliteTransactionOutcome.COMMITTED) {
+                        Log.w(TAG, "Could not confirm native positive-only recovery indexing; preserving the receipt for a later recovery attempt.")
+                        continue
+                    }
+                    val committedReport = recoveryReport.get() ?: indexedReport
+                    outcome = "COMMITTED"
+                    report = JSONObject()
+                        .put("status", if (committedReport.reconciliationAuthorized) "COMPLETED" else "PARTIAL")
+                        .put("operationId", committedReport.operationId)
+                        .put("inserted", committedReport.inserted)
+                        .put("updated", committedReport.updated)
+                        .put("unchanged", committedReport.unchanged)
+                        .put("ambiguous", committedReport.ambiguous)
+                        .put("rejectedOutOfScope", committedReport.rejectedOutOfScope)
+                        .put("reconciledMissing", committedReport.reconciledMissing)
+                        .put("reconciliationAuthorized", committedReport.reconciliationAuthorized)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (exception: Exception) {
+                    Log.e(TAG, "Could not recover interrupted SAF discoveries in Kotlin; preserving receipt without transferring writes to Python.", exception)
+                    continue
+                }
+            }
+
+            val committed = outcome == "COMMITTED"
+            val uncertain = outcome !in setOf("NOT_STARTED", "NOT_COMMITTED", "COMMITTED")
             val sourceStatus = item.optString("status")
             val trustedNativeCompletion = committed &&
                 item.optBoolean("completeSnapshotPublished") &&
@@ -161,7 +265,7 @@ object NativeScanRunner {
                 NativeIndex.markRecoveryEventPublished(appContext, NativeIndex.SOURCE_SAF, scopeKey, generation)
             }.onFailure { Log.w(TAG, "Recovery event is durable, but its receipt marker could not be persisted.", it) }
 
-            if (!committed && !uncertain &&
+            if (
                 item.optString("status") in setOf(NativeIndex.STATUS_STARTED, NativeIndex.STATUS_RUNNING)
             ) {
                 runCatching {
