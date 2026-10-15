@@ -1092,6 +1092,128 @@ class ReiAnixSqliteLibraryRepository(
     }
 
     /**
+     * Reads a coherent bounded domain of catalog records from the existing SQLite source.
+     * The UI already requires anime and episode relationships in memory; grouping is performed
+     * after set-based SQL queries, rather than issuing one query per anime or per artwork item.
+     * Episode observations that are exclusively removed from multiple scopes remain excluded
+     * under the same legacy projection rules.
+     */
+    suspend fun loadLibraryCatalogRows(): List<ReiAnixLibraryCatalogRow> = withContext(Dispatchers.IO) {
+        database.read { connection ->
+            val animes = connection.rawQuery(
+                "SELECT * FROM anime ORDER BY added_at DESC, title COLLATE NOCASE ASC, id DESC",
+                null,
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.toAnimeRecord())
+                }
+            }
+            if (animes.isEmpty()) return@read emptyList()
+
+            val animeIds = animes.map { it.id.toString() }
+            val animePlaceholders = animeIds.joinToString(",") { "?" }
+            val episodes = connection.rawQuery(
+                """
+                SELECT e.* FROM episodes e
+                WHERE e.anime_id IN ($animePlaceholders)
+                  AND (
+                    NOT EXISTS (
+                      SELECT 1 FROM episode_observations o WHERE o.episode_id=e.id
+                    )
+                    OR EXISTS (
+                      SELECT 1 FROM episode_observations o
+                      WHERE o.episode_id=e.id AND o.state != 'scope_removed'
+                    )
+                    OR (
+                      SELECT COUNT(DISTINCT o.source_kind || '|' || COALESCE(o.scope_ref, ''))
+                      FROM episode_observations o WHERE o.episode_id=e.id
+                    ) < 2
+                  )
+                ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name
+                """.trimIndent(),
+                animeIds.toTypedArray(),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
+                }
+            }
+
+            val episodeIds = episodes.map { it.id.toString() }.distinct()
+            val artworkPredicates = buildString {
+                append("(entity_type IN ('anime','movie') AND entity_id IN ($animePlaceholders))")
+                if (episodeIds.isNotEmpty()) {
+                    append(" OR (entity_type='episode' AND entity_id IN (")
+                    append(episodeIds.joinToString(",") { "?" })
+                    append("))")
+                }
+            }
+            val artworkArguments = animeIds + episodeIds
+            val artwork = connection.rawQuery(
+                "SELECT * FROM artwork WHERE status != 'failed' AND ($artworkPredicates) " +
+                    "ORDER BY priority DESC, updated_at DESC, id DESC",
+                artworkArguments.toTypedArray(),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.toArtworkRecord())
+                }
+            }
+
+            val genres = connection.rawQuery(
+                """
+                SELECT ag.anime_id, g.id, g.canonical_name
+                FROM anime_genres ag
+                JOIN genres g ON g.id=ag.genre_id
+                WHERE ag.anime_id IN ($animePlaceholders)
+                ORDER BY g.normalized_name
+                """.trimIndent(),
+                animeIds.toTypedArray(),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(
+                            Triple(
+                                cursor.getLong(cursor.getColumnIndexOrThrow("anime_id")),
+                                ReiAnixLibraryCatalogGenre(
+                                    id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
+                                    name = cursor.getString(cursor.getColumnIndexOrThrow("canonical_name")),
+                                ),
+                                cursor.getString(cursor.getColumnIndexOrThrow("canonical_name")),
+                            )
+                        )
+                    }
+                }
+            }
+
+            val episodesByAnime = episodes.groupBy { it.animeId }
+            val genresByAnime = genres.groupBy { it.first }.mapValues { (_, rows) -> rows.map { it.second } }
+            val artworkByAnime = artwork
+                .filter { it.entityType == "anime" || it.entityType == "movie" }
+                .mapNotNull { item -> item.entityId.toLongOrNull()?.let { it to item } }
+                .groupBy({ it.first }, { it.second })
+            val episodeArtwork = buildMap<Long, ReiAnixArtworkRecord> {
+                for (item in artwork) {
+                    if (item.entityType != "episode" || item.artworkType != "episode_thumbnail") continue
+                    val episodeId = item.entityId.toLongOrNull() ?: continue
+                    if (item.localPath.isNullOrBlank() && item.externalUrl.isNullOrBlank()) continue
+                    putIfAbsent(episodeId, item)
+                }
+            }
+
+            animes.map { anime ->
+                ReiAnixLibraryCatalogRow(
+                    anime = anime,
+                    episodes = episodesByAnime[anime.id].orEmpty(),
+                    animeArtwork = artworkByAnime[anime.id].orEmpty(),
+                    episodeArtwork = episodeArtwork.filterKeys { episodeId ->
+                        episodesByAnime[anime.id].orEmpty().any { it.id == episodeId }
+                    },
+                    genres = genresByAnime[anime.id].orEmpty(),
+                )
+            }
+        }
+    }
+
+    /**
      * Applies discovery facts to the canonical episodes table. Only verified,
      * in-scope items are touched; destructive missing-state reconciliation is
      * gated by the complete scan receipt and limited to source_folder descendants.
