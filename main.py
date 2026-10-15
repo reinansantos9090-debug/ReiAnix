@@ -5524,6 +5524,37 @@ async def main(page: ft.Page):
                                     bool(old_uri),
                                     bool(new_uri),
                                 )
+                        elif event_type == 'saf_library_scan_complete':
+                            # The native controller owns Android refresh scheduling. This event
+                            # only refreshes the Compose projection and completes the matching UI request.
+                            native_status = str(payload.get('status') or 'FAILED').upper()
+                            native_origin = str(payload.get('origin') or '').upper()
+                            if native_status in {'COMPLETED', 'PARTIAL'}:
+                                on_catalog_changed(
+                                    refresh_request_id=event_request_id if native_origin == 'USER_REFRESH' else None
+                                )
+                                if compose_primary_ui and native_origin == 'USER_REFRESH' and event_request_id:
+                                    compose_library_bridge.write_command_result(
+                                        event_request_id,
+                                        "refresh",
+                                        "COMPLETED",
+                                        message="Varredura nativa concluída.",
+                                    )
+                            else:
+                                if compose_primary_ui and native_origin == 'USER_REFRESH' and event_request_id:
+                                    compose_library_bridge.write_command_result(
+                                        event_request_id,
+                                        "refresh",
+                                        "FAILED",
+                                        error="Nenhuma pasta SAF configurada pôde ser varrida.",
+                                    )
+                                refresh_settings_if_active()
+                            diagnostics.record(
+                                "NATIVE_LIBRARY_SCAN_COMPLETE",
+                                request_id=event_request_id,
+                                result=native_status,
+                                source=native_origin or "unknown",
+                            )
                         elif event_type == 'saf_scan':
                             try:
                                 saf_selection.finish()
