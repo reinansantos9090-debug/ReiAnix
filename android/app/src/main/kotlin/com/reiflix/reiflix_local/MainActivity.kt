@@ -1000,6 +1000,24 @@ class MainActivity : FlutterFragmentActivity() {
                     pendingBroadRequestId = pendingRequestId
                     openBroadStorageSettings()
                 }
+                "scan_library" -> {
+                    nativeRequestState.markOperationState(
+                        pendingRequestId,
+                        "scan_library",
+                        NativeRequestState.OperationState.RUNNING,
+                    )
+                    publishNativeDiagnostic(
+                        "OPERATION_STARTED",
+                        pendingRequestId,
+                        "scan_library",
+                        NativeRequestState.OperationState.RUNNING.name,
+                    )
+                    scanConfiguredSafRoots(
+                        pendingRequestId,
+                        "USER_REFRESH",
+                        "compose_library_refresh",
+                    )
+                }
                 "play" -> {
                     val uri = pendingPlayUri
                     if (!uri.isNullOrBlank()) {
@@ -1420,6 +1438,7 @@ class MainActivity : FlutterFragmentActivity() {
             "request_media_access",
             "open_broad_storage_settings",
             "check_storage_access",
+            "scan_library",
         )
         if (normalized !in allowed) return false
         handleNativeIntent(createNativeStorageActionIntent(this, normalized))
@@ -1556,9 +1575,20 @@ class MainActivity : FlutterFragmentActivity() {
                     openTreePicker(requestId)
                 }
                 "scan_library" -> {
+                    if (!activityResumed) {
+                        if (nativeRequestState.queueLifecycleAction(action, requestId)) {
+                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+                        } else {
+                            publishNativeCommandError(
+                                requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
+                                "Não foi possível atualizar a biblioteca agora. Tente novamente.",
+                            )
+                        }
+                        return
+                    }
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
-                    scanConfiguredSafRoots(requestId, "USER_REFRESH")
+                    scanConfiguredSafRoots(requestId, "USER_REFRESH", "compose_library_refresh")
                 }
                 "scan_tree" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
