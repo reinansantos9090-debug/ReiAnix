@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.viewmodel
 
 import android.content.Context
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -76,7 +77,10 @@ data class ReiAnixNativeFoldersUiState(
  * The existing projection still owns SAF commands and permission state.
  */
 @Keep
-class ReiAnixLibraryViewModel(context: Context) :
+class ReiAnixLibraryViewModel(
+    context: Context,
+    dependencies: ReiAnixAppDependencies? = null,
+) :
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
     private val appContext = context.applicationContext
 
@@ -124,9 +128,10 @@ class ReiAnixLibraryViewModel(context: Context) :
      * repository remains responsible for command/IPC flows until each mutation
      * is migrated with parity and single-writer guarantees.
      */
-    private val nativeLibraryQueries = ReiAnixLibraryQueryService(context)
+    private val nativeLibraryQueries = dependencies?.libraryQueryService ?: ReiAnixLibraryQueryService(context)
     /** Favorite membership uses the canonical SQLite store; playback remains in the consumption service. */
-    private val personalListService = com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(context)
+    private val personalListService = dependencies?.personalListService
+        ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(context)
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
     /** SAF mutations operate only on persisted, user-authorized content URIs. */

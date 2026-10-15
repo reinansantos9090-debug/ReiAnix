@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.viewmodel
 
 import android.content.Context
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import androidx.lifecycle.viewModelScope
 import com.reiflix.reiflix_local.data.anilist.AniListAnime
 import com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult
@@ -32,8 +33,12 @@ data class ReiAnixAniListUiState(
  * AniList operations are isolated from local-library search and projection.
  * The integration service still persists to the canonical SQLite repository.
  */
-class ReiAnixAniListViewModel(context: Context) : ReiAnixViewModel<ReiAnixAniListUiState>() {
-    private val integration = ReiAnixAniListIntegrationService(context.applicationContext)
+class ReiAnixAniListViewModel(
+    context: Context,
+    dependencies: ReiAnixAppDependencies? = null,
+) : ReiAnixViewModel<ReiAnixAniListUiState>() {
+    private val integration = dependencies?.aniListIntegrationService
+        ?: ReiAnixAniListIntegrationService(context.applicationContext)
     private val _aniListUiState = MutableStateFlow(ReiAnixAniListUiState())
     override val uiState: StateFlow<ReiAnixAniListUiState> = _aniListUiState.asStateFlow()
     private var searchJob: Job? = null

@@ -87,6 +87,12 @@ class FletTemplateManifestTests(unittest.TestCase):
 
             manifest = ET.parse(project / "android/app/src/main/AndroidManifest.xml").getroot()
             ns = {"android": "http://schemas.android.com/apk/res/android"}
+            application_element = manifest.find("application")
+            self.assertIsNotNone(application_element)
+            self.assertEqual(
+                application_element.get("{http://schemas.android.com/apk/res/android}name"),
+                "com.reiflix.reiflix_local.ReiAnixApplication",
+            )
             main = next(
                 (
                     activity for activity in manifest.findall(".//activity")

@@ -5,7 +5,7 @@
 - Repositório: `reinansantos9090-debug/ReiAnix`.
 - Branch inspecionada: `main`.
 - Commit de referência antes desta documentação: `a8ef38f4802d4c803e12652edcd507acd1143bd0`.
-- O relatório formal do Prompt 1 não foi encontrado entre os arquivos versionados da branch nem está presente no contexto desta execução. Este documento registra as evidências diretamente encontradas no código atual; não afirma ter lido um relatório ausente.
+- Os documentos formais docs/KOTLIN_MIGRATION_AUDIT.md e docs/KOTLIN_MIGRATION_ROADMAP.md foram produzidos no Prompt 01 e estão incluídos na branch de implementação baseada na head do PR #166; a main usada como baseline antes desse PR ainda não os continha. O PR #166 permanece uma revisão separada e não foi mesclado por esta etapa.
 - O projeto Android ainda é um overlay do host gerado pelo Flet. **A presença de muitas classes Kotlin e de telas Compose não significa que o aplicativo já seja independente de Python/Flet/Flutter.**
 - A versão de esquema declarada por `core/library_store.py` é `LibraryStore.SCHEMA_VERSION = 29`. Esta etapa não altera esquema, registros ou arquivos de dados.
 
@@ -26,6 +26,12 @@ O código já tem uma separação física útil por pacotes Kotlin. A tarefa des
 | Descoberta | `scanner/SafScanner.kt`, `MediaStoreScanner.kt`, `BroadStorageScanner.kt`, `NativeScanController.kt`, `NativeScanRunner.kt`, `NativeScanPublisher.kt`, `MediaStoreRetryScheduler.kt` | Implementação Android de SAF, MediaStore e armazenamento amplo, cancelamento/progresso/publicação. A consolidação do scan e a atualização do catálogo ainda cruzam a mailbox e a camada Python. |
 | Player | `player/NativePlayerRequest.kt`, `PlayerLocalMetadataStore.kt`, `PlayerMediaPolicy.kt`, `LocalSubtitleResolver.kt`, `SystemUiController.kt`, `DeviceInteractionProfile.kt`, `PlayerStartupMetrics.kt`, `PlayerTimeFormatter.kt`; `NativePlayerActivity.kt` e UI de player | Player Media3 e políticas Android já estão no Kotlin. O contrato de reprodução está em `NativePlayerRequest`; progressos/eventos de sessão ainda precisam ser acompanhados até a persistência canônica no fluxo Python. |
 | Gradle/toolchain | `android/settings.gradle.kts`, `android/build.gradle.kts`, `android/app/build.gradle.kts` | Um módulo `:app`, Kotlin 2.0.21, AGP 8.9.1, Java 17, SDK 36, Compose, Navigation, Lifecycle, corrotinas e Media3. Não foi identificada justificativa para novos módulos Gradle ou dependências nesta etapa. |
+
+### Composição nativa introduzida pelo Prompt 02
+
+O código agora registra ReiAnixApplication, que herda de FlutterApplication e preserva a inicialização híbrida, e expõe um objeto ReiAnixAppDependencies por processo. A composição é manual e lazy: ReiAnixSqliteDatabase, o repositório canônico, os leitores de Biblioteca/Configurações, o serviço AniList e o serviço de consumo do player são reutilizados pelos consumidores conectados. NativeScanRunner usa o repositório compartilhado para a indexação de snapshots SAF. Nenhum scan, download ou acesso ao banco é iniciado pelo Application.onCreate.
+
+As projeções JSON/IPC da Biblioteca e das Configurações continuam no escopo dos ViewModels para que os observers sejam fechados com o lifecycle correto. Seus comandos legados ainda são publicados por NativeMailbox e permanecem sob o writer Python até uma etapa futura demonstrar paridade. O launcher MainActivity : FlutterFragmentActivity, a navegação Compose, o shell único, o fluxo de permissões e o player Media3 não foram substituídos por uma arquitetura paralela. O grafo compartilha o lock por instância SQLite entre os consumidores nativos integrados; a coordenação global entre o writer Kotlin e o writer Python continua aberta e é um requisito para a migração de cada operação.
 
 ### Fluxos reais, não o desenho-alvo
 

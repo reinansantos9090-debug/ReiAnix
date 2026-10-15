@@ -22,7 +22,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
-class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
+class ReiAnixSettingsRepository(
+    context: Context,
+    private val sharedSqliteSettingsRepository: ReiAnixSqliteSettingsRepository? = null,
+) : AutoCloseable {
     companion object {
         private const val TAG = "ReiAnixSettingsRepo"
 
@@ -64,7 +67,7 @@ class ReiAnixSettingsRepository(context: Context) : AutoCloseable {
     // Reads the existing LibraryStore preferences table. Writes remain on the
     // single legacy SettingsStore path until the command/runtime cutover is complete.
     private val sqliteSettingsRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        ReiAnixSqliteSettingsRepository(appContext)
+        sharedSqliteSettingsRepository ?: ReiAnixSqliteSettingsRepository(appContext)
     }
     private val dataDirectory = File(appContext.filesDir, "data")
     private val bridgeDirectory = File(dataDirectory, "reianix-compose")

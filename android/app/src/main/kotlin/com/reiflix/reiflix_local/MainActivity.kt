@@ -106,14 +106,18 @@ class MainActivity : FlutterFragmentActivity() {
     private val nativeRequestState = NativeRequestState()
 
     /**
-     * Activity owns screen ViewModels. They survive configuration recreation while
-     * keeping the single repository instance per Activity/ViewModel lifecycle.
+     * The Application owns the process-scoped native service graph. Screen projection
+     * repositories remain ViewModel-scoped and are still closed with their lifecycle.
      */
+    private val appDependencies by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixAppDependencies.from(applicationContext)
+    }
+
     private val libraryViewModel: ReiAnixLibraryViewModel by viewModels {
-        ReiAnixLibraryViewModelFactory(applicationContext)
+        ReiAnixLibraryViewModelFactory(applicationContext, appDependencies)
     }
     private val settingsViewModel: ReiAnixSettingsViewModel by viewModels {
-        ReiAnixSettingsViewModelFactory(applicationContext)
+        ReiAnixSettingsViewModelFactory(applicationContext, appDependencies)
     }
 
     private lateinit var composeLibraryHost: ReiAnixComposeLibraryHost
