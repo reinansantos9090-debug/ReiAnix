@@ -128,18 +128,20 @@ class ReiAnixAniListIntegrationService(
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> {
                     autoMatchAttempts.remove(animeId)
-                    val outcome = when (result.error) {
+                    val outcome = when (val error = result.error) {
                         is AniListError.RateLimited -> "rate_limited"
                         is AniListError.Network -> "network_error"
-                        is AniListError.Http -> if ((result.error as AniListError.Http).statusCode == 429) {
-                            "rate_limited"
-                        } else {
-                            "invalid_response"
+                        is AniListError.Http -> when {
+                            error.statusCode == 429 -> "rate_limited"
+                            error.statusCode >= 500 -> "network_error"
+                            else -> "invalid_response"
                         }
                         is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
                         is AniListError.InvalidRequest -> return result
                     }
-                    runCatching { library.recordAniListAutoMatchOutcome(animeId, outcome) }
+                    // Do not hide a failed outcome write: without the persisted state
+                    // the next catalog refresh would repeat the same remote request.
+                    library.recordAniListAutoMatchOutcome(animeId, outcome)
                     return result
                 }
             }
