@@ -30,9 +30,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
@@ -278,14 +275,36 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val ext = imageExtension(header.toByteArray()) ?: throw InvalidImage("Unknown image signature.")
             if (!validImage(tmp, ext)) throw InvalidImage("Image decoding validation failed.")
             val bounds = imageDimensions(tmp.absolutePath, ext) ?: throw InvalidImage("Invalid image dimensions.")
-            val target = File(cacheDirectory, key + ext)
-            try {
-                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            val checksum = digest.digest().toHex()
+            // Content-addressed names avoid replacing the previous valid image while an
+            // update is materialized. Same-directory rename is atomic on filesystems that
+            // support it. API 24-25 and unusual filesystems fall back to a copied file that
+            // is validated before its path is ever committed to SQLite.
+            val target = File(cacheDirectory, key + "-" + checksum + ext)
+            if (target.exists()) {
+                if (validImage(target, ext)) {
+                    tmp.delete()
+                    return Downloaded(
+                        target, total, bounds.first, bounds.second, checksum,
+                        declared.takeIf { it.startsWith("image/") } ?: mimeFromExtension(ext), code,
+                    )
+                }
+                if (!target.delete()) throw IOException("Could not replace an invalid artwork cache file.")
             }
-            return Downloaded(target, total, bounds.first, bounds.second, digest.digest().toHex(),
-                declared.takeIf { it.startsWith("image/") } ?: mimeFromExtension(ext), code)
+            if (!tmp.renameTo(target)) {
+                try {
+                    tmp.copyTo(target, overwrite = false)
+                    if (!validImage(target, ext)) throw IOException("Promoted artwork copy failed validation.")
+                } catch (error: Exception) {
+                    target.delete()
+                    throw IOException("Could not safely promote the downloaded artwork.", error)
+                }
+                tmp.delete()
+            }
+            return Downloaded(
+                target, total, bounds.first, bounds.second, checksum,
+                declared.takeIf { it.startsWith("image/") } ?: mimeFromExtension(ext), code,
+            )
         } finally {
             tmp.delete(); conn.disconnect()
         }
