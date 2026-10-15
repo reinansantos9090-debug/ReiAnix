@@ -28,7 +28,7 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         self.assertIn("output.fd.sync()", source)
         self.assertIn("ATOMIC_MOVE", source)
         self.assertIn("AtomicMoveNotSupportedException", source)
-        self.assertIn("isValidImage(tmp, ext)", source)
+        self.assertIn("validImage(tmp, ext)", source)
         self.assertIn("conn.disconnect()", source)
         self.assertNotIn("HostnameVerifier", source)
         self.assertNotIn("TrustManager", source)
