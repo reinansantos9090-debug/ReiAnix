@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.DocumentsContract
 import org.json.JSONArray
+import org.json.JSONObject
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import org.json.JSONException
 import kotlinx.coroutines.CancellationException
@@ -604,6 +605,140 @@ class ReiAnixSqliteLibraryRepository(
                 connection.update("folders", values, "path=? AND kind='saf'", arrayOf(normalized)) > 0
             }
         }
+
+    /**
+     * Finalizes native SAF scan bookkeeping in the canonical schema. The scan-run
+     * row is operational metadata; catalog writes/reconciliation remain in the
+     * preceding indexDiscoveredMedia transaction.
+     */
+    suspend fun finishNativeScanRun(
+        scanId: String,
+        requestId: String?,
+        sourceKind: String,
+        scopeKind: String,
+        scopeRef: String,
+        nativeGeneration: Long?,
+        generationId: String?,
+        status: String,
+        stats: JSONObject,
+        indexReport: JSONObject?,
+        startedAtMillis: Long?,
+        finishedAtMillis: Long = System.currentTimeMillis(),
+    ): Boolean = withContext(Dispatchers.IO) {
+        require(scanId.isNotBlank()) { "A scan ID is required." }
+        require(scopeRef.isNotBlank()) { "A scan scope reference is required." }
+        val normalizedSource = sourceKind.trim().lowercase().ifBlank { "unknown" }
+        val normalizedScopeKind = scopeKind.trim().lowercase().ifBlank { "source" }
+        val normalizedStatus = status.trim().uppercase().ifBlank { "FAILED" }
+        val finalStatus = when (normalizedStatus) {
+            "COMPLETED", "COMPLETE" -> "completed"
+            "EMPTY_COMPLETE" -> "empty_complete"
+            "PARTIAL" -> "partial"
+            "UNAVAILABLE" -> "unavailable"
+            "REVOKED" -> "revoked"
+            "CANCELLED", "CANCELED" -> "cancelled"
+            else -> "error"
+        }
+        val generationStatus = when (normalizedStatus) {
+            "COMPLETED", "COMPLETE" -> "COMPLETED"
+            "EMPTY_COMPLETE" -> "EMPTY_COMPLETE"
+            "PARTIAL" -> "PARTIAL"
+            "UNAVAILABLE", "REVOKED" -> "UNAVAILABLE"
+            "CANCELLED", "CANCELED" -> "CANCELLED"
+            else -> "FAILED"
+        }
+        val cancelled = normalizedStatus in setOf("CANCELLED", "CANCELED")
+        val startedSeconds = (startedAtMillis?.takeIf { it > 0L } ?: finishedAtMillis) / 1000.0
+        val finishedSeconds = finishedAtMillis / 1000.0
+        val elapsedMillis = (finishedAtMillis - (startedAtMillis?.takeIf { it > 0L } ?: finishedAtMillis)).coerceAtLeast(0L)
+        val errors = linkedSetOf<String>()
+        stats.optJSONArray("errors")?.let { raw ->
+            for (index in 0 until raw.length()) raw.optString(index).trim().takeIf { it.isNotEmpty() }?.let(errors::add)
+        }
+        indexReport?.optString("terminalError")?.trim()?.takeIf { it.isNotEmpty() }?.let(errors::add)
+        val files = stats.optInt("files", stats.optInt("discovered", 0)).coerceAtLeast(0)
+        val videos = stats.optInt("videos", 0).coerceAtLeast(0)
+        val inserted = indexReport?.optInt("inserted", stats.optInt("new", 0)) ?: stats.optInt("new", 0)
+        val updated = indexReport?.optInt("updated", stats.optInt("updated", 0)) ?: stats.optInt("updated", 0)
+        val unchanged = indexReport?.optInt("unchanged", stats.optInt("unchanged", 0)) ?: stats.optInt("unchanged", 0)
+        val reconciled = indexReport?.optInt("reconciledMissing", 0) ?: 0
+        val ignored = stats.optInt("ignored", 0).coerceAtLeast(0)
+        val duplicates = stats.optInt("duplicates", 0).coerceAtLeast(0)
+        val unknown = stats.optInt("unknown", 0).coerceAtLeast(0)
+        val reportErrors = JSONArray(errors.toList()).toString()
+        val folderAuthorization = when (normalizedStatus) {
+            "COMPLETED", "COMPLETE", "EMPTY_COMPLETE", "PARTIAL" -> "granted"
+            "UNAVAILABLE" -> "unavailable"
+            "REVOKED" -> "revoked"
+            else -> null
+        }
+
+        database.transaction { connection ->
+            val existing = connection.rawQuery(
+                "SELECT id, started_at, errors FROM scan_runs WHERE scan_id = ? ORDER BY id DESC LIMIT 1",
+                arrayOf(scanId),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) Triple(cursor.getLong(0), cursor.getDouble(1), cursor.getString(2).orEmpty()) else null
+            }
+            val mergedErrors = linkedSetOf<String>()
+            existing?.third?.let { raw ->
+                runCatching { JSONArray(raw) }.getOrNull()?.let { prior ->
+                    for (index in 0 until prior.length()) prior.optString(index).trim().takeIf { it.isNotEmpty() }?.let(mergedErrors::add)
+                }
+            }
+            mergedErrors.addAll(errors)
+            val values = ContentValues().apply {
+                put("finished_at", finishedSeconds)
+                put("status", finalStatus)
+                put("folders", 1)
+                put("files", files)
+                put("videos", videos)
+                put("animes", connection.rawQuery("SELECT COUNT(*) FROM anime", null).use { if (it.moveToFirst()) it.getInt(0) else 0 })
+                put("episodes", connection.rawQuery("SELECT COUNT(*) FROM episodes", null).use { if (it.moveToFirst()) it.getInt(0) else 0 })
+                put("new_files", inserted.coerceAtLeast(0))
+                put("updated_files", updated.coerceAtLeast(0))
+                put("unchanged_files", unchanged.coerceAtLeast(0))
+                put("ignored_files", ignored)
+                put("duplicate_files", duplicates)
+                put("unknown_files", unknown)
+                put("reconciled_files", reconciled.coerceAtLeast(0))
+                put("scan_id", scanId)
+                put("request_id", requestId)
+                put("source", normalizedSource)
+                put("scope", scopeRef)
+                put("source_kind", normalizedSource)
+                put("scope_kind", normalizedScopeKind)
+                put("scope_ref", scopeRef)
+                if (nativeGeneration == null) putNull("native_generation") else put("native_generation", nativeGeneration)
+                put("generation_id", generationId ?: scanId)
+                put("generation_status", generationStatus)
+                put("cancelled", if (cancelled) 1 else 0)
+                put("discovered", stats.optInt("discovered", files).coerceAtLeast(0))
+                put("processed", stats.optInt("processed", files).coerceAtLeast(0))
+                put("inserted_files", inserted.coerceAtLeast(0))
+                put("removed_files", reconciled.coerceAtLeast(0))
+                put("elapsed_ms", elapsedMillis)
+                put("errors", JSONArray(mergedErrors.toList()).toString())
+            }
+            if (existing == null) {
+                values.put("started_at", startedSeconds)
+                connection.insertOrThrow("scan_runs", null, values)
+            } else {
+                values.put("started_at", existing.second)
+                connection.update("scan_runs", values, "id = ?", arrayOf(existing.first.toString()))
+            }
+            if (normalizedSource == "saf" && folderAuthorization != null) {
+                val folderValues = ContentValues().apply {
+                    put("authorization", folderAuthorization)
+                    put("last_scan_at", finishedSeconds)
+                    val error = mergedErrors.firstOrNull()
+                    if (error == null || folderAuthorization == "granted") putNull("last_error") else put("last_error", error)
+                }
+                connection.update("folders", folderValues, "path = ? AND kind = 'saf'", arrayOf(scopeRef))
+            }
+            true
+        }
+    }
 
     suspend fun removeSafFolder(reference: String): Boolean = withContext(Dispatchers.IO) {
         val normalized = reference.trim()
