@@ -84,7 +84,6 @@ class ReiAnixSettingsRepository(
     private data class PendingSetting(
         val requestId: String,
         val key: String,
-        val value: String,
         val confirmedValue: String,
     )
 
@@ -171,7 +170,7 @@ class ReiAnixSettingsRepository(
                 ?: normalizedValue
             confirmedSettings.putIfAbsent(normalizedKey, confirmedValue)
             pendingSettings[normalizedKey] = PendingSetting(
-                requestId, normalizedKey, normalizedValue, confirmedValue,
+                requestId, normalizedKey, confirmedValue,
             )
             _state.value = current.copy(
                 operations = upsertOperationLocked(
