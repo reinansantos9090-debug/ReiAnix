@@ -337,8 +337,6 @@ class ReiAnixAniListDescriptionLocalizer(
         val ranked = cache.keys().asSequence().mapNotNull { key ->
             cache.optJSONObject(key)?.let { entry -> Triple(key, entry, entry.optDouble("updated_at", 0.0)) }
         }.sortedByDescending { it.third }.take(MAX_CACHE_ENTRIES).toList()
-        val retained = JSONObject()
-        ranked.forEach { retained.put(it.first, it.second) }
         val keys = cache.keys().asSequence().toList()
         keys.forEach { key -> cache.remove(key) }
         ranked.forEach { retainedKey -> cache.put(retainedKey.first, retainedKey.second) }
@@ -374,7 +372,7 @@ class ReiAnixAniListDescriptionLocalizer(
         const val MAX_TRANSLATION_ATTEMPTS = 3
         const val MAX_CONCURRENT_TRANSLATIONS = 2
         const val MAX_RETRY_AFTER_SECONDS = 8L
-        const val FAILED_RETRY_WINDOW_SECONDS = 30 * 60.0
+        const val FAILED_RETRY_WINDOW_SECONDS = 60 * 60.0
 
         private val PORTUGUESE_WORDS = setOf(
             "que", "uma", "um", "não", "com", "quando", "através", "está", "são", "dos", "das",
