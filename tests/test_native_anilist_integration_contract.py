@@ -101,18 +101,19 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         service = SERVICE.read_text(encoding="utf-8")
         dependencies = (KOTLIN / "ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = main.index("if event_type == 'anilist_artwork_sync':")
+        start = main.index("if event_type == 'anilist_metadata_committed':")
         end = main.index("if event_type == 'compose_settings_set':", start)
         handler = main[start:end]
 
         self.assertIn('"type", "anilist_metadata_committed"', service)
-        self.assertIn('"type", "anilist_artwork_sync"', dependencies)
+        self.assertIn('"type", "anilist_metadata_committed"', dependencies)
         self.assertIn("NativeMailbox.write(", dependencies)
-        self.assertIn("if request_artwork and (", handler)
+        self.assertIn("if request_artwork and has_artwork_urls:", handler)
         self.assertIn("library.artwork.sync_anime_metadata(", handler)
         self.assertIn("request_download=True", handler)
         self.assertIn('library.artwork.request(', handler)
         self.assertIn("compose_library_bridge.request_publish(", handler)
+        self.assertIn("anilist_metadata_updated:", handler)
         self.assertNotIn("library.anilist", handler)
         self.assertNotIn("AniListClient", handler)
 
