@@ -49,6 +49,7 @@ class NativeRequestStateTest {
         assertTrue(NativeRequestState.isSupportedAction("scan_tree"))
         assertTrue(NativeRequestState.isSupportedAction("open_broad_storage_settings"))
         assertTrue(NativeRequestState.isSupportedAction("open_storage_settings"))
+        assertTrue(NativeRequestState.isSupportedAction("scan_library"))
     }
 
     @Test
