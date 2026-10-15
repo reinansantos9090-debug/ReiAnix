@@ -184,7 +184,7 @@ Base efetiva desta implementação: `main` em `e115d69e9d970defb075c812b34663f17
 - `MainActivity` encaminha mudanças de volume ao serviço; `ReiAnixLibraryViewModel` encaminha reconciliação de identidade SAF depois da mutação confirmada pelo provider.
 - `NativeLibraryScanSnapshot` e `indexDiscoveredMedia` preservam o contrato de escopo, deduplicação, patch seletivo, dados associados e autorização conservadora para marcar ausências.
 - A recuperação usa o mesmo repositório em estado explícito parcial. Resultado de transação desconhecido não é reindexado nem transferido ao Python; receipts positivos/rollback que continuam recuperáveis são preservados para nova tentativa Kotlin.
-- Adicionados `ReiAnixNativeLibraryCatalogProjector` e `loadLibraryCatalogRows()`: Home/Biblioteca e consumidores derivados do `ReiAnixLibraryViewModel` recebem anime/episódios/artwork/gêneros lidos do SQLite canônico; a paginação filtrada usa o filtro/sort Kotlin existente e não delega mais para `ReiAnixLibraryRepository.loadLibraryPage`.
+- Adicionados `ReiAnixNativeLibraryCatalogProjector` e `loadLibraryCatalogRows()`: Home/Biblioteca e consumidores derivados do `ReiAnixLibraryViewModel` recebem anime/episódios/artwork/gêneros lidos do SQLite canônico; a paginação e filtros da Biblioteca usam `ReiAnixLibraryQueryService.searchAnime(libraryOnly=true)` e `searchAnimeIds()` com ordenação, offset/limit e total correspondentes, sem delegar para `ReiAnixLibraryRepository.loadLibraryPage`.
 - Adicionada `docs/KOTLIN_LIBRARY_INDEXING_MIGRATION.md` e teste de contrato para o ownership e o cutover de projeção Compose.
 
 ### Fronteiras que continuam abertas
