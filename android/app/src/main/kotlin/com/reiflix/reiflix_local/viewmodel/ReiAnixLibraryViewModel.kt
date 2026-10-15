@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
@@ -137,6 +138,8 @@ class ReiAnixLibraryViewModel(
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository(context)
     private val nativeLibraryQueries = dependencies?.libraryQueryService
         ?: ReiAnixLibraryQueryService(context, nativeLibraryRepository)
+    private val nativeLibraryService = dependencies?.libraryService
+        ?: ReiAnixLibraryService(nativeLibraryRepository)
     private val personalListService = dependencies?.personalListService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(
             nativeLibraryRepository.database,
@@ -187,7 +190,7 @@ class ReiAnixLibraryViewModel(
             }
 
             val reconciliation = withContext(Dispatchers.IO) {
-                nativeLibraryRepository.reconcileSafDocumentIdentityChange(
+                nativeLibraryService.reconcileSafDocumentIdentityChange(
                     oldUri = oldUri.toString(),
                     newUri = result.uri.toString(),
                     name = result.name,
