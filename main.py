@@ -3981,14 +3981,15 @@ async def main(page: ft.Page):
             request_id,
             setting_key,
         )
-        await _write_compose_settings_result(
-            request_id,
-            "set:" + setting_key,
-            "RUNNING",
-            operation_state="RUNNING",
-            key=setting_key,
-            message="Persistindo configuração.",
-        )
+        if not native_persisted:
+            await _write_compose_settings_result(
+                request_id,
+                "set:" + setting_key,
+                "RUNNING",
+                operation_state="RUNNING",
+                key=setting_key,
+                message="Persistindo configuração.",
+            )
         try:
             async with _compose_setting_lock(setting_key):
                 if native_persisted:
@@ -4006,10 +4007,10 @@ async def main(page: ft.Page):
                     )
             apply_settings_runtime(setting_key, normalized)
             logger.info(
-                "SETTINGS_PERSISTED requestId=%s key=%s value=%s",
+                "%s requestId=%s key=%s",
+                "SETTINGS_RUNTIME_APPLIED" if native_persisted else "SETTINGS_PERSISTED",
                 request_id,
                 setting_key,
-                normalized,
             )
             compose_settings_bridge.request_publish("setting:" + setting_key)
             logger.info(
@@ -4017,15 +4018,16 @@ async def main(page: ft.Page):
                 request_id,
                 setting_key,
             )
-            await _write_compose_settings_result(
-                request_id,
-                "set:" + setting_key,
-                "SUCCESS",
-                operation_state="SUCCESS",
-                key=setting_key,
-                value=normalized,
-                message="Configuração persistida.",
-            )
+            if not native_persisted:
+                await _write_compose_settings_result(
+                    request_id,
+                    "set:" + setting_key,
+                    "SUCCESS",
+                    operation_state="SUCCESS",
+                    key=setting_key,
+                    value=normalized,
+                    message="Configuração persistida.",
+                )
             performance.event(
                 "SETTINGS_SNAPSHOT_PUBLISHED",
                 request_id=request_id,
@@ -4038,14 +4040,15 @@ async def main(page: ft.Page):
                 int((performance.now() - started) * 1000),
             )
         except asyncio.CancelledError:
-            await _write_compose_settings_result(
-                request_id,
-                "set:" + setting_key,
-                "CANCELLED",
-                operation_state="CANCELLED",
-                key=setting_key,
-                error="Operação de configuração cancelada.",
-            )
+            if not native_persisted:
+                await _write_compose_settings_result(
+                    request_id,
+                    "set:" + setting_key,
+                    "CANCELLED",
+                    operation_state="CANCELLED",
+                    key=setting_key,
+                    error="Operação de configuração cancelada.",
+                )
             raise
         except Exception as exc:
             logger.exception(
@@ -4053,15 +4056,23 @@ async def main(page: ft.Page):
                 setting_key,
                 request_id,
             )
-            await _write_compose_settings_result(
-                request_id,
-                "set:" + setting_key,
-                "ERROR",
-                operation_state="ERROR",
-                key=setting_key,
-                error=str(exc),
-                message="Não foi possível persistir a configuração.",
-            )
+            if native_persisted:
+                diagnostics.record(
+                    "SETTINGS_RUNTIME_APPLY_FAILED",
+                    request_id=request_id,
+                    key=setting_key,
+                    error=type(exc).__name__,
+                )
+            else:
+                await _write_compose_settings_result(
+                    request_id,
+                    "set:" + setting_key,
+                    "ERROR",
+                    operation_state="ERROR",
+                    key=setting_key,
+                    error=str(exc),
+                    message="Não foi possível persistir a configuração.",
+                )
             logger.info(
                 "SETTINGS_OPERATION_END requestId=%s action=set key=%s result=ERROR durationMs=%s",
                 request_id,
@@ -4753,11 +4764,12 @@ async def main(page: ft.Page):
                                     diagnostics.record("SETTINGS_COMMAND_RECEIVED", request_id=request_id, action="set", key=setting_key)
                                     performance.event("SETTINGS_COMMAND_RECEIVED", request_id=request_id, metadata={"action": "set", "key": setting_key})
                                     logger.info("SETTINGS_COMMAND_RECEIVED requestId=%s action=set key=%s", request_id, setting_key)
-                                    compose_settings_bridge.write_command_result(
-                                        request_id, "set:" + setting_key, "ACK",
-                                        operation_state="QUEUED", key=setting_key,
-                                        message="Comando recebido e agendado.",
-                                    )
+                                    if not native_persisted:
+                                        compose_settings_bridge.write_command_result(
+                                            request_id, "set:" + setting_key, "ACK",
+                                            operation_state="QUEUED", key=setting_key,
+                                            message="Comando recebido e agendado.",
+                                        )
                                     task = asyncio.create_task(
                                         _run_compose_settings_set(
                                             setting_key,
@@ -4768,11 +4780,19 @@ async def main(page: ft.Page):
                                     )
                                     if not _track_compose_settings_task(task):
                                         task.cancel()
-                                        compose_settings_bridge.write_command_result(
-                                            request_id, "set:" + setting_key, "ERROR",
-                                            operation_state="ERROR", key=setting_key,
-                                            error="Limite de operações de Settings em andamento atingido.",
-                                        )
+                                        if not native_persisted:
+                                            compose_settings_bridge.write_command_result(
+                                                request_id, "set:" + setting_key, "ERROR",
+                                                operation_state="ERROR", key=setting_key,
+                                                error="Limite de operações de Settings em andamento atingido.",
+                                            )
+                                        else:
+                                            diagnostics.record(
+                                                "SETTINGS_RUNTIME_APPLY_SKIPPED",
+                                                request_id=request_id,
+                                                key=setting_key,
+                                                reason="settings_task_limit",
+                                            )
                                     else:
                                         diagnostics.record("SETTINGS_ACK", request_id=request_id, action="set", key=setting_key)
                                         performance.event("SETTINGS_ACK", request_id=request_id, metadata={"action": "set", "key": setting_key})
