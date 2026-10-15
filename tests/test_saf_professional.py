@@ -362,6 +362,52 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn('put("phase", "already_running")', media_scan)
 
 
+    def test_global_scan_terminal_statuses_distinguish_success_partial_failure_cancel_and_empty(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        start = source.index("private fun scanConfiguredSafRoots(")
+        end = source.index("private fun scanTree(", start)
+        block = source[start:end]
+        for contract in (
+            'requestedSources == 0 -> "FAILED"',
+            'cancelledScopes == requestedSources && successfulScopes == 0 && failedScopes == 0 -> "CANCELLED"',
+            'successfulScopes == requestedSources && failedScopes == 0 && cancelledScopes == 0 -> "COMPLETED"',
+            'successfulScopes > 0 -> "PARTIAL"',
+            'put("noSourcesAvailable", requestedSources == 0)',
+            'put("sourceResults", sourceResults)',
+            'recordSourceStartFailure(MediaStoreScanner.SOURCE, "scan_not_started")',
+            'recordSourceStartFailure(BroadStorageScanner.SOURCE, "scan_not_started")',
+            'put("requestId", requestId ?: "")',
+            'put("scanId", scanId)',
+        ):
+            self.assertIn(contract, block)
+        self.assertIn("MediaStoreScanner.hasReadPermission(this@MainActivity)", block)
+        self.assertIn("BroadStorageScanner.hasAccess(this@MainActivity)", block)
+        self.assertIn("ScanLifecycleState.CANCELLED ->", block)
+        self.assertIn("ScanLifecycleState.PARTIAL ->", block)
+
+    def test_saf_removal_errors_are_explicit_and_cancellation_is_not_swallowed(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        release = source[
+            source.index("private fun releaseTree("):
+            source.index("private fun verifyTree(", source.index("private fun releaseTree("))
+        ]
+        for code in (
+            '"MISSING_TREE_URI"',
+            '"INVALID_TREE_URI"',
+            '"PERSISTED_PERMISSION_RELEASE_FAILED"',
+            '"SQLITE_SOURCE_REMOVAL_FAILED"',
+        ):
+            self.assertIn(code, release)
+        self.assertIn("catch (cancelled: CancellationException)", release)
+        self.assertIn("throw cancelled", release)
+        self.assertIn("alreadyAbsent", release)
+        self.assertIn("sourceAlreadyAbsent", release)
+        self.assertIn("sourceAccessRecoveryPersisted", release)
+        self.assertIn('updateSafFolderAccess(', release)
+        self.assertIn('"unavailable"', release)
+        self.assertIn("pendingSafReleaseWaiters.remove(normalizedReference)", release)
+        self.assertIn('.put("requestId", waiterId)', release)
+
     def test_python_refresh_error_uses_global_source_count_not_saf_folder_count(self):
         source = MAIN.read_text(encoding="utf-8")
         block = source[source.index("elif event_type == 'saf_library_scan_complete':"):source.index("elif event_type == 'saf_scan':", source.index("elif event_type == 'saf_library_scan_complete':"))]
