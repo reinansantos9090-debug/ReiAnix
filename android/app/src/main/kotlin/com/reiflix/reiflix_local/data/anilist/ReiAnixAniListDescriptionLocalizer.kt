@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.job
+import kotlin.coroutines.coroutineContext
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -62,8 +63,9 @@ class ReiAnixAniListDescriptionLocalizer(
 
         val key = cacheKey(original, source)
         val lock = keyLocks.getOrPut(key) { Mutex() }
-        return lock.withLock {
-            cachedTranslation(original, source)?.let { return@withLock it }
+        return try {
+            lock.withLock {
+                cachedTranslation(original, source)?.let { return@withLock it }
             val now = epochSeconds()
             val existing = readCacheEntry(key)
             val retryAfter = existing?.optDouble("retry_after", 0.0) ?: 0.0
@@ -99,6 +101,8 @@ class ReiAnixAniListDescriptionLocalizer(
                 )
                 null
             }
+        } finally {
+            evictUnusedKeyLocksIfNeeded()
         }
     }
 
@@ -204,6 +208,17 @@ class ReiAnixAniListDescriptionLocalizer(
         val tokens = Regex("[^\\W\\d_]+").findAll(normalized.lowercase(Locale.ROOT)).map { it.value }.toSet()
         if (tokens.intersect(PORTUGUESE_WORDS).size >= 2) return true
         return normalized.any { it in "çãõ" }
+    }
+
+    private fun evictUnusedKeyLocksIfNeeded() {
+        if (keyLocks.size <= MAX_CACHE_ENTRIES) return
+        keyLocks.entries.forEach { entry ->
+            if (keyLocks.size > MAX_CACHE_ENTRIES &&
+                !entry.value.isLocked
+            ) {
+                keyLocks.remove(entry.key, entry.value)
+            }
+        }
     }
 
     private suspend fun translateDescription(original: String, source: String): String? {
