@@ -82,8 +82,19 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
 
-        self.assertIn('nativeLibraryIndexOwner", source == NativeIndex.SOURCE_SAF', publisher)
-        self.assertIn('payload.get("nativeLibraryIndexOwner") is True', main)
+        self.assertIn('nativeLibraryIndexOwner", true', publisher)
+        self.assertIn('if payload.get("nativeLibraryIndexOwner") is True:', main)
+        self.assertNotIn('if source_kind == "saf" and payload.get("nativeLibraryIndexOwner") is True:', main)
+        broad_start = runner.index("suspend fun runBroadScan(")
+        media_start = runner.index("suspend fun runMediaStoreScan(", broad_start)
+        broad_scan = runner[broad_start:media_start]
+        media_scan = runner[media_start:]
+        # Existing domain contract treats these two scans as diagnostics, not catalog sources.
+        self.assertNotIn("indexDiscoveredMedia", broad_scan)
+        self.assertNotIn("indexDiscoveredMedia", media_scan)
+        self.assertIn('result.put("nativeLibraryIndexOwner", true)', broad_scan)
+        self.assertIn('result.put("nativeLibraryIndexOwner", true)', media_scan)
+        self.assertIn("indexDiscoveredMedia", runner[:broad_start])
         self.assertIn("NATIVE_KOTLIN_INDEXER_OWNS_PERSISTENCE", main)
         self.assertIn("NativeIndex.committedDocuments", runner)
         self.assertIn("NativeIndex.stagedDocuments", runner)
