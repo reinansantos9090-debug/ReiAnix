@@ -51,6 +51,8 @@ def test_settings_controls_use_existing_preference_contract():
     assert "native_persisted=native_persisted" in main
     assert "if native_persisted:" in main
     assert "settings.invalidate_cache" in main
+    assert "SETTINGS_RUNTIME_APPLY_FAILED" in main
+    assert "if not native_persisted:" in main
     assert "setting_key" in main
     assert "apply_settings_runtime(setting_key, normalized)" in main
 
