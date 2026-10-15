@@ -1122,6 +1122,7 @@ class ReiAnixLibraryViewModel(
                         .mapValues { (_, snapshot) -> snapshot.finishedAtMillis }
                 }
                 .distinctUntilChanged()
+                .drop(1)
                 .collectLatest { refreshNativeCatalog() }
         }
         // Legacy commands can still mutate unrelated fields; their revision is only an
@@ -1472,7 +1473,10 @@ class ReiAnixLibraryViewModel(
         viewModelScope.launch {
             _personalListMutationError.value = null
             when (val result = personalListService.toggle(animeId)) {
-                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> repository.publishCatalog()
+                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> {
+                    refreshNativeCatalog()
+                    repository.publishCatalog()
+                }
                 com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
                     _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
                 com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
@@ -1502,7 +1506,10 @@ class ReiAnixLibraryViewModel(
         _personalListMutationError.value = null
         val result = operation()
         when (result) {
-            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> repository.publishCatalog()
+            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> {
+                refreshNativeCatalog()
+                repository.publishCatalog()
+            }
             com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
                 _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
             com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
@@ -1525,8 +1532,9 @@ class ReiAnixLibraryViewModel(
             _consumptionMutationError.value = null
             try {
                 consumptionService.setWatched(episodeId, watched)
-                // The projection bridge now only republishes the committed canonical
-                // row; the watched-state mutation itself is performed once by Kotlin.
+                refreshNativeCatalog()
+                // The projection bridge only republishes compatibility/diagnostic state;
+                // the watched-state mutation itself is performed once by Kotlin.
                 repository.publishCatalog()
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
