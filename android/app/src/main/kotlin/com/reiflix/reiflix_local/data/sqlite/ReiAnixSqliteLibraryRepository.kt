@@ -1679,4 +1679,5 @@ data class ReiAnixSqliteSearchPage(
     val offset: Int,
     val limit: Int,
     val hasMore: Boolean,
+    val totalCount: Int = 0,
 )
