@@ -472,21 +472,13 @@ class ReiAnixSettingsRepository(
                         snapshotState
                     }
                     if (base.status == ReiAnixSettingsLoadStatus.READY) {
+                        // The SQLite snapshot is authoritative. Do not let a pending
+                        // write leak into Compose before the writer confirms its commit,
+                        // and do not remove its request token from a projection callback.
                         confirmedSettings.clear()
                         confirmedSettings.putAll(base.settings)
-                        val effective = base.settings.toMutableMap()
-                        val confirmedPending = mutableListOf<String>()
-                        for ((key, pending) in pendingSettings) {
-                            if (base.settings[key] == pending.value) {
-                                confirmedSettings[key] = pending.value
-                                confirmedPending += key
-                            } else {
-                                effective[key] = pending.value
-                            }
-                        }
-                        confirmedPending.forEach { pendingSettings.remove(it) }
                         val current = _state.value
-                        _state.value = base.copy(settings = effective, operations = current.operations)
+                        _state.value = base.copy(settings = base.settings, operations = current.operations)
                         Log.i(TAG, "SETTINGS_SNAPSHOT_CONSUMED revision=" + decoded.revision + " pending=" + pendingSettings.size)
                     } else {
                         _state.value = mergeSnapshotState(base, _state.value)
