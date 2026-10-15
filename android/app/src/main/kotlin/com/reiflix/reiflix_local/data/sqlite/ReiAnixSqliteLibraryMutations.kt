@@ -269,6 +269,228 @@ suspend fun ReiAnixSqliteLibraryRepository.clearManualMetadataByLookupTitle(
     }
 }
 
+data class ReiAnixAniListMatchRecord(
+    val animeId: Long,
+    val lookupTitle: String,
+    val anilistId: Long?,
+    val status: String?,
+    val score: Double?,
+    val margin: Double?,
+    val manual: Boolean,
+    val metadataStatus: String?,
+)
+
+data class ReiAnixPendingMatchRecord(
+    val lookupTitle: String,
+    val displayTitle: String,
+    /** Original JSON array is retained instead of lossy candidate normalization. */
+    val candidatesJson: String,
+)
+
+/** Read the persisted mapping row without deriving an identity from the display title. */
+suspend fun ReiAnixSqliteLibraryRepository.getAniListMatchByLookupTitle(
+    lookupTitle: String,
+): ReiAnixAniListMatchRecord? = withContext(Dispatchers.IO) {
+    val lookup = lookupTitle.trim()
+    require(lookup.isNotEmpty()) { "lookupTitle cannot be blank." }
+    database.read { connection ->
+        connection.rawQuery(
+            """
+            SELECT id, lookup_title, anilist_id, anilist_match_status,
+                   anilist_match_score, anilist_match_margin,
+                   anilist_match_manual, metadata_status
+            FROM anime WHERE lookup_title = ? LIMIT 1
+            """.trimIndent(),
+            arrayOf(lookup),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return@read null
+            ReiAnixAniListMatchRecord(
+                animeId = cursor.getLong(cursor.getColumnIndexOrThrow("id")),
+                lookupTitle = cursor.getString(cursor.getColumnIndexOrThrow("lookup_title")),
+                anilistId = cursor.optionalLong("anilist_id"),
+                status = cursor.optionalString("anilist_match_status"),
+                score = cursor.optionalDouble("anilist_match_score"),
+                margin = cursor.optionalDouble("anilist_match_margin"),
+                manual = cursor.optionalBoolean("anilist_match_manual") == true,
+                metadataStatus = cursor.optionalString("metadata_status"),
+            )
+        }
+    }
+}
+
+/**
+ * Mirrors LibraryStore.set_anilist_match atomically across the anime row and
+ * associations table. Null ID explicitly removes the mapping.
+ */
+suspend fun ReiAnixSqliteLibraryRepository.setAniListMatchByLookupTitle(
+    lookupTitle: String,
+    anilistId: Long?,
+    status: String = "matched",
+    score: Double? = null,
+    margin: Double? = null,
+    manual: Boolean = false,
+): Boolean = withContext(Dispatchers.IO) {
+    val lookup = lookupTitle.trim()
+    require(lookup.isNotEmpty()) { "lookupTitle cannot be blank." }
+    require(anilistId == null || anilistId > 0L) { "AniList ID must be positive when supplied." }
+    require(score == null || (score.isFinite() && score in 0.0..1.0)) {
+        "score must be finite and between zero and one."
+    }
+    require(margin == null || (margin.isFinite() && margin in 0.0..1.0)) {
+        "margin must be finite and between zero and one."
+    }
+    val normalizedStatus = status.trim().ifEmpty { "unmatched" }
+    database.transaction { connection ->
+        val animeId = connection.rawQuery(
+            "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1",
+            arrayOf(lookup),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) throw NoSuchElementException("Obra local não encontrada.")
+            cursor.getLong(0)
+        }
+        val values = ContentValues().apply {
+            if (anilistId == null) putNull("anilist_id") else put("anilist_id", anilistId)
+            put("anilist_match_status", normalizedStatus)
+            if (score == null) putNull("anilist_match_score") else put("anilist_match_score", score)
+            if (margin == null) putNull("anilist_match_margin") else put("anilist_match_margin", margin)
+            put("anilist_match_manual", if (manual) 1 else 0)
+        }
+        connection.update("anime", values, "id = ?", arrayOf(animeId.toString()))
+        if (anilistId == null) {
+            connection.delete("associations", "lookup_title = ?", arrayOf(lookup))
+        } else {
+            connection.execSQL(
+                "INSERT OR REPLACE INTO associations(lookup_title, anilist_id) VALUES(?, ?)",
+                arrayOf(lookup, anilistId),
+            )
+        }
+        true
+    }
+}
+
+/** Clears only AniList match/status bookkeeping; editorial and personal fields survive. */
+suspend fun ReiAnixSqliteLibraryRepository.clearAniListMatchByLookupTitle(
+    lookupTitle: String,
+): Boolean = withContext(Dispatchers.IO) {
+    val lookup = lookupTitle.trim()
+    require(lookup.isNotEmpty()) { "lookupTitle cannot be blank." }
+    database.transaction { connection ->
+        val row = connection.rawQuery(
+            "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1",
+            arrayOf(lookup),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) throw NoSuchElementException("Obra local não encontrada.")
+            cursor.getLong(0)
+        }
+        val values = ContentValues().apply {
+            putNull("anilist_id")
+            put("anilist_match_status", "unmatched")
+            putNull("anilist_match_score")
+            putNull("anilist_match_margin")
+            put("anilist_match_manual", 0)
+            put("metadata_status", "unresolved")
+            put("metadata_source", "local")
+            putNull("metadata_updated_at")
+            putNull("metadata_fetched_at")
+        }
+        connection.update("anime", values, "id = ?", arrayOf(row.toString()))
+        connection.delete("associations", "lookup_title = ?", arrayOf(lookup))
+        connection.delete("pending_matches", "lookup_title = ?", arrayOf(lookup))
+        true
+    }
+}
+
+/** Store a validated JSON array in the existing pending_matches table. */
+suspend fun ReiAnixSqliteLibraryRepository.setPendingAniListMatch(
+    lookupTitle: String,
+    displayTitle: String,
+    candidatesJson: String,
+): Unit = withContext(Dispatchers.IO) {
+    val lookup = lookupTitle.trim()
+    val display = displayTitle.trim()
+    require(lookup.isNotEmpty()) { "lookupTitle cannot be blank." }
+    require(display.isNotEmpty()) { "displayTitle cannot be blank." }
+    val candidates = JSONArray(candidatesJson)
+    database.transaction { connection ->
+        connection.execSQL(
+            "INSERT OR REPLACE INTO pending_matches(lookup_title, display_title, candidates) VALUES(?, ?, ?)",
+            arrayOf(lookup, display, candidates.toString()),
+        )
+    }
+}
+
+/** Reads pending match records in stable display-title order; malformed JSON is an error. */
+suspend fun ReiAnixSqliteLibraryRepository.listPendingAniListMatches(): List<ReiAnixPendingMatchRecord> =
+    withContext(Dispatchers.IO) {
+        database.read { connection ->
+            connection.rawQuery(
+                "SELECT lookup_title, display_title, candidates FROM pending_matches ORDER BY display_title COLLATE NOCASE ASC, lookup_title ASC",
+                null,
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val candidates = cursor.getString(cursor.getColumnIndexOrThrow("candidates"))
+                        // Validate, but retain the stored payload to avoid lossy normalization.
+                        JSONArray(candidates)
+                        add(
+                            ReiAnixPendingMatchRecord(
+                                lookupTitle = cursor.getString(cursor.getColumnIndexOrThrow("lookup_title")),
+                                displayTitle = cursor.getString(cursor.getColumnIndexOrThrow("display_title")),
+                                candidatesJson = candidates,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+/** Resolves a pending mapping and removes the pending row in one transaction. */
+suspend fun ReiAnixSqliteLibraryRepository.resolvePendingAniListMatch(
+    lookupTitle: String,
+    anilistId: Long,
+): Unit = withContext(Dispatchers.IO) {
+    val lookup = lookupTitle.trim()
+    require(lookup.isNotEmpty()) { "lookupTitle cannot be blank." }
+    require(anilistId > 0L) { "AniList ID must be positive." }
+    database.transaction { connection ->
+        connection.execSQL(
+            "INSERT OR REPLACE INTO associations(lookup_title, anilist_id) VALUES(?, ?)",
+            arrayOf(lookup, anilistId),
+        )
+        connection.delete("pending_matches", "lookup_title = ?", arrayOf(lookup))
+    }
+}
+
+/** The same metadata-status mutation contract as LibraryStore.set_metadata_status. */
+suspend fun ReiAnixSqliteLibraryRepository.setMetadataStatusByLookupTitle(
+    lookupTitle: String,
+    status: String,
+    confidence: String? = null,
+): Boolean = withContext(Dispatchers.IO) {
+    val lookup = lookupTitle.trim()
+    require(lookup.isNotEmpty()) { "lookupTitle cannot be blank." }
+    database.transaction { connection ->
+        val values = ContentValues().apply {
+            put("metadata_status", status)
+            confidence?.let { put("metadata_confidence", it) }
+        }
+        connection.update("anime", values, "lookup_title = ?", arrayOf(lookup)) > 0
+    }
+}
+
+/** Expires metadata/cache freshness without deleting catalog rows or AniList associations. */
+suspend fun ReiAnixSqliteLibraryRepository.clearAniListMetadataCache(): Int =
+    withContext(Dispatchers.IO) {
+        database.transaction { connection ->
+            val values = ContentValues().apply {
+                putNull("metadata_updated_at")
+                put("cover_cache", "")
+            }
+            connection.update("anime", values, null, null)
+        }
+    }
+
 /** Matches LibraryStore.set_watched: completion and progress are one transaction. */
 suspend fun ReiAnixSqliteLibraryRepository.setEpisodeWatchedState(
     episodeId: Long,
