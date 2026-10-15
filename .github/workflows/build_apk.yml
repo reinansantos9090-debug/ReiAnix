@@ -272,7 +272,7 @@ jobs:
       - name: Build APK
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true"
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=false"
         run: |
           set -o pipefail
           build_args=(
