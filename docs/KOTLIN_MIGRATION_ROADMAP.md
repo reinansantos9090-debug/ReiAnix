@@ -48,7 +48,7 @@ Referência de execução desta etapa: branch `implementation/prompt-03-sqlite-d
 
 - Mantido o arquivo SQLite canônico `filesDir/data/library.sqlite3` e o schema v29 definido por `core/library_store.py`; sem Room, banco paralelo, mudança de schema ou migração destrutiva.
 - Reutilizados o database, repositório, modelos, serviço de consulta, serviço da lista pessoal, serviço de consumo e repository de configurações que já existiam na fundação nativa.
-- Adicionadas operações Kotlin transacionais para leitura por chave local, resolução exata entre caminho absoluto/file URI, consulta por identidade de mídia, pin, nota pessoal, tags, estado favorito explícito, edição manual de metadata e remoção de marcadores de edição manual.
+- Adicionadas operações Kotlin transacionais para leitura por chave local, resolução exata entre caminho absoluto/file URI, consulta por identidade de mídia, pin, nota pessoal, tags, associação AniList, edição manual de metadata e remoção de marcadores de edição manual.
 - Adicionado o método de consumo que reproduz a semântica de `LibraryStore.set_watched`: progresso e estado de conclusão são persistidos juntos; desfazer “assistido” zera o progresso, e a duração conhecida é usada ao marcar como assistido.
 - Conectado `ReiAnixLibraryViewModel.setEpisodeWatched` ao escritor Kotlin; a ponte existente só republica o snapshot depois do commit, sem executar a mesma mutação em Python.
 - Preservados os serviços de consulta paginada, pesquisa, patch de metadados e indexação de snapshots do scanner nativo; nenhuma lógica de scanner, cliente AniList, artwork, backup ou player foi reescrita.
