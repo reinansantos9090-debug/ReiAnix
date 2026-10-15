@@ -1433,6 +1433,15 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(0.0, unwatched.progress ?: -1.0, 0.0)
         assertEquals(1_800_000_001.0, unwatched.lastPlayedAt ?: -1.0, 0.0)
 
+        val stale = repository.setEpisodeWatchedState(
+            episodeId = 7L,
+            watched = true,
+            playedAtEpochSeconds = 1_800_000_000.0,
+        )
+        assertEquals(false, stale.watched)
+        assertEquals(0.0, stale.progress ?: -1.0, 0.0)
+        assertEquals(1_800_000_001.0, stale.lastPlayedAt ?: -1.0, 0.0)
+
         val reopened = ReiAnixSqliteLibraryRepository(context)
         assertEquals("Manual title", reopened.getAnime(1L)?.title)
         assertEquals("updated personal note", reopened.getAnime(1L)?.personalNote)
