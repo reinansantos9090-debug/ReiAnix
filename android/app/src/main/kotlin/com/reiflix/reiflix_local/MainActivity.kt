@@ -1622,7 +1622,12 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
-                    scanConfiguredSafRoots(requestId, "USER_REFRESH", "compose_library_refresh")
+                    scanConfiguredSafRoots(
+                        requestId,
+                        "USER_REFRESH",
+                        "compose_library_refresh",
+                        includeAuthorizedDiagnostics = true,
+                    )
                 }
                 "scan_tree" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
