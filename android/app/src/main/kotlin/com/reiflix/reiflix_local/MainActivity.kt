@@ -1417,6 +1417,7 @@ class MainActivity : FlutterFragmentActivity() {
             "request_media_access",
             "open_broad_storage_settings",
             "check_storage_access",
+            "scan_library",
         )
         if (normalized !in allowed) return false
         val requestId = UUID.randomUUID().toString()
