@@ -42,6 +42,7 @@ def test_settings_controls_use_existing_preference_contract():
     assert "setPreference(normalizedKey, normalizedValue)" in repository
     assert "nativePersisted" in repository
     assert "SETTINGS_PERSISTED" in repository
+    assert "effective[key] = pending.value" not in repository
     assert "settings.set" not in repository
     assert "fun setSetting(key: String, value: String)" in viewmodel
     assert "compose_settings_set" in main
