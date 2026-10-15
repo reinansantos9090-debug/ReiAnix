@@ -4468,10 +4468,10 @@ async def main(page: ft.Page):
             }
             source_kind, default_scope_kind = source_map[event_type]
             documents = payload.get("documents") or []
-            if source_kind == "saf" and payload.get("nativeLibraryIndexOwner") is True:
-                # SAF discovery is committed by the Kotlin indexer after the
-                # complete snapshot is validated. Do not run a second Python
-                # writer for the same physical files.
+            if payload.get("nativeLibraryIndexOwner") is True:
+                # The native scanner owns persistence for SAF, MediaStore and
+                # BroadStorage. Python may record the event, but must not run a
+                # second writer for the same physical files.
                 diagnostics.record(
                     "SCAN_BATCH",
                     request_id=event_request_id,
