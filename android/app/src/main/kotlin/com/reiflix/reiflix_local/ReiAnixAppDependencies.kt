@@ -5,6 +5,7 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
@@ -41,6 +42,13 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixLibraryQueryService(appContext, sqliteLibraryRepository)
+    }
+
+    /** Single Kotlin domain entry point for scan-owned canonical library mutations. */
+    val libraryService: ReiAnixLibraryService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixLibraryService(sqliteLibraryRepository)
     }
 
     val personalListService: ReiAnixPersonalListService by lazy(
