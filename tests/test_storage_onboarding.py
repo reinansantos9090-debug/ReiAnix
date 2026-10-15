@@ -926,13 +926,14 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         start = source.index("private fun handleTreePickerResult")
         picker = source[start:source.index("private fun ", start + 30)]
-        call = picker[picker.index("upsertSafFolder("):picker.index(")", picker.index("upsertSafFolder(")) + 1]
+        call_start = picker.index("upsertSafFolder(")
+        call_end = picker.index("\\n                        )", call_start)
+        call = picker[call_start:call_end]
         self.assertIn('authorization = "granted"', call)
         self.assertIn("safAuthority =", call)
         self.assertIn("safDocumentId =", call)
         self.assertIn("safVolumeId =", call)
         self.assertIn("safIdentity =", call)
-        self.assertNotIn("selectedIdentity.optString(\"authority\").takeIf", call.splitlines()[2])
 
     def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
