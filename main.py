@@ -3204,6 +3204,11 @@ async def main(page: ft.Page):
                         library.hydrate_catalog_metadata,
                         catalog,
                         on_item=publish_item,
+                        # On Android Compose, Kotlin owns AniList searches, matching,
+                        # localization and metadata writes. Keep this legacy worker
+                        # for artwork-only reconciliation; Flet-only mode retains
+                        # its existing Python metadata hydration behavior.
+                        allow_anilist_metadata=not compose_library_bridge.enabled,
                     )
             except asyncio.CancelledError:
                 raise
