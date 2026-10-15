@@ -4,7 +4,7 @@
 
 Implementação do Prompt 05 no branch `migration/prompt-05-native-library-indexing-20261015`, baseada na `main` observada em `e115d69e9d970defb075c812b34663f17cbbefb4`.
 
-O caminho Android de descoberta SAF e indexação canônica é executado em Kotlin. O Prompt 05 adiciona `ReiAnixLibraryService` como a entrada de domínio para as mutações do subsistema e conecta o scanner, o histórico de varredura, as alterações de volume e a reconciliação de identidade SAF ao mesmo repositório SQLite compartilhado. Isto não significa que todo o runtime Python/Flet ou todos os consumidores de projeção da biblioteca tenham sido removidos.
+O caminho Android de descoberta SAF, indexação canônica e recuperação de snapshots positivos após rollback confirmado é executado em Kotlin. O Prompt 05 adiciona `ReiAnixLibraryService` como a entrada de domínio para as mutações do subsistema e conecta o scanner, o histórico de varredura, as alterações de volume e a reconciliação de identidade SAF ao mesmo repositório SQLite compartilhado. Isto não significa que todo o runtime Python/Flet ou todos os consumidores de projeção da biblioteca tenham sido removidos.
 
 ## 1. Arquitetura e ownership
 
@@ -24,7 +24,7 @@ Fluxo do caminho SAF normal:
 
 `MainActivity → NativeScanController → NativeScanRunner → NativeIndex (descoberta/staging) → NativeLibraryScanSnapshot → ReiAnixLibraryService → ReiAnixSqliteLibraryRepository.indexDiscoveredMedia → SQLite canônico → registro terminal de scan_runs → evento terminal de compatibilidade`.
 
-O caminho não entrega a persistência normal dos resultados a Python. `nativeLibraryIndexOwner` só é verdadeiro quando o Kotlin assume a responsabilidade da escrita canônica; o tratamento legado só pode ingerir resultados positivos depois de rollback nativo confirmado e receipt compatível. Resultado de transação desconhecido não autoriza um segundo writer.
+O caminho não entrega a persistência normal nem a recuperação de snapshots positivos da versão Android atual a Python. `nativeLibraryIndexOwner` permanece verdadeiro para eventos gerados pelo runner atual; snapshots recuperados são submetidos ao mesmo repositório usando um estado explicitamente parcial, sem reconciliação de ausências. Resultado de transação desconhecido não autoriza um segundo writer e não é transferido ao finalizador legado.
 
 ## 2. Validação e reconciliação
 
@@ -58,7 +58,7 @@ Entretanto, a projeção geral de Home/Biblioteca e as páginas filtradas ainda 
 
 Também permanecem:
 - `core/scan_coordinator.py` continua como compatibilidade de eventos/estado legado e fallback não Android. O retry do observer MediaStore no Android agora dispara uma intent nativa; eventos terminais ainda podem passar pelo coordenador Python para atualizar a projeção híbrida enquanto esse consumidor não for substituído.
-- `core/library_service.py` para consumidores híbridos não migrados e ingestão de recuperação positiva somente quando uma transação Kotlin foi comprovadamente revertida e o receipt permite transferir ownership.
+- `core/library_service.py` para consumidores não Android, caminhos de desenvolvimento e compatibilidade com eventos produzidos por versões antigas do APK. A versão atual não transfere snapshots positivos de recuperação ao writer Python.
 - `NativeMailbox` para terminal events e outros subsistemas que ainda têm consumidores ativos.
 - MediaStore/BroadStorage continuam diagnósticos sob o contrato atual de fontes; não são promovidos automaticamente a fontes canônicas de biblioteca, pois isso poderia indexar duas vezes os mesmos vídeos que já estão numa pasta SAF configurada.
 
