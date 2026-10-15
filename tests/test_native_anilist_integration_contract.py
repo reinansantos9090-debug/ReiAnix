@@ -97,9 +97,10 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn("MAX_CACHE_ENTRIES = 4096", localizer)
         self.assertIn("CancellationException", localizer)
 
-    def test_native_anilist_metadata_handoff_only_requests_existing_artwork_engine(self):
+    def test_native_anilist_metadata_handoff_uses_kotlin_artwork_service(self):
         service = SERVICE.read_text(encoding="utf-8")
         dependencies = (KOTLIN / "ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
+        artwork = (KOTLIN / "data/artwork/ReiAnixArtworkService.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
         start = main.index("if event_type == 'anilist_metadata_committed':")
         end = main.index("if event_type == 'compose_settings_set':", start)
@@ -107,13 +108,15 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
 
         self.assertIn('"type", "anilist_metadata_committed"', service)
         self.assertIn('"type", "anilist_metadata_committed"', dependencies)
-        self.assertIn("NativeMailbox.write(", dependencies)
-        self.assertIn("if request_artwork and metadata.get('anilist_id') and has_artwork_urls:", handler)
-        self.assertIn("library.artwork.sync_anime_metadata(", handler)
-        self.assertIn("request_download=True", handler)
-        self.assertIn('library.artwork.request(', handler)
+        self.assertIn("artworkService.requestAnimeArtwork(animeId, force = true)", dependencies)
+        self.assertIn('put("requestArtwork", false)', dependencies)
+        self.assertIn("downloadAndValidate", artwork)
+        self.assertIn("persistDownloadedArtwork", artwork)
+        self.assertIn("ARTWORK_PUBLISHED", artwork)
         self.assertIn("compose_library_bridge.request_publish(", handler)
         self.assertIn("anilist_metadata_updated:", handler)
+        self.assertNotIn("library.artwork.sync_anime_metadata(", handler)
+        self.assertNotIn("library.artwork.request(", handler)
         bridge = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")
         self.assertIn('"anilist_metadata_updated"}', bridge)
         self.assertNotIn("library.anilist", handler)
