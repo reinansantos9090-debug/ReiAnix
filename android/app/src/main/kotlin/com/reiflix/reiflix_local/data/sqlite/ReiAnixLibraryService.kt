@@ -1,7 +1,6 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
 /**
@@ -22,6 +21,15 @@ class ReiAnixLibraryService(
     private val repository: ReiAnixSqliteLibraryRepository,
 ) {
     private val scanMutationMutex = Mutex()
+    private suspend fun <T> serializeMutation(operation: suspend () -> T): T {
+        scanMutationMutex.lock()
+        return try {
+            operation()
+        } finally {
+            scanMutationMutex.unlock()
+        }
+    }
+
 
     suspend fun indexDiscoveredMedia(
         snapshot: NativeLibraryScanSnapshot,
@@ -29,7 +37,7 @@ class ReiAnixLibraryService(
             ReiAnixSqliteTransactionOutcome,
             NativeLibraryIndexReport?,
         ) -> Unit)? = null,
-    ): NativeLibraryIndexReport = scanMutationMutex.withLock {
+    ): NativeLibraryIndexReport = serializeMutation {
         repository.indexDiscoveredMedia(snapshot, onTransactionOutcome)
     }
 
@@ -51,7 +59,7 @@ class ReiAnixLibraryService(
         indexReport: JSONObject?,
         startedAtMillis: Long?,
         finishedAtMillis: Long = System.currentTimeMillis(),
-    ): Boolean = scanMutationMutex.withLock {
+    ): Boolean = serializeMutation {
         repository.finishNativeScanRun(
             scanId = scanId,
             requestId = requestId,
@@ -69,7 +77,7 @@ class ReiAnixLibraryService(
     }
 
     suspend fun recordNativeVolumeChange(payload: JSONObject): JSONObject =
-        scanMutationMutex.withLock {
+        serializeMutation {
             repository.recordNativeVolumeChange(payload)
         }
 
@@ -83,7 +91,7 @@ class ReiAnixLibraryService(
         newUri: String,
         name: String,
         treeUri: String,
-    ): JSONObject = scanMutationMutex.withLock {
+    ): JSONObject = serializeMutation {
         repository.reconcileSafDocumentIdentityChange(
             oldUri = oldUri,
             newUri = newUri,
