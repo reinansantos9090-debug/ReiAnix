@@ -14,6 +14,7 @@ A tela de configurações continua em Jetpack Compose (`ui/settings/ReiAnixSetti
 - `viewmodel/ReiAnixSettingsViewModel.kt`: expõe o estado e projeções reativas.
 - `ui/settings/ReiAnixSettings.kt`: interface Compose, usando os componentes e tokens existentes.
 - `NativePlayerActivity.kt`: as opções que o próprio player altera (autoplay, gestos, velocidade, proporção e bloqueio) também são gravadas no SQLite nativo, em vez de solicitar que Python as grave.
+- As ações `reset_player` e `reset_all_settings` agora restauram os padrões pelo repositório Kotlin, em uma transação SQLite única. Depois da confirmação, o estado Compose é atualizado e uma notificação em lote atualiza os consumidores legados sem repetir as gravações.
 
 O SQLite não é recriado, limpo ou migrado por esta alteração. Chaves desconhecidas são preservadas pelo contrato Kotlin; chaves conhecidas são validadas antes da gravação. Uma gravação só é considerada persistida depois que `setPreference` retorna o registro confirmado.
 
@@ -42,7 +43,8 @@ As opções numéricas e enumeradas mantêm as escolhas permitidas definidas no 
 4. O repositório SQL grava em transação e retorna a linha persistida.
 5. Só então o `StateFlow` é atualizado e a operação passa a `SUCCESS`. Se houver erro, o valor confirmado anterior é mantido e a operação passa a `ERROR`.
 6. Após o commit nativo, o evento de mailbox inclui `nativePersisted=true`. O backend Python invalida o cache de leitura e consulta o valor já gravado para atualizar os consumidores legados; nesse caminho não chama `settings.set` e não grava a preferência novamente.
-7. A Activity do player usa o mesmo contrato e repositório SQLite ao alterar preferências durante a reprodução; a notificação Python acontece somente após a confirmação nativa.
+7. As ações de restauração gravam seus padrões em uma transação única e emitem `compose_settings_bulk_applied`; o backend atualiza os consumidores e publica um snapshot sem emitir resultados de comando que possam sobrescrever o sucesso de persistência nativa.
+8. A Activity do player usa o mesmo contrato e repositório SQLite ao alterar preferências durante a reprodução; a notificação Python acontece somente após a confirmação nativa.
 
 A mailbox permanece necessária para atualizar serviços legados e para ações que não são uma simples gravação de preferência. Ela não é mais o mecanismo primário de persistência para as alterações realizadas pela tela Compose ou pelos controles de configuração do player.
 
