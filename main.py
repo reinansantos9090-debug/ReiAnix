@@ -5572,6 +5572,12 @@ async def main(page: ft.Page):
                                             else "A varredura nativa não pôde ser concluída."
                                         ),
                                     )
+                                elif is_user_refresh:
+                                    _fail_home_refresh(
+                                        "native_scan_failed",
+                                        request_id=event_request_id,
+                                        source="saf",
+                                    )
                             diagnostics.record(
                                 "NATIVE_LIBRARY_SCAN_COMPLETE",
                                 request_id=event_request_id,
