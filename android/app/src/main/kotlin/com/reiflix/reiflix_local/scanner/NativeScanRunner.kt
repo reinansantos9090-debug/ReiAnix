@@ -258,20 +258,26 @@ object NativeScanRunner {
                 else -> SafScanner.STATUS_PARTIAL
             }
             val recovery = when {
-                committed -> "NATIVE_COMMIT_CONFIRMED"
+                committed && report.optBoolean("reconciliationAuthorized") &&
+                    item.optBoolean("completeSnapshotPublished") &&
+                    sourceStatus in setOf(NativeIndex.STATUS_COMPLETED, NativeIndex.STATUS_EMPTY_COMPLETE) ->
+                    "NATIVE_COMMIT_CONFIRMED"
+                committed -> "NATIVE_PARTIAL_COMMIT_CONFIRMED"
                 uncertain -> "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED"
-                snapshotAvailable -> "LEGACY_INGESTION_REQUIRED"
-                else -> "DISCOVERY_SNAPSHOT_UNAVAILABLE"
+                preserveRecoveryReceipt -> "NATIVE_POSITIVE_RECOVERY_PENDING"
+                else -> "DISCOVERY_SNAPSHOT_UNAVAILABLE_RESCAN_REQUIRED"
             }
             val message = when (recovery) {
                 "NATIVE_COMMIT_CONFIRMED" ->
                     "Recovered terminal SAF notification after confirmed native SQLite commit."
+                "NATIVE_PARTIAL_COMMIT_CONFIRMED" ->
+                    "Recovered terminal SAF notification after confirmed positive-only native indexing; previous rows were preserved."
                 "COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED" ->
                     "Process ended during native SQLite transaction; commit outcome is unknown. Existing catalog preserved; controlled rescan required."
-                "LEGACY_INGESTION_REQUIRED" ->
-                    "Recovered interrupted SAF discovery snapshot after confirming no native catalog commit; ingesting positive results only."
+                "NATIVE_POSITIVE_RECOVERY_PENDING" ->
+                    "Verified positive discoveries could not be committed during this recovery attempt; the receipt remains available for a later native retry."
                 else ->
-                    "SAF discovery was interrupted without a verifiable snapshot; existing catalog preserved; controlled rescan required."
+                    "SAF discovery was interrupted without a safely recoverable snapshot; existing catalog preserved; controlled rescan required."
             }
             val metadata = item.optJSONObject("metadata") ?: JSONObject()
             val stats = metadata.optJSONObject("stats")?.let { JSONObject(it.toString()) } ?: JSONObject()
@@ -294,9 +300,11 @@ object NativeScanRunner {
                 .put("source", "saf")
                 .put("status", terminalStatus)
                 .put("stats", stats)
-                .put("documents", documents)
+                // The receipt may contain verified discoveries for a future Kotlin retry,
+                // but scan documents never cross to Python as a catalog-mutation fallback.
+                .put("documents", JSONArray())
                 .put("partial", !trustedNativeCompletion)
-                .put("nativeLibraryIndexOwner", committed || uncertain)
+                .put("nativeLibraryIndexOwner", true)
                 .put("nativeLibraryIndex", JSONObject()
                     .put("status", if (committed) report.optString("status", "COMMITTED") else recovery)
                     .put("commitOutcome", outcome)
@@ -346,9 +354,11 @@ object NativeScanRunner {
                 .isSuccess
             if (!written) continue
 
-            runCatching {
-                NativeIndex.markRecoveryEventPublished(appContext, NativeIndex.SOURCE_SAF, scopeKey, generation)
-            }.onFailure { Log.w(TAG, "Recovery event is durable, but its receipt marker could not be persisted.", it) }
+            if (!preserveRecoveryReceipt) {
+                runCatching {
+                    NativeIndex.markRecoveryEventPublished(appContext, NativeIndex.SOURCE_SAF, scopeKey, generation)
+                }.onFailure { Log.w(TAG, "Recovery event is durable, but its receipt marker could not be persisted.", it) }
+            }
 
             if (
                 item.optString("status") in setOf(NativeIndex.STATUS_STARTED, NativeIndex.STATUS_RUNNING)
