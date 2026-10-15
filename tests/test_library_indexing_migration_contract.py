@@ -33,6 +33,23 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         self.assertIn("repository.recordNativeVolumeChange(payload)", service)
         self.assertIn("repository.reconcileSafDocumentIdentityChange(", service)
 
+    def test_compose_catalog_and_paging_read_canonical_sqlite(self):
+        view_model = (KOTLIN / "viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        repository = (KOTLIN / "data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        projector = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixNativeLibraryCatalogProjector.kt").read_text(encoding="utf-8")
+
+        self.assertIn("nativeLibraryRepository.loadLibraryCatalogRows()", view_model)
+        self.assertIn("NativeScanController.progress", view_model)
+        self.assertIn("loadNativeLibraryPage(", view_model)
+        self.assertIn("nativePagedLibraryState.asStateFlow()", view_model)
+        self.assertNotIn("repository.loadLibraryPage(", view_model)
+        self.assertNotIn("repository.pagedLibraryState", view_model)
+        self.assertIn("SELECT * FROM anime ORDER BY added_at DESC", repository)
+        self.assertIn("episode_observations", repository)
+        self.assertIn("episodeArtworkByAnime", repository)
+        self.assertIn("LibraryUiMappers.anime(projection)", projector)
+        self.assertIn("playback_target_episode_id", projector)
+
     def test_migration_document_records_safe_reconciliation_and_remaining_hybrid_edges(self):
         migration = (ROOT / "docs/KOTLIN_LIBRARY_INDEXING_MIGRATION.md").read_text(encoding="utf-8")
         roadmap = (ROOT / "docs/KOTLIN_MIGRATION_ROADMAP.md").read_text(encoding="utf-8")
