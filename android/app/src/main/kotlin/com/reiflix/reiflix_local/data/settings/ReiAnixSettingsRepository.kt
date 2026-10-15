@@ -435,14 +435,33 @@ class ReiAnixSettingsRepository(
             null
         }
         val raw = runCatching {
-            if (!snapshotFile.isFile) return
-            snapshotFile.readText(Charsets.UTF_8)
+            if (!snapshotFile.isFile) null else snapshotFile.readText(Charsets.UTF_8)
         }.getOrElse { error ->
             synchronized(stateLock) {
                 _state.value = _state.value.copy(
                     status = ReiAnixSettingsLoadStatus.ERROR,
                     error = error.message ?: error::class.java.simpleName,
                 )
+            }
+            return
+        }
+        if (raw == null) {
+            synchronized(stateLock) {
+                val current = _state.value
+                if (persistedPreferences != null) {
+                    confirmedSettings.clear()
+                    confirmedSettings.putAll(persistedPreferences)
+                    _state.value = current.copy(
+                        status = ReiAnixSettingsLoadStatus.READY,
+                        settings = persistedPreferences,
+                        error = null,
+                    )
+                } else {
+                    _state.value = current.copy(
+                        status = ReiAnixSettingsLoadStatus.ERROR,
+                        error = "Não foi possível carregar as preferências do SQLite canônico.",
+                    )
+                }
             }
             return
         }
