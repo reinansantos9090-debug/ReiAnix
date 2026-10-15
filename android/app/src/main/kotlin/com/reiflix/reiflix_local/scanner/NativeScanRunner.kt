@@ -165,7 +165,7 @@ object NativeScanRunner {
                         }
                         ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
                             outcome = "NOT_COMMITTED"
-                            preserveRecoveryReceipt = rollbackReceiptPersisted.get()
+                            preserveRecoveryReceipt = rollbackReceiptPersisted.get() && documents.length() > 0
                             report = JSONObject().put(
                                 "status",
                                 if (preserveRecoveryReceipt) "NATIVE_POSITIVE_RECOVERY_PENDING" else "ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED",
@@ -218,7 +218,7 @@ object NativeScanRunner {
                         }
                         ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
                             outcome = "NOT_COMMITTED"
-                            preserveRecoveryReceipt = rollbackReceiptPersisted.get()
+                            preserveRecoveryReceipt = rollbackReceiptPersisted.get() && documents.length() > 0
                             report = JSONObject().put(
                                 "status",
                                 if (preserveRecoveryReceipt) "NATIVE_POSITIVE_RECOVERY_PENDING" else "ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED",
