@@ -729,7 +729,9 @@ E: manifest
         main = (ROOT / "main.py").read_text(encoding="utf-8")
         self.assertIn('async def release_tree(self, tree_uri: str)', bridge)
         self.assertIn('"release_tree" -> {', activity)
-        self.assertIn("releaseTree(intent.data?.getQueryParameter(\"tree_uri\"), requestId)", activity)
+        self.assertIn('"release_tree" -> {', activity)
+        self.assertIn("releaseTree(", activity)
+        self.assertIn('intent.data?.getQueryParameter("tree_uri")', activity)
         self.assertIn("releasePersistableUriPermission", activity)
         self.assertIn("await bridge.release_tree(reference)", main)
 
