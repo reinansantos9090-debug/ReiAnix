@@ -39,11 +39,18 @@ def test_settings_controls_use_existing_preference_contract():
 
     assert "compose_settings_set" in repository
     assert "NativeMailbox.write(" in repository
+    assert "setPreference(normalizedKey, normalizedValue)" in repository
+    assert "nativePersisted" in repository
+    assert "SETTINGS_PERSISTED" in repository
+    assert "settings.set" not in repository
     assert "fun setSetting(key: String, value: String)" in viewmodel
     assert "compose_settings_set" in main
     assert "async def _run_compose_settings_set" in main
     assert "await asyncio.to_thread(" in main
-    assert "settings.set" in main
+    assert "settings.set" in main  # compatibility for older hosts only
+    assert "native_persisted=native_persisted" in main
+    assert "if native_persisted:" in main
+    assert "settings.invalidate_cache" in main
     assert "setting_key" in main
     assert "apply_settings_runtime(setting_key, normalized)" in main
 
@@ -100,7 +107,12 @@ def test_scope_is_whitelisted_in_python_before_persistence():
     assert "supported_compose_settings" in block
     worker_start = main.index("async def _run_compose_settings_set")
     worker_end = main.index("async def _run_compose_settings_action", worker_start)
-    assert "settings.set" in main[worker_start:worker_end]
+    worker = main[worker_start:worker_end]
+    assert "if native_persisted:" in worker
+    assert "settings.invalidate_cache" in worker
+    assert "settings.get, setting_key" in worker
+    assert "settings.set" in worker  # legacy-host compatibility branch only
+    assert "nativePersisted" in block
     assert "logger.warning" in block
 
 
