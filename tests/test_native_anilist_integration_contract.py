@@ -114,6 +114,8 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn('library.artwork.request(', handler)
         self.assertIn("compose_library_bridge.request_publish(", handler)
         self.assertIn("anilist_metadata_updated:", handler)
+        bridge = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")
+        self.assertIn('"anilist_metadata_updated"}', bridge)
         self.assertNotIn("library.anilist", handler)
         self.assertNotIn("AniListClient", handler)
 
