@@ -995,6 +995,8 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         self.assertIn("publishScanRequest(", receiver)
         self.assertIn('"VOLUME_MOUNT"', receiver)
         self.assertIn("reason = action", receiver)
+        self.assertIn("recordNativeVolumeChange(payload)", receiver)
+        self.assertIn('"nativeScanDispatchOwner", true', receiver)
         self.assertNotIn("scanAllStorage(null)", receiver)
         self.assertIn("activityResumed", receiver)
     def test_storage_receiver_does_not_launch_permission_ui(self):
