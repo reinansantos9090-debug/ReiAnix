@@ -427,15 +427,14 @@ class MainActivity : FlutterFragmentActivity() {
         )
         when {
             source == "saf" && !scopeRef.isNullOrBlank() -> scanTree(scopeRef, requestId)
-            source == "saf" || (source == null && origin.uppercase() != "PERMISSION_CHANGE") ->
-                scanConfiguredSafRoots(requestId, origin)
             source == "mediastore" -> scanMediaStore(requestId)
             source == "broad_storage" -> scanAllStorage(requestId)
-            source == null && origin.uppercase() == "PERMISSION_CHANGE" -> {
-                scanMediaStore(requestId)
-                scanAllStorage(requestId)
-            }
-            else -> Log.w(tag, "Ignoring unsupported native scan source=$source origin=$origin")
+            else -> scanConfiguredSafRoots(
+                requestId = requestId,
+                origin = origin,
+                reason = reason,
+                includeAuthorizedDiagnostics = source == null,
+            )
         }
     }
     private var storageReceiverRegistered = false
@@ -1775,53 +1774,139 @@ class MainActivity : FlutterFragmentActivity() {
                 "Não foi possível executar a operação Android solicitada. Tente novamente.")
         }
     }
-    /** Native discovery for configured SAF roots and already-authorized MediaStore/broad sources. */
-    private fun scanConfiguredSafRoots(origin: String, reason: String) {
+    /** Native discovery for configured SAF roots; MediaStore/BroadStorage remain diagnostic sources. */
+    private fun scanConfiguredSafRoots(
+        requestId: String?,
+        origin: String,
+        reason: String,
+        includeAuthorizedDiagnostics: Boolean = false,
+    ) {
         if (!activityResumed) {
             Log.i(tag, "Native storage discovery deferred until Activity resumes origin=$origin")
             return
         }
         lifecycleScope.launch {
             val repository = appDependencies.sqliteLibraryRepository
+            val scanIds = mutableListOf<String>()
+            var successfulScopes = 0
+            var failedScopes = 0
+            var cancelledScopes = 0
+            var configuredScopes = 0
             try {
                 val folders = withContext(Dispatchers.IO) {
                     repository.listFolders()
-                        .filter { it.kind.equals("saf", ignoreCase = true) && it.authorization.equals("granted", ignoreCase = true) }
+                        .filter { it.kind.equals("saf", ignoreCase = true) && it.path.isNotBlank() }
+                        .distinctBy { it.safIdentity?.takeIf { identity -> identity.isNotBlank() } ?: it.path }
                         .sortedBy { it.path }
                 }
-                if (folders.isEmpty()) Log.i(tag, "Native SAF discovery skipped reason=no_configured_roots origin=$origin")
+                configuredScopes = folders.size
                 for (folder in folders) {
                     val reference = folder.path.trim()
                     val treeUri = runCatching { Uri.parse(reference) }.getOrNull()
-                    if (reference.isBlank() || treeUri == null ||
-                        !treeUri.scheme.equals("content", ignoreCase = true) ||
-                        !DocumentsContract.isTreeUri(treeUri) ||
-                        !SafScanner.hasPersistedReadPermission(this@MainActivity, treeUri)
-                    ) {
+                    val uriValid = treeUri != null &&
+                        treeUri.scheme.equals("content", ignoreCase = true) &&
+                        DocumentsContract.isTreeUri(treeUri)
+                    val grantValid = uriValid && SafScanner.hasPersistedReadPermission(this@MainActivity, treeUri!!)
+                    if (!grantValid) {
                         withContext(Dispatchers.IO) {
-                            repository.updateSafFolderAccess(reference, "revoked", "A autorização persistente desta pasta não está mais disponível.")
+                            repository.updateSafFolderAccess(
+                                reference,
+                                "revoked",
+                                "A autorização persistente desta pasta não está mais disponível.",
+                            )
                         }
                         val payload = (treeUri?.let { SafScanner.identityPayload(it) } ?: JSONObject())
-                            .put("treeUri", reference).put("granted", false).put("status", SafScanner.STATUS_REVOKED)
-                            .put("nativeFolderConfigOwner", true).put("error", "persisted_permission_missing")
-                        NativeMailbox.writeBestEffort(this@MainActivity, JSONObject().put("type", "saf_permission").put("payload", payload))
+                            .put("treeUri", reference)
+                            .put("granted", false)
+                            .put("status", SafScanner.STATUS_REVOKED)
+                            .put("nativeFolderConfigOwner", true)
+                            .put("error", "persisted_permission_missing")
+                        NativeMailbox.writeBestEffort(
+                            this@MainActivity,
+                            JSONObject().put("type", "saf_permission").put("requestId", requestId ?: "").put("payload", payload),
+                        )
+                        failedScopes++
                         continue
                     }
-                    publishNativeDiagnostic("NATIVE_SAF_SCAN_REQUESTED", null, action = "scan", state = "QUEUED", result = "$origin:$reason")
-                    val scanId = scanTree(reference, UUID.randomUUID().toString())
-                    if (scanId != null) {
-                        NativeScanController.progress.first { snapshots -> snapshots[scanId]?.state?.isTerminal == true }
+
+                    publishNativeDiagnostic(
+                        "NATIVE_SAF_SCAN_REQUESTED",
+                        requestId,
+                        action = "scan",
+                        state = "QUEUED",
+                        result = "$origin:$reason",
+                    )
+                    val scanId = scanTree(reference, requestId)
+                    if (scanId == null) {
+                        failedScopes++
+                        continue
+                    }
+                    scanIds += scanId
+                    val terminal = NativeScanController.progress.first { snapshots ->
+                        snapshots[scanId]?.state?.isTerminal == true
+                    }[scanId]?.state
+                    when (terminal) {
+                        ScanLifecycleState.SUCCEEDED -> successfulScopes++
+                        ScanLifecycleState.PARTIAL -> {
+                            successfulScopes++
+                            failedScopes++
+                        }
+                        ScanLifecycleState.CANCELLED -> cancelledScopes++
+                        else -> failedScopes++
                     }
                 }
-                if (MediaStoreScanner.hasReadPermission(this@MainActivity)) scanMediaStore(UUID.randomUUID().toString())
-                if (BroadStorageScanner.hasAccess(this@MainActivity)) scanAllStorage(UUID.randomUUID().toString())
+
+                if (includeAuthorizedDiagnostics) {
+                    if (MediaStoreScanner.hasReadPermission(this@MainActivity)) scanMediaStore(requestId)
+                    if (BroadStorageScanner.hasAccess(this@MainActivity)) scanAllStorage(requestId)
+                }
+
+                val status = when {
+                    configuredScopes == 0 -> "FAILED"
+                    successfulScopes == configuredScopes -> "COMPLETED"
+                    successfulScopes > 0 -> "PARTIAL"
+                    cancelledScopes > 0 && failedScopes == 0 -> "CANCELLED"
+                    else -> "FAILED"
+                }
+                NativeMailbox.writeOrThrow(
+                    this@MainActivity,
+                    JSONObject()
+                        .put("type", "saf_library_scan_complete")
+                        .put("requestId", requestId ?: "")
+                        .put(
+                            "payload",
+                            JSONObject()
+                                .put("origin", origin)
+                                .put("reason", reason)
+                                .put("status", status)
+                                .put("scanIds", JSONArray(scanIds))
+                                .put("configuredScopes", configuredScopes)
+                                .put("successfulScopes", successfulScopes)
+                                .put("failedScopes", failedScopes)
+                                .put("cancelledScopes", cancelledScopes),
+                        ),
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (exception: Exception) {
                 Log.e(tag, "Native storage discovery failed origin=$origin reason=$reason", exception)
-                NativeMailbox.writeBestEffort(this@MainActivity, JSONObject().put("type", "saf_error")
-                    .put("message", "Não foi possível verificar o armazenamento configurado.")
-                    .put("payload", JSONObject().put("origin", origin).put("reason", reason).put("errorType", exception::class.java.simpleName)))
+                NativeMailbox.writeBestEffort(
+                    this@MainActivity,
+                    JSONObject()
+                        .put("type", "saf_library_scan_complete")
+                        .put("requestId", requestId ?: "")
+                        .put(
+                            "payload",
+                            JSONObject()
+                                .put("origin", origin)
+                                .put("reason", reason)
+                                .put("status", "FAILED")
+                                .put("configuredScopes", configuredScopes)
+                                .put("successfulScopes", successfulScopes)
+                                .put("failedScopes", failedScopes + 1)
+                                .put("errorType", exception::class.java.simpleName),
+                        ),
+                )
             }
         }
     }
