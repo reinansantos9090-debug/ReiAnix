@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.data.anilist
 import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,8 +26,8 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * AniList domain integration used by native ViewModels. The canonical SQLite
  * repository remains the sole persistence authority; remote failures never mutate
- * the local record. The existing ArtworkEngine remains the owner of materialized
- * artwork and this service only persists the remote URL as catalog metadata.
+ * the local record. Requested artwork is materialized by the Kotlin artwork service
+ * after the metadata transaction commits.
  */
 class ReiAnixAniListIntegrationService(
     private val client: ReiAnixAniListClient,
@@ -45,12 +46,16 @@ class ReiAnixAniListIntegrationService(
             File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
         ),
         metadataCommitPublisher = { animeId, requestArtwork ->
+            if (requestArtwork) {
+                ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                    ?.artworkService?.requestAnimeArtwork(animeId, force = true)
+            }
             NativeMailbox.write(
                 context.applicationContext,
                 JSONObject()
                     .put("type", "anilist_metadata_committed")
                     .put("requestId", UUID.randomUUID().toString())
-                    .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", requestArtwork)),
+                    .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", false)),
             )
         },
     )
@@ -218,7 +223,7 @@ class ReiAnixAniListIntegrationService(
      * Native library replacement for the legacy Python metadata hydrator.
      * It processes the canonical SQLite catalog sequentially and persists lookup
      * outcomes so catalog refreshes cannot repeatedly query unresolved titles.
-     * Image materialization remains delegated to the existing ArtworkEngine.
+     * Persisted image URLs are handed to the application-scoped Kotlin artwork service.
      */
     suspend fun reconcileUnmatchedLibraryMetadata(): Int {
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
@@ -338,10 +343,9 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Requests materialization from the existing ArtworkEngine only after the
-     * canonical metadata transaction has committed. A queue failure does not
-     * invalidate durable metadata; the Compose renderer can still use its remote
-     * URL fallback and a later sync can retry materialization.
+     * Notifies projection consumers after the canonical metadata transaction commits.
+     * The Kotlin artwork service is queued separately, and mailbox failure does not
+     * roll back metadata that has already been persisted.
      */
     private suspend fun enqueueMetadataCommit(animeId: Long, requestArtwork: Boolean) {
         val publisher = metadataCommitPublisher ?: return
