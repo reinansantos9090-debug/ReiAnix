@@ -97,6 +97,7 @@ class ReiAnixLibraryViewModel(
 
     
     companion object {
+        private const val TAG = "ReiAnixLibraryViewModel"
         const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
         const val SEARCH_DEBOUNCE_MS = 180L
 
