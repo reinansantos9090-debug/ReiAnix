@@ -502,7 +502,15 @@ suspend fun ReiAnixSqliteLibraryRepository.listPendingAniListMatches(): List<Rei
         }
     }
 
-/** Resolves a pending mapping and removes the pending row in one transaction. */
+/**
+ * Resolves the user's selected AniList candidate in the canonical catalog.
+ *
+ * A resolved pending candidate is a manual match, matching LibraryService.resolve_match:
+ * anime and associations receive the same ID plus manual status/score/flag, and the
+ * pending row is removed only after both catalog writes succeed. Remote editorial
+ * metadata is deliberately not marked available here because this SQLite operation
+ * does not fetch that payload.
+ */
 suspend fun ReiAnixSqliteLibraryRepository.resolvePendingAniListMatch(
     lookupTitle: String,
     anilistId: Long,
@@ -510,11 +518,41 @@ suspend fun ReiAnixSqliteLibraryRepository.resolvePendingAniListMatch(
     val lookup = lookupTitle.trim()
     require(lookup.isNotEmpty()) { "lookupTitle cannot be blank." }
     require(anilistId > 0L) { "AniList ID must be positive." }
+
     database.transaction { connection ->
+        // Resolve by the canonical local key only; never create or guess a local anime.
+        val animeId = connection.rawQuery(
+            "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1",
+            arrayOf(lookup),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                throw NoSuchElementException("Obra local não encontrada; a pendência foi preservada.")
+            }
+            cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+        }
+
+        val matchValues = ContentValues().apply {
+            put("anilist_id", anilistId)
+            put("anilist_match_status", "manual")
+            put("anilist_match_score", 1.0)
+            put("anilist_match_margin", 1.0)
+            put("anilist_match_manual", 1)
+        }
+        check(
+            connection.update(
+                "anime",
+                matchValues,
+                "id = ?",
+                arrayOf(animeId.toString()),
+            ) == 1,
+        ) { "Não foi possível atualizar a associação AniList da obra local." }
+
         connection.execSQL(
             "INSERT OR REPLACE INTO associations(lookup_title, anilist_id) VALUES(?, ?)",
             arrayOf(lookup, anilistId),
         )
+
+        // Deletion is intentionally last: any earlier failure rolls back all writes.
         connection.delete("pending_matches", "lookup_title = ?", arrayOf(lookup))
     }
 }

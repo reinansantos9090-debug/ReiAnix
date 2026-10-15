@@ -1502,6 +1502,24 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(5678, org.json.JSONArray(pending.single().candidatesJson).getJSONObject(0).getInt("id"))
 
         repository.resolvePendingAniListMatch("catalog-key", 5678L)
+
+        // The public query reads anime, so it must immediately expose the resolved ID,
+        // not merely observe an entry in associations.
+        val resolved = repository.getAniListMatchByLookupTitle("catalog-key")
+        assertEquals(5678L, resolved?.anilistId)
+        assertEquals("manual", resolved?.status)
+        assertEquals(1.0, resolved?.score ?: -1.0, 0.0)
+        assertEquals(1.0, resolved?.margin ?: -1.0, 0.0)
+        assertEquals(true, resolved?.manual)
+
+        val resolvedAnime = repository.getAnime(1L)
+        assertEquals(5678L, resolvedAnime?.anilistId)
+        assertEquals("Original Title", resolvedAnime?.title)
+        assertEquals("keep this note", resolvedAnime?.personalNote)
+        assertEquals(true, resolvedAnime?.favorite)
+        assertTrue(resolvedAnime?.metadataManualFieldsJson.orEmpty().contains("title"))
+        assertTrue(resolvedAnime?.metadataManualFieldsJson.orEmpty().contains("cover_url"))
+
         assertTrue(repository.listPendingAniListMatches().isEmpty())
         SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
             db.rawQuery(
@@ -1525,6 +1543,126 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertTrue(repository.setMetadataStatusByLookupTitle("catalog-key", "available", "high"))
         assertEquals(1, repository.clearAniListMetadataCache())
         assertEquals(null, repository.getAnime(1L)?.metadataUpdatedAt)
+    }
+
+    @Test
+    fun pendingResolutionWithMissingLocalAnimePreservesPendingRowAndCreatesNoAssociation() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        repository.setPendingAniListMatch(
+            lookupTitle = "missing-local-key",
+            displayTitle = "Missing Local Anime",
+            candidatesJson = """[{"id":9876,"title":"Candidate"}]""",
+        )
+
+        try {
+            repository.resolvePendingAniListMatch("missing-local-key", 9876L)
+            fail("A pending match must not resolve when its local anime row does not exist.")
+        } catch (expected: NoSuchElementException) {
+            assertTrue(expected.message.orEmpty().contains("Obra local não encontrada"))
+        }
+
+        assertNull(repository.getAnimeByLookupTitle("missing-local-key"))
+        assertNull(repository.getAniListMatchByLookupTitle("missing-local-key"))
+        assertEquals(
+            listOf("missing-local-key"),
+            repository.listPendingAniListMatches().map { it.lookupTitle },
+        )
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                "SELECT COUNT(*) FROM associations WHERE lookup_title = ?",
+                arrayOf("missing-local-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+            db.rawQuery(
+                "SELECT COUNT(*) FROM anime WHERE lookup_title = ?",
+                arrayOf("missing-local-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+        }
+    }
+
+    @Test
+    fun pendingResolutionRollsBackAnimeAssociationAndPendingDeletionWhenAssociationWriteFails() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        repository.setAniListMatchByLookupTitle(
+            lookupTitle = "catalog-key",
+            anilistId = 1234L,
+            status = "manual",
+            score = 0.96,
+            margin = 0.18,
+            manual = true,
+        )
+        repository.setPendingAniListMatch(
+            lookupTitle = "catalog-key",
+            displayTitle = "Catalog Title",
+            candidatesJson = """[{"id":5678,"title":"Candidate"}]""",
+        )
+
+        // The repository's canonical contract has already been validated. This
+        // controlled database constraint failure occurs after anime is updated and
+        // forces the surrounding transaction to roll back every mutation.
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "CREATE TRIGGER reject_pending_resolution_association " +
+                    "BEFORE INSERT ON associations " +
+                    "BEGIN SELECT RAISE(ABORT, 'forced association write failure'); END",
+            )
+        }
+
+        var failedAsExpected = false
+        try {
+            repository.resolvePendingAniListMatch("catalog-key", 5678L)
+        } catch (expected: SQLiteException) {
+            failedAsExpected = expected.message.orEmpty().contains("forced association write failure")
+        }
+        assertTrue("The injected association write must fail the transaction.", failedAsExpected)
+
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                """SELECT anilist_id, anilist_match_status, anilist_match_score,
+                          anilist_match_margin, anilist_match_manual
+                   FROM anime WHERE lookup_title = ?""".trimIndent(),
+                arrayOf("catalog-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1234L, cursor.getLong(0))
+                assertEquals("manual", cursor.getString(1))
+                assertEquals(0.96, cursor.getDouble(2), 0.0)
+                assertEquals(0.18, cursor.getDouble(3), 0.0)
+                assertEquals(1, cursor.getInt(4))
+            }
+            db.rawQuery(
+                "SELECT anilist_id FROM associations WHERE lookup_title = ?",
+                arrayOf("catalog-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1234L, cursor.getLong(0))
+            }
+            db.rawQuery(
+                "SELECT COUNT(*) FROM pending_matches WHERE lookup_title = ?",
+                arrayOf("catalog-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+            db.rawQuery(
+                "SELECT title, personal_note, favorite, metadata_manual_fields FROM anime WHERE lookup_title = ?",
+                arrayOf("catalog-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Original Title", cursor.getString(0))
+                assertEquals("keep this note", cursor.getString(1))
+                assertEquals(1, cursor.getInt(2))
+                assertTrue(cursor.getString(3).contains("title"))
+                assertTrue(cursor.getString(3).contains("cover_url"))
+            }
+        }
     }
 
     @Test

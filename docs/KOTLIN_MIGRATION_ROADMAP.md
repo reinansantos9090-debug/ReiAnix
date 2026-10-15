@@ -54,6 +54,12 @@ Referência de execução desta etapa: branch `implementation/prompt-03-sqlite-d
 - Preservados os serviços de consulta paginada, pesquisa, patch de metadados e indexação de snapshots do scanner nativo; nenhuma lógica de scanner, cliente AniList, artwork, backup ou player foi reescrita.
 - Adicionado teste de runtime isolado ao conjunto Kotlin/JVM já existente e teste Python de contrato para o workflow normal.
 
+### Correção pontual do Prompt 03.1 — resolução de associação AniList pendente
+
+A resolução nativa agora atualiza a linha local `anime`, escreve o mesmo ID na tabela canônica `associations` e remove a linha correspondente de `pending_matches` na mesma transação. A escolha pendente é persistida como match manual, em linha com `LibraryService.resolve_match`. A resolução falha antes de gravar quando a chave local não existe; testes de regressão cobrem a consulta pública imediatamente após a resolução, a preservação da pendência para anime inexistente e rollback quando a gravação em `associations` falha. Nenhum schema, versão do banco, writer Python, tela ou subsistema externo é alterado por esta correção.
+
+A validação automática do commit corretivo e os artefatos correspondentes devem ser registrados apenas depois que o run de PR referente ao SHA final terminar.
+
 ### Limite de ownership que permanece explícito
 
 O adapter `data/library/ReiAnixLibraryRepository.kt` continua responsável pela projeção/IPC de várias ações ainda híbridas. A gravação de favoritos já era nativa antes deste pacote; a alteração real de ownership neste prompt é o estado assistido. As APIs nativas de metadata manual, tags, notas e pin agora existem, mas ainda não significam que todas as telas/ações Flet/Python que as expõem tenham sido migradas para consumidores Kotlin. Também permanecem no fluxo de transição as mutações de fontes de descoberta e reconciliação geral, alguns fluxos de associação/matching, publicação de artwork, backup/restauração e preferências ainda delegadas ao adapter legado. Cada uma depende de migrar seu consumidor/efeito colateral sem replicar writers; não foi fingido que essas responsabilidades desapareceram.
