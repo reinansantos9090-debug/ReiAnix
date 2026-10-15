@@ -1399,9 +1399,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals("Manual title", manual.title)
         assertEquals("Manual English title", manual.english)
         assertTrue(manual.metadataManualFieldsJson.orEmpty().contains("english"))
-        assertEquals("keep this note", manual.personalNote.let { if (it == null) "keep this note" else it })
+        assertEquals("updated personal note", manual.personalNote)
         assertEquals(true, manual.favorite)
-        assertEquals(listOf("Action hero", "drama"), org.json.JSONArray(manual.userTagsJson))
+        val persistedTags = org.json.JSONArray(manual.userTagsJson)
+        assertEquals(
+            listOf("Action hero", "drama"),
+            (0 until persistedTags.length()).map(persistedTags::getString),
+        )
 
         val remote = repository.updateAnimeMetadata(
             ReiAnixAnimeMetadataPatch(
