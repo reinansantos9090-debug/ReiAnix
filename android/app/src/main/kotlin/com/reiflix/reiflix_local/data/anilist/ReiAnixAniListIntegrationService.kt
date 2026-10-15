@@ -8,7 +8,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
@@ -280,23 +279,6 @@ class ReiAnixAniListIntegrationService(
         settings.getPreference(key)?.value?.trim()?.lowercase(Locale.ROOT)?.let {
             it == "true" || it == "1" || it == "yes"
         } ?: defaultValue
-
-    private fun localTitles(local: ReiAnixAnimeRecord): List<String> = buildList {
-        add(local.title)
-        add(local.lookupTitle)
-        local.romaji?.let(::add)
-        local.english?.let(::add)
-        local.nativeTitle?.let(::add)
-        val rawAliases = local.aliasesJson
-        if (!rawAliases.isNullOrBlank()) {
-            runCatching {
-                val json = JSONArray(rawAliases)
-                for (index in 0 until json.length()) json.optString(index).takeIf { it.isNotBlank() }?.let(::add)
-            }
-        }
-    }
-
-    private fun normalize(value: String): String = MediaTitleNormalizer.normalizeTitle(value)
 
     companion object {
         private const val TAG = "ReiAnixAniList"
