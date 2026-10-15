@@ -33,7 +33,7 @@ class ReiAnixAniListIntegrationService(
     private val library: ReiAnixSqliteLibraryRepository,
     private val settings: ReiAnixSqliteSettingsRepository,
     private val descriptionLocalizer: ReiAnixAniListDescriptionLocalizer? = null,
-    private val artworkRequestPublisher: ((Long) -> Boolean)? = null,
+    private val metadataCommitPublisher: ((Long, Boolean) -> Boolean)? = null,
 ) {
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
 
@@ -44,13 +44,13 @@ class ReiAnixAniListIntegrationService(
         descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
             File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
         ),
-        artworkRequestPublisher = { animeId ->
+        metadataCommitPublisher = { animeId, requestArtwork ->
             NativeMailbox.write(
                 context.applicationContext,
                 JSONObject()
-                    .put("type", "anilist_artwork_sync")
+                    .put("type", "anilist_metadata_committed")
                     .put("requestId", UUID.randomUUID().toString())
-                    .put("payload", JSONObject().put("animeId", animeId)),
+                    .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", requestArtwork)),
             )
         },
     )
@@ -308,14 +308,7 @@ class ReiAnixAniListIntegrationService(
                     ),
                 )
             }
-            if (artworkEnabled && (
-                    !remote.coverExtraLargeUrl.isNullOrBlank() ||
-                        !remote.coverLargeUrl.isNullOrBlank() ||
-                        !remote.bannerUrl.isNullOrBlank()
-                )
-            ) {
-                enqueueArtworkRefresh(updated.id)
-            }
+            enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled)
             AniListResult.Success(updated)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -330,15 +323,15 @@ class ReiAnixAniListIntegrationService(
      * invalidate durable metadata; the Compose renderer can still use its remote
      * URL fallback and a later sync can retry materialization.
      */
-    private suspend fun enqueueArtworkRefresh(animeId: Long) {
-        val publisher = artworkRequestPublisher ?: return
+    private suspend fun enqueueMetadataCommit(animeId: Long, requestArtwork: Boolean) {
+        val publisher = metadataCommitPublisher ?: return
         try {
-            val published = withContext(Dispatchers.IO) { publisher(animeId) }
-            if (!published) Log.w(TAG, "Could not enqueue artwork refresh after AniList metadata commit")
+            val published = withContext(Dispatchers.IO) { publisher(animeId, requestArtwork) }
+            if (!published) Log.w(TAG, "Could not publish AniList metadata update to native consumers")
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            Log.w(TAG, "Could not enqueue artwork refresh after AniList metadata commit", error)
+            Log.w(TAG, "Could not publish AniList metadata update to native consumers", error)
         }
     }
 
