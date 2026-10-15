@@ -4,7 +4,7 @@
 
 Este documento registra o fluxo AniList utilizado pelos consumidores nativos do ReiAnix. A implementação de produção para Compose está composta por android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClient.kt, ReiAnixAniListIntegrationService.kt, ReiAnixAniListDescriptionLocalizer.kt, o ReiAnixSqliteLibraryRepository canônico e ReiAnixAppDependencies.
 
-A migração não remove o runtime híbrido nem o ArtworkEngine neste pacote. core/anilist.py e o fluxo AniList de core/library_service.py permanecem disponíveis para consumidores Flet/legados que ainda existem. O caminho nativo de pesquisa, associação e atualização de metadata não delega consultas GraphQL ao Python. A solicitação de materialização de imagens é uma exceção deliberada: após o commit SQLite, Kotlin publica um evento estreito ao NativeMailbox e o worker de artwork existente materializa as URLs persistidas. Esse evento não executa AniList nem grava metadata editorial.
+A migração não remove o runtime híbrido nem o ArtworkEngine neste pacote. core/anilist.py permanece disponível para consumidores Flet/legados. No modo Compose, `main.py` chama `hydrate_catalog_metadata(..., allow_anilist_metadata=False)`: o worker Python não pesquisa AniList, não faz matching nem localiza/grava sinopses; ele reconcilia somente a materialização de imagens já persistidas pelo Kotlin. No modo Flet legado, o parâmetro continua no padrão verdadeiro e preserva o fluxo existente. Após o commit SQLite, Kotlin publica um evento mínimo ao NativeMailbox e o ArtworkEngine existente materializa as URLs. O evento não executa AniList nem grava metadata editorial.
 
 ## Cliente GraphQL
 
@@ -20,7 +20,7 @@ Os campos de mídia consultados são: id; títulos romaji, english e native; syn
 
 ## Pesquisa, identidade e associação
 
-ReiAnixAniListIntegrationService é o ponto de entrada para os consumidores nativos. Ele implementa pesquisa, atualização explícita por ID, associação manual e associação automática conservadora. O matching usa a normalização já adotada em MediaTitleNormalizer, compara títulos/títulos alternativos e aplica os limites existentes de confiança e margem. Associação manual e IDs existentes têm prioridade; correspondências incertas não são persistidas automaticamente.
+ReiAnixAniListIntegrationService é o ponto de entrada para os consumidores nativos. Ele implementa pesquisa, atualização explícita por ID, associação manual e associação automática conservadora. O matching é executado por `ReiAnixAniListMatcher`, portado de `core/organizer_ai.py`: normalização NFKD/diacríticos, limpeza de release tags e marcadores de episódio/temporada/ano, comparação por igualdade/contém, razão de blocos de sequência e Jaccard de tokens, ajustes de formato/temporada/ano e ordenação determinística. Os limites usados são `MINIMUM_SCORE=0.48`, `AUTO_CONFIRM_SCORE=0.86` e `AUTO_CONFIRM_MARGIN=0.05`, alinhados ao contrato Python. Associação manual e IDs existentes têm prioridade; candidatos abaixo dos limites ficam ambíguos e não são persistidos como associação.
 
 ReiAnixAniListViewModel cancela uma pesquisa substituída e usa identidade de requisição para impedir que uma resposta antiga sobrescreva os resultados da busca atual. Os estados de carregamento, ausência de resultados, falha e associação ficam separados.
 
@@ -37,6 +37,10 @@ ReiAnixAniListDescriptionLocalizer portou a normalização de HTML, a detecção
 - O arquivo compartilhado mantém a localização legada: filesDir/data/covers/anilist_description_ptbr.json, equivalente ao LibraryStore.cache_dir (data/covers). Ele é cache, não fonte de verdade.
 - A coluna canônica description_original mantém a sinopse original remota; description guarda a tradução validada, quando disponível, ou o original como fallback. Uma resposta sem descrição não apaga os valores existentes. Quando o original remoto é o mesmo, uma tradução PT-BR válida já persistida é preservada.
 - Não há tradução inventada quando o idioma é desconhecido ou o serviço falha. Nesse caso a interface recebe o original, sem perda de metadata.
+
+## Hidratação nativa e estados de associação
+
+`ReiAnixLibraryViewModel` agenda `reconcileUnmatchedLibraryMetadata()` fora do mutex da projeção visual. O serviço lê o catálogo canônico e consulta sequencialmente apenas registros elegíveis, sem ID AniList, sem associação manual e sem fonte/estado manual. Estados terminais (`not_found`, `ambiguous`, `network_error`, `rate_limited`, `invalid_response`) são persistidos por `recordAniListAutoMatchOutcome` na tabela `anime` e impedem consultas repetidas em cada refresh. O escritor checa novamente a associação/flag manual dentro da transação para não substituir seleção concorrente. Falhas de persistência são propagadas, não convertidas em sucesso.
 
 ## Persistência e atualizações parciais
 
