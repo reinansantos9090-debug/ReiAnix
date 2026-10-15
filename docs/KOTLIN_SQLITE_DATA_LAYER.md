@@ -78,7 +78,7 @@ Foi adicionado `ReiAnixSqliteLibraryMutations.kt` como extensão do repositório
 | `setAniListMatchByLookupTitle` / `clearAniListMatchByLookupTitle` | Atualizam, de forma atômica, os campos de match da obra e a tabela `associations`; limpar o match também remove uma correspondência pendente, preservando campos editoriais e pessoais. |
 | `setPendingAniListMatch` / `listPendingAniListMatches` | Gravam e leem JSON de candidatos na tabela canônica existente, validando o formato e mantendo ordenação estável. |
 | `resolvePendingAniListMatch` | Grava a associação e remove o item pendente na mesma transação. |
-| `setMetadataStatusByLookupTitle` / `clearAniListMetadataCache` | Atualizam estado de metadata e expiram a frescura de metadata/cache sem apagar linhas, associações ou capas locais válidas. |
+| `setMetadataStatusByLookupTitle` / `clearAniListMetadataCache` | Atualizam estado de metadata e executam a invalidação de `cover_cache` prevista pelo LibraryStore, sem remover linhas da biblioteca, associações ou linhas da tabela `artwork`. |
 
 Os métodos acima não criam nem removem registros e não introduzem novas tabelas. A inserção/atualização em lote de mídia descoberta já ocorre pelo indexador nativo existente, em vez de se introduzir uma segunda implementação de scanner.
 
