@@ -172,7 +172,7 @@ class ReiAnixAniListIntegrationService(
         }
         val best = ranked.first()
         if (best.score < ReiAnixAniListMatcher.MINIMUM_SCORE) {
-            library.recordAniListAutoMatchOutcome(animeId, "not_found")
+            recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
         val second = ranked.getOrNull(1)?.score ?: 0.0
