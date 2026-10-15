@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import java.io.File
 
 class ReiAnixSettingsRepository(
@@ -64,8 +67,8 @@ class ReiAnixSettingsRepository(
         }
     }
     private val appContext = context.applicationContext
-    // Reads the existing LibraryStore preferences table. Writes remain on the
-    // single legacy SettingsStore path until the command/runtime cutover is complete.
+    // Reads and writes the canonical LibraryStore.preferences table. The Python bridge is
+    // retained only to notify still-Python consumers after native persistence succeeds.
     private val sqliteSettingsRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         sharedSqliteSettingsRepository ?: ReiAnixSqliteSettingsRepository(appContext)
     }
@@ -131,6 +134,13 @@ class ReiAnixSettingsRepository(
      * preference reads come from the existing SQLite table, while command results and the
      * snapshot provide acknowledgement/account/storage state.
      */
+    private val settingLocks = ConcurrentHashMap<String, Mutex>()
+
+    /**
+     * Persist each preference directly to the canonical SQLite table. Compose state
+     * changes only after SQLite confirms the write; NativeMailbox is a post-commit
+     * notification for legacy consumers, never the persistence mechanism.
+     */
     fun setSetting(key: String, value: String) {
         val normalizedKey = key.trim()
         if (normalizedKey.isBlank()) return
@@ -165,9 +175,10 @@ class ReiAnixSettingsRepository(
                 ?: ReiAnixSettingsContract.defaultFor(normalizedKey)
                 ?: normalizedValue
             confirmedSettings.putIfAbsent(normalizedKey, confirmedValue)
-            pendingSettings[normalizedKey] = PendingSetting(requestId, normalizedKey, normalizedValue, confirmedValue)
+            pendingSettings[normalizedKey] = PendingSetting(
+                requestId, normalizedKey, normalizedValue, confirmedValue,
+            )
             _state.value = current.copy(
-                settings = current.settings + (normalizedKey to normalizedValue),
                 operations = upsertOperationLocked(
                     current.operations,
                     ReiAnixSettingsOperationUiState(
@@ -182,62 +193,145 @@ class ReiAnixSettingsRepository(
         }
         Log.i(TAG, "SETTINGS_ACTION_START requestId=" + requestId + " action=set key=" + normalizedKey)
         scope.launch {
-            val writeStartedNs = System.nanoTime()
-            val published = runCatching {
-                NativeMailbox.write(
-                    appContext,
-                    JSONObject()
-                        .put("type", "compose_settings_set")
-                        .put("requestId", requestId)
-                        .put(
-                            "payload",
-                            JSONObject()
-                                .put("key", normalizedKey)
-                                .put("value", normalizedValue)
-                                .put("requestId", requestId),
-                        ),
-                )
-            }.getOrElse { false }
-            val writeDurationMs = (System.nanoTime() - writeStartedNs) / 1_000_000.0
-            if (published) {
-                Log.i(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=set key=" + normalizedKey + " success=true writeDurationMs=" + writeDurationMs)
-            } else {
-                synchronized(stateLock) {
-                    val current = _state.value
-                    val pending = pendingSettings[normalizedKey]
-                    val rollbackSettings = if (pending != null && pending.requestId == requestId) {
-                        pendingSettings.remove(normalizedKey)
-                        rollbackFailedSetting(
-                            currentSettings = current.settings,
-                            key = normalizedKey,
-                            failedRequestId = requestId,
-                            currentPendingRequestId = pending.requestId,
-                            confirmedValue = confirmedSettings[normalizedKey] ?: pending.confirmedValue,
-                        )
-                    } else {
-                        rollbackFailedSetting(
-                            currentSettings = current.settings,
-                            key = normalizedKey,
-                            failedRequestId = requestId,
-                            currentPendingRequestId = pending?.requestId,
-                            confirmedValue = pending?.confirmedValue ?: normalizedValue,
+            settingLocks.computeIfAbsent(normalizedKey) { Mutex() }.withLock {
+                val isLatest = synchronized(stateLock) {
+                    pendingSettings[normalizedKey]?.requestId == requestId
+                }
+                if (!isLatest) {
+                    synchronized(stateLock) {
+                        val current = _state.value
+                        val existing = current.operations[requestId] ?: return@synchronized
+                        _state.value = current.copy(
+                            operations = upsertOperationLocked(
+                                current.operations,
+                                existing.copy(
+                                    state = ReiAnixSettingsOperationState.CANCELLED,
+                                    message = "Substituída por uma alteração mais recente.",
+                                    timestampMs = System.currentTimeMillis(),
+                                ),
+                            ),
                         )
                     }
-                    _state.value = current.copy(
-                        settings = rollbackSettings,
-                        operations = upsertOperationLocked(
-                            current.operations,
-                            (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(
-                                requestId, "set:" + normalizedKey, normalizedKey,
-                            )).copy(
-                                state = ReiAnixSettingsOperationState.ERROR,
-                                error = "Não foi possível enviar a alteração para o backend.",
-                                timestampMs = System.currentTimeMillis(),
-                            ),
-                        ),
-                    )
+                    return@withLock
                 }
-                Log.e(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=set key=" + normalizedKey + " success=false writeDurationMs=" + writeDurationMs)
+
+                try {
+                    val persistedValue = sqliteSettingsRepository
+                        .setPreference(normalizedKey, normalizedValue)
+                        .value
+                    val shouldNotifyRuntime = synchronized(stateLock) {
+                        val current = _state.value
+                        val pending = pendingSettings[normalizedKey]
+                        confirmedSettings[normalizedKey] = persistedValue
+                        if (pending?.requestId != requestId) {
+                            false
+                        } else {
+                            pendingSettings.remove(normalizedKey)
+                            _state.value = current.copy(
+                                settings = current.settings + (normalizedKey to persistedValue),
+                                operations = upsertOperationLocked(
+                                    current.operations,
+                                    (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(
+                                        requestId, "set:" + normalizedKey, normalizedKey,
+                                    )).copy(
+                                        state = ReiAnixSettingsOperationState.SUCCESS,
+                                        message = "Configuração salva.",
+                                        error = null,
+                                        timestampMs = System.currentTimeMillis(),
+                                    ),
+                                ),
+                            )
+                            true
+                        }
+                    }
+
+                    if (shouldNotifyRuntime) {
+                        val published = runCatching {
+                            NativeMailbox.write(
+                                appContext,
+                                JSONObject()
+                                    .put("type", "compose_settings_set")
+                                    .put("requestId", requestId)
+                                    .put(
+                                        "payload",
+                                        JSONObject()
+                                            .put("key", normalizedKey)
+                                            .put("value", persistedValue)
+                                            .put("requestId", requestId)
+                                            .put("nativePersisted", true),
+                                    ),
+                            )
+                        }.getOrElse { false }
+                        Log.i(
+                            TAG,
+                            "SETTINGS_PERSISTED requestId=" + requestId +
+                                " key=" + normalizedKey +
+                                " runtimeNotificationPublished=" + published,
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    synchronized(stateLock) {
+                        val current = _state.value
+                        val pending = pendingSettings[normalizedKey]
+                        if (pending?.requestId == requestId) {
+                            pendingSettings.remove(normalizedKey)
+                            _state.value = current.copy(
+                                settings = current.settings + (
+                                    normalizedKey to (confirmedSettings[normalizedKey] ?: pending.confirmedValue)
+                                ),
+                                operations = upsertOperationLocked(
+                                    current.operations,
+                                    (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(
+                                        requestId, "set:" + normalizedKey, normalizedKey,
+                                    )).copy(
+                                        state = ReiAnixSettingsOperationState.CANCELLED,
+                                        error = "A gravação da configuração foi cancelada.",
+                                        timestampMs = System.currentTimeMillis(),
+                                    ),
+                                ),
+                            )
+                        }
+                    }
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e(TAG, "SETTINGS_PERSIST_FAILED requestId=" + requestId + " key=" + normalizedKey, error)
+                    synchronized(stateLock) {
+                        val current = _state.value
+                        val pending = pendingSettings[normalizedKey]
+                        if (pending?.requestId == requestId) {
+                            pendingSettings.remove(normalizedKey)
+                            _state.value = current.copy(
+                                settings = current.settings + (
+                                    normalizedKey to (confirmedSettings[normalizedKey] ?: pending.confirmedValue)
+                                ),
+                                operations = upsertOperationLocked(
+                                    current.operations,
+                                    (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(
+                                        requestId, "set:" + normalizedKey, normalizedKey,
+                                    )).copy(
+                                        state = ReiAnixSettingsOperationState.ERROR,
+                                        error = "Não foi possível salvar a configuração no SQLite.",
+                                        timestampMs = System.currentTimeMillis(),
+                                    ),
+                                ),
+                            )
+                        } else {
+                            val existing = current.operations[requestId]
+                            if (existing != null) {
+                                _state.value = current.copy(
+                                    operations = upsertOperationLocked(
+                                        current.operations,
+                                        existing.copy(
+                                            state = ReiAnixSettingsOperationState.ERROR,
+                                            error = "Não foi possível salvar a configuração no SQLite.",
+                                            timestampMs = System.currentTimeMillis(),
+                                        ),
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
