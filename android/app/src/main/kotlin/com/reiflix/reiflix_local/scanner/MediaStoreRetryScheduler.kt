@@ -1,6 +1,6 @@
 package com.reiflix.reiflix_local.scanner
 
-import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.MainActivity
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -19,10 +19,18 @@ object MediaStoreRetryScheduler {
             scheduled.set(false)
             if (!MediaStoreScanner.hasReadPermission(appContext)) { Log.i(TAG, "MEDIASTORE_RETRY_SKIPPED permission=denied"); return@postDelayed }
             val requestId = UUID.randomUUID().toString()
-            val written = NativeMailbox.write(appContext, JSONObject().put("type", "scan_request").put("requestId", requestId)
-                .put("payload", JSONObject().put("origin", "MEDIASTORE_CHANGE").put("source", "mediastore").put("scopeRef", "").put("full", false)
-                    .put("reason", reason).put("triggerRequestId", triggerRequestId ?: "")))
-            Log.i(TAG, "MEDIASTORE_RETRY_PUBLISHED requestId=" + requestId + " triggerRequestId=" + (triggerRequestId ?: "-") + " written=" + written)
+            val dispatched = runCatching {
+                appContext.startActivity(
+                    MainActivity.createNativeStorageActionIntent(
+                        appContext,
+                        action = "scan_media_store",
+                        reason = reason,
+                        triggerRequestId = triggerRequestId,
+                    ),
+                )
+            }.onFailure { Log.e(TAG, "MEDIASTORE_RETRY_DISPATCH_FAILED reason=" + reason, it) }
+                .isSuccess
+            Log.i(TAG, "MEDIASTORE_RETRY_NATIVE_DISPATCH requestId=" + requestId + " triggerRequestId=" + (triggerRequestId ?: "-") + " dispatched=" + dispatched)
         }, 900L)
     }
 }
