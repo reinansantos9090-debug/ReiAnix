@@ -7522,13 +7522,16 @@ async def main(page: ft.Page):
                                 if tree_uri:
                                     status = str(payload.get('status') or '').upper()
                                     if status == 'REVOKED':
-                                        store.update_folder_status(tree_uri, 'revoked', event.get('message', 'A autorização SAF foi removida.'))
+                                        if payload.get('nativeStorageOwner') is not True:
+                                            store.update_folder_status(tree_uri, 'revoked', event.get('message', 'A autorização SAF foi removida.'))
                                         store.mark_source_unavailable(tree_uri, 'saf_permission_revoked')
                                     elif status in {'UNAVAILABLE', 'FAILED', 'PARTIAL'}:
-                                        store.update_folder_status(tree_uri, 'unavailable', event.get('message', 'O provedor SAF está indisponível no momento.'))
+                                        if payload.get('nativeStorageOwner') is not True:
+                                            store.update_folder_status(tree_uri, 'unavailable', event.get('message', 'O provedor SAF está indisponível no momento.'))
                                         store.mark_source_unavailable(tree_uri, 'saf_provider_unavailable')
                                     else:
-                                        store.update_folder_status(tree_uri, 'unavailable', event.get('message', 'Não foi possível acessar a pasta.'))
+                                        if payload.get('nativeStorageOwner') is not True:
+                                            store.update_folder_status(tree_uri, 'unavailable', event.get('message', 'Não foi possível acessar a pasta.'))
                                         store.mark_source_unavailable(tree_uri, 'saf_scan_error')
                                 await _write_pending_compose_saf_result(
                                     compose_request_id,
