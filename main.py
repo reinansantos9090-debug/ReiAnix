@@ -5508,12 +5508,19 @@ async def main(page: ft.Page):
                             tree_uri = str(payload.get('treeUri') or '').strip()
                             if not old_uri or not new_uri or not name or not tree_uri:
                                 raise ValueError('Evento de reconciliação SAF sem árvore, URI antiga, URI nova ou nome.')
-                            reconciliation = await asyncio.to_thread(
-                                library.reconcile_saf_document_identity_change,
-                                old_uri,
-                                new_uri,
-                                name,
-                            )
+                            if payload.get('nativeIdentityOwner') is True:
+                                reconciliation = {
+                                    "status": payload.get('status') or "unknown",
+                                    "episode_id": payload.get('episodeId'),
+                                }
+                            else:
+                                # Compatibility path for queued events emitted by older APKs.
+                                reconciliation = await asyncio.to_thread(
+                                    library.reconcile_saf_document_identity_change,
+                                    old_uri,
+                                    new_uri,
+                                    name,
+                                )
                             reconciliation_status = str(reconciliation.get('status') or 'unknown')
                             if reconciliation_status in {'reconciled', 'already_reconciled'}:
                                 logger.info(
