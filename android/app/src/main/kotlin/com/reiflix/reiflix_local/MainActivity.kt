@@ -416,7 +416,1364 @@ class MainActivity : FlutterFragmentActivity() {
             else -> Log.w(tag, "Ignoring unsupported native scan source=$source origin=$origin")
         }
     }
+    private var storageReceiverRegistered = false
+    private var systemBackDispatchPosted = false
+    private var systemBackEventCount = 0
+    private var externalSettingsKind: String? = null
+    private var externalSettingsRequestId: String? = null
+    private val externalSettingsLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
+            val kind = externalSettingsKind
+            val requestId = externalSettingsRequestId
+            externalSettingsKind = null
+            externalSettingsRequestId = null
+            Log.i(
+                tag,
+                "SETTINGS_RETURN kind=" + (kind ?: "-") +
+                    " resultCode=" + result.resultCode +
+                    " requestId=" + (requestId ?: "-") +
+                    " broad=" + BroadStorageScanner.hasAccess(this) +
+                    " media=" + MediaStoreScanner.accessLevel(this),
+            )
+            when (kind) {
+                "broad_storage" -> handleBroadSettingsReturn(requestId, "activity_result")
+                else -> {
+                    // App Info and other Android permission surfaces must still
+                    // converge to the authoritative native snapshot on return.
+                    Log.i(tag, "SETTINGS_RETURN revalidating non-broad surface kind=" + (kind ?: "-"))
+                    publishStorageStatus()
+                }
+            }
+        }
 
+    private fun scheduleMediaStoreIncrementalRescan() {
+        MediaStoreRetryScheduler.schedule(
+            applicationContext,
+            reason = "content_observer_debounce",
+        )
+    }
+    private val storageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            val action = intent.action ?: return
+            val changes = NativeIndex.updateVolumeSnapshot(
+                applicationContext,
+                NativeIndex.volumeSnapshot(applicationContext),
+            )
+            if (changes.optBoolean("changed")) {
+                val payload = JSONObject(changes.toString())
+                    .put("source", "android_storage")
+                    .put("reason", action)
+                    .put("timestamp", System.currentTimeMillis())
+                    .put("volumeEventUri", intent.data?.toString() ?: "")
+                NativeMailbox.write(this@MainActivity, JSONObject()
+                    .put("type", "volume_changed")
+                    .put("payload", payload))
+            }
+
+            // Mirror Nova's media/volume lifecycle integration: a mount or the
+            // completion of Android's MediaScanner is a discovery trigger. Never
+            // launch a permission UI from a broadcast; only start scans when the
+            // current Activity is RESUMED and the corresponding source is actually
+            // authorized.
+            val discoveryEvent = action == Intent.ACTION_MEDIA_MOUNTED ||
+                action == Intent.ACTION_MEDIA_SCANNER_FINISHED
+            if (discoveryEvent && activityResumed) {
+                publishScanRequest(
+                    "VOLUME_MOUNT",
+                    source = null,
+                    full = false,
+                    reason = action,
+                )
+            } else if (action == Intent.ACTION_MEDIA_UNMOUNTED ||
+                action == Intent.ACTION_MEDIA_EJECT ||
+                action == Intent.ACTION_MEDIA_REMOVED ||
+                action == Intent.ACTION_MEDIA_BAD_REMOVAL) {
+                publishStorageStatus()
+            }
+        }
+    }
+
+    private fun registerStorageReceiver() {
+        if (storageReceiverRegistered) return
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_MEDIA_MOUNTED)
+            addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+            addAction(Intent.ACTION_MEDIA_REMOVED)
+            addAction(Intent.ACTION_MEDIA_EJECT)
+            addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
+            addAction(Intent.ACTION_MEDIA_CHECKING)
+            addAction(Intent.ACTION_MEDIA_SCANNER_FINISHED)
+            addDataScheme("file")
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(storageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(storageReceiver, filter)
+            }
+            storageReceiverRegistered = true
+        } catch (exception: Exception) {
+            Log.w(tag, "Unable to register storage volume receiver", exception)
+        }
+    }
+
+    private fun unregisterStorageReceiver() {
+        if (!storageReceiverRegistered) return
+        runCatching { unregisterReceiver(storageReceiver) }
+        storageReceiverRegistered = false
+    }
+    private val mediaPermissionRequester = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        mediaPermissionRequestPending = false
+        val requestId = pendingMediaRequestId
+        pendingMediaRequestId = null
+        val access = MediaStoreScanner.accessLevel(this)
+        // Android's callback map is only a notification; the current package permissions are authoritative.
+        val granted = access != "denied"
+        Log.i(tag, "MEDIA_PERMISSION_CALLBACK grants=" + grants + " access=" + access + " granted=" + granted)
+        NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "PERMISSION_RESULT").put("source", MediaStoreScanner.SOURCE).put("access", access)))
+        NativeMailbox.write(this, JSONObject().put("type", "mediastore_permission")
+            .put("requestId", requestId ?: "")
+            .put("payload", JSONObject()
+                .put("granted", granted)
+                .put("access", access)
+                .put("source", MediaStoreScanner.SOURCE)
+                .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED))))
+        if (granted) {
+            nativeRequestState.markOperationState(requestId, "request_media_access", NativeRequestState.OperationState.COMPLETED)
+            publishScanRequest("PERMISSION_CHANGE", "mediastore", null, false, "media_permission_granted", requestId)
+        } else {
+            nativeRequestState.markOperationState(requestId, "request_media_access", NativeRequestState.OperationState.FAILED)
+            NativeMailbox.write(this, JSONObject().put("type", "mediastore_error")
+                .put("requestId", requestId ?: "")
+                .put("message", "A permissão para acessar os vídeos do dispositivo foi negada.")
+                .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE).put("status", NativeIndex.STATUS_FAILED).put("access", access)))
+        }
+    }
+    private val treePicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
+        handleTreePickerResult(result)
+    }
+
+    private fun cancelSafPickerWatchdog() {
+        safPickerWatchdog?.let { safPickerWatchdogHandler.removeCallbacks(it) }
+        safPickerWatchdog = null
+    }
+
+    private fun setSafPickerPhase(requestId: String?, phase: SafPickerPhase) {
+        if (safPickerPhase == phase) return
+        safPickerPhase = phase
+        val now = System.currentTimeMillis()
+        Log.i(tag, "SAF_PICKER_STATE requestId=" + (requestId ?: "-") +
+            " phase=" + phase.name + " at=" + now)
+        NativeMailbox.write(this, JSONObject().put("type", "diagnostic")
+            .put("requestId", requestId ?: "")
+            .put("payload", JSONObject().put("event", "SAF_PICKER_STATE")
+                .put("state", phase.name).put("requestId", requestId ?: "").put("timestamp", now)))
+    }
+
+    private fun clearSafPickerPending(requestId: String?, terminalPhase: SafPickerPhase) {
+        cancelSafPickerWatchdog()
+        safPickerPending = false
+        pendingSafRequestId = null
+        safPickerStartedAtMs = 0L
+        safPickerFocusLost = false
+        safPickerFocusRegainedAtMs = 0L
+        val terminalState = when (terminalPhase) {
+            SafPickerPhase.COMPLETED -> NativeRequestState.OperationState.COMPLETED
+            SafPickerPhase.CANCELLED -> NativeRequestState.OperationState.CANCELLED
+            SafPickerPhase.TIMEOUT -> NativeRequestState.OperationState.TIMEOUT
+            else -> NativeRequestState.OperationState.FAILED
+        }
+        nativeRequestState.markOperationState(requestId, "select_tree", terminalState)
+        setSafPickerPhase(requestId, terminalPhase)
+    }
+
+    private fun publishSafPickerError(
+        requestId: String?, message: String, stage: String, code: String,
+        status: String = SafScanner.STATUS_FAILED, treeUri: Uri? = null,
+    ) {
+        nativeRequestState.markOperationState(requestId, "select_tree", NativeRequestState.OperationState.FAILED)
+        val payload = JSONObject().put("source", "saf").put("status", status)
+            .put("stage", stage).put("code", code)
+        if (treeUri != null && treeUri.scheme.equals("content", true)) {
+            payload.put("treeUri", treeUri.toString())
+        }
+        NativeMailbox.write(this, JSONObject().put("type", "saf_error")
+            .put("requestId", requestId ?: "").put("message", message).put("payload", payload))
+    }
+
+    private fun timeoutSafPicker(
+        requestId: String?,
+        stage: String = "picker_watchdog",
+        code: String = "TIMEOUT",
+        message: String = "Não foi possível abrir o seletor de pastas do Android. Tente novamente.",
+    ) {
+        if (!safPickerPending || pendingSafRequestId != requestId) return
+        Log.e(tag, "SAF_PICKER_TIMEOUT requestId=" + (requestId ?: "-") +
+            " stage=" + stage + " code=" + code +
+            " phase=" + safPickerPhase.name +
+            " startedAt=" + safPickerStartedAtMs + " now=" + System.currentTimeMillis() +
+            " focusLost=" + safPickerFocusLost +
+            " focusRegainedAt=" + safPickerFocusRegainedAtMs)
+        clearSafPickerPending(requestId, SafPickerPhase.TIMEOUT)
+        publishSafPickerError(requestId, message, stage = stage, code = code)
+    }
+
+    private fun scheduleSafPickerWatchdog(requestId: String?) {
+        val correlationId = requestId?.trim().orEmpty()
+        if (!safPickerPending || correlationId.isBlank()) return
+        cancelSafPickerWatchdog()
+        val runnable = object : Runnable {
+            override fun run() {
+                if (!safPickerPending || pendingSafRequestId != correlationId) return
+
+                // The Android result callback normally completes the request before
+                // focus returns. Keep the picker alive while DocumentsUI is foreground,
+                // but recover if ReiAnix regains focus and ActivityResult never arrives.
+                val phase = safPickerPhase
+                val launchPending =
+                    phase == SafPickerPhase.REQUESTED || phase == SafPickerPhase.LAUNCHING
+                val resultPending = phase == SafPickerPhase.WAITING_RESULT
+                if (!launchPending && !resultPending) {
+                    cancelSafPickerWatchdog()
+                    return
+                }
+
+                val now = System.currentTimeMillis()
+                val focused = window?.decorView?.hasWindowFocus() == true
+                if (!activityResumed || !focused) {
+                    safPickerWatchdogHandler.postDelayed(this, SAF_PICKER_WATCHDOG_RETRY_MS)
+                    return
+                }
+
+                if (resultPending) {
+                    // Do not require a separate focus-loss callback: some providers omit
+                    // it, otherwise recovery is cancelled indefinitely after the return.
+                    if (safPickerFocusRegainedAtMs <= 0L) {
+                        safPickerFocusRegainedAtMs = now
+                    }
+                    val elapsedAfterReturn = now - safPickerFocusRegainedAtMs
+                    if (elapsedAfterReturn >= SAF_PICKER_RETURN_GRACE_MS) {
+                        timeoutSafPicker(
+                            correlationId,
+                            stage = "picker_result_watchdog",
+                            code = "RESULT_CALLBACK_TIMEOUT",
+                            message = "O Android voltou do seletor, mas o ReiAnix não recebeu o resultado da pasta. Toque em ESCOLHER PASTA para tentar novamente.",
+                        )
+                    } else {
+                        safPickerWatchdogHandler.postDelayed(
+                            this,
+                            maxOf(1L, SAF_PICKER_RETURN_GRACE_MS - elapsedAfterReturn),
+                        )
+                    }
+                    return
+                }
+
+                val elapsed = now - safPickerStartedAtMs
+                if (elapsed >= SAF_PICKER_LAUNCH_TIMEOUT_MS) {
+                    timeoutSafPicker(correlationId)
+                } else {
+                    safPickerWatchdogHandler.postDelayed(
+                        this,
+                        SAF_PICKER_LAUNCH_TIMEOUT_MS - elapsed,
+                    )
+                }
+            }
+        }
+        safPickerWatchdog = runnable
+        safPickerWatchdogHandler.postDelayed(runnable, SAF_PICKER_WATCHDOG_RETRY_MS)
+    }
+
+    private fun handleTreePickerResult(result: androidx.activity.result.ActivityResult) {
+        val resultIntent = result.data
+        val uri = resultIntent?.data
+        val requestId = pendingSafRequestId
+        Log.i(tag, "SAF_PICKER_ACTIVITY_RESULT requestId=" + (requestId ?: "-") +
+            " resultCode=" + result.resultCode + " hasUri=" + (uri != null) +
+            " timestamp=" + System.currentTimeMillis())
+        publishNativeDiagnostic(
+            "SAF_PICKER_RESULT",
+            requestId,
+            action = "select_tree",
+            result = if (result.resultCode == RESULT_OK && uri != null) "RESULT_OK" else "RESULT_CANCELED",
+        )
+
+        if (result.resultCode != RESULT_OK || uri == null) {
+            publishNativeDiagnostic(
+                "STORAGE_PICKER_CANCELLED",
+                requestId,
+                action = "select_tree",
+                result = "picker_cancelled",
+            )
+            publishNativeDiagnostic(
+                "STORAGE_CANCELLED",
+                requestId,
+                action = "select_tree",
+                result = "user_cancelled_picker",
+            )
+            clearSafPickerPending(requestId, SafPickerPhase.CANCELLED)
+            Log.i(tag, "SAF selection cancelled resultCode=" + result.resultCode)
+            NativeMailbox.write(this, JSONObject().put("type", "saf_cancelled")
+                .put("requestId", requestId ?: "").put("payload", JSONObject()
+                    .put("source", "saf").put("reason", "picker_cancelled")))
+            return
+        }
+
+        setSafPickerPhase(requestId, SafPickerPhase.WAITING_RESULT)
+        try {
+            if (uri.scheme?.lowercase() != "content" || !DocumentsContract.isTreeUri(uri)) {
+                clearSafPickerPending(requestId, SafPickerPhase.FAILED)
+                publishSafPickerError(requestId, "A pasta selecionada não é uma árvore SAF válida.",
+                    stage = "selection_validation", code = "INVALID_TREE_URI")
+                return
+            }
+            Log.i(tag, "SAF_PICKER_RESULT_VALID requestId=" + (requestId ?: "-") +
+                " authority=" + (uri.authority ?: "-"))
+            publishNativeDiagnostic(
+                "STORAGE_ROOT_SELECTED",
+                requestId,
+                action = "select_tree",
+                result = uri.toString(),
+            )
+            val transientInspection = SafScanner.inspectTree(this, uri, requirePersisted = false)
+            val transientStatus = transientInspection.optString("status")
+            if (transientStatus != SafScanner.STATUS_COMPLETED) {
+                val status = if (transientStatus == SafScanner.STATUS_REVOKED)
+                    SafScanner.STATUS_REVOKED else SafScanner.STATUS_UNAVAILABLE
+                clearSafPickerPending(requestId, SafPickerPhase.FAILED)
+                publishSafPickerError(requestId, "O provedor não conseguiu abrir a pasta selecionada.",
+                    stage = "selection_validation", code = "PROVIDER_UNAVAILABLE", status = status, treeUri = uri)
+                return
+            }
+            val flags = resultIntent.flags
+            SafScanner.persistPermission(this, uri, flags)
+            publishNativeDiagnostic(
+                "STORAGE_PERMISSION_PERSISTED",
+                requestId,
+                action = "select_tree",
+                result = uri.toString(),
+            )
+            publishNativeDiagnostic(
+                "SAF_PERMISSION_PERSISTED",
+                requestId,
+                action = "select_tree",
+                result = uri.toString(),
+            )
+            val persistedInspection = SafScanner.inspectTree(this, uri, requirePersisted = true)
+            val persistedStatus = persistedInspection.optString("status")
+            if (persistedStatus != SafScanner.STATUS_COMPLETED) {
+                val status = if (!SafScanner.hasPersistedReadPermission(this, uri))
+                    SafScanner.STATUS_REVOKED else SafScanner.STATUS_UNAVAILABLE
+                clearSafPickerPending(requestId, SafPickerPhase.FAILED)
+                publishSafPickerError(requestId, "A autorização da pasta não pôde ser validada.",
+                    stage = "persisted_validation", code = "PERSISTED_PERMISSION_INVALID",
+                    status = status, treeUri = uri)
+                return
+            }
+            publishNativeDiagnostic(
+                "STORAGE_ROOT_VALIDATED",
+                requestId,
+                action = "select_tree",
+                result = uri.toString(),
+            )
+            publishNativeDiagnostic(
+                "STORAGE_READY",
+                requestId,
+                action = "select_tree",
+                result = "persisted_and_validated",
+            )
+            val payload = SafScanner.identityPayload(uri)
+                .put("granted", true).put("selected", true)
+                .put("status", SafScanner.STATUS_COMPLETED)
+                .put("name", SafScanner.displayName(this, uri))
+                .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED))
+            clearSafPickerPending(requestId, SafPickerPhase.COMPLETED)
+            NativeMailbox.write(this, JSONObject().put("type", "saf_permission")
+                .put("requestId", requestId ?: "").put("payload", payload))
+            try {
+                publishNativeDiagnostic(
+                    "PERMISSION_CHANGE",
+                    requestId,
+                    action = "select_tree",
+                    result = "saf_granted",
+                )
+                publishNativeDiagnostic(
+                    "STARTUP_SCAN_REQUESTED",
+                    requestId,
+                    action = "scan",
+                    result = "permission_change",
+                )
+                publishNativeDiagnostic(
+                    "STORAGE_SCAN_STARTED",
+                    requestId,
+                    action = "select_tree",
+                    result = "permission_change",
+                )
+                publishScanRequest("PERMISSION_CHANGE", "saf", uri.toString(), false, "saf_granted", requestId)
+            } catch (exception: Exception) {
+                Log.e(tag, "SAF_PICKER_SCAN_TRIGGER_FAILED requestId=" + (requestId ?: "-"), exception)
+            }
+        } catch (exception: IllegalArgumentException) {
+            clearSafPickerPending(requestId, SafPickerPhase.FAILED)
+            Log.e(tag, "Invalid SAF selection", exception)
+            publishSafPickerError(requestId, "A pasta selecionada não é uma árvore SAF válida.",
+                stage = "selection_validation", code = "INVALID_TREE_URI")
+        } catch (exception: Exception) {
+            clearSafPickerPending(requestId, SafPickerPhase.FAILED)
+            Log.e(tag, "SAF selection failed", exception)
+            publishSafPickerError(requestId,
+                "Não foi possível autorizar esta pasta. Escolha-a novamente.",
+                stage = "persist", code = "PERSISTENCE_FAILED",
+                status = if (SafScanner.hasPersistedReadPermission(this, uri))
+                    SafScanner.STATUS_UNAVAILABLE else SafScanner.STATUS_FAILED, treeUri = uri)
+        }
+    }
+    private fun logLifecycle(event: String, intent: Intent? = null) {
+        val data = intent?.data
+        val action = data?.getQueryParameter("action")
+        val requestId = data?.getQueryParameter("request_id")
+        Log.i(
+            tag,
+            "LIFECYCLE $event instance=${System.identityHashCode(this)} task=$taskId resumed=$activityResumed " +
+                "focused=${window?.decorView?.hasWindowFocus() == true} finishing=$isFinishing " +
+                "action=${action ?: "-"} requestId=${requestId ?: "-"} flags=0x${intent?.flags?.toString(16) ?: "0"}"
+        )
+        NativeMailbox.writeBestEffort(
+            this,
+            JSONObject().put("type", "diagnostic")
+                .put("requestId", requestId ?: "")
+                .put("payload", JSONObject()
+                    .put("event", "MAIN_ACTIVITY_LIFECYCLE")
+                    .put("lifecycle", event)
+                    .put("requestId", requestId ?: "")
+                    .put("activeRequestId", activePlayerRequestId ?: "")
+                    .put("activeCommandCreatedAtMs", activePlayerCommandCreatedAtMs)
+                    .put("activityElapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
+                    .put("resumed", activityResumed)
+                    .put("focused", window?.decorView?.hasWindowFocus() == true)
+                    .put("finishing", isFinishing)),
+        )
+    }
+
+    private fun publishInteractionProfileIfChanged(force: Boolean = false) {
+        val profile = DeviceInteractionProfile.detect(this)
+        val fingerprint = profile.fingerprint()
+        if (!force && fingerprint == interactionProfileFingerprint) return
+        interactionProfileFingerprint = fingerprint
+        NativeMailbox.writeBestEffort(
+            this,
+            JSONObject()
+                .put("type", "device_interaction_profile")
+                .put("payload", profile.toJson().put("fingerprint", fingerprint)),
+        )
+        Log.i(tag, "DEVICE_INTERACTION_PROFILE fingerprint=" + fingerprint + " profile=" + profile.toJson())
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        PerformanceDiagnostics.attach(this)
+        PerformanceDiagnostics.sampleMemory(this, "main_on_create")
+        installSystemBackHandler()
+        // Publish durable recovery receipts before the legacy bridge begins draining the mailbox.
+        runCatching { NativeScanRunner.recoverInterruptedSafScans(applicationContext) }
+            .onFailure { Log.e(tag, "Could not recover interrupted SAF generations.", it) }
+        nativeRequestState.bind(this)
+        NativeCommandDispatcher.start(this)
+        nativeRequestState.restore(
+            savedInstanceState?.getString(STATE_LAST_NATIVE_REQUEST_ID),
+            savedInstanceState?.getString(STATE_PENDING_LIFECYCLE_ACTION),
+            savedInstanceState?.getString(STATE_PENDING_LIFECYCLE_REQUEST_ID),
+        )
+        nativeRequestState.restoreSeenRequestIds(savedInstanceState?.getString(STATE_SEEN_NATIVE_REQUEST_IDS))
+        broadStoragePermissionPending = savedInstanceState?.getBoolean(STATE_BROAD_SETTINGS_PENDING) ?: false
+        externalSettingsKind = savedInstanceState?.getString("reiflix.externalSettingsKind")
+        externalSettingsRequestId = savedInstanceState?.getString("reiflix.externalSettingsRequestId")
+        pendingMediaRequestId = savedInstanceState?.getString(STATE_PENDING_MEDIA_REQUEST_ID)
+        pendingBroadRequestId = savedInstanceState?.getString(STATE_PENDING_BROAD_REQUEST_ID)
+        pendingSafRequestId = savedInstanceState?.getString(STATE_PENDING_SAF_REQUEST_ID)
+        pendingPlayUri = savedInstanceState?.getString(STATE_PENDING_PLAY_URI)
+        pendingPlayIntentData = savedInstanceState?.getString(STATE_PENDING_PLAY_INTENT_DATA)
+        pendingPlayTitle = savedInstanceState?.getString(STATE_PENDING_PLAY_TITLE)
+        pendingPlayPositionMs = savedInstanceState?.getLong(STATE_PENDING_PLAY_POSITION_MS, 0L) ?: 0L
+        pendingPlayPositionSpecified = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_POSITION_SPECIFIED) ?: false
+        pendingPlayPositionInvalid = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_POSITION_INVALID) ?: false
+        pendingPlayCanNext = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_CAN_NEXT) ?: false
+        pendingPlayCanPrevious = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_CAN_PREVIOUS) ?: false
+        pendingPlayAutoplay = savedInstanceState?.getBoolean(STATE_PENDING_PLAY_AUTOPLAY) ?: true
+        pendingPlayEpisodeId = savedInstanceState?.getString(STATE_PENDING_PLAY_EPISODE_ID)?.trim()?.takeIf { it.isNotEmpty() }
+        pendingPlayAnimeId = savedInstanceState?.getString(STATE_PENDING_PLAY_ANIME_ID)?.trim()?.takeIf { it.isNotEmpty() }
+        pendingPlayCommandCreatedAtMs = savedInstanceState?.getLong(STATE_PENDING_PLAY_COMMAND_CREATED_AT_MS, 0L) ?: 0L
+        pendingPlayRequestId = savedInstanceState?.getString(STATE_PENDING_PLAY_REQUEST_ID)
+        activePlayerRequestId = savedInstanceState?.getString(STATE_ACTIVE_PLAYER_REQUEST_ID)?.trim()?.takeIf { it.isNotEmpty() }
+        activePlayerCommandCreatedAtMs = savedInstanceState?.getLong(STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS, 0L) ?: 0L
+        safPickerPending = savedInstanceState?.getBoolean(STATE_SAF_PICKER_PENDING) ?: false
+        safPickerStartedAtMs = savedInstanceState?.getLong(STATE_SAF_PICKER_STARTED_AT_MS, 0L) ?: 0L
+        safPickerFocusLost = savedInstanceState?.getBoolean(STATE_SAF_PICKER_FOCUS_LOST) ?: false
+        safPickerFocusRegainedAtMs = savedInstanceState?.getLong(STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS, 0L) ?: 0L
+        safPickerPhase = savedInstanceState?.getString(STATE_SAF_PICKER_PHASE)?.let {
+            runCatching { SafPickerPhase.valueOf(it) }.getOrNull()
+        } ?: if (safPickerPending) SafPickerPhase.WAITING_RESULT else SafPickerPhase.IDLE
+        startupDiscoveryTriggered = savedInstanceState?.getBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED) ?: false
+        lastObservedMediaAccess = savedInstanceState?.getString(STATE_LAST_OBSERVED_MEDIA_ACCESS)
+        if (savedInstanceState?.containsKey(STATE_LAST_OBSERVED_BROAD_ACCESS) == true) {
+            lastObservedBroadAccess = savedInstanceState.getBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS)
+        }
+        logLifecycle("onCreate", intent)
+        NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "APP_START").put("lifecycle", "onCreate")))
+        systemUiController = SystemUiController(window)
+        // The legacy-named Library host is now the single runtime Compose
+        // visual shell. Settings and Storage are routes inside the same shell;
+        // no competing Compose host is mounted for either screen.
+        composeLibraryHost = ReiAnixComposeLibraryHost(this, libraryViewModel, settingsViewModel)
+        composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+        // The existing SystemUiController remains the single Android system-bar
+        // authority while the Compose shell and legacy Flet surfaces coexist.
+        systemUiController.applyApplicationPolicy(useContextAppearance = false)
+        // Permission-sensitive actions are queued until the Activity is resumed.
+        handleNativeIntent(intent)
+    }
+
+    public override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        logLifecycle("onNewIntent", intent)
+        handleNativeIntent(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        registerStorageReceiver()
+        MediaStoreScanner.startChangeObserver(this) { scheduleMediaStoreIncrementalRescan() }
+        logLifecycle("onStart")
+        applyApplicationSystemUi()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        PerformanceDiagnostics.attach(this)
+        PerformanceDiagnostics.sampleMemory(this, "main_on_resume")
+        activityResumed = true
+        logLifecycle("onResume")
+        NativeMailbox.writeBestEffort(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "ON_RESUME").put("lifecycle", "onResume")))
+        applyApplicationSystemUi()
+        if (safPickerPending) {
+            // onResume marks return even when a provider omits the separate focus-loss callback.
+            if (
+                safPickerPhase == SafPickerPhase.WAITING_RESULT &&
+                safPickerFocusRegainedAtMs <= 0L &&
+                window?.decorView?.hasWindowFocus() == true
+            ) {
+                safPickerFocusRegainedAtMs = System.currentTimeMillis()
+            }
+            scheduleSafPickerWatchdog(pendingSafRequestId)
+        }
+
+        // A lifecycle-sensitive command may have been queued because the
+        // Activity was not resumed when Python delivered the request. Do not
+        // publish an intermediate "denied" snapshot first: Python could treat
+        // that snapshot as the final result and close the onboarding while the
+        // real Android permission/settings UI is only about to open.
+        val pending = nativeRequestState.consumeLifecycleAction()
+        val pendingRequestId = nativeRequestState.consumedLifecycleRequestId()
+        if (pending != null) {
+            // Restore only the correlation id owned by the queued lifecycle action.
+            // Keeping one request id in unrelated permission fields can make a later
+            // Settings/SAF callback look like it belongs to the wrong operation.
+            when (pending) {
+                "select_tree" -> {
+                    pendingSafRequestId = pendingRequestId
+                    if (window?.decorView?.hasWindowFocus() == true) {
+                        openTreePicker(pendingRequestId)
+                    } else {
+                        Log.i(tag, "SAF_PICKER_WAITING_FOR_FOCUS requestId=" + (pendingRequestId ?: "-"))
+                        nativeRequestState.queueLifecycleAction("select_tree", pendingRequestId)
+                    }
+                }
+                "request_media_access" -> {
+                    pendingMediaRequestId = pendingRequestId
+                    requestMediaAccess()
+                }
+                "open_broad_storage_settings" -> {
+                    pendingBroadRequestId = pendingRequestId
+                    openBroadStorageSettings()
+                }
+                "play" -> {
+                    val uri = pendingPlayUri
+                    if (!uri.isNullOrBlank()) {
+                        val pendingRequestId = pendingPlayRequestId
+                        nativeRequestState.markOperationState(
+                            pendingRequestId,
+                            "play",
+                            NativeRequestState.OperationState.RUNNING,
+                        )
+                        publishNativeDiagnostic(
+                            "OPERATION_STARTED",
+                            pendingRequestId,
+                            "play",
+                            NativeRequestState.OperationState.RUNNING.name,
+                        )
+
+                        // Reuse the exact command that arrived from Python whenever possible.
+                        // This preserves playerSessionId, origin request/generation fencing,
+                        // monotonic correlation and all player settings across onResume.
+                        val preservedPlayData = pendingPlayIntentData
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() }
+                        val restoredPlayerSessionId = pendingPlayIntentData
+                            ?.let { raw -> runCatching { Uri.parse(raw).getQueryParameter("player_session_id") }.getOrNull() }
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+                            ?: activePlayerSessionId
+                        if (restoredPlayerSessionId.isNullOrBlank()) {
+                            nativeRequestState.markOperationState(
+                                pendingRequestId,
+                                "play",
+                                NativeRequestState.OperationState.FAILED,
+                            )
+                            publishNativeDiagnostic(
+                                "PLAYER_HANDOFF_REJECTED",
+                                pendingRequestId,
+                                "play",
+                                NativeRequestState.OperationState.FAILED.name,
+                                result = "PLAYER_SESSION_INVALID",
+                            )
+                            clearPendingPlay()
+                            return
+                        }
+                        if (preservedPlayData == null && pendingPlayPositionInvalid) {
+                            publishNativeCommandError(
+                                pendingRequestId,
+                                "play",
+                                "request_validation",
+                                "INVALID_POSITION_MS",
+                                "A posição inicial enviada para o player não é válida.",
+                            )
+                            clearPendingPlay()
+                            return
+                        }
+                        val playData = preservedPlayData ?: Uri.parse("reiflix://native").buildUpon()
+                            .appendQueryParameter("action", "play")
+                            .appendQueryParameter("request_id", pendingRequestId.orEmpty())
+                            .appendQueryParameter("uri", uri)
+                            .appendQueryParameter("episode_id", pendingPlayEpisodeId.orEmpty())
+                            .appendQueryParameter("anime_id", pendingPlayAnimeId.orEmpty())
+                            .appendQueryParameter("title", pendingPlayTitle ?: "Episódio")
+                            .apply {
+                                if (pendingPlayPositionSpecified) {
+                                    appendQueryParameter("position_ms", pendingPlayPositionMs.toString())
+                                }
+                            }
+                            .appendQueryParameter("can_next", pendingPlayCanNext.toString())
+                            .appendQueryParameter("can_previous", pendingPlayCanPrevious.toString())
+                            .appendQueryParameter("autoplay", pendingPlayAutoplay.toString())
+                            .appendQueryParameter("created_at", pendingPlayCommandCreatedAtMs.toString())
+                            .appendQueryParameter("player_session_id", restoredPlayerSessionId)
+                            .build()
+                        clearPendingPlay()
+                        if (openPlayer(playData, commandReceivedAtMs = System.currentTimeMillis())) {
+                            publishNativeDiagnostic(
+                                "COMMAND_DISPATCHED",
+                                pendingRequestId,
+                                "play",
+                                nativeRequestState.operationState(pendingRequestId)?.name,
+                                result = if (preservedPlayData != null) "dispatched_preserved_request" else "dispatched_legacy_restore",
+                            )
+                        }
+                    } else {
+                        clearPendingPlay()
+                    }
+                }
+            }
+            // Established host contract: "request_media_access" -> requestMediaAccess()
+            return
+        }
+
+        // Settings may revoke access while this activity is paused. Always
+        // republish the actual Android state after a real Settings return.
+        if (broadStoragePermissionPending) {
+            // Revalidate the real Android state on every Settings return. This is
+            // safe even when ActivityResult is delivered afterward because the
+            // return handler is idempotent once the pending flag is cleared.
+            handleBroadSettingsReturn(pendingBroadRequestId, "onResume")
+            return
+        }
+
+        val currentMediaAccess = MediaStoreScanner.accessLevel(this)
+        val currentBroadAccess = BroadStorageScanner.hasAccess(this)
+        val mediaAccessChangedToUsable = lastObservedMediaAccess != null &&
+            lastObservedMediaAccess != currentMediaAccess &&
+            currentMediaAccess != "denied"
+        val broadBecameAvailable = lastObservedBroadAccess == false && currentBroadAccess
+        // First-run permission UI must be visible without dispatching a discovery
+        // request against an empty authorization set. In the canonical library model,
+        // a persisted SAF tree is the configured folder source; media/broad permissions
+        // alone do not add a LibraryStore source.
+        val hasPersistedSafTree = hasPersistedSafTreeGrant()
+        val shouldDiscover = !startupDiscoveryTriggered
+        startupDiscoveryTriggered = true
+        lastObservedMediaAccess = currentMediaAccess
+        lastObservedBroadAccess = currentBroadAccess
+
+        publishStorageStatus()
+
+        // Activity resume is a lifecycle signal, not a scan command. Startup
+        // discovery and permission-triggered reconciliation require a persisted SAF
+        // tree. Explicit SAF selection publishes its own PERMISSION_CHANGE after the
+        // grant has been persisted and validated.
+        if (shouldDiscover && hasPersistedSafTree) {
+            publishScanRequest(
+                "STARTUP",
+                source = null,
+                full = false,
+                reason = "first_activity_resume",
+            )
+        } else if (shouldDiscover) {
+            Log.i(tag, "STARTUP_SCAN_SKIPPED reason=no_persisted_saf_tree")
+            publishNativeDiagnostic(
+                "STARTUP_SCAN_SKIPPED",
+                null,
+                action = "scan",
+                state = "SKIPPED",
+                result = "no_persisted_saf_tree",
+            )
+        } else if (
+            hasPersistedSafTree &&
+            (mediaAccessChangedToUsable || broadBecameAvailable)
+        ) {
+            val source = when {
+                mediaAccessChangedToUsable && broadBecameAvailable -> null
+                mediaAccessChangedToUsable -> "mediastore"
+                else -> "broad_storage"
+            }
+            publishScanRequest(
+                "PERMISSION_CHANGE",
+                source = source,
+                full = false,
+                reason = "permission_available_after_resume",
+            )
+        }
+    }
+
+    override fun onPause() {
+        activityResumed = false
+        if (safPickerPending) {
+            // Keep the watchdog polling while DocumentsUI owns the foreground.
+            // Its foreground gate prevents a timeout while the user is choosing.
+            safPickerFocusLost = true
+            safPickerFocusRegainedAtMs = 0L
+        }
+        logLifecycle("onPause")
+        super.onPause()
+    }
+
+    override fun onStop() {
+        logLifecycle("onStop")
+        unregisterStorageReceiver()
+        MediaStoreScanner.stopChangeObserver(this)
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        PerformanceDiagnostics.sampleMemory(this, "main_on_destroy")
+        PerformanceDiagnostics.detach()
+        cancelSafPickerWatchdog()
+        if (::composeLibraryHost.isInitialized) composeLibraryHost.dispose()
+        googleSignInJob?.cancel()
+        googleSignInJob = null
+        googleSignOutJob?.cancel()
+        googleSignOutJob = null
+        logLifecycle("onDestroy")
+        if (isFinishing) NativeScanController.cancelAll()
+        unregisterStorageReceiver()
+        super.onDestroy()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(STATE_LAST_NATIVE_REQUEST_ID, nativeRequestState.lastHandledRequestId)
+        outState.putString(STATE_PENDING_LIFECYCLE_ACTION, nativeRequestState.pendingLifecycleAction)
+        outState.putString(STATE_PENDING_LIFECYCLE_REQUEST_ID, nativeRequestState.pendingLifecycleRequestId)
+        outState.putString(STATE_PENDING_MEDIA_REQUEST_ID, pendingMediaRequestId)
+        outState.putString(STATE_PENDING_BROAD_REQUEST_ID, pendingBroadRequestId)
+        outState.putString(STATE_PENDING_SAF_REQUEST_ID, pendingSafRequestId)
+        outState.putString(STATE_PENDING_PLAY_URI, pendingPlayUri)
+        outState.putString(STATE_PENDING_PLAY_INTENT_DATA, pendingPlayIntentData)
+        outState.putString(STATE_PENDING_PLAY_TITLE, pendingPlayTitle)
+        outState.putLong(STATE_PENDING_PLAY_POSITION_MS, pendingPlayPositionMs)
+        outState.putBoolean(STATE_PENDING_PLAY_POSITION_SPECIFIED, pendingPlayPositionSpecified)
+        outState.putBoolean(STATE_PENDING_PLAY_POSITION_INVALID, pendingPlayPositionInvalid)
+        outState.putBoolean(STATE_PENDING_PLAY_CAN_NEXT, pendingPlayCanNext)
+        outState.putBoolean(STATE_PENDING_PLAY_CAN_PREVIOUS, pendingPlayCanPrevious)
+        outState.putBoolean(STATE_PENDING_PLAY_AUTOPLAY, pendingPlayAutoplay)
+        outState.putString(STATE_PENDING_PLAY_EPISODE_ID, pendingPlayEpisodeId)
+        outState.putString(STATE_PENDING_PLAY_ANIME_ID, pendingPlayAnimeId)
+        outState.putLong(STATE_PENDING_PLAY_COMMAND_CREATED_AT_MS, pendingPlayCommandCreatedAtMs)
+        outState.putString(STATE_PENDING_PLAY_REQUEST_ID, pendingPlayRequestId)
+        outState.putString(STATE_ACTIVE_PLAYER_REQUEST_ID, activePlayerRequestId)
+        outState.putLong(STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS, activePlayerCommandCreatedAtMs)
+        outState.putBoolean(STATE_BROAD_SETTINGS_PENDING, broadStoragePermissionPending)
+        outState.putBoolean(STATE_SAF_PICKER_PENDING, safPickerPending)
+        outState.putLong(STATE_SAF_PICKER_STARTED_AT_MS, safPickerStartedAtMs)
+        outState.putBoolean(STATE_SAF_PICKER_FOCUS_LOST, safPickerFocusLost)
+        outState.putLong(STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS, safPickerFocusRegainedAtMs)
+        outState.putString(STATE_SAF_PICKER_PHASE, safPickerPhase.name)
+        outState.putString("reiflix.externalSettingsKind", externalSettingsKind)
+        outState.putString("reiflix.externalSettingsRequestId", externalSettingsRequestId)
+        outState.putBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED, startupDiscoveryTriggered)
+        outState.putString(STATE_LAST_OBSERVED_MEDIA_ACCESS, lastObservedMediaAccess)
+        lastObservedBroadAccess?.let { outState.putBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS, it) }
+        outState.putString(STATE_SEEN_NATIVE_REQUEST_IDS, nativeRequestState.seenRequestIdsState())
+        super.onSaveInstanceState(outState)
+    }
+
+    /**
+     * Android owns the physical Back dispatch. The active Compose App Shell gets
+     * first refusal while its Navigation Compose stack contains a previous
+     * destination. At the shell root, the existing Flet/navigation bridge keeps
+     * ownership of the legacy transition and exit semantics.
+     */
+    private fun installSystemBackHandler() {
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    systemBackEventCount += 1
+                    val backId = systemBackEventCount
+                    Log.i(tag, "BACK_PHYSICAL_RECEIVED id=" + backId)
+                    if (systemBackDispatchPosted) {
+                        Log.i(tag, "BACK_PHYSICAL_RECEIVED duplicate_dispatch id=" + backId)
+                        Log.i(tag, "SYSTEM_BACK duplicate_dispatch_suppressed")
+                        return
+                    }
+                    // Guard the complete Android Back dispatch, including the Compose
+                    // branch. This prevents a re-entrant/same-loop dispatch from
+                    // producing a second pop before the first event settles.
+                    systemBackDispatchPosted = true
+                    try {
+                        // Compose owns Back while the visible route is an internal
+                        // destination. At the true Home root, handleBack() returns
+                        // false and the canonical Flet navigation bridge below runs.
+                        if (::composeLibraryHost.isInitialized && composeLibraryHost.isVisible) {
+                            if (composeLibraryHost.handleBack()) {
+                                Log.i(tag, "BACK_COMPOSE_SHELL_HANDLED id=" + backId)
+                                return
+                            }
+                        }
+
+                        val engine = flutterEngine
+                        if (engine == null) {
+                            Log.w(tag, "SYSTEM_BACK ignored reason=flutter_engine_unavailable")
+                            return
+                        }
+                        Log.i(tag, "BACK_FLUTTER_POP_SENT id=" + backId)
+                        engine.navigationChannel.popRoute()
+                    } finally {
+                        // Reset only after the current dispatcher turn has returned so
+                        // the same Android Back event cannot enter the handler twice.
+                        window.decorView.post { systemBackDispatchPosted = false }
+                    }
+                }
+            },
+        )
+    }
+
+    private fun persistedSafTreeUris(): List<String> =
+        contentResolver.persistedUriPermissions
+            .asSequence()
+            .filter { it.isReadPermission && it.uri.scheme == "content" && DocumentsContract.isTreeUri(it.uri) }
+            .map { it.uri.toString() }
+            .distinct()
+            .sorted()
+            .toList()
+
+    private fun applyApplicationSystemUi() {
+        if (::systemUiController.isInitialized) {
+            // MainActivity owns the immersive application surface. External Android
+            // Activities may temporarily reveal their own system UI; focus/resume
+            // re-applies this single host policy when ReiAnix returns foreground.
+            systemUiController.applyApplicationImmersivePolicy(useContextAppearance = false)
+            publishInteractionProfileIfChanged(force = true)
+            ViewCompat.requestApplyInsets(window.decorView)
+        }
+    }
+
+    private fun storageCapabilitiesPayload(
+        lifecycleState: StorageLifecycleState = StorageLifecycleState.REVALIDATED
+    ): JSONObject {
+        val broadSnapshot = BroadStorageScanner.accessSnapshot(this)
+        val mediaState = MediaStoreScanner.accessLevelValue(this)
+        val broadState = BroadStorageScanner.accessLevel(this)
+        val safRoots = persistedSafTreeUris()
+        val removableVolumes = mutableListOf<String>()
+        val volumes = broadSnapshot.optJSONArray("volumes")
+        if (volumes != null) {
+            for (i in 0 until volumes.length()) {
+                val volume = volumes.optJSONObject(i) ?: continue
+                if (volume.optBoolean("removable", false)) {
+                    val id = volume.optString("volumeId").ifBlank { volume.optString("uuid") }
+                    if (id.isNotBlank()) removableVolumes += id
+                }
+            }
+        }
+        val capabilities = StorageAuthorization.capabilities(
+            mediaState, broadState, safRoots, removableVolumes, lifecycleState
+        )
+        return JSONObject()
+            .put("mediaReadState", capabilities.mediaReadState.name.lowercase())
+            .put("broadStorageState", capabilities.broadStorageState.name.lowercase())
+            .put("safRoots", JSONArray(capabilities.safRoots))
+            .put("removableVolumes", JSONArray(capabilities.removableVolumes))
+            .put("scannerCapabilities", JSONArray(capabilities.scannerCapabilities.toList()))
+            .put("reconciliationCapabilities", JSONArray(capabilities.reconciliationCapabilities.toList()))
+            .put("lifecycleState", capabilities.lifecycleState.name.lowercase())
+            .put("api", Build.VERSION.SDK_INT)
+    }
+
+    private fun publishStorageCapabilities(
+        lifecycleState: StorageLifecycleState = StorageLifecycleState.REVALIDATED
+    ) {
+        NativeMailbox.write(
+            this,
+            JSONObject().put("type", "storage_capabilities")
+                .put("payload", storageCapabilitiesPayload(lifecycleState))
+        )
+    }
+
+    private fun publishNativeDiagnostic(
+        event: String,
+        requestId: String?,
+        action: String? = null,
+        state: String? = null,
+        result: String? = null,
+        error: String? = null,
+        protocolVersion: Int? = null,
+        commandCreatedAt: Long? = null,
+        parameterNames: String? = null,
+        playerSessionId: String? = null,
+        transitionDirection: String? = null,
+    ) {
+        val payload = JSONObject()
+            .put("event", event)
+            .put("requestId", requestId ?: "")
+            .put("action", action ?: "")
+            .put("timestamp", System.currentTimeMillis())
+        if (state != null) payload.put("state", state)
+        if (result != null) payload.put("result", result)
+        if (error != null) payload.put("error", error)
+        if (protocolVersion != null) payload.put("protocolVersion", protocolVersion)
+        if (commandCreatedAt != null) payload.put("commandCreatedAt", commandCreatedAt)
+        if (parameterNames != null) payload.put("parameterNames", parameterNames)
+        if (!playerSessionId.isNullOrBlank()) payload.put("playerSessionId", playerSessionId)
+        if (!transitionDirection.isNullOrBlank()) payload.put("transitionDirection", transitionDirection.uppercase())
+        NativeMailbox.write(
+            this,
+            JSONObject().put("type", "diagnostic").put("requestId", requestId ?: "").put("payload", payload),
+        )
+    }
+
+    private fun publishPlayerSessionDiagnostic(
+        requestId: String?,
+        event: String,
+        sessionId: String? = activePlayerSessionId,
+    ) {
+        publishNativeDiagnostic(
+            event,
+            requestId,
+            action = "play",
+            playerSessionId = sessionId,
+        )
+    }
+
+    private fun publishNativeCommandError(
+        requestId: String?,
+        action: String?,
+        stage: String,
+        code: String,
+        message: String,
+    ) {
+        nativeRequestState.markOperationState(
+            requestId, action, NativeRequestState.OperationState.FAILED,
+        )
+        NativeMailbox.write(
+            this,
+            JSONObject().put("type", "native_error").put("requestId", requestId ?: "")
+                .put("message", message)
+                .put("payload", JSONObject().put("stage", stage).put("code", code)
+                    .put("action", action ?: "").put("timestamp", System.currentTimeMillis())),
+        )
+        publishNativeDiagnostic(
+            "COMMAND_FAILED", requestId, action, NativeRequestState.OperationState.FAILED.name,
+            error = code,
+        )
+    }
+    /**
+     * Existing UI/service boundary for native storage actions. Compose never
+     * touches Android permissions or scanners directly.
+     */
+    fun requestNativeStorageAction(action: String): Boolean {
+        val normalized = action.trim()
+        val allowed = setOf(
+            "select_tree",
+            "request_media_access",
+            "open_broad_storage_settings",
+            "check_storage_access",
+        )
+        if (normalized !in allowed) return false
+        val requestId = UUID.randomUUID().toString()
+        val uri = Uri.parse(
+            "reiflix://native?action=" + Uri.encode(normalized) +
+                "&request_id=" + Uri.encode(requestId) +
+                "&protocol_version=" + BRIDGE_PROTOCOL_VERSION +
+                "&created_at=" + System.currentTimeMillis(),
+        )
+        handleNativeIntent(Intent(Intent.ACTION_VIEW, uri))
+        return true
+    }
+
+    private fun handleNativeIntent(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme != "reiflix" || data.host != "native") {
+            Log.w(tag, "Ignoring unsupported native intent scheme/host")
+            return
+        }
+        val action = data.getQueryParameter("action")?.trim()
+        val requestId = data.getQueryParameter("request_id")?.trim()?.takeIf { it.isNotEmpty() }
+        val protocolRaw = data.getQueryParameter("protocol_version")?.trim()
+        val protocolVersion = protocolRaw?.toIntOrNull()
+        val commandCreatedAt = data.getQueryParameter("created_at")?.trim()?.toLongOrNull()
+        val parameterNames = data.queryParameterNames.toList().sorted().joinToString(",")
+
+        if (action.isNullOrBlank()) {
+            publishNativeCommandError(requestId, action, "command_validation", "MISSING_OPERATION",
+                "O comando Android não informou uma operação válida.")
+            return
+        }
+        if (!NativeRequestState.isSupportedAction(action)) {
+            publishNativeCommandError(requestId, action, "command_validation", "UNSUPPORTED_OPERATION",
+                "A operação Android solicitada não é suportada.")
+            return
+        }
+        if (requestId.isNullOrBlank()) {
+            publishNativeCommandError(requestId, action, "command_validation", "MISSING_REQUEST_ID",
+                "O comando Android não possui um identificador de requisição.")
+            return
+        }
+        if (protocolRaw != null && (protocolVersion == null || protocolVersion != BRIDGE_PROTOCOL_VERSION)) {
+            publishNativeCommandError(requestId, action, "command_validation", "UNSUPPORTED_PROTOCOL_VERSION",
+                "A versão do protocolo nativo não é compatível com este ReiAnix.")
+            return
+        }
+        if (protocolRaw != null && (commandCreatedAt == null || commandCreatedAt <= 0L)) {
+            publishNativeCommandError(requestId, action, "command_validation", "INVALID_CREATED_AT",
+                "O comando Android possui um timestamp inválido.")
+            return
+        }
+        if (!nativeRequestState.acceptRequest(requestId, action, commandCreatedAt ?: System.currentTimeMillis())) {
+            Log.i(tag, "COMMAND_DUPLICATE action=" + action + " requestId=" + requestId)
+            publishNativeDiagnostic("COMMAND_DUPLICATE", requestId, action, result = "ignored_duplicate")
+            return
+        }
+        val commandReceivedAtMs = System.currentTimeMillis()
+        Log.i(tag, "COMMAND_RECEIVED action=" + action + " requestId=" + requestId +
+            " receivedAtMs=" + commandReceivedAtMs +
+            " task=" + taskId + " resumed=" + activityResumed +
+            " focus=" + (window?.decorView?.hasWindowFocus() == true) +
+            " protocol=" + (protocolVersion ?: "legacy") +
+            " createdAt=" + (commandCreatedAt ?: "-") +
+            " parameterNames=" + parameterNames +
+            " flags=0x" + intent.flags.toString(16))
+        publishNativeDiagnostic("COMMAND_RECEIVED", requestId, action,
+            NativeRequestState.OperationState.RECEIVED.name,
+            protocolVersion = protocolVersion ?: 1,
+            commandCreatedAt = commandCreatedAt,
+            parameterNames = parameterNames)
+
+        try {
+            when (action) {
+                "open_library" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    val requestedDestination = data.getQueryParameter("start_destination")?.trim()
+                    val destination = when (requestedDestination) {
+                        ReiAnixRoutes.HOME,
+                        ReiAnixRoutes.LIBRARY,
+                        ReiAnixRoutes.SEARCH,
+                        ReiAnixRoutes.MY_LIST,
+                        ReiAnixRoutes.ORGANIZE,
+                        ReiAnixRoutes.SETTINGS,
+                        ReiAnixRoutes.STORAGE,
+                        -> requestedDestination
+                        else -> ReiAnixRoutes.LIBRARY
+                    }
+                    composeLibraryHost.show(destination, resetBackStack = true)
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "open_organize" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeLibraryHost.show(ReiAnixRoutes.ORGANIZE, resetBackStack = true)
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "hide_library" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeLibraryHost.hide()
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "open_storage_settings" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeLibraryHost.show(ReiAnixRoutes.STORAGE, resetBackStack = true)
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "open_settings" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeLibraryHost.show(ReiAnixRoutes.SETTINGS, resetBackStack = true)
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "hide_settings" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    composeLibraryHost.hide()
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "select_tree" -> {
+                    if (!activityResumed) {
+                        if (nativeRequestState.queueLifecycleAction("select_tree", requestId)) {
+                            Log.i(tag, "COMMAND_QUEUED action=select_tree requestId=" + requestId)
+                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+                        } else {
+                            publishNativeCommandError(requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
+                                "Não foi possível iniciar a seleção da pasta agora. Tente novamente.")
+                        }
+                        return
+                    }
+                    if (safPickerPending) {
+                        publishNativeCommandError(requestId, action, "dispatch", "OPERATION_BUSY",
+                            "Já existe uma seleção de pasta em andamento.")
+                        return
+                    }
+                    pendingSafRequestId = requestId
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    openTreePicker(requestId)
+                }
+                "scan_library" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    scanConfiguredSafRoots(requestId, "USER_REFRESH")
+                }
+                "scan_tree" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    scanTree(intent.data?.getQueryParameter("tree_uri"), requestId)
+                }
+                "verify_tree" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    verifyTree(intent.data?.getQueryParameter("tree_uri"), requestId)
+                }
+                "release_tree" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    releaseTree(intent.data?.getQueryParameter("tree_uri"), requestId)
+                }
+                "scan_media_store" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    scanMediaStore(requestId)
+                }
+                "request_media_access" -> {
+                    if (!activityResumed) {
+                        if (nativeRequestState.queueLifecycleAction(action, requestId)) {
+                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+                        } else {
+                            publishNativeCommandError(requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
+                                "Não foi possível iniciar a solicitação de acesso aos vídeos agora. Tente novamente.")
+                        }
+                        return
+                    }
+                    if (mediaPermissionRequestPending) {
+                        publishNativeCommandError(requestId, action, "dispatch", "OPERATION_BUSY",
+                            "Já existe uma solicitação de acesso aos vídeos em andamento.")
+                        return
+                    }
+                    pendingMediaRequestId = requestId
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    requestMediaAccess()
+                }
+                "open_broad_storage_settings" -> {
+                    if (!activityResumed) {
+                        if (nativeRequestState.queueLifecycleAction(action, requestId)) {
+                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+                        } else {
+                            publishNativeCommandError(requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
+                                "Não foi possível abrir as configurações de armazenamento agora. Tente novamente.")
+                        }
+                        return
+                    }
+                    pendingBroadRequestId = requestId
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    openBroadStorageSettings()
+                }
+                "check_storage_access" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    publishStorageStatus(requestId)
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
+                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+                }
+                "scan_all_storage" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    scanAllStorage(requestId)
+                }
+                "extract_thumbnail" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    requestThumbnail(intent.data, requestId)
+                }
+                "cancel_scan" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    cancelNativeScans(requestId)
+                }
+                "google_sign_in" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    signInWithGoogle(intent.data?.getQueryParameter("server_client_id"), requestId)
+                }
+                "google_sign_out" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    signOutWithGoogle(requestId)
+                }
+                "cancel_player_transition" -> {
+                    val originRequestId = data.getQueryParameter("origin_request_id")?.trim().orEmpty()
+                    val originPlayerSessionId = data.getQueryParameter("origin_player_session_id")
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                    nativeRequestState.markOperationState(
+                        requestId,
+                        action,
+                        NativeRequestState.OperationState.RUNNING,
+                    )
+                    publishNativeDiagnostic(
+                        "OPERATION_STARTED",
+                        requestId,
+                        action,
+                        NativeRequestState.OperationState.RUNNING.name,
+                        playerSessionId = originPlayerSessionId,
+                    )
+                    if (originRequestId.isBlank()) {
+                        publishNativeCommandError(
+                            requestId,
+                            action,
+                            "cancel",
+                            "MISSING_ORIGIN_REQUEST_ID",
+                            "A invalidação da transição não informou a requisição original.",
+                        )
+                        return
+                    }
+                    revokePlayerTransition(originRequestId, originPlayerSessionId)
+                    nativeRequestState.markOperationState(
+                        requestId,
+                        action,
+                        NativeRequestState.OperationState.COMPLETED,
+                    )
+                    publishNativeDiagnostic(
+                        "PLAYER_TRANSITION_CANCELLED",
+                        requestId,
+                        action,
+                        NativeRequestState.OperationState.COMPLETED.name,
+                        result = originRequestId,
+                        playerSessionId = originPlayerSessionId,
+                    )
+                }
+                "play" -> {
+                    if (!activityResumed) {
+                        val existingPendingAction = nativeRequestState.pendingLifecycleAction
+                        val existingPendingId = nativeRequestState.pendingLifecycleRequestId
+                        if (existingPendingAction == "play" && !existingPendingId.isNullOrBlank()) {
+                            val existingCreatedAt = nativeRequestState.requestSnapshot(existingPendingId)?.createdAt ?: 0L
+                            if (commandCreatedAt != null && existingCreatedAt > 0L &&
+                                commandCreatedAt <= existingCreatedAt
+                            ) {
+                                nativeRequestState.markOperationState(
+                                    requestId,
+                                    action,
+                                    NativeRequestState.OperationState.FAILED,
+                                )
+                                publishNativeDiagnostic(
+                                    "PLAYER_HANDOFF_REJECTED",
+                                    requestId,
+                                    action,
+                                    NativeRequestState.OperationState.FAILED.name,
+                                    result = "stale_pending_request",
+                                )
+                                return
+                            }
+                            nativeRequestState.markOperationState(
+                                existingPendingId,
+                                "play",
+                                NativeRequestState.OperationState.CANCELLED,
+                            )
+                            publishNativeDiagnostic(
+                                "PLAYER_REQUEST_REPLACED",
+                                existingPendingId,
+                                "play",
+                                NativeRequestState.OperationState.CANCELLED.name,
+                                result = requestId,
+                            )
+                            nativeRequestState.consumeLifecycleRequest()
+                            clearPendingPlay()
+                        }
+                        // Preserve the complete original command. Reconstructing a play URI here
+                        // used to drop session/generation/origin metadata and could turn a valid
+                        // Assistir request into an unscoped native-player launch after resume.
+                        pendingPlayIntentData = data.toString()
+                        pendingPlayUri = data.getQueryParameter("uri")
+                        pendingPlayEpisodeId = data.getQueryParameter("episode_id")?.trim()?.takeIf { it.isNotEmpty() }
+                        pendingPlayAnimeId = data.getQueryParameter("anime_id")?.trim()?.takeIf { it.isNotEmpty() }
+                        pendingPlayTitle = data.getQueryParameter("title") ?: "Episódio"
+                        val rawPositionMs = data.getQueryParameter("position_ms")
+                        val parsedPositionMs = rawPositionMs?.toLongOrNull()
+                        pendingPlayPositionMs = parsedPositionMs?.coerceAtLeast(0L) ?: 0L
+                        pendingPlayPositionSpecified = rawPositionMs != null && parsedPositionMs != null
+                        pendingPlayPositionInvalid = rawPositionMs != null && parsedPositionMs == null
+                        pendingPlayCanNext = data.getQueryParameter("can_next")?.toBooleanStrictOrNull() ?: false
+                        pendingPlayCanPrevious = data.getQueryParameter("can_previous")?.toBooleanStrictOrNull() ?: false
+                        pendingPlayAutoplay = data.getQueryParameter("autoplay")?.toBooleanStrictOrNull() ?: true
+                        pendingPlayCommandCreatedAtMs = commandCreatedAt ?: 0L
+                        pendingPlayRequestId = requestId
+                        if (nativeRequestState.queueLifecycleAction("play", requestId)) {
+                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+                            return
+                        }
+                        clearPendingPlay()
+                        publishNativeCommandError(requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
+                            "Não foi possível iniciar a reprodução agora. Tente novamente.")
+                        return
+                    } else {
+                        nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                        publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                        if (!openPlayer(data, commandReceivedAtMs = commandReceivedAtMs)) {
+                            return
+                        }
+                    }
+                }
+            }
+            publishNativeDiagnostic("COMMAND_DISPATCHED", requestId, action,
+                nativeRequestState.operationState(requestId)?.name, result = "dispatched")
+        } catch (exception: Exception) {
+            Log.e(tag, "NATIVE_DISPATCH_FAILED requestId=" + requestId + " action=" + action, exception)
+            publishNativeCommandError(requestId, action, "dispatch", "DISPATCH_EXCEPTION",
+                "Não foi possível executar a operação Android solicitada. Tente novamente.")
+        }
+    }
     private fun scanConfiguredSafRoots(requestId: String?, origin: String) {
         lifecycleScope.launch {
             val roots = try {
