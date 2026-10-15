@@ -128,12 +128,7 @@ class ReiAnixSettingsRepository(
         scope.launch { loadSnapshot() }
     }
 
-    /**
-     * Optimistically updates Compose, then sends the mutation through the existing
-     * SettingsStore writer. Compose does not keep a second preference store: canonical
-     * preference reads come from the existing SQLite table, while command results and the
-     * snapshot provide acknowledgement/account/storage state.
-     */
+    /** Serializes mutations by key without blocking unrelated preferences. */
     private val settingLocks = ConcurrentHashMap<String, Mutex>()
 
     /**
@@ -469,7 +464,9 @@ class ReiAnixSettingsRepository(
             runCatching { ReiAnixSettingsSnapshotCodec.decode(raw, _state.value.revision) }
                 .onSuccess { decoded ->
                     val snapshotState = ReiAnixSettingsUiState.fromSnapshot(decoded)
-                    val base = if (snapshotState.status == ReiAnixSettingsLoadStatus.READY && persistedPreferences != null) {
+                    // SQLite preferences remain authoritative even when the account/storage
+                    // projection is stale or reports an error.
+                    val base = if (persistedPreferences != null) {
                         snapshotState.copy(settings = snapshotState.settings + persistedPreferences)
                     } else {
                         snapshotState
