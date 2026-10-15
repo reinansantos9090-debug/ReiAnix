@@ -105,17 +105,18 @@ O ReiAnix utiliza três mecanismos principais de acesso ao armazenamento no Andr
 - A remoção de fonte envia a propriedade para Kotlin: o grant persistente é liberado e `removeSafFolder` atualiza observações/availability na mesma base, preservando histórico e arquivos físicos.
 - A atualização Compose usa a ação nativa `scan_library`; o controlador aguarda os resultados SAF terminais e publica um evento de conclusão com estado real.
 - A indexação SAF e o histórico `scan_runs` são gravados por Kotlin no fluxo normal quando o commit nativo está confirmado. Python lê o catálogo para publicar a projeção, sem finalizar novamente o mesmo scan.
+- Renomeação/movimentação SAF atualiza URI/nome e observações na mesma transação Kotlin, preservando o ID do episódio e seu histórico; o evento posterior informa `nativeIdentityOwner=true` e serve apenas à projeção e ao rescan.
 - Alterações de volume atualizam `native_volume_states`, a marca temporal e a disponibilidade das observações no SQLite canônico via Kotlin; o evento informa que o scan também tem owner nativo, evitando um segundo pedido ao ScanCoordinator Python.
 
 ### Dependências híbridas ainda ativas — etapa não concluída
 - NativeScanRunner/NativeScanPublisher publicam progresso e término por NativeMailbox, consumido por main.py para atualizar a projeção compatível e os estados de UI.
 - O finalizador `LibraryService.finish_ingest_documents` continua como fallback de recuperação quando o resultado/ownership da transação nativa não pode ser confirmado e em receipts antigos de recuperação.
-- A reconciliação `saf_document_identity_change` e alguns caminhos Flet de seleção/remoção/rescan ainda usam `core/android_bridge.py`, `core/storage_access.py`, `core/scan_coordinator.py` ou `LibraryService`.
+- Eventos `saf_document_identity_change` de APKs antigos ainda podem usar o finalizador de compatibilidade Python; a versão atual do ViewModel já executa a mutação canônica em Kotlin antes de publicar o evento. Alguns caminhos de desenvolvimento sem bridge Android mantêm fallback Python.
 - Algumas telas Compose ainda consomem snapshots JSON legados; NativeMailbox não pode ser removido globalmente enquanto outros subsistemas o usam.
 
 ### Critérios restantes
 - Migrar a finalização de recuperação para Kotlin sem bloquear a thread principal nem reabrir um caminho de escrita concorrente.
-- Migrar a reconciliação de identidade documental e decidir/remover somente os consumidores Flet de armazenamento que já não são necessários.
+- Remover gradualmente o fallback de reconciliação e o ScanCoordinator Python somente quando não houver consumidores de APKs antigos ou de desenvolvimento que ainda precisem dele.
 - Manter a projeção compatível sem delegar descoberta, mutação de catálogo ou finalização normal do scan ao Python.
 - Comprovar por CI no SHA final que resultados completos, parciais, cancelados ou sem autorização preservam dados anteriores e não geram duplicações.
 
