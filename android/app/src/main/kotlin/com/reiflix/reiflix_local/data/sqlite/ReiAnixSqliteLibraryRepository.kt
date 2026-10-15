@@ -212,7 +212,7 @@ class ReiAnixSqliteLibraryRepository(
             val queryText = terms.joinToString(" ")
             val relevanceOrder = compareByDescending<Pair<Long, Int>> { it.second }.thenBy { it.first }
             val exactTotal = if (terms.isEmpty()) {
-                val countSql =                 buildString {
+                val countSql = buildString {
                     append("SELECT COUNT(*) FROM anime a")
                     if (where.isNotEmpty()) {
                         append(" WHERE ")
