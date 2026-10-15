@@ -487,5 +487,17 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("catalog = await asyncio.to_thread(library.store.catalog)", main)
         self.assertIn("library.finish_ingest_documents", main)  # compatibility/recovery fallback only
 
+    def test_native_volume_availability_is_persisted_without_duplicate_python_scan(self):
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn("suspend fun recordNativeVolumeChange(", repository)
+        self.assertIn('"native_volume_states"', repository)
+        self.assertIn("recordNativeVolumeChange(payload)", activity)
+        self.assertIn('"nativeScanDispatchOwner", true', activity)
+        self.assertIn("payload.get('nativeStorageOwner') is True", main)
+        self.assertIn("payload.get('nativeScanDispatchOwner') is not True", main)
+
 if __name__ == "__main__":
     unittest.main()
