@@ -647,8 +647,7 @@ class ReiAnixSqliteLibraryRepository(
 
             fun belongsToTree(sourceFolder: String?): Boolean {
                 val source = sourceFolder.orEmpty()
-                return source == treeReference || source.startsWith("$treeReference/") ||
-                    source.startsWith(treeReference)
+                return source == treeReference || source.startsWith("$treeReference/")
             }
 
             if (oldReference == newReference) {
