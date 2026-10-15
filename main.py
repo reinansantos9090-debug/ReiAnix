@@ -4080,6 +4080,58 @@ async def main(page: ft.Page):
                 int((performance.now() - started) * 1000),
             )
 
+    async def _run_compose_settings_bulk_applied(setting_values, request_id):
+        """Refresh legacy runtime consumers after Kotlin atomically resets SQLite settings."""
+        try:
+            keys = sorted(setting_values)
+            for setting_key in keys:
+                if setting_key not in settings.EXPORT_KEYS:
+                    raise ValueError("Unsupported native settings key: " + str(setting_key))
+                await asyncio.to_thread(settings.invalidate_cache, setting_key)
+                # Read the committed canonical value, not the event payload, so a
+                # newer write cannot be replaced by a delayed runtime notification.
+                await asyncio.to_thread(settings.get, setting_key)
+
+            if any(key.startswith(("appearance.", "library.")) for key in keys):
+                library.configure_settings(settings)
+            if "appearance.theme" in keys:
+                apply_page_theme(page, settings.get("appearance.theme"))
+                _invalidate_cached_view(home_state, "home")
+                _invalidate_cached_view(organize_state, "organize")
+                _clear_screen_cache()
+                if not compose_primary_ui:
+                    render_current(force=True, reason="native_settings_reset")
+            elif any(key.startswith(("appearance.", "library.")) for key in keys):
+                _invalidate_cached_view(home_state, "home")
+                _invalidate_cached_view(organize_state, "organize")
+                if not compose_primary_ui and navigation.current in {"home", "organize"}:
+                    render_current(reason="native_settings_reset")
+
+            compose_settings_bridge.request_publish("native_settings_bulk_changed")
+            diagnostics.record(
+                "SETTINGS_RUNTIME_BULK_APPLIED",
+                request_id=request_id,
+                result="SUCCESS",
+                setting_count=len(keys),
+            )
+            performance.event(
+                "SETTINGS_RUNTIME_BULK_APPLIED",
+                request_id=request_id,
+                metadata={"setting_count": len(keys)},
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "[COMPOSE_SETTINGS] native bulk settings runtime refresh failed requestId=%s",
+                request_id or "-",
+            )
+            diagnostics.record(
+                "SETTINGS_RUNTIME_BULK_APPLY_FAILED",
+                request_id=request_id,
+                error=type(exc).__name__,
+            )
+
     async def _run_compose_settings_action(action, request_id):
         started = performance.now()
         performance.event(
@@ -4948,6 +5000,35 @@ async def main(page: ft.Page):
                                     "[COMPOSE_NAV] route ignored destination=%s",
                                     destination or '-',
                                 )
+
+                        if event_type == 'compose_settings_bulk_applied':
+                            request_id = str(event_request_id or payload.get('requestId') or '').strip()
+                            settings_values = payload.get('settings')
+                            if (
+                                not request_id
+                                or not isinstance(settings_values, dict)
+                                or not settings_values
+                            ):
+                                logger.warning(
+                                    "[COMPOSE_SETTINGS] native bulk settings notification rejected requestId=%s",
+                                    request_id or "-",
+                                )
+                            elif not store.claim_native_request(request_id, namespace="compose_settings"):
+                                logger.info(
+                                    "[COMPOSE_SETTINGS] duplicate native bulk settings notification ignored requestId=%s",
+                                    request_id,
+                                )
+                            else:
+                                task = asyncio.create_task(
+                                    _run_compose_settings_bulk_applied(settings_values, request_id)
+                                )
+                                if not _track_compose_settings_task(task):
+                                    task.cancel()
+                                    diagnostics.record(
+                                        "SETTINGS_RUNTIME_BULK_APPLY_SKIPPED",
+                                        request_id=request_id,
+                                        reason="settings_task_limit",
+                                    )
 
                         if event_type == 'compose_settings_navigation':
                             destination = str(payload.get('destination') or '').strip().lower()
