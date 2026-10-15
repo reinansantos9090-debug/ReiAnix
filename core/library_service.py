@@ -913,7 +913,7 @@ class LibraryService:
         season_number = next(iter(seasons)) if len(seasons) == 1 else None
         return MatchContext(season_number=season_number, media_kind=media_kind)
 
-    def hydrate_catalog_metadata(self, catalog, on_item=None):
+    def hydrate_catalog_metadata(self, catalog, on_item=None, *, allow_anilist_metadata=True):
         """Hydrate local items through the existing metadata/artwork pipeline.
 
         ``on_item`` is an optional completion callback used only to trigger an
@@ -944,10 +944,12 @@ class LibraryService:
             ) or self.store.anime_metadata(lookup_title) or metadata
             effective_lookup = str(cached.get("lookup_title") or lookup_title)
             anilist_id = cached.get('anilist_id') or self.store.association(effective_lookup)
-            if cached and anilist_id:
+            if allow_anilist_metadata and cached and anilist_id:
                 # Reading an already-associated row must remain offline-safe.
                 # Translation is scheduled by the first metadata materialization
-                # path, not by every Home/Library hydration.
+                # path, not by every Home/Library hydration. On the native Compose
+                # path, Kotlin owns editorial metadata writes; Python remains only
+                # the existing ArtworkEngine materializer.
                 cached = self._ensure_cached_description_pt_br(
                     effective_lookup,
                     cached,
@@ -986,14 +988,14 @@ class LibraryService:
             # "stale" is an informational TTL state, never an automatic
             # AniList trigger. Only genuinely unmaterialized metadata enters
             # the one-shot materialization path.
-            needs_metadata = not materialized and (
+            needs_metadata = allow_anilist_metadata and not materialized and (
                 (
                     not anilist_id
                     or status in {'unresolved', 'error', 'ambiguous'}
                 )
-                and match_status not in {'not_found', 'network_error', 'rate_limited'}
+                and match_status not in {'not_found', 'network_error', 'rate_limited', 'invalid_response'}
             )
-            if status == 'ambiguous' and not anilist_id:
+            if allow_anilist_metadata and status == 'ambiguous' and not anilist_id:
                 if pending_cache is None: pending_cache = self.store.pending_matches()
                 needs_metadata = not any(p.get('lookup_title') == effective_lookup for p in pending_cache)
             needs_cover = False
