@@ -3,6 +3,8 @@ package com.reiflix.reiflix_local
 import android.content.Context
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
+import java.io.File
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
@@ -74,6 +76,9 @@ class ReiAnixAppDependencies(context: Context) {
             client = aniListClient,
             library = sqliteLibraryRepository,
             settings = sqliteSettingsRepository,
+            descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
+                cacheFile = File(appContext.filesDir, "data/cache/anilist_description_ptbr.json"),
+            ),
         )
     }
 
