@@ -71,6 +71,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -3805,6 +3806,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             " requestId=" + mutationRequestId +
                             " published=" + published,
                     )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (error: Exception) {
                     logPlayer(
                         "PLAYER_SETTING_PERSIST_FAILED key=" + normalizedKey +
