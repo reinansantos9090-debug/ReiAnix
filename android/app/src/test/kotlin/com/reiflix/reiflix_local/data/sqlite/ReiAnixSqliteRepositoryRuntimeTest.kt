@@ -1440,6 +1440,64 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun nativeAniListAssociationsAndPendingMatchesStayInTheCanonicalStore() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+
+        assertTrue(
+            repository.setAniListMatchByLookupTitle(
+                lookupTitle = "catalog-key",
+                anilistId = 1234L,
+                status = "matched",
+                score = 0.96,
+                margin = 0.18,
+                manual = true,
+            ),
+        )
+        val match = repository.getAniListMatchByLookupTitle("catalog-key")
+        assertEquals(1L, match?.animeId)
+        assertEquals(1234L, match?.anilistId)
+        assertEquals(true, match?.manual)
+        assertEquals(0.96, match?.score ?: -1.0, 0.0)
+
+        repository.setPendingAniListMatch(
+            lookupTitle = "catalog-key",
+            displayTitle = "Catalog Title",
+            candidatesJson = """[{"id":5678,"title":"Candidate"}]""",
+        )
+        val pending = repository.listPendingAniListMatches()
+        assertEquals(1, pending.size)
+        assertEquals("catalog-key", pending.single().lookupTitle)
+        assertEquals("Catalog Title", pending.single().displayTitle)
+        assertEquals(5678, org.json.JSONArray(pending.single().candidatesJson).getJSONObject(0).getInt("id"))
+
+        repository.resolvePendingAniListMatch("catalog-key", 5678L)
+        assertTrue(repository.listPendingAniListMatches().isEmpty())
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                "SELECT anilist_id FROM associations WHERE lookup_title = ?",
+                arrayOf("catalog-key"),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(5678L, cursor.getLong(0))
+            }
+        }
+
+        assertTrue(repository.clearAniListMatchByLookupTitle("catalog-key"))
+        val cleared = repository.getAniListMatchByLookupTitle("catalog-key")
+        assertEquals(null, cleared?.anilistId)
+        assertEquals("unmatched", cleared?.status)
+        assertTrue(repository.listPendingAniListMatches().isEmpty())
+        val animeAfterClear = repository.getAnime(1L)
+        assertEquals("Original Title", animeAfterClear?.title)
+        assertEquals("keep this note", animeAfterClear?.personalNote)
+        assertEquals(true, animeAfterClear?.favorite)
+        assertTrue(repository.setMetadataStatusByLookupTitle("catalog-key", "available", "high"))
+        assertEquals(1, repository.clearAniListMetadataCache())
+        assertEquals(null, repository.getAnime(1L)?.metadataUpdatedAt)
+    }
+
+    @Test
     fun personalListRejectsMissingAndInvalidAnimeIdsWithoutChangingCatalog() = runBlocking {
         createCanonicalFixture()
         val service = ReiAnixPersonalListService(context)
