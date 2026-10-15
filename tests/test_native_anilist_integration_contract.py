@@ -57,7 +57,7 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn('"artwork.enabled"', source)
         self.assertIn("coverUrl = if (artworkEnabled)", source)
         self.assertIn("bannerUrl = remote.bannerUrl.takeIf { artworkEnabled }", source)
-        self.assertIn("private val autoMatchAttemptTimestamps", source)
+        self.assertIn("private val autoMatchAttempts = ConcurrentHashMap<Long, Long>()", source)
         matcher = (KOTLIN / "data/anilist/ReiAnixAniListMatcher.kt").read_text(encoding="utf-8")
         self.assertIn("ReiAnixAniListMatcher.rank(", source)
         self.assertIn("best.score <= 0.0", source)
