@@ -172,6 +172,28 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
+## Estado transversal — Prompt 05/29: coordenação e indexação de biblioteca
+
+Base efetiva desta implementação: `main` em `e115d69e9d970defb075c812b34663f17cbbefb4`; branch `migration/prompt-05-native-library-indexing-20261015`. A validação final depende do SHA do commit final desta branch e dos workflows obrigatórios da PR.
+
+### Alterações desta etapa
+
+- Criado `data/sqlite/ReiAnixLibraryService.kt) como serviço nativo com consumidores de produção; ele usa o repositório SQLite já compartilhado, serializa as próprias mutações de scan e não cria outro scanner, coordinator, DB ou repository.
+- `NativeScanRunner` encaminha indexação SAF e registro terminal `scan_runs` pelo serviço Kotlin.
+- `MainActivity` encaminha mudanças de volume ao mesmo serviço, e `ReiAnixLibraryViewModel` encaminha reconciliação de identidade SAF ao serviço depois que a operação do provider foi confirmada.
+- O código existente `NativeLibraryScanSnapshot` + `indexDiscoveredMedia` segue responsável pela validação do escopo, deduplicação, patch seletivo, preservação de dados associados e autorização conservadora para marcar ausências.
+- Adicionada `docs/KOTLIN_LIBRARY_INDEXING_MIGRATION.md` com arquitetura, ownership, semântica de reconciliação, dependências e validação.
+
+### Fronteiras que continuam abertas
+
+- A projeção geral Home/Biblioteca e as páginas filtradas ainda usam `ReiAnixLibraryRepository`/ComposeLibraryBridge/NativeMailbox; portanto, esta PR não afirma que todas as telas já leem diretamente do SQLite Kotlin.
+- `core/scan_coordinator.py` continua como compatibilidade para eventos/estado legado e fallback não Android; requisições Android passam por `NativeScanController`.
+- `core/library_service.py` continua sendo consumido por caminhos híbridos legados e pelo fallback de recuperação positiva somente quando o receipt confirma rollback e transfere ownership com segurança.
+- MediaStore/BroadStorage continuam fontes diagnósticas sob o contrato atual, sem serem convertidas automaticamente em novas fontes canônicas da biblioteca.
+- Não foi alterado o schema v29 e nenhum banco paralelo foi criado. Nenhum teste Kotlin/JVM foi executado manualmente; nenhum teste instrumentado/emulador foi adicionado.
+
+A migração do writer normal SAF e das operações Kotlin abrangidas por esta etapa foi centralizada, mas o corte integral do runtime/projeção híbrida ainda exige a substituição verificada dos consumidores legados. A conclusão de entrega desta PR depende da CI obrigatória no SHA final e da verificação dos artefatos APK/ZIP desse mesmo run, quando previstos.
+
 ### MIG-06 — Storage, permissões SAF e operações de arquivo (EM ANDAMENTO)
 
 **Objetivo:** Migrar armazenamento e descoberta para Kotlin sem criar scanners, bancos ou coordenadores paralelos.
