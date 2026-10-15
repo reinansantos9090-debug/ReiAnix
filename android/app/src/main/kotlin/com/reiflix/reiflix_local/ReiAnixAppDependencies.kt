@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local
 
 import android.content.Context
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
@@ -79,6 +80,15 @@ class ReiAnixAppDependencies(context: Context) {
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),
+            artworkRequestPublisher = { animeId ->
+                NativeMailbox.write(
+                    appContext,
+                    JSONObject()
+                        .put("type", "anilist_artwork_sync")
+                        .put("requestId", UUID.randomUUID().toString())
+                        .put("payload", JSONObject().put("animeId", animeId)),
+                )
+            },
         )
     }
 
