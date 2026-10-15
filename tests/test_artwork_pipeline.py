@@ -10,8 +10,10 @@ class ArtworkPipelineTests(unittest.TestCase):
     def read(self, relative):
         return (ROOT / relative).read_text(encoding="utf-8")
 
-    def test_artwork_engine_is_single_canonical_download_owner(self):
+    def test_python_artwork_engine_is_retained_only_for_legacy_consumers(self):
         source = self.read("core/artwork.py")
+        native = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt")
+        main = self.read("main.py")
         self.assertIn("class ArtworkEngine:", source)
         self.assertNotIn("class ArtworkEngineV2", source)
         self.assertNotIn("class ArtworkDownloader", source)
@@ -19,6 +21,13 @@ class ArtworkPipelineTests(unittest.TestCase):
         self.assertIn("MAX_PENDING_TASKS = 128", source)
         self.assertIn("def set_change_listener", source)
         self.assertIn("ARTWORK_PUBLISHED", source)
+        self.assertIn("private suspend fun download", native)
+        self.assertIn("private fun persistDownloaded", native)
+        handler_start = main.index("if event_type == 'anilist_metadata_committed':")
+        handler_end = main.index("if event_type == 'compose_settings_set':", handler_start)
+        handler = main[handler_start:handler_end]
+        self.assertNotIn("library.artwork.sync_anime_metadata(", handler)
+        self.assertNotIn("library.artwork.request(", handler)
 
     def test_download_validation_is_not_http_200_only(self):
         source = self.read("core/artwork.py")
