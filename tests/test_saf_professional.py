@@ -313,13 +313,16 @@ class TestSafProfessionalContract(unittest.TestCase):
         block = source[start:end]
         status_calculation = block.index("val status = when {")
         terminal_event = block.index('.put("type", "saf_library_scan_complete")', status_calculation)
-        for awaited in (
-            "awaitAndRecordSource(sourceKey, scanId)",
-            "awaitAndRecordSource(MediaStoreScanner.SOURCE, mediaScanId)",
-            "awaitAndRecordSource(BroadStorageScanner.SOURCE, broadScanId)",
-        ):
-            self.assertIn(awaited, block)
-            self.assertLess(block.index(awaited), terminal_event)
+        scheduled_sources = (
+            "pendingSources += sourceKey to scanId",
+            "pendingSources += MediaStoreScanner.SOURCE to mediaScanId",
+            "pendingSources += BroadStorageScanner.SOURCE to broadScanId",
+        )
+        await_loop = block.index("for ((source, scanId) in pendingSources)")
+        for scheduled in scheduled_sources:
+            self.assertIn(scheduled, block)
+            self.assertLess(block.index(scheduled), await_loop)
+        self.assertLess(await_loop, terminal_event)
         self.assertIn("NativeScanController.progress.first", block)
         self.assertIn('put("sourceResults", sourceResults)', block)
         self.assertIn('put("requestedSources", requestedSources)', block)
