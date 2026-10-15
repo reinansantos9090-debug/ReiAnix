@@ -725,51 +725,6 @@ object NativeScanRunner {
 
     }
 
-    private fun parseDocumentsToDiscoveredMedia(
-        scanDocuments: JSONArray,
-        defaultSourceFolder: String,
-    ): List<NativeDiscoveredMedia> = buildList {
-        for (i in 0 until scanDocuments.length()) {
-            val document = scanDocuments.optJSONObject(i) ?: continue
-            val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
-            val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
-            val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
-            val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
-            val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
-            val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
-            val size = if (document.has("size") && !document.isNull("size")) document.optLong("size").takeIf { it >= 0L } else null
-            val modifiedMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt").takeIf { it >= 0L } else null
-            val ambiguities = parsed.optJSONArray("ambiguities")
-            add(
-                NativeDiscoveredMedia(
-                    location = uri,
-                    fileName = name,
-                    // NativeIndex batches are scoped by the source scanner and generation.
-                    // Provider document IDs/relative paths cannot be compared to synthetic scope keys.
-                    scopeLocation = defaultSourceFolder,
-                    scopeVerified = true,
-                    animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
-                    season = season,
-                    episodeNumber = episodeNumber,
-                    absoluteNumber = absoluteNumber,
-                    episodeType = parsed.optString("kind").takeIf { it.isNotBlank() },
-                    episodeTitle = parsed.optString("displayTitle").takeIf { it.isNotBlank() },
-                    identificationSource = parsed.optString("identificationSource").takeIf { it.isNotBlank() },
-                    identificationConfidence = parsed.optString("confidence").takeIf { it.isNotBlank() },
-                    mimeType = document.optString("mimeType").takeIf { it.isNotBlank() && it != "null" },
-                    sizeBytes = size,
-                    modifiedAtEpochSeconds = modifiedMillis?.div(1000.0),
-                    sourceFolder = defaultSourceFolder,
-                    relativePath = document.optString("relativePath").takeIf { it.isNotBlank() },
-                    volumeId = document.optString("volumeId").takeIf { it.isNotBlank() } ?: document.optString("volumeName").takeIf { it.isNotBlank() },
-                    volumeUuid = document.optString("volumeUuid").takeIf { it.isNotBlank() },
-                    mediaIdentity = document.optString("stableId").takeIf { it.isNotBlank() },
-                    ambiguous = ambiguities != null && ambiguities.length() > 0,
-                )
-            )
-        }
-    }
-
     suspend fun runBroadScan(
         context: Context,
         scanId: String,
@@ -825,11 +780,7 @@ object NativeScanRunner {
                 result.put("nativeLibraryIndexOwner", true)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "broad_storage_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
-                NativeScanController.complete(
-                    scanId,
-                    if (nativeIndexPartial && terminalStatus in setOf("COMPLETED", "EMPTY_COMPLETE")) "PARTIAL" else terminalStatus,
-                    result,
-                )
+                NativeScanController.complete(scanId, terminalStatus, result)
             } catch (exception: CancellationException) {
                 NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
                 throw exception
@@ -915,7 +866,7 @@ object NativeScanRunner {
                 val terminalStatus = ScanResultClassifier.classifyMediaStore(
                     finalStatus,
                     cancelled = result.optBoolean("cancelled"),
-                    partial = result.optBoolean("partial") || result.optString("nativeLibraryIndexStatus") == "PARTIAL",
+                    partial = result.optBoolean("partial"),
                 )
                 NativeScanController.complete(scanId, terminalStatus, result)
             } catch (exception: CancellationException) {
