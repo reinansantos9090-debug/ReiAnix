@@ -131,14 +131,18 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val rowId = prepareRow(id, entity, type, url, key, force) ?: return@withPermit
             var image: Downloaded? = null
             try {
-                image = download(key, url)
+                val completedImage = download(key, url)
+                image = completedImage
                 currentCoroutineContext().ensureActive()
-                val saved = persistDownloaded(rowId, id, type, url, key, image)
+                val saved = persistDownloaded(rowId, id, type, url, key, completedImage)
                 if (!saved.saved) {
-                    removeIfUnreferenced(image.file)
+                    removeIfUnreferenced(completedImage.file)
                     return@withPermit
                 }
-                if (saved.current) publish("artwork_published", entity, id.toString(), type, image.file.absolutePath, url, key, url, image.mime)
+                if (saved.current) publish(
+                    "artwork_published", entity, id.toString(), type,
+                    completedImage.file.absolutePath, url, key, url, completedImage.mime,
+                )
                 trimCache()
             } catch (cancelled: CancellationException) {
                 setCancelled(rowId)
