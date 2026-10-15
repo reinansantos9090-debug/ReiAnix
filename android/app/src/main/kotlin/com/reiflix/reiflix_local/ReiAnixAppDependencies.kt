@@ -82,13 +82,13 @@ class ReiAnixAppDependencies(context: Context) {
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),
-            artworkRequestPublisher = { animeId ->
+            metadataCommitPublisher = { animeId, requestArtwork ->
                 NativeMailbox.write(
                     appContext,
                     JSONObject()
-                        .put("type", "anilist_artwork_sync")
+                        .put("type", "anilist_metadata_committed")
                         .put("requestId", UUID.randomUUID().toString())
-                        .put("payload", JSONObject().put("animeId", animeId)),
+                        .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", requestArtwork)),
                 )
             },
         )
