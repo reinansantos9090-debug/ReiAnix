@@ -2437,22 +2437,48 @@ class MainActivity : FlutterFragmentActivity() {
                 Log.i(tag, "SAF permission already absent; treating release as completed")
             }
             val alreadyAbsent = !SafScanner.hasPersistedReadPermission(this, treeUri)
-            nativeRequestState.markOperationState(
-                requestId,
-                "release_tree",
-                NativeRequestState.OperationState.COMPLETED,
-            )
-            NativeMailbox.write(
-                this,
-                JSONObject().put("type", "saf_released")
-                    .put("requestId", requestId ?: "")
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("treeUri", reference)
-                            .put("alreadyAbsent", alreadyAbsent),
-                    ),
-            )
+            lifecycleScope.launch {
+                try {
+                    ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository.removeFolder(reference)
+                    nativeRequestState.markOperationState(
+                        requestId,
+                        "release_tree",
+                        NativeRequestState.OperationState.COMPLETED,
+                    )
+                    NativeMailbox.write(
+                        this@MainActivity,
+                        JSONObject().put("type", "saf_released")
+                            .put("requestId", requestId ?: "")
+                            .put(
+                                "payload",
+                                JSONObject()
+                                    .put("treeUri", reference)
+                                    .put("alreadyAbsent", alreadyAbsent)
+                                    .put("nativeStorageOwner", true),
+                            ),
+                    )
+                } catch (exception: kotlinx.coroutines.CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    runCatching {
+                        ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository
+                            .updateFolderAuthorization(reference, "revoked", "Permission released but folder removal failed.")
+                    }
+                    nativeRequestState.markOperationState(
+                        requestId,
+                        "release_tree",
+                        NativeRequestState.OperationState.FAILED,
+                    )
+                    Log.e(tag, "Failed to remove released SAF folder from canonical database", exception)
+                    NativeMailbox.write(
+                        this@MainActivity,
+                        JSONObject().put("type", "saf_error")
+                            .put("requestId", requestId ?: "")
+                            .put("message", "A permissão foi liberada, mas a configuração da pasta não pôde ser removida.")
+                            .put("payload", JSONObject().put("treeUri", reference).put("status", SafScanner.STATUS_FAILED).put("nativeStorageOwner", true)),
+                    )
+                }
+            }
         } catch (exception: Exception) {
             nativeRequestState.markOperationState(
                 requestId,
