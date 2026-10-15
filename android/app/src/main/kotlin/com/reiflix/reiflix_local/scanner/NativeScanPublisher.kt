@@ -30,6 +30,7 @@ object NativeScanPublisher {
                 .put("nativeLibraryIndexOwner", source == NativeIndex.SOURCE_SAF)
             NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", eventType).put("requestId", requestId ?: "").put("payload", payload))
         } catch (exception: Exception) {
+            if (exception is kotlinx.coroutines.CancellationException) throw exception
             Log.e(TAG, "Native batch publication failed", exception)
             NativeMailbox.write(appContext, JSONObject().put("type", eventType.replace("_batch", "_error")).put("requestId", requestId ?: "")
                 .put("message", "Não foi possível preparar um lote da biblioteca.").put("payload", JSONObject().put("scanId", scanId).put("requestId", requestId ?: "")

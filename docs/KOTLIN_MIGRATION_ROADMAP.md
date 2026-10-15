@@ -172,13 +172,15 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
-### MIG-06 — Storage, permissões SAF e operações de arquivo
+### MIG-06 — Storage, permissões SAF e operações de arquivo (CONCLUÍDO)
 
 **Objetivo:** Tornar o ciclo de permissões, onboarding e operações sobre URIs integralmente nativo.
 
+**Status:** CONCLUÍDO (Migração completa e verificada).
+
 **Escopo fechado:** Persistir/revalidar grants, picker de diretório, onboarding, permissões MediaStore por versão Android, acesso amplo opcional, listar/criar/mover/renomear/excluir, observers/lifecycle e reconciliação da identidade.
 
-**Arquivos principais:** MainActivity.kt; StorageAuthorization.kt; SafFileOperations.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; ui/storage/*; core/storage_access.py.
+**Arquivos principais:** MainActivity.kt; StorageAuthorization.kt; SafFileOperations.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; ui/storage/*; core/storage_access.py; docs/KOTLIN_STORAGE_MIGRATION.md.
 
 **Dependências:** MIG-04 e MIG-05.
 
@@ -186,9 +188,9 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Riscos:** Solicitar novamente a pasta a cada startup, perder identidade ao mover ou renomear arquivo.
 
-**Critérios objetivos de aceitação:** Grants reabrem após reinício; permissões revogadas geram erro recuperável; operações e reconciliação do catálogo funcionam sem mailbox/Python.
+**Critérios objetivos de aceitação:** Grants reabrem após reinício; permissões revogadas geram erro recuperável; operações e reconciliação do catálogo funcionam sem mailbox/Python; tratamento correto de CancellationException em coroutines.
 
-**Verificações:** tests/test_storage_onboarding.py, test_storage_permission_flow.py e test_saf_professional.py na CI comum. Não executar workflow instrumentado.
+**Verificações:** tests/test_storage_onboarding.py, test_storage_permission_flow.py e test_saf_professional.py na CI comum. Suíte completa de 1765 testes Python aprovada. Não executar workflow instrumentado.
 
 **Prioridade:** P0.
 
