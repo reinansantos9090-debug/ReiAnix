@@ -8,7 +8,7 @@ O serviço cobre materialização de poster e backdrop a partir de URLs já pers
 
 ## Download e cache de imagens
 
-O download usa `HttpURLConnection` com as verificações TLS padrão do Android. O fluxo rejeita códigos HTTP não bem-sucedidos, conteúdo declarado como não-imagem, respostas vazias, assinaturas não reconhecidas, redirecionamento de HTTPS para HTTP e payload acima de 32 MiB. Os bytes são copiados em streaming para arquivo temporário, o arquivo é sincronizado, a imagem é validada por assinatura/decodificação e o temporário é promovido para o destino por movimentação atômica quando o filesystem oferece suporte.
+O download usa `HttpURLConnection` com as verificações TLS padrão do Android. O fluxo rejeita códigos HTTP não bem-sucedidos, conteúdo declarado como não-imagem, respostas vazias, assinaturas não reconhecidas, redirecionamento de HTTPS para HTTP e payload acima de 32 MiB. Os bytes são copiados em streaming para arquivo temporário, o arquivo é sincronizado e a imagem é validada por assinatura/decodificação. O destino usa nome baseado no checksum para não sobrescrever capas existentes. A promoção tenta um rename no mesmo diretório (atômico nos filesystems compatíveis); em API 24–25 ou quando rename falha, copia para o destino único, valida a cópia e só então persiste seu caminho no SQLite.
 
 A escrita persistente acontece depois da promoção e em transação na tabela `artwork`. O ponteiro `anime.cover_cache` só é atualizado se a URL atual ainda corresponder ao registro e não houver propriedade manual do campo. Uma capa local/manual é preservada e uma falha remota não limpa `cover_cache`. Falhas de rede e HTTP 429/5xx recebem `retry_wait` com horário persistido; falhas definitivas ficam `failed`, sem loop infinito de tentativas.
 
