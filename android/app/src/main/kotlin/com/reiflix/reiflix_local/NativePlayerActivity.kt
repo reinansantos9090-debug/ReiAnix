@@ -1,6 +1,8 @@
 package com.reiflix.reiflix_local
 
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import com.reiflix.reiflix_local.player.DeviceInteractionProfile
 import com.reiflix.reiflix_local.player.LocalSubtitleResolver
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
@@ -68,6 +70,11 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.AudioAttributes
@@ -3757,35 +3764,61 @@ override fun onCreate(savedInstanceState: Bundle?) {
         lockButton.contentDescription = if (locked) "Desbloquear controles" else "Bloquear controles"
     }
 
+    private val playerSettingWriteLocks = ConcurrentHashMap<String, Mutex>()
+
     private fun persistCanonicalPlayerSetting(key: String, value: String): Boolean {
         val mutationRequestId = UUID.randomUUID().toString()
-        val payload = JSONObject()
-            .put("key", key)
-            .put("value", value)
-            .put("requestId", mutationRequestId)
-        val event = JSONObject()
-            .put("type", "compose_settings_set")
-            .put("requestId", mutationRequestId)
-            .put("payload", payload)
-        val published = NativeMailbox.writeBestEffort(this, event)
-        logPlayer(
-            "PLAYER_SETTING_CHANGED key=" + key +
-                " value=" + value +
-                " requestId=" + mutationRequestId +
-                " published=" + published,
-        )
-        if (!published) {
-            logPlayer(
-                "PLAYER_SETTING_PERSIST_FAILED key=" + key +
-                    " requestId=" + mutationRequestId,
-            )
-        } else {
-            logPlayer(
-                "PLAYER_SETTING_PERSIST_REQUESTED key=" + key +
-                    " requestId=" + mutationRequestId,
-            )
+        val normalizedKey = key.trim()
+        val normalizedValue = try {
+            ReiAnixSettingsContract.normalize(normalizedKey, value)
+        } catch (error: IllegalArgumentException) {
+            logPlayer("PLAYER_SETTING_REJECTED key=" + normalizedKey, error)
+            return false
         }
-        return published
+        lifecycleScope.launch(Dispatchers.IO) {
+            playerSettingWriteLocks.computeIfAbsent(normalizedKey) { Mutex() }.withLock {
+                try {
+                    val persisted = ReiAnixSqliteSettingsRepository(applicationContext)
+                        .setPreference(normalizedKey, normalizedValue)
+                        .value
+                    logPlayer(
+                        "PLAYER_SETTING_PERSISTED key=" + normalizedKey +
+                            " requestId=" + mutationRequestId +
+                            " confirmed=true",
+                    )
+                    val published = NativeMailbox.writeBestEffort(
+                        applicationContext,
+                        JSONObject()
+                            .put("type", "compose_settings_set")
+                            .put("requestId", mutationRequestId)
+                            .put(
+                                "payload",
+                                JSONObject()
+                                    .put("key", normalizedKey)
+                                    .put("value", persisted)
+                                    .put("requestId", mutationRequestId)
+                                    .put("nativePersisted", true),
+                            ),
+                    )
+                    logPlayer(
+                        "PLAYER_SETTING_RUNTIME_NOTIFICATION key=" + normalizedKey +
+                            " requestId=" + mutationRequestId +
+                            " published=" + published,
+                    )
+                } catch (error: Exception) {
+                    logPlayer(
+                        "PLAYER_SETTING_PERSIST_FAILED key=" + normalizedKey +
+                            " requestId=" + mutationRequestId,
+                        error,
+                    )
+                }
+            }
+        }
+        logPlayer(
+            "PLAYER_SETTING_PERSIST_REQUESTED key=" + normalizedKey +
+                " requestId=" + mutationRequestId,
+        )
+        return true
     }
 
     private fun gestureSettingLabel(label: String, enabled: Boolean): String =
