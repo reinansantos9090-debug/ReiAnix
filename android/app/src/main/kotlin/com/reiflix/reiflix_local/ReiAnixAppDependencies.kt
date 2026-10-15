@@ -5,6 +5,7 @@ import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
+import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
 import java.io.File
 import java.util.UUID
 import org.json.JSONObject
@@ -68,6 +69,10 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixConsumptionService(sqliteLibraryRepository)
     }
 
+    val artworkService: ReiAnixArtworkService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixArtworkService(appContext, sqliteDatabase)
+    }
+
     val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAniListClient()
     }
@@ -83,12 +88,13 @@ class ReiAnixAppDependencies(context: Context) {
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),
             metadataCommitPublisher = { animeId, requestArtwork ->
+                if (requestArtwork) artworkService.requestAnimeArtwork(animeId, force = true)
                 NativeMailbox.write(
                     appContext,
                     JSONObject()
                         .put("type", "anilist_metadata_committed")
                         .put("requestId", UUID.randomUUID().toString())
-                        .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", requestArtwork)),
+                        .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", false)),
                 )
             },
         )
