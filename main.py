@@ -3602,10 +3602,13 @@ async def main(page: ft.Page):
         _clear_pending_saf_selection_context()
         if recovered:
             try:
-                await scan_coordinator.request(
-                    ScanOrigin.PERMISSION_CHANGE, source="saf", scope_ref=tree_uri,
-                    full=False, reason="saf_inventory_selection_recovery",
-                )
+                if bridge.available:
+                    await bridge.rescan_tree(tree_uri)
+                else:
+                    await scan_coordinator.request(
+                        ScanOrigin.PERMISSION_CHANGE, source="saf", scope_ref=tree_uri,
+                        full=False, reason="saf_inventory_selection_recovery",
+                    )
             except Exception:
                 logger.exception("[STORAGE] recovered SAF scan request failed")
         return True
