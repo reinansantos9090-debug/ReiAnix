@@ -49,6 +49,9 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -178,6 +181,26 @@ class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         private const val BRIDGE_PROTOCOL_VERSION = 2
+
+        @JvmStatic
+        fun createNativeStorageActionIntent(context: Context, action: String, treeUri: String? = null): Intent {
+            val normalized = action.trim()
+            require(normalized in setOf("select_tree", "request_media_access", "open_broad_storage_settings", "check_storage_access", "release_tree")) {
+                "Unsupported native storage action."
+            }
+            require(normalized != "release_tree" || !treeUri.isNullOrBlank()) {
+                "The SAF tree URI is required for release_tree."
+            }
+            val builder = Uri.parse("reiflix://native").buildUpon()
+                .appendQueryParameter("action", normalized)
+                .appendQueryParameter("request_id", UUID.randomUUID().toString())
+                .appendQueryParameter("protocol_version", BRIDGE_PROTOCOL_VERSION.toString())
+                .appendQueryParameter("created_at", System.currentTimeMillis().toString())
+            treeUri?.trim()?.takeIf { it.isNotEmpty() }?.let { builder.appendQueryParameter("tree_uri", it) }
+            if (normalized == "release_tree") builder.appendQueryParameter("native_folder_config_owner", "true")
+            return Intent(Intent.ACTION_VIEW, builder.build(), context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
         private const val STATE_LAST_NATIVE_REQUEST_ID = "reiflix.lastNativeRequestId"
         private const val STATE_PENDING_LIFECYCLE_ACTION = "reiflix.pendingLifecycleAction"
         private const val STATE_BROAD_SETTINGS_PENDING = "reiflix.broadSettingsPending"
@@ -540,7 +563,7 @@ class MainActivity : FlutterFragmentActivity() {
                 .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED))))
         if (granted) {
             nativeRequestState.markOperationState(requestId, "request_media_access", NativeRequestState.OperationState.COMPLETED)
-            publishScanRequest("PERMISSION_CHANGE", "mediastore", null, false, "media_permission_granted", requestId)
+            scanMediaStore(requestId)
         } else {
             nativeRequestState.markOperationState(requestId, "request_media_access", NativeRequestState.OperationState.FAILED)
             NativeMailbox.write(this, JSONObject().put("type", "mediastore_error")
@@ -728,17 +751,11 @@ class MainActivity : FlutterFragmentActivity() {
             }
             Log.i(tag, "SAF_PICKER_RESULT_VALID requestId=" + (requestId ?: "-") +
                 " authority=" + (uri.authority ?: "-"))
-            publishNativeDiagnostic(
-                "STORAGE_ROOT_SELECTED",
-                requestId,
-                action = "select_tree",
-                result = uri.toString(),
-            )
+            publishNativeDiagnostic("STORAGE_ROOT_SELECTED", requestId, action = "select_tree", result = uri.toString())
             val transientInspection = SafScanner.inspectTree(this, uri, requirePersisted = false)
             val transientStatus = transientInspection.optString("status")
             if (transientStatus != SafScanner.STATUS_COMPLETED) {
-                val status = if (transientStatus == SafScanner.STATUS_REVOKED)
-                    SafScanner.STATUS_REVOKED else SafScanner.STATUS_UNAVAILABLE
+                val status = if (transientStatus == SafScanner.STATUS_REVOKED) SafScanner.STATUS_REVOKED else SafScanner.STATUS_UNAVAILABLE
                 clearSafPickerPending(requestId, SafPickerPhase.FAILED)
                 publishSafPickerError(requestId, "O provedor não conseguiu abrir a pasta selecionada.",
                     stage = "selection_validation", code = "PROVIDER_UNAVAILABLE", status = status, treeUri = uri)
@@ -746,71 +763,57 @@ class MainActivity : FlutterFragmentActivity() {
             }
             val flags = resultIntent.flags
             SafScanner.persistPermission(this, uri, flags)
-            publishNativeDiagnostic(
-                "STORAGE_PERMISSION_PERSISTED",
-                requestId,
-                action = "select_tree",
-                result = uri.toString(),
-            )
-            publishNativeDiagnostic(
-                "SAF_PERMISSION_PERSISTED",
-                requestId,
-                action = "select_tree",
-                result = uri.toString(),
-            )
+            publishNativeDiagnostic("STORAGE_PERMISSION_PERSISTED", requestId, action = "select_tree", result = uri.toString())
+            publishNativeDiagnostic("SAF_PERMISSION_PERSISTED", requestId, action = "select_tree", result = uri.toString())
             val persistedInspection = SafScanner.inspectTree(this, uri, requirePersisted = true)
             val persistedStatus = persistedInspection.optString("status")
             if (persistedStatus != SafScanner.STATUS_COMPLETED) {
-                val status = if (!SafScanner.hasPersistedReadPermission(this, uri))
-                    SafScanner.STATUS_REVOKED else SafScanner.STATUS_UNAVAILABLE
+                val status = if (!SafScanner.hasPersistedReadPermission(this, uri)) SafScanner.STATUS_REVOKED else SafScanner.STATUS_UNAVAILABLE
                 clearSafPickerPending(requestId, SafPickerPhase.FAILED)
                 publishSafPickerError(requestId, "A autorização da pasta não pôde ser validada.",
                     stage = "persisted_validation", code = "PERSISTED_PERMISSION_INVALID",
                     status = status, treeUri = uri)
                 return
             }
-            publishNativeDiagnostic(
-                "STORAGE_ROOT_VALIDATED",
-                requestId,
-                action = "select_tree",
-                result = uri.toString(),
-            )
-            publishNativeDiagnostic(
-                "STORAGE_READY",
-                requestId,
-                action = "select_tree",
-                result = "persisted_and_validated",
-            )
-            val payload = SafScanner.identityPayload(uri)
-                .put("granted", true).put("selected", true)
-                .put("status", SafScanner.STATUS_COMPLETED)
-                .put("name", SafScanner.displayName(this, uri))
-                .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED))
+            publishNativeDiagnostic("STORAGE_ROOT_VALIDATED", requestId, action = "select_tree", result = uri.toString())
+            publishNativeDiagnostic("STORAGE_READY", requestId, action = "select_tree", result = "persisted_and_validated")
+            val selectedIdentity = SafScanner.identityPayload(uri)
+            val selectedName = SafScanner.displayName(this, uri)
             clearSafPickerPending(requestId, SafPickerPhase.COMPLETED)
-            NativeMailbox.write(this, JSONObject().put("type", "saf_permission")
-                .put("requestId", requestId ?: "").put("payload", payload))
-            try {
-                publishNativeDiagnostic(
-                    "PERMISSION_CHANGE",
-                    requestId,
-                    action = "select_tree",
-                    result = "saf_granted",
-                )
-                publishNativeDiagnostic(
-                    "STARTUP_SCAN_REQUESTED",
-                    requestId,
-                    action = "scan",
-                    result = "permission_change",
-                )
-                publishNativeDiagnostic(
-                    "STORAGE_SCAN_STARTED",
-                    requestId,
-                    action = "select_tree",
-                    result = "permission_change",
-                )
-                publishScanRequest("PERMISSION_CHANGE", "saf", uri.toString(), false, "saf_granted", requestId)
-            } catch (exception: Exception) {
-                Log.e(tag, "SAF_PICKER_SCAN_TRIGGER_FAILED requestId=" + (requestId ?: "-"), exception)
+            lifecycleScope.launch {
+                val configuredReference = try {
+                    withContext(Dispatchers.IO) {
+                        appDependencies.sqliteLibraryRepository.upsertSafFolder(
+                            uri.toString(), selectedName,
+                            selectedIdentity.optString("authority").takeIf { it.isNotBlank() },
+                            selectedIdentity.optString("documentId").takeIf { it.isNotBlank() },
+                            selectedIdentity.optString("volumeId").takeIf { it.isNotBlank() },
+                            selectedIdentity.optString("identity").takeIf { it.isNotBlank() },
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (exception: Exception) {
+                    Log.e(tag, "SAF source registration failed; previous configured sources were preserved.", exception)
+                    publishSafPickerError(requestId,
+                        "A pasta recebeu permissão, mas não foi possível registrá-la na biblioteca. Os dados anteriores foram preservados.",
+                        stage = "source_registration", code = "SOURCE_PERSISTENCE_FAILED",
+                        status = SafScanner.STATUS_FAILED, treeUri = uri)
+                    return@launch
+                }
+                val payload = JSONObject(selectedIdentity.toString())
+                    .put("treeUri", configuredReference).put("granted", true).put("selected", true)
+                    .put("status", SafScanner.STATUS_COMPLETED).put("name", selectedName)
+                    .put("nativeFolderConfigOwner", true)
+                    .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED))
+                runCatching {
+                    NativeMailbox.write(this@MainActivity, JSONObject().put("type", "saf_permission")
+                        .put("requestId", requestId ?: "").put("payload", payload))
+                }.onFailure { Log.w(tag, "Native SAF registration succeeded, but compatibility state publication failed.", it) }
+                publishNativeDiagnostic("PERMISSION_CHANGE", requestId, action = "select_tree", result = "saf_granted")
+                publishNativeDiagnostic("STARTUP_SCAN_REQUESTED", requestId, action = "scan", result = "permission_change")
+                publishNativeDiagnostic("STORAGE_SCAN_STARTED", requestId, action = "select_tree", result = "permission_change")
+                scanTree(configuredReference, requestId)
             }
         } catch (exception: IllegalArgumentException) {
             clearSafPickerPending(requestId, SafPickerPhase.FAILED)
@@ -1418,14 +1421,7 @@ class MainActivity : FlutterFragmentActivity() {
             "check_storage_access",
         )
         if (normalized !in allowed) return false
-        val requestId = UUID.randomUUID().toString()
-        val uri = Uri.parse(
-            "reiflix://native?action=" + Uri.encode(normalized) +
-                "&request_id=" + Uri.encode(requestId) +
-                "&protocol_version=" + BRIDGE_PROTOCOL_VERSION +
-                "&created_at=" + System.currentTimeMillis(),
-        )
-        handleNativeIntent(Intent(Intent.ACTION_VIEW, uri))
+        handleNativeIntent(createNativeStorageActionIntent(this, normalized))
         return true
     }
 
@@ -1571,7 +1567,11 @@ class MainActivity : FlutterFragmentActivity() {
                 "release_tree" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
-                    releaseTree(intent.data?.getQueryParameter("tree_uri"), requestId)
+                    releaseTree(
+                        intent.data?.getQueryParameter("tree_uri"),
+                        requestId,
+                        nativeFolderConfigOwner = intent.data?.getQueryParameter("native_folder_config_owner") == "true",
+                    )
                 }
                 "scan_media_store" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
@@ -1768,14 +1768,65 @@ class MainActivity : FlutterFragmentActivity() {
                 "Não foi possível executar a operação Android solicitada. Tente novamente.")
         }
     }
-    private fun scanTree(reference: String?, requestId: String? = null) {
+    /** Native discovery for configured SAF roots and already-authorized MediaStore/broad sources. */
+    private fun scanConfiguredSafRoots(origin: String, reason: String) {
+        if (!activityResumed) {
+            Log.i(tag, "Native storage discovery deferred until Activity resumes origin=$origin")
+            return
+        }
+        lifecycleScope.launch {
+            val repository = appDependencies.sqliteLibraryRepository
+            try {
+                val folders = withContext(Dispatchers.IO) {
+                    repository.listFolders()
+                        .filter { it.kind.equals("saf", ignoreCase = true) && it.authorization.equals("granted", ignoreCase = true) }
+                        .sortedBy { it.path }
+                }
+                if (folders.isEmpty()) Log.i(tag, "Native SAF discovery skipped reason=no_configured_roots origin=$origin")
+                for (folder in folders) {
+                    val reference = folder.path.trim()
+                    val treeUri = runCatching { Uri.parse(reference) }.getOrNull()
+                    if (reference.isBlank() || treeUri == null ||
+                        !treeUri.scheme.equals("content", ignoreCase = true) ||
+                        !DocumentsContract.isTreeUri(treeUri) ||
+                        !SafScanner.hasPersistedReadPermission(this@MainActivity, treeUri)
+                    ) {
+                        withContext(Dispatchers.IO) {
+                            repository.updateSafFolderAccess(reference, "revoked", "A autorização persistente desta pasta não está mais disponível.")
+                        }
+                        val payload = (treeUri?.let { SafScanner.identityPayload(it) } ?: JSONObject())
+                            .put("treeUri", reference).put("granted", false).put("status", SafScanner.STATUS_REVOKED)
+                            .put("nativeFolderConfigOwner", true).put("error", "persisted_permission_missing")
+                        NativeMailbox.writeBestEffort(this@MainActivity, JSONObject().put("type", "saf_permission").put("payload", payload))
+                        continue
+                    }
+                    publishNativeDiagnostic("NATIVE_SAF_SCAN_REQUESTED", null, action = "scan", state = "QUEUED", result = "$origin:$reason")
+                    val scanId = scanTree(reference, UUID.randomUUID().toString())
+                    if (scanId != null) {
+                        NativeScanController.progress.first { snapshots -> snapshots[scanId]?.state?.isTerminal == true }
+                    }
+                }
+                if (MediaStoreScanner.hasReadPermission(this@MainActivity)) scanMediaStore(UUID.randomUUID().toString())
+                if (BroadStorageScanner.hasAccess(this@MainActivity)) scanAllStorage(UUID.randomUUID().toString())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exception: Exception) {
+                Log.e(tag, "Native storage discovery failed origin=$origin reason=$reason", exception)
+                NativeMailbox.writeBestEffort(this@MainActivity, JSONObject().put("type", "saf_error")
+                    .put("message", "Não foi possível verificar o armazenamento configurado.")
+                    .put("payload", JSONObject().put("origin", origin).put("reason", reason).put("errorType", exception::class.java.simpleName)))
+            }
+        }
+    }
+
+    private fun scanTree(reference: String?, requestId: String? = null): String? {
         val scanId = UUID.randomUUID().toString()
         if (reference.isNullOrBlank()) {
             NativeMailbox.write(this, JSONObject().put("type", "saf_error")
                 .put("requestId", requestId ?: "")
                 .put("message", "A pasta SAF não foi informada corretamente.")
                 .put("payload", JSONObject().put("scanId", scanId)))
-            return
+            return null
         }
         val treeUri = Uri.parse(reference)
         val persistedInspection = SafScanner.inspectTree(this, treeUri, requirePersisted = true)
@@ -1791,7 +1842,7 @@ class MainActivity : FlutterFragmentActivity() {
                 .put("requestId", requestId ?: "")
                 .put("message", "A permissão desta pasta foi removida. Escolha a pasta novamente.")
                 .put("payload", SafScanner.identityPayload(treeUri).put("scanId", scanId).put("status", SafScanner.STATUS_REVOKED)))
-            return
+            return null
         }
         if (persistedStatus != SafScanner.STATUS_COMPLETED) {
             NativeMailbox.write(this, JSONObject().put("type", "saf_error")
@@ -1804,13 +1855,13 @@ class MainActivity : FlutterFragmentActivity() {
                 .put("payload", SafScanner.identityPayload(treeUri).put("scanId", scanId)
                     .put("status", if (persistedStatus == SafScanner.STATUS_UNAVAILABLE) SafScanner.STATUS_UNAVAILABLE else SafScanner.STATUS_FAILED)
                     .put("error", persistedInspection.optString("error", "provider_unavailable"))))
-            return
+            return null
         }
         val scanKey = "saf:$reference"
         if (!NativeScanController.begin(scanId, scanKey)) {
             NativeMailbox.write(this, JSONObject().put("type", "saf_scan_progress")
                 .put("payload", JSONObject().put("treeUri", reference).put("requestId", requestId ?: "").put("phase", "already_running")))
-            return
+            return null
         }
         val generationId = NativeIndex.startGeneration(
             this, NativeIndex.SOURCE_SAF, scanKey,
@@ -1818,7 +1869,7 @@ class MainActivity : FlutterFragmentActivity() {
                 .put("scanId", scanId).put("requestId", requestId ?: "")
         )
         val appContext = applicationContext
-        NativeScanController.launch(scanId) {
+        if (!NativeScanController.launch(scanId) {
             NativeScanRunner.runSafScan(
                 applicationContext,
                 treeUri,
@@ -1828,7 +1879,11 @@ class MainActivity : FlutterFragmentActivity() {
                 scanKey,
                 generationId,
             )
+        }) {
+            NativeScanController.finish(scanId)
+            return null
         }
+        return scanId
     }
     private fun requestMediaAccess() {
         if (!activityResumed) {
@@ -1856,7 +1911,7 @@ class MainActivity : FlutterFragmentActivity() {
             // Existing access must converge to the same permission -> scan -> index -> mailbox path.
             val requestId = pendingMediaRequestId
             pendingMediaRequestId = null
-            publishScanRequest("PERMISSION_CHANGE", "mediastore", null, false, "media_permission_already_granted", requestId)
+            scanMediaStore(requestId)
             return
         }
         val permissions = MediaStoreScanner.requiredPermissions()
@@ -2089,7 +2144,7 @@ class MainActivity : FlutterFragmentActivity() {
                         .put("revalidatedAfterSettings", true)
                         .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED)))
             )
-            publishScanRequest("PERMISSION_CHANGE", "broad_storage", null, false, "broad_storage_already_granted", requestId)
+            scanAllStorage(requestId)
             publishStorageCapabilities(StorageLifecycleState.REVALIDATED)
             return
         }
@@ -2290,7 +2345,11 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun releaseTree(reference: String?, requestId: String? = null) {
+    private fun releaseTree(
+        reference: String?,
+        requestId: String? = null,
+        nativeFolderConfigOwner: Boolean = false,
+    ) {
         if (reference.isNullOrBlank()) {
             publishNativeCommandError(
                 requestId,
@@ -2336,7 +2395,8 @@ class MainActivity : FlutterFragmentActivity() {
                         "payload",
                         JSONObject()
                             .put("treeUri", reference)
-                            .put("alreadyAbsent", alreadyAbsent),
+                            .put("alreadyAbsent", alreadyAbsent)
+                            .put("nativeFolderConfigOwner", nativeFolderConfigOwner),
                     ),
             )
         } catch (exception: Exception) {

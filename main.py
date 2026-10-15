@@ -7289,7 +7289,10 @@ async def main(page: ft.Page):
                                 if tree_uri:
                                     _merge_authoritative_saf_root(tree_uri)
                             if tree_uri:
-                                if payload.get('granted'):
+                                native_folder_config_owner = payload.get('nativeFolderConfigOwner') is True
+                                if native_folder_config_owner:
+                                    logger.info("[STORAGE] native source mutation already committed; updating compatibility state only")
+                                elif payload.get('granted'):
                                     if payload.get('selected'):
                                         store.add_folder(
                                             tree_uri,
@@ -7418,7 +7421,10 @@ async def main(page: ft.Page):
                             tree_uri = payload.get('treeUri')
                             if tree_uri and tree_uri in pending_folder_removals:
                                 remove_request_id = pending_folder_removals.pop(tree_uri, None)
-                                store.remove_folder(tree_uri)
+                                if payload.get('nativeFolderConfigOwner') is not True:
+                                    store.remove_folder(tree_uri)
+                                else:
+                                    logger.info("[STORAGE] native source removal already committed; skipping duplicate LibraryStore mutation")
                                 on_catalog_changed()
                                 if remove_request_id:
                                     compose_library_bridge.write_command_result(

@@ -108,8 +108,8 @@ class StorageOnboardingTests(unittest.TestCase):
         request_block = source.split("private fun requestMediaAccess()", 1)[1].split("private fun publishStorageStatus()", 1)[0]
         self.assertIn('val currentAccess = MediaStoreScanner.accessLevel(this)', request_block)
         self.assertIn('if (currentAccess != "denied")', request_block)
-        self.assertLess(request_block.index('put("type", "mediastore_permission")'), request_block.index('publishScanRequest("PERMISSION_CHANGE"'))
-        self.assertIn("publishScanRequest", request_block)
+        self.assertLess(request_block.index('put("type", "mediastore_permission")'), request_block.index("scanMediaStore(requestId)"))
+        self.assertIn("scanMediaStore(requestId)", request_block)
 
     def test_add_folder_is_not_blocked_by_an_active_scan(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
@@ -422,7 +422,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('"STORAGE_READY"', source)
         self.assertIn('"PERMISSION_CHANGE"', source)
         self.assertIn('"STARTUP_SCAN_REQUESTED"', source)
-        self.assertIn('publishScanRequest("PERMISSION_CHANGE"', source)
+        self.assertIn('scanTree(configuredReference, requestId)', source)
 
     def test_startup_scan_waits_for_a_persisted_saf_tree(self):
         source = (
@@ -459,7 +459,7 @@ class StorageOnboardingTests(unittest.TestCase):
         )
         self.assertLess(
             result.index('JSONObject().put("type", "saf_permission")'),
-            result.index('publishScanRequest("PERMISSION_CHANGE"'),
+            result.index('scanTree(configuredReference, requestId)'),
         )
 
     def test_snapshot_preserves_previous_catalog_during_scan(self):
@@ -926,12 +926,12 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         resume = source[source.index("override fun onResume()"):source.index("override fun onPause()", source.index("override fun onResume()"))]
         self.assertIn("startupDiscoveryTriggered", resume)
-        self.assertIn("publishScanRequest(", resume)
+        self.assertIn("scanConfiguredSafRoots(", resume)
         self.assertIn('"STARTUP"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
         self.assertIn("startupDiscoveryTriggered", resume)
-        self.assertIn("publishScanRequest(", resume)
+        self.assertIn("scanConfiguredSafRoots(", resume)
         self.assertIn('"STARTUP"', resume)
         self.assertNotIn("persistedSafTreeUris().forEach", resume)
 
@@ -940,16 +940,16 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         self.assertIn("mediaAccessChangedToUsable", source)
         request = source[source.index("private fun requestMediaAccess()"):source.index("private fun publishStorageStatus(requestId: String? = null)", source.index("private fun requestMediaAccess()"))]
         self.assertIn("if (currentAccess != \"denied\")", request)
-        self.assertIn("publishScanRequest(", request)
+        self.assertIn("scanMediaStore(requestId)", request)
         callback = source[source.index("private val mediaPermissionRequester"):source.index("private val treePicker", source.index("private val mediaPermissionRequester"))]
         self.assertIn("val requestId = pendingMediaRequestId", callback)
-        self.assertIn("publishScanRequest(", callback)
+        self.assertIn("scanMediaStore(requestId)", callback)
 
     def test_existing_broad_access_converges_to_scan(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         block = source[source.index("private fun openBroadStorageSettings()"):source.index("private fun scanAllStorage", source.index("private fun openBroadStorageSettings()"))]
         self.assertIn("if (BroadStorageScanner.hasAccess(this))", block)
-        self.assertIn("publishScanRequest(", block)
+        self.assertIn("scanAllStorage(requestId)", block)
         self.assertIn("revalidatedAfterSettings", block)
         self.assertNotIn("scanAllStorage(requestId)", block)
 
@@ -960,9 +960,9 @@ class TestAndroidMediaLifecycle(unittest.TestCase):
         receiver = source[source.index("private val storageReceiver"):source.index("private fun registerStorageReceiver", source.index("private val storageReceiver"))]
         self.assertIn("Intent.ACTION_MEDIA_MOUNTED", receiver)
         self.assertIn("Intent.ACTION_MEDIA_SCANNER_FINISHED", receiver)
-        self.assertIn("publishScanRequest(", receiver)
+        self.assertIn("scanConfiguredSafRoots(", receiver)
         self.assertIn('"VOLUME_MOUNT"', receiver)
-        self.assertIn("publishScanRequest(", receiver)
+        self.assertIn("scanConfiguredSafRoots(", receiver)
         self.assertNotIn("scanAllStorage(null)", receiver)
         self.assertIn("activityResumed", receiver)
 

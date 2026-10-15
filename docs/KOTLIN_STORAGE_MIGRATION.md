@@ -1,6 +1,8 @@
 # ReiAnix — Migração Nativa de Armazenamento e Descoberta de Mídia em Kotlin
 
-Este documento registra a arquitetura, o fluxo de descoberta, a compatibilidade, o status da migração Python -> Kotlin, a integridade dos dados e as verificações executadas para o subsistema de armazenamento do ReiAnix.
+Este documento registra a arquitetura e o estado verificável da migração do armazenamento para Kotlin.
+
+**Status de aceitação: EM ANDAMENTO.** As telas Compose iniciam o seletor diretamente pelo Android, a fonte SAF é registrada em Kotlin no SQLite canônico antes da varredura, a remoção Compose usa o mesmo banco e os gatilhos de inicialização/volume iniciam scanners nativos. A etapa permanece incompleta: eventos terminais ainda passam por NativeMailbox/main.py, a finalização de scan_runs continua no LibraryService e caminhos de identidade/Flet/rescan ainda dependem do Python.
 
 ---
 
@@ -92,18 +94,24 @@ O ReiAnix utiliza três mecanismos principais de acesso ao armazenamento no Andr
 
 ## D. Migração Python / Kotlin
 
-### 1. Operações Transfereidas para Kotlin Nativo
-- Seleção de diretório SAF e persistência de permissões via `MainActivity` e `StorageAuthorization`.
-- Varredura e indexação SAF (`SafScanner`), MediaStore (`MediaStoreScanner`) e Broad Storage (`BroadStorageScanner`).
-- Gravação e reconciliação transacional no banco SQLite canônico via `ReiAnixSqliteLibraryRepository`.
-- Operações de arquivo SAF (listar, criar, renomear, mover, excluir) via `SafFileOperations`.
-- Exibição e controle do estado de armazenamento em Jetpack Compose (`ReiAnixStorageScreen`, `ReiAnixSafFileManager`, `ReiAnixLibraryFolderOnboarding`).
+### Responsabilidades executadas em Kotlin
+- Seleção de diretório via ACTION_OPEN_DOCUMENT_TREE, validação e persistência do grant SAF.
+- Telas Compose iniciam o seletor por Intent para MainActivity, sem mandar o pedido pelo mailbox Python.
+- A pasta selecionada é registrada na tabela folders canônica antes da descoberta; nativeFolderConfigOwner=true impede gravação duplicada pelo handler Python.
+- Remoção Compose retira a configuração da fonte na mesma base, reconcilia observações, preserva episódios/histórico e revoga o grant.
+- Descoberta SAF, MediaStore e Broad Storage usa scanners nativos. Gatilhos de inicialização/volume chamam o controlador nativo existente.
 
-### 2. Dependências Híbridas Remanescentes
-- A ponte `NativeMailbox` permanece ativa temporariamente para transportar eventos legados de runtime até que a migração dos subsistemas remanescentes (comoAniList sync e configurações adicionais) seja finalizada em prompts futuros.
-- Funções em `core/storage_access.py` e `core/android_bridge.py` foram mantidas em conformidade com as regras de preservação para retrocompatibilidade com suítes de testes Python existentes.
+### Dependências híbridas ainda ativas — etapa não concluída
+- NativeScanRunner/NativeScanPublisher publicam progresso e término por NativeMailbox.
+- main.py consome eventos de scan e chama LibraryService.finish_ingest_documents para atualizar scan_runs/estado de fonte e a projeção legada.
+- A reconciliação saf_document_identity_change e caminhos Flet de seleção/remoção/rescan ainda usam core/android_bridge.py, core/storage_access.py, core/scan_coordinator.py ou LibraryService.
+- Algumas telas Compose ainda consomem estado JSON legado; NativeMailbox não pode ser removido globalmente enquanto outros subsistemas o usam.
 
----
+### Critérios restantes
+- Transferir finalização de scan_runs e estados terminais/de fonte para Kotlin, sem mutação duplicada.
+- Migrar reconciliação de identidade documental e fluxos Flet legados.
+- Conectar estados/resultados do scanner e repositório à UI nativa sem depender do finalizador Python.
+- Provar por diff/testes/CI que resultados completos, parciais, cancelados ou sem autorização preservam dados anteriores e não geram duplicações.
 
 ## E. Integridade dos Dados
 

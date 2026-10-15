@@ -17,8 +17,10 @@ class TestSafProfessionalContract(unittest.TestCase):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         self.assertIn("result.resultCode != RESULT_OK || uri == null", source)
         self.assertIn("SafScanner.persistPermission(this, uri, flags)", source)
-        self.assertIn('publishScanRequest("PERMISSION_CHANGE"', source)
-        self.assertNotIn("scanTree(uri.toString(), requestId)", source)
+        self.assertIn("sqliteLibraryRepository.upsertSafFolder(", source)
+        self.assertIn('scanTree(configuredReference, requestId)', source)
+        self.assertIn('"nativeFolderConfigOwner", true', source)
+        self.assertNotIn('publishScanRequest("PERMISSION_CHANGE", "saf", uri.toString()', source)
 
     def test_picker_uses_direct_documents_ui_without_proxy_or_resolve_gate(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")

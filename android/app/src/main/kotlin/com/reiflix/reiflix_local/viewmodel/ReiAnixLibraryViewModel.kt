@@ -1,6 +1,8 @@
 package com.reiflix.reiflix_local.viewmodel
 
 import android.content.Context
+import android.util.Log
+import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
@@ -1037,11 +1039,30 @@ class ReiAnixLibraryViewModel(
         )
     }
 
-    fun selectSafTree() = repository.selectSafTree()
+    /** Start the platform SAF selector natively from the Compose storage surface. */
+    fun selectSafTree() {
+        appContext.startActivity(MainActivity.createNativeStorageActionIntent(appContext, "select_tree"))
+    }
 
     fun dismissStorageOnboarding() = repository.dismissStorageOnboarding()
 
-    fun removeSafTree(reference: String) = repository.removeSafTree(reference)
+    /** Remove a configured source from canonical SQLite while preserving media and playback history. */
+    fun removeSafTree(reference: String) {
+        val normalized = reference.trim()
+        if (normalized.isBlank()) return
+        viewModelScope.launch {
+            try {
+                nativeLibraryRepository.removeSafFolder(normalized)
+                refreshNativeFolders()
+                repository.publishCatalog()
+                appContext.startActivity(MainActivity.createNativeStorageActionIntent(appContext, "release_tree", normalized))
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e("ReiAnixLibraryViewModel", "Could not remove configured SAF source", error)
+            }
+        }
+    }
 
     fun setLibrarySearchQuery(value: String) {
         _libraryFilters.value = _libraryFilters.value.copy(query = value)

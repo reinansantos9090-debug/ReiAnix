@@ -172,27 +172,28 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
-### MIG-06 — Storage, permissões SAF e operações de arquivo (CONCLUÍDO)
+### MIG-06 — Storage, permissões SAF e operações de arquivo (EM ANDAMENTO)
 
-**Objetivo:** Tornar o ciclo de permissões, onboarding e operações sobre URIs integralmente nativo.
+**Objetivo:** Migrar armazenamento e descoberta para Kotlin sem criar scanners, bancos ou coordenadores paralelos.
 
-**Status:** CONCLUÍDO (Migração completa e verificada).
+**Status:** EM ANDAMENTO — scanners SAF/MediaStore/Broad Storage e indexação SQLite existem, mas a independência ponta a ponta de Python ainda não foi comprovada.
 
-**Escopo fechado:** Persistir/revalidar grants, picker de diretório, onboarding, permissões MediaStore por versão Android, acesso amplo opcional, listar/criar/mover/renomear/excluir, observers/lifecycle e reconciliação da identidade.
+**Implementado nesta correção:** Telas Compose iniciam o seletor diretamente em MainActivity; a fonte é registrada na tabela folders do SQLite canônico antes da descoberta; gatilhos de inicialização/volume executam scanners nativos; MediaStore/Broad Storage autorizados são disparados pelos scanners nativos; remoção Compose altera a mesma base e revoga o grant Android. Eventos de compatibilidade identificam quando a mutação da fonte já ocorreu em Kotlin para evitar gravação duplicada.
 
-**Arquivos principais:** MainActivity.kt; StorageAuthorization.kt; SafFileOperations.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; ui/storage/*; core/storage_access.py; docs/KOTLIN_STORAGE_MIGRATION.md.
+**Bloqueios restantes:** Resultados terminais ainda passam por NativeMailbox e main.py chama LibraryService.finish_ingest_documents para finalizar scan_runs e atualizar a projeção; reconciliação de identidade documental e alguns caminhos Flet de seleção/remoção/rescan continuam Python; parte do estado Compose ainda vem da projeção JSON. NativeScanPublisher/mailbox não foram removidos porque outros consumidores dependem deles.
 
-**Dependências:** MIG-04 e MIG-05.
+**Arquivos principais:** MainActivity.kt; NativeScanController.kt; NativeScanRunner.kt; NativeScanPublisher.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; NativeIndex.kt; ReiAnixSqliteLibraryRepository.kt; ReiAnixLibraryViewModel.kt; core/scan_coordinator.py; core/library_service.py; core/storage_access.py.
 
-**Preservar:** Grants SAF válidos, acesso às pastas previamente autorizadas e identidade após move/rename; não exigir seleção repetida quando o grant ainda é válido.
+**Dependências:** MIG-04 e MIG-05. A finalização nativa, reconciliação de identidade e projeção de estados precisam ser concluídas antes do encerramento real da etapa.
 
-**Riscos:** Solicitar novamente a pasta a cada startup, perder identidade ao mover ou renomear arquivo.
+**Preservar:** grants SAF válidos, identidade após move/rename, observações de outras fontes e histórico de reprodução; varredura parcial ou permissão revogada não comprova ausência de arquivos.
 
-**Critérios objetivos de aceitação:** Grants reabrem após reinício; permissões revogadas geram erro recuperável; operações e reconciliação do catálogo funcionam sem mailbox/Python; tratamento correto de CancellationException em coroutines.
+**Critérios restantes:** Migrar finalização de scan_runs/estados de fonte para Kotlin; migrar reconciliação de identidade e consumidores Flet de seleção/remoção/rescan; conectar estados/resultados à UI nativa; provar que ScanCoordinator/LibraryService não finalizam resultados Kotlin; validar varreduras completas/parciais/canceladas/sem autorização sem mutações duplicadas.
 
-**Verificações:** tests/test_storage_onboarding.py, test_storage_permission_flow.py e test_saf_professional.py na CI comum. Suíte completa de 1765 testes Python aprovada. Não executar workflow instrumentado.
+**Verificação-base:** O commit 188f868d2f8cbe6d6fc756ea8a60241d1f1bd528 passou workflows APK/certificação, mas é anterior à correção e não a valida.
 
 **Prioridade:** P0.
+
 
 ### MIG-07 — AniList, matching, metadados e localização PT-BR
 

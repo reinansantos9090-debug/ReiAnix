@@ -854,8 +854,9 @@ E: manifest
         scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("val flags = resultIntent.flags", main)
         self.assertIn("SafScanner.persistPermission(this, uri, flags)", main)
-        self.assertIn('publishScanRequest("PERMISSION_CHANGE"', main)
-        self.assertNotIn("scanTree(uri.toString(), requestId)", main)
+        self.assertIn("sqliteLibraryRepository.upsertSafFolder(", main)
+        self.assertIn('scanTree(configuredReference, requestId)', main)
+        self.assertNotIn('publishScanRequest("PERMISSION_CHANGE", "saf", uri.toString()', main)
         self.assertIn("takePersistableUriPermission(uri, persistedFlags)", scanner)
         self.assertIn("granted and Intent.FLAG_GRANT_WRITE_URI_PERMISSION", scanner)
         self.assertIn("check(hasPersistedReadPermission(context,uri))", scanner)
@@ -944,8 +945,8 @@ class TestSafSelectionRegistration(unittest.TestCase):
         self.assertIn('put("selected", true)', main)
         self.assertIn('SafScanner.displayName(this, uri)', main)
         block = main[main.index("private fun handleTreePickerResult"):main.index("private fun logLifecycle", main.index("private fun handleTreePickerResult"))]
-        self.assertLess(block.index('put("selected", true)'), block.index('publishScanRequest("PERMISSION_CHANGE"'))
-        self.assertLess(block.index('SafScanner.persistPermission(this, uri, flags)'), block.index('publishScanRequest("PERMISSION_CHANGE"'))
+        self.assertLess(block.index('SafScanner.persistPermission(this, uri, flags)'), block.index('upsertSafFolder('))
+        self.assertLess(block.index('upsertSafFolder('), block.index('scanTree(configuredReference, requestId)'))
 
     def test_python_registers_selected_saf_tree_before_ingest_result(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")

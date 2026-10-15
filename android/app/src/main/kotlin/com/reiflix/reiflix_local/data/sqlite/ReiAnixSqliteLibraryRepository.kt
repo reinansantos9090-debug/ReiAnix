@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import android.net.Uri
+import android.provider.DocumentsContract
 import org.json.JSONArray
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import org.json.JSONException
@@ -418,6 +420,157 @@ class ReiAnixSqliteLibraryRepository(
                 }
             }
         }
+    }
+
+    /**
+     * Registers a selected SAF tree in the canonical folders table.
+     * Repeated selections update one source; conflicting identities are rejected.
+     */
+    suspend fun upsertSafFolder(
+        reference: String, name: String?, authority: String?, documentId: String?,
+        volumeId: String?, identity: String?,
+    ): String = withContext(Dispatchers.IO) {
+        val normalized = reference.trim()
+        require(normalized.isNotEmpty()) { "A SAF tree URI is required." }
+        val treeUri = runCatching { Uri.parse(normalized) }.getOrNull()
+            ?: throw IllegalArgumentException("The SAF tree URI is invalid.")
+        require(treeUri.scheme.equals("content", ignoreCase = true) && DocumentsContract.isTreeUri(treeUri)) {
+            "Only valid SAF tree content URIs can be registered."
+        }
+        val normalizedName = name?.trim()?.takeIf { it.isNotEmpty() }
+            ?: normalized.substringAfterLast('/').ifBlank { normalized }
+        val key = identity?.trim()?.takeIf { it.isNotEmpty() }
+        val provider = authority?.trim()?.takeIf { it.isNotEmpty() }
+        val document = documentId?.trim()?.takeIf { it.isNotEmpty() }
+        val volume = volumeId?.trim()?.takeIf { it.isNotEmpty() }
+        database.transaction { connection ->
+            fun queryString(sql: String, args: Array<String>): String? =
+                connection.rawQuery(sql, args).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            val previousPath = key?.let {
+                queryString("SELECT path FROM folders WHERE kind='saf' AND saf_identity=? LIMIT 1", arrayOf(it))
+            }
+            val targetKind = queryString("SELECT kind FROM folders WHERE path=? LIMIT 1", arrayOf(normalized))
+            require(targetKind == null || targetKind.equals("saf", true)) {
+                "The selected URI is already registered as a different source type."
+            }
+            require(!(targetKind != null && previousPath != null && previousPath != normalized)) {
+                "The selected URI already exists beside another SAF identity; refusing an ambiguous merge."
+            }
+            val existingIdentity = queryString(
+                "SELECT COALESCE(saf_identity,'') FROM folders WHERE path=? AND kind='saf' LIMIT 1",
+                arrayOf(normalized),
+            )
+            require(existingIdentity.isNullOrBlank() || key == null || existingIdentity == key) {
+                "The selected URI is already registered with another SAF identity."
+            }
+            if (previousPath != null && previousPath != normalized) {
+                val changed = connection.update(
+                    "folders", ContentValues().apply { put("path", normalized) },
+                    "path=? AND kind='saf'", arrayOf(previousPath),
+                )
+                check(changed == 1) { "The existing SAF source changed during registration." }
+                connection.update(
+                    "episodes", ContentValues().apply { put("source_folder", normalized) },
+                    "source_folder=?", arrayOf(previousPath),
+                )
+            }
+            val values = ContentValues().apply {
+                put("name", normalizedName); put("kind", "saf"); put("authorization", "granted")
+                putNull("last_error")
+                provider?.let { put("saf_authority", it) }
+                document?.let { put("saf_document_id", it) }
+                volume?.let { put("saf_volume_id", it) }
+                key?.let { put("saf_identity", it) }
+            }
+            if (connection.update("folders", values, "path=?", arrayOf(normalized)) == 0) {
+                values.put("path", normalized)
+                values.put("added_at", System.currentTimeMillis() / 1000.0)
+                connection.insertOrThrow("folders", null, values)
+            }
+            normalized
+        }
+    }
+
+    suspend fun updateSafFolderAccess(reference: String, authorization: String, error: String? = null): Boolean =
+        withContext(Dispatchers.IO) {
+            val normalized = reference.trim()
+            require(normalized.isNotEmpty()) { "A folder reference is required." }
+            val status = authorization.trim().lowercase()
+            require(status in setOf("granted", "revoked", "unavailable", "unknown")) {
+                "Unsupported SAF authorization state."
+            }
+            database.transaction { connection ->
+                val values = ContentValues().apply {
+                    put("authorization", status)
+                    if (error.isNullOrBlank()) putNull("last_error") else put("last_error", error)
+                }
+                connection.update("folders", values, "path=? AND kind='saf'", arrayOf(normalized)) > 0
+            }
+        }
+
+    suspend fun removeSafFolder(reference: String): Boolean = withContext(Dispatchers.IO) {
+        val normalized = reference.trim()
+        require(normalized.isNotEmpty()) { "A folder reference is required." }
+        database.transaction { connection ->
+            val folderIdentity = connection.rawQuery(
+                "SELECT COALESCE(saf_identity,'') FROM folders WHERE path=? AND kind='saf' LIMIT 1",
+                arrayOf(normalized),
+            ).use { c -> if (c.moveToFirst()) c.getString(0).orEmpty() else null }
+                ?: return@transaction false
+            val scopes = setOf(normalized, folderIdentity).filter { it.isNotBlank() }
+            val episodes = linkedSetOf<Long>()
+            scopes.forEach { scope ->
+                connection.rawQuery(
+                    "SELECT DISTINCT episode_id FROM episode_observations WHERE source_kind='saf' AND scope_ref=?",
+                    arrayOf(scope),
+                ).use { c -> while (c.moveToNext()) episodes.add(c.getLong(0)) }
+            }
+            val now = System.currentTimeMillis() / 1000.0
+            scopes.forEach { scope ->
+                connection.execSQL(
+                    "UPDATE episode_observations SET state='scope_removed', error='source_removed', last_checked_at=? " +
+                        "WHERE source_kind='saf' AND scope_ref=?",
+                    arrayOf(now, scope),
+                )
+            }
+            episodes.forEach { recomputeEpisodeAvailability(connection, it) }
+            connection.execSQL(
+                "UPDATE episodes SET missing=1, availability_state='scope_removed' WHERE source_folder=? " +
+                    "AND id NOT IN (SELECT episode_id FROM episode_observations)",
+                arrayOf(normalized),
+            )
+            connection.delete("folders", "path=? AND kind='saf'", arrayOf(normalized)) > 0
+        }
+    }
+
+    private fun recomputeEpisodeAvailability(connection: SQLiteDatabase, episodeId: Long) {
+        val latestByLocation = linkedMapOf<String, String>()
+        connection.rawQuery(
+            "SELECT source_kind,scope_kind,scope_ref,volume_id,state FROM episode_observations " +
+                "WHERE episode_id=? ORDER BY last_checked_at DESC,id DESC",
+            arrayOf(episodeId.toString()),
+        ).use { c ->
+            while (c.moveToNext()) {
+                val source = c.getString(0).orEmpty().trim().lowercase().ifBlank { "unknown" }
+                val kind = c.getString(1).orEmpty().trim().lowercase().ifBlank { "source" }
+                val scope = c.getString(2).orEmpty().trim()
+                val volume = c.getString(3).orEmpty().trim()
+                val key = if (volume.isNotEmpty()) "$source|volume|$volume" else "$source|$kind|$scope"
+                if (!latestByLocation.containsKey(key)) latestByLocation[key] = c.getString(4).orEmpty().trim().lowercase()
+            }
+        }
+        if (latestByLocation.isEmpty()) return
+        val states = latestByLocation.values.toSet()
+        val (missing, availability) = when {
+            "available" in states -> 0 to "available"
+            "volume_unavailable" in states -> 1 to "volume_unavailable"
+            "scope_unavailable" in states -> 1 to "scope_unavailable"
+            "unavailable" in states -> 1 to "unavailable"
+            states.all { it == "scope_removed" } -> 1 to "scope_removed"
+            else -> 1 to "missing"
+        }
+        connection.execSQL("UPDATE episodes SET missing=?, availability_state=? WHERE id=?",
+            arrayOf(missing, availability, episodeId))
     }
 
     suspend fun artworkForAnime(animeId: Long): List<ReiAnixArtworkRecord> =
