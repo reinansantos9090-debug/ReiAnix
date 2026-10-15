@@ -284,6 +284,9 @@ class ScanCoordinatorSourceContractTests(unittest.TestCase):
         self.assertIn("fun schedule(", scheduler)
         self.assertIn('"content_observer_debounce"', block)
         self.assertIn("applicationContext", block)
+        self.assertIn('action = "scan_media_store"', scheduler)
+        self.assertIn("MainActivity.createNativeStorageActionIntent(", scheduler)
+        self.assertNotIn('put("type", "scan_request")', scheduler)
         self.assertNotIn("scanMediaStore(null)", block)
 
     def test_storage_receiver_does_not_start_scanners_directly(self):
