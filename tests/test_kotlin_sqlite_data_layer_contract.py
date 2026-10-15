@@ -25,6 +25,7 @@ class KotlinSqliteDataLayerContractTests(unittest.TestCase):
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setAnimeUserTags", mutations)
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setManualMetadataByLookupTitle", mutations)
         self.assertIn("suspend fun ReiAnixSqliteLibraryRepository.setEpisodeWatchedState", mutations)
+        self.assertIn("resolveLocalAnimeOwner", mutations)
         self.assertIn("setAniListMatchByLookupTitle", mutations)
         self.assertIn("clearAniListMatchByLookupTitle", mutations)
         self.assertIn("setPendingAniListMatch", mutations)
@@ -82,6 +83,7 @@ class KotlinSqliteDataLayerContractTests(unittest.TestCase):
         for marker in (
             "nativeLibraryMutationsPreserveCanonicalStateAndPathIdentity",
             "findEpisodeByPathOrFileUri",
+            "resolveLocalAnimeOwner",
             "setManualMetadataByLookupTitle",
             "setAnimePersonalNote",
             "setAnimeUserTags",
