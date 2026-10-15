@@ -924,17 +924,15 @@ if __name__ == "__main__":
 class TestAuthorizedStorageDiscovery(unittest.TestCase):
     def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        resume = source[source.index("override fun onResume()"):source.index("override fun onPause()", source.index("override fun onResume()"))]
+        start = source.index("override fun onResume()")
+        resume = source[start:source.index("override fun onPause()", start)]
         self.assertIn("startupDiscoveryTriggered", resume)
-        self.assertIn("scanConfiguredSafRoots(", resume)
+        self.assertIn("publishScanRequest(", resume)
         self.assertIn('"STARTUP"', resume)
+        self.assertIn('reason = "first_activity_resume"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
-        self.assertIn("startupDiscoveryTriggered", resume)
-        self.assertIn("scanConfiguredSafRoots(", resume)
-        self.assertIn('"STARTUP"', resume)
         self.assertNotIn("persistedSafTreeUris().forEach", resume)
-
     def test_media_permission_transition_and_existing_access_converge_to_scan(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         self.assertIn("mediaAccessChangedToUsable", source)
@@ -947,25 +945,22 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
 
     def test_existing_broad_access_converges_to_scan(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        block = source[source.index("private fun openBroadStorageSettings()"):source.index("private fun scanAllStorage", source.index("private fun openBroadStorageSettings()"))]
+        start = source.index("private fun openBroadStorageSettings()")
+        block = source[start:source.index("private fun scanAllStorage", start)]
         self.assertIn("if (BroadStorageScanner.hasAccess(this))", block)
-        self.assertIn("scanAllStorage(requestId)", block)
+        self.assertEqual(block.count("scanAllStorage(requestId)"), 1)
         self.assertIn("revalidatedAfterSettings", block)
-        self.assertNotIn("scanAllStorage(requestId)", block)
-
-
-class TestAndroidMediaLifecycle(unittest.TestCase):
     def test_storage_receiver_reacts_to_mount_and_media_scanner_finish(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        receiver = source[source.index("private val storageReceiver"):source.index("private fun registerStorageReceiver", source.index("private val storageReceiver"))]
+        start = source.index("private val storageReceiver")
+        receiver = source[start:source.index("private fun registerStorageReceiver", start)]
         self.assertIn("Intent.ACTION_MEDIA_MOUNTED", receiver)
         self.assertIn("Intent.ACTION_MEDIA_SCANNER_FINISHED", receiver)
-        self.assertIn("scanConfiguredSafRoots(", receiver)
+        self.assertIn("publishScanRequest(", receiver)
         self.assertIn('"VOLUME_MOUNT"', receiver)
-        self.assertIn("scanConfiguredSafRoots(", receiver)
+        self.assertIn("reason = action", receiver)
         self.assertNotIn("scanAllStorage(null)", receiver)
         self.assertIn("activityResumed", receiver)
-
     def test_storage_receiver_does_not_launch_permission_ui(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         receiver = source[source.index("private val storageReceiver"):source.index("private fun registerStorageReceiver", source.index("private val storageReceiver"))]
