@@ -428,6 +428,10 @@ class ReiAnixSqliteLibraryRepository(
             ?: reference.substringAfterLast('/').ifBlank { reference }
 
         database.transaction { connection ->
+            val resolvedAccountId = accountId ?: runCatching {
+                connection.rawQuery("SELECT value FROM account WHERE key = 'id' LIMIT 1", null)
+                    .use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            }.getOrNull()
             if (!safIdentity.isNullOrBlank()) {
                 val existingPath = connection.rawQuery(
                     "SELECT path FROM folders WHERE saf_identity = ? LIMIT 1",
@@ -443,7 +447,7 @@ class ReiAnixSqliteLibraryRepository(
                            saf_identity = ?, last_error = NULL, last_scan_at = NULL
                            WHERE path = ?""",
                         arrayOf(
-                            normalizedName, authorization, accountId, safAuthority,
+                            normalizedName, authorization, resolvedAccountId, safAuthority,
                             safDocumentId, safVolumeId, safIdentity, existingPath,
                         ),
                     )
@@ -466,7 +470,7 @@ class ReiAnixSqliteLibraryRepository(
                        saf_identity = COALESCE(excluded.saf_identity, folders.saf_identity),
                        last_error = NULL""",
                 arrayOf(
-                    reference, normalizedName, authorization, accountId,
+                    reference, normalizedName, authorization, resolvedAccountId,
                     System.currentTimeMillis() / 1000.0, safAuthority,
                     safDocumentId, safVolumeId, safIdentity,
                 ),
