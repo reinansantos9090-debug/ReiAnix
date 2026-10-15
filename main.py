@@ -5581,7 +5581,14 @@ async def main(page: ft.Page):
                                 if not tree_uri:
                                     raise ValueError('Resultado SAF sem pasta de origem.')
                                 diagnostics.record("PYTHON_INGEST_FINAL", request_id=request_id, scan_id=payload.get('scanId'), source="saf")
-                                if payload.get('documents') and payload.get('nativeLibraryIndexOwner') is not True:
+                                if (
+                                    payload.get('nativeLibraryIndexOwner') is True
+                                    and payload.get('nativeScanRunOwner') is True
+                                ):
+                                    # Kotlin committed the canonical catalog and scan_runs row.
+                                    # Python reads the projection only; it must not finalize the same scan again.
+                                    catalog = await asyncio.to_thread(library.store.catalog)
+                                elif payload.get('documents') and payload.get('nativeLibraryIndexOwner') is not True:
                                     catalog=await asyncio.to_thread(library.ingest_documents, tree_uri, payload.get('documents', []), folder_name=payload.get('name'), scan_errors=stats.get('errors', []), scan_stats=stats, scan_id=payload.get('scanId'), scope_kind=payload.get('scopeKind') or 'root', scope_ref=payload.get('scopeRef') or None, scan_generation=payload.get('scanGeneration'), enforce_library_source=True)
                                 else:
                                     final_result=await asyncio.to_thread(
