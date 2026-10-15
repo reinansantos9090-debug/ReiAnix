@@ -7121,7 +7121,10 @@ async def main(page: ft.Page):
                             )
                             volume_event = dict(payload)
                             volume_event["eventTimestamp"] = event.get('timestamp') or event.get('createdAt') or payload.get('timestamp')
-                            volume_result = await asyncio.to_thread(library.ingest_native_volume_change, volume_event)
+                            if payload.get('nativeStorageOwner') is True:
+                                volume_result = {"ignored": bool(payload.get('nativeVolumeStateIgnored'))}
+                            else:
+                                volume_result = await asyncio.to_thread(library.ingest_native_volume_change, volume_event)
                             if volume_result.get("ignored"):
                                 logger.info("[STORAGE] stale volume_changed event ignored timestamp=%s", volume_event.get("eventTimestamp"))
                                 continue
@@ -7137,7 +7140,7 @@ async def main(page: ft.Page):
                                 before = change.get('before') or {}
                                 if isinstance(after, dict) and after.get('available', False) and not before.get('available', False):
                                     volume_returned = True
-                            if volume_returned:
+                            if volume_returned and payload.get('nativeScanDispatchOwner') is not True:
                                 transition = await scan_coordinator.request(
                                     ScanOrigin.VOLUME_MOUNT,
                                     source="broad_storage",
@@ -7145,6 +7148,12 @@ async def main(page: ft.Page):
                                     reason="volume_returned",
                                 )
                                 diagnostics.record("SCAN_COORDINATOR", source="broad_storage", result=transition.kind)
+                            elif volume_returned:
+                                diagnostics.record(
+                                    "NATIVE_VOLUME_SCAN_DISPATCH",
+                                    source="android_storage",
+                                    result="native_owner",
+                                )
                             logger.info(
                                 "[STORAGE] action=volume_changed native_result=received "
                                 "current=%s added=%s removed=%s changed=%s rediscovery=%s",
