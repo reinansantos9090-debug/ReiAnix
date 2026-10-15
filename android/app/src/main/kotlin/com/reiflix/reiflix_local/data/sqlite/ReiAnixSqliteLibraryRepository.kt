@@ -1110,13 +1110,10 @@ class ReiAnixSqliteLibraryRepository(
             }
             if (animes.isEmpty()) return@read emptyList()
 
-            val animeIds = animes.map { it.id.toString() }
-            val animePlaceholders = animeIds.joinToString(",") { "?" }
             val episodes = connection.rawQuery(
                 """
                 SELECT e.* FROM episodes e
-                WHERE e.anime_id IN ($animePlaceholders)
-                  AND (
+                WHERE (
                     NOT EXISTS (
                       SELECT 1 FROM episode_observations o WHERE o.episode_id=e.id
                     )
@@ -1131,27 +1128,17 @@ class ReiAnixSqliteLibraryRepository(
                   )
                 ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name
                 """.trimIndent(),
-                animeIds.toTypedArray(),
+                null,
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
                 }
             }
 
-            val episodeIds = episodes.map { it.id.toString() }.distinct()
-            val artworkPredicates = buildString {
-                append("(entity_type IN ('anime','movie') AND entity_id IN ($animePlaceholders))")
-                if (episodeIds.isNotEmpty()) {
-                    append(" OR (entity_type='episode' AND entity_id IN (")
-                    append(episodeIds.joinToString(",") { "?" })
-                    append("))")
-                }
-            }
-            val artworkArguments = animeIds + episodeIds
             val artwork = connection.rawQuery(
-                "SELECT * FROM artwork WHERE status != 'failed' AND ($artworkPredicates) " +
+                "SELECT * FROM artwork WHERE status != 'failed' " +
                     "ORDER BY priority DESC, updated_at DESC, id DESC",
-                artworkArguments.toTypedArray(),
+                null,
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) add(cursor.toArtworkRecord())
@@ -1163,10 +1150,9 @@ class ReiAnixSqliteLibraryRepository(
                 SELECT ag.anime_id, g.id, g.canonical_name
                 FROM anime_genres ag
                 JOIN genres g ON g.id=ag.genre_id
-                WHERE ag.anime_id IN ($animePlaceholders)
                 ORDER BY g.normalized_name
                 """.trimIndent(),
-                animeIds.toTypedArray(),
+                null,
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) {
