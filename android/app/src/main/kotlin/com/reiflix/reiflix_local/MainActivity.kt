@@ -437,6 +437,7 @@ class MainActivity : FlutterFragmentActivity() {
             )
         }
     }
+    private val pendingSafReleaseWaiters = mutableMapOf<String, MutableList<String>>()
     private var storageReceiverRegistered = false
     private var systemBackDispatchPosted = false
     private var systemBackEventCount = 0
@@ -1835,6 +1836,11 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
     /** Native discovery for configured SAF roots; MediaStore/BroadStorage remain diagnostic sources. */
+    /**
+     * Aggregates every source included in one library refresh. The terminal event is
+     * emitted only after each requested source has a terminal NativeScanController snapshot.
+     * MediaStore/BroadStorage are included only when their current permissions authorize them.
+     */
     private fun scanConfiguredSafRoots(
         requestId: String?,
         origin: String,
@@ -1842,16 +1848,87 @@ class MainActivity : FlutterFragmentActivity() {
         includeAuthorizedDiagnostics: Boolean = false,
     ) {
         if (!activityResumed) {
-            Log.i(tag, "Native storage discovery deferred until Activity resumes origin=$origin")
+            nativeRequestState.markOperationState(
+                requestId,
+                "scan_library",
+                NativeRequestState.OperationState.FAILED,
+            )
+            NativeMailbox.writeBestEffort(
+                this,
+                JSONObject()
+                    .put("type", "saf_library_scan_complete")
+                    .put("requestId", requestId ?: "")
+                    .put(
+                        "payload",
+                        JSONObject()
+                            .put("origin", origin)
+                            .put("reason", reason)
+                            .put("status", "FAILED")
+                            .put("errorCode", "ACTIVITY_NOT_RESUMED")
+                            .put("configuredScopes", 0)
+                            .put("requestedSources", 0)
+                            .put("successfulScopes", 0)
+                            .put("failedScopes", 1)
+                            .put("cancelledScopes", 0)
+                            .put("sourceResults", JSONArray())
+                            .put("noSourcesAvailable", false),
+                    ),
+            )
             return
         }
         lifecycleScope.launch {
             val repository = appDependencies.sqliteLibraryRepository
             val scanIds = mutableListOf<String>()
+            val sourceResults = JSONArray()
             var successfulScopes = 0
             var failedScopes = 0
             var cancelledScopes = 0
             var configuredScopes = 0
+            var requestedSources = 0
+
+            suspend fun awaitAndRecordSource(source: String, scanId: String) {
+                scanIds += scanId
+                val snapshot = NativeScanController.progress.first { snapshots ->
+                    snapshots[scanId]?.state?.isTerminal == true
+                }[scanId]
+                val terminal = snapshot?.state
+                val sourceStatus = when (terminal) {
+                    ScanLifecycleState.SUCCEEDED -> {
+                        successfulScopes++
+                        "COMPLETED"
+                    }
+                    ScanLifecycleState.PARTIAL -> {
+                        successfulScopes++
+                        failedScopes++
+                        "PARTIAL"
+                    }
+                    ScanLifecycleState.CANCELLED -> {
+                        cancelledScopes++
+                        "CANCELLED"
+                    }
+                    else -> {
+                        failedScopes++
+                        "FAILED"
+                    }
+                }
+                val result = JSONObject()
+                    .put("source", source)
+                    .put("scanId", scanId)
+                    .put("status", sourceStatus)
+                snapshot?.errorCategory?.takeIf { it.isNotBlank() }?.let { result.put("error", it) }
+                sourceResults.put(result)
+            }
+
+            fun recordSourceStartFailure(source: String, error: String) {
+                failedScopes++
+                sourceResults.put(
+                    JSONObject()
+                        .put("source", source)
+                        .put("status", "FAILED")
+                        .put("error", error),
+                )
+            }
+
             try {
                 val folders = withContext(Dispatchers.IO) {
                     repository.listFolders()
@@ -1861,7 +1938,9 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 configuredScopes = folders.size
                 for (folder in folders) {
+                    requestedSources++
                     val reference = folder.path.trim()
+                    val sourceKey = "saf:$reference"
                     val treeUri = runCatching { Uri.parse(reference) }.getOrNull()
                     val uriValid = treeUri != null &&
                         treeUri.scheme.equals("content", ignoreCase = true) &&
@@ -1885,7 +1964,7 @@ class MainActivity : FlutterFragmentActivity() {
                             this@MainActivity,
                             JSONObject().put("type", "saf_permission").put("requestId", requestId ?: "").put("payload", payload),
                         )
-                        failedScopes++
+                        recordSourceStartFailure(sourceKey, "persisted_permission_missing")
                         continue
                     }
 
@@ -1919,7 +1998,7 @@ class MainActivity : FlutterFragmentActivity() {
                                     .put("payload", identity),
                             )
                         }
-                        failedScopes++
+                        recordSourceStartFailure(sourceKey, error)
                         continue
                     }
                     publishNativeDiagnostic(
@@ -1931,36 +2010,46 @@ class MainActivity : FlutterFragmentActivity() {
                     )
                     val scanId = scanTree(reference, requestId)
                     if (scanId == null) {
-                        failedScopes++
+                        recordSourceStartFailure(sourceKey, "scan_not_started")
                         continue
                     }
-                    scanIds += scanId
-                    val terminal = NativeScanController.progress.first { snapshots ->
-                        snapshots[scanId]?.state?.isTerminal == true
-                    }[scanId]?.state
-                    when (terminal) {
-                        ScanLifecycleState.SUCCEEDED -> successfulScopes++
-                        ScanLifecycleState.PARTIAL -> {
-                            successfulScopes++
-                            failedScopes++
-                        }
-                        ScanLifecycleState.CANCELLED -> cancelledScopes++
-                        else -> failedScopes++
-                    }
+                    awaitAndRecordSource(sourceKey, scanId)
                 }
 
                 if (includeAuthorizedDiagnostics) {
-                    if (MediaStoreScanner.hasReadPermission(this@MainActivity)) scanMediaStore(requestId)
-                    if (BroadStorageScanner.hasAccess(this@MainActivity)) scanAllStorage(requestId)
+                    if (MediaStoreScanner.hasReadPermission(this@MainActivity)) {
+                        requestedSources++
+                        val mediaScanId = scanMediaStore(requestId)
+                        if (mediaScanId == null) {
+                            recordSourceStartFailure(MediaStoreScanner.SOURCE, "scan_not_started")
+                        } else {
+                            awaitAndRecordSource(MediaStoreScanner.SOURCE, mediaScanId)
+                        }
+                    }
+                    if (BroadStorageScanner.hasAccess(this@MainActivity)) {
+                        requestedSources++
+                        val broadScanId = scanAllStorage(requestId)
+                        if (broadScanId == null) {
+                            recordSourceStartFailure(BroadStorageScanner.SOURCE, "scan_not_started")
+                        } else {
+                            awaitAndRecordSource(BroadStorageScanner.SOURCE, broadScanId)
+                        }
+                    }
                 }
 
                 val status = when {
-                    configuredScopes == 0 -> "FAILED"
-                    cancelledScopes > 0 && successfulScopes == 0 && failedScopes == 0 -> "CANCELLED"
-                    successfulScopes == configuredScopes && failedScopes == 0 -> "COMPLETED"
+                    requestedSources == 0 -> "FAILED"
+                    cancelledScopes == requestedSources && successfulScopes == 0 && failedScopes == 0 -> "CANCELLED"
+                    successfulScopes == requestedSources && failedScopes == 0 && cancelledScopes == 0 -> "COMPLETED"
                     successfulScopes > 0 -> "PARTIAL"
                     else -> "FAILED"
                 }
+                val terminalRequestState = when (status) {
+                    "FAILED" -> NativeRequestState.OperationState.FAILED
+                    "CANCELLED" -> NativeRequestState.OperationState.CANCELLED
+                    else -> NativeRequestState.OperationState.COMPLETED
+                }
+                nativeRequestState.markOperationState(requestId, "scan_library", terminalRequestState)
                 NativeMailbox.writeOrThrow(
                     this@MainActivity,
                     JSONObject()
@@ -1973,23 +2062,22 @@ class MainActivity : FlutterFragmentActivity() {
                                 .put("reason", reason)
                                 .put("status", status)
                                 .put("scanIds", JSONArray(scanIds))
+                                .put("sourceResults", sourceResults)
                                 .put("configuredScopes", configuredScopes)
+                                .put("requestedSources", requestedSources)
                                 .put("successfulScopes", successfulScopes)
                                 .put("failedScopes", failedScopes)
-                                .put("cancelledScopes", cancelledScopes),
+                                .put("cancelledScopes", cancelledScopes)
+                                .put("noSourcesAvailable", requestedSources == 0),
                         ),
                 )
-                val operationState = when (status) {
-                    "FAILED" -> NativeRequestState.OperationState.FAILED
-                    "CANCELLED" -> NativeRequestState.OperationState.CANCELLED
-                    else -> NativeRequestState.OperationState.COMPLETED
-                }
-                nativeRequestState.markOperationState(requestId, "scan_library", operationState)
                 publishNativeDiagnostic(
-                    if (operationState == NativeRequestState.OperationState.COMPLETED) "OPERATION_COMPLETED" else "OPERATION_FAILED",
+                    if (terminalRequestState == NativeRequestState.OperationState.COMPLETED) "OPERATION_COMPLETED"
+                    else if (terminalRequestState == NativeRequestState.OperationState.CANCELLED) "OPERATION_CANCELLED"
+                    else "OPERATION_FAILED",
                     requestId,
                     "scan_library",
-                    operationState.name,
+                    terminalRequestState.name,
                     result = status,
                 )
             } catch (cancelled: CancellationException) {
@@ -2018,8 +2106,12 @@ class MainActivity : FlutterFragmentActivity() {
                                 .put("reason", reason)
                                 .put("status", "FAILED")
                                 .put("configuredScopes", configuredScopes)
+                                .put("requestedSources", requestedSources)
                                 .put("successfulScopes", successfulScopes)
                                 .put("failedScopes", failedScopes + 1)
+                                .put("cancelledScopes", cancelledScopes)
+                                .put("sourceResults", sourceResults)
+                                .put("noSourcesAvailable", requestedSources == 0)
                                 .put("errorType", exception::class.java.simpleName),
                         ),
                 )
@@ -2449,34 +2541,38 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun scanAllStorage(requestId: String? = null) {
+    private fun scanAllStorage(requestId: String? = null): String? {
         val scanId = UUID.randomUUID().toString()
         if (!BroadStorageScanner.hasAccess(this)) {
             publishStorageStatus()
             NativeMailbox.write(this, JSONObject().put("type", "broad_storage_permission")
                 .put("requestId", requestId ?: "")
                 .put("payload", JSONObject().put("granted", false).put("source", BroadStorageScanner.SOURCE)))
-            return
+            return null
         }
         NativeMailbox.write(this, JSONObject().put("type", "broad_storage_permission")
             .put("requestId", requestId ?: "")
             .put("payload", JSONObject().put("granted", true).put("source", BroadStorageScanner.SOURCE)))
         if (!NativeScanController.begin(scanId, BroadStorageScanner.SOURCE)) {
+            val activeScanId = NativeScanController.activeScanId(BroadStorageScanner.SOURCE)
             NativeMailbox.write(this, JSONObject().put("type", "broad_storage_scan_progress")
-                .put("payload", JSONObject().put("source", BroadStorageScanner.SOURCE).put("requestId", requestId ?: "").put("phase", "already_running")))
-            return
+                .put("requestId", requestId ?: "")
+                .put("payload", JSONObject()
+                    .put("source", BroadStorageScanner.SOURCE)
+                    .put("requestId", requestId ?: "")
+                    .put("phase", "already_running")
+                    .put("activeScanId", activeScanId ?: "")))
+            return activeScanId
         }
-        val appContext = applicationContext
-        NativeScanController.launch(scanId) {
-            NativeScanRunner.runBroadScan(
-                applicationContext,
-                scanId,
-                requestId,
-            )
+        val launched = NativeScanController.launch(scanId) {
+            NativeScanRunner.runBroadScan(applicationContext, scanId, requestId)
         }
+        if (launched || NativeScanController.snapshot(scanId)?.state?.isTerminal == true) return scanId
+        NativeScanController.finish(scanId)
+        return NativeScanController.activeScanId(BroadStorageScanner.SOURCE)
     }
 
-    private fun scanMediaStore(requestId: String? = null) {
+    private fun scanMediaStore(requestId: String? = null): String? {
         MediaStoreScanner.clearChangeNotification()
         val scanId = UUID.randomUUID().toString()
         if (!MediaStoreScanner.hasReadPermission(this)) {
@@ -2485,21 +2581,25 @@ class MainActivity : FlutterFragmentActivity() {
                 .put("requestId", requestId ?: "")
                 .put("message", "A permissão para ler vídeos ainda não foi concedida.")
                 .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE).put("status", "DENIED").put("access", "denied")))
-            return
+            return null
         }
         if (!NativeScanController.begin(scanId, MediaStoreScanner.SOURCE)) {
+            val activeScanId = NativeScanController.activeScanId(MediaStoreScanner.SOURCE)
             NativeMailbox.write(this, JSONObject().put("type", "mediastore_scan_progress")
-                .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE).put("requestId", requestId ?: "").put("phase", "already_running")))
-            return
+                .put("requestId", requestId ?: "")
+                .put("payload", JSONObject()
+                    .put("source", MediaStoreScanner.SOURCE)
+                    .put("requestId", requestId ?: "")
+                    .put("phase", "already_running")
+                    .put("activeScanId", activeScanId ?: "")))
+            return activeScanId
         }
-        val appContext = applicationContext
-        NativeScanController.launch(scanId) {
-            NativeScanRunner.runMediaStoreScan(
-                applicationContext,
-                scanId,
-                requestId,
-            )
+        val launched = NativeScanController.launch(scanId) {
+            NativeScanRunner.runMediaStoreScan(applicationContext, scanId, requestId)
         }
+        if (launched || NativeScanController.snapshot(scanId)?.state?.isTerminal == true) return scanId
+        NativeScanController.finish(scanId)
+        return NativeScanController.activeScanId(MediaStoreScanner.SOURCE)
     }
 
     private fun cancelNativeScans(requestId: String? = null) {
@@ -2607,7 +2707,8 @@ class MainActivity : FlutterFragmentActivity() {
             )
             return
         }
-        val treeUri = runCatching { Uri.parse(reference) }.getOrNull()
+        val normalizedReference = reference.trim()
+        val treeUri = runCatching { Uri.parse(normalizedReference) }.getOrNull()
         if (treeUri == null || treeUri.scheme?.lowercase() != "content" || !DocumentsContract.isTreeUri(treeUri)) {
             publishNativeCommandError(
                 requestId,
@@ -2616,8 +2717,88 @@ class MainActivity : FlutterFragmentActivity() {
                 "INVALID_TREE_URI",
                 "A referência da pasta SAF é inválida.",
             )
+            if (nativeFolderConfigOwner) libraryViewModel.onSafRemovalTerminal(normalizedReference)
             return
         }
+
+        val ownsRelease = synchronized(pendingSafReleaseWaiters) {
+            val existing = pendingSafReleaseWaiters[normalizedReference]
+            if (existing != null) {
+                requestId?.trim()?.takeIf { it.isNotEmpty() }?.let { if (it !in existing) existing.add(it) }
+                false
+            } else {
+                pendingSafReleaseWaiters[normalizedReference] = mutableListOf<String>().apply {
+                    requestId?.trim()?.takeIf { it.isNotEmpty() }?.let(::add)
+                }
+                true
+            }
+        }
+        if (!ownsRelease) {
+            nativeRequestState.markOperationState(
+                requestId,
+                "release_tree",
+                NativeRequestState.OperationState.RUNNING,
+            )
+            publishNativeDiagnostic(
+                "SAF_RELEASE_DUPLICATE_JOINED",
+                requestId,
+                action = "release_tree",
+                state = NativeRequestState.OperationState.RUNNING.name,
+                result = "same_tree_uri",
+            )
+            return
+        }
+
+        fun takeWaitingRequestIds(): List<String> {
+            val pending = synchronized(pendingSafReleaseWaiters) {
+                pendingSafReleaseWaiters.remove(normalizedReference)?.toList().orEmpty()
+            }
+            val ids = pending.filter { it.isNotBlank() }.distinct()
+            return ids.ifEmpty { requestId?.trim()?.takeIf { it.isNotEmpty() }?.let(::listOf).orEmpty() }
+        }
+
+        fun publishReleaseError(
+            message: String,
+            code: String,
+            stage: String,
+            permissionReleased: Boolean,
+            accessRecoveryPersisted: Boolean? = null,
+            recoveryError: String? = null,
+        ) {
+            nativeRequestState.markOperationState(
+                requestId,
+                "release_tree",
+                NativeRequestState.OperationState.FAILED,
+            )
+            Log.e(tag, "SAF release failed stage=$stage code=$code treeUri=$normalizedReference")
+            if (nativeFolderConfigOwner) libraryViewModel.onSafRemovalTerminal(normalizedReference)
+            val waiters = takeWaitingRequestIds()
+            (waiters.ifEmpty { listOf(requestId.orEmpty()) }).forEach { waiterId ->
+                nativeRequestState.markOperationState(
+                    waiterId,
+                    "release_tree",
+                    NativeRequestState.OperationState.FAILED,
+                )
+                val payload = JSONObject()
+                    .put("treeUri", normalizedReference)
+                    .put("status", SafScanner.STATUS_FAILED)
+                    .put("stage", stage)
+                    .put("code", code)
+                    .put("nativeFolderConfigOwner", nativeFolderConfigOwner)
+                    .put("permissionReleased", permissionReleased)
+                accessRecoveryPersisted?.let { payload.put("sourceAccessRecoveryPersisted", it) }
+                recoveryError?.takeIf { it.isNotBlank() }?.let { payload.put("sourceAccessRecoveryError", it) }
+                NativeMailbox.writeBestEffort(
+                    this,
+                    JSONObject()
+                        .put("type", "saf_error")
+                        .put("requestId", waiterId)
+                        .put("message", message)
+                        .put("payload", payload),
+                )
+            }
+        }
+
         try {
             val hadPersistedReadGrant = SafScanner.hasPersistedReadPermission(this, treeUri)
             if (hadPersistedReadGrant) {
@@ -2626,84 +2807,106 @@ class MainActivity : FlutterFragmentActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION,
                 )
             } else {
-                Log.i(tag, "SAF permission already absent; treating release as completed")
+                Log.i(tag, "SAF permission already absent; treating release as idempotent")
             }
-            val alreadyAbsent = !SafScanner.hasPersistedReadPermission(this, treeUri)
+            if (SafScanner.hasPersistedReadPermission(this, treeUri)) {
+                throw IllegalStateException("Android still reports the SAF read grant after release.")
+            }
+            val permissionAlreadyAbsent = !hadPersistedReadGrant
 
-            fun publishReleased() {
-                nativeRequestState.markOperationState(
-                    requestId,
-                    "release_tree",
-                    NativeRequestState.OperationState.COMPLETED,
-                )
-                NativeMailbox.write(
-                    this,
-                    JSONObject().put("type", "saf_released")
-                        .put("requestId", requestId ?: "")
-                        .put(
-                            "payload",
-                            JSONObject()
-                                .put("treeUri", reference)
-                                .put("alreadyAbsent", alreadyAbsent)
-                                .put("nativeFolderConfigOwner", nativeFolderConfigOwner),
-                        ),
-                )
+            fun publishReleased(sourceAlreadyAbsent: Boolean) {
+                val waiters = takeWaitingRequestIds()
+                if (nativeFolderConfigOwner) libraryViewModel.onSafRemovalTerminal(normalizedReference)
+                (waiters.ifEmpty { listOf(requestId.orEmpty()) }).forEach { waiterId ->
+                    nativeRequestState.markOperationState(
+                        waiterId,
+                        "release_tree",
+                        NativeRequestState.OperationState.COMPLETED,
+                    )
+                    NativeMailbox.writeBestEffort(
+                        this,
+                        JSONObject()
+                            .put("type", "saf_released")
+                            .put("requestId", waiterId)
+                            .put(
+                                "payload",
+                                JSONObject()
+                                    .put("treeUri", normalizedReference)
+                                    .put("alreadyAbsent", permissionAlreadyAbsent)
+                                    .put("sourceAlreadyAbsent", sourceAlreadyAbsent)
+                                    .put("duplicateRequest", waiterId != requestId)
+                                    .put("nativeFolderConfigOwner", nativeFolderConfigOwner),
+                            ),
+                    )
+                }
             }
 
             if (nativeFolderConfigOwner) {
                 lifecycleScope.launch {
                     try {
-                        // Remove the configured source through the same canonical SQLite
-                        // repository only after Android confirms the persisted grant is gone.
-                        appDependencies.sqliteLibraryRepository.removeSafFolder(reference)
-                        publishReleased()
+                        val sourceExists = withContext(Dispatchers.IO) {
+                            appDependencies.sqliteLibraryRepository.listFolders().any { folder ->
+                                folder.kind.equals("saf", ignoreCase = true) &&
+                                    folder.path.trim() == normalizedReference
+                            }
+                        }
+                        var sourceAlreadyAbsent = !sourceExists
+                        if (sourceExists) {
+                            val removed = appDependencies.sqliteLibraryRepository.removeSafFolder(normalizedReference)
+                            if (!removed) {
+                                val stillConfigured = withContext(Dispatchers.IO) {
+                                    appDependencies.sqliteLibraryRepository.listFolders().any { folder ->
+                                        folder.kind.equals("saf", ignoreCase = true) &&
+                                            folder.path.trim() == normalizedReference
+                                    }
+                                }
+                                if (stillConfigured) {
+                                    throw IllegalStateException("The canonical SAF source remained configured after removeSafFolder.")
+                                }
+                                sourceAlreadyAbsent = true
+                            }
+                        }
+                        publishReleased(sourceAlreadyAbsent)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (exception: Exception) {
-                        runCatching {
-                            appDependencies.sqliteLibraryRepository.updateSafFolderAccess(
-                                reference,
+                        var accessRecoveryPersisted = false
+                        var recoveryError: String? = null
+                        try {
+                            accessRecoveryPersisted = appDependencies.sqliteLibraryRepository.updateSafFolderAccess(
+                                normalizedReference,
                                 "unavailable",
                                 "Permission released but canonical source removal failed.",
                             )
+                        } catch (recoveryException: CancellationException) {
+                            throw recoveryException
+                        } catch (recoveryException: Exception) {
+                            recoveryError = recoveryException.message ?: recoveryException::class.java.simpleName
+                            Log.e(tag, "Could not persist unavailable state after SAF permission release", recoveryException)
                         }
-                        nativeRequestState.markOperationState(
-                            requestId,
-                            "release_tree",
-                            NativeRequestState.OperationState.FAILED,
-                        )
                         Log.e(tag, "SAF permission was released but canonical source removal failed", exception)
-                        NativeMailbox.write(
-                            this@MainActivity,
-                            JSONObject().put("type", "saf_error")
-                                .put("requestId", requestId ?: "")
-                                .put("message", "A permissão foi liberada, mas a pasta não pôde ser removida da biblioteca.")
-                                .put(
-                                    "payload",
-                                    JSONObject()
-                                        .put("treeUri", reference)
-                                        .put("status", SafScanner.STATUS_FAILED)
-                                        .put("nativeFolderConfigOwner", true),
-                                ),
+                        publishReleaseError(
+                            message = "A permissão foi liberada, mas a pasta não pôde ser removida da biblioteca.",
+                            code = "SQLITE_SOURCE_REMOVAL_FAILED",
+                            stage = "sqlite_remove",
+                            permissionReleased = true,
+                            accessRecoveryPersisted = accessRecoveryPersisted,
+                            recoveryError = recoveryError,
                         )
                     }
                 }
             } else {
-                publishReleased()
+                publishReleased(sourceAlreadyAbsent = false)
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (exception: Exception) {
-            nativeRequestState.markOperationState(
-                requestId,
-                "release_tree",
-                NativeRequestState.OperationState.FAILED,
-            )
             Log.e(tag, "Failed to release SAF permission", exception)
-            NativeMailbox.write(
-                this,
-                JSONObject().put("type", "saf_error")
-                    .put("requestId", requestId ?: "")
-                    .put("message", "Não foi possível liberar a permissão desta pasta.")
-                    .put("payload", JSONObject().put("treeUri", reference)),
+            publishReleaseError(
+                message = "Não foi possível liberar a permissão desta pasta.",
+                code = "PERSISTED_PERMISSION_RELEASE_FAILED",
+                stage = "permission_release",
+                permissionReleased = false,
             )
         }
     }
