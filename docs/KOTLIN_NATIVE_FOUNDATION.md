@@ -59,6 +59,10 @@ O APK ainda é gerado por Flet e Flutter e o launcher ainda herda de FlutterFrag
 
 NativeMailbox, NativeCommandDispatcher e os arquivos JSON privados seguem sendo fronteiras transitórias utilizadas por consumidores reais. Esta etapa não remove Flet, Flutter, Python, os serviços existentes, rotas, permissões nem contratos. A próxima etapa continua sendo MIG-02 do roadmap — contratos de domínio e baseline de paridade — e não autoriza a remoção de uma ponte até que todos os consumidores e efeitos colaterais sejam migrados com equivalência.
 
+## Atualização de estado — Prompt 06/29 (AniList)
+
+O consumidor Compose possui um fluxo AniList nativo por ReiAnixAniListClient/ReiAnixAniListIntegrationService, com busca, detalhes, associação manual/automática, validação GraphQL, persistência SQLite e localização/caching de sinopse PT-BR. O estado geral do runtime não é totalmente Kotlin: core/anilist.py e parte do LibraryService permanecem para rotas Flet/legadas, e ArtworkEngine continua responsável pela materialização persistente das imagens. O serviço nativo solicita essa materialização após o commit usando um evento mínimo NativeMailbox, sem delegar consulta ou matching AniList ao Python. Para detalhes de implementação e fronteiras restantes, consulte docs/KOTLIN_ANILIST_MIGRATION.md.
+
 ## Verificação e evidências
 
 Os testes estáticos Python já integrados ao workflow de build foram estendidos para verificar o registro da Application no manifesto gerado e a composição compartilhada. Não foram adicionados testes instrumentados/emulador. Nenhum teste Kotlin/JVM deve ser executado manualmente; o workflow correspondente permanece manual (workflow_dispatch).

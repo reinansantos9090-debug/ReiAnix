@@ -511,6 +511,69 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun aniListAssociationPersistsOriginalAndLocalizedSynopsisSeparately() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val updated = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = "A sinopse em português.",
+                descriptionOriginal = "The original synopsis.",
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+
+        assertEquals("A sinopse em português.", updated.description)
+        assertEquals("The original synopsis.", updated.descriptionOriginal)
+        assertEquals(42L, updated.anilistId)
+    }
+
+    @Test
+    fun genericMetadataPatchPersistsOriginalSynopsisWithoutClearingLocalFields() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val before = repository.getAnime(1L)!!
+        val updated = repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                descriptionOriginal = "The original synopsis.",
+            ),
+        )
+
+        assertEquals("The original synopsis.", updated.descriptionOriginal)
+        assertEquals(before.favorite, updated.favorite)
+        assertEquals(before.lookupTitle, updated.lookupTitle)
+    }
+
+    @Test
+    fun automaticAniListOutcomeIsPersistedWithoutOverwritingManualAssociation() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+
+        val attempted = repository.recordAniListAutoMatchOutcome(1L, "not_found")
+        assertEquals("not_found", attempted.anilistMatchStatus)
+        assertNull(attempted.anilistId)
+
+        repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                title = "Manually selected title",
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+        val afterManualSelection = repository.recordAniListAutoMatchOutcome(1L, "ambiguous")
+        assertEquals(42L, afterManualSelection.anilistId)
+        assertEquals("manual", afterManualSelection.anilistMatchStatus)
+        assertEquals("Manually selected title", afterManualSelection.title)
+    }
+
+    @Test
     fun manualAniListAssociationPreservesProtectedAndManualMetadataBookkeeping() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)

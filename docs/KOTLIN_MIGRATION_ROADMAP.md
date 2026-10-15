@@ -219,23 +219,31 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 **Prioridade:** P0.
 
+## Estado transversal — Prompt 06/29: AniList nativo e localização PT-BR
+
+**Implementação nesta branch:** o consumidor Compose utiliza o cliente GraphQL e o serviço AniList Kotlin existentes; a validação do cliente agora rejeita respostas de busca/detalhes malformadas em vez de mascará-las como resultados vazios. O patch de metadata passou a transportar e persistir separadamente a sinopse original e a descrição exibida, sem mudar o schema v29 ou violar a proteção de campos manuais. O localizer Kotlin reaproveita o formato/arquivo de cache legado para tradução PT-BR, faz validação conservadora, respeita cancelamento/timeouts e limita concorrência/tentativas. Após o commit de metadata, o NativeMailbox solicita ao ArtworkEngine existente materializar URLs persistidas.
+
+**Limite explícito:** core/anilist.py e LibraryService permanecem presentes para caminhos Flet/legados, e ArtworkEngine continua sendo o produtor Python nesta etapa. O Prompt 06 migra o caminho nativo; a remoção integral dos consumidores híbridos e do runtime continua dependente das fases de corte posteriores. A auditoria não classifica o subsistema global como 100% Kotlin enquanto esses consumidores continuarem disponíveis.
+
+**Verificações adicionadas:** testes existentes do cliente para payloads GraphQL malformados; testes Kotlin/JVM manuais (não executados nesta etapa) para cache/offline/localização; contratos de regressão Python para preservação de sinopse original, path do cache e handoff do ArtworkEngine. Estado final do workflow e artefatos deve ser confirmado no SHA final desta alteração.
+
 ### MIG-07 — AniList, matching, metadados e localização PT-BR
 
-**Objetivo:** Consolidar consultas remotas e regras de associação na implementação Kotlin.
+**Objetivo:** Consolidar consultas remotas e regras de associação no serviço Kotlin consumido pelo Compose.
 
-**Escopo fechado:** GraphQL search/lookup/refresh, associação manual/automática, normalização HTML, sinopse PT-BR, títulos alternativos, gêneros, estúdios, formato, ano, episódios, status, cache, limites e cancelamento.
+**Escopo implementado nesta branch:** GraphQL search/lookup/refresh, associação manual/automática, matching fuzzy portado, normalização HTML, sinopse PT-BR, títulos alternativos, gêneros, estúdios, formato, ano, episódios, status, cache, limites e cancelamento. A hidratação nativa é acionada pelo host Compose, isolada do ViewModel de pesquisa; lê o catálogo SQLite e persiste resultados/estados de tentativa. Estados não encontrados/ambíguos são terminais, enquanto falhas de rede/limite/JSON são registradas, mas voltam a ser elegíveis em um ciclo posterior.
 
-**Arquivos principais:** core/anilist.py; core/library_service.py; ReiAnixAniListClient.kt; ReiAnixAniListIntegrationService.kt; ReiAnixSqliteAniListAssociation.kt; docs/ANILIST_MATCHING.md.
+**Arquivos principais:** core/anilist.py (compatibilidade Flet); core/library_service.py (fallback legado e reconciliação de artwork somente no modo Compose); ReiAnixAniListClient.kt; ReiAnixAniListIntegrationService.kt; ReiAnixAniListDescriptionLocalizer.kt; ReiAnixAniListMatcher.kt; ReiAnixSqliteAniListAssociation.kt; ReiAnixSqliteLibraryRepository.kt; ReiAnixLibraryViewModel.kt; ReiAnixAppDependencies.kt; docs/KOTLIN_ANILIST_MIGRATION.md; docs/ANILIST_MATCHING.md.
 
 **Dependências:** MIG-02, MIG-03 e MIG-04.
 
 **Preservar:** Metadados manuais/locais, local_path e capas; falha de rede não apaga dados existentes; PT-BR continua disponível.
 
-**Riscos:** Cache divergente, tradução parcial tratada como válida, limites da API e falta de cancelamento.
+**Limite remanescente:** Este pacote não elimina o runtime Python/Flet nem o ArtworkEngine Python; o caminho nativo não depende do cliente AniList Python para pesquisa/matching/persistência, enquanto o modo Flet legado mantém compatibilidade até ser migrado em outro pacote. Portanto o subsistema global não deve ser classificado como 100% Kotlin.
 
-**Critérios objetivos de aceitação:** Todos os caminhos de UI usam os serviços Kotlin; cache offline, rate limit, cancelamento e erro são explícitos; não resta cliente Python no runtime.
+**Critérios de aceitação desta etapa:** Todos os consumidores Compose usam os serviços Kotlin; os estados automáticos são persistidos para evitar rede repetida; o worker Python não faz AniList hydration quando Compose está ativo; cache offline, rate limit, cancelamento e erros são explícitos.
 
-**Verificações:** tests/test_native_anilist_integration_contract.py e test_metadata_engine.py com fixtures reais e CI.
+**Verificações:** `tests/test_native_anilist_integration_contract.py`, `tests/test_anilist_service.py`, testes Kotlin/JVM manuais (não executar nesta etapa) e CI do SHA final.
 
 **Prioridade:** P1.
 

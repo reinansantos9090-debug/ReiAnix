@@ -1,8 +1,13 @@
 package com.reiflix.reiflix_local
 
 import android.content.Context
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
+import java.io.File
+import java.util.UUID
+import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
@@ -74,6 +79,18 @@ class ReiAnixAppDependencies(context: Context) {
             client = aniListClient,
             library = sqliteLibraryRepository,
             settings = sqliteSettingsRepository,
+            descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
+                cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
+            ),
+            metadataCommitPublisher = { animeId, requestArtwork ->
+                NativeMailbox.write(
+                    appContext,
+                    JSONObject()
+                        .put("type", "anilist_metadata_committed")
+                        .put("requestId", UUID.randomUUID().toString())
+                        .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", requestArtwork)),
+                )
+            },
         )
     }
 

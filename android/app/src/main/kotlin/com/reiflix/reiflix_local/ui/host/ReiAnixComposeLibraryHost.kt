@@ -6,6 +6,7 @@ import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -17,6 +18,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.R
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
@@ -31,6 +33,9 @@ import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Single native Compose root used during the incremental Flet -> Compose cutover.
@@ -74,6 +79,27 @@ class ReiAnixComposeLibraryHost(
             val continueWatchingEnabled by settingsViewModel.continueWatchingEnabled.collectAsStateWithLifecycle()
             val continueWatchingLimit by settingsViewModel.continueWatchingLimit.collectAsStateWithLifecycle()
             val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+
+            // Keep local search/browse ViewModels independent from remote APIs. The
+            // application-level AniList integration owns this separate reconciliation
+            // job; trigger it only when the canonical catalog identity set or scan
+            // lifecycle changes, not on every metadata/artwork snapshot publication.
+            val catalogSize = libraryState.animes.size
+            val scanning = libraryState.scanInProgress
+            LaunchedEffect(catalogSize, scanning) {
+                if (catalogSize == 0 || scanning) return@LaunchedEffect
+                try {
+                    val service = ReiAnixAppDependencies.from(activity.applicationContext)
+                        .aniListIntegrationService
+                    withContext(Dispatchers.IO) {
+                        service.reconcileUnmatchedLibraryMetadata()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w(TAG, "Native AniList catalog reconciliation failed", error)
+                }
+            }
 
             ReiAnixComposeRoot(
                 themeMode = themeMode,

@@ -123,6 +123,36 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
+    fun missingSearchMediaArrayIsInvalidResponseNotEmptyResults() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{}}}"""))
+        val result = ReiAnixAniListClient(transport, 0).searchAnime("anime")
+        assertTrue(result is AniListResult.Failure)
+        assertTrue((result as AniListResult.Failure).error is AniListError.InvalidResponse)
+    }
+
+    @Test
+    fun invalidSearchMediaEntriesAreRejectedInsteadOfSilentlyDropped() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[{"title":{}}]}}}"""))
+        val result = ReiAnixAniListClient(transport, 0).searchAnime("anime")
+        assertTrue(result is AniListResult.Failure)
+        assertTrue((result as AniListResult.Failure).error is AniListError.InvalidResponse)
+    }
+
+    @Test
+    fun missingDetailFieldIsInvalidButExplicitNullMeansNoMatch() = runBlocking {
+        val missing = ReiAnixAniListClient(
+            FakeTransport(AniListHttpResponse(200, """{"data":{}}""")), 0,
+        ).getAnime(42)
+        assertTrue(missing is AniListResult.Failure)
+        assertTrue((missing as AniListResult.Failure).error is AniListError.InvalidResponse)
+
+        val absent = ReiAnixAniListClient(
+            FakeTransport(AniListHttpResponse(200, """{"data":{"Media":null}}""")), 0,
+        ).getAnime(42)
+        assertEquals(AniListResult.Success<AniListAnime?>(null), absent)
+    }
+
+    @Test
     fun missingOptionalMetadataDoesNotRejectAnime() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":7,"title":{}}}}"""))
         val result = ReiAnixAniListClient(transport, 0).getAnime(7)

@@ -146,7 +146,7 @@ class ComposeLibraryBridge:
         parts = str(reason or "").split(":")
         kind = parts[0].strip().lower()
         try:
-            if kind in {"artwork_ready", "artwork_cache_hit", "artwork_cache_invalid", "artwork_state", "metadata_translation"}:
+            if kind in {"artwork_ready", "artwork_cache_hit", "artwork_cache_invalid", "artwork_state", "metadata_translation", "anilist_metadata_updated"}:
                 if kind.startswith("artwork_"):
                     entity_type = str(parts[1] if len(parts) > 1 else "").strip().lower()
                     entity_id = int(parts[2] if len(parts) > 2 else 0)

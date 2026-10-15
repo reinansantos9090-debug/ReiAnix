@@ -53,13 +53,23 @@ class ReiAnixAniListClient(
             .put("perPage", limit)) { data ->
             val page = data.optJSONObject("Page")
                 ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing Page object"))
-            val media = page.optJSONArray("media") ?: JSONArray()
-            AniListResult.Success(buildList {
-                for (i in 0 until media.length()) {
-                    val item = media.optJSONObject(i) ?: continue
-                    parseAnime(item)?.let(::add)
-                }
-            })
+            val media = page.optJSONArray("media")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing media array in AniList search response"),
+                )
+            val results = ArrayList<AniListAnime>(media.length())
+            for (i in 0 until media.length()) {
+                val item = media.optJSONObject(i)
+                    ?: return@execute AniListResult.Failure(
+                        AniListError.InvalidResponse("Invalid anime item in AniList search response"),
+                    )
+                val anime = parseAnime(item)
+                    ?: return@execute AniListResult.Failure(
+                        AniListError.InvalidResponse("Anime item is missing a valid AniList ID"),
+                    )
+                results += anime
+            }
+            AniListResult.Success(results)
         }
     }
 
@@ -71,8 +81,21 @@ class ReiAnixAniListClient(
             }
         """.trimIndent()
         return execute(gql, JSONObject().put("id", id)) { data ->
+            if (!data.has("Media")) {
+                return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing Media field in AniList detail response"),
+                )
+            }
+            if (data.isNull("Media")) return@execute AniListResult.Success(null)
             val media = data.optJSONObject("Media")
-            AniListResult.Success(media?.let(::parseAnime))
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Invalid Media object in AniList detail response"),
+                )
+            val anime = parseAnime(media)
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("AniList detail is missing a valid media ID"),
+                )
+            AniListResult.Success(anime)
         }
     }
 

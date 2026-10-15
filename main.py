@@ -3204,6 +3204,11 @@ async def main(page: ft.Page):
                         library.hydrate_catalog_metadata,
                         catalog,
                         on_item=publish_item,
+                        # On Android Compose, Kotlin owns AniList searches, matching,
+                        # localization and metadata writes. Keep this legacy worker
+                        # for artwork-only reconciliation; Flet-only mode retains
+                        # its existing Python metadata hydration behavior.
+                        allow_anilist_metadata=not compose_library_bridge.enabled,
                     )
             except asyncio.CancelledError:
                 raise
@@ -4650,6 +4655,58 @@ async def main(page: ft.Page):
                             native_operation_states[str(event_request_id)] = operation_state
                             if len(native_operation_states) > 128:
                                 native_operation_states.pop(next(iter(native_operation_states)))
+                        if event_type == 'anilist_metadata_committed':
+                            # Kotlin committed AniList metadata to the canonical SQLite
+                            # repository. This event only refreshes the Compose projection
+                            # and optionally asks the existing ArtworkEngine to materialize
+                            # URLs; it never searches AniList or writes editorial metadata.
+                            try:
+                                anime_id = int(payload.get('animeId') or 0)
+                            except (TypeError, ValueError):
+                                anime_id = 0
+                            request_artwork = payload.get('requestArtwork') is True
+                            if anime_id <= 0:
+                                logger.warning("[ANILIST_METADATA] request rejected reason=invalid_anime_id")
+                            else:
+                                metadata = store.anime_metadata_by_id(anime_id)
+                                if not isinstance(metadata, dict):
+                                    logger.info("[ANILIST_METADATA] request skipped animeId=%s reason=metadata_unavailable", anime_id)
+                                else:
+                                    has_artwork_urls = bool(
+                                        str(metadata.get('cover_url') or '').strip()
+                                        or str(metadata.get('banner_url') or '').strip()
+                                    )
+                                    if request_artwork and metadata.get('anilist_id') and has_artwork_urls:
+                                        library.artwork.sync_anime_metadata(
+                                            anime_id,
+                                            metadata,
+                                            request_download=True,
+                                        )
+                                        banner_url = str(metadata.get('banner_url') or '').strip()
+                                        if banner_url:
+                                            entity_type = (
+                                                "movie"
+                                                if str(metadata.get("media_kind") or "series").casefold() == "movie"
+                                                else "anime"
+                                            )
+                                            library.artwork.request(
+                                                entity_type,
+                                                anime_id,
+                                                "backdrop",
+                                                priority=90,
+                                                allow_network=True,
+                                                blocking=False,
+                                            )
+                                    # Publish even without a cover, so native Home/Library
+                                    # reflects non-artwork metadata and persisted lookup state.
+                                    compose_library_bridge.request_publish(
+                                        f"anilist_metadata_updated:{anime_id}"
+                                    )
+                                    logger.info(
+                                        "[ANILIST_METADATA] request handled animeId=%s artwork_requested=%s",
+                                        anime_id,
+                                        request_artwork and has_artwork_urls,
+                                    )
                         if event_type == 'compose_settings_set':
                             setting_key = str(payload.get('key') or '').strip()
                             setting_value = payload.get('value')

@@ -379,6 +379,9 @@ class ReiAnixSqliteLibraryRepository(
             patch.nativeTitle?.takeIf { it.isNotBlank() }?.let { if ("native" !in manualFields) values.put("native", it) }
             patch.aliasesJson?.takeIf { it.isNotBlank() && it.trim() != "[]" }?.let { if ("aliases" !in manualFields) values.put("aliases", it) }
             patch.description?.takeIf { it.isNotBlank() }?.let { if ("description" !in manualFields) values.put("description", it) }
+            patch.descriptionOriginal?.takeIf { it.isNotBlank() }?.let {
+                if ("description" !in manualFields) values.put("description_original", it)
+            }
             patch.coverUrl?.takeIf { it.isNotBlank() }?.let { if ("cover_url" !in manualFields) values.put("cover_url", it) }
             patch.coverCache?.takeIf { it.isNotBlank() }?.let { if ("cover_cache" !in manualFields) values.put("cover_cache", it) }
             patch.bannerUrl?.takeIf { it.isNotBlank() }?.let { if ("banner_url" !in manualFields) values.put("banner_url", it) }

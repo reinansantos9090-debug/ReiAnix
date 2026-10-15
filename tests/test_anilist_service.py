@@ -142,6 +142,43 @@ class LibraryAniListCacheTests(unittest.TestCase):
             self.assertEqual(store.association("naruto"), 20)
             self.assertEqual(store.library_summary()["animes"], 1)
 
+    def test_native_hydration_disables_python_anilist_writes_but_keeps_artwork(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = LibraryStore(directory)
+            anime_id = store.upsert_anime("attack on titan", {
+                "title": "Attack on Titan",
+                "anilist_id": 16498,
+                "cover_url": "https://img.example/cover.jpg",
+                "banner_url": "https://img.example/backdrop.jpg",
+                "cover_cache": "",
+                "genres": "[]",
+            })
+            service = LibraryService(store)
+            catalog = [{
+                "id": anime_id,
+                "main_title": "Attack on Titan",
+                "media_kind": "series",
+                "meta": {"lookup_title": "attack on titan"},
+            }]
+            with patch.object(service.anilist, "search") as search, patch.object(
+                service.anilist, "by_id"
+            ) as by_id, patch.object(service, "refresh_metadata") as refresh, patch.object(
+                service.artwork, "sync_anime_metadata"
+            ) as sync_artwork, patch.object(
+                service.artwork, "list_for", return_value=[]
+            ), patch.object(service.artwork, "request") as request_artwork:
+                results = service.hydrate_catalog_metadata(
+                    catalog,
+                    allow_anilist_metadata=False,
+                )
+
+            self.assertEqual(len(results), 1)
+            search.assert_not_called()
+            by_id.assert_not_called()
+            refresh.assert_not_called()
+            sync_artwork.assert_called()
+            request_artwork.assert_called_once()
+
     def test_association_mismatch_forces_refresh(self):
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)

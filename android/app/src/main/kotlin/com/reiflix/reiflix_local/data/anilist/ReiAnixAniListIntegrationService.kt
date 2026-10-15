@@ -1,16 +1,25 @@
 package com.reiflix.reiflix_local.data.anilist
 
 import android.content.Context
+import android.util.Log
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.json.JSONArray
 import org.json.JSONObject
-import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
+import com.reiflix.reiflix_local.data.sqlite.recordAniListAutoMatchOutcome
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+
+import java.io.File
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -23,6 +32,8 @@ class ReiAnixAniListIntegrationService(
     private val client: ReiAnixAniListClient,
     private val library: ReiAnixSqliteLibraryRepository,
     private val settings: ReiAnixSqliteSettingsRepository,
+    private val descriptionLocalizer: ReiAnixAniListDescriptionLocalizer? = null,
+    private val metadataCommitPublisher: ((Long, Boolean) -> Boolean)? = null,
 ) {
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
 
@@ -30,6 +41,18 @@ class ReiAnixAniListIntegrationService(
         client = ReiAnixAniListClient(),
         library = ReiAnixSqliteLibraryRepository(context),
         settings = ReiAnixSqliteSettingsRepository(context),
+        descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
+            File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
+        ),
+        metadataCommitPublisher = { animeId, requestArtwork ->
+            NativeMailbox.write(
+                context.applicationContext,
+                JSONObject()
+                    .put("type", "anilist_metadata_committed")
+                    .put("requestId", UUID.randomUUID().toString())
+                    .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", requestArtwork)),
+            )
+        },
     )
 
     suspend fun search(term: String, limit: Int = 10): AniListResult<List<AniListAnime>> {
@@ -46,7 +69,10 @@ class ReiAnixAniListIntegrationService(
         val local = library.getAnime(animeId)
             ?: return AniListResult.Failure(AniListError.InvalidRequest("Local anime does not exist."))
         val remoteId = local.anilistId
-            ?: return AniListResult.Failure(AniListError.InvalidRequest("This local anime has no AniList association."))
+            ?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+            ?: return AniListResult.Failure(
+                AniListError.InvalidRequest("This local anime has no valid AniList association."),
+            )
         val remote = when (val result = client.getAnime(remoteId.toInt())) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> return result
@@ -103,7 +129,24 @@ class ReiAnixAniListIntegrationService(
             when (val result = client.searchAnime(query, 10)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> {
-                    autoMatchAttempts.remove(animeId)
+                    val outcome = when (val error = result.error) {
+                        is AniListError.RateLimited -> "rate_limited"
+                        is AniListError.Network -> "network_error"
+                        is AniListError.Http -> when {
+                            error.statusCode == 429 -> "rate_limited"
+                            error.statusCode >= 500 -> "network_error"
+                            else -> "invalid_response"
+                        }
+                        is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
+                        is AniListError.InvalidRequest -> {
+                            autoMatchAttempts.remove(animeId)
+                            return result
+                        }
+                    }
+                    // Keep the per-process cooldown after a transient remote failure.
+                    // The persisted status is diagnostic, not permanently terminal:
+                    // a later refresh/restart can retry without hammering the API.
+                    recordAutoMatchOutcome(animeId, outcome)
                     return result
                 }
             }
@@ -111,45 +154,102 @@ class ReiAnixAniListIntegrationService(
             autoMatchAttempts.remove(animeId)
             throw cancelled
         }
-        if (results.isEmpty()) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
-        val localTitles = localTitles(local).map(::normalize).filter(String::isNotBlank).toSet()
-        val ranked = results.map { candidate ->
-            val remoteTitles = buildList {
-                add(candidate.titleRomaji.orEmpty())
-                add(candidate.titleEnglish.orEmpty())
-                add(candidate.titleNative.orEmpty())
-                addAll(candidate.synonyms)
-            }.map(::normalize).filter(String::isNotBlank).toSet()
-            val exact = localTitles.intersect(remoteTitles).isNotEmpty()
-            var score = if (exact) 0.96 else 0.0
-            if (exact) {
-                // Contradictory catalog facts lower confidence; matching facts only
-                // break ties and never turn a weak title match into an automatic link.
-                if (local.year != null && candidate.seasonYear != null) {
-                    score += if (local.year == candidate.seasonYear) 0.02 else -0.30
-                }
-                if (!local.format.isNullOrBlank() && !candidate.format.isNullOrBlank()) {
-                    score += if (local.format.equals(candidate.format, ignoreCase = true)) 0.01 else -0.18
-                }
-                if (local.episodesCount != null && candidate.episodes != null) {
-                    score += if (local.episodesCount == candidate.episodes) 0.01 else -0.15
-                }
-                score = score.coerceIn(0.0, 1.0)
-            }
-            candidate to score
-        }.sortedByDescending { it.second }
-        val best = ranked.first()
-        if (best.second <= 0.0) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
-        val second = ranked.getOrNull(1)?.second ?: 0.0
-        val margin = best.second - second
-        if (best.second < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
-            return AniListResult.Success(AniListAutoMatchResult.Ambiguous(ranked.take(5).map { it.first }))
+        if (results.isEmpty()) {
+            recordAutoMatchOutcome(animeId, "not_found")
+            return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
-        val persisted = when (val result = applyRemote(local, best.first, manual = false, score = best.second, margin = margin)) {
+        val ranked = ReiAnixAniListMatcher.rank(
+            localTitle = query,
+            candidates = results,
+            context = ReiAnixAniListMatcher.Context(
+                year = local.year,
+                mediaKind = local.mediaKind,
+            ),
+        )
+        if (ranked.isEmpty()) {
+            recordAutoMatchOutcome(animeId, "not_found")
+            return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        }
+        val best = ranked.first()
+        if (best.score < ReiAnixAniListMatcher.MINIMUM_SCORE) {
+            recordAutoMatchOutcome(animeId, "not_found")
+            return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        }
+        val second = ranked.getOrNull(1)?.score ?: 0.0
+        val margin = best.score - second
+        if (best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
+            recordAutoMatchOutcome(
+                animeId,
+                "ambiguous",
+                score = best.score,
+                margin = margin,
+            )
+            return AniListResult.Success(
+                AniListAutoMatchResult.Ambiguous(ranked.take(5).map { it.anime }),
+            )
+        }
+        val persisted = when (
+            val result = applyRemote(local, best.anime, manual = false, score = best.score, margin = margin)
+        ) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> return result
         }
-        return AniListResult.Success(AniListAutoMatchResult.Matched(persisted, best.first))
+        return AniListResult.Success(AniListAutoMatchResult.Matched(persisted, best.anime))
+    }
+
+    private suspend fun recordAutoMatchOutcome(
+        animeId: Long,
+        status: String,
+        score: Double? = null,
+        margin: Double? = null,
+    ) {
+        library.recordAniListAutoMatchOutcome(
+            animeId = animeId,
+            status = status,
+            score = score,
+            margin = margin,
+        )
+        // Publish even unresolved rows so the native projection can show their
+        // persisted status. A false requestArtwork flag prevents unrelated image work.
+        enqueueMetadataCommit(animeId, requestArtwork = false)
+    }
+
+    /**
+     * Native library replacement for the legacy Python metadata hydrator.
+     * It processes the canonical SQLite catalog sequentially and persists lookup
+     * outcomes so catalog refreshes cannot repeatedly query unresolved titles.
+     * Image materialization remains delegated to the existing ArtworkEngine.
+     */
+    suspend fun reconcileUnmatchedLibraryMetadata(): Int {
+        if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
+        val rows = library.loadLibraryCatalogRows()
+        var changedOutcomes = 0
+        for (row in rows) {
+            currentCoroutineContext().ensureActive()
+            val local = row.anime
+            if (local.id <= 0L ||
+                local.anilistId != null ||
+                local.anilistMatchManual == true ||
+                local.metadataSource == "manual" ||
+                local.metadataStatus == "manual"
+            ) continue
+            if (local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES) continue
+
+            when (val result = autoMatch(local.id)) {
+                is AniListResult.Success -> when (result.value) {
+                    is AniListAutoMatchResult.Matched -> changedOutcomes++
+                    AniListAutoMatchResult.NoMatch -> changedOutcomes++
+                    is AniListAutoMatchResult.Ambiguous -> changedOutcomes++
+                    else -> Unit
+                }
+                is AniListResult.Failure -> if (result.error !is AniListError.InvalidRequest) {
+                    // The outcome is already persisted by autoMatch when retrying it
+                    // automatically would otherwise duplicate an identical request.
+                    changedOutcomes++
+                }
+            }
+        }
+        return changedOutcomes
     }
 
     private suspend fun applyRemote(
@@ -163,7 +263,37 @@ class ReiAnixAniListIntegrationService(
             // Artwork preference controls whether the remote URL becomes eligible
             // for the existing artwork pipeline. This service never downloads images.
             val artworkEnabled = settingEnabled("artwork.enabled", defaultValue = true)
-            library.updateAniListMetadataAndAssociation(
+            val (remoteOriginalDescription, displayDescription) = withContext(Dispatchers.IO) {
+                val remoteOriginal = remote.description
+                    ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                    ?.takeIf(String::isNotBlank)
+                val existingOriginal = local.descriptionOriginal
+                    ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                    ?.takeIf(String::isNotBlank)
+                val existingDescription = local.description
+                    ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
+                    ?.takeIf(String::isNotBlank)
+                val displayDescription = if (remoteOriginal == null) {
+                    null
+                } else {
+                    val localizer = descriptionLocalizer
+                    val existingTranslationIsValid = localizer != null &&
+                        existingOriginal == remoteOriginal &&
+                        existingDescription != null &&
+                        localizer.isValidTranslation(remoteOriginal, existingDescription) &&
+                        localizer.isPtBrDescription(existingDescription)
+                    when {
+                        existingTranslationIsValid -> existingDescription
+                        localizer == null -> remoteOriginal
+                        else -> {
+                            val cached = localizer.getCachedDescriptionPtBr(remoteOriginal)
+                            cached ?: localizer.localizeToPtBr(remoteOriginal) ?: remoteOriginal
+                        }
+                    }
+                }
+                remoteOriginal to displayDescription
+            }
+            val updated = library.updateAniListMetadataAndAssociation(
                 patch = ReiAnixAnimeMetadataPatch(
                     animeId = local.id,
                     title = remote.preferredTitle.takeIf { it.isNotBlank() },
@@ -171,7 +301,8 @@ class ReiAnixAniListIntegrationService(
                     english = remote.titleEnglish,
                     nativeTitle = remote.titleNative,
                     aliasesJson = remote.synonyms.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
-                    description = remote.description,
+                    description = displayDescription,
+                    descriptionOriginal = remoteOriginalDescription,
                     coverUrl = if (artworkEnabled) remote.coverExtraLargeUrl ?: remote.coverLargeUrl else null,
                     bannerUrl = remote.bannerUrl.takeIf { artworkEnabled },
                     genresJson = remote.genres.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
@@ -189,17 +320,38 @@ class ReiAnixAniListIntegrationService(
                 manual = manual,
                 score = score,
                 margin = margin,
-            ).let { updated ->
-                if (!manual && updated.anilistId != remote.id.toLong()) {
-                    AniListResult.Failure(AniListError.InvalidRequest("Automatic match was not applied because a manual or existing association has priority."))
-                } else {
-                    AniListResult.Success(updated)
-                }
+            )
+            if (!manual && updated.anilistId != remote.id.toLong()) {
+                return AniListResult.Failure(
+                    AniListError.InvalidRequest(
+                        "Automatic match was not applied because a manual or existing association has priority.",
+                    ),
+                )
             }
+            enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled)
+            AniListResult.Success(updated)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
             AniListResult.Failure(AniListError.InvalidResponse(error.message ?: "Could not persist AniList metadata."))
+        }
+    }
+
+    /**
+     * Requests materialization from the existing ArtworkEngine only after the
+     * canonical metadata transaction has committed. A queue failure does not
+     * invalidate durable metadata; the Compose renderer can still use its remote
+     * URL fallback and a later sync can retry materialization.
+     */
+    private suspend fun enqueueMetadataCommit(animeId: Long, requestArtwork: Boolean) {
+        val publisher = metadataCommitPublisher ?: return
+        try {
+            val published = withContext(Dispatchers.IO) { publisher(animeId, requestArtwork) }
+            if (!published) Log.w(TAG, "Could not publish AniList metadata update to native consumers")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not publish AniList metadata update to native consumers", error)
         }
     }
 
@@ -211,27 +363,15 @@ class ReiAnixAniListIntegrationService(
             it == "true" || it == "1" || it == "yes"
         } ?: defaultValue
 
-    private fun localTitles(local: ReiAnixAnimeRecord): List<String> = buildList {
-        add(local.title)
-        add(local.lookupTitle)
-        local.romaji?.let(::add)
-        local.english?.let(::add)
-        local.nativeTitle?.let(::add)
-        val rawAliases = local.aliasesJson
-        if (!rawAliases.isNullOrBlank()) {
-            runCatching {
-                val json = JSONArray(rawAliases)
-                for (index in 0 until json.length()) json.optString(index).takeIf { it.isNotBlank() }?.let(::add)
-            }
-        }
-    }
-
-    private fun normalize(value: String): String = MediaTitleNormalizer.normalizeTitle(value)
-
     companion object {
+        private const val TAG = "ReiAnixAniList"
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
-        const val AUTO_MATCH_MIN_SCORE = 0.88
-        const val AUTO_MATCH_MIN_MARGIN = 0.12
+        const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
+        const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
+        private val AUTO_MATCH_TERMINAL_STATUSES = setOf(
+            "not_found",
+            "ambiguous",
+        )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     }
 }

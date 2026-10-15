@@ -48,7 +48,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             val protectedFields = currentAndManualFields.second
             if (!manual && current.anilistMatchManual == true) return@transaction current
             if (!manual && current.anilistId != null && current.anilistId != anilistId) return@transaction current
-            if (!manual && (score == null || score < 0.88 || margin == null || margin < 0.12)) {
+            if (!manual && (score == null || score < 0.86 || margin == null || margin < 0.05)) {
                 return@transaction current
             }
 
@@ -59,6 +59,9 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             patch.nativeTitle?.takeIf(String::isNotBlank)?.let { if ("native" !in protectedFields) values.put("native", it) }
             patch.aliasesJson?.takeIf { it.isNotBlank() && it.trim() != "[]" }?.let { if ("aliases" !in protectedFields) values.put("aliases", it) }
             patch.description?.takeIf(String::isNotBlank)?.let { if ("description" !in protectedFields) values.put("description", it) }
+            patch.descriptionOriginal?.takeIf(String::isNotBlank)?.let {
+                if ("description" !in protectedFields) values.put("description_original", it)
+            }
             patch.coverUrl?.takeIf(String::isNotBlank)?.let { if ("cover_url" !in protectedFields) values.put("cover_url", it) }
             patch.coverCache?.takeIf(String::isNotBlank)?.let { if ("cover_cache" !in protectedFields) values.put("cover_cache", it) }
             patch.bannerUrl?.takeIf(String::isNotBlank)?.let { if ("banner_url" !in protectedFields) values.put("banner_url", it) }
@@ -101,3 +104,65 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
         }
     }
+
+
+/**
+ * Persists the outcome of an automatic lookup without changing a canonical
+ * association or any editorial/local metadata. A later library hydration can
+ * therefore distinguish "not tried" from "not found/ambiguous/network failed".
+ */
+suspend fun ReiAnixSqliteLibraryRepository.recordAniListAutoMatchOutcome(
+    animeId: Long,
+    status: String,
+    score: Double? = null,
+    margin: Double? = null,
+): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
+    require(animeId > 0L) { "Anime ID must be positive." }
+    require(status in setOf("not_found", "ambiguous", "network_error", "rate_limited", "invalid_response")) {
+        "Unsupported automatic AniList match outcome."
+    }
+    require(score == null || (score.isFinite() && score in 0.0..1.0))
+    require(margin == null || (margin.isFinite() && margin in 0.0..1.0))
+
+    database.transaction { connection ->
+        val current = connection.rawQuery(
+            "SELECT * FROM anime WHERE id = ? LIMIT 1",
+            arrayOf(animeId.toString()),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) throw NoSuchElementException("Anime ID does not exist.")
+            cursor.toAnimeRecord()
+        }
+        if (current.anilistId != null ||
+            current.anilistMatchManual == true ||
+            current.metadataSource == "manual" ||
+            current.metadataStatus == "manual"
+        ) {
+            return@transaction current
+        }
+
+        val values = ContentValues().apply {
+            put("anilist_match_status", status)
+            if (score == null) putNull("anilist_match_score") else put("anilist_match_score", score)
+            if (margin == null) putNull("anilist_match_margin") else put("anilist_match_margin", margin)
+            if (status == "ambiguous") {
+                put("metadata_status", "ambiguous")
+                if (current.metadataConfidence.isNullOrBlank() || current.metadataConfidence == "low") {
+                    put("metadata_confidence", "medium")
+                }
+            }
+        }
+        connection.update(
+            "anime",
+            values,
+            "id = ? AND anilist_id IS NULL AND COALESCE(anilist_match_manual, 0) = 0",
+            arrayOf(animeId.toString()),
+        )
+        connection.rawQuery(
+            "SELECT * FROM anime WHERE id = ? LIMIT 1",
+            arrayOf(animeId.toString()),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.toAnimeRecord()
+            else throw NoSuchElementException("Anime disappeared while recording AniList match outcome.")
+        }
+    }
+}
