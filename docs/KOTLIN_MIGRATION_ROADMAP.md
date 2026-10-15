@@ -40,6 +40,43 @@ Aceitação da etapa: o código e os testes de contrato foram adicionados, mas o
 
 Próximo pacote funcional: MIG-02 — contratos de domínio e baseline de paridade, sem alterar o schema v29. O grafo de dependências agora fornece a estrutura para os consumidores nativos, mas não comprova a paridade funcional de parsing, identidade, metadata ou reconciliação.
 
+## Estado transversal — Prompt 03/29: camada de dados SQLite Kotlin
+
+Referência de execução desta etapa: branch `implementation/prompt-03-sqlite-data-layer-20261015`, criada a partir da `main` observada em `4b42eea36bdeaeea55c4bba3a2f36d4fedc8f1cb`. A implementação está sendo revisada neste PR; somente o SHA final com workflows obrigatórios verdes poderá ser aceito como entrega validada.
+
+### Implementado neste pacote
+
+- Mantido o arquivo SQLite canônico `filesDir/data/library.sqlite3` e o schema v29 definido por `core/library_store.py`; sem Room, banco paralelo, mudança de schema ou migração destrutiva.
+- Reutilizados o database, repositório, modelos, serviço de consulta, serviço da lista pessoal, serviço de consumo e repository de configurações que já existiam na fundação nativa.
+- Adicionadas operações Kotlin transacionais para leitura por chave local, resolução exata entre caminho absoluto/file URI, consulta por identidade de mídia, pin, nota pessoal, tags, associação AniList, edição manual de metadata e remoção de marcadores de edição manual.
+- Adicionado o método de consumo que reproduz a semântica de `LibraryStore.set_watched`: progresso e estado de conclusão são persistidos juntos; desfazer “assistido” zera o progresso, e a duração conhecida é usada ao marcar como assistido.
+- Conectado `ReiAnixLibraryViewModel.setEpisodeWatched` ao escritor Kotlin; a ponte existente só republica o snapshot depois do commit, sem executar a mesma mutação em Python.
+- Preservados os serviços de consulta paginada, pesquisa, patch de metadados e indexação de snapshots do scanner nativo; nenhuma lógica de scanner, cliente AniList, artwork, backup ou player foi reescrita.
+- Adicionado teste de runtime isolado ao conjunto Kotlin/JVM já existente e teste Python de contrato para o workflow normal.
+
+### Correção pontual do Prompt 03.1 — resolução de associação AniList pendente
+
+A resolução nativa agora atualiza a linha local `anime`, escreve o mesmo ID na tabela canônica `associations` e remove a linha correspondente de `pending_matches` na mesma transação. A escolha pendente é persistida como match manual, em linha com `LibraryService.resolve_match`. A resolução falha antes de gravar quando a chave local não existe; testes de regressão cobrem a consulta pública imediatamente após a resolução, a preservação da pendência para anime inexistente e rollback quando a gravação em `associations` falha. Nenhum schema, versão do banco, writer Python, tela ou subsistema externo é alterado por esta correção.
+
+### Correção complementar do Prompt 03.2 — validação do estado de pendência AniList
+
+A operação Kotlin lê `pending_matches` e `associations` dentro da mesma transação das gravações. Uma pendência correspondente autoriza a resolução; sem pendência, só uma associação anterior positiva e coerente com `anime.anilist_id` autoriza a substituição. Quando nenhuma condição existe, a chamada é rejeitada antes de modificar qualquer linha. Os testes JVM existentes agora incluem a rejeição sem escrita e a troca autorizada sem pendência, preservando também a cobertura anterior de resolução pendente, anime local inexistente e rollback.
+
+A inspeção do código Python revelou uma diferença importante: `LibraryStore.anilist_match(lookup)` consulta a linha em `anime` e retorna um registro mesmo quando `anilist_id` está vazio; portanto, a mera existência da linha local não comprova uma associação efetiva. Para atender à precondição explícita deste prompt e impedir resoluções obsoletas, o Kotlin valida o ID persistido e sua coerência com `associations`. Nenhum código Python foi alterado neste prompt; a semântica legada permanece documentada como uma questão de paridade futura, fora do escopo desta correção.
+A validação automática do commit corretivo e os artefatos correspondentes devem ser registrados apenas depois que o run de PR referente ao SHA final terminar.
+
+### Limite de ownership que permanece explícito
+
+O adapter `data/library/ReiAnixLibraryRepository.kt` continua responsável pela projeção/IPC de várias ações ainda híbridas. A gravação de favoritos já era nativa antes deste pacote; a alteração real de ownership neste prompt é o estado assistido. As APIs nativas de metadata manual, tags, notas e pin agora existem, mas ainda não significam que todas as telas/ações Flet/Python que as expõem tenham sido migradas para consumidores Kotlin. Também permanecem no fluxo de transição as mutações de fontes de descoberta e reconciliação geral, alguns fluxos de associação/matching, publicação de artwork, backup/restauração e preferências ainda delegadas ao adapter legado. Cada uma depende de migrar seu consumidor/efeito colateral sem replicar writers; não foi fingido que essas responsabilidades desapareceram.
+
+Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas de scanner/SAF/MediaStore, artwork, AniList e player enquanto houver consumidores ativos. Não interprete a existência de métodos Kotlin como evidência de que cada chamada de produção já foi trocada.
+
+### Verificação da entrega
+
+- O contrato do schema e a ausência de escrita destrutiva são mantidos pelo database existente.
+- A cobertura JVM adicionada não foi executada manualmente e continua no workflow manual `workflow_dispatch`, conforme a regra do projeto.
+- A aceitação aguarda o workflow obrigatório no SHA final do PR, conferência de jobs/status e confirmação real de APK/ZIP quando publicados. Um run de outro SHA não vale para esta etapa.
+
 ## 3. Dependências de alto nível
 
 - **Contratos, SQLite e domínio (MIG-02 a MIG-04)** sustentam os subsistemas posteriores porque definem IDs, transações, schema, modelos, erros e ownership.

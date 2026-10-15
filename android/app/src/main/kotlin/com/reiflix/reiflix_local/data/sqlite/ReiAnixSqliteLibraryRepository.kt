@@ -850,7 +850,7 @@ internal fun Cursor.toAnimeRecord() = ReiAnixAnimeRecord(
     anilistMatchManual = optionalBoolean("anilist_match_manual"),
 )
 
-private fun Cursor.toEpisodeRecord() = ReiAnixEpisodeRecord(
+internal fun Cursor.toEpisodeRecord() = ReiAnixEpisodeRecord(
     id = requiredLong("id"),
     animeId = requiredLong("anime_id"),
     path = requiredString("path"),

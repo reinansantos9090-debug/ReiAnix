@@ -24,6 +24,24 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
         return library.getEpisode(episodeId)?.toConsumptionProgress()
     }
 
+    /**
+     * Native equivalent of LibraryStore.set_watched. Unlike markWatched(), this
+     * operation intentionally resets progress to zero when the item is marked
+     * unwatched, matching the existing library action contract.
+     */
+    suspend fun setWatched(
+        episodeId: Long,
+        watched: Boolean,
+        playedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
+    ): Progress {
+        require(episodeId > 0L) { "episodeId must be a positive persisted ID." }
+        return library.setEpisodeWatchedState(
+            episodeId = episodeId,
+            watched = watched,
+            playedAtEpochSeconds = playedAtEpochSeconds,
+        ).toConsumptionProgress()
+    }
+
     /** The persisted episode ID is authoritative; title/path fallback matching is forbidden. */
     suspend fun saveProgress(
         episodeId: Long, positionMs: Long, durationMs: Long? = null,

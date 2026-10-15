@@ -124,16 +124,25 @@ class ReiAnixLibraryViewModel(
 
     private val repository = ReiAnixLibraryRepository(context)
     /**
-     * Direct, read-only queries against the canonical SQLite database. The legacy
-     * repository remains responsible for command/IPC flows until each mutation
-     * is migrated with parity and single-writer guarantees.
+     * All native library consumers below share one repository/database instance.
+     * The legacy repository remains only for projection/IPC operations that have
+     * not yet been migrated; it is not the writer for favorite/watched mutations.
      */
-    private val nativeLibraryQueries = dependencies?.libraryQueryService ?: ReiAnixLibraryQueryService(context)
-    /** Favorite membership uses the canonical SQLite store; playback remains in the consumption service. */
+    private val nativeLibraryRepository = dependencies?.sqliteLibraryRepository
+        ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository(context)
+    private val nativeLibraryQueries = dependencies?.libraryQueryService
+        ?: ReiAnixLibraryQueryService(context, nativeLibraryRepository)
     private val personalListService = dependencies?.personalListService
-        ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(context)
+        ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(
+            nativeLibraryRepository.database,
+            nativeLibraryRepository,
+        )
+    private val consumptionService = dependencies?.consumptionService
+        ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService(nativeLibraryRepository)
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
+    private val _consumptionMutationError = MutableStateFlow<String?>(null)
+    val consumptionMutationError: StateFlow<String?> = _consumptionMutationError.asStateFlow()
     /** SAF mutations operate only on persisted, user-authorized content URIs. */
     private val nativeFileOperations = SafFileOperations(context.applicationContext)
 
@@ -1128,8 +1137,28 @@ class ReiAnixLibraryViewModel(
         return result
     }
 
-    fun setEpisodeWatched(episodeId: Long, watched: Boolean) =
-        repository.setEpisodeWatched(episodeId, watched)
+    fun setEpisodeWatched(episodeId: Long, watched: Boolean) {
+        if (episodeId <= 0L) {
+            _consumptionMutationError.value = "Não foi possível atualizar o episódio: identificador inválido."
+            return
+        }
+        viewModelScope.launch {
+            _consumptionMutationError.value = null
+            try {
+                consumptionService.setWatched(episodeId, watched)
+                // The projection bridge now only republishes the committed canonical
+                // row; the watched-state mutation itself is performed once by Kotlin.
+                repository.publishCatalog()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _consumptionMutationError.value = error.message
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { "Não foi possível atualizar o episódio: $it" }
+                    ?: "Não foi possível atualizar o episódio."
+            }
+        }
+    }
 
     fun openEpisode(episodeId: Long): String = repository.openEpisode(episodeId)
 
