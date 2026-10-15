@@ -1515,7 +1515,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
         assertTrue(repository.clearAniListMatchByLookupTitle("catalog-key"))
         val cleared = repository.getAniListMatchByLookupTitle("catalog-key")
-        assertEquals(null, cleared?.anilistId)
+        assertNull(cleared?.anilistId)
         assertEquals("unmatched", cleared?.status)
         assertTrue(repository.listPendingAniListMatches().isEmpty())
         val animeAfterClear = repository.getAnime(1L)
