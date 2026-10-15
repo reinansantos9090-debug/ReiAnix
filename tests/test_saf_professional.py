@@ -88,8 +88,15 @@ class TestSafProfessionalContract(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("reconcile_saf_document_identity_change", store)
         self.assertIn("UPDATE episode_observations", store)
-        self.assertIn("reconcile_saf_document_identity_change", service)
+        self.assertIn("reconcile_saf_document_identity_change", service)  # compatibility for older queued events
+        native_repository = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("reconcileSafDocumentIdentityChange(", native_repository)
+        self.assertIn("nativeLibraryRepository.reconcileSafDocumentIdentityChange(", view_model)
+        self.assertIn("nativeIdentityOwner", view_model)
         self.assertIn("saf_document_identity_change", main)
+        self.assertIn("payload.get('nativeIdentityOwner') is True", main)
         self.assertIn("NativeMailbox.write(appContext, event)", view_model)
         self.assertIn("treeUri", view_model)
         self.assertIn("catalogReconciliationQueued", view_model)
