@@ -176,24 +176,23 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Objetivo:** Migrar armazenamento e descoberta para Kotlin sem criar scanners, bancos ou coordenadores paralelos.
 
-**Status:** EM ANDAMENTO — scanners SAF/MediaStore/Broad Storage e indexação SQLite existem, mas a independência ponta a ponta de Python ainda não foi comprovada.
+**Status:** EM ANDAMENTO — seleção, atualização Compose, descoberta SAF e indexação normal são nativas; ainda há fallback Python para recuperação de scan e consumidores Flet/identidade legados.
 
-**Implementado nesta correção:** Telas Compose iniciam o seletor diretamente em MainActivity; a fonte é registrada na tabela folders do SQLite canônico antes da descoberta; gatilhos de inicialização/volume executam scanners nativos; MediaStore/Broad Storage autorizados são disparados pelos scanners nativos; remoção Compose altera a mesma base e revoga o grant Android. Eventos de compatibilidade identificam quando a mutação da fonte já ocorreu em Kotlin para evitar gravação duplicada.
+**Implementado nesta correção:** A seleção SAF persiste a fonte e a identidade usando argumentos nomeados no repositório SQLite canônico; a remoção pelo bridge delega a liberação do grant e a remoção/reconciliação de observações ao mesmo repositório Kotlin; o refresh Compose envia a ação nativa scan_library, aguarda estados terminais e publica status real; o fluxo normal finaliza scan_runs em Kotlin antes do evento terminal. Quando nativeLibraryIndexOwner e nativeScanRunOwner confirmam ownership, main.py apenas lê o catálogo para a projeção e não repete a finalização.
 
-**Bloqueios restantes:** Resultados terminais ainda passam por NativeMailbox e main.py chama LibraryService.finish_ingest_documents para finalizar scan_runs e atualizar a projeção; reconciliação de identidade documental e alguns caminhos Flet de seleção/remoção/rescan continuam Python; parte do estado Compose ainda vem da projeção JSON. NativeScanPublisher/mailbox não foram removidos porque outros consumidores dependem deles.
+**Bloqueios restantes:** A recuperação de receipts antigos/interrompidos ainda pode usar LibraryService.finish_ingest_documents como fallback de bookkeeping; os fluxos Flet legados e a reconciliação de saf_document_identity_change ainda usam consumidores Python; a publicação de estado terminal continua passando por NativeMailbox/main.py. Nenhum destes pontos está sendo declarado migrado.
 
-**Arquivos principais:** MainActivity.kt; NativeScanController.kt; NativeScanRunner.kt; NativeScanPublisher.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; NativeIndex.kt; ReiAnixSqliteLibraryRepository.kt; ReiAnixLibraryViewModel.kt; core/scan_coordinator.py; core/library_service.py; core/storage_access.py.
+**Arquivos principais:** MainActivity.kt; NativeScanController.kt; NativeScanRunner.kt; NativeScanPublisher.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; NativeIndex.kt; ReiAnixSqliteLibraryRepository.kt; ReiAnixLibraryRepository.kt; NativeRequestState.kt; core/android_bridge.py; core/library_service.py; core/storage_access.py; core/scan_coordinator.py.
 
-**Dependências:** MIG-04 e MIG-05. A finalização nativa, reconciliação de identidade e projeção de estados precisam ser concluídas antes do encerramento real da etapa.
+**Dependências:** MIG-04 e MIG-05. A finalização de recuperação, a reconciliação de identidade e os consumidores legados precisam ser encerrados antes da aceitação final.
 
 **Preservar:** grants SAF válidos, identidade após move/rename, observações de outras fontes e histórico de reprodução; varredura parcial ou permissão revogada não comprova ausência de arquivos.
 
-**Critérios restantes:** Migrar finalização de scan_runs/estados de fonte para Kotlin; migrar reconciliação de identidade e consumidores Flet de seleção/remoção/rescan; conectar estados/resultados à UI nativa; provar que ScanCoordinator/LibraryService não finalizam resultados Kotlin; validar varreduras completas/parciais/canceladas/sem autorização sem mutações duplicadas.
+**Critérios restantes:** Migrar a finalização de recuperação sem bloquear a thread principal; migrar reconciliação de identidade e consumidores Flet de seleção/remoção/rescan; manter a projeção de UI sem delegar descoberta ou escrita normal ao Python; validar varreduras completas/parciais/canceladas/sem autorização sem mutações duplicadas.
 
-**Verificação-base:** O commit 188f868d2f8cbe6d6fc756ea8a60241d1f1bd528 passou workflows APK/certificação, mas é anterior à correção e não a valida.
+**Verificação-base:** O commit 188f868d2f8cbe6d6fc756ea8a60241d1f1bd528 passou workflows APK/certificação, mas é anterior às correções deste PR e não as valida. O workflow #5543 falhou na suíte Python e não gerou APK/ZIP; o workflow do SHA final desta correção ainda precisa concluir com sucesso.
 
 **Prioridade:** P0.
-
 
 ### MIG-07 — AniList, matching, metadados e localização PT-BR
 
