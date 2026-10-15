@@ -414,6 +414,7 @@ class AndroidBridge:
     async def open_broad_storage_settings(self): return await self._launch("open_broad_storage_settings")
     async def open_storage_settings(self): return await self._launch("open_storage_settings")
     async def scan_all_storage(self): return await self._launch("scan_all_storage")
+    async def scan_library(self): return await self._launch("scan_library")
     async def request_thumbnail(self, uri: str, size: int = 0, modified_at: int = 0, media_identity: str = ""): return await self._launch("extract_thumbnail", uri=uri, size=max(0, int(size)), modified_at=max(0, int(modified_at)), media_identity=str(media_identity or ""))
     async def cancel_scans(self): return await self._launch("cancel_scan")
     async def open_library(self, *, start_destination: str | None = None):
