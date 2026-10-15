@@ -1,7 +1,10 @@
 package com.reiflix.reiflix_local.data.library
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.FileObserver
+import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
@@ -246,6 +249,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         val completedOnly: Boolean,
     )
     private var pendingRefreshPage: RefreshPageRequest? = null
+    private var pendingRefreshRequestId: String? = null
 
     private val snapshotObserver = object : FileObserver(bridgeDirectory.path, FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.CREATE) {
         override fun onEvent(event: Int, path: String?) {
@@ -279,6 +283,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         watchingOnly: Boolean = false,
         completedOnly: Boolean = false,
     ) {
+        val requestId = UUID.randomUUID().toString()
         synchronized(refreshRequestGuard) {
             // A refresh already in progress still satisfies the scan request, but
             // the most recent UI filters must win when its result is published.
@@ -291,8 +296,49 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 completedOnly = completedOnly,
             )
             if (!refreshInFlight.compareAndSet(false, true)) return
+            pendingRefreshRequestId = requestId
         }
-        send(ReiAnixLibraryCommandCodec.Action.REFRESH)
+        val uri = Uri.parse(
+            "reiflix://native?action=scan_library" +
+                "&request_id=" + Uri.encode(requestId) +
+                "&protocol_version=2" +
+                "&created_at=" + System.currentTimeMillis(),
+        )
+        try {
+            appContext.startActivity(
+                Intent(Intent.ACTION_VIEW, uri)
+                    .setClass(appContext, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            scope.launch {
+                stateMutex.withLock {
+                    _state.value = _state.value.copy(
+                        lastCommandId = requestId,
+                        lastCommandAction = ReiAnixLibraryCommandCodec.Action.REFRESH.value,
+                        lastCommandStatus = "QUEUED",
+                        lastCommandError = null,
+                    )
+                }
+            }
+        } catch (exception: Exception) {
+            synchronized(refreshRequestGuard) {
+                if (pendingRefreshRequestId == requestId) {
+                    pendingRefreshRequestId = null
+                    pendingRefreshPage = null
+                    refreshInFlight.set(false)
+                }
+            }
+            scope.launch {
+                stateMutex.withLock {
+                    _state.value = _state.value.copy(
+                        lastCommandId = requestId,
+                        lastCommandAction = ReiAnixLibraryCommandCodec.Action.REFRESH.value,
+                        lastCommandStatus = "FAILED",
+                        lastCommandError = exception.message ?: "Não foi possível iniciar a varredura nativa.",
+                    )
+                }
+            }
+        }
     }
 
     fun loadLibraryPage(
@@ -598,6 +644,11 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             result.status !in setOf("QUEUED", "RUNNING")
         ) {
             synchronized(refreshRequestGuard) {
+                val expectedRequestId = pendingRefreshRequestId
+                if (expectedRequestId != null && result.requestId != expectedRequestId) {
+                    return@synchronized
+                }
+                pendingRefreshRequestId = null
                 refreshInFlight.set(false)
                 val request = pendingRefreshPage
                 pendingRefreshPage = null
