@@ -509,6 +509,11 @@ suspend fun ReiAnixSqliteLibraryRepository.setEpisodeWatchedState(
             if (!cursor.moveToFirst()) throw NoSuchElementException("Episode ID does not exist: $episodeId")
             cursor.toEpisodeRecord()
         }
+        // Do not let a delayed UI mutation move the durable consumption clock
+        // backwards over a newer player checkpoint.
+        if (existing.lastPlayedAt != null && existing.lastPlayedAt > playedAtEpochSeconds) {
+            return@transaction existing
+        }
         val duration = existing.duration?.takeIf { it.isFinite() } ?: 0.0
         val progress = if (watched && duration > 0.0) duration else 0.0
         val values = ContentValues().apply {
