@@ -511,6 +511,44 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun aniListAssociationPersistsOriginalAndLocalizedSynopsisSeparately() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val updated = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = "A sinopse em português.",
+                descriptionOriginal = "The original synopsis.",
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+
+        assertEquals("A sinopse em português.", updated.description)
+        assertEquals("The original synopsis.", updated.descriptionOriginal)
+        assertEquals(42L, updated.anilistId)
+    }
+
+    @Test
+    fun genericMetadataPatchPersistsOriginalSynopsisWithoutClearingLocalFields() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val before = repository.getAnime(1L)!!
+        val updated = repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                descriptionOriginal = "The original synopsis.",
+            ),
+        )
+
+        assertEquals("The original synopsis.", updated.descriptionOriginal)
+        assertEquals(before.localPath, updated.localPath)
+        assertEquals(before.lookupTitle, updated.lookupTitle)
+    }
+
+    @Test
     fun manualAniListAssociationPreservesProtectedAndManualMetadataBookkeeping() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)
