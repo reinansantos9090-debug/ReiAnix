@@ -1895,28 +1895,40 @@ class MainActivity : FlutterFragmentActivity() {
         val persistedStatus = persistedInspection.optString("status")
         if (persistedStatus == SafScanner.STATUS_REVOKED) {
             Log.w(tag, "SAF permission revoked")
-            NativeMailbox.write(this, JSONObject().put("type", "saf_permission")
-                .put("requestId", requestId ?: "")
-                .put("payload", SafScanner.identityPayload(treeUri)
-                    .put("granted", false).put("status", SafScanner.STATUS_REVOKED)
-                    .put("error", persistedInspection.optString("error", "persisted_permission_missing"))))
-            NativeMailbox.write(this, JSONObject().put("type", "saf_error")
-                .put("requestId", requestId ?: "")
-                .put("message", "A permissão desta pasta foi removida. Escolha a pasta novamente.")
-                .put("payload", SafScanner.identityPayload(treeUri).put("scanId", scanId).put("status", SafScanner.STATUS_REVOKED)))
+            val error = persistedInspection.optString("error", "persisted_permission_missing")
+            lifecycleScope.launch {
+                ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository
+                    .updateFolderAuthorization(reference, "revoked", error)
+                NativeMailbox.write(this@MainActivity, JSONObject().put("type", "saf_permission")
+                    .put("requestId", requestId ?: "")
+                    .put("payload", SafScanner.identityPayload(treeUri)
+                        .put("granted", false).put("status", SafScanner.STATUS_REVOKED)
+                        .put("error", error).put("nativeStorageOwner", true)))
+                NativeMailbox.write(this@MainActivity, JSONObject().put("type", "saf_error")
+                    .put("requestId", requestId ?: "")
+                    .put("message", "A permissão desta pasta foi removida. Escolha a pasta novamente.")
+                    .put("payload", SafScanner.identityPayload(treeUri).put("scanId", scanId)
+                        .put("status", SafScanner.STATUS_REVOKED).put("nativeStorageOwner", true)))
+            }
             return null
         }
         if (persistedStatus != SafScanner.STATUS_COMPLETED) {
-            NativeMailbox.write(this, JSONObject().put("type", "saf_error")
-                .put("requestId", requestId ?: "")
-                .put("message", if (persistedStatus == SafScanner.STATUS_UNAVAILABLE) {
-                    "O provedor desta pasta está indisponível no momento."
-                } else {
-                    "A árvore SAF não pôde ser validada."
-                })
-                .put("payload", SafScanner.identityPayload(treeUri).put("scanId", scanId)
-                    .put("status", if (persistedStatus == SafScanner.STATUS_UNAVAILABLE) SafScanner.STATUS_UNAVAILABLE else SafScanner.STATUS_FAILED)
-                    .put("error", persistedInspection.optString("error", "provider_unavailable"))))
+            val status = if (persistedStatus == SafScanner.STATUS_UNAVAILABLE) SafScanner.STATUS_UNAVAILABLE else SafScanner.STATUS_FAILED
+            val error = persistedInspection.optString("error", "provider_unavailable")
+            val message = if (persistedStatus == SafScanner.STATUS_UNAVAILABLE) {
+                "O provedor desta pasta está indisponível no momento."
+            } else {
+                "A árvore SAF não pôde ser validada."
+            }
+            lifecycleScope.launch {
+                ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository
+                    .updateFolderAuthorization(reference, "unavailable", error)
+                NativeMailbox.write(this@MainActivity, JSONObject().put("type", "saf_error")
+                    .put("requestId", requestId ?: "")
+                    .put("message", message)
+                    .put("payload", SafScanner.identityPayload(treeUri).put("scanId", scanId)
+                        .put("status", status).put("error", error).put("nativeStorageOwner", true)))
+            }
             return null
         }
         val scanKey = "saf:$reference"
