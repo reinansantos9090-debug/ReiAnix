@@ -947,9 +947,16 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         self.assertIn('"scan_library" -> {', activity)
         self.assertIn('"type", "saf_library_scan_complete"', activity)
 
+        bridge = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
+        self.assertIn('async def scan_library(self): return await self._launch("scan_library")', bridge)
+
         main = (ROOT / "main.py").read_text(encoding="utf-8")
         self.assertIn("elif event_type == 'saf_library_scan_complete':", main)
         self.assertIn('compose_library_bridge.write_command_result(', main)
+        refresh_start = main.index("async def refresh_library")
+        refresh = main[refresh_start:main.index("async def request_home_refresh", refresh_start)]
+        self.assertIn("await bridge.scan_library()", refresh)
+        self.assertIn("Non-Android development fallback only", refresh)
 
     def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
