@@ -1179,8 +1179,24 @@ class ReiAnixSqliteLibraryRepository(
             }
 
             val artwork = connection.rawQuery(
-                "SELECT * FROM artwork WHERE status != 'failed' " +
-                    "ORDER BY priority DESC, updated_at DESC, id DESC",
+                """
+                SELECT art.* FROM artwork art
+                WHERE art.status != 'failed' AND (
+                    (
+                        art.entity_type IN ('anime','movie')
+                        AND EXISTS (
+                            SELECT 1 FROM anime a WHERE CAST(a.id AS TEXT)=art.entity_id
+                        )
+                    )
+                    OR (
+                        art.entity_type='episode' AND art.artwork_type='episode_thumbnail'
+                        AND EXISTS (
+                            SELECT 1 FROM episodes e WHERE CAST(e.id AS TEXT)=art.entity_id
+                        )
+                    )
+                )
+                ORDER BY art.priority DESC, art.updated_at DESC, art.id DESC
+                """.trimIndent(),
                 null,
             ).use { cursor ->
                 buildList {
@@ -1228,10 +1244,13 @@ class ReiAnixSqliteLibraryRepository(
                 }
             }
 
-            animes.map { anime ->
+            animes.mapNotNull { anime ->
+                val animeEpisodes = episodesByAnime[anime.id].orEmpty()
+                // LibraryStore.catalog() excludes anime that have no surviving local episode rows.
+                if (animeEpisodes.isEmpty()) return@mapNotNull null
                 ReiAnixLibraryCatalogRow(
                     anime = anime,
-                    episodes = episodesByAnime[anime.id].orEmpty(),
+                    episodes = animeEpisodes,
                     animeArtwork = artworkByAnime[anime.id].orEmpty(),
                     episodeArtwork = episodeArtworkByAnime[anime.id].orEmpty(),
                     genres = genresByAnime[anime.id].orEmpty(),
