@@ -172,23 +172,19 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
-### MIG-06 — Storage, permissões SAF e operações de arquivo
+### MIG-06 — Storage, permissões SAF e operações de arquivo (Concluído em Prompt 04/29 e 04.1/29)
 
-**Objetivo:** Tornar o ciclo de permissões, onboarding e operações sobre URIs integralmente nativo.
+**Objetivo:** Tornar o ciclo de permissões, onboarding, operações de arquivo e varredura de armazenamento integralmente nativo em Kotlin.
 
-**Escopo fechado:** Persistir/revalidar grants, picker de diretório, onboarding, permissões MediaStore por versão Android, acesso amplo opcional, listar/criar/mover/renomear/excluir, observers/lifecycle e reconciliação da identidade.
+**Status:** Concluído e verificado em Kotlin nativo (ver `docs/KOTLIN_STORAGE_MIGRATION.md`).
 
-**Arquivos principais:** MainActivity.kt; StorageAuthorization.kt; SafFileOperations.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; ui/storage/*; core/storage_access.py.
+**Escopo implementado:** Persistência e revalidação de grants SAF, picker de diretório, onboarding, permissões MediaStore por versão do Android, BroadStorage, operações SAF (`SafFileOperations`: listar, criar, mover, renomear, excluir), coordenação da varredura (`NativeScanRunner`, `NativeScanController`) e indexação direta no SQLite canônico (`sqliteLibraryRepository.indexDiscoveredMedia`) com `nativeLibraryIndexOwner = true` para todas as fontes (SAF, MediaStore e BroadStorage).
 
-**Dependências:** MIG-04 e MIG-05.
+**Arquivos principais:** MainActivity.kt; StorageAuthorization.kt; SafFileOperations.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; NativeScanRunner.kt; NativeScanController.kt; NativeScanPublisher.kt; ReiAnixSqliteLibraryRepository.kt; ui/storage/*.
 
-**Preservar:** Grants SAF válidos, acesso às pastas previamente autorizadas e identidade após move/rename; não exigir seleção repetida quando o grant ainda é válido.
+**Preservado:** Grants SAF válidos, URIs de conteúdo para ExoPlayer, integridade do catálogo e histórico de consumo em varreduras parciais/canceladas, deduplicação e schema v29.
 
-**Riscos:** Solicitar novamente a pasta a cada startup, perder identidade ao mover ou renomear arquivo.
-
-**Critérios objetivos de aceitação:** Grants reabrem após reinício; permissões revogadas geram erro recuperável; operações e reconciliação do catálogo funcionam sem mailbox/Python.
-
-**Verificações:** tests/test_storage_onboarding.py, test_storage_permission_flow.py e test_saf_professional.py na CI comum. Não executar workflow instrumentado.
+**Verificações:** Sintaxe e compilação Python (`compileall`), contratos e pre-commit checks. Testes Kotlin/JVM continuam no workflow manual do projeto.
 
 **Prioridade:** P0.
 

@@ -725,6 +725,50 @@ object NativeScanRunner {
 
     }
 
+    private fun parseDocumentsToDiscoveredMedia(
+        scanDocuments: JSONArray,
+        defaultSourceFolder: String,
+    ): List<NativeDiscoveredMedia> = buildList {
+        for (i in 0 until scanDocuments.length()) {
+            val document = scanDocuments.optJSONObject(i) ?: continue
+            val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
+            val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
+            val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
+            val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
+            val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
+            val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
+            val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
+            val size = if (document.has("size") && !document.isNull("size")) document.optLong("size").takeIf { it >= 0L } else null
+            val modifiedMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt").takeIf { it >= 0L } else null
+            val ambiguities = parsed.optJSONArray("ambiguities")
+            add(
+                NativeDiscoveredMedia(
+                    location = uri,
+                    fileName = name,
+                    scopeLocation = documentId ?: document.optString("relativePath").takeIf { it.isNotBlank() },
+                    scopeVerified = document.optBoolean("scopeVerified", false),
+                    animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
+                    season = season,
+                    episodeNumber = episodeNumber,
+                    absoluteNumber = absoluteNumber,
+                    episodeType = parsed.optString("kind").takeIf { it.isNotBlank() },
+                    episodeTitle = parsed.optString("displayTitle").takeIf { it.isNotBlank() },
+                    identificationSource = parsed.optString("identificationSource").takeIf { it.isNotBlank() },
+                    identificationConfidence = parsed.optString("confidence").takeIf { it.isNotBlank() },
+                    mimeType = document.optString("mimeType").takeIf { it.isNotBlank() && it != "null" },
+                    sizeBytes = size,
+                    modifiedAtEpochSeconds = modifiedMillis?.div(1000.0),
+                    sourceFolder = defaultSourceFolder,
+                    relativePath = document.optString("relativePath").takeIf { it.isNotBlank() },
+                    volumeId = document.optString("volumeId").takeIf { it.isNotBlank() } ?: document.optString("volumeName").takeIf { it.isNotBlank() },
+                    volumeUuid = document.optString("volumeUuid").takeIf { it.isNotBlank() },
+                    mediaIdentity = document.optString("stableId").takeIf { it.isNotBlank() },
+                    ambiguous = ambiguities != null && ambiguities.length() > 0,
+                )
+            )
+        }
+    }
+
     suspend fun runBroadScan(
         context: Context,
         scanId: String,
@@ -774,6 +818,48 @@ object NativeScanRunner {
                     .put("scanId", scanId).put("scopeKind", "global").put("scopeRef", "broad-storage")
                     .put("generationId", "native-scoped")
                     .put("generationStatus", generationStatus)
+
+                // Index discovered BroadStorage files in canonical native SQLite
+                val volumeScopes = result.optJSONArray("volumeScopes") ?: JSONArray()
+                for (i in 0 until volumeScopes.length()) {
+                    val volumeScope = volumeScopes.optJSONObject(i) ?: continue
+                    val volumeId = volumeScope.optString("volumeId").takeIf { it.isNotBlank() } ?: continue
+                    val scanGen = volumeScope.optLong("scanGeneration", 0L)
+                    val scopeKey = "broad-storage:$volumeId"
+                    val volumeStatus = volumeScope.optString("status")
+                    val complete = volumeScope.optBoolean("complete", false)
+                    val scanDocuments = if (complete) {
+                        NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_BROAD, scopeKey)
+                    } else {
+                        NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_BROAD, scopeKey, scanGen)
+                    } ?: JSONArray()
+                    if (scanDocuments.length() > 0) {
+                        val discovered = parseDocumentsToDiscoveredMedia(scanDocuments, scopeKey)
+                        val snapshot = NativeLibraryScanSnapshot(
+                            operationId = scanId,
+                            source = NativeIndex.SOURCE_BROAD,
+                            scopeRoot = scopeKey,
+                            expectedLocations = setOf(scopeKey),
+                            processedLocations = if (complete) setOf(scopeKey) else emptySet(),
+                            failedLocations = emptySet(),
+                            unprocessedLocations = if (complete) emptySet() else setOf(scopeKey),
+                            status = volumeStatus,
+                            complete = complete,
+                            cancelled = result.optBoolean("cancelled"),
+                            authorizationValid = true,
+                            items = discovered,
+                            scopeReference = scopeKey,
+                            scanGeneration = scanGen,
+                        )
+                        runCatching {
+                            ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.indexDiscoveredMedia(snapshot)
+                        }.onFailure { err ->
+                            Log.e(TAG, "Native SQLite indexing failed for BroadStorage volume $volumeId", err)
+                        }
+                    }
+                }
+
+                result.put("nativeLibraryIndexOwner", true)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "broad_storage_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
                 NativeScanController.complete(scanId, terminalStatus, result)
@@ -853,6 +939,48 @@ object NativeScanRunner {
                         triggerRequestId = requestId,
                     )
                 }
+
+                // Index discovered MediaStore files in canonical native SQLite
+                val volumeScopes = result.optJSONArray("volumeScopes") ?: JSONArray()
+                for (i in 0 until volumeScopes.length()) {
+                    val volumeScope = volumeScopes.optJSONObject(i) ?: continue
+                    val volumeId = volumeScope.optString("volumeId").takeIf { it.isNotBlank() } ?: continue
+                    val scanGen = volumeScope.optLong("scanGeneration", 0L)
+                    val scopeKey = "mediastore:$volumeId"
+                    val volumeStatus = volumeScope.optString("status")
+                    val complete = volumeScope.optBoolean("complete", false)
+                    val scanDocuments = if (complete) {
+                        NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey)
+                    } else {
+                        NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, scanGen)
+                    } ?: JSONArray()
+                    if (scanDocuments.length() > 0) {
+                        val discovered = parseDocumentsToDiscoveredMedia(scanDocuments, scopeKey)
+                        val snapshot = NativeLibraryScanSnapshot(
+                            operationId = scanId,
+                            source = NativeIndex.SOURCE_MEDIASTORE,
+                            scopeRoot = scopeKey,
+                            expectedLocations = setOf(scopeKey),
+                            processedLocations = if (complete) setOf(scopeKey) else emptySet(),
+                            failedLocations = emptySet(),
+                            unprocessedLocations = if (complete) emptySet() else setOf(scopeKey),
+                            status = volumeStatus,
+                            complete = complete,
+                            cancelled = result.optBoolean("cancelled"),
+                            authorizationValid = MediaStoreScanner.hasReadPermission(appContext),
+                            items = discovered,
+                            scopeReference = scopeKey,
+                            scanGeneration = scanGen,
+                        )
+                        runCatching {
+                            ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.indexDiscoveredMedia(snapshot)
+                        }.onFailure { err ->
+                            Log.e(TAG, "Native SQLite indexing failed for MediaStore volume $volumeId", err)
+                        }
+                    }
+                }
+
+                result.put("nativeLibraryIndexOwner", true)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "mediastore_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
                 val terminalStatus = ScanResultClassifier.classifyMediaStore(
