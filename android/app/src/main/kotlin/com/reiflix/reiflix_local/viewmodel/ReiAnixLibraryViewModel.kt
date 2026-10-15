@@ -1002,6 +1002,7 @@ class ReiAnixLibraryViewModel(
                     sortLabel = filters.sort,
                     limit = ReiAnixLibraryQueryService.MAX_PAGE_SIZE,
                     offset = offset,
+                    libraryOnly = true,
                 )) {
                     is ReiAnixLibraryQueryResult.Success -> {
                         val page = result.value
