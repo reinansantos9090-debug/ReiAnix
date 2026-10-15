@@ -4669,14 +4669,14 @@ async def main(page: ft.Page):
                                 logger.warning("[ANILIST_METADATA] request rejected reason=invalid_anime_id")
                             else:
                                 metadata = store.anime_metadata_by_id(anime_id)
-                                if not isinstance(metadata, dict) or not metadata.get('anilist_id'):
+                                if not isinstance(metadata, dict):
                                     logger.info("[ANILIST_METADATA] request skipped animeId=%s reason=metadata_unavailable", anime_id)
                                 else:
                                     has_artwork_urls = bool(
                                         str(metadata.get('cover_url') or '').strip()
                                         or str(metadata.get('banner_url') or '').strip()
                                     )
-                                    if request_artwork and has_artwork_urls:
+                                    if request_artwork and metadata.get('anilist_id') and has_artwork_urls:
                                         library.artwork.sync_anime_metadata(
                                             anime_id,
                                             metadata,
