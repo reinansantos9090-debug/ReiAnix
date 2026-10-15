@@ -124,7 +124,7 @@ object NativeScanRunner {
 
             val nativeScanRunOwner = if (payload.optBoolean("nativeLibraryIndexOwner")) {
                 try {
-                    ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.finishNativeScanRun(
+                    ReiAnixAppDependencies.from(appContext).libraryService.finishNativeScanRun(
                         scanId = scanId,
                         requestId = metadata.optString("requestId").takeIf { it.isNotBlank() },
                         sourceKind = NativeIndex.SOURCE_SAF,
@@ -216,7 +216,7 @@ object NativeScanRunner {
                 val stats = payload.optJSONObject("stats") ?: JSONObject()
                 val indexReport = payload.optJSONObject("nativeLibraryIndex")
                 val startedAt = NativeScanController.snapshot(scanId)?.startedAtMillis
-                ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.finishNativeScanRun(
+                ReiAnixAppDependencies.from(appContext).libraryService.finishNativeScanRun(
                     scanId = scanId,
                     requestId = requestId,
                     sourceKind = NativeIndex.SOURCE_SAF,
@@ -503,7 +503,7 @@ object NativeScanRunner {
                                 appContext, NativeIndex.SOURCE_SAF, scanKey, generationId,
                             )
                         ) { "Could not persist the native catalog transaction start receipt." }
-                        val indexReport = ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.indexDiscoveredMedia(snapshot) { outcome, report ->
+                        val indexReport = ReiAnixAppDependencies.from(appContext).libraryService.indexDiscoveredMedia(snapshot) { outcome, report ->
                             indexTransactionOutcome.set(outcome)
                             when (outcome) {
                                 ReiAnixSqliteTransactionOutcome.COMMITTED -> {
