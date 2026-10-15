@@ -224,8 +224,9 @@ suspend fun ReiAnixSqliteLibraryRepository.setAnimeUserTags(
         val tag = raw.orEmpty().trim().split(Regex("\\s+"))
             .filter(String::isNotBlank)
             .joinToString(" ")
-        if (tag.isNotEmpty() && seen.add(tag.lowercase(Locale.ROOT))) {
-            normalized += tag.take(40)
+        val boundedTag = tag.take(40)
+        if (boundedTag.isNotEmpty() && seen.add(boundedTag.lowercase(Locale.ROOT))) {
+            normalized += boundedTag
         }
     }
     val serialized = JSONArray().also { array -> normalized.forEach(array::put) }.toString()
@@ -325,7 +326,8 @@ suspend fun ReiAnixSqliteLibraryRepository.clearManualMetadataByLookupTitle(
             )
         }
         val manualFields = row.third.readJsonStringSet("metadata_manual_fields")
-        val fieldsToRemove = fields?.let { manualFields.intersect(it) } ?: manualFields.toSet()
+        val fieldsToRemove =
+            if (fields.isNullOrEmpty()) manualFields.toSet() else manualFields.intersect(fields)
         manualFields.removeAll(fieldsToRemove)
         val hasAniList = row.second != null
         val values = ContentValues().apply {
