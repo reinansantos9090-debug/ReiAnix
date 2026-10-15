@@ -221,11 +221,11 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 ## Estado transversal — Prompt 06/29: AniList nativo e localização PT-BR
 
-**Implementação nesta branch:** o consumidor Compose utiliza o cliente GraphQL e o serviço AniList Kotlin existentes; a validação do cliente agora rejeita respostas de busca/detalhes malformadas em vez de mascará-las como resultados vazios. O patch de metadata passou a transportar e persistir separadamente a sinopse original e a descrição exibida, sem mudar o schema v29 ou violar a proteção de campos manuais. O localizer Kotlin reaproveita o formato/arquivo de cache legado para tradução PT-BR, faz validação conservadora, respeita cancelamento/timeouts e limita concorrência/tentativas. Após o commit de metadata, o NativeMailbox solicita ao ArtworkEngine existente materializar URLs persistidas.
+Após o commit da metadata, ReiAnixArtworkService em Kotlin baixa, valida e persiste posters/backdrops usando a tabela artwork e atualiza anime.cover_cache com proteção para campos manuais. NativeMailbox publica ARTWORK_PUBLISHED após o commit; o caminho Compose não delega materialização ao ArtworkEngine Python.
 
-**Limite explícito:** core/anilist.py e LibraryService permanecem presentes para caminhos Flet/legados, e ArtworkEngine continua sendo o produtor Python nesta etapa. O Prompt 06 migra o caminho nativo; a remoção integral dos consumidores híbridos e do runtime continua dependente das fases de corte posteriores. A auditoria não classifica o subsistema global como 100% Kotlin enquanto esses consumidores continuarem disponíveis.
+**Limite explícito:** core/anilist.py, core/library_service.py e core/artwork.py continuam disponíveis para consumidores Flet/legados que ainda não foram migrados. No caminho Compose, LibraryService não executa o ArtworkEngine e ReiAnixArtworkService é o writer persistente; o subsistema global só poderá ser considerado 100% Kotlin quando os consumidores Python remanescentes forem migrados.
 
-**Verificações adicionadas:** testes existentes do cliente para payloads GraphQL malformados; testes Kotlin/JVM manuais (não executados nesta etapa) para cache/offline/localização; contratos de regressão Python para preservação de sinopse original, path do cache e handoff do ArtworkEngine. Estado final do workflow e artefatos deve ser confirmado no SHA final desta alteração.
+**Verificações adicionadas:** testes de regressão do cliente GraphQL e do artwork nativo, incluindo os contratos do pipeline persistente, fronteira Python/Compose e registro canônico de thumbnails. Testes Kotlin/JVM seguem manuais e não são executados automaticamente. O status final do workflow/artefatos deve ser conferido no SHA de conclusão.
 
 ### MIG-07 — AniList, matching, metadados e localização PT-BR
 
@@ -233,13 +233,13 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 **Escopo implementado nesta branch:** GraphQL search/lookup/refresh, associação manual/automática, matching fuzzy portado, normalização HTML, sinopse PT-BR, títulos alternativos, gêneros, estúdios, formato, ano, episódios, status, cache, limites e cancelamento. A hidratação nativa é acionada pelo host Compose, isolada do ViewModel de pesquisa; lê o catálogo SQLite e persiste resultados/estados de tentativa. Estados não encontrados/ambíguos são terminais, enquanto falhas de rede/limite/JSON são registradas, mas voltam a ser elegíveis em um ciclo posterior.
 
-**Arquivos principais:** core/anilist.py (compatibilidade Flet); core/library_service.py (fallback legado e reconciliação de artwork somente no modo Compose); ReiAnixAniListClient.kt; ReiAnixAniListIntegrationService.kt; ReiAnixAniListDescriptionLocalizer.kt; ReiAnixAniListMatcher.kt; ReiAnixSqliteAniListAssociation.kt; ReiAnixSqliteLibraryRepository.kt; ReiAnixLibraryViewModel.kt; ReiAnixAppDependencies.kt; docs/KOTLIN_ANILIST_MIGRATION.md; docs/ANILIST_MATCHING.md.
+core/library_service.py (hidratação/editorial e fallback do ArtworkEngine somente para consumidores Flet legados); ReiAnixArtworkService.kt (writer persistente Kotlin no caminho Compose)
 
 **Dependências:** MIG-02, MIG-03 e MIG-04.
 
 **Preservar:** Metadados manuais/locais, local_path e capas; falha de rede não apaga dados existentes; PT-BR continua disponível.
 
-**Limite remanescente:** Este pacote não elimina o runtime Python/Flet nem o ArtworkEngine Python; o caminho nativo não depende do cliente AniList Python para pesquisa/matching/persistência, enquanto o modo Flet legado mantém compatibilidade até ser migrado em outro pacote. Portanto o subsistema global não deve ser classificado como 100% Kotlin.
+**Limite remanescente:** Este pacote não elimina o runtime Python/Flet nem o ArtworkEngine Python dos fluxos Flet ainda ativos;
 
 **Critérios de aceitação desta etapa:** Todos os consumidores Compose usam os serviços Kotlin; os estados automáticos são persistidos para evitar rede repetida; o worker Python não faz AniList hydration quando Compose está ativo; cache offline, rate limit, cancelamento e erros são explícitos.
 
@@ -249,7 +249,7 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 ### MIG-08 — Artwork, capas, cache e miniaturas
 
-**Objetivo:** Migrar o pipeline produtor sem Pillow e preservando os dados/caches existentes.
+**Objetivo:** Fornecer o pipeline produtor Kotlin para o caminho Compose e manter compatibilidade com dados/caches existentes; aposentar o writer Python apenas quando os consumidores Flet restantes tiverem sido migrados.
 
 **Escopo fechado:** Download validado, cache keys, deduplicação, workers limitados, cancelamento, invalidação por geração, overrides manuais, registro de arte, extração de miniaturas e publicação de eventos incrementais consumidos por Coil.
 
@@ -261,7 +261,7 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 **Riscos:** Capas desaparecidas, downloads duplicados, alto consumo de memória, UI não invalidada.
 
-**Critérios objetivos de aceitação:** Um único pipeline Kotlin atualiza a fonte canônica e comunica estado à UI; download/cache/miniaturas funcionam sem Pillow ou produtor Python.
+**Critérios objetivos de aceitação:** Um único writer Kotlin atualiza a fonte canônica do caminho Compose, comunica estado à UI e atende downloads/cache/thumbnails sem Pillow nem delegação Python; o ArtworkEngine só permanece nas rotas Flet documentadas até a migração dos respectivos consumidores.
 
 **Verificações:** tests/test_artwork_engine.py e tests/test_thumbnails.py por CI; não substituir asserts por listas vazias.
 
