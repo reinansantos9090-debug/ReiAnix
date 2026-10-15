@@ -283,5 +283,69 @@ class TestSafProfessionalContract(unittest.TestCase):
             self.assertEqual("error", store.scan_by_id("fail")["status"])
 
 
+    def test_saf_removal_releases_permission_before_single_canonical_sqlite_delete(self):
+        view_model = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+        ).read_text(encoding="utf-8")
+        remove_request = view_model[
+            view_model.index("fun removeSafTree("):view_model.index("fun onSafRemovalTerminal(", view_model.index("fun removeSafTree("))
+        ]
+        self.assertNotIn("nativeLibraryRepository.removeSafFolder", remove_request)
+        self.assertIn('createNativeStorageActionIntent(appContext, "release_tree", normalized)', remove_request)
+        self.assertIn("pendingSafRemovalReferences.add(normalized)", remove_request)
+
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        release = source[source.index("private fun releaseTree("):source.index("private fun verifyTree(", source.index("private fun releaseTree("))]
+        permission_release = release.index("contentResolver.releasePersistableUriPermission(")
+        sqlite_remove = release.index("appDependencies.sqliteLibraryRepository.removeSafFolder(normalizedReference)")
+        self.assertLess(permission_release, sqlite_remove)
+        self.assertEqual(1, release.count("appDependencies.sqliteLibraryRepository.removeSafFolder("))
+        self.assertIn("PERSISTED_PERMISSION_RELEASE_FAILED", release)
+        self.assertIn("SQLITE_SOURCE_REMOVAL_FAILED", release)
+        self.assertIn("sourceAccessRecoveryPersisted", release)
+        self.assertIn("onSafRemovalTerminal(normalizedReference)", release)
+        self.assertIn("SAF_RELEASE_DUPLICATE_JOINED", release)
+
+    def test_global_native_scan_waits_for_each_authorized_source_and_records_terminal_results(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        start = source.index("private fun scanConfiguredSafRoots(")
+        end = source.index("private fun scanTree(", start)
+        block = source[start:end]
+        terminal_event = block.index('.put("type", "saf_library_scan_complete")')
+        for awaited in (
+            "awaitAndRecordSource(sourceKey, scanId)",
+            "awaitAndRecordSource(MediaStoreScanner.SOURCE, mediaScanId)",
+            "awaitAndRecordSource(BroadStorageScanner.SOURCE, broadScanId)",
+        ):
+            self.assertIn(awaited, block)
+            self.assertLess(block.index(awaited), terminal_event)
+        self.assertIn("NativeScanController.progress.first", block)
+        self.assertIn('put("sourceResults", sourceResults)', block)
+        self.assertIn('put("requestedSources", requestedSources)', block)
+        self.assertIn("requestedSources == 0 -> \"FAILED\"", block)
+        self.assertIn("successfulScopes == requestedSources && failedScopes == 0", block)
+        self.assertIn('put("noSourcesAvailable", requestedSources == 0)', block)
+        self.assertNotIn('configuredScopes == 0 -> "FAILED"', block)
+        self.assertIn('"ACTIVITY_NOT_RESUMED"', block)
+
+    def test_scan_source_helpers_join_existing_runs_instead_of_dispatching_duplicates(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        for marker in ("private fun scanMediaStore(", "private fun scanAllStorage("):
+            start = source.index(marker)
+            next_marker = source.find("\n    private fun ", start + len(marker))
+            block = source[start:next_marker if next_marker >= 0 else len(source)]
+            self.assertIn("): String?", block[:160])
+            self.assertIn("NativeScanController.activeScanId(", block)
+            self.assertIn('put("phase", "already_running")', block)
+            self.assertIn("NativeScanController.launch(scanId)", block)
+
+    def test_python_refresh_error_uses_global_source_count_not_saf_folder_count(self):
+        source = MAIN.read_text(encoding="utf-8")
+        block = source[source.index("elif event_type == 'saf_library_scan_complete':"):source.index("elif event_type == 'saf_scan':", source.index("elif event_type == 'saf_library_scan_complete':"))]
+        self.assertIn('payload.get("noSourcesAvailable") is True', block)
+        self.assertIn('payload.get("requestedSources")', block)
+        self.assertNotIn('if payload.get(\'configuredScopes\') == 0', block)
+
+
 if __name__ == "__main__":
     unittest.main()
