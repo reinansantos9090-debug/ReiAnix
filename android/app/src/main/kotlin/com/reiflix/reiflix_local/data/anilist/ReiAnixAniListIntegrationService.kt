@@ -12,6 +12,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
+import com.reiflix.reiflix_local.data.sqlite.recordAniListAutoMatchOutcome
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 
 import java.io.File
@@ -127,6 +128,18 @@ class ReiAnixAniListIntegrationService(
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> {
                     autoMatchAttempts.remove(animeId)
+                    val outcome = when (result.error) {
+                        is AniListError.RateLimited -> "rate_limited"
+                        is AniListError.Network -> "network_error"
+                        is AniListError.Http -> if ((result.error as AniListError.Http).statusCode == 429) {
+                            "rate_limited"
+                        } else {
+                            "invalid_response"
+                        }
+                        is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
+                        is AniListError.InvalidRequest -> return result
+                    }
+                    runCatching { library.recordAniListAutoMatchOutcome(animeId, outcome) }
                     return result
                 }
             }
@@ -134,7 +147,10 @@ class ReiAnixAniListIntegrationService(
             autoMatchAttempts.remove(animeId)
             throw cancelled
         }
-        if (results.isEmpty()) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        if (results.isEmpty()) {
+            library.recordAniListAutoMatchOutcome(animeId, "not_found")
+            return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        }
         val ranked = ReiAnixAniListMatcher.rank(
             localTitle = query,
             candidates = results,
@@ -143,12 +159,24 @@ class ReiAnixAniListIntegrationService(
                 mediaKind = local.mediaKind,
             ),
         )
-        if (ranked.isEmpty()) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        if (ranked.isEmpty()) {
+            library.recordAniListAutoMatchOutcome(animeId, "not_found")
+            return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        }
         val best = ranked.first()
-        if (best.score <= 0.0) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        if (best.score <= 0.0) {
+            library.recordAniListAutoMatchOutcome(animeId, "not_found")
+            return AniListResult.Success(AniListAutoMatchResult.NoMatch)
+        }
         val second = ranked.getOrNull(1)?.score ?: 0.0
         val margin = best.score - second
         if (best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
+            library.recordAniListAutoMatchOutcome(
+                animeId,
+                "ambiguous",
+                score = best.score,
+                margin = margin,
+            )
             return AniListResult.Success(
                 AniListAutoMatchResult.Ambiguous(ranked.take(5).map { it.anime }),
             )
@@ -160,6 +188,40 @@ class ReiAnixAniListIntegrationService(
             is AniListResult.Failure -> return result
         }
         return AniListResult.Success(AniListAutoMatchResult.Matched(persisted, best.anime))
+    }
+
+    /**
+     * Native library replacement for the legacy Python metadata hydrator.
+     * It processes the canonical SQLite catalog sequentially and persists lookup
+     * outcomes so catalog refreshes cannot repeatedly query unresolved titles.
+     * Image materialization remains delegated to the existing ArtworkEngine.
+     */
+    suspend fun reconcileUnmatchedLibraryMetadata(): Int {
+        if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
+        val rows = library.loadLibraryCatalogRows()
+        var matched = 0
+        for (row in rows) {
+            val local = row.anime
+            if (local.id <= 0L ||
+                local.anilistId != null ||
+                local.anilistMatchManual == true ||
+                local.metadataSource == "manual" ||
+                local.metadataStatus == "manual"
+            ) continue
+            if (local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES) continue
+            if (local.metadataStatus !in AUTO_MATCH_ELIGIBLE_METADATA_STATUSES &&
+                local.metadataSource != null
+            ) continue
+
+            when (val result = autoMatch(local.id)) {
+                is AniListResult.Success -> if (result.value is AniListAutoMatchResult.Matched) matched++
+                is AniListResult.Failure -> {
+                    // The outcome is already persisted by autoMatch when retrying it
+                    // automatically would otherwise duplicate an identical request.
+                }
+            }
+        }
+        return matched
     }
 
     private suspend fun applyRemote(
@@ -285,6 +347,16 @@ class ReiAnixAniListIntegrationService(
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
+        private val AUTO_MATCH_TERMINAL_STATUSES = setOf(
+            "not_found",
+            "network_error",
+            "rate_limited",
+            "invalid_response",
+            "ambiguous",
+        )
+        private val AUTO_MATCH_ELIGIBLE_METADATA_STATUSES = setOf(
+            null, "", "unresolved", "error", "ambiguous", "stale",
+        )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     }
 }
