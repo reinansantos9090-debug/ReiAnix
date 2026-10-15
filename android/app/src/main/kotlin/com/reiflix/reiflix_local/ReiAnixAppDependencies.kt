@@ -77,7 +77,7 @@ class ReiAnixAppDependencies(context: Context) {
             library = sqliteLibraryRepository,
             settings = sqliteSettingsRepository,
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
-                cacheFile = File(appContext.filesDir, "data/cache/anilist_description_ptbr.json"),
+                cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),
         )
     }
