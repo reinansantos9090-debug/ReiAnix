@@ -147,6 +147,9 @@ class ReiAnixLibraryViewModel(
     private val nativeCatalogReloadMutex = Mutex()
     private val nativePageGeneration = AtomicLong(0L)
     private val nativePagedLibraryState = MutableStateFlow(ReiAnixLibraryPagedUiState())
+    private val nativeAniListIntegration = dependencies?.aniListIntegrationService
+    private var nativeAniListHydrationJob: Job? = null
+    private var nativeAniListHydrationPending = false
 
     private val repository = ReiAnixLibraryRepository(context)
     /**
@@ -1192,9 +1195,11 @@ class ReiAnixLibraryViewModel(
     }
 
     private suspend fun refreshNativeCatalog() {
+        var catalogReadSucceeded = false
         nativeCatalogReloadMutex.withLock {
             try {
                 val rows = nativeLibraryRepository.loadLibraryCatalogRows()
+                catalogReadSucceeded = true
                 val projected = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
                     .project(rows)
                 nativeCatalogState.value = NativeCatalogState(
@@ -1239,6 +1244,36 @@ class ReiAnixLibraryViewModel(
                         error = error.message ?: "A atualização da biblioteca falhou; dados anteriores foram preservados.",
                     )
                 }
+            }
+        }
+        if (catalogReadSucceeded) scheduleNativeAniListReconciliation()
+    }
+
+    /**
+     * Runs the unresolved AniList queue through the native integration service.
+     * The job is kept outside the catalog mutex so searches/network cannot stall
+     * the Compose library refresh. SQLite outcome states prevent repeated requests.
+     */
+    private fun scheduleNativeAniListReconciliation() {
+        val integration = nativeAniListIntegration ?: return
+        if (nativeAniListHydrationJob?.isActive == true) {
+            nativeAniListHydrationPending = true
+            return
+        }
+        nativeAniListHydrationPending = false
+        nativeAniListHydrationJob = viewModelScope.launch {
+            try {
+                val matched = withContext(Dispatchers.Default) {
+                    integration.reconcileUnmatchedLibraryMetadata()
+                }
+                if (matched > 0) refreshNativeCatalog()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Native AniList catalog reconciliation failed", error)
+            } finally {
+                nativeAniListHydrationJob = null
+                if (nativeAniListHydrationPending) scheduleNativeAniListReconciliation()
             }
         }
     }
