@@ -110,12 +110,12 @@ O ReiAnix utiliza três mecanismos principais de acesso ao armazenamento no Andr
 
 ### Dependências híbridas ainda ativas — etapa não concluída
 - NativeScanRunner/NativeScanPublisher publicam progresso e término por NativeMailbox, consumido por main.py para atualizar a projeção compatível e os estados de UI.
-- O finalizador `LibraryService.finish_ingest_documents` continua como fallback de recuperação quando o resultado/ownership da transação nativa não pode ser confirmado e em receipts antigos de recuperação.
+- O finalizador `LibraryService.finish_ingest_documents` continua como fallback somente quando Kotlin não pode confirmar ownership nativo ou quando uma finalização nativa falha; receipts recuperáveis com ownership nativo confirmado agora registram `scan_runs` em Kotlin antes de publicar o evento.
 - Eventos `saf_document_identity_change` de APKs antigos ainda podem usar o finalizador de compatibilidade Python; a versão atual do ViewModel já executa a mutação canônica em Kotlin antes de publicar o evento. Alguns caminhos de desenvolvimento sem bridge Android mantêm fallback Python.
 - Algumas telas Compose ainda consomem snapshots JSON legados; NativeMailbox não pode ser removido globalmente enquanto outros subsistemas o usam.
 
 ### Critérios restantes
-- Migrar a finalização de recuperação para Kotlin sem bloquear a thread principal nem reabrir um caminho de escrita concorrente.
+- Validar por CI os caminhos de recuperação com commit confirmado, commit incerto e snapshot positivo sem commit; manter o fallback Python apenas para casos em que a propriedade da gravação nativa não pode ser comprovada.
 - Remover gradualmente o fallback de reconciliação e o ScanCoordinator Python somente quando não houver consumidores de APKs antigos ou de desenvolvimento que ainda precisem dele.
 - Manter a projeção compatível sem delegar descoberta, mutação de catálogo ou finalização normal do scan ao Python.
 - Comprovar por CI no SHA final que resultados completos, parciais, cancelados ou sem autorização preservam dados anteriores e não geram duplicações.
