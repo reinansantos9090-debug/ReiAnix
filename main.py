@@ -5524,6 +5524,53 @@ async def main(page: ft.Page):
                                     bool(old_uri),
                                     bool(new_uri),
                                 )
+                        elif event_type == 'saf_library_scan_complete':
+                            native_status = str(payload.get('status') or 'FAILED').upper()
+                            native_origin = str(payload.get('origin') or '').upper()
+                            is_user_refresh = native_origin == 'USER_REFRESH'
+                            if native_status in {'COMPLETED', 'PARTIAL'}:
+                                if compose_primary_ui:
+                                    compose_library_bridge.request_publish("native_storage_scan_complete")
+                                else:
+                                    on_catalog_changed(
+                                        refresh_request_id=event_request_id if is_user_refresh else None
+                                    )
+                                if compose_primary_ui and is_user_refresh and event_request_id:
+                                    message = (
+                                        "Varredura nativa concluída parcialmente; os dados anteriores foram preservados."
+                                        if native_status == 'PARTIAL'
+                                        else "Varredura nativa concluída."
+                                    )
+                                    compose_library_bridge.write_command_result(
+                                        event_request_id,
+                                        "refresh",
+                                        "COMPLETED",
+                                        message=message,
+                                    )
+                            else:
+                                if compose_primary_ui and is_user_refresh and event_request_id:
+                                    compose_library_bridge.write_command_result(
+                                        event_request_id,
+                                        "refresh",
+                                        "FAILED",
+                                        error=(
+                                            "Nenhuma pasta SAF configurada pôde ser varrida."
+                                            if payload.get('configuredScopes') == 0
+                                            else "A varredura nativa não pôde ser concluída."
+                                        ),
+                                    )
+                            diagnostics.record(
+                                "NATIVE_LIBRARY_SCAN_COMPLETE",
+                                request_id=event_request_id,
+                                result=native_status,
+                                source=native_origin or "unknown",
+                                counts={
+                                    "configuredScopes": int(payload.get('configuredScopes') or 0),
+                                    "successfulScopes": int(payload.get('successfulScopes') or 0),
+                                    "failedScopes": int(payload.get('failedScopes') or 0),
+                                    "cancelledScopes": int(payload.get('cancelledScopes') or 0),
+                                },
+                            )
                         elif event_type == 'saf_scan':
                             try:
                                 saf_selection.finish()
