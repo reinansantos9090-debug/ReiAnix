@@ -770,68 +770,6 @@ object NativeScanRunner {
         }
     }
 
-    /**
-     * Indexes one scanner-owned volume generation into the canonical SQLite catalog.
-     *
-     * A missing committed snapshot is an error, never an empty library. Only an explicit
-     * EMPTY_COMPLETE generation may authorize an empty snapshot and missing-file reconciliation.
-     * Partial generations can contribute verified positive observations but never reconcile.
-     */
-    private suspend fun indexNativeVolumeSnapshot(
-        context: Context,
-        operationId: String,
-        source: String,
-        scopeKey: String,
-        scanGeneration: Long,
-        status: String,
-        complete: Boolean,
-        cancelled: Boolean,
-        authorizationValid: Boolean,
-    ): NativeLibraryIndexReport? {
-        val documents = if (complete) {
-            check(status in setOf(NativeIndex.STATUS_COMPLETED, NativeIndex.STATUS_EMPTY_COMPLETE)) {
-                "Scanner marked $source/$scopeKey complete with non-terminal status $status."
-            }
-            NativeIndex.committedDocuments(context, source, scopeKey)
-                ?: throw IllegalStateException(
-                    "Completed scanner generation has no verified committed snapshot: $source/$scopeKey",
-                )
-        } else {
-            NativeIndex.stagedDocuments(context, source, scopeKey, scanGeneration) ?: JSONArray()
-        }
-        if (!complete && documents.length() == 0) return null
-
-        val items = parseDocumentsToDiscoveredMedia(documents, scopeKey)
-        val snapshot = NativeLibraryScanSnapshot(
-            operationId = operationId,
-            source = source,
-            scopeRoot = scopeKey,
-            expectedLocations = setOf(scopeKey),
-            processedLocations = if (complete) setOf(scopeKey) else emptySet(),
-            failedLocations = emptySet(),
-            unprocessedLocations = if (complete) emptySet() else setOf(scopeKey),
-            status = status,
-            complete = complete,
-            cancelled = cancelled,
-            authorizationValid = authorizationValid,
-            items = items,
-            scopeReference = scopeKey,
-            scanGeneration = scanGeneration,
-        )
-        return ReiAnixAppDependencies.from(context).sqliteLibraryRepository.indexDiscoveredMedia(snapshot)
-    }
-
-    private fun indexReportJson(report: NativeLibraryIndexReport): JSONObject =
-        JSONObject()
-            .put("operationId", report.operationId)
-            .put("inserted", report.inserted)
-            .put("updated", report.updated)
-            .put("unchanged", report.unchanged)
-            .put("ambiguous", report.ambiguous)
-            .put("rejectedOutOfScope", report.rejectedOutOfScope)
-            .put("reconciledMissing", report.reconciledMissing)
-            .put("reconciliationAuthorized", report.reconciliationAuthorized)
-
     suspend fun runBroadScan(
         context: Context,
         scanId: String,
@@ -882,35 +820,8 @@ object NativeScanRunner {
                     .put("generationId", "native-scoped")
                     .put("generationStatus", generationStatus)
 
-                // Index every verified BroadStorage generation, including explicit empty snapshots.
-                val volumeScopes = result.optJSONArray("volumeScopes") ?: JSONArray()
-                val nativeIndexReports = JSONArray()
-                var nativeIndexPartial = false
-                for (i in 0 until volumeScopes.length()) {
-                    val volumeScope = volumeScopes.optJSONObject(i) ?: continue
-                    val volumeId = volumeScope.optString("volumeId").takeIf { it.isNotBlank() } ?: continue
-                    val scanGen = volumeScope.optLong("scanGeneration", 0L)
-                    val scopeKey = "broad-storage:$volumeId"
-                    val volumeStatus = volumeScope.optString("status")
-                    val complete = volumeScope.optBoolean("complete", false)
-                    val report = indexNativeVolumeSnapshot(
-                        context = appContext,
-                        operationId = scanId,
-                        source = NativeIndex.SOURCE_BROAD,
-                        scopeKey = scopeKey,
-                        scanGeneration = scanGen,
-                        status = volumeStatus,
-                        complete = complete,
-                        cancelled = result.optBoolean("cancelled"),
-                        authorizationValid = BroadStorageScanner.hasAccess(appContext),
-                    )
-                    if (report != null) {
-                        nativeIndexReports.put(indexReportJson(report))
-                        if (complete && !report.reconciliationAuthorized) nativeIndexPartial = true
-                    }
-                }
-                result.put("nativeLibraryIndexReports", nativeIndexReports)
-                if (nativeIndexPartial) result.put("partial", true).put("nativeLibraryIndexStatus", "PARTIAL")
+                // BroadStorage remains diagnostic-only, matching the existing library-source contract.
+                // Its batch events are marked as native-owned so Python cannot ingest them into the catalog.
                 result.put("nativeLibraryIndexOwner", true)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "broad_storage_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
@@ -996,35 +907,8 @@ object NativeScanRunner {
                     )
                 }
 
-                // Index every verified MediaStore generation, including explicit empty snapshots.
-                val volumeScopes = result.optJSONArray("volumeScopes") ?: JSONArray()
-                val nativeIndexReports = JSONArray()
-                var nativeIndexPartial = false
-                for (i in 0 until volumeScopes.length()) {
-                    val volumeScope = volumeScopes.optJSONObject(i) ?: continue
-                    val volumeId = volumeScope.optString("volumeId").takeIf { it.isNotBlank() } ?: continue
-                    val scanGen = volumeScope.optLong("scanGeneration", 0L)
-                    val scopeKey = "mediastore:$volumeId"
-                    val volumeStatus = volumeScope.optString("status")
-                    val complete = volumeScope.optBoolean("complete", false)
-                    val report = indexNativeVolumeSnapshot(
-                        context = appContext,
-                        operationId = scanId,
-                        source = NativeIndex.SOURCE_MEDIASTORE,
-                        scopeKey = scopeKey,
-                        scanGeneration = scanGen,
-                        status = volumeStatus,
-                        complete = complete,
-                        cancelled = result.optBoolean("cancelled"),
-                        authorizationValid = MediaStoreScanner.hasReadPermission(appContext),
-                    )
-                    if (report != null) {
-                        nativeIndexReports.put(indexReportJson(report))
-                        if (complete && !report.reconciliationAuthorized) nativeIndexPartial = true
-                    }
-                }
-                result.put("nativeLibraryIndexReports", nativeIndexReports)
-                if (nativeIndexPartial) result.put("partial", true).put("nativeLibraryIndexStatus", "PARTIAL")
+                // MediaStore remains diagnostic-only, matching the existing library-source contract.
+                // Its batch events are marked as native-owned so Python cannot ingest them into the catalog.
                 result.put("nativeLibraryIndexOwner", true)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "mediastore_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
