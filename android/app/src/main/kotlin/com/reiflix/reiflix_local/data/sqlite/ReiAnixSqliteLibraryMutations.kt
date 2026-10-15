@@ -215,7 +215,7 @@ suspend fun ReiAnixSqliteLibraryRepository.setAnimeUserTags(
             normalized += boundedTag
         }
     }
-    val serialized = JSONArray().also { array -> normalized.forEach(array::put) }.toString()
+    val serialized = JSONArray().also { array -> normalized.forEach { value -> array.put(value) } }.toString()
     database.transaction { connection ->
         connection.requireAnime(animeId)
         val values = ContentValues().apply { put("user_tags", serialized) }
@@ -612,4 +612,4 @@ private fun String.readJsonStringSet(field: String): MutableSet<String> = try {
 }
 
 private fun Set<String>.toSortedJsonArray(): String =
-    JSONArray().also { array -> sorted().forEach(array::put) }.toString()
+    JSONArray().also { array -> sorted().forEach { value -> array.put(value) } }.toString()
