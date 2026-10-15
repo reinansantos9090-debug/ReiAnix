@@ -81,7 +81,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 } catch (error: Exception) {
                     Log.e(TAG, "Native artwork request failed for " + animeId, error)
                 } finally {
-                    jobs.remove(animeId, currentCoroutineContext()[Job])
+                    currentCoroutineContext()[Job]?.let { jobs.remove(animeId, it) }
                 }
             }
             jobs[animeId] = task
@@ -547,7 +547,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         if (options.outWidth > 0 && options.outHeight > 0) return options.outWidth to options.outHeight
         return if (ext == ".avif" && android.os.Build.VERSION.SDK_INT < 31) 0 to 0 else null
     }
-    private fun dimensions(path: String) = imageDimensions(path)
+    private fun dimensions(path: String, knownExtension: String? = null) = imageDimensions(path, knownExtension)
     private fun header(file: File): ByteArray? = runCatching {
         file.inputStream().use { input -> val b = ByteArray(32); val n = input.read(b); if (n > 0) b.copyOf(n) else ByteArray(0) }
     }.getOrNull()
