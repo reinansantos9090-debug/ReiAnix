@@ -104,3 +104,65 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
         }
     }
+
+
+/**
+ * Persists the outcome of an automatic lookup without changing a canonical
+ * association or any editorial/local metadata. A later library hydration can
+ * therefore distinguish "not tried" from "not found/ambiguous/network failed".
+ */
+suspend fun ReiAnixSqliteLibraryRepository.recordAniListAutoMatchOutcome(
+    animeId: Long,
+    status: String,
+    score: Double? = null,
+    margin: Double? = null,
+): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
+    require(animeId > 0L) { "Anime ID must be positive." }
+    require(status in setOf("not_found", "ambiguous", "network_error", "rate_limited", "invalid_response")) {
+        "Unsupported automatic AniList match outcome."
+    }
+    require(score == null || (score.isFinite() && score in 0.0..1.0))
+    require(margin == null || (margin.isFinite() && margin in 0.0..1.0))
+
+    database.transaction { connection ->
+        val current = connection.rawQuery(
+            "SELECT * FROM anime WHERE id = ? LIMIT 1",
+            arrayOf(animeId.toString()),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) throw NoSuchElementException("Anime ID does not exist.")
+            cursor.toAnimeRecord()
+        }
+        if (current.anilistId != null ||
+            current.anilistMatchManual == true ||
+            current.metadataSource == "manual" ||
+            current.metadataStatus == "manual"
+        ) {
+            return@transaction current
+        }
+
+        val values = ContentValues().apply {
+            put("anilist_match_status", status)
+            if (score == null) putNull("anilist_match_score") else put("anilist_match_score", score)
+            if (margin == null) putNull("anilist_match_margin") else put("anilist_match_margin", margin)
+            if (status == "ambiguous") {
+                put("metadata_status", "ambiguous")
+                if (current.metadataConfidence.isNullOrBlank() || current.metadataConfidence == "low") {
+                    put("metadata_confidence", "medium")
+                }
+            }
+        }
+        connection.update(
+            "anime",
+            values,
+            "id = ? AND anilist_id IS NULL AND COALESCE(anilist_match_manual, 0) = 0",
+            arrayOf(animeId.toString()),
+        )
+        connection.rawQuery(
+            "SELECT * FROM anime WHERE id = ? LIMIT 1",
+            arrayOf(animeId.toString()),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.toAnimeRecord()
+            else throw NoSuchElementException("Anime disappeared while recording AniList match outcome.")
+        }
+    }
+}
