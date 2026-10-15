@@ -4,7 +4,10 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import android.net.Uri
+import android.provider.DocumentsContract
 import org.json.JSONArray
+import org.json.JSONObject
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import org.json.JSONException
 import kotlinx.coroutines.CancellationException
@@ -515,6 +518,508 @@ class ReiAnixSqliteLibraryRepository(
                 }
             }
         }
+    }
+
+    /**
+     * Registers a selected SAF tree in the canonical folders table.
+     * Repeated selections update one source; conflicting identities are rejected.
+     */
+    suspend fun upsertSafFolder(
+        reference: String, name: String?, authority: String?, documentId: String?,
+        volumeId: String?, identity: String?,
+    ): String = withContext(Dispatchers.IO) {
+        val normalized = reference.trim()
+        require(normalized.isNotEmpty()) { "A SAF tree URI is required." }
+        val treeUri = runCatching { Uri.parse(normalized) }.getOrNull()
+            ?: throw IllegalArgumentException("The SAF tree URI is invalid.")
+        require(treeUri.scheme.equals("content", ignoreCase = true) && DocumentsContract.isTreeUri(treeUri)) {
+            "Only valid SAF tree content URIs can be registered."
+        }
+        val normalizedName = name?.trim()?.takeIf { it.isNotEmpty() }
+            ?: normalized.substringAfterLast('/').ifBlank { normalized }
+        val key = identity?.trim()?.takeIf { it.isNotEmpty() }
+        val provider = authority?.trim()?.takeIf { it.isNotEmpty() }
+        val document = documentId?.trim()?.takeIf { it.isNotEmpty() }
+        val volume = volumeId?.trim()?.takeIf { it.isNotEmpty() }
+        database.transaction { connection ->
+            fun queryString(sql: String, args: Array<String>): String? =
+                connection.rawQuery(sql, args).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            val previousPath = key?.let {
+                queryString("SELECT path FROM folders WHERE kind='saf' AND saf_identity=? LIMIT 1", arrayOf(it))
+            }
+            val targetKind = queryString("SELECT kind FROM folders WHERE path=? LIMIT 1", arrayOf(normalized))
+            require(targetKind == null || targetKind.equals("saf", true)) {
+                "The selected URI is already registered as a different source type."
+            }
+            require(!(targetKind != null && previousPath != null && previousPath != normalized)) {
+                "The selected URI already exists beside another SAF identity; refusing an ambiguous merge."
+            }
+            val existingIdentity = queryString(
+                "SELECT COALESCE(saf_identity,'') FROM folders WHERE path=? AND kind='saf' LIMIT 1",
+                arrayOf(normalized),
+            )
+            require(existingIdentity.isNullOrBlank() || key == null || existingIdentity == key) {
+                "The selected URI is already registered with another SAF identity."
+            }
+            if (previousPath != null && previousPath != normalized) {
+                val changed = connection.update(
+                    "folders", ContentValues().apply { put("path", normalized) },
+                    "path=? AND kind='saf'", arrayOf(previousPath),
+                )
+                check(changed == 1) { "The existing SAF source changed during registration." }
+                connection.update(
+                    "episodes", ContentValues().apply { put("source_folder", normalized) },
+                    "source_folder=?", arrayOf(previousPath),
+                )
+            }
+            val values = ContentValues().apply {
+                put("name", normalizedName); put("kind", "saf"); put("authorization", "granted")
+                putNull("last_error")
+                provider?.let { put("saf_authority", it) }
+                document?.let { put("saf_document_id", it) }
+                volume?.let { put("saf_volume_id", it) }
+                key?.let { put("saf_identity", it) }
+            }
+            if (connection.update("folders", values, "path=?", arrayOf(normalized)) == 0) {
+                values.put("path", normalized)
+                values.put("added_at", System.currentTimeMillis() / 1000.0)
+                connection.insertOrThrow("folders", null, values)
+            }
+            normalized
+        }
+    }
+
+    suspend fun updateSafFolderAccess(reference: String, authorization: String, error: String? = null): Boolean =
+        withContext(Dispatchers.IO) {
+            val normalized = reference.trim()
+            require(normalized.isNotEmpty()) { "A folder reference is required." }
+            val status = authorization.trim().lowercase()
+            require(status in setOf("granted", "revoked", "unavailable", "unknown")) {
+                "Unsupported SAF authorization state."
+            }
+            database.transaction { connection ->
+                val values = ContentValues().apply {
+                    put("authorization", status)
+                    if (error.isNullOrBlank()) putNull("last_error") else put("last_error", error)
+                }
+                connection.update("folders", values, "path=? AND kind='saf'", arrayOf(normalized)) > 0
+            }
+        }
+
+    /**
+     * Re-keys one provider-confirmed SAF document URI without replacing the canonical
+     * episode row. This preserves history, playback progress, metadata and artwork.
+     */
+    suspend fun reconcileSafDocumentIdentityChange(
+        oldUri: String,
+        newUri: String,
+        name: String,
+        treeUri: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val oldReference = oldUri.trim()
+        val newReference = newUri.trim()
+        val newName = name.trim()
+        val treeReference = treeUri.trim()
+        val old = runCatching { Uri.parse(oldReference) }.getOrNull()
+        val new = runCatching { Uri.parse(newReference) }.getOrNull()
+        val tree = runCatching { Uri.parse(treeReference) }.getOrNull()
+        fun result(status: String, episodeId: Long? = null) = JSONObject()
+            .put("status", status)
+            .put("episode_id", episodeId ?: JSONObject.NULL)
+
+        if (
+            old == null || new == null || tree == null ||
+            !old.scheme.equals("content", ignoreCase = true) ||
+            !new.scheme.equals("content", ignoreCase = true) ||
+            !tree.scheme.equals("content", ignoreCase = true) ||
+            old.authority.isNullOrBlank() || new.authority.isNullOrBlank() ||
+            !DocumentsContract.isTreeUri(tree) || newName.isBlank()
+        ) return@withContext result("rejected")
+        if (!old.authority.equals(new.authority, ignoreCase = true)) return@withContext result("rejected")
+
+        val now = System.currentTimeMillis() / 1000.0
+        database.transaction { connection ->
+            fun isSafObservation(episodeId: Long, uri: String): Boolean =
+                connection.rawQuery(
+                    "SELECT 1 FROM episode_observations WHERE episode_id=? AND source_kind='saf' AND uri=? LIMIT 1",
+                    arrayOf(episodeId.toString(), uri),
+                ).use { it.moveToFirst() }
+
+            fun belongsToTree(sourceFolder: String?): Boolean {
+                val source = sourceFolder.orEmpty()
+                return source == treeReference || source.startsWith("$treeReference/")
+            }
+
+            if (oldReference == newReference) {
+                val source = connection.rawQuery(
+                    "SELECT id,file_name,source_folder FROM episodes WHERE path=? LIMIT 1",
+                    arrayOf(newReference),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) Triple(cursor.getLong(0), cursor.getString(1).orEmpty(), cursor.getString(2).orEmpty()) else null
+                } ?: return@transaction result("no_match")
+                if (!belongsToTree(source.third) && !isSafObservation(source.first, newReference)) {
+                    return@transaction result("rejected", source.first)
+                }
+                if (source.second == newName) return@transaction result("already_reconciled", source.first)
+                connection.execSQL(
+                    "UPDATE episodes SET file_name=?,missing=0,availability_state='available' WHERE id=? AND path=?",
+                    arrayOf(newName, source.first, newReference),
+                )
+                return@transaction result("reconciled", source.first)
+            }
+
+            val source = connection.rawQuery(
+                "SELECT id,file_name,source_folder FROM episodes WHERE path=? LIMIT 1",
+                arrayOf(oldReference),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) Triple(cursor.getLong(0), cursor.getString(1).orEmpty(), cursor.getString(2).orEmpty()) else null
+            }
+            if (source == null) {
+                val target = connection.rawQuery(
+                    "SELECT id,source_folder FROM episodes WHERE path=? LIMIT 1",
+                    arrayOf(newReference),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) Pair(cursor.getLong(0), cursor.getString(1).orEmpty()) else null
+                }
+                return@transaction when {
+                    target == null -> result("no_match")
+                    belongsToTree(target.second) || isSafObservation(target.first, newReference) ->
+                        result("already_reconciled", target.first)
+                    else -> result("conflict", target.first)
+                }
+            }
+            val episodeId = source.first
+            if (!belongsToTree(source.third) && !isSafObservation(episodeId, oldReference)) {
+                return@transaction result("rejected", episodeId)
+            }
+
+            val targetId = connection.rawQuery(
+                "SELECT id FROM episodes WHERE path=? LIMIT 1",
+                arrayOf(newReference),
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
+            if (targetId != null && targetId != episodeId) return@transaction result("conflict", episodeId)
+
+            val observationConflict = connection.rawQuery(
+                "SELECT 1 FROM episode_observations WHERE episode_id=? AND source_kind='saf' AND uri=? AND uri<>? LIMIT 1",
+                arrayOf(episodeId.toString(), newReference, oldReference),
+            ).use { it.moveToFirst() }
+            if (observationConflict) return@transaction result("conflict", episodeId)
+
+            connection.execSQL(
+                "UPDATE episodes SET path=?,file_name=?,missing=0,availability_state='available' WHERE id=? AND path=?",
+                arrayOf(newReference, newName, episodeId, oldReference),
+            )
+            connection.execSQL(
+                "UPDATE episode_observations SET uri=?,state='available',error=NULL,last_seen=?,last_checked_at=? " +
+                    "WHERE episode_id=? AND source_kind='saf' AND uri=?",
+                arrayOf(newReference, now, now, episodeId, oldReference),
+            )
+            result("reconciled", episodeId)
+        }
+    }
+
+    /**
+     * Persists Android's authoritative volume snapshot in the existing preferences
+     * table and reconciles episode availability in the same canonical SQLite file.
+     * This mirrors the old LibraryStore operation without creating another store.
+     */
+    suspend fun recordNativeVolumeChange(payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        val eventAt = sequenceOf(
+            payload.optDouble("eventTimestamp", 0.0),
+            payload.optDouble("timestamp", 0.0),
+            payload.optDouble("observedAt", 0.0),
+        ).firstOrNull { it > 0.0 } ?: 0.0
+        val now = System.currentTimeMillis() / 1000.0
+        database.transaction { connection ->
+            fun preference(key: String, fallback: String): String =
+                connection.rawQuery(
+                    "SELECT value FROM preferences WHERE key=? LIMIT 1",
+                    arrayOf(key),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) ?: fallback else fallback }
+
+            val lastEventAt = preference("native_volume_event_at", "0").toDoubleOrNull() ?: 0.0
+            val previous = runCatching { JSONObject(preference("native_volume_states", "{}")) }
+                .getOrElse { JSONObject() }
+            if (eventAt > 0.0 && lastEventAt > 0.0 && eventAt < lastEventAt) {
+                return@transaction JSONObject(previous.toString()).put("ignored", true)
+            }
+
+            val merged = JSONObject(previous.toString())
+            val current = payload.optJSONArray("current") ?: JSONArray()
+            val removed = payload.optJSONArray("removed") ?: JSONArray()
+            val mountedStates = setOf("mounted", "mounted_ro", "mounted_rofs")
+
+            fun markUnavailable(volumeId: String, reason: String) {
+                if (volumeId.isBlank()) return
+                val episodeIds = linkedSetOf<Long>()
+                connection.rawQuery(
+                    "SELECT DISTINCT episode_id FROM episode_observations WHERE volume_id=?",
+                    arrayOf(volumeId),
+                ).use { cursor -> while (cursor.moveToNext()) episodeIds.add(cursor.getLong(0)) }
+                episodeIds.forEach { episodeId ->
+                    connection.execSQL(
+                        "UPDATE episode_observations SET state='volume_unavailable',error=?,last_checked_at=? " +
+                            "WHERE volume_id=? AND episode_id=? AND state != 'missing'",
+                        arrayOf(reason, now, volumeId, episodeId),
+                    )
+                    recomputeEpisodeAvailability(connection, episodeId)
+                }
+                connection.execSQL(
+                    "UPDATE episodes SET missing=1,availability_state='volume_unavailable' " +
+                        "WHERE volume_id=? AND availability_state != 'scope_removed' " +
+                        "AND id NOT IN (SELECT episode_id FROM episode_observations WHERE volume_id=?)",
+                    arrayOf(volumeId, volumeId),
+                )
+            }
+
+            for (index in 0 until current.length()) {
+                val item = current.optJSONObject(index) ?: continue
+                val volumeId = item.optString("volumeId").trim()
+                if (volumeId.isBlank()) continue
+                val state = item.optString("state", "unknown").trim().lowercase().ifBlank { "unknown" }
+                val available = if (item.has("available")) item.optBoolean("available", false) else state in mountedStates
+                val stateRecord = JSONObject()
+                    .put("volumeId", volumeId)
+                    .put("uuid", item.optString("uuid"))
+                    .put("state", state)
+                    .put("available", available)
+                    .put("removable", item.optBoolean("removable"))
+                    .put("emulated", item.optBoolean("emulated"))
+                    .put("primary", item.optBoolean("primary"))
+                    .put("directory", item.optString("directory"))
+                    .put("description", item.optString("description"))
+                    .put("observed_at", now)
+                merged.put(volumeId, stateRecord)
+                if (!available) markUnavailable(volumeId, state)
+            }
+
+            for (index in 0 until removed.length()) {
+                val item = removed.optJSONObject(index) ?: continue
+                val volumeId = item.optString("volumeId").ifBlank { item.optString("uuid") }.trim()
+                if (volumeId.isBlank()) continue
+                val stateRecord = merged.optJSONObject(volumeId)?.let { JSONObject(it.toString()) }
+                    ?: JSONObject().put("volumeId", volumeId)
+                stateRecord.put("volumeId", volumeId)
+                    .put("state", "unavailable")
+                    .put("available", false)
+                    .put("unavailable_at", now)
+                    .put("reason", payload.optString("reason", "volume_removed"))
+                merged.put(volumeId, stateRecord)
+                markUnavailable(volumeId, payload.optString("reason", "volume_removed"))
+            }
+
+            connection.execSQL(
+                "INSERT INTO preferences(key,value,updated_at) VALUES(?,?,?) " +
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+                arrayOf("native_volume_states", merged.toString(), now),
+            )
+            if (eventAt > 0.0) {
+                connection.execSQL(
+                    "INSERT INTO preferences(key,value,updated_at) VALUES(?,?,?) " +
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+                    arrayOf("native_volume_event_at", maxOf(eventAt, lastEventAt).toString(), now),
+                )
+            }
+            JSONObject(merged.toString()).put("ignored", false)
+        }
+    }
+
+    /**
+     * Finalizes native SAF scan bookkeeping in the canonical schema. The scan-run
+     * row is operational metadata; catalog writes/reconciliation remain in the
+     * preceding indexDiscoveredMedia transaction.
+     */
+    suspend fun finishNativeScanRun(
+        scanId: String,
+        requestId: String?,
+        sourceKind: String,
+        scopeKind: String,
+        scopeRef: String,
+        nativeGeneration: Long?,
+        generationId: String?,
+        status: String,
+        stats: JSONObject,
+        indexReport: JSONObject?,
+        startedAtMillis: Long?,
+        finishedAtMillis: Long = System.currentTimeMillis(),
+    ): Boolean = withContext(Dispatchers.IO) {
+        require(scanId.isNotBlank()) { "A scan ID is required." }
+        require(scopeRef.isNotBlank()) { "A scan scope reference is required." }
+        val normalizedSource = sourceKind.trim().lowercase().ifBlank { "unknown" }
+        val normalizedScopeKind = scopeKind.trim().lowercase().ifBlank { "source" }
+        val normalizedStatus = status.trim().uppercase().ifBlank { "FAILED" }
+        val finalStatus = when (normalizedStatus) {
+            "COMPLETED", "COMPLETE" -> "completed"
+            "EMPTY_COMPLETE" -> "empty_complete"
+            "PARTIAL" -> "partial"
+            "UNAVAILABLE" -> "unavailable"
+            "REVOKED" -> "revoked"
+            "CANCELLED", "CANCELED" -> "cancelled"
+            else -> "error"
+        }
+        val generationStatus = when (normalizedStatus) {
+            "COMPLETED", "COMPLETE" -> "COMPLETED"
+            "EMPTY_COMPLETE" -> "EMPTY_COMPLETE"
+            "PARTIAL" -> "PARTIAL"
+            "UNAVAILABLE", "REVOKED" -> "UNAVAILABLE"
+            "CANCELLED", "CANCELED" -> "CANCELLED"
+            else -> "FAILED"
+        }
+        val cancelled = normalizedStatus in setOf("CANCELLED", "CANCELED")
+        val startedSeconds = (startedAtMillis?.takeIf { it > 0L } ?: finishedAtMillis) / 1000.0
+        val finishedSeconds = finishedAtMillis / 1000.0
+        val elapsedMillis = (finishedAtMillis - (startedAtMillis?.takeIf { it > 0L } ?: finishedAtMillis)).coerceAtLeast(0L)
+        val errors = linkedSetOf<String>()
+        stats.optJSONArray("errors")?.let { raw ->
+            for (index in 0 until raw.length()) raw.optString(index).trim().takeIf { it.isNotEmpty() }?.let(errors::add)
+        }
+        indexReport?.optString("terminalError")?.trim()?.takeIf { it.isNotEmpty() }?.let(errors::add)
+        val files = stats.optInt("files", stats.optInt("discovered", 0)).coerceAtLeast(0)
+        val videos = stats.optInt("videos", 0).coerceAtLeast(0)
+        val inserted = indexReport?.optInt("inserted", stats.optInt("new", 0)) ?: stats.optInt("new", 0)
+        val updated = indexReport?.optInt("updated", stats.optInt("updated", 0)) ?: stats.optInt("updated", 0)
+        val unchanged = indexReport?.optInt("unchanged", stats.optInt("unchanged", 0)) ?: stats.optInt("unchanged", 0)
+        val reconciled = indexReport?.optInt("reconciledMissing", 0) ?: 0
+        val ignored = stats.optInt("ignored", 0).coerceAtLeast(0)
+        val duplicates = stats.optInt("duplicates", 0).coerceAtLeast(0)
+        val unknown = stats.optInt("unknown", 0).coerceAtLeast(0)
+        val folderAuthorization = when (normalizedStatus) {
+            "COMPLETED", "COMPLETE", "EMPTY_COMPLETE", "PARTIAL" -> "granted"
+            "UNAVAILABLE" -> "unavailable"
+            "REVOKED" -> "revoked"
+            else -> null
+        }
+
+        database.transaction { connection ->
+            val existing = connection.rawQuery(
+                "SELECT id, started_at, errors FROM scan_runs WHERE scan_id = ? ORDER BY id DESC LIMIT 1",
+                arrayOf(scanId),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) Triple(cursor.getLong(0), cursor.getDouble(1), cursor.getString(2).orEmpty()) else null
+            }
+            val mergedErrors = linkedSetOf<String>()
+            existing?.third?.let { raw ->
+                runCatching { JSONArray(raw) }.getOrNull()?.let { prior ->
+                    for (index in 0 until prior.length()) prior.optString(index).trim().takeIf { it.isNotEmpty() }?.let(mergedErrors::add)
+                }
+            }
+            mergedErrors.addAll(errors)
+            val values = ContentValues().apply {
+                put("finished_at", finishedSeconds)
+                put("status", finalStatus)
+                put("folders", 1)
+                put("files", files)
+                put("videos", videos)
+                put("animes", connection.rawQuery("SELECT COUNT(*) FROM anime", null).use { if (it.moveToFirst()) it.getInt(0) else 0 })
+                put("episodes", connection.rawQuery("SELECT COUNT(*) FROM episodes", null).use { if (it.moveToFirst()) it.getInt(0) else 0 })
+                put("new_files", inserted.coerceAtLeast(0))
+                put("updated_files", updated.coerceAtLeast(0))
+                put("unchanged_files", unchanged.coerceAtLeast(0))
+                put("ignored_files", ignored)
+                put("duplicate_files", duplicates)
+                put("unknown_files", unknown)
+                put("reconciled_files", reconciled.coerceAtLeast(0))
+                put("scan_id", scanId)
+                put("request_id", requestId)
+                put("source", normalizedSource)
+                put("scope", scopeRef)
+                put("source_kind", normalizedSource)
+                put("scope_kind", normalizedScopeKind)
+                put("scope_ref", scopeRef)
+                if (nativeGeneration == null) putNull("native_generation") else put("native_generation", nativeGeneration)
+                put("generation_id", generationId ?: scanId)
+                put("generation_status", generationStatus)
+                put("cancelled", if (cancelled) 1 else 0)
+                put("discovered", stats.optInt("discovered", files).coerceAtLeast(0))
+                put("processed", stats.optInt("processed", files).coerceAtLeast(0))
+                put("inserted_files", inserted.coerceAtLeast(0))
+                put("removed_files", reconciled.coerceAtLeast(0))
+                put("elapsed_ms", elapsedMillis)
+                put("errors", JSONArray(mergedErrors.toList()).toString())
+            }
+            if (existing == null) {
+                values.put("started_at", startedSeconds)
+                connection.insertOrThrow("scan_runs", null, values)
+            } else {
+                values.put("started_at", existing.second)
+                connection.update("scan_runs", values, "id = ?", arrayOf(existing.first.toString()))
+            }
+            if (normalizedSource == "saf" && folderAuthorization != null) {
+                val folderValues = ContentValues().apply {
+                    put("authorization", folderAuthorization)
+                    put("last_scan_at", finishedSeconds)
+                    val error = mergedErrors.firstOrNull()
+                    if (error == null || folderAuthorization == "granted") putNull("last_error") else put("last_error", error)
+                }
+                connection.update("folders", folderValues, "path = ? AND kind = 'saf'", arrayOf(scopeRef))
+            }
+            true
+        }
+    }
+
+    suspend fun removeSafFolder(reference: String): Boolean = withContext(Dispatchers.IO) {
+        val normalized = reference.trim()
+        require(normalized.isNotEmpty()) { "A folder reference is required." }
+        database.transaction { connection ->
+            val folderIdentity = connection.rawQuery(
+                "SELECT COALESCE(saf_identity,'') FROM folders WHERE path=? AND kind='saf' LIMIT 1",
+                arrayOf(normalized),
+            ).use { c -> if (c.moveToFirst()) c.getString(0).orEmpty() else null }
+                ?: return@transaction false
+            val scopes = setOf(normalized, folderIdentity).filter { it.isNotBlank() }
+            val episodes = linkedSetOf<Long>()
+            scopes.forEach { scope ->
+                connection.rawQuery(
+                    "SELECT DISTINCT episode_id FROM episode_observations WHERE source_kind='saf' AND scope_ref=?",
+                    arrayOf(scope),
+                ).use { c -> while (c.moveToNext()) episodes.add(c.getLong(0)) }
+            }
+            val now = System.currentTimeMillis() / 1000.0
+            scopes.forEach { scope ->
+                connection.execSQL(
+                    "UPDATE episode_observations SET state='scope_removed', error='source_removed', last_checked_at=? " +
+                        "WHERE source_kind='saf' AND scope_ref=?",
+                    arrayOf(now, scope),
+                )
+            }
+            episodes.forEach { recomputeEpisodeAvailability(connection, it) }
+            connection.execSQL(
+                "UPDATE episodes SET missing=1, availability_state='scope_removed' WHERE source_folder=? " +
+                    "AND id NOT IN (SELECT episode_id FROM episode_observations)",
+                arrayOf(normalized),
+            )
+            connection.delete("folders", "path=? AND kind='saf'", arrayOf(normalized)) > 0
+        }
+    }
+
+    private fun recomputeEpisodeAvailability(connection: SQLiteDatabase, episodeId: Long) {
+        val latestByLocation = linkedMapOf<String, String>()
+        connection.rawQuery(
+            "SELECT source_kind,scope_kind,scope_ref,volume_id,state FROM episode_observations " +
+                "WHERE episode_id=? ORDER BY last_checked_at DESC,id DESC",
+            arrayOf(episodeId.toString()),
+        ).use { c ->
+            while (c.moveToNext()) {
+                val source = c.getString(0).orEmpty().trim().lowercase().ifBlank { "unknown" }
+                val kind = c.getString(1).orEmpty().trim().lowercase().ifBlank { "source" }
+                val scope = c.getString(2).orEmpty().trim()
+                val volume = c.getString(3).orEmpty().trim()
+                val key = if (volume.isNotEmpty()) "$source|volume|$volume" else "$source|$kind|$scope"
+                if (!latestByLocation.containsKey(key)) latestByLocation[key] = c.getString(4).orEmpty().trim().lowercase()
+            }
+        }
+        if (latestByLocation.isEmpty()) return
+        val states = latestByLocation.values.toSet()
+        val (missing, availability) = when {
+            "available" in states -> 0 to "available"
+            "volume_unavailable" in states -> 1 to "volume_unavailable"
+            "scope_unavailable" in states -> 1 to "scope_unavailable"
+            "unavailable" in states -> 1 to "unavailable"
+            states.all { it == "scope_removed" } -> 1 to "scope_removed"
+            else -> 1 to "missing"
+        }
+        connection.execSQL("UPDATE episodes SET missing=?, availability_state=? WHERE id=?",
+            arrayOf(missing, availability, episodeId))
     }
 
     suspend fun artworkForAnime(animeId: Long): List<ReiAnixArtworkRecord> =

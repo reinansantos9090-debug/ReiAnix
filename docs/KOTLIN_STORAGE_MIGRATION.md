@@ -1,6 +1,8 @@
 # ReiAnix — Migração Nativa de Armazenamento e Descoberta de Mídia em Kotlin
 
-Este documento registra a arquitetura, o fluxo de descoberta, a compatibilidade, o status da migração Python -> Kotlin, a integridade dos dados e as verificações executadas para o subsistema de armazenamento do ReiAnix.
+Este documento registra a arquitetura e o estado verificável da migração do armazenamento para Kotlin.
+
+**Status de aceitação: EM ANDAMENTO.** A seleção SAF, a gravação da identidade da pasta, a remoção de fontes e a atualização manual Compose são encaminhadas a Kotlin. O scanner SAF persiste/reconcilia o catálogo e, no fluxo normal com ownership nativo confirmado, registra também o histórico em `scan_runs` antes de publicar o evento terminal. A etapa ainda não está concluída: o transporte terminal/projeção compatível usa NativeMailbox/main.py; o finalizador Python permanece como fallback de recuperação quando o ownership/resultado transacional nativo não pode ser comprovado; fluxos Flet legados e a reconciliação de identidade documental ainda têm consumidores Python.
 
 ---
 
@@ -40,8 +42,8 @@ O ReiAnix utiliza três mecanismos principais de acesso ao armazenamento no Andr
 ## B. Fluxo de Descoberta
 
 ### 1. Ponto de Entrada
-- A varredura pode ser disparada por onboarding (`select_tree`), atualização manual (`refresh`), alteração de permissões (`PERMISSION_CHANGE`) ou sincronização de inicialização (`STARTUP_SCAN`).
-- A execução dos scanners ocorre em Kotlin por `NativeScanController` e `NativeScanRunner`, usando coroutines fora da thread principal. A arbitragem/enfileiramento de solicitações ainda passa por `core/scan_coordinator.py` no caminho híbrido; portanto, a coordenação completa ainda não é exclusivamente nativa.
+- A varredura pode ser disparada por onboarding (`select_tree`), atualização manual Compose (`scan_library`), alteração de permissões (`PERMISSION_CHANGE`) ou sincronização de inicialização/volume.
+- Gatilhos nativos e atualização Compose usam `NativeScanController` e `NativeScanRunner`, com coroutines fora da thread principal. Solicitações originadas em caminhos Flet legados ainda podem usar `core/scan_coordinator.py`; a coordenação completa de todos os consumidores ainda não é exclusivamente nativa.
 
 ### 2. Scanners Utilizados
 - `SafScanner` para fontes SAF configuradas (`saf:*`); este é o fluxo de descoberta que alimenta o catálogo canônico.
@@ -96,21 +98,27 @@ O ReiAnix utiliza três mecanismos principais de acesso ao armazenamento no Andr
 
 ## D. Migração Python / Kotlin
 
-### 1. Operações Transfereidas para Kotlin Nativo
-- Seleção de diretório SAF e persistência de permissões via `MainActivity` e `StorageAuthorization`.
-- Varredura SAF e indexação/reconciliação no banco SQLite canônico via `SafScanner` e `ReiAnixSqliteLibraryRepository`.
-- Descoberta MediaStore e BroadStorage para diagnóstico, sem promovê-los a fontes de catálogo.
-- Ownership dos lotes nativos: `NativeScanPublisher` marca os lotes como propriedade Kotlin, e `main.py` não deve executar uma segunda ingestão Python desses lotes.
-- Operações de arquivo SAF (listar, criar, renomear, mover, excluir) via `SafFileOperations`.
-- Exibição e controle do estado de armazenamento em Jetpack Compose (`ReiAnixStorageScreen`, `ReiAnixSafFileManager`, `ReiAnixLibraryFolderOnboarding`).
+### Responsabilidades executadas em Kotlin
+- Seleção de diretório via ACTION_OPEN_DOCUMENT_TREE, validação e persistência do grant SAF.
+- Telas Compose iniciam o seletor por Intent para MainActivity, sem mandar o pedido pelo mailbox Python.
+- A pasta selecionada é registrada na tabela `folders` canônica antes da descoberta; `nativeFolderConfigOwner=true` impede gravação duplicada pelo handler Python.
+- A remoção de fonte envia a propriedade para Kotlin: o grant persistente é liberado e `removeSafFolder` atualiza observações/availability na mesma base, preservando histórico e arquivos físicos.
+- A atualização Compose usa a ação nativa `scan_library`; o controlador aguarda os resultados SAF terminais e publica um evento de conclusão com estado real.
+- A indexação SAF e o histórico `scan_runs` são gravados por Kotlin no fluxo normal quando o commit nativo está confirmado. Python lê o catálogo para publicar a projeção, sem finalizar novamente o mesmo scan.
+- Renomeação/movimentação SAF atualiza URI/nome e observações na mesma transação Kotlin, preservando o ID do episódio e seu histórico; o evento posterior informa `nativeIdentityOwner=true` e serve apenas à projeção e ao rescan.
+- Alterações de volume atualizam `native_volume_states`, a marca temporal e a disponibilidade das observações no SQLite canônico via Kotlin; o evento informa que o scan também tem owner nativo, evitando um segundo pedido ao ScanCoordinator Python.
 
-### 2. Dependências Híbridas Remanescentes
-- `NativeMailbox` permanece ativa para transportar progresso, estados terminais, resultados do seletor e eventos de diagnóstico.
-- `core/scan_coordinator.py` continua ativo para arbitragem/enfileiramento e processamento de estados do fluxo híbrido; isso ainda é uma dependência de runtime, não apenas compatibilidade de testes.
-- `core/storage_access.py`, `core/android_bridge.py` e `main.py` continuam com consumidores ativos para onboarding, seleção/estado de pastas e ponte de comandos/eventos. Não foram removidos porque ainda há consumidores e contratos que precisam migrar.
-- A migração integral do subsistema de armazenamento, conforme o Prompt 04/29, permanece **parcial** até que a coordenação de solicitações e os consumidores ativos sejam migrados e validados em Kotlin.
+### Dependências híbridas ainda ativas — etapa não concluída
+- NativeScanRunner/NativeScanPublisher publicam progresso e término por NativeMailbox, consumido por main.py para atualizar a projeção compatível e os estados de UI.
+- O finalizador `LibraryService.finish_ingest_documents` continua como fallback somente quando Kotlin não pode confirmar ownership nativo ou quando uma finalização nativa falha; receipts recuperáveis com ownership nativo confirmado agora registram `scan_runs` em Kotlin antes de publicar o evento.
+- Eventos `saf_document_identity_change` de APKs antigos ainda podem usar o finalizador de compatibilidade Python; a versão atual do ViewModel já executa a mutação canônica em Kotlin antes de publicar o evento. Alguns caminhos de desenvolvimento sem bridge Android mantêm fallback Python.
+- Algumas telas Compose ainda consomem snapshots JSON legados; NativeMailbox não pode ser removido globalmente enquanto outros subsistemas o usam.
 
----
+### Critérios restantes
+- Validar por CI os caminhos de recuperação com commit confirmado, commit incerto e snapshot positivo sem commit; manter o fallback Python apenas para casos em que a propriedade da gravação nativa não pode ser comprovada.
+- Remover gradualmente o fallback de reconciliação e o ScanCoordinator Python somente quando não houver consumidores de APKs antigos ou de desenvolvimento que ainda precisem dele.
+- Manter a projeção compatível sem delegar descoberta, mutação de catálogo ou finalização normal do scan ao Python.
+- Comprovar por CI no SHA final que resultados completos, parciais, cancelados ou sem autorização preservam dados anteriores e não geram duplicações.
 
 ## E. Integridade dos Dados
 
@@ -125,7 +133,7 @@ O ReiAnix utiliza três mecanismos principais de acesso ao armazenamento no Andr
 - **Compilação e Sintaxe Python:** Verificadas via `python -m compileall -q main.py app_config.py core views tests`.
 - **Suíte Python histórica:** a etapa anterior registrou 1765 testes aprovados. Esse resultado é histórico e não valida as alterações corretivas desta revisão.
 - **Tratamento de exceções Kotlin:** a implementação contém tratamento explícito e propagação de `CancellationException` nos scanners, runner, publisher e operações SAF; a compilação do SHA final continua sendo a verificação exigida.
-- **Validação desta revisão:** o build Android e a suíte Python obrigatória devem ser avaliados pelo workflow associado ao SHA final. Não execute manualmente testes Kotlin/JVM, não adicione testes instrumentados/emulador e não afirme validação em dispositivo real sem executá-la.
+- **Validação desta revisão:** a execução anterior #5543 falhou na suíte Python (4 falhas de contratos/assertions; 1.844 testes passaram), antes de build/compilação Android e sem APK/ZIP. Os contratos foram corrigidos e a validação do SHA final desta correção permanece pendente; somente o workflow do SHA final pode certificar a etapa. Não execute manualmente testes Kotlin/JVM, não adicione testes instrumentados/emulador e não afirme validação em dispositivo real sem executá-la.
 - **Artefatos:** APK, ZIP e SHA-256 só podem ser declarados disponíveis quando forem encontrados no workflow/release associado ao SHA final.
 
 

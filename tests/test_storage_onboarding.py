@@ -108,8 +108,8 @@ class StorageOnboardingTests(unittest.TestCase):
         request_block = source.split("private fun requestMediaAccess()", 1)[1].split("private fun publishStorageStatus()", 1)[0]
         self.assertIn('val currentAccess = MediaStoreScanner.accessLevel(this)', request_block)
         self.assertIn('if (currentAccess != "denied")', request_block)
-        self.assertLess(request_block.index('put("type", "mediastore_permission")'), request_block.index('publishScanRequest("PERMISSION_CHANGE"'))
-        self.assertIn("publishScanRequest", request_block)
+        self.assertLess(request_block.index('put("type", "mediastore_permission")'), request_block.index("scanMediaStore(requestId)"))
+        self.assertIn("scanMediaStore(requestId)", request_block)
 
     def test_add_folder_is_not_blocked_by_an_active_scan(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
@@ -422,7 +422,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('"STORAGE_READY"', source)
         self.assertIn('"PERMISSION_CHANGE"', source)
         self.assertIn('"STARTUP_SCAN_REQUESTED"', source)
-        self.assertIn('publishScanRequest("PERMISSION_CHANGE"', source)
+        self.assertIn('scanTree(configuredReference, requestId)', source)
 
     def test_startup_scan_waits_for_a_persisted_saf_tree(self):
         source = (
@@ -459,7 +459,7 @@ class StorageOnboardingTests(unittest.TestCase):
         )
         self.assertLess(
             result.index('JSONObject().put("type", "saf_permission")'),
-            result.index('publishScanRequest("PERMISSION_CHANGE"'),
+            result.index('scanTree(configuredReference, requestId)'),
         )
 
     def test_snapshot_preserves_previous_catalog_during_scan(self):
@@ -922,50 +922,83 @@ if __name__ == "__main__":
 
 
 class TestAuthorizedStorageDiscovery(unittest.TestCase):
+    def test_native_saf_selection_persists_identity_fields_by_name(self):
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = source.index("private fun handleTreePickerResult")
+        picker = source[start:source.index("private fun ", start + 30)]
+        call_start = picker.index("upsertSafFolder(")
+        call_end = picker.index("\n                        )", call_start)
+        call = picker[call_start:call_end]
+        self.assertIn('authorization = "granted"', call)
+        self.assertIn("safAuthority =", call)
+        self.assertIn("safDocumentId =", call)
+        self.assertIn("safVolumeId =", call)
+        self.assertIn("safIdentity =", call)
+
+    def test_compose_library_refresh_dispatches_native_scan_and_terminal_result(self):
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
+        refresh_start = repository.index("fun refresh(")
+        refresh = repository[refresh_start:repository.index("fun loadLibraryPage(", refresh_start)]
+        self.assertIn('appendQueryParameter("action", "scan_library")', refresh)
+        self.assertIn("MainActivity::class.java", refresh)
+        self.assertNotIn("send(ReiAnixLibraryCommandCodec.Action.REFRESH)", refresh)
+
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn('"scan_library" -> {', activity)
+        self.assertIn('"type", "saf_library_scan_complete"', activity)
+
+        bridge = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
+        self.assertIn('async def scan_library(self): return await self._launch("scan_library")', bridge)
+
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertIn("elif event_type == 'saf_library_scan_complete':", main)
+        self.assertIn('compose_library_bridge.write_command_result(', main)
+        refresh_start = main.index("async def refresh_library")
+        refresh = main[refresh_start:main.index("async def request_home_refresh", refresh_start)]
+        self.assertIn("await bridge.scan_library()", refresh)
+        self.assertIn("Non-Android development fallback only", refresh)
+
     def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        resume = source[source.index("override fun onResume()"):source.index("override fun onPause()", source.index("override fun onResume()"))]
+        start = source.index("override fun onResume()")
+        resume = source[start:source.index("override fun onPause()", start)]
         self.assertIn("startupDiscoveryTriggered", resume)
         self.assertIn("publishScanRequest(", resume)
         self.assertIn('"STARTUP"', resume)
+        self.assertIn('reason = "first_activity_resume"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
-        self.assertIn("startupDiscoveryTriggered", resume)
-        self.assertIn("publishScanRequest(", resume)
-        self.assertIn('"STARTUP"', resume)
         self.assertNotIn("persistedSafTreeUris().forEach", resume)
-
     def test_media_permission_transition_and_existing_access_converge_to_scan(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         self.assertIn("mediaAccessChangedToUsable", source)
         request = source[source.index("private fun requestMediaAccess()"):source.index("private fun publishStorageStatus(requestId: String? = null)", source.index("private fun requestMediaAccess()"))]
         self.assertIn("if (currentAccess != \"denied\")", request)
-        self.assertIn("publishScanRequest(", request)
+        self.assertIn("scanMediaStore(requestId)", request)
         callback = source[source.index("private val mediaPermissionRequester"):source.index("private val treePicker", source.index("private val mediaPermissionRequester"))]
         self.assertIn("val requestId = pendingMediaRequestId", callback)
-        self.assertIn("publishScanRequest(", callback)
+        self.assertIn("scanMediaStore(requestId)", callback)
 
     def test_existing_broad_access_converges_to_scan(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        block = source[source.index("private fun openBroadStorageSettings()"):source.index("private fun scanAllStorage", source.index("private fun openBroadStorageSettings()"))]
+        start = source.index("private fun openBroadStorageSettings()")
+        block = source[start:source.index("private fun scanAllStorage", start)]
         self.assertIn("if (BroadStorageScanner.hasAccess(this))", block)
-        self.assertIn("publishScanRequest(", block)
+        self.assertEqual(block.count("scanAllStorage(requestId)"), 1)
         self.assertIn("revalidatedAfterSettings", block)
-        self.assertNotIn("scanAllStorage(requestId)", block)
-
-
-class TestAndroidMediaLifecycle(unittest.TestCase):
     def test_storage_receiver_reacts_to_mount_and_media_scanner_finish(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        receiver = source[source.index("private val storageReceiver"):source.index("private fun registerStorageReceiver", source.index("private val storageReceiver"))]
+        start = source.index("private val storageReceiver")
+        receiver = source[start:source.index("private fun registerStorageReceiver", start)]
         self.assertIn("Intent.ACTION_MEDIA_MOUNTED", receiver)
         self.assertIn("Intent.ACTION_MEDIA_SCANNER_FINISHED", receiver)
         self.assertIn("publishScanRequest(", receiver)
         self.assertIn('"VOLUME_MOUNT"', receiver)
-        self.assertIn("publishScanRequest(", receiver)
+        self.assertIn("reason = action", receiver)
+        self.assertIn("recordNativeVolumeChange(payload)", receiver)
+        self.assertIn('"nativeScanDispatchOwner", true', receiver)
         self.assertNotIn("scanAllStorage(null)", receiver)
         self.assertIn("activityResumed", receiver)
-
     def test_storage_receiver_does_not_launch_permission_ui(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         receiver = source[source.index("private val storageReceiver"):source.index("private fun registerStorageReceiver", source.index("private val storageReceiver"))]

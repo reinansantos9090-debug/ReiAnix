@@ -474,8 +474,10 @@ async def main(page: ft.Page):
                         reason=f"scan_terminal:{state.value}",
                     )
                 scan_started = home_refresh_context.get("scan_started_at")
+                terminal_cancelled = state == ScanState.CANCELLED
                 diagnostics.record(
-                    "HOME_REFRESH_SCAN_COMPLETED" if terminal_success else "HOME_REFRESH_FAILED",
+                    "HOME_REFRESH_SCAN_COMPLETED" if terminal_success
+                    else ("HOME_REFRESH_CANCELLED" if terminal_cancelled else "HOME_REFRESH_FAILED"),
                     refresh_id=home_refresh_context["refresh_id"],
                     request_id=snapshot.request_id,
                     status=state.value,
@@ -483,15 +485,19 @@ async def main(page: ft.Page):
                     scan_source=snapshot.source or "all",
                     duration_ms=int((time.monotonic() - scan_started) * 1000) if scan_started else None,
                 )
-                performance.counter("home.refresh.scan_completed" if terminal_success else "home.refresh.failed")
+                performance.counter(
+                    "home.refresh.scan_completed" if terminal_success
+                    else ("home.refresh.cancelled" if terminal_cancelled else "home.refresh.failed")
+                )
                 if not terminal_success:
                     home_refresh_context["active"] = False
                     home_refresh_context["db_updated"] = False
                     home_refresh_context["request_id"] = None
-                    _publish_home_refresh_state("ERROR")
+                    terminal_ui_state = "CANCELLED" if terminal_cancelled else "ERROR"
+                    _publish_home_refresh_state(terminal_ui_state)
                     resetter = home_state.get("_reset_refresh_state")
                     if callable(resetter):
-                        resetter("ERROR", 1.6)
+                        resetter(terminal_ui_state, 1.6)
                 elif navigation.current != "home":
                     # The scan may finish while Home is not mounted. Keep the
                     # logical refresh alive until its durable catalog update has
@@ -653,6 +659,31 @@ async def main(page: ft.Page):
         resetter = home_state.get("_reset_refresh_state")
         if callable(resetter):
             resetter("ERROR", 1.6)
+
+    def _cancel_home_refresh(reason, *, request_id=None, source=None):
+        if not home_refresh_context["active"]:
+            return
+        refresh_id = home_refresh_context.get("refresh_id")
+        refresh_source = home_refresh_context.get("source") or "button"
+        diagnostics.record(
+            "HOME_REFRESH_CANCELLED",
+            refresh_id=refresh_id,
+            request_id=request_id,
+            source=refresh_source,
+            operation_source=source,
+            transition_reason=str(reason),
+        )
+        performance.counter("home.refresh.cancelled")
+        _set_home_refresh_phase("CANCELLED", request_id=request_id, reason=str(reason))
+        home_refresh_context["active"] = False
+        home_refresh_context["db_updated"] = False
+        home_refresh_context["scan_terminal"] = True
+        home_refresh_context["request_id"] = None
+        home_state["_manual_refresh_pending"] = False
+        _publish_home_refresh_state("CANCELLED")
+        resetter = home_state.get("_reset_refresh_state")
+        if callable(resetter):
+            resetter("CANCELLED", 1.6)
 
     def _home_refresh_ui_updated():
         if not home_refresh_context["active"]:
@@ -3602,10 +3633,13 @@ async def main(page: ft.Page):
         _clear_pending_saf_selection_context()
         if recovered:
             try:
-                await scan_coordinator.request(
-                    ScanOrigin.PERMISSION_CHANGE, source="saf", scope_ref=tree_uri,
-                    full=False, reason="saf_inventory_selection_recovery",
-                )
+                if bridge.available:
+                    await bridge.rescan_tree(tree_uri)
+                else:
+                    await scan_coordinator.request(
+                        ScanOrigin.PERMISSION_CHANGE, source="saf", scope_ref=tree_uri,
+                        full=False, reason="saf_inventory_selection_recovery",
+                    )
             except Exception:
                 logger.exception("[STORAGE] recovered SAF scan request failed")
         return True
@@ -3678,6 +3712,19 @@ async def main(page: ft.Page):
             safe_update()
             await bridge.check_storage_access()
             return "Verificando as permissões do armazenamento…", True
+        if bridge.available:
+            request_id = await bridge.scan_library()
+            if _home_refresh_context is not None:
+                _home_refresh_context["request_id"] = request_id
+            diagnostics.record(
+                "NATIVE_LIBRARY_SCAN_REQUESTED",
+                request_id=request_id,
+                source="configured_saf_roots",
+                reason="explicit_user_refresh",
+            )
+            return "Atualização nativa iniciada. Verificando as pastas autorizadas…", True
+        # Non-Android development fallback only. The installed Android app uses
+        # MainActivity/NativeScanController as the single scan coordinator.
         transition = await scan_coordinator.request(
             ScanOrigin.USER_REFRESH,
             source=None,
@@ -5492,12 +5539,19 @@ async def main(page: ft.Page):
                             tree_uri = str(payload.get('treeUri') or '').strip()
                             if not old_uri or not new_uri or not name or not tree_uri:
                                 raise ValueError('Evento de reconciliação SAF sem árvore, URI antiga, URI nova ou nome.')
-                            reconciliation = await asyncio.to_thread(
-                                library.reconcile_saf_document_identity_change,
-                                old_uri,
-                                new_uri,
-                                name,
-                            )
+                            if payload.get('nativeIdentityOwner') is True:
+                                reconciliation = {
+                                    "status": payload.get('status') or "unknown",
+                                    "episode_id": payload.get('episodeId'),
+                                }
+                            else:
+                                # Compatibility path for queued events emitted by older APKs.
+                                reconciliation = await asyncio.to_thread(
+                                    library.reconcile_saf_document_identity_change,
+                                    old_uri,
+                                    new_uri,
+                                    name,
+                                )
                             reconciliation_status = str(reconciliation.get('status') or 'unknown')
                             if reconciliation_status in {'reconciled', 'already_reconciled'}:
                                 logger.info(
@@ -5524,6 +5578,84 @@ async def main(page: ft.Page):
                                     bool(old_uri),
                                     bool(new_uri),
                                 )
+                        elif event_type == 'saf_library_scan_complete':
+                            native_status = str(payload.get('status') or 'FAILED').upper()
+                            native_origin = str(payload.get('origin') or '').upper()
+                            is_user_refresh = native_origin == 'USER_REFRESH'
+                            if native_status in {'COMPLETED', 'PARTIAL'}:
+                                if compose_primary_ui:
+                                    compose_library_bridge.request_publish("native_storage_scan_complete")
+                                else:
+                                    on_catalog_changed(
+                                        refresh_request_id=event_request_id if is_user_refresh else None
+                                    )
+                                if compose_primary_ui and is_user_refresh and event_request_id:
+                                    message = (
+                                        "Varredura nativa concluída parcialmente; os dados anteriores foram preservados."
+                                        if native_status == 'PARTIAL'
+                                        else "Varredura nativa concluída."
+                                    )
+                                    compose_library_bridge.write_command_result(
+                                        event_request_id,
+                                        "refresh",
+                                        "COMPLETED",
+                                        message=message,
+                                    )
+                            else:
+                                if compose_primary_ui and is_user_refresh and event_request_id:
+                                    if native_status == "CANCELLED":
+                                        compose_library_bridge.write_command_result(
+                                            event_request_id,
+                                            "refresh",
+                                            "CANCELLED",
+                                            message="Varredura nativa cancelada.",
+                                        )
+                                    else:
+                                        compose_library_bridge.write_command_result(
+                                            event_request_id,
+                                            "refresh",
+                                            "FAILED",
+                                            error=(
+                                                "Nenhuma fonte de armazenamento autorizada estava disponível para varredura."
+                                                if payload.get("noSourcesAvailable") is True
+                                                else (
+                                                    "A operação de varredura foi interrompida antes de iniciar as fontes."
+                                                    if payload.get("errorCode") == "ACTIVITY_NOT_RESUMED"
+                                                    else (
+                                                        "Nenhuma fonte solicitada concluiu a varredura com sucesso."
+                                                        if int(payload.get("requestedSources") or 0) > 0
+                                                        and int(payload.get("successfulScopes") or 0) == 0
+                                                        else "A varredura nativa não pôde ser concluída."
+                                                    )
+                                                )
+                                            ),
+                                        )
+                                elif is_user_refresh:
+                                    if native_status == "CANCELLED":
+                                        _cancel_home_refresh(
+                                            "native_scan_cancelled",
+                                            request_id=event_request_id,
+                                            source="saf",
+                                        )
+                                    else:
+                                        _fail_home_refresh(
+                                            "native_scan_failed",
+                                            request_id=event_request_id,
+                                            source="saf",
+                                        )
+                            diagnostics.record(
+                                "NATIVE_LIBRARY_SCAN_COMPLETE",
+                                request_id=event_request_id,
+                                result=native_status,
+                                source=native_origin or "unknown",
+                                counts={
+                                    "configuredScopes": int(payload.get('configuredScopes') or 0),
+                                    "successfulScopes": int(payload.get('successfulScopes') or 0),
+                                    "failedScopes": int(payload.get('failedScopes') or 0),
+                                    "cancelledScopes": int(payload.get('cancelledScopes') or 0),
+                                    "requestedSources": int(payload.get('requestedSources') or 0),
+                                },
+                            )
                         elif event_type == 'saf_scan':
                             try:
                                 saf_selection.finish()
@@ -5534,7 +5666,14 @@ async def main(page: ft.Page):
                                 if not tree_uri:
                                     raise ValueError('Resultado SAF sem pasta de origem.')
                                 diagnostics.record("PYTHON_INGEST_FINAL", request_id=request_id, scan_id=payload.get('scanId'), source="saf")
-                                if payload.get('documents') and payload.get('nativeLibraryIndexOwner') is not True:
+                                if (
+                                    payload.get('nativeLibraryIndexOwner') is True
+                                    and payload.get('nativeScanRunOwner') is True
+                                ):
+                                    # Kotlin committed the canonical catalog and scan_runs row.
+                                    # Python reads the projection only; it must not finalize the same scan again.
+                                    catalog = await asyncio.to_thread(library.store.catalog)
+                                elif payload.get('documents') and payload.get('nativeLibraryIndexOwner') is not True:
                                     catalog=await asyncio.to_thread(library.ingest_documents, tree_uri, payload.get('documents', []), folder_name=payload.get('name'), scan_errors=stats.get('errors', []), scan_stats=stats, scan_id=payload.get('scanId'), scope_kind=payload.get('scopeKind') or 'root', scope_ref=payload.get('scopeRef') or None, scan_generation=payload.get('scanGeneration'), enforce_library_source=True)
                                 else:
                                     final_result=await asyncio.to_thread(
@@ -7054,7 +7193,10 @@ async def main(page: ft.Page):
                             )
                             volume_event = dict(payload)
                             volume_event["eventTimestamp"] = event.get('timestamp') or event.get('createdAt') or payload.get('timestamp')
-                            volume_result = await asyncio.to_thread(library.ingest_native_volume_change, volume_event)
+                            if payload.get('nativeStorageOwner') is True:
+                                volume_result = {"ignored": bool(payload.get('nativeVolumeStateIgnored'))}
+                            else:
+                                volume_result = await asyncio.to_thread(library.ingest_native_volume_change, volume_event)
                             if volume_result.get("ignored"):
                                 logger.info("[STORAGE] stale volume_changed event ignored timestamp=%s", volume_event.get("eventTimestamp"))
                                 continue
@@ -7070,7 +7212,7 @@ async def main(page: ft.Page):
                                 before = change.get('before') or {}
                                 if isinstance(after, dict) and after.get('available', False) and not before.get('available', False):
                                     volume_returned = True
-                            if volume_returned:
+                            if volume_returned and payload.get('nativeScanDispatchOwner') is not True:
                                 transition = await scan_coordinator.request(
                                     ScanOrigin.VOLUME_MOUNT,
                                     source="broad_storage",
@@ -7078,6 +7220,12 @@ async def main(page: ft.Page):
                                     reason="volume_returned",
                                 )
                                 diagnostics.record("SCAN_COORDINATOR", source="broad_storage", result=transition.kind)
+                            elif volume_returned:
+                                diagnostics.record(
+                                    "NATIVE_VOLUME_SCAN_DISPATCH",
+                                    source="android_storage",
+                                    result="native_owner",
+                                )
                             logger.info(
                                 "[STORAGE] action=volume_changed native_result=received "
                                 "current=%s added=%s removed=%s changed=%s rediscovery=%s",
@@ -7289,7 +7437,10 @@ async def main(page: ft.Page):
                                 if tree_uri:
                                     _merge_authoritative_saf_root(tree_uri)
                             if tree_uri:
-                                if payload.get('granted'):
+                                native_folder_config_owner = payload.get('nativeFolderConfigOwner') is True
+                                if native_folder_config_owner:
+                                    logger.info("[STORAGE] native source mutation already committed; updating compatibility state only")
+                                elif payload.get('granted'):
                                     if payload.get('selected'):
                                         store.add_folder(
                                             tree_uri,
@@ -7418,7 +7569,10 @@ async def main(page: ft.Page):
                             tree_uri = payload.get('treeUri')
                             if tree_uri and tree_uri in pending_folder_removals:
                                 remove_request_id = pending_folder_removals.pop(tree_uri, None)
-                                store.remove_folder(tree_uri)
+                                if payload.get('nativeFolderConfigOwner') is not True:
+                                    store.remove_folder(tree_uri)
+                                else:
+                                    logger.info("[STORAGE] native source removal already committed; skipping duplicate LibraryStore mutation")
                                 on_catalog_changed()
                                 if remove_request_id:
                                     compose_library_bridge.write_command_result(

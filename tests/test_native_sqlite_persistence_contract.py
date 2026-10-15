@@ -152,8 +152,11 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("NativeIndex.recoveryDocuments(", runner)
         self.assertIn('partialStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
         self.assertIn("full reconciliation; previous rows were preserved", runner)
-        self.assertIn("fun recoverInterruptedSafScans(context: Context)", runner)
+        self.assertIn("suspend fun recoverInterruptedSafScans(context: Context)", runner)
         self.assertIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
+        self.assertIn("withContext(Dispatchers.IO)", activity)
+        self.assertIn("NativeCommandDispatcher.start(this@MainActivity)", activity)
+        self.assertIn('put("nativeScanRunOwner", nativeScanRunOwner)', runner)
         self.assertIn("COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED", runner)
         self.assertIn("recoveryEventPublished", native_index)
         self.assertRegex(
@@ -473,6 +476,31 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("optionalDouble", library)
         self.assertIn("ORDER BY season ASC, number ASC, id ASC", library)
 
+
+    def test_native_saf_scan_records_scan_run_in_kotlin_before_python_projection(self):
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn("suspend fun finishNativeScanRun(", repository)
+        self.assertIn('"scan_runs"', repository)
+        self.assertIn("finishNativeScanRun(", runner)
+        self.assertIn('put("nativeScanRunOwner", persistNativeScanRun(payload))', runner)
+        self.assertIn("payload.get('nativeScanRunOwner') is True", main)
+        self.assertIn("catalog = await asyncio.to_thread(library.store.catalog)", main)
+        self.assertIn("library.finish_ingest_documents", main)  # compatibility/recovery fallback only
+
+    def test_native_volume_availability_is_persisted_without_duplicate_python_scan(self):
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn("suspend fun recordNativeVolumeChange(", repository)
+        self.assertIn('"native_volume_states"', repository)
+        self.assertIn("recordNativeVolumeChange(payload)", activity)
+        self.assertIn('"nativeScanDispatchOwner", true', activity)
+        self.assertIn("payload.get('nativeStorageOwner') is True", main)
+        self.assertIn("payload.get('nativeScanDispatchOwner') is not True", main)
 
 if __name__ == "__main__":
     unittest.main()

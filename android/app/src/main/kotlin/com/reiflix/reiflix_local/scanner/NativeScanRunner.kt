@@ -32,7 +32,7 @@ object NativeScanRunner {
      * An unconfirmed native transaction is never handed to Python; it is recorded as partial
      * and requires a controlled native rescan.
      */
-    fun recoverInterruptedSafScans(context: Context) {
+    suspend fun recoverInterruptedSafScans(context: Context) {
         val appContext = context.applicationContext
         val pending = runCatching { NativeIndex.pendingSafRecovery(appContext) }
             .onFailure { Log.e(TAG, "Could not inspect persisted SAF recovery state.", it) }
@@ -122,6 +122,32 @@ object NativeScanRunner {
                     .put("reconciledMissing", report.optInt("reconciledMissing", 0))
                     .put("reconciliationAuthorized", report.optBoolean("reconciliationAuthorized")))
 
+            val nativeScanRunOwner = if (payload.optBoolean("nativeLibraryIndexOwner")) {
+                try {
+                    ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.finishNativeScanRun(
+                        scanId = scanId,
+                        requestId = metadata.optString("requestId").takeIf { it.isNotBlank() },
+                        sourceKind = NativeIndex.SOURCE_SAF,
+                        scopeKind = "root",
+                        scopeRef = payload.optString("scopeRef").ifBlank { treeUri },
+                        nativeGeneration = generation,
+                        generationId = payload.optString("generationId"),
+                        status = terminalStatus,
+                        stats = stats,
+                        indexReport = payload.optJSONObject("nativeLibraryIndex"),
+                        startedAtMillis = null,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (exception: Exception) {
+                    Log.e(TAG, "Could not finalize recovered SAF scan in Kotlin; retaining compatibility fallback.", exception)
+                    false
+                }
+            } else {
+                false
+            }
+            payload.put("nativeScanRunOwner", nativeScanRunOwner)
+
             val written = runCatching {
                 NativeMailbox.writeOrThrow(
                     appContext,
@@ -182,6 +208,37 @@ object NativeScanRunner {
                 rollbackReceiptPersisted.get()
         }
 
+        suspend fun persistNativeScanRun(payload: JSONObject): Boolean {
+            // A legacy positive-only fallback must retain Python's existing finalizer.
+            // When Kotlin owns catalog persistence, it also owns the normal scan-run row.
+            if (!payload.optBoolean("nativeLibraryIndexOwner")) return false
+            return try {
+                val stats = payload.optJSONObject("stats") ?: JSONObject()
+                val indexReport = payload.optJSONObject("nativeLibraryIndex")
+                val startedAt = NativeScanController.snapshot(scanId)?.startedAtMillis
+                ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository.finishNativeScanRun(
+                    scanId = scanId,
+                    requestId = requestId,
+                    sourceKind = NativeIndex.SOURCE_SAF,
+                    scopeKind = payload.optString("scopeKind").ifBlank { "root" },
+                    scopeRef = payload.optString("scopeRef").ifBlank { reference },
+                    nativeGeneration = payload.optLong("scanGeneration", generationId),
+                    generationId = payload.optString("generationId").ifBlank {
+                        NativeIndex.generationId(NativeIndex.SOURCE_SAF, scanKey, generationId)
+                    },
+                    status = payload.optString("status").ifBlank { SafScanner.STATUS_PARTIAL },
+                    stats = stats,
+                    indexReport = indexReport,
+                    startedAtMillis = startedAt,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exception: Exception) {
+                Log.e(TAG, "Native scan history finalization failed; retaining compatibility fallback.", exception)
+                false
+            }
+        }
+
         fun recoveryDocuments(): JSONArray? {
             if (!canTransferToFallback()) return null
             val prior = terminalResult
@@ -206,7 +263,7 @@ object NativeScanRunner {
             }.getOrNull()
         }
 
-        fun publishRecoveryTerminal(message: String, cancelled: Boolean): Boolean {
+        suspend fun publishRecoveryTerminal(message: String, cancelled: Boolean): Boolean {
             val committedReport = committedIndexReport.get()
             val payload = terminalResult ?: SafScanner.identityPayload(treeUri)
             val fallbackOwnershipAllowed = committedReport == null && canTransferToFallback()
@@ -254,6 +311,7 @@ object NativeScanRunner {
                 .put("scopeRef", reference)
                 .put("source", "saf")
                 .put("scope", runCatching { SafScanner.treeIdentity(treeUri).identity }.getOrDefault(""))
+                .put("nativeScanRunOwner", persistNativeScanRun(payload))
             val written = runCatching {
                 NativeMailbox.writeOrThrow(
                     appContext,
@@ -630,6 +688,7 @@ object NativeScanRunner {
                     .put("scope", SafScanner.treeIdentity(treeUri).identity)
                     .put("volumeId", result.optString("volumeId"))
                     .put("status", if (nativeIndexingFailed && scanStatus in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) SafScanner.STATUS_PARTIAL else scanStatus)
+                result.put("nativeScanRunOwner", persistNativeScanRun(result))
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
                 terminalEventPublished = true
                 runCatching {

@@ -35,7 +35,8 @@ class PlayerRoutingTests(unittest.TestCase):
 
     def test_main_activity_only_starts_dispatcher_and_keeps_host_route_intact(self):
         main = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        self.assertIn("NativeCommandDispatcher.start(this)", main)
+        self.assertIn("NativeCommandDispatcher.start(this@MainActivity)", main)
+        self.assertIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", main)
         self.assertIn('private fun handleNativeIntent', main)
         self.assertIn('android.intent.action.VIEW', (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"))
 

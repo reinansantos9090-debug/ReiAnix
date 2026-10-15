@@ -172,29 +172,25 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
-### MIG-06 — Storage, permissões SAF e operações de arquivo (PARCIAL)
+### MIG-06 — Storage, permissões SAF e operações de arquivo (EM ANDAMENTO)
 
-**Objetivo:** Completar o ciclo de seleção/autorização SAF, descoberta de arquivos e integração segura ao catálogo Kotlin, preservando o contrato atual das fontes de diagnóstico.
+**Objetivo:** Migrar armazenamento e descoberta para Kotlin sem criar scanners, bancos ou coordenadores paralelos.
 
-**Estado real nesta revisão:** PARCIAL. A seleção e a descoberta SAF são nativas, e o scanner SAF usa o repositório SQLite canônico. MediaStore e BroadStorage continuam como mecanismos nativos de diagnóstico, não fontes globais de importação para o catálogo, conforme os contratos ativos em `main.py`. Os lotes dessas fontes são marcados como propriedade Kotlin para impedir ingestão duplicada no writer Python.
+**Status:** EM ANDAMENTO — seleção, atualização Compose, descoberta SAF e indexação normal são nativas; ainda há fallback Python para recuperação de scan e consumidores Flet/identidade legados.
 
-**Implementado / preservado:**
-- Grants SAF persistentes, revalidação e tratamento de acesso revogado/indisponível.
-- Travessia SAF por URIs e publicação de snapshots nativos.
-- Indexação SAF no banco canônico schema v29, com reconciliação conservadora.
-- Scanner MediaStore e BroadStorage nativos para os cenários diagnósticos já existentes.
-- Propagação de cancelamentos e preservação do catálogo em scans parciais ou com resultado incerto.
-- Sem novo banco, repositório ou scanner paralelo; sem alteração do schema.
+**Implementado nesta correção:** A seleção SAF persiste a fonte e a identidade usando argumentos nomeados no repositório SQLite canônico; a remoção pelo bridge delega a liberação do grant e a remoção/reconciliação de observações ao mesmo repositório Kotlin; o refresh Compose e o refresh Android legado enviam a ação nativa scan_library e aguardam estados terminais; o fluxo normal finaliza scan_runs em Kotlin antes do evento terminal; eventos de volume atualizam preferências/availability via Kotlin e não disparam uma segunda varredura Python; renomeações/movimentações SAF atualizam a URI e as observações na transação Kotlin antes do evento de projeção. Quando nativeLibraryIndexOwner e nativeScanRunOwner confirmam ownership, main.py apenas lê o catálogo para a projeção e não repete a finalização.
 
-**Pendências que impedem declarar conclusão:**
-- `core/scan_coordinator.py` continua ativo para arbitragem/enfileiramento de solicitações e processamento de estados terminais.
-- `core/storage_access.py`, `core/android_bridge.py`, `main.py` e `NativeMailbox` ainda têm consumidores reais de compatibilidade/coordenação; não foram removidos.
-- A coordenação de refresh/cancelamento ainda não foi comprovada como exclusivamente Kotlin de ponta a ponta.
-- O ownership dos lotes de MediaStore/BroadStorage deve continuar impedindo que o runtime Python os grave no catálogo; esses scanners não podem ser promovidos a fontes de biblioteca sem uma mudança funcional explícita e validação de escopo.
+**Bloqueios restantes:** A recuperação de receipts antigos/interrompidos ainda pode usar LibraryService.finish_ingest_documents como fallback de bookkeeping; eventos saf_document_identity_change de APKs antigos ainda têm um fallback Python; a publicação de estado terminal continua passando por NativeMailbox/main.py como projeção/compatibilidade. Nenhum destes pontos está sendo declarado migrado.
 
-**Critérios restantes:** mover a arbitragem de scan para o caminho nativo sem criar um segundo coordenador; provar que cancelamento, estados terminais e recuperação funcionam sem a coordenação Python; executar as verificações obrigatórias no SHA final e confirmar os artefatos publicados.
+**Arquivos principais:** MainActivity.kt; NativeScanController.kt; NativeScanRunner.kt; NativeScanPublisher.kt; SafScanner.kt; MediaStoreScanner.kt; BroadStorageScanner.kt; NativeIndex.kt; ReiAnixSqliteLibraryRepository.kt; ReiAnixLibraryRepository.kt; NativeRequestState.kt; core/android_bridge.py; core/library_service.py; core/storage_access.py; core/scan_coordinator.py.
 
-**Verificações:** não executar manualmente testes Kotlin/JVM nem adicionar testes instrumentados/emulador. O run #5533 no SHA `c9271b6c2b1d694bf122eab2fe87435c5a98407a` é histórico e não valida esta revisão. O status só poderá mudar após os workflows obrigatórios do SHA final terminarem com sucesso.
+**Dependências:** MIG-04 e MIG-05. A finalização de recuperação, a reconciliação de identidade e os consumidores legados precisam ser encerrados antes da aceitação final.
+
+**Preservar:** grants SAF válidos, identidade após move/rename, observações de outras fontes e histórico de reprodução; varredura parcial ou permissão revogada não comprova ausência de arquivos.
+
+**Critérios restantes:** Migrar a finalização de recuperação sem bloquear a thread principal; retirar o fallback de eventos antigos apenas quando não houver consumidores compatíveis; manter a projeção de UI sem delegar descoberta ou escrita normal ao Python; validar varreduras completas/parciais/canceladas/sem autorização sem mutações duplicadas.
+
+**Verificação-base:** O commit 188f868d2f8cbe6d6fc756ea8a60241d1f1bd528 passou workflows APK/certificação, mas é anterior às correções deste PR e não as valida. O workflow #5543 falhou na suíte Python e não gerou APK/ZIP; o workflow do SHA final desta correção ainda precisa concluir com sucesso.
 
 **Prioridade:** P0.
 
