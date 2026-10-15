@@ -3969,7 +3969,7 @@ async def main(page: ft.Page):
                 status or "-",
             )
 
-    async def _run_compose_settings_set(setting_key, setting_value, request_id):
+    async def _run_compose_settings_set(setting_key, setting_value, request_id, *, native_persisted=False):
         started = performance.now()
         performance.event(
             "SETTINGS_OPERATION_START",
@@ -3991,11 +3991,19 @@ async def main(page: ft.Page):
         )
         try:
             async with _compose_setting_lock(setting_key):
-                normalized = await asyncio.to_thread(
-                    settings.set,
-                    setting_key,
-                    setting_value,
-                )
+                if native_persisted:
+                    # Kotlin already committed this value to the canonical SQLite
+                    # preferences table. Invalidate Python's read cache and use this
+                    # path only to refresh legacy runtime consumers; never write it again.
+                    await asyncio.to_thread(settings.invalidate_cache, setting_key)
+                    normalized = await asyncio.to_thread(settings.get, setting_key)
+                else:
+                    # Compatibility for older native hosts that still delegate writes.
+                    normalized = await asyncio.to_thread(
+                        settings.set,
+                        setting_key,
+                        setting_value,
+                    )
             apply_settings_runtime(setting_key, normalized)
             logger.info(
                 "SETTINGS_PERSISTED requestId=%s key=%s value=%s",
@@ -4721,6 +4729,7 @@ async def main(page: ft.Page):
                         if event_type == 'compose_settings_set':
                             setting_key = str(payload.get('key') or '').strip()
                             setting_value = payload.get('value')
+                            native_persisted = payload.get('nativePersisted') is True
                             request_id = str(event_request_id or payload.get('requestId') or '').strip()
                             if not request_id or not setting_key:
                                 logger.warning("[COMPOSE_SETTINGS] command rejected requestId=%s key=%s", request_id or "-", setting_key or "-")
@@ -4749,7 +4758,14 @@ async def main(page: ft.Page):
                                         operation_state="QUEUED", key=setting_key,
                                         message="Comando recebido e agendado.",
                                     )
-                                    task = asyncio.create_task(_run_compose_settings_set(setting_key, setting_value, request_id))
+                                    task = asyncio.create_task(
+                                        _run_compose_settings_set(
+                                            setting_key,
+                                            setting_value,
+                                            request_id,
+                                            native_persisted=native_persisted,
+                                        )
+                                    )
                                     if not _track_compose_settings_task(task):
                                         task.cancel()
                                         compose_settings_bridge.write_command_result(
