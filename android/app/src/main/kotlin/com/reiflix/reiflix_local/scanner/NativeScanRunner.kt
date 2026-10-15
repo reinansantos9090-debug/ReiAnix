@@ -803,9 +803,13 @@ object NativeScanRunner {
                 result.put("nativeScanRunOwner", persistNativeScanRun(result))
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "saf_scan").put("requestId", requestId ?: "").put("payload", result))
                 terminalEventPublished = true
-                runCatching {
-                    NativeIndex.markRecoveryEventPublished(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
-                }.onFailure { Log.w(TAG, "Terminal SAF event was published but its receipt marker could not be persisted.", it) }
+                val nativePositiveRecoveryPending =
+                    result.optJSONObject("nativeLibraryIndex")?.optString("recovery") == "NATIVE_POSITIVE_RECOVERY_PENDING"
+                if (!nativePositiveRecoveryPending) {
+                    runCatching {
+                        NativeIndex.markRecoveryEventPublished(appContext, NativeIndex.SOURCE_SAF, scanKey, generationId)
+                    }.onFailure { Log.w(TAG, "Terminal SAF event was published but its receipt marker could not be persisted.", it) }
+                }
                 NativeScanController.complete(
                     scanId,
                     when {
@@ -830,7 +834,7 @@ object NativeScanRunner {
                         !canTransfer ->
                             "SAF scan cancelled with an unconfirmed SQLite transaction outcome; catalog preserved; rescan required."
                         snapshotAvailable ->
-                            "SAF scan cancelled; verified discoveries were handed to serialized partial ingestion."
+                            "SAF scan cancelled; verified discoveries were retained for native positive-only recovery."
                         else ->
                             "SAF scan cancelled before a verified discovery snapshot was available; catalog preserved; rescan required."
                     }
@@ -866,7 +870,7 @@ object NativeScanRunner {
                         !canTransfer ->
                             "SAF scan failed with an unconfirmed SQLite transaction outcome; catalog preserved; rescan required."
                         snapshotAvailable ->
-                            "SAF scan failed; verified discoveries were handed to serialized partial ingestion."
+                            "SAF scan failed; verified discoveries were retained for native positive-only recovery."
                         else ->
                             "SAF scan failed before a verified discovery snapshot was available; catalog preserved; rescan required."
                     }
