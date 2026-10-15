@@ -228,3 +228,17 @@ internal fun Cursor.optionalDouble(column: String): Double? {
 
 internal fun Cursor.optionalBoolean(column: String): Boolean? =
     optionalLong(column)?.let { it != 0L }
+
+/** Joined records required to project the canonical SQLite library into Compose. */
+data class ReiAnixLibraryCatalogGenre(
+    val id: String,
+    val name: String,
+)
+
+data class ReiAnixLibraryCatalogRow(
+    val anime: ReiAnixAnimeRecord,
+    val episodes: List<ReiAnixEpisodeRecord>,
+    val animeArtwork: List<ReiAnixArtworkRecord>,
+    val episodeArtwork: Map<Long, ReiAnixArtworkRecord>,
+    val genres: List<ReiAnixLibraryCatalogGenre>,
+)
