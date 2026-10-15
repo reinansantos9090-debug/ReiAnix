@@ -219,13 +219,21 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 **Prioridade:** P0.
 
+## Estado transversal — Prompt 06/29: AniList nativo e localização PT-BR
+
+**Implementação nesta branch:** o consumidor Compose utiliza o cliente GraphQL e o serviço AniList Kotlin existentes; a validação do cliente agora rejeita respostas de busca/detalhes malformadas em vez de mascará-las como resultados vazios. O patch de metadata passou a transportar e persistir separadamente a sinopse original e a descrição exibida, sem mudar o schema v29 ou violar a proteção de campos manuais. O localizer Kotlin reaproveita o formato/arquivo de cache legado para tradução PT-BR, faz validação conservadora, respeita cancelamento/timeouts e limita concorrência/tentativas. Após o commit de metadata, o NativeMailbox solicita ao ArtworkEngine existente materializar URLs persistidas.
+
+**Limite explícito:** core/anilist.py e LibraryService permanecem presentes para caminhos Flet/legados, e ArtworkEngine continua sendo o produtor Python nesta etapa. O Prompt 06 migra o caminho nativo; a remoção integral dos consumidores híbridos e do runtime continua dependente das fases de corte posteriores. A auditoria não classifica o subsistema global como 100% Kotlin enquanto esses consumidores continuarem disponíveis.
+
+**Verificações adicionadas:** testes existentes do cliente para payloads GraphQL malformados; testes Kotlin/JVM manuais (não executados nesta etapa) para cache/offline/localização; contratos de regressão Python para preservação de sinopse original, path do cache e handoff do ArtworkEngine. Estado final do workflow e artefatos deve ser confirmado no SHA final desta alteração.
+
 ### MIG-07 — AniList, matching, metadados e localização PT-BR
 
 **Objetivo:** Consolidar consultas remotas e regras de associação na implementação Kotlin.
 
 **Escopo fechado:** GraphQL search/lookup/refresh, associação manual/automática, normalização HTML, sinopse PT-BR, títulos alternativos, gêneros, estúdios, formato, ano, episódios, status, cache, limites e cancelamento.
 
-**Arquivos principais:** core/anilist.py; core/library_service.py; ReiAnixAniListClient.kt; ReiAnixAniListIntegrationService.kt; ReiAnixSqliteAniListAssociation.kt; docs/ANILIST_MATCHING.md.
+**Arquivos principais:** core/anilist.py (compatibilidade legada); core/library_service.py (consumidores legados/artwork); ReiAnixAniListClient.kt; ReiAnixAniListIntegrationService.kt; ReiAnixAniListDescriptionLocalizer.kt; ReiAnixSqliteAniListAssociation.kt; ReiAnixSqliteLibraryRepository.kt; ReiAnixAppDependencies.kt; docs/KOTLIN_ANILIST_MIGRATION.md; docs/ANILIST_MATCHING.md.
 
 **Dependências:** MIG-02, MIG-03 e MIG-04.
 
