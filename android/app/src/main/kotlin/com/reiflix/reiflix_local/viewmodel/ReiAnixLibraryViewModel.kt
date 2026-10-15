@@ -1145,6 +1145,12 @@ class ReiAnixLibraryViewModel(
     }
 
     init {
+        // Repair missing/stale artwork asynchronously. The service bounds batches
+        // and HTTP concurrency and is independent of scanner/player progress.
+        (dependencies ?: ReiAnixAppDependencies.existingOrNull(appContext))
+            ?.artworkService
+            ?.requestPendingArtwork()
+
         // Populate catalog data even when the bridge snapshot does not exist yet.
         viewModelScope.launch { refreshNativeCatalog() }
 
