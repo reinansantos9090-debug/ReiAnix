@@ -199,7 +199,7 @@ class ReiAnixAniListIntegrationService(
     suspend fun reconcileUnmatchedLibraryMetadata(): Int {
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
         val rows = library.loadLibraryCatalogRows()
-        var matched = 0
+        var changedOutcomes = 0
         for (row in rows) {
             val local = row.anime
             if (local.id <= 0L ||
@@ -214,14 +214,21 @@ class ReiAnixAniListIntegrationService(
             ) continue
 
             when (val result = autoMatch(local.id)) {
-                is AniListResult.Success -> if (result.value is AniListAutoMatchResult.Matched) matched++
-                is AniListResult.Failure -> {
+                is AniListResult.Success -> when (result.value) {
+                    is AniListAutoMatchResult.Matched,
+                    AniListAutoMatchResult.NoMatch,
+                    is AniListAutoMatchResult.Ambiguous,
+                    -> changedOutcomes++
+                    else -> Unit
+                }
+                is AniListResult.Failure -> if (result.error !is AniListError.InvalidRequest) {
                     // The outcome is already persisted by autoMatch when retrying it
                     // automatically would otherwise duplicate an identical request.
+                    changedOutcomes++
                 }
             }
         }
-        return matched
+        return changedOutcomes
     }
 
     private suspend fun applyRemote(
