@@ -59,6 +59,9 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             patch.nativeTitle?.takeIf(String::isNotBlank)?.let { if ("native" !in protectedFields) values.put("native", it) }
             patch.aliasesJson?.takeIf { it.isNotBlank() && it.trim() != "[]" }?.let { if ("aliases" !in protectedFields) values.put("aliases", it) }
             patch.description?.takeIf(String::isNotBlank)?.let { if ("description" !in protectedFields) values.put("description", it) }
+            patch.descriptionOriginal?.takeIf(String::isNotBlank)?.let {
+                if ("description" !in protectedFields) values.put("description_original", it)
+            }
             patch.coverUrl?.takeIf(String::isNotBlank)?.let { if ("cover_url" !in protectedFields) values.put("cover_url", it) }
             patch.coverCache?.takeIf(String::isNotBlank)?.let { if ("cover_cache" !in protectedFields) values.put("cover_cache", it) }
             patch.bannerUrl?.takeIf(String::isNotBlank)?.let { if ("banner_url" !in protectedFields) values.put("banner_url", it) }
