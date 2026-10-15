@@ -1241,6 +1241,8 @@ class ReiAnixLibraryViewModel(
                 }
             }
         }
+    }
+
     private fun loadNativeLibraryPage(
         page: Int = 0,
         pageSize: Int = configuredLibraryPageSize,
