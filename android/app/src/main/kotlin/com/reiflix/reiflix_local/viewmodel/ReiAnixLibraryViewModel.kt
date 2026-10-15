@@ -16,6 +16,8 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.scanner.NativeScanController
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
 import android.net.Uri
@@ -171,32 +173,78 @@ class ReiAnixLibraryViewModel(
                 result.uri,
                 recoverable = true,
             )
-        val event = JSONObject()
-            .put("type", "saf_document_identity_change")
-            .put(
-                "payload",
-                JSONObject()
-                    .put("operation", operation)
-                    .put("treeUri", treeUri.toString())
-                    .put("oldUri", oldUri.toString())
-                    .put("newUri", result.uri.toString())
-                    .put("name", result.name),
-            )
-        val queued = try {
-            withContext(Dispatchers.IO) {
+
+        return try {
+            // Do not re-key a row while a scan of this same tree can still publish
+            // a snapshot containing the old provider URI.
+            val scanKey = "saf:$treeUri"
+            val activeScanId = NativeScanController.activeScanId(scanKey)
+            if (activeScanId != null) {
+                NativeScanController.progress.first { snapshots ->
+                    snapshots[activeScanId]?.state?.isTerminal == true
+                }
+            }
+
+            val reconciliation = withContext(Dispatchers.IO) {
+                nativeLibraryRepository.reconcileSafDocumentIdentityChange(
+                    oldUri = oldUri.toString(),
+                    newUri = result.uri.toString(),
+                    name = result.name,
+                    treeUri = treeUri.toString(),
+                )
+            }
+            val reconciliationStatus = reconciliation.optString("status", "unknown")
+            if (reconciliationStatus !in setOf("reconciled", "already_reconciled")) {
+                Log.w(
+                    "ReiAnixStorage",
+                    "SAF identity reconciliation not applied operation=$operation status=$reconciliationStatus",
+                )
+                return SafFileOperations.Result.Failure(
+                    SafFileOperations.FailureKind.PARTIAL,
+                    "A operação no provedor foi confirmada, mas não foi possível provar a correspondência no catálogo ($reconciliationStatus). O registro existente foi preservado; verifique a biblioteca antes de repetir.",
+                    oldUri,
+                    result.uri,
+                    recoverable = true,
+                )
+            }
+
+            // This event now informs Python/UI only. The canonical URI mutation has
+            // already committed in Kotlin and must never be repeated by LibraryStore.
+            val event = JSONObject()
+                .put("type", "saf_document_identity_change")
+                .put(
+                    "payload",
+                    JSONObject()
+                        .put("operation", operation)
+                        .put("treeUri", treeUri.toString())
+                        .put("oldUri", oldUri.toString())
+                        .put("newUri", result.uri.toString())
+                        .put("name", result.name)
+                        .put("status", reconciliationStatus)
+                        .put("episodeId", reconciliation.optLong("episode_id", -1L))
+                        .put("nativeIdentityOwner", true),
+                )
+            val queued = withContext(Dispatchers.IO) {
                 NativeMailbox.write(appContext, event)
+            }
+            if (queued) {
+                result.copy(catalogReconciliationQueued = true)
+            } else {
+                SafFileOperations.Result.Failure(
+                    SafFileOperations.FailureKind.PARTIAL,
+                    "A URI do catálogo foi atualizada, mas a notificação de atualização da interface não pôde ser enfileirada. A mídia não foi removida; abra a biblioteca novamente para atualizar a projeção.",
+                    oldUri,
+                    result.uri,
+                    recoverable = true,
+                )
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            false
-        }
-        return if (queued) {
-            result.copy(catalogReconciliationQueued = true)
-        } else {
+            Log.e("ReiAnixStorage", "SAF identity reconciliation failed after provider mutation", error)
             SafFileOperations.Result.Failure(
                 SafFileOperations.FailureKind.PARTIAL,
-                "A mutação SAF foi confirmada pelo provedor, mas a reconciliação canônica não pôde ser enfileirada. O catálogo foi preservado; verifique a biblioteca antes de repetir a operação.",
+                "A operação no provedor foi confirmada, mas a reconciliação canônica falhou. O registro existente foi preservado; verifique a biblioteca antes de repetir.",
                 oldUri,
                 result.uri,
                 recoverable = true,
