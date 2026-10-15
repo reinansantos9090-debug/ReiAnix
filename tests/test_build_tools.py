@@ -733,7 +733,13 @@ E: manifest
         self.assertIn("releaseTree(", activity)
         self.assertIn('intent.data?.getQueryParameter("tree_uri")', activity)
         self.assertIn("releasePersistableUriPermission", activity)
-        self.assertIn("removeSafFolder(reference)", activity)
+        self.assertIn("removeSafFolder(normalizedReference)", activity)
+        release = activity[activity.index("private fun releaseTree("):activity.index("private fun verifyTree(", activity.index("private fun releaseTree("))]
+        self.assertLess(
+            release.index("releasePersistableUriPermission"),
+            release.index("removeSafFolder(normalizedReference)"),
+        )
+        self.assertEqual(1, release.count("removeSafFolder(normalizedReference)"))
         self.assertIn("nativeFolderConfigOwner", activity)
         self.assertIn("await bridge.release_tree(reference)", main)
 
