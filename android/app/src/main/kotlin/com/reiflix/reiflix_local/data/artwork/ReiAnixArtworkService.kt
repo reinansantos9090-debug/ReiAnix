@@ -275,7 +275,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (total == 0L) throw InvalidImage("Empty image response.")
             val ext = imageExtension(header.toByteArray()) ?: throw InvalidImage("Unknown image signature.")
             if (!validImage(tmp, ext)) throw InvalidImage("Image decoding validation failed.")
-            val bounds = dimensions(tmp.absolutePath, ext) ?: throw InvalidImage("Invalid image dimensions.")
+            val bounds = imageDimensions(tmp.absolutePath, ext) ?: throw InvalidImage("Invalid image dimensions.")
             val target = File(cacheDirectory, key + ext)
             try {
                 Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
