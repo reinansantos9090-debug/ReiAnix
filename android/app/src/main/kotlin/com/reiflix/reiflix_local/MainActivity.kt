@@ -2705,6 +2705,7 @@ class MainActivity : FlutterFragmentActivity() {
                         .put("rotation", result.rotation)
                         .put("title", result.title ?: "")
                         .put("mimeType", result.mimeType ?: "")
+                        .put("canonicalArtworkRegistered", result.canonicalArtworkRegistered)
                         .put("source", "media_metadata_retriever")))
             } catch (exception: Exception) {
                 Log.e(LOG_TAG, "Thumbnail extraction failed", exception)
