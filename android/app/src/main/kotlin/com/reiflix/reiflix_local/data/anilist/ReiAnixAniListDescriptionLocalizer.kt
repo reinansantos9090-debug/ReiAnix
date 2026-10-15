@@ -244,12 +244,8 @@ class ReiAnixAniListDescriptionLocalizer(
                 val payload = JSONObject(response.body)
                 val status = payload.opt("responseStatus")?.toString()?.toIntOrNull() ?: 200
                 if (status != 200) {
-                    if (attempt < MAX_TRANSLATION_ATTEMPTS &&
-                        (status == 429 || status >= 500)
-                    ) {
-                        delay((attempt * 500L).coerceAtMost(MAX_RETRY_AFTER_SECONDS * 1000L))
-                        continue
-                    }
+                    // The translation endpoint returned an application-level failure
+                    // without an HTTP Retry-After header. Do not add speculative delays.
                     return null
                 }
                 payload.optJSONObject("responseData")?.optString("translatedText")
@@ -339,7 +335,7 @@ class ReiAnixAniListDescriptionLocalizer(
         val retained = JSONObject()
         ranked.forEach { retained.put(it.first, it.second) }
         val keys = cache.keys().asSequence().toList()
-        keys.forEach(cache::remove)
+        keys.forEach { key -> cache.remove(key) }
         ranked.forEach { retainedKey -> cache.put(retainedKey.first, retainedKey.second) }
     }
 
