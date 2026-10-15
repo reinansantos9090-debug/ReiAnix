@@ -105,6 +105,7 @@ O ReiAnix utiliza três mecanismos principais de acesso ao armazenamento no Andr
 - A remoção de fonte envia a propriedade para Kotlin: o grant persistente é liberado e `removeSafFolder` atualiza observações/availability na mesma base, preservando histórico e arquivos físicos.
 - A atualização Compose usa a ação nativa `scan_library`; o controlador aguarda os resultados SAF terminais e publica um evento de conclusão com estado real.
 - A indexação SAF e o histórico `scan_runs` são gravados por Kotlin no fluxo normal quando o commit nativo está confirmado. Python lê o catálogo para publicar a projeção, sem finalizar novamente o mesmo scan.
+- Alterações de volume atualizam `native_volume_states`, a marca temporal e a disponibilidade das observações no SQLite canônico via Kotlin; o evento informa que o scan também tem owner nativo, evitando um segundo pedido ao ScanCoordinator Python.
 
 ### Dependências híbridas ainda ativas — etapa não concluída
 - NativeScanRunner/NativeScanPublisher publicam progresso e término por NativeMailbox, consumido por main.py para atualizar a projeção compatível e os estados de UI.
