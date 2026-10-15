@@ -9,6 +9,7 @@ import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,7 +67,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         if (animeId <= 0L) return false
         synchronized(jobs) {
             if (jobs[animeId]?.isActive == true) return false
-            val task = scope.launch {
+            val task = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     val anime = loadAnime(animeId) ?: return@launch
                     val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
@@ -85,6 +86,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 }
             }
             jobs[animeId] = task
+            task.start()
         }
         return true
     }
