@@ -945,11 +945,9 @@ class LibraryService:
             effective_lookup = str(cached.get("lookup_title") or lookup_title)
             anilist_id = cached.get('anilist_id') or self.store.association(effective_lookup)
             if allow_anilist_metadata and cached and anilist_id:
-                # Reading an already-associated row must remain offline-safe.
-                # Translation is scheduled by the first metadata materialization
-                # path, not by every Home/Library hydration. On the native Compose
-                # path, Kotlin owns editorial metadata writes; Python remains only
-                # the existing ArtworkEngine materializer.
+                # Reading an associated row remains offline-safe. On the native
+                # Compose path Kotlin owns editorial metadata and image persistence;
+                # this Python artwork reconciler is retained for Flet callers only.
                 cached = self._ensure_cached_description_pt_br(
                     effective_lookup,
                     cached,
@@ -972,12 +970,11 @@ class LibraryService:
                 hydrated.append({'lookup_title': effective_lookup, 'id': cached.get('id'), 'metadata': cached})
                 continue
             entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
-            if cached.get('id'):
+            if allow_anilist_metadata and cached.get('id'):
                 try:
-                    # Always reconcile durable AniList artwork metadata before
-                    # deciding whether a network request is needed. The
-                    # ArtworkEngine itself is cache-hit aware and deduplicates
-                    # identical requests.
+                    # Flet callers use the existing ArtworkEngine. Compose calls
+                    # this method with allow_anilist_metadata=False and leaves image
+                    # persistence and network requests to ReiAnixArtworkService.
                     self.artwork.sync_anime_metadata(cached['id'], cached, request_download=True)
                 except Exception:
                     logger.debug(
@@ -1000,7 +997,7 @@ class LibraryService:
                 needs_metadata = not any(p.get('lookup_title') == effective_lookup for p in pending_cache)
             needs_cover = False
             needs_backdrop = False
-            if anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
+            if allow_anilist_metadata and anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
                 entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
                 poster_rows = self.artwork.list_for(entity_type, cached['id'], 'poster')
                 backdrop_rows = self.artwork.list_for(entity_type, cached['id'], 'backdrop')
@@ -1066,7 +1063,7 @@ class LibraryService:
                     metadata_refreshed = True
                 cover_url = str(cached.get('cover_url') or '').strip()
                 banner_url = str(cached.get('banner_url') or '').strip()
-                if anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
+                if allow_anilist_metadata and anilist_id and cached.get('id') and self._setting("artwork.enabled", True):
                     entity_type = 'movie' if str(cached.get('media_kind') or item.get('media_kind') or 'series').casefold() == 'movie' else 'anime'
                     # ArtworkEngine owns local/cache checks, URL identity,
                     # in-flight deduplication and bounded asynchronous downloads.
@@ -1078,7 +1075,7 @@ class LibraryService:
                             entity_type, cached['id'], 'backdrop',
                             priority=90, allow_network=True, blocking=False,
                         )
-                if cached.get('id'):
+                if allow_anilist_metadata and cached.get('id'):
                     self.artwork.sync_anime_metadata(cached['id'], cached, request_download=False)
                     self._record_diagnostic(
                         "METADATA_MATERIALIZATION_SUCCESS",
