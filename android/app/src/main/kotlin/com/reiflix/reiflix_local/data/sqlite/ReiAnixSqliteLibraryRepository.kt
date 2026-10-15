@@ -77,6 +77,7 @@ class ReiAnixSqliteLibraryRepository(
         sortLabel: String?,
         limit: Int,
         offset: Int,
+        libraryOnly: Boolean = false,
     ): ReiAnixSqliteSearchPage = withContext(Dispatchers.IO) {
         require(limit in 1..199) { "Search page size must be between 1 and 199." }
         require(offset >= 0) { "Search offset cannot be negative." }
@@ -84,6 +85,25 @@ class ReiAnixSqliteLibraryRepository(
         val terms = normalizeNativeSearchText(query).split(' ').filter(String::isNotBlank).distinct()
         val where = mutableListOf<String>()
         val args = mutableListOf<String>()
+
+        if (libraryOnly) {
+            where += """EXISTS (
+                SELECT 1 FROM episodes el
+                WHERE el.anime_id=a.id AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM episode_observations ol WHERE ol.episode_id=el.id
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM episode_observations ol
+                        WHERE ol.episode_id=el.id AND ol.state != 'scope_removed'
+                    )
+                    OR (
+                        SELECT COUNT(DISTINCT ol.source_kind || '|' || COALESCE(ol.scope_ref, ''))
+                        FROM episode_observations ol WHERE ol.episode_id=el.id
+                    ) < 2
+                )
+            )"""
+        }
 
         if (genreKey != null) {
             if (genreKey.startsWith("name:")) {
@@ -191,6 +211,16 @@ class ReiAnixSqliteLibraryRepository(
             val keepCount = (offset.toLong() + limit + 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             val queryText = terms.joinToString(" ")
             val relevanceOrder = compareByDescending<Pair<Long, Int>> { it.second }.thenBy { it.first }
+            val exactTotal = if (terms.isEmpty()) {
+                val countSql = "SELECT COUNT(*) FROM anime a " +
+                    if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")
+                connection.rawQuery(countSql, args.toTypedArray()).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getInt(0) else 0
+                }
+            } else {
+                0
+            }
+            var scannedMatches = 0
 
             connection.rawQuery(sql, queryArgs.toTypedArray()).use { cursor ->
                 while (cursor.moveToNext()) {
@@ -203,6 +233,7 @@ class ReiAnixSqliteLibraryRepository(
                         }
                         val normalized = normalizeNativeSearchText(searchable)
                         if (!terms.all { term -> normalized.contains(term) }) continue
+                        scannedMatches++
                     }
 
                     val id = cursor.getLong(0)
@@ -239,18 +270,30 @@ class ReiAnixSqliteLibraryRepository(
                             else -> 20
                         }
                     }
-                    matched += id to score
 
-                    if (terms.isNotEmpty() && !relevanceMode && matched.size >= keepCount) break
-                    if (relevanceMode && matched.size > keepCount) {
-                        matched.sortWith(relevanceOrder)
-                        matched.removeAt(matched.lastIndex)
+                    if (relevanceMode) {
+                        matched += id to score
+                        if (matched.size > keepCount) {
+                            matched.sortWith(relevanceOrder)
+                            matched.removeAt(matched.lastIndex)
+                        }
+                    } else if (matched.size < keepCount) {
+                        // SQL already orders the requested sort; retain only enough rows
+                        // to produce this page while continuing the cursor to count matches.
+                        matched += id to score
                     }
                 }
             }
             val ordered = if (relevanceMode) matched.sortedWith(relevanceOrder) else matched
             val page = if (terms.isEmpty()) ordered else ordered.drop(offset).take(limit + 1)
-            ReiAnixSqliteSearchPage(page.take(limit).map { it.first }, offset, limit, page.size > limit)
+            val totalCount = if (terms.isEmpty()) exactTotal else scannedMatches
+            ReiAnixSqliteSearchPage(
+                animeIds = page.take(limit).map { it.first },
+                offset = offset,
+                limit = limit,
+                hasMore = offset.toLong() + page.take(limit).size < totalCount.toLong(),
+                totalCount = totalCount,
+            )
         }
     }
 
