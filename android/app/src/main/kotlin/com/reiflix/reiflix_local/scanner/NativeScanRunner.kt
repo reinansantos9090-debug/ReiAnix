@@ -855,6 +855,8 @@ object NativeScanRunner {
                         triggerRequestId = requestId,
                     )
                 }
+                // MediaStore is diagnostic-only under the existing library-source contract.
+                result.put("nativeLibraryIndexOwner", true)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "mediastore_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
                 val terminalStatus = ScanResultClassifier.classifyMediaStore(
