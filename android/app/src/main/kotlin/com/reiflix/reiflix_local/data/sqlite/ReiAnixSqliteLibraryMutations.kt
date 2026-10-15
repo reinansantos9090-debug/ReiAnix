@@ -531,6 +531,29 @@ suspend fun ReiAnixSqliteLibraryRepository.resolvePendingAniListMatch(
             cursor.getLong(cursor.getColumnIndexOrThrow("id"))
         }
 
+        // A decision to resolve a stale request must use the same transaction as its writes.
+        val hasPending = connection.rawQuery(
+            "SELECT 1 FROM pending_matches WHERE lookup_title = ? LIMIT 1",
+            arrayOf(lookup),
+        ).use { cursor -> cursor.moveToFirst() }
+
+        // A prior mapping only authorizes a replacement when both canonical representations
+        // still agree; an orphaned or stale associations row is not a valid prior match.
+        val hasConsistentPreviousAssociation = connection.rawQuery(
+            """
+            SELECT 1
+            FROM associations AS a
+            INNER JOIN anime AS n
+                ON n.lookup_title = a.lookup_title AND n.anilist_id = a.anilist_id
+            WHERE a.lookup_title = ? AND a.anilist_id > 0
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(lookup),
+        ).use { cursor -> cursor.moveToFirst() }
+        if (!hasPending && !hasConsistentPreviousAssociation) {
+            throw IllegalStateException("Este candidato não está mais pendente.")
+        }
+
         val matchValues = ContentValues().apply {
             put("anilist_id", anilistId)
             put("anilist_match_status", "manual")
