@@ -1534,20 +1534,15 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }
 
-                if (action == "backup_recovery_restore") {
-                    // Inspect the selected archive and show the details before the
-                    // user confirms destructive recovery. The service will inspect it
-                    // again immediately before staging and promotion.
-                    val preview = withContext(Dispatchers.IO) {
-                        ReiAnixBackupService(applicationContext).inspectBackup(inputCopy)
-                    }
-                    showNativeRecoveryRestoreConfirmation(inputCopy, requestId, preview)
-                    handedOff = true
-                    return@launch
+                // Both restore modes inspect the selected archive and present its
+                // manifest/counts before the user confirms this specific file. The
+                // service validates it again immediately before changing active data.
+                val preview = withContext(Dispatchers.IO) {
+                    ReiAnixBackupService(applicationContext).inspectBackup(inputCopy)
                 }
-
+                showNativeBackupRestoreConfirmation(inputCopy, action, requestId, preview)
                 handedOff = true
-                completeNativeBackupRestore(inputCopy, action, requestId)
+                return@launch
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable + Dispatchers.IO) {
                     writeSettingsFileActionResult(
@@ -1574,11 +1569,15 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun showNativeRecoveryRestoreConfirmation(
+    private fun showNativeBackupRestoreConfirmation(
         inputCopy: File,
+        action: String,
         requestId: String,
         preview: ReiAnixBackupService.BackupInspection,
     ) {
+        require(action == "backup_restore" || action == "backup_recovery_restore") {
+            "Ação de restauração nativa inválida."
+        }
         val manifest = preview.manifest
         val counts = preview.counts
         val details = buildString {
@@ -1598,9 +1597,15 @@ class MainActivity : FlutterFragmentActivity() {
             append(counts.optLong("favorites", 0L))
             append(" • com progresso/histórico: ")
             append(counts.optLong("progress", 0L))
-            append("\n\nO banco SQLite ativo será substituído somente depois da validação. " +
-                "Uma cópia bruta do banco atual e dos sidecars disponíveis será preservada. " +
-                "Vídeos externos, permissões SAF e sessão Google não são incluídos.")
+            append("\n\n")
+            if (action == "backup_recovery_restore") {
+                append("O banco atual requer recuperação. Uma cópia bruta do SQLite e dos arquivos auxiliares disponíveis " +
+                    "será preservada antes de promover o banco validado. ")
+            } else {
+                append("Os dados lógicos incluídos serão aplicados ao catálogo SQLite em uma transação, depois de criar " +
+                    "um backup ZIP de segurança pré-restauração. ")
+            }
+            append("Vídeos externos, permissões SAF/MediaStore e sessão Google não são incluídos nem recriados.")
             if (preview.warnings.isNotEmpty()) {
                 append("\n\nAvisos de validação:")
                 preview.warnings.forEach { warning ->
@@ -1617,10 +1622,14 @@ class MainActivity : FlutterFragmentActivity() {
                     withContext(Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId,
-                            "backup_recovery_restore",
+                            action,
                             "CANCELLED",
                             "CANCELLED",
-                            message = "A recuperação foi cancelada antes de substituir o banco.",
+                            message = if (action == "backup_recovery_restore") {
+                                "A recuperação foi cancelada antes de substituir o banco."
+                            } else {
+                                "A restauração foi cancelada antes de alterar a biblioteca."
+                            },
                         )
                     }
                 } finally {
@@ -1631,12 +1640,20 @@ class MainActivity : FlutterFragmentActivity() {
         }
 
         android.app.AlertDialog.Builder(this)
-            .setTitle("Confirmar recuperação da biblioteca")
+            .setTitle(
+                if (action == "backup_recovery_restore") {
+                    "Confirmar recuperação da biblioteca"
+                } else {
+                    "Confirmar restauração do backup"
+                },
+            )
             .setMessage(details)
             .setNegativeButton("Cancelar") { _, _ -> finishCancelled() }
-            .setPositiveButton("Restaurar backup") { _, _ ->
+            .setPositiveButton(
+                if (action == "backup_recovery_restore") "Recuperar biblioteca" else "Restaurar backup",
+            ) { _, _ ->
                 if (decisionHandled.compareAndSet(false, true)) {
-                    completeNativeBackupRestore(inputCopy, "backup_recovery_restore", requestId)
+                    completeNativeBackupRestore(inputCopy, action, requestId)
                 }
             }
             .setOnCancelListener { finishCancelled() }
