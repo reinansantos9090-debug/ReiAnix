@@ -932,28 +932,35 @@ class ReiAnixSettingsRepository(
         val raw = runCatching {
             if (!snapshotFile.isFile) null else snapshotFile.readText(Charsets.UTF_8)
         }.getOrElse { error ->
-            synchronized(stateLock) {
-                _state.value = _state.value.copy(
-                    status = ReiAnixSettingsLoadStatus.ERROR,
-                    error = error.message ?: error::class.java.simpleName,
+            if (persistedPreferences != null) {
+                publishCanonicalPreferencesAfterBridgeFailure(
+                    persistedPreferences,
+                    canonicalAccountState,
                 )
+                Log.w(
+                    TAG,
+                    "Optional settings projection could not be read; canonical SQLite preferences remain available.",
+                    error,
+                )
+            } else {
+                synchronized(stateLock) {
+                    _state.value = _state.value.copy(
+                        status = ReiAnixSettingsLoadStatus.ERROR,
+                        error = error.message ?: error::class.java.simpleName,
+                    )
+                }
             }
             return
         }
         if (raw == null) {
-            synchronized(stateLock) {
-                val current = _state.value
-                if (persistedPreferences != null) {
-                    confirmedSettings.clear()
-                    confirmedSettings.putAll(persistedPreferences)
-                    _state.value = current.copy(
-                        status = ReiAnixSettingsLoadStatus.READY,
-                        account = canonicalAccountState ?: current.account,
-                        settings = persistedPreferences,
-                        error = null,
-                    )
-                } else {
-                    _state.value = current.copy(
+            if (persistedPreferences != null) {
+                publishCanonicalPreferencesAfterBridgeFailure(
+                    persistedPreferences,
+                    canonicalAccountState,
+                )
+            } else {
+                synchronized(stateLock) {
+                    _state.value = _state.value.copy(
                         status = ReiAnixSettingsLoadStatus.ERROR,
                         error = "Não foi possível carregar as preferências do SQLite canônico.",
                     )
@@ -968,12 +975,25 @@ class ReiAnixSettingsRepository(
                     // SQLite preferences remain authoritative even when the account/storage
                     // projection is stale or reports an error.
                     val base = snapshotState.copy(
+                        // Native SQLite is authoritative for preferences. An unavailable
+                        // legacy projection must not make valid native settings unavailable.
+                        status = if (persistedPreferences != null) {
+                            ReiAnixSettingsLoadStatus.READY
+                        } else {
+                            snapshotState.status
+                        },
+                        categories = if (persistedPreferences != null && snapshotState.categories.isEmpty()) {
+                            com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsCategoryUiModel.defaultCategories()
+                        } else {
+                            snapshotState.categories
+                        },
                         settings = if (persistedPreferences != null) {
                             snapshotState.settings + persistedPreferences
                         } else {
                             snapshotState.settings
                         },
                         account = canonicalAccountState ?: snapshotState.account,
+                        error = if (persistedPreferences != null) null else snapshotState.error,
                     )
                     if (base.status == ReiAnixSettingsLoadStatus.READY) {
                         // The SQLite snapshot is authoritative. Do not let a pending
@@ -989,13 +1009,59 @@ class ReiAnixSettingsRepository(
                     }
                 }.onFailure { error ->
                     val message = error.message.orEmpty()
-                    if (message.startsWith("Stale Compose settings snapshot")) return@onFailure
-                    _state.value = _state.value.copy(
-                        status = ReiAnixSettingsLoadStatus.ERROR,
-                        account = canonicalAccountState ?: _state.value.account,
-                        error = message.ifBlank { error::class.java.simpleName },
-                    )
+                    if (message.startsWith("Stale Compose settings snapshot")) {
+                        if (persistedPreferences != null) {
+                            publishCanonicalPreferencesAfterBridgeFailure(
+                                persistedPreferences,
+                                canonicalAccountState,
+                            )
+                        }
+                        return@onFailure
+                    }
+                    if (persistedPreferences != null) {
+                        publishCanonicalPreferencesAfterBridgeFailure(
+                            persistedPreferences,
+                            canonicalAccountState,
+                        )
+                        Log.w(
+                            TAG,
+                            "Optional settings projection is invalid; canonical SQLite preferences remain available.",
+                            error,
+                        )
+                    } else {
+                        _state.value = _state.value.copy(
+                            status = ReiAnixSettingsLoadStatus.ERROR,
+                            account = canonicalAccountState ?: _state.value.account,
+                            error = message.ifBlank { error::class.java.simpleName },
+                        )
+                    }
                 }
+        }
+    }
+
+    /**
+     * Updates the observed preference state from the canonical SQLite store without
+     * depending on Python's settings.json projection. Keep the projection's other
+     * observed fields and pending operation results, because they still include
+     * legacy-owned account/storage state and command acknowledgements.
+     */
+    private fun publishCanonicalPreferencesAfterBridgeFailure(
+        persistedPreferences: Map<String, String>,
+        canonicalAccountState: ReiAnixSettingsAccountUiState?,
+    ) {
+        synchronized(stateLock) {
+            val current = _state.value
+            confirmedSettings.clear()
+            confirmedSettings.putAll(persistedPreferences)
+            _state.value = current.copy(
+                status = ReiAnixSettingsLoadStatus.READY,
+                account = canonicalAccountState ?: current.account,
+                categories = current.categories.ifEmpty {
+                    com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsCategoryUiModel.defaultCategories()
+                },
+                settings = persistedPreferences,
+                error = null,
+            )
         }
     }
 
