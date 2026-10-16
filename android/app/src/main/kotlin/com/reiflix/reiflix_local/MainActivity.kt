@@ -1028,6 +1028,9 @@ class MainActivity : FlutterFragmentActivity() {
                 phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
                 message = "Seleção de pasta cancelada. A biblioteca não foi alterada; você pode tentar novamente.",
             )
+            // If this was an attempt to add/replace a source while another valid
+            // root already existed, cancellation must not obscure that working root.
+            refreshNativeStorageOnboardingState("saf_picker_cancelled")
             completeComposeSettingsStorageAction(
                 requestId,
                 "CANCELLED",
