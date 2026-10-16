@@ -130,3 +130,24 @@ def test_compose_consumers_and_remote_side_effects_wait_for_a_validated_bootstra
     assert activity.index("appDependencies.bootstrap.validateCanonicalDatabase()") < activity.index(
         "composeLibraryHost = ReiAnixComposeLibraryHost("
     )
+
+def test_initial_and_persisted_native_intents_wait_for_bootstrap_decision():
+    activity = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+    )
+    on_create_start = activity.index("override fun onCreate(savedInstanceState: Bundle?)")
+    on_create_end = activity.index("public override fun onNewIntent(intent: Intent)", on_create_start)
+    on_create = activity[on_create_start:on_create_end]
+    assert "handleNativeIntent(launchIntent)" in on_create
+    assert on_create.index("appDependencies.bootstrap.validateCanonicalDatabase()") < on_create.index(
+        "handleNativeIntent(launchIntent)"
+    )
+    assert "handleNativeIntent(intent)" not in on_create
+    assert "private fun bootstrapAllowsNativeOperations()" in activity
+    resume_start = activity.index("override fun onResume()")
+    resume_end = activity.index("override fun onPause()", resume_start)
+    on_resume = activity[resume_start:resume_end]
+    assert "if (bootstrapAllowsNativeOperations())" in on_resume
+    assert "if (!bootstrapAllowsNativeOperations())" in on_resume
+    assert "consumeAndDispatchPendingLifecycleAction()" in on_resume
+    assert "NATIVE_LIFECYCLE_WORK_DEFERRED" in on_resume
