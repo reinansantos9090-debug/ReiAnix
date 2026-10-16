@@ -141,7 +141,7 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
             val genreExists = connection.rawQuery(
                 "SELECT 1 FROM genres WHERE id=? LIMIT 1",
                 arrayOf(genreId),
-            ).use(Cursor::moveToFirst)
+            ).use { it.moveToFirst() }
             require(genreExists) { "Gênero não encontrado." }
             val now = nowSeconds()
             connection.execSQL(
@@ -374,7 +374,7 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
         val exists = connection.rawQuery(
             "SELECT 1 FROM anime WHERE id=? LIMIT 1",
             arrayOf(animeId.toString()),
-        ).use(Cursor::moveToFirst)
+        ).use { it.moveToFirst() }
         require(exists) { "Anime não encontrado no catálogo local." }
         val normalizedSource = source.normalizedSource()
         if (replaceSource) {
