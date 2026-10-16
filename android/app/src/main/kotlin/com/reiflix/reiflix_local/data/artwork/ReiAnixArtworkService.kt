@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.graphics.BitmapFactory
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -249,6 +250,18 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 throw cancelled
             } catch (error: Exception) {
                 setFailure(rowId, error, (error as? HttpFailure)?.code)
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_ARTWORK_DOWNLOAD_FAILED",
+                    severity = "ERROR",
+                    source = "ReiAnixArtworkService",
+                    result = "FAILED",
+                    error = error,
+                    context = mapOf(
+                        "entity_type" to entity,
+                        "artwork_type" to type,
+                        "http_status" to ((error as? HttpFailure)?.code ?: -1),
+                    ),
+                )
                 image?.let { removeIfUnreferenced(it.file) }
                 Log.w(TAG, "ARTWORK_DOWNLOAD_FAILED entity=" + entity + ":" + id + " type=" + type, error)
             }
@@ -608,6 +621,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     }
 
     private fun publish(eventType: String, entity: String, id: String, type: String, path: String, url: String?, key: String, ref: String?, contentType: String?) {
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_ARTWORK_PUBLISHED",
+            source = "ReiAnixArtworkService",
+            result = "COMPLETED",
+            context = mapOf("entity_type" to entity, "artwork_type" to type),
+        )
         val body = JSONObject().put("event", "ARTWORK_PUBLISHED").put("entity_type", entity)
             .put("entity_id", id).put("artwork_type", type).put("cache_key", key).put("local_path", path)
             .put("source_ref", ref ?: JSONObject.NULL).put("external_url", url ?: JSONObject.NULL)
