@@ -457,7 +457,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val identity = mediaIdentity?.trim().takeUnless { it.isNullOrEmpty() } ?: uri
         val sourceRef = "native:" + identity + "|" + size.coerceAtLeast(0L) + "|" + modifiedAt.coerceAtLeast(0L)
         val key = sha256("native|" + sourceRef + "|episode_thumbnail|small")
-        val digest = checksumFile(file) ?: return false
+        val digest = checksum(file) ?: return false
         val dims = imageDimensions(file.absolutePath) ?: return false
         val ids = database.read { db ->
             db.rawQuery("SELECT DISTINCT e.id FROM episodes e JOIN anime a ON a.id=e.anime_id " +
