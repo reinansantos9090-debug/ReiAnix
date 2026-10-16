@@ -3969,7 +3969,10 @@ class MainActivity : FlutterFragmentActivity() {
                 "INVALID_TREE_URI",
                 "A referência da pasta SAF é inválida.",
             )
-            if (nativeFolderConfigOwner) libraryViewModel.onSafRemovalTerminal(normalizedReference)
+            if (nativeFolderConfigOwner) {
+                libraryViewModel.onSafRemovalTerminal(normalizedReference)
+                refreshNativeStorageOnboardingState("saf_release_invalid_uri")
+            }
             return
         }
 
