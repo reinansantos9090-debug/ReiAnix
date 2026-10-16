@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.scanner
 
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +58,12 @@ object NativeScanController {
                 startedAtMillis = now,
             )
         )
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_SCAN_STARTED",
+            source = sourceKey?.substringBefore(':')?.ifBlank { "unknown" } ?: "unknown",
+            result = ScanLifecycleState.PREPARING.name,
+            scanId = scanId,
+        )
         return true
     }
 
@@ -90,6 +98,13 @@ object NativeScanController {
                 message = "Cancelamento solicitado",
                 errorCategory = reason.takeIf { it.isNotBlank() },
             )
+        )
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_SCAN_CANCELLATION_REQUESTED",
+            severity = "WARN",
+            source = current.source,
+            result = ScanLifecycleState.CANCELLATION_REQUESTED.name,
+            scanId = scanId,
         )
         return true
     }
@@ -205,6 +220,24 @@ object NativeScanController {
                     ?: normalized.takeIf { state == ScanLifecycleState.FAILED },
                 result = result,
             )
+        )
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_SCAN_FINISHED",
+            severity = when (state) {
+                ScanLifecycleState.FAILED -> "ERROR"
+                ScanLifecycleState.PARTIAL, ScanLifecycleState.CANCELLED -> "WARN"
+                else -> "INFO"
+            },
+            source = current.source,
+            result = state.name,
+            scanId = scanId,
+            context = mapOf(
+                "discovered_files" to files,
+                "processed_files" to processed,
+                "directories_completed" to directories,
+                "failure_count" to failures,
+                "duration_ms" to (now - current.startedAtMillis).coerceAtLeast(0L),
+            ),
         )
     }
 

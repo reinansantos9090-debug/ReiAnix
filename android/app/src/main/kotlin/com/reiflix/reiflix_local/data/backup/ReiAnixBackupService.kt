@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.data.backup
 
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -89,8 +91,25 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    fun createBackupFile(destination: File? = null): File =
-        withCanonicalFileMaintenance { createBackupFileLocked(destination) }
+    fun createBackupFile(destination: File? = null): File = try {
+        withCanonicalFileMaintenance { createBackupFileLocked(destination) }.also { file ->
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_BACKUP_CREATED",
+                source = "ReiAnixBackupService",
+                result = "COMPLETED",
+                context = mapOf("archive_bytes" to file.length()),
+            )
+        }
+    } catch (error: Exception) {
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_BACKUP_CREATE_FAILED",
+            severity = "ERROR",
+            source = "ReiAnixBackupService",
+            result = "FAILED",
+            error = error,
+        )
+        throw error
+    }
 
     private fun createBackupFileLocked(destination: File?): File {
         requireCanonicalDatabase()
@@ -197,8 +216,28 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    fun restoreBackup(file: File): RestoreResult =
-        withCanonicalFileMaintenance { restoreBackupLocked(file) }
+    fun restoreBackup(file: File): RestoreResult = try {
+        withCanonicalFileMaintenance { restoreBackupLocked(file) }.also { result ->
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_BACKUP_RESTORE_COMPLETED",
+                source = "ReiAnixBackupService",
+                result = "COMPLETED",
+                context = mapOf(
+                    "imported_rows" to result.importedRows,
+                    "manual_artwork_reconnected" to result.manualArtworkReconnected,
+                ),
+            )
+        }
+    } catch (error: Exception) {
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_BACKUP_RESTORE_FAILED",
+            severity = "ERROR",
+            source = "ReiAnixBackupService",
+            result = "FAILED",
+            error = error,
+        )
+        throw error
+    }
 
     private fun restoreBackupLocked(file: File): RestoreResult {
         val preview = inspectBackup(file)
@@ -330,8 +369,28 @@ class ReiAnixBackupService(context: Context) {
      * previous database and SQLite sidecars are preserved byte-for-byte before an
      * adjacent staged file is promoted into place.
      */
-    fun restoreRecoveryBackup(file: File): RestoreResult =
-        withCanonicalFileMaintenance { restoreRecoveryBackupLocked(file) }
+    fun restoreRecoveryBackup(file: File): RestoreResult = try {
+        withCanonicalFileMaintenance { restoreRecoveryBackupLocked(file) }.also { result ->
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_RECOVERY_RESTORE_COMPLETED",
+                source = "ReiAnixBackupService",
+                result = "COMPLETED",
+                context = mapOf(
+                    "imported_rows" to result.importedRows,
+                    "manual_artwork_reconnected" to result.manualArtworkReconnected,
+                ),
+            )
+        }
+    } catch (error: Exception) {
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_RECOVERY_RESTORE_FAILED",
+            severity = "ERROR",
+            source = "ReiAnixBackupService",
+            result = "FAILED",
+            error = error,
+        )
+        throw error
+    }
 
     private fun restoreRecoveryBackupLocked(file: File): RestoreResult {
         val preview = inspectBackup(file)

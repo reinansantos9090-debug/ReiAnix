@@ -77,6 +77,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
@@ -519,6 +520,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
     val latestOperationError = state.operations.values.lastOrNull()
         ?.takeIf { it.state == ReiAnixSettingsOperationState.ERROR }
+    val diagnosticEvents by ReiAnixDiagnosticTimeline.events.collectAsStateWithLifecycle()
 
     var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
@@ -1348,6 +1350,79 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     enabled = !actionBusy("diagnostic_export"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
+                            }
+                        }
+                    }
+                    item(key = "diagnostic:timeline:heading") {
+                        SettingsSectionLabel("Eventos nativos recentes")
+                    }
+                    if (diagnosticEvents.isEmpty()) {
+                        item(key = "diagnostic:timeline:empty") {
+                            ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = "Ainda não há eventos nativos nesta sessão. Os eventos ficam limitados à memória do processo.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(ReiAnixTokens.Spacing.lg),
+                                )
+                            }
+                        }
+                    } else {
+                        items(
+                            diagnosticEvents.take(20),
+                            key = { event -> "diagnostic:event:" + event.id },
+                        ) { event ->
+                            ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(ReiAnixTokens.Spacing.md),
+                                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = event.name,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            text = event.severity,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (event.severity == "ERROR") MaterialTheme.colorScheme.error
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(start = ReiAnixTokens.Spacing.sm),
+                                        )
+                                    }
+                                    Text(
+                                        text = (event.source ?: "Android") + " • " +
+                                            java.text.DateFormat.getDateTimeInstance().format(java.util.Date(event.timestampMs)),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    val details = listOfNotNull(
+                                        event.result?.let { "Resultado: " + it },
+                                        event.requestId?.takeIf { it != "<redacted-ref>" }?.let { "Solicitação: " + it },
+                                        event.sessionId?.takeIf { it != "<redacted-ref>" }?.let { "Sessão: " + it },
+                                        event.error?.let { "Falha: " + it },
+                                    )
+                                    details.forEach { detail ->
+                                        Text(
+                                            text = detail,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (detail.startsWith("Falha:")) MaterialTheme.colorScheme.error
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
