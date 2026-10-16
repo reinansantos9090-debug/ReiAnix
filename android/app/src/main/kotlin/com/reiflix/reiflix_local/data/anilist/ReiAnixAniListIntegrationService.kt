@@ -362,7 +362,7 @@ class ReiAnixAniListIntegrationService(
             // The metadata patch above is already committed to the canonical database.
             // Keep genre identity associations aligned when AniList supplied real labels;
             // empty remote arrays intentionally do not erase previously persisted genres.
-            if (remote.genres.isNotEmpty()) {
+            if (remote.genres.isNotEmpty() && !manualFieldOwnsGenres(updated.metadataManualFieldsJson)) {
                 try {
                     effectiveGenreRegistry.syncAnime(
                         animeId = updated.id,
@@ -402,6 +402,20 @@ class ReiAnixAniListIntegrationService(
             throw cancelled
         } catch (error: Exception) {
             Log.w(TAG, "Could not publish AniList metadata update to native consumers", error)
+        }
+    }
+
+    /** Metadata patch ownership applies to the normalized genre relation as well. */
+    private fun manualFieldOwnsGenres(raw: String?): Boolean {
+        val value = raw?.trim().orEmpty()
+        if (value.isBlank()) return false
+        return try {
+            val fields = JSONArray(value)
+            (0 until fields.length()).any {
+                fields.optString(it).trim().equals("genres", ignoreCase = true)
+            }
+        } catch (_: Exception) {
+            value.contains("genres", ignoreCase = true)
         }
     }
 
