@@ -86,6 +86,8 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "MessageDigest.isEqual" in activity
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "backupService.restoreRecoveryBackup(inputCopy)" in activity
+    assert "createRecoverySafetySnapshotForUser()" in activity
+    assert '"backup_recovery_snapshot"' in activity
     assert "result.reauthenticationRequired" in activity
     assert "result.accountStatePreserved" in activity
     assert "showNativeBackupRestoreConfirmation" in activity
@@ -99,6 +101,8 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "composable(ReiAnixRoutes.RECOVERY) { recovery() }" in navigation
     assert "recovery = { ReiAnixRecoveryRoute(viewModel = settingsViewModel) }" in host
     assert 'viewModel.requestAction("backup_recovery_restore")' in route
+    assert 'viewModel.requestAction("backup_recovery_snapshot")' in route
+    assert "Criar snapshot bruto de segurança" in route
     assert "Restaurar a biblioteca?" in route or "Recuperar a biblioteca?" in route
     assert "diagnostic_export" in route
 
