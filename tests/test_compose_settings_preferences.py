@@ -303,7 +303,7 @@ def test_persisted_library_preferences_drive_native_compose_consumers():
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
     )
 
-def test_compose_settings_reads_existing_sqlite_preferences_without_adding_a_writer():
+def test_compose_settings_reads_and_writes_existing_sqlite_preferences():
     repository = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
     )
@@ -314,9 +314,10 @@ def test_compose_settings_reads_existing_sqlite_preferences_without_adding_a_wri
     assert "ReiAnixSqliteSettingsRepository(appContext)" in repository
     assert "sqliteSettingsRepository.allPreferences()" in repository
     assert "snapshotState.settings + persistedPreferences" in repository
+    assert "setPreference(normalizedKey, normalizedValue)" in repository
+    assert "nativePersisted" in repository
     assert "compose_settings_set" in repository
     assert "NativeMailbox.write(" in repository
-    assert "SettingsStore writer" in repository
     assert "SELECT key, value FROM preferences ORDER BY key COLLATE NOCASE ASC" in sqlite_repository
     assert "database.transaction" in sqlite_repository
 
