@@ -4132,6 +4132,48 @@ async def main(page: ft.Page):
                 error=type(exc).__name__,
             )
 
+    async def _run_compose_settings_native_account_changed(request_id):
+        """Refresh projections from the canonical account table after Kotlin commits."""
+        try:
+            # Compose/Kotlin owns account persistence. Read the canonical SQLite row;
+            # do not re-save profile fields or transport tokens through the mailbox.
+            profile = await asyncio.to_thread(store.account)
+            connected = bool(
+                isinstance(profile, dict)
+                and str(profile.get("id") or "").strip()
+                and "@" in str(profile.get("email") or "")
+            )
+            set_account_state(
+                "connected" if connected else "disconnected",
+                "native_compose_account_changed",
+            )
+            compose_settings_bridge.request_publish("native_compose_account_changed")
+            if not compose_primary_ui:
+                refresh_settings_if_active()
+                safe_update()
+            diagnostics.record(
+                "NATIVE_COMPOSE_ACCOUNT_PROJECTION_REFRESHED",
+                request_id=request_id,
+                result="SUCCESS",
+            )
+            performance.event(
+                "NATIVE_COMPOSE_ACCOUNT_PROJECTION_REFRESHED",
+                request_id=request_id,
+                metadata={"owner": "kotlin", "python_account_write_repeated": False},
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "[COMPOSE_SETTINGS] native account projection refresh failed requestId=%s",
+                request_id or "-",
+            )
+            diagnostics.record(
+                "NATIVE_COMPOSE_ACCOUNT_PROJECTION_FAILED",
+                request_id=request_id,
+                error=type(exc).__name__,
+            )
+
     async def _run_compose_settings_native_backup_restored(request_id):
         """Refresh legacy projections after Kotlin committed a native backup restore."""
         try:
@@ -5080,6 +5122,32 @@ async def main(page: ft.Page):
                                     task.cancel()
                                     diagnostics.record(
                                         "SETTINGS_RUNTIME_BULK_APPLY_SKIPPED",
+                                        request_id=request_id,
+                                        reason="settings_task_limit",
+                                    )
+
+                        if event_type == 'compose_settings_native_account_changed':
+                            request_id = str(event_request_id or payload.get('requestId') or '').strip()
+                            if not request_id:
+                                logger.warning(
+                                    "[COMPOSE_SETTINGS] native account refresh rejected without requestId"
+                                )
+                            elif not store.claim_native_request(
+                                request_id,
+                                namespace="compose_settings_account_changed",
+                            ):
+                                logger.info(
+                                    "[COMPOSE_SETTINGS] duplicate native account refresh ignored requestId=%s",
+                                    request_id,
+                                )
+                            else:
+                                task = asyncio.create_task(
+                                    _run_compose_settings_native_account_changed(request_id)
+                                )
+                                if not _track_compose_settings_task(task):
+                                    task.cancel()
+                                    diagnostics.record(
+                                        "NATIVE_COMPOSE_ACCOUNT_PROJECTION_SKIPPED",
                                         request_id=request_id,
                                         reason="settings_task_limit",
                                     )
