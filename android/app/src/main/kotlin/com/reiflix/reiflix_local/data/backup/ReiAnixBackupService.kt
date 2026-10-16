@@ -866,7 +866,7 @@ class ReiAnixBackupService(context: Context) {
         runCatching {
             val descriptor = android.system.Os.open(
                 directory.absolutePath,
-                android.system.OsConstants.O_RDONLY or android.system.OsConstants.O_DIRECTORY,
+                android.system.OsConstants.O_RDONLY,
                 0,
             )
             try { android.system.Os.fsync(descriptor) } finally { android.system.Os.close(descriptor) }
