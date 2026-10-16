@@ -1413,7 +1413,7 @@ class MainActivity : FlutterFragmentActivity() {
         val requestId = pendingSettingsFileRequestId
         pendingSettingsFileAction = null
         pendingSettingsFileRequestId = null
-        if (action !in setOf("backup_restore", "backup_recovery_restore") || requestId.isNullOrBlank()) return
+        if ((action != "backup_restore" && action != "backup_recovery_restore") || requestId.isNullOrBlank()) return
         if (uri == null) {
             lifecycleScope.launch(Dispatchers.IO) {
                 writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Restauração cancelada.")
@@ -2312,6 +2312,7 @@ class MainActivity : FlutterFragmentActivity() {
                         ReiAnixRoutes.ORGANIZE,
                         ReiAnixRoutes.SETTINGS,
                         ReiAnixRoutes.STORAGE,
+                        ReiAnixRoutes.RECOVERY,
                         -> requestedDestination
                         else -> ReiAnixRoutes.LIBRARY
                     }
