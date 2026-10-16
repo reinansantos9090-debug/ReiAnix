@@ -157,6 +157,7 @@ object VideoThumbnailExtractor {
                             .put("requestId", requestId)
                             .put("durationMs", (android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000.0)),
                 )
+                if (result == null) return null
                 return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, result)
             } finally {
                 if (permitAcquired) extractionPermits.release()
