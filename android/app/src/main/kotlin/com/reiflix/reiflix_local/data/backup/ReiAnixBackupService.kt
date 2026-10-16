@@ -455,7 +455,31 @@ class ReiAnixBackupService(context: Context) {
             if (replacementPromoted && databaseFile.exists()) {
                 val failedReplacement = File(recoverySnapshot, "failed-restored-" + DATABASE_NAME)
                 if (!databaseFile.renameTo(failedReplacement)) {
-                    android.util.Log.e("ReiAnixBackup", "Could not quarantine failed recovery database", error)
+                    // A copy fallback preserves the failed candidate before removing it
+                    // from the canonical path so the previous DB can be restored safely.
+                    try {
+                        FileInputStream(databaseFile).use { input ->
+                            FileOutputStream(failedReplacement).use { output ->
+                                input.copyTo(output, COPY_BUFFER_BYTES)
+                                output.fd.sync()
+                            }
+                        }
+                        check(databaseFile.length() == failedReplacement.length() &&
+                            sha256(databaseFile) == sha256(failedReplacement)) {
+                            "Não foi possível preservar a base substituta que falhou."
+                        }
+                        check(databaseFile.delete()) {
+                            "Não foi possível retirar do caminho canônico a base que falhou."
+                        }
+                    } catch (preservationError: Exception) {
+                        android.util.Log.e("ReiAnixBackup", "Could not preserve failed recovery database", preservationError)
+                        throw BackupRestoreException(
+                            "A recuperação falhou e o arquivo substituto não pôde ser isolado. Os arquivos de recuperação foram mantidos em: " +
+                                recoverySnapshot.absolutePath,
+                            preservationError,
+                            recoverySnapshot,
+                        )
+                    }
                 }
             }
             if (previousDatabaseMoved && displaced.exists() && !databaseFile.exists()) {
