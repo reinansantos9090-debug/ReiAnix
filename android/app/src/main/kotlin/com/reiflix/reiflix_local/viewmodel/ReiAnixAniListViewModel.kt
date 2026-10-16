@@ -33,11 +33,12 @@ data class ReiAnixAniListUiState(
     /** Exact SQLite AniList associations; empty means none was found, not title mismatch. */
     val associatedLocalAnimeIds: List<Long> = emptyList(),
     val localAssociationError: String? = null,
+    val isMetadataRefreshLoading: Boolean = false,
     val lastAssociationMessage: String? = null,
     val associationRevision: Long = 0L,
 ) {
     val isLoading: Boolean
-        get() = isSearchLoading || isManualAssociationLoading || isAutoMatchLoading
+        get() = isSearchLoading || isManualAssociationLoading || isAutoMatchLoading || isMetadataRefreshLoading
 }
 
 /**
@@ -57,6 +58,8 @@ class ReiAnixAniListViewModel(
     private var searchJob: Job? = null
     private var detailsJob: Job? = null
     private var detailsRequestId: Long = 0L
+    private var metadataRefreshJob: Job? = null
+    private var metadataRefreshRequestId: Long = 0L
 
     init {
         discoveryQueryJob = viewModelScope.launch {
@@ -159,6 +162,61 @@ class ReiAnixAniListViewModel(
             }
         }
     }
+    /** Refreshes only a local anime's existing AniList association through the native service. */
+    fun refreshAniListMetadata(animeId: Long) {
+        metadataRefreshJob?.cancel()
+        val requestId = ++metadataRefreshRequestId
+        if (animeId <= 0L) {
+            _aniListUiState.value = _aniListUiState.value.copy(
+                isMetadataRefreshLoading = false,
+                error = "Não foi possível atualizar os metadados: identificador local inválido.",
+            )
+            return
+        }
+        _aniListUiState.value = _aniListUiState.value.copy(
+            isMetadataRefreshLoading = true,
+            error = null,
+            lastAssociationMessage = null,
+        )
+        metadataRefreshJob = viewModelScope.launch {
+            try {
+                when (val result = integration.refreshMetadata(animeId)) {
+                    is AniListResult.Success -> if (requestId == metadataRefreshRequestId) {
+                        _aniListUiState.value = _aniListUiState.value.copy(
+                            isMetadataRefreshLoading = false,
+                            error = null,
+                            lastAssociationMessage = "Metadados AniList atualizados.",
+                            associationRevision = _aniListUiState.value.associationRevision + 1,
+                        )
+                    }
+                    is AniListResult.Failure -> if (requestId == metadataRefreshRequestId) {
+                        _aniListUiState.value = _aniListUiState.value.copy(
+                            isMetadataRefreshLoading = false,
+                            error = result.error.userMessage(),
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                if (requestId == metadataRefreshRequestId) {
+                    _aniListUiState.value = _aniListUiState.value.copy(isMetadataRefreshLoading = false)
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                if (requestId == metadataRefreshRequestId) {
+                    _aniListUiState.value = _aniListUiState.value.copy(
+                        isMetadataRefreshLoading = false,
+                        error = error.message?.takeIf(String::isNotBlank)
+                            ?: "Não foi possível atualizar os metadados AniList.",
+                    )
+                }
+            } finally {
+                if (requestId == metadataRefreshRequestId && _aniListUiState.value.isMetadataRefreshLoading) {
+                    _aniListUiState.value = _aniListUiState.value.copy(isMetadataRefreshLoading = false)
+                }
+            }
+        }
+    }
+
     private var manualAssociationJob: Job? = null
     private var autoMatchJob: Job? = null
     private var searchRequestId: Long = 0L

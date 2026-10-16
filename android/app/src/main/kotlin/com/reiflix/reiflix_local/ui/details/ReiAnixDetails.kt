@@ -227,6 +227,7 @@ fun ReiAnixDetailsRoute(
             onAssociate = { selectedId ->
                 aniListViewModel.associateAniListManually(canonicalId, selectedId)
             },
+            onRefreshMetadata = { aniListViewModel.refreshAniListMetadata(canonicalId) },
             onDismiss = { showAniListDialog = false },
         )
     }
@@ -1402,6 +1403,7 @@ private fun AniListAssociationDialog(
     state: ReiAnixAniListUiState,
     onSearch: (String) -> Unit,
     onAssociate: (Int) -> Unit,
+    onRefreshMetadata: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
@@ -1428,6 +1430,16 @@ private fun AniListAssociationDialog(
                         onClick = { onSearch(query) },
                     )
                     if (state.isLoading) CircularProgressIndicator(modifier = Modifier.size(ReiAnixTokens.Spacing.lg))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Start,
+                ) {
+                    ReiAnixCompactButton(
+                        text = if (state.isMetadataRefreshLoading) "Atualizando metadados…" else "Atualizar metadados AniList",
+                        enabled = !state.isLoading,
+                        onClick = onRefreshMetadata,
+                    )
                 }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 state.lastAssociationMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }

@@ -105,6 +105,16 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertIn("requestAnimeArtwork(animeId)", refresh)
         self.assertNotIn("repository.refresh(", refresh)
 
+    def test_details_refreshes_associated_metadata_through_native_anilist_service(self):
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixAniListViewModel.kt").read_text(encoding="utf-8")
+        details = DETAILS.read_text(encoding="utf-8")
+        integration = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")
+        self.assertIn("fun refreshAniListMetadata(animeId: Long)", view_model)
+        self.assertIn("integration.refreshMetadata(animeId)", view_model)
+        self.assertIn("onRefreshMetadata = { aniListViewModel.refreshAniListMetadata(canonicalId) }", details)
+        self.assertIn('text = if (state.isMetadataRefreshLoading) "Atualizando metadados…" else "Atualizar metadados AniList"', details)
+        self.assertIn("suspend fun refreshMetadata(animeId: Long)", integration)
+
     def test_remote_details_uses_only_exact_persisted_anilist_identity(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
         integration = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")
