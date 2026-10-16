@@ -36,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -104,6 +105,7 @@ fun ReiAnixHomeRoute(
 ) {
     val state by viewModel.homeState.collectAsStateWithLifecycle()
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
+    val personalListMutationError by viewModel.personalListMutationError.collectAsStateWithLifecycle()
     val visibleContinueWatching = if (continueWatchingEnabled) {
         continueWatching.take(continueWatchingLimit.coerceAtLeast(0))
     } else {
@@ -113,6 +115,8 @@ fun ReiAnixHomeRoute(
     ReiAnixHomeObservedScreen(
         state = state,
         continueWatching = visibleContinueWatching,
+        personalListMutationError = personalListMutationError,
+        onDismissMutationError = viewModel::clearPersonalListMutationError,
         cardSize = cardSize,
         showThumbnails = showThumbnails,
         onOpenCollector = onOpenCollector,
@@ -142,6 +146,8 @@ fun ReiAnixHomeRoute(
 private fun ReiAnixHomeObservedScreen(
     state: ReiAnixHomeLibraryUiState,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
+    personalListMutationError: String?,
+    onDismissMutationError: () -> Unit,
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
     onOpenCollector: () -> Unit = {},
@@ -166,6 +172,36 @@ private fun ReiAnixHomeObservedScreen(
             onSearch = onSearch,
             onRefresh = onRefresh,
         )
+
+        if (!personalListMutationError.isNullOrBlank()) {
+            HomeNotice(
+                message = personalListMutationError,
+                isError = true,
+                onDismiss = onDismissMutationError,
+            )
+        }
+
+        val hasPreviousContent = state.animes.isNotEmpty()
+        val hasOperationalError = state.status == ReiAnixLibraryLoadStatus.ERROR ||
+            !state.error.isNullOrBlank()
+        val operationalNotice = when {
+            hasPreviousContent && hasOperationalError ->
+                "A atualização da biblioteca falhou. Os dados locais já carregados foram preservados." +
+                    state.error?.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
+            hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.LOADING ->
+                "Atualizando a biblioteca local…"
+            hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
+                "A fonte local está indisponível. O conteúdo já carregado continua disponível."
+            else -> null
+        }
+        if (operationalNotice != null) {
+            HomeNotice(
+                message = operationalNotice,
+                isError = hasOperationalError,
+                actionLabel = if (hasOperationalError) "Tentar novamente" else null,
+                onAction = if (hasOperationalError) onRefresh else null,
+            )
+        }
 
         when (state.status) {
             ReiAnixLibraryLoadStatus.LOADING -> {
@@ -415,6 +451,66 @@ fun ReiAnixHomeScreen(
     }
 
     }
+}
+
+@Composable
+private fun HomeNotice(
+    message: String,
+    isError: Boolean = false,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null,
+) {
+    val containerColor = if (isError) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = if (isError) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = ReiAnixTokens.Spacing.md),
+        color = containerColor,
+        contentColor = contentColor,
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = ReiAnixTokens.Spacing.md,
+                    vertical = ReiAnixTokens.Spacing.sm,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+        ) {
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = contentColor,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (actionLabel != null && onAction != null) {
+                TextButton(onClick = onAction) {
+                    Text(actionLabel, maxLines = 1)
+                }
+            }
+            if (onDismiss != null) {
+                TextButton(onClick = onDismiss) {
+                    Text("Dispensar", maxLines = 1)
+                }
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
 }
 
 @Composable

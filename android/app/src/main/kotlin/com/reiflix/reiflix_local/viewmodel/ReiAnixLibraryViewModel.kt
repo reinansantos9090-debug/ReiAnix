@@ -172,6 +172,12 @@ class ReiAnixLibraryViewModel(
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService(nativeLibraryRepository)
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
+
+    /** Dismisses a Home-owned error after the user has seen the failed list mutation. */
+    fun clearPersonalListMutationError() {
+        _personalListMutationError.value = null
+    }
+
     private val _consumptionMutationError = MutableStateFlow<String?>(null)
     val consumptionMutationError: StateFlow<String?> = _consumptionMutationError.asStateFlow()
     /** SAF mutations operate only on persisted, user-authorized content URIs. */
