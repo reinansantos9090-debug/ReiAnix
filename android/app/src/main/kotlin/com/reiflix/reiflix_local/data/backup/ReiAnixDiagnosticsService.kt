@@ -4,6 +4,8 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.os.Build
 import com.reiflix.reiflix_local.BuildConfig
+import com.reiflix.reiflix_local.PerformanceDiagnostics
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import org.json.JSONObject
 import java.io.File
@@ -50,12 +52,20 @@ class ReiAnixDiagnosticsService(context: Context) {
             .put("database", integrity.toJson())
             .put("library", library)
             .put("artwork", artwork)
+            .put("timeline", JSONObject()
+                .put("retention_limit", ReiAnixDiagnosticTimeline.RETENTION_LIMIT)
+                .put("returned_events", minOf(100, ReiAnixDiagnosticTimeline.RETENTION_LIMIT))
+                .put("storage", "process_memory")
+                .put("recent_events", ReiAnixDiagnosticTimeline.snapshotJson(100)))
+            .put("performance", PerformanceDiagnostics.snapshotJson())
             .put("privacy", JSONObject()
                 .put("includes_authentication", false)
                 .put("includes_video_paths", false)
                 .put("includes_document_uris", false)
                 .put("includes_anime_titles", false)
-                .put("includes_tokens", false))
+                .put("includes_tokens", false)
+                .put("includes_raw_file_paths_in_events", false)
+                .put("includes_remote_telemetry", false))
         return (report.toString(2) + "\n").toByteArray(Charsets.UTF_8)
     }
 
