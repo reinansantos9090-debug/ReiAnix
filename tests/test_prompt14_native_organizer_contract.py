@@ -12,6 +12,7 @@ ANILIST = KOTLIN / "data" / "anilist" / "ReiAnixAniListIntegrationService.kt"
 VIEWMODEL = KOTLIN / "viewmodel" / "ReiAnixLibraryViewModel.kt"
 ORGANIZE_UI = KOTLIN / "ui" / "organize" / "ReiAnixOrganize.kt"
 MAIN = ROOT / "main.py"
+SQLITE_REPOSITORY = KOTLIN / "data" / "sqlite" / "ReiAnixSqliteLibraryRepository.kt"
 
 
 class NativeGenreMigrationContractTests(unittest.TestCase):
@@ -75,6 +76,11 @@ class NativeGenreMigrationContractTests(unittest.TestCase):
         self.assertIn("organizerGenreOperationState", ui)
         self.assertIn("isClassifyingLocalGenres", ui)
         self.assertIn("ReiAnixGenreRegistry", viewmodel)
+
+    def test_catalog_projection_deduplicates_genres_shared_by_multiple_sources(self):
+        repository = self.read(SQLITE_REPOSITORY)
+        self.assertIn("SELECT DISTINCT ag.anime_id, g.id, g.canonical_name", repository)
+        self.assertIn("COUNT(DISTINCT ag.anime_id)", self.read(REGISTRY))
 
     def test_python_event_only_refreshes_projection_and_does_not_repeat_genre_writes(self):
         main = self.read(MAIN)
