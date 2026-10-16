@@ -45,7 +45,7 @@ object GoogleIdentity {
             return SignInResult(errorCode = "configuration_required", errorMessage = "O login Google ainda não foi configurado corretamente neste APK.")
         }
 
-        try {
+        return try {
             Log.i(TAG, "Google Credential Manager sign-in requested")
             if (publishLegacyMailboxEvents) {
                 NativeMailbox.write(context, JSONObject().put("type", "google_sign_in_started").put("requestId", requestId ?: ""))
