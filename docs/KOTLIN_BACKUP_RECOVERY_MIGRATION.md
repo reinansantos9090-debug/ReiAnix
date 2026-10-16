@@ -34,7 +34,7 @@ Quando o banco ativo está saudável e compatível, a restauração lógica perm
 
 A inicialização nativa inspeciona o arquivo canônico preexistente fora da thread principal. Uma instalação nova sem banco não é classificada automaticamente como falha. Se um banco não vazio não puder ser aberto ou não corresponder ao contrato SQLite atual, o shell navega para a rota Compose de recuperação, sem expor uma restauração Python nesse fluxo Android.
 
-A tela apresenta confirmação explícita antes de selecionar o backup. A recuperação usa `restoreRecoveryBackup`, pois o fluxo normal não consegue criar um backup pré-restauração a partir de uma base que já falha na verificação.
+A tela apresenta confirmação explícita antes de selecionar o backup e informa metadados/contagens do arquivo selecionado antes da confirmação final. Também mantém uma ação nativa para criar manualmente um snapshot bruto de segurança, com estado de sucesso/erro; esse arquivo é para preservar bytes/sidecars e não é um ZIP de backup importável. A recuperação usa `restoreRecoveryBackup`, pois o fluxo normal não consegue criar um backup pré-restauração a partir de uma base que já falha na verificação.
 
 Sequência nativa de recuperação:
 
