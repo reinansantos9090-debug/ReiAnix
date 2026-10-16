@@ -1225,6 +1225,29 @@ class MainActivity : FlutterFragmentActivity() {
         // no competing Compose host is mounted for either screen.
         composeLibraryHost = ReiAnixComposeLibraryHost(this, libraryViewModel, settingsViewModel)
         composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+
+        // Detect a damaged/incompatible pre-existing canonical database without
+        // asking Python to classify the failure. Fresh installs (no DB yet) keep
+        // the current startup path and are not misclassified as recovery cases.
+        lifecycleScope.launch {
+            val recoveryRequired = withContext(Dispatchers.IO) {
+                val canonicalFile = File(File(applicationContext.filesDir, "data"), ReiAnixBackupService.DATABASE_NAME)
+                if (!canonicalFile.isFile || canonicalFile.length() <= 0L) {
+                    false
+                } else {
+                    runCatching {
+                        !appDependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
+                    }.getOrElse { error ->
+                        Log.e(tag, "NATIVE_DATABASE_RECOVERY_REQUIRED", error)
+                        true
+                    }
+                }
+            }
+            if (recoveryRequired && !isFinishing && !isDestroyed) {
+                Log.w(tag, "NATIVE_DATABASE_RECOVERY_ROUTE_OPENED")
+                composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+            }
+        }
         // The existing SystemUiController remains the single Android system-bar
         // authority while the Compose shell and legacy Flet surfaces coexist.
         systemUiController.applyApplicationPolicy(useContextAppearance = false)
@@ -1249,7 +1272,7 @@ class MainActivity : FlutterFragmentActivity() {
             ?.trim().orEmpty()
         val nativeActions = setOf(
             "settings_export", "settings_import", "backup_create", "backup_restore",
-            "backup_integrity", "backup_reconcile", "diagnostic_export",
+            "backup_recovery_restore", "backup_integrity", "backup_reconcile", "diagnostic_export",
         )
         if (action == null || action !in nativeActions) return
 
@@ -1296,7 +1319,7 @@ class MainActivity : FlutterFragmentActivity() {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
                             backupExportLauncher.launch("reiflix-backup-" + stamp + ".zip")
                         }
-                        "backup_restore" -> backupImportLauncher.launch(
+                        "backup_restore", "backup_recovery_restore" -> backupImportLauncher.launch(
                             arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
                         )
                         "diagnostic_export" -> {
@@ -1390,7 +1413,7 @@ class MainActivity : FlutterFragmentActivity() {
         val requestId = pendingSettingsFileRequestId
         pendingSettingsFileAction = null
         pendingSettingsFileRequestId = null
-        if (action != "backup_restore" || requestId.isNullOrBlank()) return
+        if (action !in setOf("backup_restore", "backup_recovery_restore") || requestId.isNullOrBlank()) return
         if (uri == null) {
             lifecycleScope.launch(Dispatchers.IO) {
                 writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Restauração cancelada.")
@@ -1427,10 +1450,20 @@ class MainActivity : FlutterFragmentActivity() {
                             output.fd.sync()
                         }
                     }
-                    ReiAnixBackupService(applicationContext).restoreBackup(inputCopy)
+                    val backupService = ReiAnixBackupService(applicationContext)
+                    if (action == "backup_recovery_restore") {
+                        backupService.restoreRecoveryBackup(inputCopy)
+                    } else {
+                        backupService.restoreBackup(inputCopy)
+                    }
                 }
                 settingsViewModel.refresh()
                 libraryViewModel.refresh()
+                if (action == "backup_recovery_restore") {
+                    // The recovery route is removed only after the replacement DB has
+                    // passed post-promotion integrity and runtime-schema validation.
+                    composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+                }
                 // Runtime consumers are notified only after the canonical transaction commits.
                 runCatching {
                     NativeMailbox.write(
