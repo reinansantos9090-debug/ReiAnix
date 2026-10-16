@@ -26,6 +26,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.details.ReiAnixDetailsRoute
+import com.reiflix.reiflix_local.ui.recovery.ReiAnixRecoveryRoute
 import com.reiflix.reiflix_local.ui.details.ReiAnixAniListDetailsRoute
 import com.reiflix.reiflix_local.ui.home.ReiAnixHomeRoute
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryRoute
@@ -46,6 +47,7 @@ object ReiAnixRoutes {
     const val SETTINGS = "settings"
     const val STORAGE = "storage"
     const val ORGANIZE = "organize"
+    const val RECOVERY = "recovery"
     const val DETAILS = "details/{animeId}?origin={origin}"
     const val ANILIST_DETAILS = "anilist_details/{anilistId}?origin={origin}"
     const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"
@@ -67,7 +69,8 @@ object ReiAnixRoutes {
         return topLevelDestinations.any { it.route == normalized } ||
             normalized == MY_LIST ||
             normalized == STORAGE ||
-            normalized == ORGANIZE
+            normalized == ORGANIZE ||
+            normalized == RECOVERY
     }
 
     /**
@@ -221,6 +224,7 @@ fun ReiAnixNavigationHost(
     search: @Composable () -> Unit = {},
     settings: @Composable () -> Unit = {},
     storage: @Composable () -> Unit = {},
+    recovery: @Composable () -> Unit = {},
     details: @Composable (ReiAnixDetailsArgs) -> Unit = {},
     appearanceCardSize: String = "medium",
     appearanceShowThumbnails: Boolean = true,
@@ -278,6 +282,7 @@ fun ReiAnixNavigationHost(
         libraryGridDensity = libraryGridDensity,
         settings = settings,
         storage = storage,
+        recovery = recovery,
         details = { args ->
             ReiAnixDetailsRoute(
                 navController = navController,
@@ -306,6 +311,7 @@ fun ReiAnixNavigationHost(
     search: @Composable () -> Unit,
     settings: @Composable () -> Unit,
     storage: @Composable () -> Unit = {},
+    recovery: @Composable () -> Unit = {},
     details: @Composable (ReiAnixDetailsArgs) -> Unit,
     player: @Composable (ReiAnixPlayerArgs) -> Unit,
     appearanceCardSize: String = "medium",
@@ -360,6 +366,7 @@ fun ReiAnixNavigationHost(
         ReiAnixRoutes.SETTINGS,
         ReiAnixRoutes.STORAGE,
         ReiAnixRoutes.ORGANIZE,
+        ReiAnixRoutes.RECOVERY,
         ReiAnixRoutes.DETAILS,
         ReiAnixRoutes.ANILIST_DETAILS,
         ReiAnixRoutes.PLAYER,
@@ -407,6 +414,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.SEARCH) { search() }
             composable(ReiAnixRoutes.SETTINGS) { settings() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
+            composable(ReiAnixRoutes.RECOVERY) { recovery() }
 
             composable(
                 route = ReiAnixRoutes.DETAILS,
