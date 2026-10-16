@@ -1294,7 +1294,7 @@ class MainActivity : FlutterFragmentActivity() {
             ?.trim().orEmpty()
         val nativeActions = setOf(
             "settings_export", "settings_import", "backup_create", "backup_restore",
-            "backup_recovery_restore", "backup_integrity", "backup_reconcile", "diagnostic_export",
+            "backup_recovery_restore", "backup_recovery_snapshot", "backup_integrity", "backup_reconcile", "diagnostic_export",
         )
         if (action == null || action !in nativeActions) return
 
@@ -1323,8 +1323,11 @@ class MainActivity : FlutterFragmentActivity() {
             withContext(Dispatchers.IO) {
                 writeSettingsFileActionResult(
                     requestId, action!!, "RUNNING", "RUNNING",
-                    message = if (action == "backup_integrity" || action == "backup_reconcile")
-                        "Preparando a operação nativa." else "Aguardando o seletor de arquivos do Android.",
+                    message = if (
+                        action == "backup_integrity" ||
+                        action == "backup_reconcile" ||
+                        action == "backup_recovery_snapshot"
+                    ) "Preparando a operação nativa." else "Aguardando o seletor de arquivos do Android.",
                 )
             }
             lifecycle.whenStarted {
@@ -1348,7 +1351,7 @@ class MainActivity : FlutterFragmentActivity() {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
                             diagnosticExportLauncher.launch("reiflix-diagnostic-" + stamp + ".json")
                         }
-                        "backup_integrity", "backup_reconcile" -> {
+                        "backup_integrity", "backup_reconcile", "backup_recovery_snapshot" -> {
                             pendingSettingsFileAction = null
                             pendingSettingsFileRequestId = null
                             runNativeSettingsMaintenanceAction(action, requestId)
@@ -1805,6 +1808,18 @@ class MainActivity : FlutterFragmentActivity() {
                                 requestId, action, "SUCCESS", "SUCCESS",
                                 message = "Reconciliação concluída. Referências locais verificadas: " + updated +
                                     ". URIs SAF/MediaStore permanecem sob o scanner nativo.",
+                            )
+                        }
+                    }
+                    "backup_recovery_snapshot" -> {
+                        val snapshot = withContext(Dispatchers.IO) {
+                            ReiAnixBackupService(applicationContext).createRecoverySafetySnapshotForUser()
+                        }
+                        withContext(Dispatchers.IO) {
+                            writeSettingsFileActionResult(
+                                requestId, action, "SUCCESS", "SUCCESS",
+                                message = "Snapshot bruto de segurança criado: " + snapshot.name +
+                                    ". Ele preserva bytes/sidecars para recuperação, mas não é um ZIP de backup restaurável.",
                             )
                         }
                     }
