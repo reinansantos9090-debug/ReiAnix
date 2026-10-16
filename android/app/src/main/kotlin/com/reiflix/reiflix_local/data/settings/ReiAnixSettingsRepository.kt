@@ -385,16 +385,9 @@ class ReiAnixSettingsRepository(
             launchNativeSettingsFileAction(normalizedAction)
             return
         }
-        if (normalizedAction !in setOf(
-            "backup_create", "backup_restore", "backup_integrity", "backup_reconcile",
-            "diagnostic_export",
-        )) return
-        dispatchCommand(normalizedAction, normalizedAction) { requestId ->
-            JSONObject()
-                .put("type", "compose_settings_action")
-                .put("requestId", requestId)
-                .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
-        }
+        // Unknown actions are intentionally ignored here. The legacy Flet
+        // Settings view owns its independent Python action handlers; Compose
+        // actions routed above must never fall back to a second owner.
     }
     private fun launchNativeStorageSettingsAction(action: String) {
         val requestId = UUID.randomUUID().toString()
