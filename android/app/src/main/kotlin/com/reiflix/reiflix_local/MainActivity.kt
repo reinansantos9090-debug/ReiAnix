@@ -1698,11 +1698,33 @@ class MainActivity : FlutterFragmentActivity() {
                         backupService.restoreBackup(inputCopy)
                     }
                 }
-                settingsViewModel.refresh()
-                libraryViewModel.refresh()
                 if (action == "backup_recovery_restore") {
-                    // Leave Recovery Mode only after integrity and runtime-schema validation.
+                    // The backup service validates/promotes the candidate and preserves its
+                    // rollback snapshot. The process-owned bootstrap must independently accept
+                    // the canonical database before any normal ViewModel projection is refreshed.
+                    val recoveryRequired = appDependencies.bootstrap.validateCanonicalDatabase()
+                    if (recoveryRequired) {
+                        composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+                        throw IllegalStateException(
+                            "A base restaurada não passou pela revalidação do bootstrap.",
+                        )
+                    }
+                    settingsViewModel.refresh()
+                    val catalogRefreshed = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+                    if (!catalogRefreshed) {
+                        composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+                        throw IllegalStateException(
+                            "O catálogo restaurado não pôde ser carregado após a validação.",
+                        )
+                    }
+                    // Recovery Mode exits only after both the canonical SQLite check and
+                    // the local catalog projection have completed successfully.
                     composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+                } else {
+                    // Preserve the normal backup-restore contract; it is not the exceptional
+                    // startup-recovery path and continues using the established refresh flow.
+                    settingsViewModel.refresh()
+                    libraryViewModel.refresh()
                 }
                 runCatching {
                     NativeMailbox.write(
@@ -1742,12 +1764,26 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 throw cancelled
             } catch (error: Exception) {
-                Log.e(tag, "NATIVE_BACKUP_RESTORE_FAILED requestId=" + requestId, error)
+                if (action == "backup_recovery_restore" && ::composeLibraryHost.isInitialized) {
+                    // Never leave the recovery route because of an exception after promotion.
+                    runCatching {
+                        composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+                    }
+                }
+                Log.e(
+                    tag,
+                    "NATIVE_BACKUP_RESTORE_FAILED requestId=" + requestId +
+                        " category=" + error::class.java.simpleName,
+                )
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "ERROR", "ERROR",
-                        error = error.message?.takeIf { it.isNotBlank() }
-                            ?: "Não foi possível restaurar o backup.",
+                        error = if (action == "backup_recovery_restore") {
+                            "A recuperação foi interrompida porque a base restaurada não passou por todas as validações. O modo de recuperação foi mantido."
+                        } else {
+                            error.message?.takeIf { it.isNotBlank() }
+                                ?: "Não foi possível restaurar o backup."
+                        },
                     )
                 }
             } finally {
