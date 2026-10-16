@@ -78,6 +78,31 @@ class NativeRequestStateTest {
     }
 
     @Test
+    fun stale_messages_cannot_reopen_a_terminal_request() {
+        val state = NativeRequestState()
+
+        assertTrue(state.acceptRequest("terminal", "select_tree", 10L))
+        assertTrue(state.markOperationState("terminal", "select_tree", NativeRequestState.OperationState.RUNNING))
+        assertTrue(state.markOperationState("terminal", "select_tree", NativeRequestState.OperationState.COMPLETED))
+
+        assertFalse(state.markOperationState("terminal", "select_tree", NativeRequestState.OperationState.RUNNING))
+        assertFalse(state.markOperationState("terminal", "select_tree", NativeRequestState.OperationState.CANCELLED))
+        assertEquals(NativeRequestState.OperationState.COMPLETED, state.operationState("terminal"))
+    }
+
+    @Test
+    fun operation_lifecycle_does_not_move_backwards() {
+        val state = NativeRequestState()
+
+        assertTrue(state.acceptRequest("ordered", "select_tree", 10L))
+        assertTrue(state.markOperationState("ordered", "select_tree", NativeRequestState.OperationState.QUEUED))
+        assertFalse(state.markOperationState("ordered", "select_tree", NativeRequestState.OperationState.RECEIVED))
+        assertTrue(state.markOperationState("ordered", "select_tree", NativeRequestState.OperationState.RUNNING))
+        assertFalse(state.markOperationState("ordered", "select_tree", NativeRequestState.OperationState.QUEUED))
+        assertEquals(NativeRequestState.OperationState.RUNNING, state.operationState("ordered"))
+    }
+
+    @Test
     fun terminal_states_are_persisted_in_the_in_memory_snapshot() {
         val state = NativeRequestState()
         assertTrue(state.acceptRequest("timeout", "select_tree", 123L))
