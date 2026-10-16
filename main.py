@@ -6590,13 +6590,11 @@ async def main(page: ft.Page):
                                             "event": event_type,
                                         },
                                     )
-                                    if updated and payload.get("nativeProgressPersisted") is not True:
-                                        # Kotlin already committed native progress and refreshes the
-                                        # Compose projection through its in-process consumption event.
-                                        # Publish a legacy snapshot only for the compatibility writer.
-                                        compose_library_bridge.request_publish(
-                                            f"player_progress:{payload.get('episodeId') or 0}"
-                                        )
+                                    if updated:
+                                        if payload.get("nativeProgressPersisted") is not True:
+                                            compose_library_bridge.request_publish(
+                                                f"player_progress:{payload.get('episodeId') or 0}"
+                                            )
                                     performance.event("player.progress_persist", duration_ms=(performance.now()-progress_started)*1000.0,
                                                       screen=navigation.current,
                                                       metadata={"episode_id": payload.get("episodeId"), "media_identity": payload.get("mediaId"),
