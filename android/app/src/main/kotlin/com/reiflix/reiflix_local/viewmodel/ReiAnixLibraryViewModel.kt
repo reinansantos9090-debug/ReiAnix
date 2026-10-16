@@ -1261,6 +1261,9 @@ class ReiAnixLibraryViewModel(
         if (canonicalConsumersStarted) return
         canonicalConsumersStarted = true
 
+        // Read the local canonical catalog only after bootstrap allows normal use.
+        viewModelScope.launch { refreshNativeCatalog() }
+
         // Opening the app must not schedule missing/stale artwork downloads. Artwork is
         // requested only by explicit details/artwork actions or existing pipeline events.
         // Player notifications are emitted only after a successful SQLite commit.
