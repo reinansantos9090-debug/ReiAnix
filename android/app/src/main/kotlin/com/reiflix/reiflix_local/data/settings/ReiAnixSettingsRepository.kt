@@ -36,6 +36,12 @@ class ReiAnixSettingsRepository(
 ) : AutoCloseable {
     companion object {
         private const val TAG = "ReiAnixSettingsRepo"
+        private val NATIVE_STORAGE_SETTINGS_ACTIONS = setOf(
+            "select_saf",
+            "request_media_access",
+            "check_storage_access",
+            "open_broad_storage_settings",
+        )
 
         /**
          * A projection/IPC error must not erase the last known settings/account
@@ -385,7 +391,7 @@ class ReiAnixSettingsRepository(
                     ReiAnixSettingsOperationUiState(
                         requestId = requestId,
                         action = action,
-                        state = ReiAnixSettingsOperationState.QUEUED,
+                        state = ReiAnixSettingsOperationState.RUNNING,
                         timestampMs = System.currentTimeMillis(),
                     ),
                 ),
