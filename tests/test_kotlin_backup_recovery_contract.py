@@ -82,8 +82,10 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "MessageDigest.isEqual" in activity
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "backupService.restoreRecoveryBackup(inputCopy)" in activity
-    assert "showNativeRecoveryRestoreConfirmation" in activity
-    assert 'setPositiveButton("Restaurar backup")' in activity
+    assert "showNativeBackupRestoreConfirmation" in activity
+    assert "setPositiveButton(" in activity
+    assert "completeNativeBackupRestore(inputCopy, action, requestId)" in activity
+    assert "Confirmar restauração do backup" in activity
     assert "preview.manifest" in activity
     assert "counts.optLong(\"anime\"" in activity
     assert '"backup_recovery_restore"' in activity
