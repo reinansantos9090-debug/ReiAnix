@@ -1257,6 +1257,10 @@ class MainActivity : FlutterFragmentActivity() {
         logLifecycle("onCreate", intent)
         NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "APP_START").put("lifecycle", "onCreate")))
         systemUiController = SystemUiController(window)
+        _nativeStorageOnboardingState.value = _nativeStorageOnboardingState.value.copy(
+            dismissed = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+                .getBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false),
+        )
         // The legacy-named Library host is now the single runtime Compose
         // visual shell. Settings and Storage are routes inside the same shell;
         // no competing Compose host is mounted for either screen.
@@ -3416,7 +3420,10 @@ class MainActivity : FlutterFragmentActivity() {
     private fun refreshNativeStorageOnboardingState(origin: String) {
         // The ActivityResult callback owns the outcome while DocumentsUI is open.
         // A lifecycle refresh must not overwrite its in-flight state.
-        if (safPickerPending) return
+        if (
+            safPickerPending ||
+            _nativeStorageOnboardingState.value.phase == NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN
+        ) return
 
         val previous = _nativeStorageOnboardingState.value
         if (previous.phase != NativeStorageOnboardingState.PHASE_READY) {
