@@ -9,6 +9,10 @@ import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteAccountRepository
+import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsAccountUiState
+import android.net.Uri
+import com.reiflix.reiflix_local.R
 import org.json.JSONObject
 import java.util.UUID
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus
@@ -33,6 +37,7 @@ class ReiAnixSettingsRepository(
     context: Context,
     private val sharedSqliteSettingsRepository: ReiAnixSqliteSettingsRepository? = null,
     private val sharedArtworkService: ReiAnixArtworkService? = null,
+    private val sharedAccountRepository: ReiAnixSqliteAccountRepository? = null,
 ) : AutoCloseable {
     companion object {
         private const val TAG = "ReiAnixSettingsRepo"
@@ -616,11 +621,124 @@ class ReiAnixSettingsRepository(
     fun requestAccountAction(action: String) {
         val normalizedAction = action.trim().lowercase()
         if (normalizedAction !in setOf("login", "logout", "switch")) return
-        dispatchCommand(normalizedAction, "account:" + normalizedAction) { requestId ->
-            JSONObject()
-                .put("type", "compose_account_action")
-                .put("requestId", requestId)
-                .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
+        if (sharedAccountRepository == null) {
+            // Compatibility for older hosts only; the shipped Compose ViewModel
+            // receives the canonical account repository from the Application graph.
+            dispatchCommand(normalizedAction, "account:" + normalizedAction) { requestId ->
+                JSONObject()
+                    .put("type", "compose_account_action")
+                    .put("requestId", requestId)
+                    .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
+            }
+            return
+        }
+        launchNativeAccountAction(normalizedAction)
+    }
+
+    private fun launchNativeAccountAction(action: String) {
+        val requestId = UUID.randomUUID().toString()
+        val busyState = if (action == "login") "connecting" else "disconnecting"
+        synchronized(stateLock) {
+            val current = _state.value
+            _state.value = current.copy(
+                account = current.account.copy(
+                    integrationAvailable = isNativeGoogleConfigured(),
+                    state = busyState,
+                ),
+                operations = upsertOperationLocked(
+                    current.operations,
+                    ReiAnixSettingsOperationUiState(
+                        requestId = requestId,
+                        action = action,
+                        state = ReiAnixSettingsOperationState.RUNNING,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+        scope.launch {
+            try {
+                val nativeAction = when (action) {
+                    "login" -> "google_sign_in"
+                    "logout" -> "google_sign_out"
+                    else -> "google_account_switch"
+                }
+                val target = Uri.parse("reiflix://native").buildUpon()
+                    .appendQueryParameter("action", nativeAction)
+                    .appendQueryParameter("request_id", requestId)
+                    .appendQueryParameter("native_account_owner", "true")
+                    .appendQueryParameter("settings_action", action)
+                    .build()
+                val intent = Intent(appContext, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    data = target
+                }
+                appContext.startActivity(intent)
+                Log.i(TAG, "SETTINGS_ACCOUNT_ACTION_LAUNCHED requestId=" + requestId + " action=" + action + " owner=kotlin")
+            } catch (cancelled: CancellationException) {
+                restoreNativeAccountProjection()
+                updateSettingsFileOperation(
+                    requestId,
+                    ReiAnixSettingsOperationState.CANCELLED,
+                    error = "A operação da conta foi cancelada.",
+                )
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "SETTINGS_ACCOUNT_ACTION_LAUNCH_FAILED requestId=" + requestId + " action=" + action, error)
+                restoreNativeAccountProjection()
+                updateSettingsFileOperation(
+                    requestId,
+                    ReiAnixSettingsOperationState.ERROR,
+                    error = "Não foi possível iniciar a operação nativa da conta.",
+                )
+            }
+        }
+    }
+
+    private fun isNativeGoogleConfigured(): Boolean = runCatching {
+        val clientId = appContext.getString(R.string.reiflix_google_web_client_id).trim()
+        clientId.endsWith(".apps.googleusercontent.com") &&
+            clientId.substringBefore(".apps.googleusercontent.com").isNotBlank()
+    }.getOrDefault(false)
+
+    private suspend fun readNativeAccountUiState(): ReiAnixSettingsAccountUiState? {
+        val repository = sharedAccountRepository ?: return null
+        return try {
+            val profile = repository.loadProfile()
+            val operation = synchronized(stateLock) {
+                _state.value.operations.values
+                    .filter {
+                        it.action in setOf("login", "logout", "switch") &&
+                            it.state in setOf(ReiAnixSettingsOperationState.QUEUED, ReiAnixSettingsOperationState.RUNNING)
+                    }
+                    .maxByOrNull { it.timestampMs }
+            }
+            val operationState = when (operation?.action) {
+                "login" -> "connecting"
+                "logout", "switch" -> "disconnecting"
+                else -> if (profile == null) "disconnected" else "connected"
+            }
+            ReiAnixSettingsAccountUiState(
+                integrationAvailable = isNativeGoogleConfigured(),
+                connected = profile != null,
+                name = profile?.name.orEmpty(),
+                email = profile?.email.orEmpty(),
+                picture = profile?.picture.orEmpty(),
+                state = operationState,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.e(TAG, "Canonical SQLite account profile could not be read.", error)
+            null
+        }
+    }
+
+    private suspend fun restoreNativeAccountProjection() {
+        val account = readNativeAccountUiState() ?: return
+        synchronized(stateLock) {
+            _state.value = _state.value.copy(account = account)
         }
     }
 
