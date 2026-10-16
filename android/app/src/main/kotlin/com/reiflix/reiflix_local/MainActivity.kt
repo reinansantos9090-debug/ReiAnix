@@ -845,6 +845,11 @@ class MainActivity : FlutterFragmentActivity() {
         requestId: String?, message: String, stage: String, code: String,
         status: String = SafScanner.STATUS_FAILED, treeUri: Uri? = null,
     ) {
+        completeComposeSettingsStorageAction(
+            requestId,
+            "ERROR",
+            error = message,
+        )
         nativeRequestState.markOperationState(requestId, "select_tree", NativeRequestState.OperationState.FAILED)
         val payload = JSONObject().put("source", "saf").put("status", status)
             .put("stage", stage).put("code", code)
@@ -965,6 +970,11 @@ class MainActivity : FlutterFragmentActivity() {
                 result = "user_cancelled_picker",
             )
             clearSafPickerPending(requestId, SafPickerPhase.CANCELLED)
+            completeComposeSettingsStorageAction(
+                requestId,
+                "CANCELLED",
+                message = "Seleção de pasta cancelada.",
+            )
             Log.i(tag, "SAF selection cancelled resultCode=" + result.resultCode)
             NativeMailbox.write(this, JSONObject().put("type", "saf_cancelled")
                 .put("requestId", requestId ?: "").put("payload", JSONObject()
@@ -1034,6 +1044,11 @@ class MainActivity : FlutterFragmentActivity() {
                         status = SafScanner.STATUS_FAILED, treeUri = uri)
                     return@launch
                 }
+                completeComposeSettingsStorageAction(
+                    requestId,
+                    "SUCCESS",
+                    message = "Pasta adicionada à biblioteca.",
+                )
                 val payload = JSONObject(selectedIdentity.toString())
                     .put("treeUri", configuredReference).put("granted", true).put("selected", true)
                     .put("status", SafScanner.STATUS_COMPLETED).put("name", selectedName)
@@ -1838,6 +1853,11 @@ class MainActivity : FlutterFragmentActivity() {
         code: String,
         message: String,
     ) {
+        completeComposeSettingsStorageAction(
+            requestId,
+            "ERROR",
+            error = message,
+        )
         nativeRequestState.markOperationState(
             requestId, action, NativeRequestState.OperationState.FAILED,
         )
@@ -1913,6 +1933,30 @@ class MainActivity : FlutterFragmentActivity() {
             Log.i(tag, "COMMAND_DUPLICATE action=" + action + " requestId=" + requestId)
             publishNativeDiagnostic("COMMAND_DUPLICATE", requestId, action, result = "ignored_duplicate")
             return
+        }
+        val settingsAction = data.getQueryParameter("settings_action")?.trim()?.lowercase()
+        if (!settingsAction.isNullOrBlank()) {
+            val expectedSettingsAction = when (action) {
+                "select_tree" -> "select_saf"
+                "request_media_access", "check_storage_access", "open_broad_storage_settings" -> action
+                else -> null
+            }
+            if (settingsAction !in SETTINGS_STORAGE_ACTIONS || settingsAction != expectedSettingsAction) {
+                rejectComposeSettingsStorageAction(
+                    requestId,
+                    settingsAction,
+                    "A associação da ação de armazenamento não é válida.",
+                )
+                publishNativeCommandError(
+                    requestId,
+                    action,
+                    "command_validation",
+                    "INVALID_SETTINGS_STORAGE_ACTION",
+                    "A operação de armazenamento do Compose não é compatível com a ação nativa.",
+                )
+                return
+            }
+            beginComposeSettingsStorageAction(requestId, settingsAction)
         }
         val commandReceivedAtMs = System.currentTimeMillis()
         Log.i(tag, "COMMAND_RECEIVED action=" + action + " requestId=" + requestId +
@@ -2084,6 +2128,11 @@ class MainActivity : FlutterFragmentActivity() {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
                     publishStorageStatus(requestId)
+                    completeComposeSettingsStorageAction(
+                        requestId,
+                        "SUCCESS",
+                        message = "Estado das permissões de armazenamento atualizado.",
+                    )
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
