@@ -303,6 +303,28 @@ class ReiAnixBackupService(context: Context) {
     }
 
     /**
+     * Creates an explicit, non-destructive raw safety snapshot from the current SQLite
+     * file, sidecars and interrupted-promotion remnants. This is a diagnostic/recovery
+     * copy, not a ZIP v1 archive and not something restoreBackup can import directly.
+     */
+    fun createRecoverySafetySnapshotForUser(): File = withCanonicalFileMaintenance {
+        val hasDatabase = databaseFile.isFile
+        val hasSidecar = listOf("-wal", "-shm", "-journal").any {
+            File(databaseFile.absolutePath + it).isFile
+        }
+        val hasInterruptedPromotion = dataDirectory.listFiles().orEmpty().any {
+            it.isFile && (
+                it.name.startsWith("." + DATABASE_NAME + ".previous-") ||
+                    it.name.startsWith("." + DATABASE_NAME + ".candidate-")
+                )
+        }
+        require(hasDatabase || hasSidecar || hasInterruptedPromotion) {
+            "Não há arquivo SQLite ou remanescente recuperável para criar um snapshot."
+        }
+        createRecoverySafetySnapshot()
+    }
+
+    /**
      * Recovery-only restore path for an unreadable or incompatible canonical database.
      * The incoming archive is fully inspected before touching the active path. The
      * previous database and SQLite sidecars are preserved byte-for-byte before an
