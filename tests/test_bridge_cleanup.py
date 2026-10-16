@@ -152,3 +152,47 @@ def test_prompt_18_bridge_migration_docs_preserve_legacy_boundaries():
         "not 100% Kotlin",
     ):
         assert token.lower() in doc.lower()
+
+
+def test_prompt18_native_request_states_cannot_regress_after_terminal_acknowledgement():
+    state = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt"
+    )
+    assert "private fun OperationState.isTerminal(): Boolean" in state
+    assert "if (previous.isTerminal()) return false" in state
+    assert "if (!canAdvanceState(previous?.state, state)) return false" in state
+    for terminal in ("COMPLETED", "CANCELLED", "FAILED", "TIMEOUT"):
+        assert "OperationState." + terminal in state
+
+
+def test_prompt18_settings_projection_failure_keeps_canonical_preferences_and_correlations():
+    settings = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
+    assert "sqliteSettingsRepository.allPreferences()" in settings
+    assert "publishCanonicalPreferencesAfterBridgeFailure(" in settings
+    assert "if (raw == null)" in settings
+    assert "Optional settings projection is invalid; canonical SQLite preferences remain available." in settings
+    assert "settings = snapshotState.settings + persistedPreferences" in settings
+    assert "account = canonicalAccountState ?: snapshotState.account" in settings
+    assert "operations = current.operations" in settings
+    assert "pendingSettings" in settings
+    assert "loadExistingCommandResults()" in settings
+    # settings.json is a bridge projection; the canonical preferences table remains authoritative.
+    assert "snapshotFile = File(bridgeDirectory, \"settings.json\")" in settings
+    assert "settings.json" not in read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSettingsRepository.kt")
+
+
+def test_prompt18_scan_completion_refreshes_the_canonical_catalog_without_python_page_replay():
+    view_model = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+    )
+    library_bridge = read("core/compose_library_bridge.py")
+    assert "collectLatest { refreshNativeCatalog() }" in view_model
+    assert "load_library_page" not in view_model
+    assert "refreshCanonicalCatalogAfterBootstrapValidation()" in view_model
+    # The bridge remains for the hybrid consumers that still request explicit pages.
+    assert "load_library_page" in library_bridge
+    assert "NativeMailbox" in read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
