@@ -117,7 +117,9 @@ def test_compose_consumers_and_remote_side_effects_wait_for_a_validated_bootstra
     )
     assert "dependencies.bootstrap.state.first" in view_model
     assert "startCanonicalConsumersAfterDatabaseValidation()" in view_model
-    assert "requestPendingArtwork()" not in view_model
+    init = view_model[view_model.index("init {"):view_model.index("private suspend fun refreshNativeCatalog()")]
+    assert "requestPendingArtwork()" not in init
+    assert "requestPendingArtwork()" in view_model
     assert "reconcileUnmatchedLibraryMetadata()" not in host
     assert "composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)" in activity
     assert "composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)" in activity
