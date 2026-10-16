@@ -187,12 +187,15 @@ def test_prompt18_scan_completion_refreshes_the_canonical_catalog_without_python
     view_model = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
     )
+    legacy_runtime = read("main.py")
     library_bridge = read("core/compose_library_bridge.py")
     assert "collectLatest { refreshNativeCatalog() }" in view_model
     assert "load_library_page" not in view_model
     assert "refreshCanonicalCatalogAfterBootstrapValidation()" in view_model
-    # The bridge remains for the hybrid consumers that still request explicit pages.
-    assert "load_library_page" in library_bridge
+    # The explicit command remains only in the live Python runtime; the bridge module
+    # projects page models but does not itself dispatch the command.
+    assert 'elif action == "load_library_page":' in legacy_runtime
+    assert '"kind": "library_page"' in library_bridge
     assert "NativeMailbox" in read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
     )
