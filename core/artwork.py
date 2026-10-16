@@ -426,7 +426,9 @@ class ArtworkEngine:
                 if (
                     existing
                     and status == STATUS_NOT_REQUESTED
-                    and existing["status"] in {STATUS_FAILED, STATUS_RETRY_WAIT}
+                    and existing["status"] in {
+                        STATUS_QUEUED, STATUS_DOWNLOADING, STATUS_FAILED, STATUS_RETRY_WAIT,
+                    }
                     and not local_path
                 ):
                     update_values = list(values)
