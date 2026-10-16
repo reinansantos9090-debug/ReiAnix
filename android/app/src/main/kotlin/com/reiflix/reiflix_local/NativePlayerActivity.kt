@@ -422,7 +422,9 @@ class NativePlayerActivity : ComponentActivity() {
         override fun run() {
             val now = System.currentTimeMillis()
             if (now - lastProgressPersistAt >= PROGRESS_PERSIST_INTERVAL_MS) {
-                saveProgress("player_progress")
+                // One UI projection invalidation per existing durable checkpoint,
+                // not for each 250 ms position observation.
+                saveProgress("player_progress", notifyUiAfterCommit = true)
                 lastProgressPersistAt = now
             }
             updateProgressUi()
@@ -1355,11 +1357,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             val savedProgress = kotlinx.coroutines.runBlocking {
                                 consumptionService.getProgress(canonicalEpisodeId)
                             }
-                            if (savedProgress?.isInProgress == true && savedProgress.hasSavedPosition) {
-                                startupPositionMs = savedProgress.positionMs ?: startupPositionMs
+                            val savedPositionMs = savedProgress?.positionMs?.takeIf { it >= 0L }
+                            val savedDurationMs = savedProgress?.durationMs?.takeIf { it > 0L }
+                            if (savedProgress?.isInProgress == true &&
+                                savedProgress.hasSavedPosition &&
+                                savedPositionMs != null
+                            ) {
+                                // Legacy rows may have escaped current position validation.
+                                // Bound only when duration is known; never invent unknown duration.
+                                startupPositionMs = savedDurationMs?.let(savedPositionMs::coerceAtMost)
+                                    ?: savedPositionMs
                                 logPlayer(
                                     "RESUME_FROM_NATIVE_SQLITE episodeId=" + canonicalEpisodeId +
                                         " positionMs=" + startupPositionMs +
+                                        " durationMs=" + (savedDurationMs ?: -1L) +
                                         " requestId=" + requestId.ifEmpty { "-" },
                                 )
                             }
@@ -4151,7 +4162,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("timestamp", exitCapturedAt)
             .put("playerSessionId", playerSessionId)
             .put("activityInstanceId", activityInstanceId)
+            .put("playerGeneration", playerGeneration)
             .put("transitionGeneration", transitionGeneration)
+            .put("originTransitionGeneration", originTransitionGeneration)
+            .put("originPlayerSessionId", originPlayerSessionId)
         val exitEvent = JSONObject()
             .put("type", "player_exited")
             .put("requestId", requestId)
@@ -4166,10 +4180,48 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         exitProgressPublished = true
         try {
-            playbackWorker.submit {
+            // Serialize this terminal checkpoint behind periodic/pause checkpoints.
+            // Publish the event only after the canonical native write was attempted.
+            progressWorker.submit {
+                val canonicalEpisodeId = payload.optString("episodeId").toLongOrNull()
+                val exitPositionMs = payload.optLong("positionMs", -1L)
+                val exitDurationMs = payload.optLong("durationMs", 0L)
+                var persistedNatively = false
+                if (canonicalEpisodeId != null && canonicalEpisodeId > 0L && exitPositionMs >= 0L) {
+                    try {
+                        kotlinx.coroutines.runBlocking {
+                            consumptionService.saveProgress(
+                                episodeId = canonicalEpisodeId,
+                                positionMs = exitPositionMs,
+                                durationMs = exitDurationMs.takeIf { it > 0L },
+                                playedAtEpochSeconds = exitCapturedAt / 1000.0,
+                                completed = payload.optBoolean("completion", false),
+                            )
+                        }
+                        persistedNatively = true
+                        payload.put("nativeProgressPersisted", true)
+                        com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService.publishCommittedProgress(
+                            episodeId = canonicalEpisodeId,
+                            eventType = "player_exited",
+                            playerSessionId = playerSessionId,
+                            playerGeneration = playerGeneration,
+                            transitionGeneration = transitionGeneration,
+                            eventCreatedAtEpochMs = exitCapturedAt,
+                        )
+                    } catch (error: Exception) {
+                        logPlayer(
+                            "NATIVE_EXIT_PROGRESS_PERSIST_FAILED episodeId=" + canonicalEpisodeId +
+                                " playerSessionId=" + playerSessionId,
+                            error,
+                        )
+                    }
+                }
                 val ok = NativeMailbox.write(this@NativePlayerActivity, exitEvent)
                 if (!ok) {
-                    logPlayer("FAILED_TO_PUBLISH player_exited requestId=" + requestId.ifEmpty { "-" })
+                    logPlayer(
+                        "FAILED_TO_PUBLISH player_exited requestId=" + requestId.ifEmpty { "-" } +
+                            " nativeProgressPersisted=" + persistedNatively,
+                    )
                 }
             }
         } catch (error: java.util.concurrent.RejectedExecutionException) {
@@ -4682,7 +4734,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
     }
 
-    private fun saveProgress(eventType: String, force: Boolean = false) {
+    private fun saveProgress(
+        eventType: String,
+        force: Boolean = false,
+        notifyUiAfterCommit: Boolean = false,
+    ) {
         val event = buildProgressEvent(eventType, force) ?: return
         val durable = force || eventType in setOf("player_paused", "player_completed", "player_exited")
         try {
@@ -4719,7 +4775,27 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
                 // Exactly one writer per event: Python validates the same event and
                 // publishes UI state, but skips the mutation after a native commit.
-                if (persistedNatively) payload?.put("nativeProgressPersisted", true)
+                if (persistedNatively) {
+                    payload?.put("nativeProgressPersisted", true)
+                    if (episodeId != null &&
+                        (notifyUiAfterCommit || eventType in setOf(
+                            "player_paused",
+                            "player_completed",
+                            "player_exited",
+                        ))
+                    ) {
+                        com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService.publishCommittedProgress(
+                            episodeId = episodeId,
+                            eventType = eventType,
+                            playerSessionId = payload?.optString("playerSessionId").orEmpty(),
+                            playerGeneration = payload?.optLong("playerGeneration", playerGeneration)
+                                ?: playerGeneration,
+                            transitionGeneration = payload?.optLong("transitionGeneration", transitionGeneration)
+                                ?: transitionGeneration,
+                            eventCreatedAtEpochMs = event.optLong("createdAt", 0L),
+                        )
+                    }
+                }
                 val ok = if (durable) {
                     NativeMailbox.write(this@NativePlayerActivity, event)
                 } else {
