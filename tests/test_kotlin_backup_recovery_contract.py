@@ -77,6 +77,10 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "NATIVE_DATABASE_RECOVERY_REQUIRED" in activity
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "backupService.restoreRecoveryBackup(inputCopy)" in activity
+    assert "showNativeRecoveryRestoreConfirmation" in activity
+    assert 'setPositiveButton("Restaurar backup")' in activity
+    assert "preview.manifest" in activity
+    assert "counts.optLong(\"anime\"" in activity
     assert '"backup_recovery_restore"' in activity
     assert '"backup_recovery_restore"' in repository
     assert "composable(ReiAnixRoutes.RECOVERY) { recovery() }" in navigation
