@@ -184,19 +184,22 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn('navigation.settings_path', source)
         self.assertIn('settings_path_override=path', source)
 
-    def test_main_resume_discovery_is_not_unconditional(self):
+    def test_main_resume_discovery_requires_persisted_saf_tree(self):
         source = self.read(MAIN_ACTIVITY)
         start = source.index("override fun onResume()")
         end = source.index("override fun onPause()", start)
         resume = source[start:end]
         self.assertIn("val shouldDiscover = !startupDiscoveryTriggered", resume)
+        self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
         self.assertIn('publishScanRequest(', resume)
+        self.assertIn('"STARTUP"', resume)
         self.assertIn('"STARTUP_SCAN_SKIPPED"', resume)
-        self.assertIn('result = "explicit_scan_required"', resume)
-        self.assertNotIn('"STARTUP"', resume)
+        self.assertIn('result = "no_persisted_saf_tree"', resume)
+        self.assertNotIn('result = "explicit_scan_required"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
         self.assertNotIn("scanTree(tree, null)", resume)
+        self.assertIn("dispatchStartupDiscoveryAfterBootstrap()", source)
 
 
 if __name__ == "__main__":

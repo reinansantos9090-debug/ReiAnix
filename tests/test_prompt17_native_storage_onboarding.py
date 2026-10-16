@@ -121,8 +121,9 @@ def test_missing_or_dismissed_root_remains_actionable_and_cancel_does_not_loop()
     assert "automaticSafPickerAttempted" in cancel or "maybeLaunchAutomaticSafPicker()" in refresh
     assert 'refreshNativeStorageOnboardingState("saf_picker_cancelled")' in cancel
     assert "PHASE_NEEDS_FOLDER" in state
-    assert 'result = "explicit_scan_required"' in main
-    assert 'reason = "first_activity_resume"' not in main
+    assert 'result = "no_persisted_saf_tree"' in main
+    assert 'reason = "first_activity_resume"' in main
+    assert 'result = "explicit_scan_required"' not in main
 
 
 def test_saf_source_is_registered_before_scan_and_media_permissions_do_not_replace_tree():
@@ -132,5 +133,5 @@ def test_saf_source_is_registered_before_scan_and_media_permissions_do_not_repla
     assert "upsertSafFolder(" in handler
     assert handler.index("SafScanner.persistPermission(this, uri, flags)") < handler.index("upsertSafFolder(")
     assert handler.index("upsertSafFolder(") < handler.index("scanTree(configuredReference, requestId)")
-    assert "if (shouldDiscover)" in main
-    assert "no_persisted_saf_tree" in main or "explicit_scan_required" in main
+    assert "if (shouldDiscover && hasPersistedSafTree)" in main
+    assert "no_persisted_saf_tree" in main

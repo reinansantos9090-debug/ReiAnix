@@ -1294,6 +1294,9 @@ class MainActivity : FlutterFragmentActivity() {
                         consumeAndDispatchPendingLifecycleAction()
                     }
                 }
+                if (!hadPendingLifecycleAction && activityResumed && !broadStoragePermissionPending) {
+                    dispatchStartupDiscoveryAfterBootstrap()
+                }
                 if (!hadPendingLifecycleAction) maybeLaunchAutomaticSafPicker()
             }
         }
@@ -2077,21 +2080,23 @@ class MainActivity : FlutterFragmentActivity() {
 
         publishStorageStatus()
 
-        // Activity resume is a lifecycle signal, not a scan command. Startup
-        // discovery and permission-triggered reconciliation require a persisted SAF
-        // tree. Explicit SAF selection publishes its own PERMISSION_CHANGE after the
-        // grant has been persisted and validated.
-        if (shouldDiscover) {
-            // Opening the app is not authorization to enumerate storage. An existing
-            // valid tree is retained, but discovery is started only by an explicit user
-            // action or the already-established permission-change flow.
-            Log.i(tag, "STARTUP_SCAN_SKIPPED reason=explicit_scan_required")
+        // Only an already-configured, persisted SAF root authorizes startup discovery.
+        // With no root, preserve the first-run onboarding and do not enumerate storage.
+        if (shouldDiscover && hasPersistedSafTree) {
+            publishScanRequest(
+                "STARTUP",
+                source = null,
+                full = false,
+                reason = "first_activity_resume",
+            )
+        } else if (shouldDiscover) {
+            Log.i(tag, "STARTUP_SCAN_SKIPPED reason=no_persisted_saf_tree")
             publishNativeDiagnostic(
                 "STARTUP_SCAN_SKIPPED",
                 null,
                 action = "scan",
                 state = "SKIPPED",
-                result = "explicit_scan_required",
+                result = "no_persisted_saf_tree",
             )
         } else if (
             hasPersistedSafTree &&
@@ -2107,6 +2112,43 @@ class MainActivity : FlutterFragmentActivity() {
                 source = source,
                 full = false,
                 reason = "permission_available_after_resume",
+            )
+        }
+    }
+
+    /**
+     * onResume may execute before the asynchronous process bootstrap validates SQLite.
+     * Make the one-time startup discovery decision after bootstrap too, otherwise an
+     * already-authorized SAF library could miss its first scan until another resume.
+     */
+    private fun dispatchStartupDiscoveryAfterBootstrap() {
+        if (
+            !activityResumed ||
+            startupDiscoveryTriggered ||
+            !bootstrapAllowsNativeOperations()
+        ) return
+
+        val hasPersistedSafTree = hasPersistedSafTreeGrant()
+        startupDiscoveryTriggered = true
+        lastObservedMediaAccess = MediaStoreScanner.accessLevel(this)
+        lastObservedBroadAccess = BroadStorageScanner.hasAccess(this)
+        publishStorageStatus()
+
+        if (hasPersistedSafTree) {
+            publishScanRequest(
+                "STARTUP",
+                source = null,
+                full = false,
+                reason = "first_activity_resume",
+            )
+        } else {
+            Log.i(tag, "STARTUP_SCAN_SKIPPED reason=no_persisted_saf_tree")
+            publishNativeDiagnostic(
+                "STARTUP_SCAN_SKIPPED",
+                null,
+                action = "scan",
+                state = "SKIPPED",
+                result = "no_persisted_saf_tree",
             )
         }
     }
