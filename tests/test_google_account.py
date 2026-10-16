@@ -93,3 +93,70 @@ def test_existing_project_has_no_real_progress_sync_backend_to_integrate():
     assert "firestore" not in main
     assert "supabase" not in main
     assert "progress_sync_service" not in main
+
+
+def test_compose_account_actions_use_native_credential_manager_and_canonical_sqlite():
+    repo = read(SETTINGS_REPO)
+    activity = read(MAIN_ACTIVITY)
+    identity = read(GOOGLE_IDENTITY)
+    request_state = read(REQUEST_STATE)
+    account_repo = read(
+        ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteAccountRepository.kt"
+    )
+    dependencies = read(
+        ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppDependencies.kt"
+    )
+    main = read(MAIN)
+
+    action_start = repo.index("fun requestAccountAction(action: String)")
+    action_end = repo.index("private fun launchNativeAccountAction", action_start)
+    action_method = repo[action_start:action_end]
+    assert "sharedAccountRepository == null" in action_method  # compatibility only
+    assert 'put("type", "compose_account_action")' in action_method
+    assert "launchNativeAccountAction(normalizedAction)" in action_method
+
+    native_action_start = repo.index("private fun launchNativeAccountAction")
+    native_action_end = repo.index("private fun isNativeGoogleConfigured", native_action_start)
+    native_action = repo[native_action_start:native_action_end]
+    assert "Intent(appContext, MainActivity::class.java)" in native_action
+    assert 'appendQueryParameter("native_account_owner", "true")' in native_action
+    assert 'appendQueryParameter("settings_action", action)' in native_action
+    assert '"google_account_switch"' in native_action
+
+    assert 'data.getQueryParameter("native_account_owner") == "true"' in activity
+    assert 'runNativeComposeAccountAction("login", requestId)' in activity
+    assert 'runNativeComposeAccountAction("logout", requestId)' in activity
+    assert 'runNativeComposeAccountAction("switch", requestId)' in activity
+    assert "publishLegacyMailboxEvents = false" in activity
+    assert "ReiAnixAppDependencies.from(applicationContext).sqliteAccountRepository" in activity
+    assert 'put("type", "compose_settings_native_account_changed")' in activity
+
+    assert "class ReiAnixSqliteAccountRepository" in account_repo
+    assert 'db.rawQuery("SELECT key,value FROM account"' in account_repo
+    assert 'db.update("account", values, "key=?"' in account_repo
+    assert 'db.delete("account", null, null)' in account_repo
+    assert "ReiAnixSqliteAccountRepository(sqliteDatabase)" in dependencies
+    assert '"google_account_switch"' in request_state
+
+    # The result-only mailbox event refreshes Python projections from SQLite;
+    # no account profile or token is written a second time by this callback.
+    helper_start = main.index("async def _run_compose_settings_native_account_changed")
+    helper_end = main.index("async def _run_compose_settings_native_backup_restored", helper_start)
+    helper = main[helper_start:helper_end]
+    assert "store.account" in helper
+    assert "store.save_account" not in helper
+    assert "store.clear_account" not in helper
+    assert "python_account_write_repeated" in helper
+
+
+def test_native_google_web_client_id_is_baked_into_rendered_android_resources():
+    template = read(ROOT / "scripts/prepare_flet_template.py")
+    config = read(ROOT / "app_config.py")
+
+    assert "GOOGLE_WEB_CLIENT_ID" in config
+    assert "__REIFLIX_GOOGLE_WEB_CLIENT_ID__" in template
+    assert "ast.literal_eval(node.value)" in template
+    assert 'ET.SubElement(native_config, "string", {"name": "reiflix_google_web_client_id"})' in template
+    assert 'content.replace("__REIFLIX_GOOGLE_WEB_CLIENT_ID__", repr(google_web_client_id))' in template
+    assert "R.string.reiflix_google_web_client_id" in read(MAIN_ACTIVITY)
+    assert "google_account_switch" in read(REQUEST_STATE)
