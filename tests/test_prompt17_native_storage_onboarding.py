@@ -83,3 +83,52 @@ def test_permissions_are_separated_by_storage_mechanism():
     assert "requiredPermissions()" in media
     assert "takePersistableUriPermission" in saf
     assert "optional" in manifest.lower()
+
+
+def test_first_run_opens_the_existing_saf_picker_once_after_bootstrap_ready():
+    main = load("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    bootstrap = load("android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt")
+    assert "private var automaticSafPickerAttempted = false" in main
+    assert "STATE_AUTO_SAF_PICKER_ATTEMPTED" in main
+    assert "private fun maybeLaunchAutomaticSafPicker()" in main
+    auto = main[main.index("private fun maybeLaunchAutomaticSafPicker()"):
+                main.index("private fun refreshNativeStorageOnboardingState")]
+    assert "automaticSafPickerAttempted || safPickerPending" in auto
+    assert "bootstrap.state.value.recoveryRequired" in auto
+    assert "bootstrap.state.value.stage != ReiAnixBootstrapStage.READY" in auto
+    assert auto.index("automaticSafPickerAttempted = true") < auto.index('requestNativeStorageAction("select_tree")')
+    picker = main[main.index("private fun openTreePicker"):main.index("override fun onWindowFocusChanged")]
+    assert "Intent.ACTION_OPEN_DOCUMENT_TREE" in picker
+    assert picker.index("PHASE_FOLDER_PICKER_OPEN") < picker.index("treePicker.launch(pickerIntent)")
+    assert "validateCanonicalDatabase()" in main
+    assert "NativeIndex.pendingSafRecovery(appContext).length() > 0" in bootstrap
+
+
+def test_missing_or_dismissed_root_remains_actionable_and_cancel_does_not_loop():
+    main = load("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    state = load("android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeStorageOnboardingState.kt")
+    dismiss = main[main.index("fun dismissNativeStorageOnboarding()"):
+                   main.index("/** Launches the existing SAF picker once")]
+    refresh = main[main.index("private fun refreshNativeStorageOnboardingState"):
+                   main.index("private fun", main.index("private fun refreshNativeStorageOnboardingState") + 20)]
+    cancel = main[main.index("private fun handleTreePickerResult"):
+                  main.index("private fun", main.index("private fun handleTreePickerResult") + 20)]
+    assert "current.phase != NativeStorageOnboardingState.PHASE_READY" in dismiss
+    assert "putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)" in dismiss
+    assert "dismissed = false" in refresh
+    assert "automaticSafPickerAttempted" in cancel or "maybeLaunchAutomaticSafPicker()" in refresh
+    assert 'refreshNativeStorageOnboardingState("saf_picker_cancelled")' in cancel
+    assert "PHASE_NEEDS_FOLDER" in state
+    assert 'result = "explicit_scan_required"' in main
+    assert 'reason = "first_activity_resume"' not in main
+
+
+def test_saf_source_is_registered_before_scan_and_media_permissions_do_not_replace_tree():
+    main = load("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    handler = main[main.index("private fun handleTreePickerResult"):main.index("private fun", main.index("private fun handleTreePickerResult") + 20)]
+    assert "SafScanner.persistPermission(this, uri, flags)" in handler
+    assert "upsertSafFolder(" in handler
+    assert handler.index("SafScanner.persistPermission(this, uri, flags)") < handler.index("upsertSafFolder(")
+    assert handler.index("upsertSafFolder(") < handler.index("scanTree(configuredReference, requestId)")
+    assert "if (shouldDiscover)" in main
+    assert "no_persisted_saf_tree" in main or "explicit_scan_required" in main
