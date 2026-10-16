@@ -1,6 +1,8 @@
 package com.reiflix.reiflix_local.data.settings
 
 import android.content.Context
+import android.content.Intent
+import com.reiflix.reiflix_local.MainActivity
 import android.os.FileObserver
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -353,8 +355,12 @@ class ReiAnixSettingsRepository(
             clearArtworkCacheNatively()
             return
         }
+        if (normalizedAction == "settings_export" || normalizedAction == "settings_import") {
+            launchNativeSettingsFileAction(normalizedAction)
+            return
+        }
         if (normalizedAction !in setOf(
-            "settings_export", "settings_import", "select_saf", "request_media_access",
+            "select_saf", "request_media_access",
             "check_storage_access", "open_broad_storage_settings", "backup_create",
             "backup_restore", "backup_integrity", "backup_reconcile", "diagnostic_export",
         )) return
@@ -365,6 +371,73 @@ class ReiAnixSettingsRepository(
                 .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
         }
     }
+    private fun launchNativeSettingsFileAction(action: String) {
+        val requestId = UUID.randomUUID().toString()
+        synchronized(stateLock) {
+            val current = _state.value
+            _state.value = current.copy(
+                operations = upsertOperationLocked(
+                    current.operations,
+                    ReiAnixSettingsOperationUiState(
+                        requestId = requestId,
+                        action = action,
+                        state = ReiAnixSettingsOperationState.QUEUED,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+        scope.launch {
+            try {
+                val intent = Intent(appContext, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    putExtra(ReiAnixSettingsFileService.EXTRA_ACTION, action)
+                    putExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID, requestId)
+                }
+                appContext.startActivity(intent)
+                Log.i(TAG, "SETTINGS_FILE_ACTION_LAUNCHED requestId=" + requestId + " action=" + action)
+            } catch (cancelled: CancellationException) {
+                updateSettingsFileOperation(
+                    requestId,
+                    ReiAnixSettingsOperationState.CANCELLED,
+                    error = "A operação de arquivo foi cancelada.",
+                )
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "SETTINGS_FILE_ACTION_LAUNCH_FAILED requestId=" + requestId + " action=" + action, error)
+                updateSettingsFileOperation(
+                    requestId,
+                    ReiAnixSettingsOperationState.ERROR,
+                    error = "Não foi possível abrir a operação nativa de arquivo.",
+                )
+            }
+        }
+    }
+
+    private fun updateSettingsFileOperation(
+        requestId: String,
+        state: ReiAnixSettingsOperationState,
+        message: String? = null,
+        error: String? = null,
+    ) {
+        synchronized(stateLock) {
+            val current = _state.value
+            val existing = current.operations[requestId] ?: return
+            _state.value = current.copy(
+                operations = upsertOperationLocked(
+                    current.operations,
+                    existing.copy(
+                        state = state,
+                        message = message,
+                        error = error,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+    }
+
     private fun clearArtworkCacheNatively() {
         val requestId = UUID.randomUUID().toString()
         synchronized(stateLock) {
