@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.data.anilist
 
+import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
+
 import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -37,14 +39,15 @@ class ReiAnixAniListIntegrationService(
     private val metadataCommitPublisher: ((Long, Boolean) -> Boolean)? = null,
     private val genreRegistry: ReiAnixGenreRegistry? = null,
 ) {
+    private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        genreRegistry ?: ReiAnixGenreRegistry(library.database)
+    }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
 
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
         library = ReiAnixSqliteLibraryRepository(context),
         settings = ReiAnixSqliteSettingsRepository(context),
-        genreRegistry = ReiAnixAppDependencies.existingOrNull(context.applicationContext)?.genreRegistry
-            ?: ReiAnixGenreRegistry(ReiAnixSqliteLibraryRepository(context).database),
         descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
             File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
         ),
@@ -361,7 +364,7 @@ class ReiAnixAniListIntegrationService(
             // empty remote arrays intentionally do not erase previously persisted genres.
             if (remote.genres.isNotEmpty()) {
                 try {
-                    genreRegistry?.syncAnime(
+                    effectiveGenreRegistry.syncAnime(
                         animeId = updated.id,
                         names = remote.genres,
                         source = if (manual) "manual" else "anilist",
