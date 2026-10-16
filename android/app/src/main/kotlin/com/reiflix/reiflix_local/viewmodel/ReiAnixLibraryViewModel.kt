@@ -164,21 +164,21 @@ class ReiAnixLibraryViewModel(
      * The legacy repository remains only for projection/IPC operations that have
      * not yet been migrated; it is not the writer for favorite/watched mutations.
      */
-    private val nativeLibraryRepository = dependencies?.sqliteLibraryRepository
+    private val nativeLibraryRepository = appDependencies?.sqliteLibraryRepository
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository(context)
     /** Shared native genre identity service; uses the same canonical SQLite object. */
-    private val nativeGenreRegistry = dependencies?.genreRegistry
+    private val nativeGenreRegistry = appDependencies?.genreRegistry
         ?: ReiAnixGenreRegistry(nativeLibraryRepository.database)
-    private val nativeLibraryQueries = dependencies?.libraryQueryService
+    private val nativeLibraryQueries = appDependencies?.libraryQueryService
         ?: ReiAnixLibraryQueryService(context, nativeLibraryRepository)
-    private val nativeLibraryService = dependencies?.libraryService
+    private val nativeLibraryService = appDependencies?.libraryService
         ?: ReiAnixLibraryService(nativeLibraryRepository)
-    private val personalListService = dependencies?.personalListService
+    private val personalListService = appDependencies?.personalListService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(
             nativeLibraryRepository.database,
             nativeLibraryRepository,
         )
-    private val consumptionService = dependencies?.consumptionService
+    private val consumptionService = appDependencies?.consumptionService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService(nativeLibraryRepository)
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
