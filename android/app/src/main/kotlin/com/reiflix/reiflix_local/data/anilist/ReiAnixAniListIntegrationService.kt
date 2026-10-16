@@ -35,6 +35,7 @@ class ReiAnixAniListIntegrationService(
     private val settings: ReiAnixSqliteSettingsRepository,
     private val descriptionLocalizer: ReiAnixAniListDescriptionLocalizer? = null,
     private val metadataCommitPublisher: ((Long, Boolean) -> Boolean)? = null,
+    private val genreRegistry: ReiAnixGenreRegistry? = null,
 ) {
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
 
@@ -42,6 +43,8 @@ class ReiAnixAniListIntegrationService(
         client = ReiAnixAniListClient(),
         library = ReiAnixSqliteLibraryRepository(context),
         settings = ReiAnixSqliteSettingsRepository(context),
+        genreRegistry = ReiAnixAppDependencies.existingOrNull(context.applicationContext)?.genreRegistry
+            ?: ReiAnixGenreRegistry(ReiAnixSqliteLibraryRepository(context).database),
         descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
             File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
         ),
@@ -352,6 +355,26 @@ class ReiAnixAniListIntegrationService(
                         "Automatic match was not applied because a manual or existing association has priority.",
                     ),
                 )
+            }
+            // The metadata patch above is already committed to the canonical database.
+            // Keep genre identity associations aligned when AniList supplied real labels;
+            // empty remote arrays intentionally do not erase previously persisted genres.
+            if (remote.genres.isNotEmpty()) {
+                try {
+                    genreRegistry?.syncAnime(
+                        animeId = updated.id,
+                        names = remote.genres,
+                        source = if (manual) "manual" else "anilist",
+                        replaceSource = true,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // A registry failure must not misreport the already-committed metadata
+                    // transaction as rolled back. The explicit organizer initialization can
+                    // backfill the JSON column into the canonical registry later.
+                    Log.w(TAG, "AniList metadata committed but genre registry sync failed", error)
+                }
             }
             enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled)
             AniListResult.Success(updated)
