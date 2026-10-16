@@ -149,6 +149,6 @@ def test_prompt_18_bridge_migration_docs_preserve_legacy_boundaries():
         "NativeRequestState",
         "SQLite",
         "still required",
-        "not 100% Kotlin",
+        "does not claim",
     ):
         assert token.lower() in doc.lower()
