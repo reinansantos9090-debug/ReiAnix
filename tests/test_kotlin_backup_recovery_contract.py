@@ -75,6 +75,10 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     host = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
 
     assert "NATIVE_DATABASE_RECOVERY_REQUIRED" in activity
+    assert "integrityReport()" in activity
+    assert "!schemaCompatible || !integrity.healthy" in activity
+    assert "copyBackupToDocumentAndVerify" in activity
+    assert "MessageDigest.isEqual" in activity
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "backupService.restoreRecoveryBackup(inputCopy)" in activity
     assert "showNativeRecoveryRestoreConfirmation" in activity
