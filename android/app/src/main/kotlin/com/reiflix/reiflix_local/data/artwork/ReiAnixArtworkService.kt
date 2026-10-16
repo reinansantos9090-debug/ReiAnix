@@ -206,7 +206,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun prepareRow(id: Long, entity: String, type: String, url: String, key: String, force: Boolean): Long? =
         database.transaction { db ->
             if (!urlCurrent(db, id, type, url)) return@transaction null
-            val rows = candidates(db, entity, id.toString(), type, url)
+            val rows = queryCandidates(db, entity, id.toString(), type, url)
             if (rows.any { it.manual || it.source.equals("manual", true) }) return@transaction null
             if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return@transaction null
             val now = nowSeconds()
