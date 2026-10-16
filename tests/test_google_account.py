@@ -133,7 +133,8 @@ def test_compose_account_actions_use_native_credential_manager_and_canonical_sql
 
     assert "class ReiAnixSqliteAccountRepository" in account_repo
     assert 'db.rawQuery("SELECT key,value FROM account"' in account_repo
-    assert 'db.update("account", values, "key=?"' in account_repo
+    assert "db.insertWithOnConflict(" in account_repo
+    assert "SQLiteDatabase.CONFLICT_REPLACE" in account_repo
     assert 'db.delete("account", null, null)' in account_repo
     assert "ReiAnixSqliteAccountRepository(sqliteDatabase)" in dependencies
     assert '"google_account_switch"' in request_state
