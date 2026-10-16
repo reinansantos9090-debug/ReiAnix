@@ -48,6 +48,8 @@ Sequência nativa de recuperação:
 
 O diretório `recovery-snapshot-*` é uma cópia bruta de segurança e **não** é um arquivo de backup ZIP restaurável por `restoreBackup`. Ele serve para preservar os bytes anteriores/sidecars; a recuperação operacional usa um backup v1 validado. Remanescentes ocultos de promoção não são tratados como uma biblioteca vazia e entram no próximo snapshot.
 
+O backup v1 continua excluindo a tabela `account` e não exporta credenciais/tokens. Para manter compatibilidade com o Recovery Mode legado, o caminho Kotlin tenta ler as linhas locais `account(key,value)` do banco atual antes de substituí-lo e reaplica essas linhas ao staging quando a tabela é legível. Se a tabela ou o SQLite estiverem ilegíveis, o processo continua sem inventar uma conta e informa que pode ser necessário autenticar novamente.
+
 ## Recuperação de artwork e arquivos externos
 
 A recuperação usa apenas membros de arte manual declarados no manifesto e autorizados pelo validador. Nomes de membros são normalizados e rejeitam caminhos absolutos, `..`, entradas duplicadas, symlinks, tamanhos excessivos e arquivos não permitidos. O hash e o tamanho da arte são verificados antes da publicação; o staging só atualiza referências para os caminhos que o próprio serviço gerou.
