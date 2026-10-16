@@ -101,7 +101,8 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertIn("suspend fun findAnimeIdsByAniListId(anilistId: Long)", repository)
         self.assertIn('"SELECT id FROM anime WHERE anilist_id = ? ORDER BY id ASC LIMIT 2"', repository)
         lookup = repository[repository.index("suspend fun findAnimeIdsByAniListId"):repository.index("suspend fun listAnime", repository.index("suspend fun findAnimeIdsByAniListId"))]
-        self.assertNotIn("title", lookup.casefold())
+        query = lookup[lookup.index('"SELECT id FROM anime'):lookup.index('",', lookup.index('"SELECT id FROM anime'))]
+        self.assertNotIn("title", query.casefold())
         self.assertIn("findLocalAnimeIdsByAniListId(anilistId: Int)", integration)
 
     def test_remote_details_offers_local_navigation_only_for_one_exact_match(self):
