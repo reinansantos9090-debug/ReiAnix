@@ -76,6 +76,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MainActivity : FlutterFragmentActivity() {
     private val tag = "[REIFLIX][ANDROID]"
     private val MAX_SETTINGS_FILE_BYTES = 1024 * 1024
+    private val SETTINGS_FILE_REQUEST_ID_REGEX = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     private lateinit var systemUiController: SystemUiController
     private var broadStoragePermissionPending = false
     private var mediaPermissionRequestPending = false
@@ -1192,8 +1193,8 @@ class MainActivity : FlutterFragmentActivity() {
         intent.removeExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID)
         setIntent(intent)
 
-        if (requestId.isBlank()) {
-            Log.w(tag, "SETTINGS_FILE_ACTION_REJECTED reason=missing_request_id action=" + action)
+        if (!SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId)) {
+            Log.w(tag, "SETTINGS_FILE_ACTION_REJECTED reason=invalid_request_id action=" + action)
             return
         }
         if (pendingSettingsFileAction != null || settingsFileProcessing) {
@@ -1259,6 +1260,10 @@ class MainActivity : FlutterFragmentActivity() {
         message: String? = null,
         error: String? = null,
     ) {
+        if (!SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId)) {
+            Log.w(tag, "SETTINGS_FILE_RESULT_REJECTED reason=invalid_request_id action=" + action)
+            return
+        }
         try {
             val directory = File(filesDir, "data/reianix-compose/command-results")
             if (!directory.isDirectory && !directory.mkdirs()) {
