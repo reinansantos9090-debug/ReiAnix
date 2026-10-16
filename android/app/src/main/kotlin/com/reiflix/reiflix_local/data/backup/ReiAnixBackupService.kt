@@ -52,6 +52,13 @@ class ReiAnixBackupService(context: Context) {
         val manualArtworkReconnected: Int,
         val safetyBackup: File,
         val warnings: List<String>,
+        val accountStatePreserved: Boolean = false,
+        val reauthenticationRequired: Boolean = true,
+    )
+
+    private data class RecoveryAccountSnapshot(
+        val rows: List<Pair<String, String>>,
+        val readable: Boolean,
     )
 
     data class IntegrityReport(
@@ -275,10 +282,12 @@ class ReiAnixBackupService(context: Context) {
                 manualArtworkReconnected = mappings.size,
                 safetyBackup = safety,
                 warnings = listOf(
-                    "A sessão/conta Google não é restaurada.",
+                    "Credenciais da sessão Google não são incluídas; o perfil local existente permanece na tabela account.",
                     "Os arquivos de vídeo não são incluídos no backup.",
                     "Capas remotas e thumbnails gerados podem ser reconstruídos.",
                 ) + preview.warnings + postCommitWarning,
+                accountStatePreserved = true,
+                reauthenticationRequired = false,
             )
         } catch (error: Exception) {
             if (!canonicalCommitCompleted) createdAssets.forEach { asset -> runCatching { asset.delete() } }
@@ -304,6 +313,10 @@ class ReiAnixBackupService(context: Context) {
 
     private fun restoreRecoveryBackupLocked(file: File): RestoreResult {
         val preview = inspectBackup(file)
+        // The backup format intentionally excludes account/authentication. Preserve
+        // the existing non-secret profile key/value rows only when SQLite can still
+        // read that table; otherwise surface the legacy reauthentication outcome.
+        val accountSnapshot = readRecoverableAccountSnapshot()
         val recoverySnapshot = createRecoverySafetySnapshot()
         val token = UUID.randomUUID().toString()
         val staging = File(dataDirectory, ".recovery-restore-" + token)
@@ -380,6 +393,7 @@ class ReiAnixBackupService(context: Context) {
                 }
             }
 
+            restoreRecoverableAccountSnapshot(stagedDatabase, accountSnapshot)
             reconnectArtworkReferences(stagedDatabase, artworkMappings)
             validateSnapshot(stagedDatabase, sanitizeUnknownPreferences = false)
             FileInputStream(stagedDatabase).use { input ->
@@ -445,11 +459,21 @@ class ReiAnixBackupService(context: Context) {
                 safetyBackup = recoverySnapshot,
                 warnings = listOf(
                     "A restauração de recuperação preservou uma cópia bruta do SQLite anterior e de seus arquivos auxiliares.",
-                    "A sessão/conta Google não é restaurada.",
+                    if (accountSnapshot.readable) {
+                        if (accountSnapshot.rows.isEmpty()) {
+                            "A tabela local de conta pôde ser lida; não havia perfil local para copiar."
+                        } else {
+                            "O perfil local da conta foi preservado; credenciais e tokens de sessão não são exportados."
+                        }
+                    } else {
+                        "A tabela local de conta não pôde ser lida antes da recuperação; talvez seja necessário entrar novamente."
+                    },
                     "Arquivos de vídeo não são incluídos no backup.",
                     "Permissões SAF e acesso ao armazenamento dependem de concessão Android válida.",
                     "Capas remotas e thumbnails gerados podem ser reconstruídos.",
                 ) + preview.warnings,
+                accountStatePreserved = accountSnapshot.readable,
+                reauthenticationRequired = !accountSnapshot.readable,
             )
         } catch (error: Exception) {
             if (replacementPromoted && databaseFile.exists()) {
@@ -515,6 +539,65 @@ class ReiAnixBackupService(context: Context) {
         } finally {
             candidate.delete()
             staging.deleteRecursively()
+        }
+    }
+
+    private fun readRecoverableAccountSnapshot(): RecoveryAccountSnapshot {
+        if (!databaseFile.isFile) return RecoveryAccountSnapshot(emptyList(), readable = false)
+        return try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+                val tableExists = countRows(
+                    db,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='account'",
+                ) == 1L
+                if (!tableExists) {
+                    RecoveryAccountSnapshot(emptyList(), readable = false)
+                } else {
+                    val rows = db.rawQuery("SELECT key,value FROM account ORDER BY key", null).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) {
+                                add(cursor.getString(0) to cursor.getString(1))
+                            }
+                        }
+                    }
+                    RecoveryAccountSnapshot(rows, readable = true)
+                }
+            }
+        } catch (error: Exception) {
+            android.util.Log.w("ReiAnixBackup", "Could not read the current account profile before recovery", error)
+            RecoveryAccountSnapshot(emptyList(), readable = false)
+        }
+    }
+
+    private fun restoreRecoverableAccountSnapshot(
+        target: File,
+        accountSnapshot: RecoveryAccountSnapshot,
+    ) {
+        if (!accountSnapshot.readable || accountSnapshot.rows.isEmpty()) return
+        SQLiteDatabase.openDatabase(target.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.beginTransactionNonExclusive()
+            try {
+                db.delete("account", null, null)
+                accountSnapshot.rows.forEach { (key, value) ->
+                    val values = ContentValues().apply {
+                        put("key", key)
+                        put("value", value)
+                    }
+                    val rowId = db.insertWithOnConflict(
+                        "account",
+                        null,
+                        values,
+                        SQLiteDatabase.CONFLICT_REPLACE,
+                    )
+                    check(rowId != -1L) {
+                        "Não foi possível preservar o perfil local da conta durante a recuperação."
+                    }
+                }
+                validateDatabaseConnection(db)
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
         }
     }
 
