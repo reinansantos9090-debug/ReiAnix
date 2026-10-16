@@ -47,6 +47,9 @@ def test_native_onboarding_revalidates_canonical_roots_and_saf_grants():
     assert "withContext(Dispatchers.IO)" in main
     assert "storageOnboardingRefreshJob?.cancel()" in main
     assert 'refreshNativeStorageOnboardingState("activity_resume")' in main
+    assert 'refreshNativeStorageOnboardingState("saf_release_terminal")' in main
+    assert 'refreshNativeStorageOnboardingState("saf_release_failed")' in main
+    assert 'refreshNativeStorageOnboardingState("saf_release_invalid_uri")' in main
 
 
 def test_picker_outcomes_update_native_onboarding_without_faking_grants():
