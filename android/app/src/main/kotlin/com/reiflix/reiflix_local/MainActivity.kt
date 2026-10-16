@@ -21,6 +21,7 @@ import com.reiflix.reiflix_local.storage.StorageLifecycleState
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -43,6 +44,7 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.whenStarted
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
@@ -57,7 +59,11 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.util.LinkedHashSet
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -68,6 +74,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class MainActivity : FlutterFragmentActivity() {
     private val tag = "[REIFLIX][ANDROID]"
+    private val MAX_SETTINGS_FILE_BYTES = 1024 * 1024
     private lateinit var systemUiController: SystemUiController
     private var broadStoragePermissionPending = false
     private var mediaPermissionRequestPending = false
@@ -613,6 +620,181 @@ class MainActivity : FlutterFragmentActivity() {
         handleTreePickerResult(result)
     }
 
+    private var pendingSettingsFileAction: String? = null
+    private var pendingSettingsFileRequestId: String? = null
+    private var settingsFileProcessing = false
+
+    private val settingsExportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+            val action = pendingSettingsFileAction
+            val requestId = pendingSettingsFileRequestId
+            pendingSettingsFileAction = null
+            pendingSettingsFileRequestId = null
+            if (action != "settings_export" || requestId.isNullOrBlank()) return@registerForActivityResult
+            if (uri == null) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "CANCELLED", "CANCELLED",
+                        message = "Exportação cancelada.",
+                    )
+                }
+                return@registerForActivityResult
+            }
+            if (settingsFileProcessing) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = "Outra operação de arquivo de configurações está em andamento.",
+                    )
+                }
+                return@registerForActivityResult
+            }
+            settingsFileProcessing = true
+            lifecycleScope.launch {
+                try {
+                    val json = withContext(Dispatchers.IO) {
+                        ReiAnixSettingsFileService(appDependencies.sqliteSettingsRepository).exportJson()
+                    }
+                    withContext(Dispatchers.IO) {
+                        val output = contentResolver.openOutputStream(uri, "wt")
+                            ?: throw IllegalStateException("O Android não abriu o destino da exportação.")
+                        output.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                    }
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId, action, "SUCCESS", "SUCCESS",
+                            message = "Configurações exportadas.",
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId, action, "CANCELLED", "CANCELLED",
+                            error = "A exportação de configurações foi cancelada.",
+                        )
+                    }
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e(tag, "SETTINGS_EXPORT_NATIVE_FAILED requestId=" + requestId, error)
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId, action, "ERROR", "ERROR",
+                            error = "Não foi possível exportar as configurações.",
+                        )
+                    }
+                } finally {
+                    settingsFileProcessing = false
+                }
+            }
+        }
+
+    private val settingsImportLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            val action = pendingSettingsFileAction
+            val requestId = pendingSettingsFileRequestId
+            pendingSettingsFileAction = null
+            pendingSettingsFileRequestId = null
+            if (action != "settings_import" || requestId.isNullOrBlank()) return@registerForActivityResult
+            if (uri == null) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "CANCELLED", "CANCELLED",
+                        message = "Importação cancelada.",
+                    )
+                }
+                return@registerForActivityResult
+            }
+            if (settingsFileProcessing) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = "Outra operação de arquivo de configurações está em andamento.",
+                    )
+                }
+                return@registerForActivityResult
+            }
+            settingsFileProcessing = true
+            lifecycleScope.launch {
+                try {
+                    val raw = withContext(Dispatchers.IO) {
+                        val input = contentResolver.openInputStream(uri)
+                            ?: throw IllegalStateException("O Android não abriu o arquivo selecionado.")
+                        input.use { stream ->
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            var total = 0
+                            while (true) {
+                                val count = stream.read(buffer)
+                                if (count < 0) break
+                                if (count == 0) continue
+                                total += count
+                                require(total <= MAX_SETTINGS_FILE_BYTES) {
+                                    "O arquivo de configurações excede o limite permitido."
+                                }
+                                output.write(buffer, 0, count)
+                            }
+                            output.toString(Charsets.UTF_8.name())
+                        }
+                    }
+                    val result = ReiAnixSettingsFileService(appDependencies.sqliteSettingsRepository)
+                        .importJson(raw)
+                    settingsViewModel.refresh()
+                    if (result.values.isNotEmpty()) {
+                        val settingsPayload = JSONObject().apply {
+                            result.values.forEach { (key, value) -> put(key, value) }
+                        }
+                        // Notify legacy Flet consumers only after Kotlin confirms the SQLite commit.
+                        val notified = runCatching {
+                            NativeMailbox.write(
+                                this@MainActivity,
+                                JSONObject()
+                                    .put("type", "compose_settings_bulk_applied")
+                                    .put("requestId", requestId)
+                                    .put(
+                                        "payload",
+                                        JSONObject()
+                                            .put("requestId", requestId)
+                                            .put("settings", settingsPayload),
+                                    ),
+                            )
+                        }.getOrElse { false }
+                        Log.i(
+                            tag,
+                            "SETTINGS_IMPORT_NATIVE_COMMITTED requestId=" + requestId +
+                                " imported=" + result.imported +
+                                " unknown=" + result.unknownKeys.size +
+                                " legacyRuntimeNotificationPublished=" + notified,
+                        )
+                    }
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId, action, "SUCCESS", "SUCCESS",
+                            message = "Configurações importadas: ${result.imported}.",
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId, action, "CANCELLED", "CANCELLED",
+                            error = "A importação de configurações foi cancelada.",
+                        )
+                    }
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e(tag, "SETTINGS_IMPORT_NATIVE_FAILED requestId=" + requestId, error)
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId, action, "ERROR", "ERROR",
+                            error = error.message?.takeIf { it.isNotBlank() }
+                                ?: "Não foi possível importar as configurações.",
+                        )
+                    }
+                } finally {
+                    settingsFileProcessing = false
+                }
+            }
+        }
+
     private fun cancelSafPickerWatchdog() {
         safPickerWatchdog?.let { safPickerWatchdogHandler.removeCallbacks(it) }
         safPickerWatchdog = null
@@ -982,6 +1164,7 @@ class MainActivity : FlutterFragmentActivity() {
         systemUiController.applyApplicationPolicy(useContextAppearance = false)
         // Permission-sensitive actions are queued until the Activity is resumed.
         handleNativeIntent(intent)
+        handleNativeSettingsFileIntent(intent)
     }
 
     public override fun onNewIntent(intent: Intent) {
@@ -989,6 +1172,116 @@ class MainActivity : FlutterFragmentActivity() {
         setIntent(intent)
         logLifecycle("onNewIntent", intent)
         handleNativeIntent(intent)
+        handleNativeSettingsFileIntent(intent)
+    }
+
+    private fun handleNativeSettingsFileIntent(intent: Intent?) {
+        if (intent == null) return
+        val action = intent.getStringExtra(ReiAnixSettingsFileService.EXTRA_ACTION)
+            ?.trim()?.lowercase()
+        val requestId = intent.getStringExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID)
+            ?.trim().orEmpty()
+        if (action != "settings_export" && action != "settings_import") return
+
+        // Consume the one-shot command so Activity recreation cannot reopen the picker.
+        intent.removeExtra(ReiAnixSettingsFileService.EXTRA_ACTION)
+        intent.removeExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID)
+        setIntent(intent)
+
+        if (requestId.isBlank()) {
+            Log.w(tag, "SETTINGS_FILE_ACTION_REJECTED reason=missing_request_id action=" + action)
+            return
+        }
+        if (pendingSettingsFileAction != null || settingsFileProcessing) {
+            writeSettingsFileActionResult(
+                requestId, action, "ERROR", "ERROR",
+                error = "Outra operação de arquivo de configurações está em andamento.",
+            )
+            return
+        }
+
+        pendingSettingsFileAction = action
+        pendingSettingsFileRequestId = requestId
+        writeSettingsFileActionResult(
+            requestId, action, "RUNNING", "RUNNING",
+            message = "Aguardando o seletor de arquivos do Android.",
+        )
+        lifecycleScope.launch {
+            lifecycle.whenStarted {
+                try {
+                    when (action) {
+                        "settings_export" -> {
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+                            settingsExportLauncher.launch("reiflix-settings-" + stamp + ".json")
+                        }
+                        "settings_import" -> settingsImportLauncher.launch(
+                            arrayOf("application/json", "text/json", "application/octet-stream"),
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    pendingSettingsFileAction = null
+                    pendingSettingsFileRequestId = null
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId, action, "CANCELLED", "CANCELLED",
+                            error = "A operação de arquivos foi cancelada.",
+                        )
+                    }
+                    throw cancelled
+                } catch (error: Exception) {
+                    pendingSettingsFileAction = null
+                    pendingSettingsFileRequestId = null
+                    Log.e(tag, "SETTINGS_FILE_PICKER_LAUNCH_FAILED requestId=" + requestId + " action=" + action, error)
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId, action, "ERROR", "ERROR",
+                            error = "Não foi possível abrir o seletor de arquivos.",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun writeSettingsFileActionResult(
+        requestId: String,
+        action: String,
+        status: String,
+        operationState: String,
+        message: String? = null,
+        error: String? = null,
+    ) {
+        try {
+            val directory = File(filesDir, "data/reianix-compose/command-results")
+            if (!directory.isDirectory && !directory.mkdirs()) {
+                throw IllegalStateException("Could not create Settings command result directory.")
+            }
+            val target = File(directory, "command-" + requestId + ".json")
+            val temporary = File(directory, "." + target.name + "." + UUID.randomUUID() + ".tmp")
+            val root = JSONObject()
+                .put("requestId", requestId)
+                .put("commandBridge", "settings")
+                .put("action", action)
+                .put("status", status)
+                .put("operationState", operationState)
+                .put("timestamp", System.currentTimeMillis())
+            if (!message.isNullOrBlank()) root.put("message", message)
+            if (!error.isNullOrBlank()) root.put("error", error)
+            FileOutputStream(temporary).use { output ->
+                output.write(root.toString().toByteArray(Charsets.UTF_8))
+                output.flush()
+                output.fd.sync()
+            }
+            if (target.exists() && !target.delete()) {
+                throw IllegalStateException("Could not replace the previous Settings result.")
+            }
+            if (!temporary.renameTo(target)) {
+                temporary.delete()
+                throw IllegalStateException("Could not atomically publish the Settings result.")
+            }
+        } catch (exception: Exception) {
+            Log.e(tag, "SETTINGS_FILE_RESULT_WRITE_FAILED requestId=" + requestId + " action=" + action, exception)
+        }
     }
 
     override fun onStart() {
