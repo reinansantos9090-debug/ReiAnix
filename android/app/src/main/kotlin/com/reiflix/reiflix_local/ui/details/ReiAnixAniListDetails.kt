@@ -30,9 +30,12 @@ import com.reiflix.reiflix_local.data.anilist.AniListAnime
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
+import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
+import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModel
@@ -47,6 +50,7 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModelFactory
 fun ReiAnixAniListDetailsRoute(
     navController: NavHostController,
     anilistId: Int,
+    origin: String = ReiAnixRoutes.SEARCH,
 ) {
     val aniListViewModel: ReiAnixAniListViewModel = composeViewModel(
         factory = ReiAnixAniListViewModelFactory(LocalContext.current),
@@ -82,7 +86,14 @@ fun ReiAnixAniListDetailsRoute(
                     modifier = Modifier.fillMaxSize(),
                     retryLabel = "Tentar novamente",
                 )
-                state.selectedAnime != null -> RemoteAniListDetailsContent(state.selectedAnime!!)
+                state.selectedAnime != null -> RemoteAniListDetailsContent(
+                    anime = state.selectedAnime!!,
+                    associatedLocalAnimeIds = state.associatedLocalAnimeIds,
+                    localAssociationError = state.localAssociationError,
+                    onOpenLocalDetails = { localAnimeId ->
+                        navController.navigateToDetails(localAnimeId.toString(), origin)
+                    },
+                )
                 else -> ReiAnixRecoverableErrorState(
                     title = "Detalhes indisponíveis",
                     message = "O AniList não retornou dados para esse identificador.",
@@ -96,7 +107,12 @@ fun ReiAnixAniListDetailsRoute(
 }
 
 @Composable
-private fun RemoteAniListDetailsContent(anime: AniListAnime) {
+private fun RemoteAniListDetailsContent(
+    anime: AniListAnime,
+    associatedLocalAnimeIds: List<Long>,
+    localAssociationError: String?,
+    onOpenLocalDetails: (Long) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -161,6 +177,27 @@ private fun RemoteAniListDetailsContent(anime: AniListAnime) {
                 color = MaterialTheme.colorScheme.onSurface)
             Text(it, style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        associatedLocalAnimeIds.singleOrNull()?.let { localAnimeId ->
+            ReiAnixPrimaryButton(
+                text = "Abrir detalhes da biblioteca",
+                onClick = { onOpenLocalDetails(localAnimeId) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (associatedLocalAnimeIds.size > 1) {
+            Text(
+                text = "Há vários itens locais associados a esta obra. Nenhum foi selecionado automaticamente.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        localAssociationError?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
         Text(
             text = "Resultado do catálogo remoto. Esta busca não cria nem altera registros locais.",

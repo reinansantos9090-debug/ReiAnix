@@ -446,9 +446,15 @@ fun ReiAnixNavigationHost(
                 ),
             ) { entry ->
                 val anilistId = entry.arguments?.getInt(ReiAnixRoutes.ARG_ANILIST_ID) ?: 0
+                val origin = entry.arguments
+                    ?.getString(ReiAnixRoutes.ARG_ORIGIN)
+                    ?.trim()
+                    .orEmpty()
+                    .ifBlank { ReiAnixRoutes.SEARCH }
                 ReiAnixAniListDetailsRoute(
                     navController = navController,
                     anilistId = anilistId,
+                    origin = origin,
                 )
             }
 

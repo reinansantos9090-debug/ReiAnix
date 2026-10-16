@@ -45,6 +45,25 @@ class ReiAnixSqliteLibraryRepository(
         }
     }
 
+    /**
+     * Finds local records by an explicit persisted AniList association only.
+     * At most two IDs are returned so callers can reject ambiguous associations
+     * instead of selecting an arbitrary duplicate or matching by title.
+     */
+    suspend fun findAnimeIdsByAniListId(anilistId: Long): List<Long> = withContext(Dispatchers.IO) {
+        require(anilistId > 0L) { "AniList ID must be a positive persisted ID." }
+        database.read { connection ->
+            connection.rawQuery(
+                "SELECT id FROM anime WHERE anilist_id = ? ORDER BY id ASC LIMIT 2",
+                arrayOf(anilistId.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.getLong(0))
+                }
+            }
+        }
+    }
+
     suspend fun listAnime(limit: Int = 36, offset: Int = 0): List<ReiAnixAnimeRecord> =
         withContext(Dispatchers.IO) {
             require(limit in 1..200) { "Page size must be between 1 and 200." }

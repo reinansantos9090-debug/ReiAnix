@@ -30,6 +30,9 @@ data class ReiAnixAniListUiState(
     val selectedAnime: AniListAnime? = null,
     val isDetailsLoading: Boolean = false,
     val detailsError: String? = null,
+    /** Exact SQLite AniList associations; empty means none was found, not title mismatch. */
+    val associatedLocalAnimeIds: List<Long> = emptyList(),
+    val localAssociationError: String? = null,
     val lastAssociationMessage: String? = null,
     val associationRevision: Long = 0L,
 ) {
@@ -86,6 +89,8 @@ class ReiAnixAniListViewModel(
                 selectedAnime = null,
                 isDetailsLoading = false,
                 detailsError = "O identificador AniList é inválido.",
+                associatedLocalAnimeIds = emptyList(),
+                localAssociationError = null,
             )
             return
         }
@@ -93,20 +98,39 @@ class ReiAnixAniListViewModel(
             selectedAnime = null,
             isDetailsLoading = true,
             detailsError = null,
+            associatedLocalAnimeIds = emptyList(),
+            localAssociationError = null,
         )
         detailsJob = viewModelScope.launch {
             try {
                 when (val result = integration.lookupAnimeById(anilistId)) {
                     is AniListResult.Success -> if (requestId == detailsRequestId) {
-                        _aniListUiState.value = _aniListUiState.value.copy(
-                            selectedAnime = result.value,
-                            isDetailsLoading = false,
-                            detailsError = if (result.value == null) {
-                                "O AniList não encontrou esse anime."
-                            } else {
-                                null
-                            },
-                        )
+                        var localAssociationError: String? = null
+                        val localAnimeIds = if (result.value == null) {
+                            emptyList()
+                        } else {
+                            try {
+                                integration.findLocalAnimeIdsByAniListId(anilistId)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                localAssociationError = "Não foi possível verificar as associações locais agora."
+                                emptyList()
+                            }
+                        }
+                        if (requestId == detailsRequestId) {
+                            _aniListUiState.value = _aniListUiState.value.copy(
+                                selectedAnime = result.value,
+                                isDetailsLoading = false,
+                                detailsError = if (result.value == null) {
+                                    "O AniList não encontrou esse anime."
+                                } else {
+                                    null
+                                },
+                                associatedLocalAnimeIds = localAnimeIds,
+                                localAssociationError = localAssociationError,
+                            )
+                        }
                     }
                     is AniListResult.Failure -> if (requestId == detailsRequestId) {
                         _aniListUiState.value = _aniListUiState.value.copy(

@@ -95,5 +95,32 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertIn("filter { it.lowercase(Locale.ROOT) !in knownTitles }", details)
 
 
+    def test_remote_details_uses_only_exact_persisted_anilist_identity(self):
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        integration = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")
+        self.assertIn("suspend fun findAnimeIdsByAniListId(anilistId: Long)", repository)
+        self.assertIn('"SELECT id FROM anime WHERE anilist_id = ? ORDER BY id ASC LIMIT 2"', repository)
+        lookup = repository[repository.index("suspend fun findAnimeIdsByAniListId"):repository.index("suspend fun listAnime", repository.index("suspend fun findAnimeIdsByAniListId"))]
+        self.assertNotIn("title", lookup.casefold())
+        self.assertIn("findLocalAnimeIdsByAniListId(anilistId: Int)", integration)
+
+    def test_remote_details_offers_local_navigation_only_for_one_exact_match(self):
+        remote = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixAniListDetails.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixAniListViewModel.kt").read_text(encoding="utf-8")
+        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
+        self.assertIn("associatedLocalAnimeIds.singleOrNull()", remote)
+        self.assertIn("Abrir detalhes da biblioteca", remote)
+        self.assertIn("associatedLocalAnimeIds.size > 1", remote)
+        self.assertIn("associatedLocalAnimeIds = localAnimeIds", view_model)
+        self.assertIn("navigateToDetails(localAnimeId.toString(), origin)", remote)
+        self.assertIn("origin = origin", navigation)
+
+    def test_remote_details_does_not_create_or_persist_an_unmatched_local_record(self):
+        remote = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixAniListDetails.kt").read_text(encoding="utf-8")
+        self.assertIn("Esta busca não cria nem altera registros locais", remote)
+        self.assertNotIn("insertOrThrow", remote)
+        self.assertNotIn("addToPersonalList", remote)
+
+
 if __name__ == "__main__":
     unittest.main()

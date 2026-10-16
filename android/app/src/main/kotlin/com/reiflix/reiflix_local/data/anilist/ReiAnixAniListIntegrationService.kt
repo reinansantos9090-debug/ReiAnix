@@ -81,6 +81,12 @@ class ReiAnixAniListIntegrationService(
         return client.getAnime(anilistId)
     }
 
+    /** Exact ID lookup; remote titles are never used to invent or select a local record. */
+    suspend fun findLocalAnimeIdsByAniListId(anilistId: Int): List<Long> {
+        require(anilistId > 0) { "AniList ID must be positive." }
+        return library.findAnimeIdsByAniListId(anilistId.toLong())
+    }
+
     suspend fun refreshMetadata(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
