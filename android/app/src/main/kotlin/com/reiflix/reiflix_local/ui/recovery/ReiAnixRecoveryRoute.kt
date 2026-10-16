@@ -41,7 +41,10 @@ fun ReiAnixRecoveryRoute(
     val settingsState by viewModel.uiState.collectAsStateWithLifecycle()
     var confirmationVisible by rememberSaveable { mutableStateOf(false) }
     val operation = settingsState.operations.values
-        .filter { it.action == "backup_recovery_restore" }
+        .filter {
+            it.action == "backup_recovery_restore" ||
+                it.action == "backup_recovery_snapshot"
+        }
         .maxByOrNull { it.timestampMs }
     val busy = operation?.state == ReiAnixSettingsOperationState.QUEUED ||
         operation?.state == ReiAnixSettingsOperationState.RUNNING
@@ -72,9 +75,9 @@ fun ReiAnixRecoveryRoute(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Selecione um backup ReiAnix ZIP no formato suportado. O arquivo será inspecionado antes da alteração. " +
-                    "Antes de substituir o banco, o aplicativo preservará uma cópia bruta do SQLite atual e dos arquivos " +
-                    "auxiliares disponíveis. Vídeos externos e permissões SAF não são incorporados ao backup.",
+                text = "Selecione um backup ReiAnix ZIP no formato suportado. O arquivo será inspecionado e seus dados " +
+                    "apresentados antes da confirmação. Antes de substituir o banco, o aplicativo preservará uma cópia bruta " +
+                    "do SQLite atual e dos arquivos auxiliares disponíveis. Vídeos externos e permissões SAF não são incorporados.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -135,6 +138,14 @@ fun ReiAnixRecoveryRoute(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Selecionar backup para recuperar")
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { viewModel.requestAction("backup_recovery_snapshot") },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Criar snapshot bruto de segurança")
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
