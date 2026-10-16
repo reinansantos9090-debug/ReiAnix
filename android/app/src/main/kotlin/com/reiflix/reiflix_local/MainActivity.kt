@@ -1263,7 +1263,7 @@ class MainActivity : FlutterFragmentActivity() {
         lifecycleScope.launch {
             val recoveryRequired = appDependencies.bootstrap.validateCanonicalDatabase()
             if (recoveryRequired && !isFinishing && !isDestroyed) {
-                Log.w(tag, "NATIVE_DATABASE_RECOVERY_ROUTE_OPENED")
+                Log.w(tag, "NATIVE_DATABASE_RECOVERY_REQUIRED route_opened=true")
                 composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
             }
         }
