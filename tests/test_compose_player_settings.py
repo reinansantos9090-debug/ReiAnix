@@ -65,7 +65,7 @@ def test_compose_exposes_only_existing_player_preferences():
         assert f'"{category}"' in compose
 
 
-def test_compose_writes_to_existing_python_settings_store():
+def test_compose_writes_to_canonical_sqlite_and_notifies_python_runtime():
     main = read(MAIN)
     repository = read(REPOSITORY)
 
@@ -86,9 +86,13 @@ def test_compose_writes_to_existing_python_settings_store():
     assert "key.startswith(" in supported_scope
     worker_start = main.index("async def _run_compose_settings_set")
     worker_end = main.index("async def _run_compose_settings_action", worker_start)
-    assert "asyncio.to_thread(" in main[worker_start:worker_end]
-    assert "settings.set" in main[worker_start:worker_end]
-    assert "Compose does not keep a second preference store" in repository
+    worker = main[worker_start:worker_end]
+    assert "asyncio.to_thread(" in worker
+    assert "settings.set" in worker  # compatibility branch for older hosts
+    assert "if native_persisted:" in worker
+    assert "settings.invalidate_cache" in worker
+    assert "setPreference(normalizedKey, normalizedValue)" in repository
+    assert "nativePersisted" in repository
     assert "NativeMailbox.write(" in repository
     assert "appContext" in repository
 
