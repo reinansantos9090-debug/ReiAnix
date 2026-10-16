@@ -74,7 +74,7 @@ class NativeSearchTests(unittest.TestCase):
         self.assertIn(".debounce(ANI_LIST_SEARCH_DEBOUNCE_MS)", ani_view_model)
         self.assertIn("integration.search(query)", ani_view_model)
         self.assertIn("client.searchAnime(term, limit)", integration)
-        self.assertIn("normalizedSearchText", engine)
+        self.assertIn("normalizedAlternateTitles", engine)
         self.assertNotIn("anilist", engine.lower())
         self.assertNotIn("https://", search.lower())
         self.assertNotIn("recent searches", search.lower())
