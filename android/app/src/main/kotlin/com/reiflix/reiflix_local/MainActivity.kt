@@ -22,6 +22,8 @@ import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
+import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
+import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -817,6 +819,22 @@ class MainActivity : FlutterFragmentActivity() {
             },
         )
 
+
+    private val backupExportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
+            finishNativeBackupExport(uri)
+        }
+
+    private val backupImportLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            finishNativeBackupImport(uri)
+        }
+
+    private val diagnosticExportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+            finishNativeDiagnosticExport(uri)
+        }
+
     private fun cancelSafPickerWatchdog() {
         safPickerWatchdog?.let { safPickerWatchdogHandler.removeCallbacks(it) }
         safPickerWatchdog = null
@@ -1229,22 +1247,26 @@ class MainActivity : FlutterFragmentActivity() {
             ?.trim()?.lowercase()
         val requestId = intent.getStringExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID)
             ?.trim().orEmpty()
-        if (action != "settings_export" && action != "settings_import") return
+        val nativeActions = setOf(
+            "settings_export", "settings_import", "backup_create", "backup_restore",
+            "backup_integrity", "backup_reconcile", "diagnostic_export",
+        )
+        if (action !in nativeActions) return
 
-        // Consume the one-shot command so Activity recreation cannot reopen the picker.
+        // Consume the one-shot request before opening UI or starting asynchronous work.
         intent.removeExtra(ReiAnixSettingsFileService.EXTRA_ACTION)
         intent.removeExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID)
         setIntent(intent)
 
         if (!SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId)) {
-            Log.w(tag, "SETTINGS_FILE_ACTION_REJECTED reason=invalid_request_id action=" + action)
+            Log.w(tag, "SETTINGS_NATIVE_ACTION_REJECTED reason=invalid_request_id action=" + action)
             return
         }
         if (pendingSettingsFileAction != null || settingsFileProcessing) {
             lifecycleScope.launch(Dispatchers.IO) {
                 writeSettingsFileActionResult(
-                    requestId, action, "ERROR", "ERROR",
-                    error = "Outra operação de arquivo de configurações está em andamento.",
+                    requestId, action!!, "ERROR", "ERROR",
+                    error = "Outra operação nativa de configurações está em andamento.",
                 )
             }
             return
@@ -1255,8 +1277,9 @@ class MainActivity : FlutterFragmentActivity() {
         lifecycleScope.launch {
             withContext(Dispatchers.IO) {
                 writeSettingsFileActionResult(
-                    requestId, action, "RUNNING", "RUNNING",
-                    message = "Aguardando o seletor de arquivos do Android.",
+                    requestId, action!!, "RUNNING", "RUNNING",
+                    message = if (action == "backup_integrity" || action == "backup_reconcile")
+                        "Preparando a operação nativa." else "Aguardando o seletor de arquivos do Android.",
                 )
             }
             lifecycle.whenStarted {
@@ -1269,25 +1292,42 @@ class MainActivity : FlutterFragmentActivity() {
                         "settings_import" -> settingsImportLauncher.launch(
                             arrayOf("application/json", "text/json", "application/octet-stream"),
                         )
+                        "backup_create" -> {
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+                            backupExportLauncher.launch("reiflix-backup-" + stamp + ".zip")
+                        }
+                        "backup_restore" -> backupImportLauncher.launch(
+                            arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
+                        )
+                        "diagnostic_export" -> {
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+                            diagnosticExportLauncher.launch("reiflix-diagnostic-" + stamp + ".json")
+                        }
+                        "backup_integrity", "backup_reconcile" -> {
+                            pendingSettingsFileAction = null
+                            pendingSettingsFileRequestId = null
+                            runNativeSettingsMaintenanceAction(action, requestId)
+                        }
                     }
                 } catch (cancelled: CancellationException) {
                     pendingSettingsFileAction = null
                     pendingSettingsFileRequestId = null
                     withContext(NonCancellable + Dispatchers.IO) {
                         writeSettingsFileActionResult(
-                            requestId, action, "CANCELLED", "CANCELLED",
-                            error = "A operação de arquivos foi cancelada.",
+                            requestId, action!!, "CANCELLED", "CANCELLED",
+                            error = "A operação nativa foi cancelada.",
                         )
                     }
                     throw cancelled
                 } catch (error: Exception) {
                     pendingSettingsFileAction = null
                     pendingSettingsFileRequestId = null
-                    Log.e(tag, "SETTINGS_FILE_PICKER_LAUNCH_FAILED requestId=" + requestId + " action=" + action, error)
+                    Log.e(tag, "SETTINGS_NATIVE_ACTION_LAUNCH_FAILED requestId=" + requestId + " action=" + action, error)
                     withContext(Dispatchers.IO) {
                         writeSettingsFileActionResult(
-                            requestId, action, "ERROR", "ERROR",
-                            error = "Não foi possível abrir o seletor de arquivos.",
+                            requestId, action!!, "ERROR", "ERROR",
+                            error = error.message?.takeIf { it.isNotBlank() }
+                                ?: "Não foi possível iniciar a operação nativa.",
                         )
                     }
                 }
