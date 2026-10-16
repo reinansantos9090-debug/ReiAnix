@@ -113,6 +113,7 @@ fun ReiAnixOrganizeRoute(
     val categories by viewModel.organizeCategories.collectAsStateWithLifecycle()
     val genres by viewModel.organizeGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val genreOperation by viewModel.organizerGenreOperationState.collectAsStateWithLifecycle()
 
     ReiAnixOrganizeScreen(
         state = state,
@@ -142,6 +143,10 @@ fun ReiAnixOrganizeRoute(
         },
         onRefresh = viewModel::refresh,
         onOpenSafFileManager = { showSafFileManager = true },
+        onClassifyLocalGenres = viewModel::classifyMissingLocalGenres,
+        organizerGenreOperationMessage = genreOperation.message,
+        isClassifyingLocalGenres = genreOperation.isRunning,
+        isOrganizerGenreOperationError = genreOperation.isError,
     )
 }
 
@@ -169,6 +174,10 @@ fun ReiAnixOrganizeScreen(
     onOpenDetails: (Long) -> Unit,
     onRefresh: () -> Unit,
     onOpenSafFileManager: () -> Unit = {},
+    onClassifyLocalGenres: () -> Unit = {},
+    organizerGenreOperationMessage: String? = null,
+    isClassifyingLocalGenres: Boolean = false,
+    isOrganizerGenreOperationError: Boolean = false,
 ) {
     var pendingSourceRemoval by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -209,6 +218,43 @@ fun ReiAnixOrganizeScreen(
         ) {
             Icon(Icons.Default.Folder, contentDescription = null)
             Text("Gerenciar arquivos locais (SAF)", modifier = Modifier.padding(start = ReiAnixTokens.Spacing.sm))
+        }
+
+        OutlinedButton(
+            onClick = onClassifyLocalGenres,
+            enabled = !isClassifyingLocalGenres,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                    vertical = ReiAnixTokens.Spacing.xs,
+                ),
+        ) {
+            Text(
+                if (isClassifyingLocalGenres) "Classificando gêneros locais…" else "Classificar gêneros locais ausentes",
+            )
+        }
+        Text(
+            text = "Usa regras locais e preserva gêneros existentes e metadados AniList/manuais.",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        organizerGenreOperationMessage?.takeIf(String::isNotBlank)?.let { message ->
+            Text(
+                text = message,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                        vertical = ReiAnixTokens.Spacing.xs,
+                    ),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isOrganizerGenreOperationError) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         when (state.status) {
