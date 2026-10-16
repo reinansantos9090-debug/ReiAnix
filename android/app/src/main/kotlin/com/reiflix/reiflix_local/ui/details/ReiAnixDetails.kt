@@ -160,7 +160,7 @@ fun ReiAnixDetailsRoute(
     }
 
     LaunchedEffect(aniListState.associationRevision) {
-        if (aniListState.associationRevision > 0L) viewModel.refresh()
+        if (aniListState.associationRevision > 0L) viewModel.refreshDetails(canonicalId)
     }
 
     // Guard only the short navigation hand-off. NavHost/launchSingleTop remains
@@ -204,7 +204,7 @@ fun ReiAnixDetailsRoute(
         state = state,
         showThumbnails = showThumbnails,
         onBack = { navController.popBackStack() },
-        onRetry = viewModel::refresh,
+        onRetry = { viewModel.refreshDetails(canonicalId) },
         onWatch = { episodeId ->
             if (!playerLaunchInFlight) {
                 playerLaunchInFlight = true

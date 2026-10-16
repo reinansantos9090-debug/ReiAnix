@@ -8,6 +8,8 @@ Esta etapa fecha o caminho entre a Details remota do AniList e os detalhes locai
 
 Quando uma resposta remota tem exatamente uma associação local explícita, a tela oferece “Abrir detalhes da biblioteca” e navega com o ID interno persistido. Quando não há associação, a página continua somente leitura; quando há mais de uma, não escolhe uma delas automaticamente. Falhas na verificação da associação não escondem os metadados remotos. O `origin` da rota é preservado na navegação.
 
+A ação de atualizar/recuperar Details local agora relê o snapshot de SQLite por `refreshNativeCatalog()` e aciona `ReiAnixArtworkService.requestAnimeArtwork(animeId)`. A rota de Details não encaminha esse retry ao `repository.refresh()` híbrido. O refresh genérico de biblioteca continua existindo para as áreas ainda dependentes desse contrato; não foi alterado globalmente.
+
 ## Arquitetura existente reutilizada
 
 - `ReiAnixDetails.kt` e `ReiAnixDetailsUiModels.kt`: UI Compose local, estados de carregamento/erro, sinopse, detalhes disponíveis, listas lazy de temporadas/episódios e chaves estáveis.

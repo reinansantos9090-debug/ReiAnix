@@ -95,6 +95,16 @@ class DetailsComposeContractTests(unittest.TestCase):
         self.assertIn("filter { it.lowercase(Locale.ROOT) !in knownTitles }", details)
 
 
+    def test_details_refresh_rereads_canonical_sqlite_and_artwork_without_legacy_refresh(self):
+        details = DETAILS.read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn("onRetry = { viewModel.refreshDetails(canonicalId) }", details)
+        self.assertIn("viewModel.refreshDetails(canonicalId)", details)
+        refresh = view_model[view_model.index("fun refreshDetails(animeId: Long)"):view_model.index("    init {", view_model.index("fun refreshDetails(animeId: Long)"))]
+        self.assertIn("refreshNativeCatalog()", refresh)
+        self.assertIn("requestAnimeArtwork(animeId)", refresh)
+        self.assertNotIn("repository.refresh(", refresh)
+
     def test_remote_details_uses_only_exact_persisted_anilist_identity(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
         integration = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")

@@ -1146,6 +1146,21 @@ class ReiAnixLibraryViewModel(
         )
     }
 
+    /**
+     * Refreshes the local Details projection directly from canonical SQLite and
+     * asks the native artwork pipeline to repair this item's poster/backdrop.
+     * This read path deliberately does not issue a legacy Python catalog command.
+     */
+    fun refreshDetails(animeId: Long) {
+        if (animeId <= 0L) return
+        viewModelScope.launch {
+            refreshNativeCatalog()
+            (dependencies ?: ReiAnixAppDependencies.existingOrNull(appContext))
+                ?.artworkService
+                ?.requestAnimeArtwork(animeId)
+        }
+    }
+
     init {
         // Repair missing/stale artwork asynchronously. The service bounds batches
         // and HTTP concurrency and is independent of scanner/player progress.
