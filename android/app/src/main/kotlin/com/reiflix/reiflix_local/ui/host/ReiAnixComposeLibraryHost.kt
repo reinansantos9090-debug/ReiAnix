@@ -28,6 +28,7 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeRoute
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
+import com.reiflix.reiflix_local.ui.recovery.ReiAnixRecoveryRoute
 import com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFolderOnboarding
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
@@ -198,6 +199,7 @@ class ReiAnixComposeLibraryHost(
                                 lastScanStatus = libraryState.lastScanStatus,
                             )
                         },
+                        recovery = { ReiAnixRecoveryRoute(viewModel = settingsViewModel) },
                         storage = {
                             ReiAnixStorageRoute(
                                 viewModel = libraryViewModel,
