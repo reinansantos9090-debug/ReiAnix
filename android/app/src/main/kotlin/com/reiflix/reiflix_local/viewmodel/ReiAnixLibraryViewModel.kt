@@ -1294,7 +1294,14 @@ class ReiAnixLibraryViewModel(
                 }
                 .distinctUntilChanged()
                 .drop(1)
-                .collectLatest { refreshNativeCatalog() }
+                .collectLatest {
+                    // This collector emits only after a new terminal native-scan snapshot;
+                    // its first saved value is dropped, so process startup alone does not
+                    // trigger network metadata matching or artwork backfill.
+                    refreshNativeCatalog()
+                    reconcileAniListAfterNativeScan()
+                    appDependencies?.artworkService?.requestPendingArtwork()
+                }
         }
         // Legacy commands can still mutate unrelated fields; their revision is only an
         // invalidation signal. Actual anime/episode values are always reread from SQLite.
@@ -1399,6 +1406,19 @@ class ReiAnixLibraryViewModel(
                     )
                 }
             }
+        }
+    }
+
+    private suspend fun reconcileAniListAfterNativeScan() {
+        val service = appDependencies?.aniListIntegrationService ?: return
+        try {
+            withContext(Dispatchers.IO) {
+                service.reconcileUnmatchedLibraryMetadata()
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "AniList reconciliation after an explicit native scan failed. errorType=" + error::class.java.simpleName)
         }
     }
 
