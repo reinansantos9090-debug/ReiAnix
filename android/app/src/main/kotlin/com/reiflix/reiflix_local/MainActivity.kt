@@ -4023,7 +4023,10 @@ class MainActivity : FlutterFragmentActivity() {
                 NativeRequestState.OperationState.FAILED,
             )
             Log.e(tag, "SAF release failed stage=$stage code=$code treeUri=$normalizedReference")
-            if (nativeFolderConfigOwner) libraryViewModel.onSafRemovalTerminal(normalizedReference)
+            if (nativeFolderConfigOwner) {
+                libraryViewModel.onSafRemovalTerminal(normalizedReference)
+                refreshNativeStorageOnboardingState("saf_release_failed")
+            }
             val waiters = takeWaitingRequestIds()
             (waiters.ifEmpty { listOf(requestId.orEmpty()) }).forEach { waiterId ->
                 nativeRequestState.markOperationState(
@@ -4095,7 +4098,10 @@ class MainActivity : FlutterFragmentActivity() {
 
             fun publishReleased(sourceAlreadyAbsent: Boolean) {
                 val waiters = takeWaitingRequestIds()
-                if (nativeFolderConfigOwner) libraryViewModel.onSafRemovalTerminal(normalizedReference)
+                if (nativeFolderConfigOwner) {
+                    libraryViewModel.onSafRemovalTerminal(normalizedReference)
+                    refreshNativeStorageOnboardingState("saf_release_terminal")
+                }
                 (waiters.ifEmpty { listOf(requestId.orEmpty()) }).forEach { waiterId ->
                     nativeRequestState.markOperationState(
                         waiterId,
