@@ -45,6 +45,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val jobs = ConcurrentHashMap<Long, Job>()
     private val permits = Semaphore(2)
     private val backfillRunning = AtomicBoolean(false)
+    private val cacheClearInProgress = AtomicBoolean(false)
+    @Volatile private var backfillJob: Job? = null
 
     private data class Anime(val anilistId: Long?, val kind: String?, val coverUrl: String?, val coverCache: String?, val bannerUrl: String?)
     private data class Artwork(
@@ -61,9 +63,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private class InvalidImage(message: String) : Exception(message)
 
     fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean {
-        if (animeId <= 0L) return false
+        if (animeId <= 0L || cacheClearInProgress.get()) return false
         synchronized(jobs) {
-            if (jobs[animeId]?.isActive == true) return false
+            if (cacheClearInProgress.get() || jobs[animeId]?.isActive == true) return false
             val task = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     val anime = loadAnime(animeId) ?: return@launch
@@ -90,11 +92,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     /** Repair existing persisted image URLs in bounded asynchronous batches. */
     fun requestPendingArtwork(): Boolean {
-        if (!backfillRunning.compareAndSet(false, true)) return false
-        scope.launch {
+        if (cacheClearInProgress.get() || !backfillRunning.compareAndSet(false, true)) return false
+        backfillJob = scope.launch {
             try {
+                if (cacheClearInProgress.get()) return@launch
                 var afterId = 0L
-                while (currentCoroutineContext().isActive) {
+                while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
                     val ids = database.read { db ->
                         db.rawQuery(
                             "SELECT id FROM anime WHERE id>? AND (TRIM(COALESCE(cover_url,''))!='' " +
@@ -105,8 +108,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     if (ids.isEmpty()) break
                     val batch = ArrayList<Job>()
                     ids.forEach { id ->
-                        requestAnimeArtwork(id)
-                        jobs[id]?.let(batch::add)
+                        if (!cacheClearInProgress.get()) {
+                            requestAnimeArtwork(id)
+                            jobs[id]?.let(batch::add)
+                        }
                     }
                     batch.distinct().joinAll()
                     afterId = ids.last()
@@ -116,10 +121,102 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             } catch (error: Exception) {
                 Log.e(TAG, "Artwork backfill failed", error)
             } finally {
+                backfillJob = null
                 backfillRunning.set(false)
             }
         }
         return true
+    }
+
+    /**
+     * Clears externally managed artwork through the canonical v29 SQLite store.
+     * Local/manual artwork references are retained, and cache files are unlinked
+     * only when no persisted artwork row still references them.
+     */
+    suspend fun clearManagedCache(): Int {
+        check(cacheClearInProgress.compareAndSet(false, true)) {
+            "Artwork cache clearing is already in progress."
+        }
+        try {
+            val backfill = backfillJob
+            backfill?.cancel()
+            val inFlight = synchronized(jobs) {
+                jobs.values.toList().also { active -> active.forEach { it.cancel() } }
+            }
+            inFlight.joinAll()
+            backfill?.join()
+            synchronized(jobs) {
+                jobs.entries.removeAll { !it.value.isActive }
+            }
+
+            val removedPaths = database.transaction { db ->
+                val paths = db.rawQuery(
+                    "SELECT DISTINCT local_path FROM artwork " +
+                        "WHERE source IN ('cache','anilist') AND manual=0 AND local_path IS NOT NULL",
+                    null,
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            val path = cursor.getString(0)?.trim().orEmpty()
+                            if (path.isNotEmpty()) add(path)
+                        }
+                    }
+                }
+                db.delete("artwork", "source IN ('cache','anilist') AND manual=0", null)
+                // Match Settings' existing cache-clear contract: expire remote metadata
+                // and clear stale cover pointers without deleting the library records.
+                db.execSQL("UPDATE anime SET metadata_updated_at=NULL, cover_cache=''")
+                paths
+            }
+
+            var removed = 0
+            val managedRoot = cacheDirectory.canonicalFile
+            removedPaths.distinct().forEach { path ->
+                val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return@forEach
+                if (isWithin(managedRoot, file) && !isArtworkPathReferenced(file.path) && file.isFile && file.delete()) {
+                    removed++
+                }
+            }
+
+            // Palette metadata and orphan files are disposable cache entries. Temporary
+            // files are left alone, matching ArtworkEngine's orphan cleanup contract.
+            cacheDirectory.listFiles()?.forEach { file ->
+                if (!file.isFile || file.name.endsWith(".tmp")) return@forEach
+                if (file.name.startsWith(".reiflix-palette-")) {
+                    if (file.delete()) removed++
+                } else if (!isArtworkPathReferenced(file.absolutePath) && file.delete()) {
+                    removed++
+                }
+            }
+
+            // Remove only legacy files directly under data/covers; never recurse into
+            // managed subdirectories or delete a path still owned by a local/manual row.
+            val legacyRoot = cacheDirectory.parentFile
+            legacyRoot?.listFiles()?.forEach { file ->
+                if (file.isFile && !isArtworkPathReferenced(file.absolutePath) && file.delete()) {
+                    removed++
+                }
+            }
+            return removed
+        } finally {
+            backfillJob = null
+            backfillRunning.set(false)
+            cacheClearInProgress.set(false)
+        }
+    }
+
+    private fun isArtworkPathReferenced(path: String): Boolean = database.read { db ->
+        db.rawQuery(
+            "SELECT 1 FROM artwork WHERE local_path=? " +
+                "UNION SELECT 1 FROM anime WHERE cover_cache=? LIMIT 1",
+            arrayOf(path, path),
+        ).use { cursor -> cursor.moveToFirst() }
+    }
+
+    private fun isWithin(root: File, candidate: File): Boolean {
+        val rootPath = runCatching { root.canonicalFile.path }.getOrNull() ?: return false
+        val candidatePath = runCatching { candidate.canonicalFile.path }.getOrNull() ?: return false
+        return candidatePath.startsWith(rootPath + File.separator)
     }
 
     private suspend fun materialize(id: Long, entity: String, type: String, url: String, aniId: Long?, force: Boolean) {
