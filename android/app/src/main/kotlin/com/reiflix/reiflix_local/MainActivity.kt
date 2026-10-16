@@ -1443,8 +1443,9 @@ class MainActivity : FlutterFragmentActivity() {
         settingsFileProcessing = true
         lifecycleScope.launch {
             val inputCopy = File(cacheDir, "reianix-restore-" + UUID.randomUUID() + ".zip")
+            var handedOff = false
             try {
-                val result = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     val input = contentResolver.openInputStream(uri)
                         ?: throw IllegalStateException("O Android não abriu o backup selecionado.")
                     input.use { source ->
@@ -1464,7 +1465,122 @@ class MainActivity : FlutterFragmentActivity() {
                             output.fd.sync()
                         }
                     }
-                    val backupService = ReiAnixBackupService(applicationContext)
+                }
+
+                if (action == "backup_recovery_restore") {
+                    // Inspect the selected archive and show the details before the
+                    // user confirms destructive recovery. The service will inspect it
+                    // again immediately before staging and promotion.
+                    val preview = withContext(Dispatchers.IO) {
+                        ReiAnixBackupService(applicationContext).inspectBackup(inputCopy)
+                    }
+                    showNativeRecoveryRestoreConfirmation(inputCopy, requestId, preview)
+                    handedOff = true
+                    return@launch
+                }
+
+                handedOff = true
+                completeNativeBackupRestore(inputCopy, action, requestId)
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "CANCELLED", "CANCELLED",
+                        error = "A seleção ou restauração do backup foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_BACKUP_IMPORT_PREPARATION_FAILED requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Não foi possível validar o backup selecionado.",
+                    )
+                }
+            } finally {
+                if (!handedOff) {
+                    inputCopy.delete()
+                    settingsFileProcessing = false
+                }
+            }
+        }
+    }
+
+    private fun showNativeRecoveryRestoreConfirmation(
+        inputCopy: File,
+        requestId: String,
+        preview: ReiAnixBackupService.BackupInspection,
+    ) {
+        val manifest = preview.manifest
+        val counts = preview.counts
+        val details = buildString {
+            append("Formato: ")
+            append(manifest.optString("format", "desconhecido"))
+            append(" v")
+            append(manifest.optInt("format_version", -1))
+            append("\nSchema: ")
+            append(manifest.optInt("schema_version", -1))
+            append("\nVersão que criou o backup: ")
+            append(manifest.optString("app_version", "não informada"))
+            append("\nAnimes: ")
+            append(counts.optLong("anime", 0L))
+            append(" • episódios: ")
+            append(counts.optLong("episodes", 0L))
+            append("\nFavoritos: ")
+            append(counts.optLong("favorites", 0L))
+            append(" • com progresso/histórico: ")
+            append(counts.optLong("progress", 0L))
+            append("\n\nO banco SQLite ativo será substituído somente depois da validação. " +
+                "Uma cópia bruta do banco atual e dos sidecars disponíveis será preservada. " +
+                "Vídeos externos, permissões SAF e sessão Google não são incluídos.")
+            if (preview.warnings.isNotEmpty()) {
+                append("\n\nAvisos de validação:")
+                preview.warnings.forEach { warning ->
+                    append("\n• ")
+                    append(warning)
+                }
+            }
+        }
+        val decisionHandled = AtomicBoolean(false)
+        fun finishCancelled() {
+            if (!decisionHandled.compareAndSet(false, true)) return
+            lifecycleScope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        writeSettingsFileActionResult(
+                            requestId,
+                            "backup_recovery_restore",
+                            "CANCELLED",
+                            "CANCELLED",
+                            message = "A recuperação foi cancelada antes de substituir o banco.",
+                        )
+                    }
+                } finally {
+                    inputCopy.delete()
+                    settingsFileProcessing = false
+                }
+            }
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Confirmar recuperação da biblioteca")
+            .setMessage(details)
+            .setNegativeButton("Cancelar") { _, _ -> finishCancelled() }
+            .setPositiveButton("Restaurar backup") { _, _ ->
+                if (decisionHandled.compareAndSet(false, true)) {
+                    completeNativeBackupRestore(inputCopy, "backup_recovery_restore", requestId)
+                }
+            }
+            .setOnCancelListener { finishCancelled() }
+            .show()
+    }
+
+    private fun completeNativeBackupRestore(inputCopy: File, action: String, requestId: String) {
+        lifecycleScope.launch {
+            try {
+                val backupService = ReiAnixBackupService(applicationContext)
+                val result = withContext(Dispatchers.IO) {
                     if (action == "backup_recovery_restore") {
                         backupService.restoreRecoveryBackup(inputCopy)
                     } else {
@@ -1474,11 +1590,9 @@ class MainActivity : FlutterFragmentActivity() {
                 settingsViewModel.refresh()
                 libraryViewModel.refresh()
                 if (action == "backup_recovery_restore") {
-                    // The recovery route is removed only after the replacement DB has
-                    // passed post-promotion integrity and runtime-schema validation.
+                    // Leave Recovery Mode only after integrity and runtime-schema validation.
                     composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
                 }
-                // Runtime consumers are notified only after the canonical transaction commits.
                 runCatching {
                     NativeMailbox.write(
                         this@MainActivity,
@@ -1490,17 +1604,22 @@ class MainActivity : FlutterFragmentActivity() {
                 }.onFailure { error ->
                     Log.w(tag, "NATIVE_RESTORE_RUNTIME_PROJECTION_FAILED requestId=" + requestId, error)
                 }
+                val message = (if (action == "backup_recovery_restore") {
+                    "Biblioteca recuperada. Snapshot de segurança: " + result.safetyBackup.name + ". "
+                } else {
+                    "Backup restaurado. "
+                }) + "Itens: " + result.importedRows +
+                    "; arquivos indisponíveis: " + result.missingFiles +
+                    "; capas manuais reconectadas: " + result.manualArtworkReconnected + "."
                 withContext(Dispatchers.IO) {
-                    writeSettingsFileActionResult(
-                        requestId, action, "SUCCESS", "SUCCESS",
-                        message = "Backup restaurado. Itens: " + result.importedRows +
-                            "; arquivos indisponíveis: " + result.missingFiles +
-                            "; capas manuais reconectadas: " + result.manualArtworkReconnected + ".",
-                    )
+                    writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = message)
                 }
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable + Dispatchers.IO) {
-                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A restauração foi cancelada.")
+                    writeSettingsFileActionResult(
+                        requestId, action, "CANCELLED", "CANCELLED",
+                        error = "A restauração foi cancelada.",
+                    )
                 }
                 throw cancelled
             } catch (error: Exception) {
@@ -1508,7 +1627,8 @@ class MainActivity : FlutterFragmentActivity() {
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "ERROR", "ERROR",
-                        error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível restaurar o backup.",
+                        error = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Não foi possível restaurar o backup.",
                     )
                 }
             } finally {
