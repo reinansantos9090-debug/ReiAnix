@@ -40,6 +40,15 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
         val changedAnimeIds: List<Long>,
     )
 
+    private data class ClassificationCandidate(
+        val id: Long,
+        val title: String,
+        val genres: String?,
+        val source: String?,
+        val aniListId: Long?,
+        val manualFields: String?,
+    )
+
     /**
      * Seeds the seven legacy system identities and aliases and backfills existing
      * JSON genre columns into anime_genres without removing associations by source.
@@ -200,14 +209,6 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
             }
             database.transaction { connection ->
                 seedSystemAliases(connection)
-                data class Candidate(
-                    val id: Long,
-                    val title: String,
-                    val genres: String?,
-                    val source: String?,
-                    val aniListId: Long?,
-                    val manualFields: String?,
-                )
                 val candidates = connection.rawQuery(
                     """
                     SELECT a.id, COALESCE(NULLIF(TRIM(a.title),''), a.lookup_title), a.genres,
@@ -223,7 +224,7 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
                     buildList {
                         while (cursor.moveToNext()) {
                             add(
-                                Candidate(
+                                ClassificationCandidate(
                                     id = cursor.getLong(0),
                                     title = cursor.getString(1).orEmpty(),
                                     genres = if (cursor.isNull(2)) null else cursor.getString(2),
