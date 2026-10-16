@@ -1728,6 +1728,10 @@ class MainActivity : FlutterFragmentActivity() {
                     // Recovery Mode exits only after both the canonical SQLite check and
                     // the local catalog projection have completed successfully.
                     composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+                    refreshNativeStorageOnboardingState("recovery_restore_complete")
+                    if (activityResumed && bootstrapAllowsNativeOperations()) {
+                        consumeAndDispatchPendingLifecycleAction()
+                    }
                 } else {
                     // Preserve the normal backup-restore contract; it is not the exceptional
                     // startup-recovery path and continues using the established refresh flow.
