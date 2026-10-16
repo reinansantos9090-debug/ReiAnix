@@ -105,8 +105,7 @@ class NativeRequestState {
             OperationState.COMPLETED,
             OperationState.CANCELLED,
             OperationState.FAILED,
-            OperationState.TIMEOUT,
-            -> false
+            OperationState.TIMEOUT -> false
         }
     }
 
