@@ -964,14 +964,18 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         self.assertIn("await bridge.scan_library()", refresh)
         self.assertIn("Non-Android development fallback only", refresh)
 
-    def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
+    def test_main_activity_does_not_scan_on_resume_and_preserves_explicit_permission_flow(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         start = source.index("override fun onResume()")
         resume = source[start:source.index("override fun onPause()", start)]
         self.assertIn("startupDiscoveryTriggered", resume)
-        self.assertIn("publishScanRequest(", resume)
-        self.assertIn('"STARTUP"', resume)
-        self.assertIn('reason = "first_activity_resume"', resume)
+        self.assertIn("STARTUP_SCAN_SKIPPED", resume)
+        self.assertIn('result = "explicit_scan_required"', resume)
+        self.assertIn("hasPersistedSafTree &&", resume)
+        self.assertIn("mediaAccessChangedToUsable || broadBecameAvailable", resume)
+        self.assertIn('publishScanRequest(\n                "PERMISSION_CHANGE"', resume)
+        self.assertNotIn('"STARTUP"', resume)
+        self.assertNotIn('reason = "first_activity_resume"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
         self.assertNotIn("persistedSafTreeUris().forEach", resume)
