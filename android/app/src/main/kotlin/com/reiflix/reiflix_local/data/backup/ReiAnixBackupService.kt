@@ -94,7 +94,8 @@ class ReiAnixBackupService(context: Context) {
             ZipOutputStream(FileOutputStream(temporaryZip)).use { zip ->
                 writeFileEntry(zip, snapshot, "library.sqlite3")
                 archiveEntries.put("library.sqlite3", entryDigest(snapshot))
-                for (artwork in artworkRows) {
+                for (index in 0 until artworkRows.length()) {
+                    val artwork = artworkRows.optJSONObject(index) ?: continue
                     if (!artwork.optBoolean("portable")) continue
                     val source = File(artwork.getString("original_path"))
                     val member = artwork.getString("member")
