@@ -17,16 +17,39 @@ object GoogleIdentity {
     private const val TAG = "[REIFLIX][AUTH]"
     private const val NONCE_BYTES = 32
 
-    suspend fun signIn(context: Context, serverClientId: String, requestId: String? = null) {
+    data class AccountProfile(
+        val id: String,
+        val name: String,
+        val email: String,
+        val picture: String,
+    )
+
+    data class SignInResult(
+        val profile: AccountProfile? = null,
+        val cancelled: Boolean = false,
+        val errorCode: String? = null,
+        val errorMessage: String? = null,
+    )
+
+    suspend fun signIn(
+        context: Context,
+        serverClientId: String,
+        requestId: String? = null,
+        publishLegacyMailboxEvents: Boolean = true,
+    ): SignInResult {
         if (serverClientId.isBlank() || !isWebClientId(serverClientId)) {
             Log.w(TAG, "Google sign-in requested without a valid Web client ID")
-            writeError(context, requestId, "configuration_required", "O login Google ainda não foi configurado corretamente neste APK.")
-            return
+            if (publishLegacyMailboxEvents) {
+                writeError(context, requestId, "configuration_required", "O login Google ainda não foi configurado corretamente neste APK.")
+            }
+            return SignInResult(errorCode = "configuration_required", errorMessage = "O login Google ainda não foi configurado corretamente neste APK.")
         }
 
-        try {
+        return try {
             Log.i(TAG, "Google Credential Manager sign-in requested")
-            NativeMailbox.write(context, JSONObject().put("type", "google_sign_in_started").put("requestId", requestId ?: ""))
+            if (publishLegacyMailboxEvents) {
+                NativeMailbox.write(context, JSONObject().put("type", "google_sign_in_started").put("requestId", requestId ?: ""))
+            }
 
             // A nonce binds the returned ID token to this sign-in request and is
             // defense-in-depth for any future server-backed authentication flow.
@@ -46,71 +69,98 @@ object GoogleIdentity {
             val claims = validatedClaims(credential.idToken, serverClientId, nonce)
 
             if (claims == null || credential.uniqueId.isBlank() || credential.email.isNullOrBlank()) {
-                writeError(context, requestId, "invalid_credential", "A credencial Google recebida não pôde ser validada.")
-                return
+                val message = "A credencial Google recebida não pôde ser validada."
+                if (publishLegacyMailboxEvents) writeError(context, requestId, "invalid_credential", message)
+                return SignInResult(errorCode = "invalid_credential", errorMessage = message)
             }
 
             // uniqueId is the stable Google account identifier exposed by the
             // Google Identity SDK. Email is retained only as profile data.
             if (claims.subject != credential.uniqueId) {
-                writeError(context, requestId, "invalid_credential", "A identidade Google recebida não corresponde ao identificador da conta.")
-                return
+                val message = "A identidade Google recebida não corresponde ao identificador da conta."
+                if (publishLegacyMailboxEvents) writeError(context, requestId, "invalid_credential", message)
+                return SignInResult(errorCode = "invalid_credential", errorMessage = message)
             }
 
-            NativeMailbox.write(
-                context,
-                JSONObject()
-                    .put("type", "google_account")
-                    .put("requestId", requestId ?: "")
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("id", credential.uniqueId)
-                            .put("name", credential.displayName ?: "")
-                            .put("email", credential.email ?: "")
-                            .put("picture", credential.profilePictureUri?.toString() ?: ""),
-                    ),
+            val profile = AccountProfile(
+                id = credential.uniqueId,
+                name = credential.displayName ?: "",
+                email = credential.email ?: "",
+                picture = credential.profilePictureUri?.toString() ?: "",
             )
+            if (publishLegacyMailboxEvents) {
+                NativeMailbox.write(
+                    context,
+                    JSONObject()
+                        .put("type", "google_account")
+                        .put("requestId", requestId ?: "")
+                        .put(
+                            "payload",
+                            JSONObject()
+                                .put("id", profile.id)
+                                .put("name", profile.name)
+                                .put("email", profile.email)
+                                .put("picture", profile.picture),
+                        ),
+                )
+            }
             Log.i(TAG, "Google account selected")
+            SignInResult(profile = profile)
         } catch (cancelled: GetCredentialCancellationException) {
             Log.i(TAG, "Google sign-in cancelled")
-            NativeMailbox.write(context, JSONObject().put("type", "google_cancelled").put("requestId", requestId ?: ""))
+            if (publishLegacyMailboxEvents) {
+                NativeMailbox.write(context, JSONObject().put("type", "google_cancelled").put("requestId", requestId ?: ""))
+            }
+            SignInResult(cancelled = true, errorCode = "cancelled", errorMessage = "Login cancelado.")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (exception: GetCredentialException) {
             Log.e(TAG, "Google credential manager failed", exception)
             val error = classifyCredentialError(exception)
-            writeError(context, requestId, error.first, error.second)
+            if (publishLegacyMailboxEvents) writeError(context, requestId, error.first, error.second)
+            SignInResult(errorCode = error.first, errorMessage = error.second)
         } catch (exception: Exception) {
             Log.e(TAG, "Google identity failed", exception)
-            writeError(context, requestId, "internal_error", "Não foi possível concluir o login Google. Tente novamente.")
+            val message = "Não foi possível concluir o login Google. Tente novamente."
+            if (publishLegacyMailboxEvents) writeError(context, requestId, "internal_error", message)
+            SignInResult(errorCode = "internal_error", errorMessage = message)
         }
     }
 
     /** Clears Credential Manager state so future account selection is not pinned to the previous user. */
-    suspend fun signOut(context: Context, requestId: String? = null): Boolean {
+    suspend fun signOut(
+        context: Context,
+        requestId: String? = null,
+        publishLegacyMailboxEvents: Boolean = true,
+    ): Boolean {
         return try {
             Log.i(TAG, "Google Credential Manager sign-out requested")
             val clearRequest = ClearCredentialStateRequest(
                 ClearCredentialStateRequest.TYPE_CLEAR_CREDENTIAL_STATE,
             )
             CredentialManager.create(context).clearCredentialState(clearRequest)
-            NativeMailbox.write(
-                context,
-                JSONObject()
-                    .put("type", "google_signed_out")
-                    .put("requestId", requestId ?: ""),
-            )
+            if (publishLegacyMailboxEvents) {
+                NativeMailbox.write(
+                    context,
+                    JSONObject()
+                        .put("type", "google_signed_out")
+                        .put("requestId", requestId ?: ""),
+                )
+            }
             Log.i(TAG, "Google Credential Manager credential state cleared")
             true
         } catch (exception: kotlinx.coroutines.CancellationException) {
             throw exception
         } catch (exception: Exception) {
             Log.e(TAG, "Google Credential Manager sign-out failed", exception)
-            writeError(
-                context,
-                requestId,
-                "credential_state_clear_failed",
-                "Não foi possível encerrar a sessão Google com segurança.",
-            )
+            if (publishLegacyMailboxEvents) {
+                writeError(
+                    context,
+                    requestId,
+                    "credential_state_clear_failed",
+                    "Não foi possível encerrar a sessão Google com segurança.",
+                )
+            }
             false
         }
     }

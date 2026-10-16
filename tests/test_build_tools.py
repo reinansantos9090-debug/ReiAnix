@@ -944,7 +944,8 @@ E: manifest
         source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "bridge" / "GoogleIdentity.kt").read_text(encoding="utf-8")
         self.assertIn('"google_sign_in_started"', source)
         self.assertIn("validatedClaims(credential.idToken, serverClientId, nonce)", source)
-        self.assertIn('.put("id", credential.uniqueId)', source)
+        self.assertIn("id = credential.uniqueId", source)
+        self.assertIn('.put("id", profile.id)', source)
         self.assertIn("claims.subject != credential.uniqueId", source)
         self.assertNotIn('.put("idToken"', source)
 

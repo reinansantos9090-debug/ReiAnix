@@ -22,6 +22,8 @@ import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
+import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
+import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -817,6 +819,22 @@ class MainActivity : FlutterFragmentActivity() {
             },
         )
 
+
+    private val backupExportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
+            finishNativeBackupExport(uri)
+        }
+
+    private val backupImportLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            finishNativeBackupImport(uri)
+        }
+
+    private val diagnosticExportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+            finishNativeDiagnosticExport(uri)
+        }
+
     private fun cancelSafPickerWatchdog() {
         safPickerWatchdog?.let { safPickerWatchdogHandler.removeCallbacks(it) }
         safPickerWatchdog = null
@@ -1229,22 +1247,26 @@ class MainActivity : FlutterFragmentActivity() {
             ?.trim()?.lowercase()
         val requestId = intent.getStringExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID)
             ?.trim().orEmpty()
-        if (action != "settings_export" && action != "settings_import") return
+        val nativeActions = setOf(
+            "settings_export", "settings_import", "backup_create", "backup_restore",
+            "backup_integrity", "backup_reconcile", "diagnostic_export",
+        )
+        if (action == null || action !in nativeActions) return
 
-        // Consume the one-shot command so Activity recreation cannot reopen the picker.
+        // Consume the one-shot request before opening UI or starting asynchronous work.
         intent.removeExtra(ReiAnixSettingsFileService.EXTRA_ACTION)
         intent.removeExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID)
         setIntent(intent)
 
         if (!SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId)) {
-            Log.w(tag, "SETTINGS_FILE_ACTION_REJECTED reason=invalid_request_id action=" + action)
+            Log.w(tag, "SETTINGS_NATIVE_ACTION_REJECTED reason=invalid_request_id action=" + action)
             return
         }
         if (pendingSettingsFileAction != null || settingsFileProcessing) {
             lifecycleScope.launch(Dispatchers.IO) {
                 writeSettingsFileActionResult(
-                    requestId, action, "ERROR", "ERROR",
-                    error = "Outra operação de arquivo de configurações está em andamento.",
+                    requestId, action!!, "ERROR", "ERROR",
+                    error = "Outra operação nativa de configurações está em andamento.",
                 )
             }
             return
@@ -1255,8 +1277,9 @@ class MainActivity : FlutterFragmentActivity() {
         lifecycleScope.launch {
             withContext(Dispatchers.IO) {
                 writeSettingsFileActionResult(
-                    requestId, action, "RUNNING", "RUNNING",
-                    message = "Aguardando o seletor de arquivos do Android.",
+                    requestId, action!!, "RUNNING", "RUNNING",
+                    message = if (action == "backup_integrity" || action == "backup_reconcile")
+                        "Preparando a operação nativa." else "Aguardando o seletor de arquivos do Android.",
                 )
             }
             lifecycle.whenStarted {
@@ -1269,28 +1292,280 @@ class MainActivity : FlutterFragmentActivity() {
                         "settings_import" -> settingsImportLauncher.launch(
                             arrayOf("application/json", "text/json", "application/octet-stream"),
                         )
+                        "backup_create" -> {
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+                            backupExportLauncher.launch("reiflix-backup-" + stamp + ".zip")
+                        }
+                        "backup_restore" -> backupImportLauncher.launch(
+                            arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
+                        )
+                        "diagnostic_export" -> {
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+                            diagnosticExportLauncher.launch("reiflix-diagnostic-" + stamp + ".json")
+                        }
+                        "backup_integrity", "backup_reconcile" -> {
+                            pendingSettingsFileAction = null
+                            pendingSettingsFileRequestId = null
+                            runNativeSettingsMaintenanceAction(action, requestId)
+                        }
                     }
                 } catch (cancelled: CancellationException) {
                     pendingSettingsFileAction = null
                     pendingSettingsFileRequestId = null
                     withContext(NonCancellable + Dispatchers.IO) {
                         writeSettingsFileActionResult(
-                            requestId, action, "CANCELLED", "CANCELLED",
-                            error = "A operação de arquivos foi cancelada.",
+                            requestId, action!!, "CANCELLED", "CANCELLED",
+                            error = "A operação nativa foi cancelada.",
                         )
                     }
                     throw cancelled
                 } catch (error: Exception) {
                     pendingSettingsFileAction = null
                     pendingSettingsFileRequestId = null
-                    Log.e(tag, "SETTINGS_FILE_PICKER_LAUNCH_FAILED requestId=" + requestId + " action=" + action, error)
+                    Log.e(tag, "SETTINGS_NATIVE_ACTION_LAUNCH_FAILED requestId=" + requestId + " action=" + action, error)
                     withContext(Dispatchers.IO) {
                         writeSettingsFileActionResult(
-                            requestId, action, "ERROR", "ERROR",
-                            error = "Não foi possível abrir o seletor de arquivos.",
+                            requestId, action!!, "ERROR", "ERROR",
+                            error = error.message?.takeIf { it.isNotBlank() }
+                                ?: "Não foi possível iniciar a operação nativa.",
                         )
                     }
                 }
+            }
+        }
+    }
+
+    private fun finishNativeBackupExport(uri: Uri?) {
+        val action = pendingSettingsFileAction
+        val requestId = pendingSettingsFileRequestId
+        pendingSettingsFileAction = null
+        pendingSettingsFileRequestId = null
+        if (action != "backup_create" || requestId.isNullOrBlank()) return
+        if (uri == null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Exportação de backup cancelada.")
+            }
+            return
+        }
+        if (settingsFileProcessing) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
+            }
+            return
+        }
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            var archive: File? = null
+            try {
+                archive = withContext(Dispatchers.IO) {
+                    ReiAnixBackupService(applicationContext).createBackupFile()
+                }
+                withContext(Dispatchers.IO) {
+                    val output = contentResolver.openOutputStream(uri, "w")
+                        ?: throw IllegalStateException("O Android não abriu o destino do backup.")
+                    output.use { target -> archive!!.inputStream().use { input -> input.copyTo(target) } }
+                }
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = "Backup ReiAnix criado e validado.")
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A exportação de backup foi cancelada.")
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_BACKUP_EXPORT_FAILED requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível criar o backup.")
+                }
+            } finally {
+                archive?.delete()
+                settingsFileProcessing = false
+            }
+        }
+    }
+
+    private fun finishNativeBackupImport(uri: Uri?) {
+        val action = pendingSettingsFileAction
+        val requestId = pendingSettingsFileRequestId
+        pendingSettingsFileAction = null
+        pendingSettingsFileRequestId = null
+        if (action != "backup_restore" || requestId.isNullOrBlank()) return
+        if (uri == null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Restauração cancelada.")
+            }
+            return
+        }
+        if (settingsFileProcessing) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
+            }
+            return
+        }
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            val inputCopy = File(cacheDir, "reianix-restore-" + UUID.randomUUID() + ".zip")
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val input = contentResolver.openInputStream(uri)
+                        ?: throw IllegalStateException("O Android não abriu o backup selecionado.")
+                    input.use { source ->
+                        FileOutputStream(inputCopy).use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            var total = 0L
+                            while (true) {
+                                val read = source.read(buffer)
+                                if (read < 0) break
+                                if (read == 0) continue
+                                total += read
+                                require(total <= ReiAnixBackupService.MAX_ARCHIVE_BYTES) {
+                                    "O arquivo de backup excede o limite permitido."
+                                }
+                                output.write(buffer, 0, read)
+                            }
+                            output.fd.sync()
+                        }
+                    }
+                    ReiAnixBackupService(applicationContext).restoreBackup(inputCopy)
+                }
+                settingsViewModel.refresh()
+                libraryViewModel.refresh()
+                // Runtime consumers are notified only after the canonical transaction commits.
+                runCatching {
+                    NativeMailbox.write(
+                        this@MainActivity,
+                        JSONObject()
+                            .put("type", "compose_settings_native_backup_restored")
+                            .put("requestId", requestId)
+                            .put("payload", JSONObject().put("requestId", requestId)),
+                    )
+                }.onFailure { error ->
+                    Log.w(tag, "NATIVE_RESTORE_RUNTIME_PROJECTION_FAILED requestId=" + requestId, error)
+                }
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "SUCCESS", "SUCCESS",
+                        message = "Backup restaurado. Itens: " + result.importedRows +
+                            "; arquivos indisponíveis: " + result.missingFiles +
+                            "; capas manuais reconectadas: " + result.manualArtworkReconnected + ".",
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A restauração foi cancelada.")
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_BACKUP_RESTORE_FAILED requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível restaurar o backup.",
+                    )
+                }
+            } finally {
+                inputCopy.delete()
+                settingsFileProcessing = false
+            }
+        }
+    }
+
+    private fun finishNativeDiagnosticExport(uri: Uri?) {
+        val action = pendingSettingsFileAction
+        val requestId = pendingSettingsFileRequestId
+        pendingSettingsFileAction = null
+        pendingSettingsFileRequestId = null
+        if (action != "diagnostic_export" || requestId.isNullOrBlank()) return
+        if (uri == null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Exportação de diagnóstico cancelada.")
+            }
+            return
+        }
+        if (settingsFileProcessing) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
+            }
+            return
+        }
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            try {
+                val report = withContext(Dispatchers.IO) { ReiAnixDiagnosticsService(applicationContext).exportJson() }
+                withContext(Dispatchers.IO) {
+                    val output = contentResolver.openOutputStream(uri, "w")
+                        ?: throw IllegalStateException("O Android não abriu o destino do diagnóstico.")
+                    output.use { it.write(report) }
+                    writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = "Diagnóstico nativo exportado.")
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A exportação de diagnóstico foi cancelada.")
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_DIAGNOSTIC_EXPORT_FAILED requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível exportar o diagnóstico.")
+                }
+            } finally {
+                settingsFileProcessing = false
+            }
+        }
+    }
+
+    private fun runNativeSettingsMaintenanceAction(action: String, requestId: String) {
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "RUNNING", "RUNNING", message = "Executando verificação nativa.")
+                }
+                when (action) {
+                    "backup_integrity" -> {
+                        val report = withContext(Dispatchers.IO) { ReiAnixBackupService(applicationContext).integrityReport() }
+                        if (!report.healthy) {
+                            throw IllegalStateException(report.error ?: "O banco falhou na verificação de integridade.")
+                        }
+                        withContext(Dispatchers.IO) {
+                            writeSettingsFileActionResult(
+                                requestId, action, "SUCCESS", "SUCCESS",
+                                message = "SQLite íntegro; schema " + report.schemaVersion +
+                                    "; violações de foreign key: " + report.foreignKeyViolations + ".",
+                            )
+                        }
+                    }
+                    "backup_reconcile" -> {
+                        val updated = withContext(Dispatchers.IO) {
+                            ReiAnixBackupService(applicationContext).reconcileRestoredFileAvailability()
+                        }
+                        libraryViewModel.refresh()
+                        withContext(Dispatchers.IO) {
+                            writeSettingsFileActionResult(
+                                requestId, action, "SUCCESS", "SUCCESS",
+                                message = "Reconciliação concluída. Referências locais verificadas: " + updated +
+                                    ". URIs SAF/MediaStore permanecem sob o scanner nativo.",
+                            )
+                        }
+                    }
+                    else -> throw IllegalArgumentException("Ação de manutenção nativa desconhecida.")
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A operação foi cancelada.")
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_SETTINGS_MAINTENANCE_FAILED requestId=" + requestId + " action=" + action, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error.message?.takeIf { it.isNotBlank() } ?: "A operação não pôde ser concluída.",
+                    )
+                }
+            } finally {
+                settingsFileProcessing = false
             }
         }
     }
@@ -1945,7 +2220,20 @@ class MainActivity : FlutterFragmentActivity() {
                 "request_media_access", "check_storage_access", "open_broad_storage_settings" -> action
                 else -> null
             }
-            if (settingsAction !in SETTINGS_STORAGE_ACTIONS || settingsAction != expectedSettingsAction) {
+            val expectedNativeAccountAction = when (action) {
+                "google_sign_in" -> "login"
+                "google_sign_out" -> "logout"
+                "google_account_switch" -> "switch"
+                else -> null
+            }
+            val validNativeAccountAction =
+                data.getQueryParameter("native_account_owner") == "true" &&
+                    expectedNativeAccountAction != null &&
+                    settingsAction == expectedNativeAccountAction
+            if (validNativeAccountAction) {
+                // The native account handler writes one terminal Settings result.
+                // Do not classify account actions as storage picker operations.
+            } else if (settingsAction !in SETTINGS_STORAGE_ACTIONS || settingsAction != expectedSettingsAction) {
                 rejectComposeSettingsStorageAction(
                     requestId,
                     settingsAction,
@@ -1959,8 +2247,9 @@ class MainActivity : FlutterFragmentActivity() {
                     "A operação de armazenamento do Compose não é compatível com a ação nativa.",
                 )
                 return
+            } else {
+                beginComposeSettingsStorageAction(requestId, settingsAction)
             }
-            beginComposeSettingsStorageAction(requestId, settingsAction)
         }
         val commandReceivedAtMs = System.currentTimeMillis()
         Log.i(tag, "COMMAND_RECEIVED action=" + action + " requestId=" + requestId +
@@ -2158,12 +2447,39 @@ class MainActivity : FlutterFragmentActivity() {
                 "google_sign_in" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
-                    signInWithGoogle(intent.data?.getQueryParameter("server_client_id"), requestId)
+                    val nativeOwner = intent.data?.getQueryParameter("native_account_owner") == "true"
+                    val settingsAction = intent.data?.getQueryParameter("settings_action")?.trim()
+                    if (nativeOwner && settingsAction == "login") {
+                        runNativeComposeAccountAction("login", requestId)
+                    } else {
+                        signInWithGoogle(intent.data?.getQueryParameter("server_client_id"), requestId)
+                    }
                 }
                 "google_sign_out" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
-                    signOutWithGoogle(requestId)
+                    val nativeOwner = intent.data?.getQueryParameter("native_account_owner") == "true"
+                    val settingsAction = intent.data?.getQueryParameter("settings_action")?.trim()
+                    if (nativeOwner && settingsAction == "logout") {
+                        runNativeComposeAccountAction("logout", requestId)
+                    } else {
+                        signOutWithGoogle(requestId)
+                    }
+                }
+                "google_account_switch" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    if (
+                        intent.data?.getQueryParameter("native_account_owner") == "true" &&
+                        intent.data?.getQueryParameter("settings_action")?.trim() == "switch"
+                    ) {
+                        runNativeComposeAccountAction("switch", requestId)
+                    } else {
+                        publishNativeCommandError(
+                            requestId, action, "dispatch", "UNSUPPORTED_ACCOUNT_ACTION",
+                            "A troca de conta precisa ser iniciada pelas configurações nativas.",
+                        )
+                    }
                 }
                 "cancel_player_transition" -> {
                     val originRequestId = data.getQueryParameter("origin_request_id")?.trim().orEmpty()
@@ -4021,6 +4337,142 @@ class MainActivity : FlutterFragmentActivity() {
         applyApplicationSystemUi()
         ViewCompat.requestApplyInsets(window.decorView)
     }
+    private fun publishNativeComposeAccountChanged(requestId: String) {
+        runCatching {
+            NativeMailbox.write(
+                this,
+                JSONObject()
+                    .put("type", "compose_settings_native_account_changed")
+                    .put("requestId", requestId)
+                    .put("payload", JSONObject().put("requestId", requestId)),
+            )
+        }.onFailure { error ->
+            Log.w(tag, "NATIVE_ACCOUNT_RUNTIME_PROJECTION_FAILED requestId=" + requestId, error)
+        }
+    }
+
+    private fun runNativeComposeAccountAction(action: String, requestId: String) {
+        val safeActions = setOf("login", "logout", "switch")
+        if (action !in safeActions || !SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId)) {
+            Log.w(tag, "SETTINGS_ACCOUNT_ACTION_REJECTED action=" + action)
+            return
+        }
+        lifecycleScope.launch {
+            var terminalState = NativeRequestState.OperationState.FAILED
+            var accountStateChanged = false
+            try {
+                val accountRepository = ReiAnixAppDependencies.from(applicationContext).sqliteAccountRepository
+                val clientId = getString(R.string.reiflix_google_web_client_id).trim()
+                val signedOut = action == "logout" || action == "switch"
+                if (signedOut) {
+                    val cleared = GoogleIdentity.signOut(
+                        this@MainActivity,
+                        requestId,
+                        publishLegacyMailboxEvents = false,
+                    )
+                    if (!cleared) {
+                        throw IllegalStateException("Não foi possível encerrar a sessão Google com segurança.")
+                    }
+                    withContext(Dispatchers.IO) { accountRepository.clearProfile() }
+                    accountStateChanged = true
+                }
+
+                var signedInProfile: GoogleIdentity.AccountProfile? = null
+                if (action == "login" || action == "switch") {
+                    val result = GoogleIdentity.signIn(
+                        this@MainActivity,
+                        clientId,
+                        requestId,
+                        publishLegacyMailboxEvents = false,
+                    )
+                    signedInProfile = result.profile
+                    if (signedInProfile == null) {
+                        if (result.cancelled) {
+                            terminalState = NativeRequestState.OperationState.CANCELLED
+                            val message = "Login Google cancelado."
+                            withContext(Dispatchers.IO) {
+                                writeSettingsFileActionResult(
+                                    requestId, action, "CANCELLED", "CANCELLED", message = message,
+                                )
+                            }
+                            settingsViewModel.refresh()
+                            if (accountStateChanged) publishNativeComposeAccountChanged(requestId)
+                            publishNativeDiagnostic(
+                                "GOOGLE_COMPOSE_ACCOUNT_CANCELLED", requestId, action,
+                                NativeRequestState.OperationState.CANCELLED.name,
+                            )
+                            return@launch
+                        }
+                        throw IllegalStateException(
+                            result.errorMessage ?: "Não foi possível validar a conta Google.",
+                        )
+                    }
+                    withContext(Dispatchers.IO) {
+                        accountRepository.saveProfile(
+                            com.reiflix.reiflix_local.data.sqlite.ReiAnixAccountProfile(
+                                id = signedInProfile!!.id,
+                                name = signedInProfile!!.name,
+                                email = signedInProfile!!.email,
+                                picture = signedInProfile!!.picture,
+                            ),
+                        )
+                    }
+                    accountStateChanged = true
+                }
+
+                settingsViewModel.refresh()
+                publishNativeComposeAccountChanged(requestId)
+                terminalState = NativeRequestState.OperationState.COMPLETED
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "SUCCESS", "SUCCESS",
+                        message = when (action) {
+                            "login" -> "Conta Google conectada."
+                            "logout" -> "Sessão Google encerrada."
+                            else -> "Conta Google trocada."
+                        },
+                    )
+                }
+                publishNativeDiagnostic(
+                    "GOOGLE_COMPOSE_ACCOUNT_COMPLETED", requestId, action, terminalState.name,
+                )
+            } catch (cancelled: CancellationException) {
+                terminalState = NativeRequestState.OperationState.CANCELLED
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "CANCELLED", "CANCELLED", error = "A operação da conta foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_COMPOSE_ACCOUNT_ACTION_FAILED requestId=" + requestId + " action=" + action, error)
+                terminalState = NativeRequestState.OperationState.FAILED
+                settingsViewModel.refresh()
+                if (accountStateChanged) publishNativeComposeAccountChanged(requestId)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = error.message?.takeIf { it.isNotBlank() } ?: "A operação da conta não foi concluída.",
+                    )
+                }
+                publishNativeDiagnostic(
+                    "GOOGLE_COMPOSE_ACCOUNT_FAILED", requestId, action, terminalState.name,
+                    error = error::class.java.simpleName,
+                )
+            } finally {
+                nativeRequestState.markOperationState(
+                    requestId,
+                    when (action) {
+                        "login" -> "google_sign_in"
+                        "logout" -> "google_sign_out"
+                        else -> "google_account_switch"
+                    },
+                    terminalState,
+                )
+            }
+        }
+    }
+
     private fun signOutWithGoogle(requestId: String? = null) {
         googleSignInJob?.cancel()
         googleSignInJob = null

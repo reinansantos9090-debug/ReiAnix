@@ -11,6 +11,8 @@ belong to the Android project that produces the APK.
 from __future__ import annotations
 
 import argparse
+import ast
+import re
 import shutil
 from pathlib import Path
 
@@ -29,6 +31,7 @@ ANDROID = "http://schemas.android.com/apk/res/android"
 ET.register_namespace("android", ANDROID)
 root = Path.cwd()
 overlay = Path(__REIFLIX_OVERLAY_APP__)
+google_web_client_id = __REIFLIX_GOOGLE_WEB_CLIENT_ID__
 app = root / "android" / "app"
 if not app.is_dir():
     raise RuntimeError(f"Rendered Flet project has no Android app module: {app}")
@@ -58,6 +61,17 @@ ids_source = res_source / "values" / "reianix_ids.xml"
 if not ids_source.is_file():
     raise RuntimeError(f"Missing ReiAnix resource ID contract: {ids_source}")
 shutil.copy2(ids_source, values / "reianix_ids.xml")
+
+# The OAuth Web client ID is public configuration, not a client secret. Bake the
+# validated app_config.py value into Android resources so native Compose login
+# does not need the Python runtime to start Credential Manager.
+native_config = ET.Element("resources")
+ET.SubElement(native_config, "string", {"name": "reiflix_google_web_client_id"}).text = google_web_client_id
+ET.ElementTree(native_config).write(
+    values / "reiflix_config.xml",
+    encoding="utf-8",
+    xml_declaration=True,
+)
 
 # Runtime schema contract assets are generated from the canonical LibraryStore
 # immediately before rendering. Copy them into the actual APK assets so runtime
@@ -563,6 +577,29 @@ def main() -> int:
     # the template, so the hook remains valid when Cookiecutter executes it.
     overlay_app = (target / "app").resolve()
     content = content.replace("__REIFLIX_OVERLAY_APP__", repr(str(overlay_app)))
+
+    # Credential Manager requires the public Web client ID. Read it from the same
+    # build-config source that CI validated/injected before preparing this template.
+    config_path = Path(__file__).resolve().parent / "app_config.py"
+    google_web_client_id = ""
+    if config_path.is_file():
+        config_tree = ast.parse(config_path.read_text(encoding="utf-8"), filename=str(config_path))
+        for node in config_tree.body:
+            if isinstance(node, ast.Assign) and any(
+                isinstance(target_node, ast.Name) and target_node.id == "GOOGLE_WEB_CLIENT_ID"
+                for target_node in node.targets
+            ):
+                parsed_value = ast.literal_eval(node.value)
+                if not isinstance(parsed_value, str):
+                    raise ValueError("GOOGLE_WEB_CLIENT_ID must be a string literal in app_config.py")
+                google_web_client_id = parsed_value.strip()
+                break
+        if google_web_client_id and not re.fullmatch(
+            r"[A-Za-z0-9._-]+\.apps\.googleusercontent\.com",
+            google_web_client_id,
+        ):
+            raise ValueError("GOOGLE_WEB_CLIENT_ID is not a valid public Google Web client ID")
+    content = content.replace("__REIFLIX_GOOGLE_WEB_CLIENT_ID__", repr(google_web_client_id))
     hook.write_text(content, encoding="utf-8")
     print(f"Prepared native ReiAnix host in Cookiecutter template: {template}")
     return 0

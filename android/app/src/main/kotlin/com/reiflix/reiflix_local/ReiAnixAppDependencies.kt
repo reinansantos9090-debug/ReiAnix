@@ -15,6 +15,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteAccountRepository
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 
 /**
@@ -42,6 +43,12 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixSqliteSettingsRepository(sqliteDatabase)
+    }
+
+    val sqliteAccountRepository: ReiAnixSqliteAccountRepository by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixSqliteAccountRepository(sqliteDatabase)
     }
 
     val libraryQueryService: ReiAnixLibraryQueryService by lazy(

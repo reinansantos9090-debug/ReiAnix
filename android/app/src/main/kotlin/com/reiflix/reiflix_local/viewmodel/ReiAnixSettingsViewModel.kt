@@ -23,6 +23,7 @@ class ReiAnixSettingsViewModel(
         context,
         sharedSqliteSettingsRepository = dependencies?.sqliteSettingsRepository,
         sharedArtworkService = dependencies?.artworkService,
+        sharedAccountRepository = dependencies?.sqliteAccountRepository,
     )
     override val uiState: StateFlow<ReiAnixSettingsUiState> = repository.state
 
