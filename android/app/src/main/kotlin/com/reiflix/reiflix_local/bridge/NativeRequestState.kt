@@ -18,7 +18,7 @@ class NativeRequestState {
     )
 
     private val supportedActions=setOf(
-        "select_tree","scan_tree","verify_tree","release_tree","scan_media_store",
+        "open_library","hide_library","select_tree","scan_tree","verify_tree","release_tree","scan_media_store",
         "request_media_access","open_broad_storage_settings","open_storage_settings","check_storage_access","open_settings","hide_settings","open_organize",
         "scan_all_storage","scan_library","extract_thumbnail","cancel_scan","cancel_player_transition","google_sign_in","google_sign_out","google_account_switch","play"
     )
