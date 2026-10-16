@@ -1285,14 +1285,21 @@ class MainActivity : FlutterFragmentActivity() {
                 handleNativeIntent(deferredIntent)
                 handleNativeSettingsFileIntent(deferredIntent)
             }
-            if (!recoveryRequired) maybeLaunchAutomaticSafPicker()
+            if (!recoveryRequired) {
+                if (activityResumed) {
+                    if (broadStoragePermissionPending) {
+                        handleBroadSettingsReturn(pendingBroadRequestId, "bootstrap_validated")
+                    } else {
+                        consumeAndDispatchPendingLifecycleAction()
+                    }
+                }
+                maybeLaunchAutomaticSafPicker()
+            }
         }
         // The existing SystemUiController remains the single Android system-bar
         // authority while the Compose shell and legacy Flet surfaces coexist.
         systemUiController.applyApplicationPolicy(useContextAppearance = false)
-        // Permission-sensitive actions are queued until the Activity is resumed.
-        handleNativeIntent(intent)
-        handleNativeSettingsFileIntent(intent)
+        // The initial intent is processed once, after the bootstrap selects the safe route.
     }
 
     public override fun onNewIntent(intent: Intent) {
@@ -2025,138 +2032,12 @@ class MainActivity : FlutterFragmentActivity() {
         // publish an intermediate "denied" snapshot first: Python could treat
         // that snapshot as the final result and close the onboarding while the
         // real Android permission/settings UI is only about to open.
-        val pending = nativeRequestState.consumeLifecycleAction()
-        val pendingRequestId = nativeRequestState.consumedLifecycleRequestId()
-        if (pending != null) {
-            // Restore only the correlation id owned by the queued lifecycle action.
-            // Keeping one request id in unrelated permission fields can make a later
-            // Settings/SAF callback look like it belongs to the wrong operation.
-            when (pending) {
-                "select_tree" -> {
-                    pendingSafRequestId = pendingRequestId
-                    if (window?.decorView?.hasWindowFocus() == true) {
-                        openTreePicker(pendingRequestId)
-                    } else {
-                        Log.i(tag, "SAF_PICKER_WAITING_FOR_FOCUS requestId=" + (pendingRequestId ?: "-"))
-                        nativeRequestState.queueLifecycleAction("select_tree", pendingRequestId)
-                    }
-                }
-                "request_media_access" -> {
-                    pendingMediaRequestId = pendingRequestId
-                    requestMediaAccess()
-                }
-                "open_broad_storage_settings" -> {
-                    pendingBroadRequestId = pendingRequestId
-                    openBroadStorageSettings()
-                }
-                "scan_library" -> {
-                    nativeRequestState.markOperationState(
-                        pendingRequestId,
-                        "scan_library",
-                        NativeRequestState.OperationState.RUNNING,
-                    )
-                    publishNativeDiagnostic(
-                        "OPERATION_STARTED",
-                        pendingRequestId,
-                        "scan_library",
-                        NativeRequestState.OperationState.RUNNING.name,
-                    )
-                    scanConfiguredSafRoots(
-                        pendingRequestId,
-                        "USER_REFRESH",
-                        "compose_library_refresh",
-                        includeAuthorizedDiagnostics = true,
-                    )
-                }
-                "play" -> {
-                    val uri = pendingPlayUri
-                    if (!uri.isNullOrBlank()) {
-                        val pendingRequestId = pendingPlayRequestId
-                        nativeRequestState.markOperationState(
-                            pendingRequestId,
-                            "play",
-                            NativeRequestState.OperationState.RUNNING,
-                        )
-                        publishNativeDiagnostic(
-                            "OPERATION_STARTED",
-                            pendingRequestId,
-                            "play",
-                            NativeRequestState.OperationState.RUNNING.name,
-                        )
+        if (bootstrapAllowsNativeOperations()) {
+            consumeAndDispatchPendingLifecycleAction()
+        }
 
-                        // Reuse the exact command that arrived from Python whenever possible.
-                        // This preserves playerSessionId, origin request/generation fencing,
-                        // monotonic correlation and all player settings across onResume.
-                        val preservedPlayData = pendingPlayIntentData
-                            ?.trim()
-                            ?.takeIf { it.isNotEmpty() }
-                            ?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() }
-                        val restoredPlayerSessionId = pendingPlayIntentData
-                            ?.let { raw -> runCatching { Uri.parse(raw).getQueryParameter("player_session_id") }.getOrNull() }
-                            ?.trim()
-                            ?.takeIf { it.isNotEmpty() }
-                            ?: activePlayerSessionId
-                        if (restoredPlayerSessionId.isNullOrBlank()) {
-                            nativeRequestState.markOperationState(
-                                pendingRequestId,
-                                "play",
-                                NativeRequestState.OperationState.FAILED,
-                            )
-                            publishNativeDiagnostic(
-                                "PLAYER_HANDOFF_REJECTED",
-                                pendingRequestId,
-                                "play",
-                                NativeRequestState.OperationState.FAILED.name,
-                                result = "PLAYER_SESSION_INVALID",
-                            )
-                            clearPendingPlay()
-                            return
-                        }
-                        if (preservedPlayData == null && pendingPlayPositionInvalid) {
-                            publishNativeCommandError(
-                                pendingRequestId,
-                                "play",
-                                "request_validation",
-                                "INVALID_POSITION_MS",
-                                "A posição inicial enviada para o player não é válida.",
-                            )
-                            clearPendingPlay()
-                            return
-                        }
-                        val playData = preservedPlayData ?: Uri.parse("reiflix://native").buildUpon()
-                            .appendQueryParameter("action", "play")
-                            .appendQueryParameter("request_id", pendingRequestId.orEmpty())
-                            .appendQueryParameter("uri", uri)
-                            .appendQueryParameter("episode_id", pendingPlayEpisodeId.orEmpty())
-                            .appendQueryParameter("anime_id", pendingPlayAnimeId.orEmpty())
-                            .appendQueryParameter("title", pendingPlayTitle ?: "Episódio")
-                            .apply {
-                                if (pendingPlayPositionSpecified) {
-                                    appendQueryParameter("position_ms", pendingPlayPositionMs.toString())
-                                }
-                            }
-                            .appendQueryParameter("can_next", pendingPlayCanNext.toString())
-                            .appendQueryParameter("can_previous", pendingPlayCanPrevious.toString())
-                            .appendQueryParameter("autoplay", pendingPlayAutoplay.toString())
-                            .appendQueryParameter("created_at", pendingPlayCommandCreatedAtMs.toString())
-                            .appendQueryParameter("player_session_id", restoredPlayerSessionId)
-                            .build()
-                        clearPendingPlay()
-                        if (openPlayer(playData, commandReceivedAtMs = System.currentTimeMillis())) {
-                            publishNativeDiagnostic(
-                                "COMMAND_DISPATCHED",
-                                pendingRequestId,
-                                "play",
-                                nativeRequestState.operationState(pendingRequestId)?.name,
-                                result = if (preservedPlayData != null) "dispatched_preserved_request" else "dispatched_legacy_restore",
-                            )
-                        }
-                    } else {
-                        clearPendingPlay()
-                    }
-                }
-            }
-            // Established host contract: "request_media_access" -> requestMediaAccess()
+        if (!bootstrapAllowsNativeOperations()) {
+            Log.i(tag, "NATIVE_LIFECYCLE_WORK_DEFERRED reason=bootstrap_not_ready_or_recovery")
             return
         }
 
@@ -2221,6 +2102,155 @@ class MainActivity : FlutterFragmentActivity() {
                 reason = "permission_available_after_resume",
             )
         }
+    }
+
+    private fun bootstrapAllowsNativeOperations(): Boolean {
+        val state = appDependencies.bootstrap.state.value
+        return nativeBootstrapDecisionComplete &&
+            !state.recoveryRequired &&
+            state.stage == ReiAnixBootstrapStage.READY &&
+            state.persistenceStatus in setOf(
+                ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+            )
+    }
+
+    /** Process persisted lifecycle work only after the canonical DB decision is healthy. */
+    private fun consumeAndDispatchPendingLifecycleAction() {
+                val pending = nativeRequestState.consumeLifecycleAction()
+                if (pending != null) {
+                    val pendingRequestId = nativeRequestState.consumedLifecycleRequestId()
+                    // Restore only the correlation id owned by the queued lifecycle action.
+                    // Keeping one request id in unrelated permission fields can make a later
+                    // Settings/SAF callback look like it belongs to the wrong operation.
+                    when (pending) {
+                        "select_tree" -> {
+                            pendingSafRequestId = pendingRequestId
+                            if (window?.decorView?.hasWindowFocus() == true) {
+                                openTreePicker(pendingRequestId)
+                            } else {
+                                Log.i(tag, "SAF_PICKER_WAITING_FOR_FOCUS requestId=" + (pendingRequestId ?: "-"))
+                                nativeRequestState.queueLifecycleAction("select_tree", pendingRequestId)
+                            }
+                        }
+                        "request_media_access" -> {
+                            pendingMediaRequestId = pendingRequestId
+                            requestMediaAccess()
+                        }
+                        "open_broad_storage_settings" -> {
+                            pendingBroadRequestId = pendingRequestId
+                            openBroadStorageSettings()
+                        }
+                        "scan_library" -> {
+                            nativeRequestState.markOperationState(
+                                pendingRequestId,
+                                "scan_library",
+                                NativeRequestState.OperationState.RUNNING,
+                            )
+                            publishNativeDiagnostic(
+                                "OPERATION_STARTED",
+                                pendingRequestId,
+                                "scan_library",
+                                NativeRequestState.OperationState.RUNNING.name,
+                            )
+                            scanConfiguredSafRoots(
+                                pendingRequestId,
+                                "USER_REFRESH",
+                                "compose_library_refresh",
+                                includeAuthorizedDiagnostics = true,
+                            )
+                        }
+                        "play" -> {
+                            val uri = pendingPlayUri
+                            if (!uri.isNullOrBlank()) {
+                                val pendingRequestId = pendingPlayRequestId
+                                nativeRequestState.markOperationState(
+                                    pendingRequestId,
+                                    "play",
+                                    NativeRequestState.OperationState.RUNNING,
+                                )
+                                publishNativeDiagnostic(
+                                    "OPERATION_STARTED",
+                                    pendingRequestId,
+                                    "play",
+                                    NativeRequestState.OperationState.RUNNING.name,
+                                )
+        
+                                // Reuse the exact command that arrived from Python whenever possible.
+                                // This preserves playerSessionId, origin request/generation fencing,
+                                // monotonic correlation and all player settings across onResume.
+                                val preservedPlayData = pendingPlayIntentData
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() }
+                                val restoredPlayerSessionId = pendingPlayIntentData
+                                    ?.let { raw -> runCatching { Uri.parse(raw).getQueryParameter("player_session_id") }.getOrNull() }
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?: activePlayerSessionId
+                                if (restoredPlayerSessionId.isNullOrBlank()) {
+                                    nativeRequestState.markOperationState(
+                                        pendingRequestId,
+                                        "play",
+                                        NativeRequestState.OperationState.FAILED,
+                                    )
+                                    publishNativeDiagnostic(
+                                        "PLAYER_HANDOFF_REJECTED",
+                                        pendingRequestId,
+                                        "play",
+                                        NativeRequestState.OperationState.FAILED.name,
+                                        result = "PLAYER_SESSION_INVALID",
+                                    )
+                                    clearPendingPlay()
+                                    return
+                                }
+                                if (preservedPlayData == null && pendingPlayPositionInvalid) {
+                                    publishNativeCommandError(
+                                        pendingRequestId,
+                                        "play",
+                                        "request_validation",
+                                        "INVALID_POSITION_MS",
+                                        "A posição inicial enviada para o player não é válida.",
+                                    )
+                                    clearPendingPlay()
+                                    return
+                                }
+                                val playData = preservedPlayData ?: Uri.parse("reiflix://native").buildUpon()
+                                    .appendQueryParameter("action", "play")
+                                    .appendQueryParameter("request_id", pendingRequestId.orEmpty())
+                                    .appendQueryParameter("uri", uri)
+                                    .appendQueryParameter("episode_id", pendingPlayEpisodeId.orEmpty())
+                                    .appendQueryParameter("anime_id", pendingPlayAnimeId.orEmpty())
+                                    .appendQueryParameter("title", pendingPlayTitle ?: "Episódio")
+                                    .apply {
+                                        if (pendingPlayPositionSpecified) {
+                                            appendQueryParameter("position_ms", pendingPlayPositionMs.toString())
+                                        }
+                                    }
+                                    .appendQueryParameter("can_next", pendingPlayCanNext.toString())
+                                    .appendQueryParameter("can_previous", pendingPlayCanPrevious.toString())
+                                    .appendQueryParameter("autoplay", pendingPlayAutoplay.toString())
+                                    .appendQueryParameter("created_at", pendingPlayCommandCreatedAtMs.toString())
+                                    .appendQueryParameter("player_session_id", restoredPlayerSessionId)
+                                    .build()
+                                clearPendingPlay()
+                                if (openPlayer(playData, commandReceivedAtMs = System.currentTimeMillis())) {
+                                    publishNativeDiagnostic(
+                                        "COMMAND_DISPATCHED",
+                                        pendingRequestId,
+                                        "play",
+                                        nativeRequestState.operationState(pendingRequestId)?.name,
+                                        result = if (preservedPlayData != null) "dispatched_preserved_request" else "dispatched_legacy_restore",
+                                    )
+                                }
+                            } else {
+                                clearPendingPlay()
+                            }
+                        }
+                    }
+                    // Established host contract: "request_media_access" -> requestMediaAccess()
+                    return
+                }
     }
 
     override fun onPause() {
