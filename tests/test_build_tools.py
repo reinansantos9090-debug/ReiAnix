@@ -188,6 +188,9 @@ class AndroidHostVerificationTests(unittest.TestCase):
             "untarFile_arm64-v8a",
             "untarFile_armeabi-v7a",
             "untarFile_x86_64",
+            "splitStdlib_arm64-v8a",
+            "splitStdlib_armeabi-v7a",
+            "splitStdlib_x86_64",
         ):
             self.assertIn(f"-x :serious_python_android:{task}", workflow)
         self.assertNotIn("-x :app:compileReleaseKotlin", workflow)
