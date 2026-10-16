@@ -993,19 +993,21 @@ class ReiAnixLibraryViewModel(
             try {
                 nativeGenreRegistry.initialize()
                 val report = nativeGenreRegistry.classifyMissingLocalGenres()
-                val notificationFailures = withContext(Dispatchers.IO) {
-                    report.changedAnimeIds.count { animeId ->
-                        !NativeMailbox.write(
+                val notificationFailed = report.changedAnimeIds.isNotEmpty() &&
+                    !withContext(Dispatchers.IO) {
+                        NativeMailbox.write(
                             appContext,
                             JSONObject()
                                 .put("type", "native_genres_committed")
-                                .put("payload", JSONObject().put("animeId", animeId)),
+                                .put(
+                                    "payload",
+                                    JSONObject().put("changedCount", report.changedAnimeIds.size),
+                                ),
                         )
                     }
-                }
                 val message = when {
-                    report.classifiedAnime > 0 && notificationFailures > 0 ->
-                        "Gêneros salvos para ${report.classifiedAnime} animes; a projeção de ${notificationFailures} item(ns) pode precisar ser reaberta."
+                    report.classifiedAnime > 0 && notificationFailed ->
+                        "Gêneros salvos para ${report.classifiedAnime} animes; reabra a biblioteca para atualizar a projeção."
                     report.classifiedAnime > 0 ->
                         "${report.assignedGenreCount} associação(ões) de gênero salvas em ${report.classifiedAnime} animes."
                     report.skippedAuthoritativeMetadata > 0 ->
