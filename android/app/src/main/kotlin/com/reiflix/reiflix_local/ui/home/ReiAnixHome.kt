@@ -36,7 +36,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -499,14 +498,16 @@ private fun HomeNotice(
                 overflow = TextOverflow.Ellipsis,
             )
             if (actionLabel != null && onAction != null) {
-                TextButton(onClick = onAction) {
-                    Text(actionLabel, maxLines = 1)
-                }
+                ReiAnixCompactButton(
+                    text = actionLabel,
+                    onClick = onAction,
+                )
             }
             if (onDismiss != null) {
-                TextButton(onClick = onDismiss) {
-                    Text("Dispensar", maxLines = 1)
-                }
+                ReiAnixCompactButton(
+                    text = "Dispensar",
+                    onClick = onDismiss,
+                )
             }
         }
     }
