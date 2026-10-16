@@ -42,6 +42,10 @@ def test_native_recovery_validates_candidate_before_promoting_canonical_database
     assert "sidecarPairs.asReversed()" in recovery
     assert "previousDatabaseMoved" in recovery
     assert "createRecoverySafetySnapshot" in recovery
+    assert "readRecoverableAccountSnapshot()" in recovery
+    assert "restoreRecoverableAccountSnapshot(stagedDatabase, accountSnapshot)" in recovery
+    assert "accountStatePreserved = accountSnapshot.readable" in recovery
+    assert "reauthenticationRequired = !accountSnapshot.readable" in recovery
 
 
 def test_recovery_snapshot_preserves_source_bytes_and_describes_its_limits():
@@ -82,6 +86,8 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "MessageDigest.isEqual" in activity
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "backupService.restoreRecoveryBackup(inputCopy)" in activity
+    assert "result.reauthenticationRequired" in activity
+    assert "result.accountStatePreserved" in activity
     assert "showNativeBackupRestoreConfirmation" in activity
     assert "setPositiveButton(" in activity
     assert "completeNativeBackupRestore(inputCopy, action, requestId)" in activity
