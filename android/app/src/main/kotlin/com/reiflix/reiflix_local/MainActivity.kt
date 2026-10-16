@@ -1234,11 +1234,9 @@ class MainActivity : FlutterFragmentActivity() {
         lifecycleScope.launch {
             val recoveryRequired = withContext(Dispatchers.IO) {
                 val canonicalFile = File(File(applicationContext.filesDir, "data"), ReiAnixBackupService.DATABASE_NAME)
-                if (!canonicalFile.isFile || canonicalFile.length() <= 0L) {
-                    // Distinguish a fresh install from an interrupted atomic replacement.
-                    // Hidden previous/candidate files are deliberately retained until a
-                    // recovery succeeds; their presence must not trigger fresh-database
-                    // initialization and accidentally bypass recovery.
+                if (!canonicalFile.exists()) {
+                    // A genuinely absent file can be a fresh installation, unless
+                    // a prior interrupted promotion left recoverable artifacts.
                     val dataDirectory = File(applicationContext.filesDir, "data")
                     val interruptedPromotion = dataDirectory.listFiles()
                         ?.any { it.isFile && (
@@ -1250,6 +1248,10 @@ class MainActivity : FlutterFragmentActivity() {
                         .listFiles()
                         ?.any { it.isDirectory && it.name.startsWith("recovery-snapshot-") } == true
                     interruptedPromotion || priorRecoverySnapshots
+                } else if (!canonicalFile.isFile || canonicalFile.length() <= 0L) {
+                    // An existing non-file/empty database path is not a fresh install:
+                    // never initialize over it or bypass recovery.
+                    true
                 } else {
                     runCatching {
                         val schemaCompatible = appDependencies.sqliteDatabase
