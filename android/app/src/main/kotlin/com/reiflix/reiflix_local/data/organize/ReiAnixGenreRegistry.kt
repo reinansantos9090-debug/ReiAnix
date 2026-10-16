@@ -209,37 +209,58 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
             }
             database.transaction { connection ->
                 seedSystemAliases(connection)
-                val candidates = connection.rawQuery(
-                    """
-                    SELECT a.id, COALESCE(NULLIF(TRIM(a.title),''), a.lookup_title), a.genres,
-                           a.metadata_source, a.anilist_id, a.metadata_manual_fields
-                    FROM anime a
-                    WHERE (a.genres IS NULL OR TRIM(a.genres)='' OR TRIM(a.genres)='[]')
-                      AND NOT EXISTS (SELECT 1 FROM anime_genres ag WHERE ag.anime_id=a.id)
-                    ORDER BY a.id ASC
-                    LIMIT ?
-                    """.trimIndent(),
-                    arrayOf(limit.toString()),
-                ).use { cursor ->
-                    buildList {
-                        while (cursor.moveToNext()) {
-                            add(
-                                ClassificationCandidate(
-                                    id = cursor.getLong(0),
-                                    title = cursor.getString(1).orEmpty(),
-                                    genres = if (cursor.isNull(2)) null else cursor.getString(2),
-                                    source = if (cursor.isNull(3)) null else cursor.getString(3),
-                                    aniListId = if (cursor.isNull(4)) null else cursor.getLong(4),
-                                    manualFields = if (cursor.isNull(5)) null else cursor.getString(5),
-                                ),
-                            )
+                val candidates = mutableListOf<ClassificationCandidate>()
+                var scanned = 0
+                var skipped = 0
+                var lastScannedId = 0L
+                while (candidates.size < limit) {
+                    val batch = connection.rawQuery(
+                        """
+                        SELECT a.id, COALESCE(NULLIF(TRIM(a.title),''), a.lookup_title), a.genres,
+                               a.metadata_source, a.anilist_id, a.metadata_manual_fields
+                        FROM anime a
+                        WHERE a.id > ?
+                          AND (a.genres IS NULL OR TRIM(a.genres)='' OR TRIM(a.genres)='[]')
+                          AND NOT EXISTS (SELECT 1 FROM anime_genres ag WHERE ag.anime_id=a.id)
+                        ORDER BY a.id ASC
+                        LIMIT ?
+                        """.trimIndent(),
+                        arrayOf(lastScannedId.toString(), CLASSIFICATION_BATCH_SIZE.toString()),
+                    ).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) {
+                                add(
+                                    ClassificationCandidate(
+                                        id = cursor.getLong(0),
+                                        title = cursor.getString(1).orEmpty(),
+                                        genres = if (cursor.isNull(2)) null else cursor.getString(2),
+                                        source = if (cursor.isNull(3)) null else cursor.getString(3),
+                                        aniListId = if (cursor.isNull(4)) null else cursor.getLong(4),
+                                        manualFields = if (cursor.isNull(5)) null else cursor.getString(5),
+                                    ),
+                                )
+                            }
                         }
+                    }
+                    if (batch.isEmpty()) break
+                    lastScannedId = batch.last().id
+                    for (candidate in batch) {
+                        if (candidates.size >= limit) break
+                        scanned += 1
+                        if (
+                            candidate.aniListId != null ||
+                            candidate.source.normalizedSource() in AUTHORITATIVE_SOURCES ||
+                            manualFieldsOwnGenres(candidate.manualFields)
+                        ) {
+                            skipped += 1
+                            continue
+                        }
+                        candidates += candidate
                     }
                 }
 
                 var classified = 0
                 var assigned = 0
-                var skipped = 0
                 var unmatched = 0
                 val changedIds = mutableListOf<Long>()
                 candidates.forEach { candidate ->
@@ -282,7 +303,7 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
                     }
                 }
                 ClassificationReport(
-                    scanned = candidates.size,
+                    scanned = scanned,
                     classifiedAnime = classified,
                     assignedGenreCount = assigned,
                     skippedAuthoritativeMetadata = skipped,
@@ -458,6 +479,7 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
     companion object {
         const val DEFAULT_CLASSIFICATION_LIMIT = 10_000
         private const val MAX_CLASSIFICATION_LIMIT = 100_000
+        private const val CLASSIFICATION_BATCH_SIZE = 500
         private val AUTHORITATIVE_SOURCES = setOf("anilist", "manual")
         private val SYSTEM_ALIASES = linkedMapOf(
             "Action" to listOf("Ação"),
