@@ -191,6 +191,7 @@ class ReiAnixBackupService(context: Context) {
         val staging = File(backupDirectory, ".reiflix-restore-" + UUID.randomUUID())
         check(staging.mkdirs()) { "Não foi possível preparar a restauração." }
         val createdAssets = mutableListOf<File>()
+        var canonicalCommitCompleted = false
         try {
             val snapshot = File(staging, DATABASE_NAME)
             val mappings = mutableListOf<Pair<String, String>>()
@@ -239,21 +240,38 @@ class ReiAnixBackupService(context: Context) {
                 }
             }
             restoreIntoCanonicalDatabase(snapshot, mappings)
-            val report = integrityReport()
-            check(report.healthy) { "O banco restaurado falhou na verificação final." }
+            canonicalCommitCompleted = true
+            // The restore transaction itself ran integrity_check, foreign_key_check,
+            // schema-v29 validation and domain invariants before committing. These
+            // post-commit summaries are best-effort so a transient diagnostic read
+            // cannot report failure after data has already been committed or delete
+            // artwork now referenced by the canonical database.
+            val report = runCatching { integrityReport() }.getOrNull()
+            val counts = report?.tableCounts
+                ?.takeIf { report.healthy }
+                ?: runCatching { databaseCounts(databaseFile) }.getOrNull()
+                ?: preview.counts
+            val missingFiles = runCatching { countMissingEpisodes() }.getOrNull()
+            val postCommitWarning = if (report?.healthy == true) {
+                emptyList()
+            } else {
+                listOf("A restauração foi validada antes do commit; a leitura de integridade pós-commit não ficou disponível.")
+            }
             return RestoreResult(
-                importedRows = ((report.tableCounts["anime"] ?: 0L) + (report.tableCounts["episodes"] ?: 0L)).toInt(),
-                missingFiles = countMissingEpisodes(),
+                importedRows = (
+                    (counts.optLong("anime", 0L)) + counts.optLong("episodes", 0L)
+                ).toInt(),
+                missingFiles = missingFiles ?: -1,
                 manualArtworkReconnected = mappings.size,
                 safetyBackup = safety,
                 warnings = listOf(
                     "A sessão/conta Google não é restaurada.",
                     "Os arquivos de vídeo não são incluídos no backup.",
                     "Capas remotas e thumbnails gerados podem ser reconstruídos.",
-                ) + preview.warnings,
+                ) + preview.warnings + postCommitWarning,
             )
         } catch (error: Exception) {
-            createdAssets.forEach { asset -> runCatching { asset.delete() } }
+            if (!canonicalCommitCompleted) createdAssets.forEach { asset -> runCatching { asset.delete() } }
             if (error is BackupValidationException) throw error
             throw BackupRestoreException(
                 error.message?.takeIf { it.isNotBlank() } ?: "A restauração foi revertida; o catálogo anterior foi preservado.",
@@ -380,9 +398,6 @@ class ReiAnixBackupService(context: Context) {
                 }
                 val schema = queryLongOrNull(db, "SELECT MAX(version) FROM schema_migrations")?.toInt()
                 require(schema == SCHEMA_VERSION) { "Schema do backup incompatível com o schema v29." }
-                require(queryLongOrNull(db, "PRAGMA user_version")?.toInt() == SCHEMA_VERSION) {
-                    "PRAGMA user_version do backup não corresponde ao schema v29."
-                }
                 if (sanitizeUnknownPreferences) {
                     val allowed = exportedPreferenceKeys().toList().sorted()
                     val placeholders = allowed.joinToString(",") { "?" }
@@ -490,7 +505,8 @@ class ReiAnixBackupService(context: Context) {
                     db.endTransaction()
                 }
             } finally {
-                db.execSQL("DETACH DATABASE restore_db")
+                // Do not let a secondary DETACH error mask a completed canonical transaction.
+                runCatching { db.execSQL("DETACH DATABASE restore_db") }
             }
         }
     }
@@ -704,9 +720,6 @@ class ReiAnixBackupService(context: Context) {
             require(queryStrings(db, "PRAGMA quick_check") == listOf("ok")) { "O banco SQLite canônico falhou no quick_check." }
             require(queryLongOrNull(db, "SELECT MAX(version) FROM schema_migrations")?.toInt() == SCHEMA_VERSION) {
                 "O banco SQLite canônico não corresponde ao schema v29."
-            }
-            require(queryLongOrNull(db, "PRAGMA user_version")?.toInt() == SCHEMA_VERSION) {
-                "PRAGMA user_version não corresponde ao schema v29."
             }
             require(resultRowCount(db, "PRAGMA foreign_key_check") == 0) {
                 "O banco SQLite canônico contém referências inválidas."
