@@ -323,5 +323,32 @@ class PlaybackContractTests(unittest.TestCase):
             self.assertIn(token, self.player)
 
 
+    def test_native_exit_checkpoint_is_committed_before_the_exit_event(self):
+        start = self.player.index("private fun reportPlayerExit(")
+        end = self.player.index("private fun finishPlayer(", start)
+        block = self.player[start:end]
+        self.assertIn("progressWorker.submit", block)
+        self.assertIn("consumptionService.saveProgress(", block)
+        self.assertIn('payload.put("nativeProgressPersisted", true)', block)
+        self.assertIn("publishCommittedProgress(", block)
+        self.assertLess(block.index("consumptionService.saveProgress("), block.index("NativeMailbox.write("))
+
+    def test_native_consumption_refreshes_compose_without_python_progress_publication(self):
+        view_model = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+        ).read_text(encoding="utf-8")
+        consumption = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ReiAnixConsumptionService.playbackChanges", view_model)
+        self.assertIn(".conflate()", view_model)
+        self.assertIn("refreshNativeCatalog()", view_model)
+        self.assertIn("val isCompleted", consumption)
+        self.assertIn("durationSeconds?.let(position::coerceAtMost)", consumption)
+        progress_start = self.main.index("elif event_type in {'player_progress', 'player_paused', 'player_completed'}:")
+        progress_end = self.main.index("elif event_type == 'player_mark_watched':", progress_start)
+        progress_block = self.main[progress_start:progress_end]
+        self.assertIn('if updated and payload.get("nativeProgressPersisted") is not True:', progress_block)
+
 if __name__ == "__main__":
     unittest.main()
