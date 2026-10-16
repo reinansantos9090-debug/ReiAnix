@@ -80,11 +80,41 @@ class NativeRequestState {
         return true
     }
 
+    /**
+     * A mailbox event can arrive after a newer result for the same request. Keep
+     * request lifecycle state monotonic so stale QUEUED/RUNNING callbacks cannot
+     * reopen an operation that has already reached a terminal state.
+     */
+    private fun OperationState.isTerminal(): Boolean =
+        this == OperationState.COMPLETED ||
+            this == OperationState.CANCELLED ||
+            this == OperationState.FAILED ||
+            this == OperationState.TIMEOUT
+
+    private fun canAdvanceState(
+        previous: OperationState?,
+        next: OperationState,
+    ): Boolean {
+        if (previous == null || previous == next) return true
+        if (previous.isTerminal()) return false
+        return when (previous) {
+            OperationState.RECEIVED -> true
+            OperationState.QUEUED -> next != OperationState.RECEIVED
+            OperationState.RUNNING ->
+                next != OperationState.RECEIVED && next != OperationState.QUEUED
+            OperationState.COMPLETED,
+            OperationState.CANCELLED,
+            OperationState.FAILED,
+            OperationState.TIMEOUT -> false
+        }
+    }
+
     @Synchronized
     fun markOperationState(requestId:String?, action:String?, state:OperationState, now:Long = System.currentTimeMillis()):Boolean{
         val id=requestId?.trim().orEmpty()
         if(id.isEmpty())return false
         val previous=requestSnapshots[id]
+        if (!canAdvanceState(previous?.state, state)) return false
         val resolvedAction=(action?.trim().orEmpty()).ifBlank { previous?.action ?: "unknown" }
         val createdAt=previous?.createdAt ?: now
         requestSnapshots[id]=RequestSnapshot(resolvedAction,state,createdAt,now)
@@ -93,14 +123,18 @@ class NativeRequestState {
         return true
     }
 
+    @Synchronized
     fun operationState(requestId:String?):OperationState? =
         requestSnapshots[requestId?.trim().orEmpty()]?.state
 
+    @Synchronized
     fun requestSnapshot(requestId:String?):RequestSnapshot? =
         requestSnapshots[requestId?.trim().orEmpty()]
 
+    @Synchronized
     fun seenRequestIdsState():String=JSONArray(seenRequestIds.toList()).toString()
 
+    @Synchronized
     fun requestStatesState():String {
         val array=JSONArray()
         requestSnapshots.forEach { (id,snapshot) ->

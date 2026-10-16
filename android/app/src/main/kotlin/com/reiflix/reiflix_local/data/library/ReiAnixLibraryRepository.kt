@@ -231,7 +231,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private val stateMutex = Mutex()
     private val pageGeneration = AtomicLong(0L)
     private val refreshInFlight = AtomicBoolean(false)
-    /** Keeps the active refresh flag and the latest requested post-refresh page filters atomic. */
+    /** Keeps duplicate scan requests from being started concurrently. */
     private val refreshRequestGuard = Any()
     private val pageRequestGuard = Any()
     private data class InFlightPage(
@@ -240,16 +240,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         val requestId: String,
     )
     private var inFlightPage: InFlightPage? = null
-    private data class RefreshPageRequest(
-        val query: String,
-        val genre: String,
-        val sort: String,
-        val favoritesOnly: Boolean,
-        val watchingOnly: Boolean,
-        val completedOnly: Boolean,
-    )
-    private var pendingRefreshPage: RefreshPageRequest? = null
-
     private val snapshotObserver = object : FileObserver(bridgeDirectory.path, FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.CREATE) {
         override fun onEvent(event: Int, path: String?) {
             if (path == snapshotFile.name) {
@@ -274,25 +264,14 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         scope.launch { loadSnapshot() }
     }
 
-    fun refresh(
-        query: String = "",
-        genre: String = "Todos",
-        sort: String = "Mais recentes",
-        favoritesOnly: Boolean = false,
-        watchingOnly: Boolean = false,
-        completedOnly: Boolean = false,
-    ) {
+    /**
+     * Starts the native scan lifecycle only. NativeLibraryViewModel owns catalog
+     * refresh and page queries after the scan finishes; do not bounce the same
+     * page request through Python's ComposeLibraryBridge a second time.
+     */
+    fun refresh() {
         val requestId = UUID.randomUUID().toString()
         synchronized(refreshRequestGuard) {
-            // Keep the newest filters while one native discovery request is in flight.
-            pendingRefreshPage = RefreshPageRequest(
-                query = query,
-                genre = genre,
-                sort = sort,
-                favoritesOnly = favoritesOnly,
-                watchingOnly = watchingOnly,
-                completedOnly = completedOnly,
-            )
             if (!refreshInFlight.compareAndSet(false, true)) return
         }
         val commandUri = Uri.parse("reiflix://native").buildUpon()
@@ -320,7 +299,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             }
         } catch (exception: Exception) {
             synchronized(refreshRequestGuard) {
-                pendingRefreshPage = null
                 refreshInFlight.set(false)
             }
             scope.launch {
@@ -522,7 +500,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 if (action == ReiAnixLibraryCommandCodec.Action.REFRESH) {
                     synchronized(refreshRequestGuard) {
                         refreshInFlight.set(false)
-                        pendingRefreshPage = null
                     }
                 }
                 if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE) {
@@ -632,26 +609,10 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         if (action == ReiAnixLibraryCommandCodec.Action.REFRESH.value &&
             result.status !in setOf("QUEUED", "RUNNING")
         ) {
+            // Only release the scan guard here. The ViewModel observes the
+            // terminal native scan event and queries canonical SQLite directly.
             synchronized(refreshRequestGuard) {
                 refreshInFlight.set(false)
-                val request = pendingRefreshPage
-                pendingRefreshPage = null
-                if (result.status == "COMPLETED" && request != null) {
-                    // Allocate the next page generation while still holding the
-                    // refresh guard. A newer refresh can then supersede this page,
-                    // but an older result cannot be scheduled after it.
-                    loadLibraryPage(
-                        page = 0,
-                        pageSize = 36,
-                        query = request.query,
-                        genre = request.genre,
-                        sort = request.sort,
-                        favoritesOnly = request.favoritesOnly,
-                        watchingOnly = request.watchingOnly,
-                        completedOnly = request.completedOnly,
-                        reset = true,
-                    )
-                }
             }
         }
 
@@ -708,7 +669,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         scope.coroutineContext[Job]?.cancel()
         synchronized(refreshRequestGuard) {
             refreshInFlight.set(false)
-            pendingRefreshPage = null
         }
         synchronized(pageRequestGuard) { inFlightPage = null }
     }
