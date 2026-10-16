@@ -247,8 +247,10 @@ class ReiAnixBackupService(context: Context) {
             // cannot report failure after data has already been committed or delete
             // artwork now referenced by the canonical database.
             val report = runCatching { integrityReport() }.getOrNull()
-            val counts = report?.tableCounts
-                ?.takeIf { report.healthy }
+            val counts = report?.takeIf { it.healthy }?.tableCounts
+                ?.let { tableCounts ->
+                    JSONObject().apply { tableCounts.forEach { (key, value) -> put(key, value) } }
+                }
                 ?: runCatching { databaseCounts(databaseFile) }.getOrNull()
                 ?: preview.counts
             val missingFiles = runCatching { countMissingEpisodes() }.getOrNull()
