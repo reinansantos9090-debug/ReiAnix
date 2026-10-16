@@ -43,10 +43,8 @@ fun ReiAnixRecoveryRoute(
     val operation = settingsState.operations.values
         .filter { it.action == "backup_recovery_restore" }
         .maxByOrNull { it.timestampMs }
-    val busy = operation?.state in setOf(
-        ReiAnixSettingsOperationState.QUEUED,
-        ReiAnixSettingsOperationState.RUNNING,
-    )
+    val busy = operation?.state == ReiAnixSettingsOperationState.QUEUED ||
+        operation?.state == ReiAnixSettingsOperationState.RUNNING
 
     Surface(
         modifier = Modifier.fillMaxSize(),
