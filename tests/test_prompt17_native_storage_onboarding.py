@@ -93,7 +93,9 @@ def test_first_run_opens_the_existing_saf_picker_once_after_bootstrap_ready():
     assert "private fun maybeLaunchAutomaticSafPicker()" in main
     auto = main[main.index("private fun maybeLaunchAutomaticSafPicker()"):
                 main.index("private fun refreshNativeStorageOnboardingState")]
-    assert "automaticSafPickerAttempted || safPickerPending" in auto
+    assert "automaticSafPickerAttempted" in auto
+    assert "safPickerPending" in auto
+    assert "pendingMediaRequestId != null" in auto
     assert "bootstrap.state.value.recoveryRequired" in auto
     assert "bootstrap.state.value.stage != ReiAnixBootstrapStage.READY" in auto
     assert auto.index("automaticSafPickerAttempted = true") < auto.index('requestNativeStorageAction("select_tree")')
