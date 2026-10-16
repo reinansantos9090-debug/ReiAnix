@@ -68,6 +68,14 @@ class NativeGenreMigrationContractTests(unittest.TestCase):
         self.assertIn("ReiAnixGenreRegistry(nativeLibraryRepository.database)", viewmodel)
         self.assertIn("nativeGenreRegistry.classifyMissingLocalGenres()", viewmodel)
 
+    def test_anilist_registry_sync_respects_manually_owned_genres(self):
+        anilist = self.read(ANILIST)
+        self.assertIn(
+            "remote.genres.isNotEmpty() && !manualFieldOwnsGenres(updated.metadataManualFieldsJson)",
+            anilist,
+        )
+        self.assertIn("private fun manualFieldOwnsGenres", anilist)
+
     def test_compose_organize_exposes_native_classification_and_status(self):
         ui = self.read(ORGANIZE_UI)
         viewmodel = self.read(VIEWMODEL)
