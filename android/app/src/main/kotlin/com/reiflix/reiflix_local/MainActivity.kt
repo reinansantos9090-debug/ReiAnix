@@ -627,12 +627,14 @@ class MainActivity : FlutterFragmentActivity() {
     private var settingsFileProcessing = false
 
     private val settingsExportLauncher =
-        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument("application/json"),
+            settingsExportResult@{ uri: Uri? ->
             val action = pendingSettingsFileAction
             val requestId = pendingSettingsFileRequestId
             pendingSettingsFileAction = null
             pendingSettingsFileRequestId = null
-            if (action != "settings_export" || requestId.isNullOrBlank()) return@registerForActivityResult
+            if (action != "settings_export" || requestId.isNullOrBlank()) return@settingsExportResult
             if (uri == null) {
                 lifecycleScope.launch(Dispatchers.IO) {
                     writeSettingsFileActionResult(
@@ -640,7 +642,7 @@ class MainActivity : FlutterFragmentActivity() {
                         message = "Exportação cancelada.",
                     )
                 }
-                return@registerForActivityResult
+                return@settingsExportResult
             }
             if (settingsFileProcessing) {
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -649,7 +651,7 @@ class MainActivity : FlutterFragmentActivity() {
                         error = "Outra operação de arquivo de configurações está em andamento.",
                     )
                 }
-                return@registerForActivityResult
+                return@settingsExportResult
             }
             settingsFileProcessing = true
             lifecycleScope.launch {
@@ -688,15 +690,18 @@ class MainActivity : FlutterFragmentActivity() {
                     settingsFileProcessing = false
                 }
             }
-        }
+            },
+        )
 
     private val settingsImportLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        registerForActivityResult(
+            ActivityResultContracts.OpenDocument(),
+            settingsImportResult@{ uri: Uri? ->
             val action = pendingSettingsFileAction
             val requestId = pendingSettingsFileRequestId
             pendingSettingsFileAction = null
             pendingSettingsFileRequestId = null
-            if (action != "settings_import" || requestId.isNullOrBlank()) return@registerForActivityResult
+            if (action != "settings_import" || requestId.isNullOrBlank()) return@settingsImportResult
             if (uri == null) {
                 lifecycleScope.launch(Dispatchers.IO) {
                     writeSettingsFileActionResult(
@@ -704,7 +709,7 @@ class MainActivity : FlutterFragmentActivity() {
                         message = "Importação cancelada.",
                     )
                 }
-                return@registerForActivityResult
+                return@settingsImportResult
             }
             if (settingsFileProcessing) {
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -713,7 +718,7 @@ class MainActivity : FlutterFragmentActivity() {
                         error = "Outra operação de arquivo de configurações está em andamento.",
                     )
                 }
-                return@registerForActivityResult
+                return@settingsImportResult
             }
             settingsFileProcessing = true
             lifecycleScope.launch {
@@ -795,7 +800,8 @@ class MainActivity : FlutterFragmentActivity() {
                     settingsFileProcessing = false
                 }
             }
-        }
+            },
+        )
 
     private fun cancelSafPickerWatchdog() {
         safPickerWatchdog?.let { safPickerWatchdogHandler.removeCallbacks(it) }
