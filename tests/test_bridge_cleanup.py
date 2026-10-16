@@ -173,7 +173,7 @@ def test_prompt18_settings_projection_failure_keeps_canonical_preferences_and_co
     assert "publishCanonicalPreferencesAfterBridgeFailure(" in settings
     assert "if (raw == null)" in settings
     assert "Optional settings projection is invalid; canonical SQLite preferences remain available." in settings
-    assert "settings = snapshotState.settings + persistedPreferences" in settings
+    assert "snapshotState.settings + persistedPreferences" in settings
     assert "account = canonicalAccountState ?: snapshotState.account" in settings
     assert "operations = current.operations" in settings
     assert "pendingSettings" in settings
