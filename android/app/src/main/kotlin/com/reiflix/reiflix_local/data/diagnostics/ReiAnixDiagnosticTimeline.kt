@@ -64,7 +64,7 @@ object ReiAnixDiagnosticTimeline {
                 val event = ReiAnixDiagnosticEvent(
                     id = UUID.randomUUID().toString(),
                     sequence = nextSequence,
-                    name = safeLabel(name, "UNKNOWN_EVENT"),
+                    name = safeLabel(name, "UNKNOWN_EVENT") ?: "UNKNOWN_EVENT",
                     timestampMs = System.currentTimeMillis(),
                     elapsedRealtimeNs = SystemClock.elapsedRealtimeNanos(),
                     severity = normalizeSeverity(severity),
