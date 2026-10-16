@@ -1233,7 +1233,7 @@ class ReiAnixSqliteLibraryRepository(
 
             val genres = connection.rawQuery(
                 """
-                SELECT ag.anime_id, g.id, g.canonical_name
+                SELECT DISTINCT ag.anime_id, g.id, g.canonical_name
                 FROM anime_genres ag
                 JOIN genres g ON g.id=ag.genre_id
                 ORDER BY g.normalized_name
