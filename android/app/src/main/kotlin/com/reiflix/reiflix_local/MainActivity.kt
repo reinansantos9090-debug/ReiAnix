@@ -3503,7 +3503,10 @@ class MainActivity : FlutterFragmentActivity() {
 
             // The picker can be launched while the IO query is running. Let its
             // state/result own the surface rather than publishing a stale snapshot.
-            if (safPickerPending) return@launch
+            if (
+                safPickerPending ||
+                _nativeStorageOnboardingState.value.phase == NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN
+            ) return@launch
             if (result.phase == NativeStorageOnboardingState.PHASE_READY) {
                 prefs.edit().putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false).apply()
             }
