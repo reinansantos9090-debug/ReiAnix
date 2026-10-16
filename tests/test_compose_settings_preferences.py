@@ -397,5 +397,5 @@ def test_compose_settings_storage_actions_dispatch_to_native_android_host():
     assert "completeComposeSettingsStorageAction(" in activity
     assert 'message = "Pasta adicionada à biblioteca."' in activity
     assert 'message = "Seleção de pasta cancelada."' in activity
-    assert "if action == 'select_saf':" in main  # legacy Flet Settings keeps its own consumer
-    assert "if action == 'request_media_access':" in main
+    assert "elif action == 'select_saf':" in main  # legacy Flet Settings keeps its own consumer
+    assert "elif action == 'request_media_access':" in main
