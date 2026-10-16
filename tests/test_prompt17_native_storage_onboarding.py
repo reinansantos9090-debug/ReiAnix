@@ -56,6 +56,7 @@ def test_picker_outcomes_update_native_onboarding_without_faking_grants():
     main = load("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
     assert 'NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN' in main
     assert 'NativeStorageOnboardingState.PHASE_NEEDS_FOLDER' in main
+    assert 'refreshNativeStorageOnboardingState("saf_picker_cancelled")' in main
     assert 'NativeStorageOnboardingState.PHASE_ERROR' in main
     assert 'NativeStorageOnboardingState.PHASE_READY' in main
     assert "SafScanner.persistPermission(this, uri, flags)" in main
