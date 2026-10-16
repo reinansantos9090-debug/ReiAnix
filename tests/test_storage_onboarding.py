@@ -413,8 +413,8 @@ class StorageOnboardingTests(unittest.TestCase):
         host = (
             ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
         ).read_text(encoding="utf-8")
-        self.assertIn("collectAsStateWithLifecycle()", host)
-        self.assertIn("libraryState.storage.onboardingState", host)
+        self.assertIn("activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()", host)
+        self.assertNotIn("libraryState.storage.onboardingState", host)
 
     def test_native_saf_result_emits_persist_ready_and_scan_diagnostics(self):
         source = (
@@ -521,14 +521,16 @@ class StorageOnboardingTests(unittest.TestCase):
     def test_compose_onboarding_is_the_android_startup_surface(self):
         host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
         screen = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixLibraryFolderOnboarding.kt").read_text(encoding="utf-8")
-        self.assertIn("libraryState.storage.onboardingState", host)
+        self.assertIn("activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()", host)
+        self.assertIn("nativeOnboarding.isPromptVisible", host)
         self.assertIn("ReiAnixLibraryFolderOnboarding(", host)
+        self.assertNotIn("libraryState.storage.onboardingState", host)
         self.assertNotIn("views/settings_view.py", host)
         self.assertIn('text = "ESCOLHER PASTA"', screen)
         self.assertIn('text = "CANCELAR"', screen)
         self.assertNotIn('text = "PERMITIR"', screen)
-        self.assertIn("onboardingDismissed", host)
-        self.assertIn("onboardingDismissed", host)
+        self.assertIn("onCancel = activity::dismissNativeStorageOnboarding", host)
+        self.assertIn('activity.requestNativeStorageAction("select_tree")', host)
         self.assertIn("ACTION_OPEN_DOCUMENT_TREE", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8"))
 
     def test_storage_onboarding_cannot_overlay_settings_navigation(self):
@@ -540,7 +542,7 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("val onboardingAllowed", host)
         self.assertIn("ReiAnixRoutes.HOME", host)
         self.assertIn("ReiAnixRoutes.LIBRARY", host)
-        overlay = host[host.index("val onboardingState"):host.index("fun hide()")]
+        overlay = host[host.index("if (onboardingAllowed && nativeOnboarding.isPromptVisible)"):host.index("fun hide()")]
         self.assertIn("onboardingAllowed", overlay)
         self.assertIn("ReiAnixLibraryFolderOnboarding(", overlay)
 
