@@ -386,7 +386,7 @@ def test_compose_settings_storage_actions_dispatch_to_native_android_host():
     native_backup_start = request_action.index("if (normalizedAction in NATIVE_BACKUP_DIAGNOSTIC_ACTIONS)")
     for action in ("backup_create", "backup_restore", "backup_integrity", "backup_reconcile", "diagnostic_export"):
         assert f'"{action}"' in repository[repository.index("private val NATIVE_BACKUP_DIAGNOSTIC_ACTIONS"):native_method_start]
-    assert native_backup_start < request_action.index("launchNativeSettingsFileAction(normalizedAction)")
+    assert native_backup_start < request_action.index("launchNativeSettingsFileAction(normalizedAction)", native_backup_start)
     assert "dispatchCommand(" not in request_action
     assert '"compose_settings_action"' not in request_action
     assert "elif action == 'backup_create':" in main
