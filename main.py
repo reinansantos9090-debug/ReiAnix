@@ -4828,25 +4828,19 @@ async def main(page: ft.Page):
                                         anime_id,
                                     )
                         if event_type == 'native_genres_committed':
-                            # Kotlin has already committed genres and identity links. This event
-                            # refreshes the hybrid Compose projection only; it never writes genres.
+                            # Kotlin has already committed genre rows in one transaction.
+                            # This single event refreshes the projection only; Python never
+                            # repeats the catalog mutation or emits one event per anime.
                             try:
-                                anime_id = int(payload.get('animeId') or 0)
+                                changed_count = int(payload.get('changedCount') or 0)
                             except (TypeError, ValueError):
-                                anime_id = 0
-                            if anime_id <= 0:
-                                logger.warning("[ORGANIZE_GENRES] projection refresh rejected reason=invalid_anime_id")
+                                changed_count = 0
+                            if changed_count <= 0:
+                                logger.warning("[ORGANIZE_GENRES] projection refresh rejected reason=invalid_changed_count")
                             else:
-                                metadata = store.anime_metadata_by_id(anime_id)
-                                if isinstance(metadata, dict):
-                                    compose_library_bridge.request_publish(
-                                        f"native_genres_updated:{anime_id}"
-                                    )
-                                else:
-                                    logger.info(
-                                        "[ORGANIZE_GENRES] projection refresh skipped animeId=%s reason=metadata_unavailable",
-                                        anime_id,
-                                    )
+                                compose_library_bridge.request_publish(
+                                    f"native_genres_updated:bulk:{changed_count}"
+                                )
                         if event_type == 'artwork_published':
                             artwork_event = str(payload.get('event') or '').strip().upper()
                             entity_type = str(payload.get('entity_type') or '').strip().lower()
