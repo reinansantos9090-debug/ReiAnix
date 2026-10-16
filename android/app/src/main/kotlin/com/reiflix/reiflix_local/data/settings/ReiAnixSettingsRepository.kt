@@ -42,6 +42,13 @@ class ReiAnixSettingsRepository(
             "check_storage_access",
             "open_broad_storage_settings",
         )
+        private val NATIVE_BACKUP_DIAGNOSTIC_ACTIONS = setOf(
+            "backup_create",
+            "backup_restore",
+            "backup_integrity",
+            "backup_reconcile",
+            "diagnostic_export",
+        )
 
         /**
          * A projection/IPC error must not erase the last known settings/account
@@ -367,6 +374,10 @@ class ReiAnixSettingsRepository(
         }
         if (normalizedAction in NATIVE_STORAGE_SETTINGS_ACTIONS) {
             launchNativeStorageSettingsAction(normalizedAction)
+            return
+        }
+        if (normalizedAction in NATIVE_BACKUP_DIAGNOSTIC_ACTIONS) {
+            launchNativeSettingsFileAction(normalizedAction)
             return
         }
         if (normalizedAction !in setOf(
