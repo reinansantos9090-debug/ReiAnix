@@ -1299,8 +1299,6 @@ class ReiAnixLibraryViewModel(
                     // its first saved value is dropped, so process startup alone does not
                     // trigger network metadata matching or artwork backfill.
                     refreshNativeCatalog()
-                    reconcileAniListAfterNativeScan()
-                    appDependencies?.artworkService?.requestPendingArtwork()
                 }
         }
         // Legacy commands can still mutate unrelated fields; their revision is only an
@@ -1406,19 +1404,6 @@ class ReiAnixLibraryViewModel(
                     )
                 }
             }
-        }
-    }
-
-    private suspend fun reconcileAniListAfterNativeScan() {
-        val service = appDependencies?.aniListIntegrationService ?: return
-        try {
-            withContext(Dispatchers.IO) {
-                service.reconcileUnmatchedLibraryMetadata()
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            Log.w(TAG, "AniList reconciliation after an explicit native scan failed. errorType=" + error::class.java.simpleName)
         }
     }
 
