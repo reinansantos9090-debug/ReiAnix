@@ -2220,7 +2220,20 @@ class MainActivity : FlutterFragmentActivity() {
                 "request_media_access", "check_storage_access", "open_broad_storage_settings" -> action
                 else -> null
             }
-            if (settingsAction !in SETTINGS_STORAGE_ACTIONS || settingsAction != expectedSettingsAction) {
+            val expectedNativeAccountAction = when (action) {
+                "google_sign_in" -> "login"
+                "google_sign_out" -> "logout"
+                "google_account_switch" -> "switch"
+                else -> null
+            }
+            val validNativeAccountAction =
+                data.getQueryParameter("native_account_owner") == "true" &&
+                    expectedNativeAccountAction != null &&
+                    settingsAction == expectedNativeAccountAction
+            if (validNativeAccountAction) {
+                // The native account handler writes one terminal Settings result.
+                // Do not classify account actions as storage picker operations.
+            } else if (settingsAction !in SETTINGS_STORAGE_ACTIONS || settingsAction != expectedSettingsAction) {
                 rejectComposeSettingsStorageAction(
                     requestId,
                     settingsAction,
@@ -2234,8 +2247,9 @@ class MainActivity : FlutterFragmentActivity() {
                     "A operação de armazenamento do Compose não é compatível com a ação nativa.",
                 )
                 return
+            } else {
+                beginComposeSettingsStorageAction(requestId, settingsAction)
             }
-            beginComposeSettingsStorageAction(requestId, settingsAction)
         }
         val commandReceivedAtMs = System.currentTimeMillis()
         Log.i(tag, "COMMAND_RECEIVED action=" + action + " requestId=" + requestId +
