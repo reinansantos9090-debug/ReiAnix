@@ -595,7 +595,7 @@ def main() -> int:
                 google_web_client_id = parsed_value.strip()
                 break
         if google_web_client_id and not re.fullmatch(
-            r"[A-Za-z0-9._-]+\\.apps\\.googleusercontent\\.com",
+            r"[A-Za-z0-9._-]+\.apps\.googleusercontent\.com",
             google_web_client_id,
         ):
             raise ValueError("GOOGLE_WEB_CLIENT_ID is not a valid public Google Web client ID")
