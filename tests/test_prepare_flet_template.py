@@ -67,6 +67,7 @@ class FletTemplateManifestTests(unittest.TestCase):
             )
 
             hook = HOOK.replace("__REIFLIX_OVERLAY_APP__", repr(str(overlay)))
+            hook = hook.replace("__REIFLIX_GOOGLE_WEB_CLIENT_ID__", repr(""))
             previous = Path.cwd()
             try:
                 os.chdir(project)
