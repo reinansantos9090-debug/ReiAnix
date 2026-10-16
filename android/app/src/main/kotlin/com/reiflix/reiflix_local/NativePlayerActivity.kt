@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local
 
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import com.reiflix.reiflix_local.player.DeviceInteractionProfile
@@ -1987,6 +1988,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
         override fun onPlayerError(error: PlaybackException) {
             if (!isCurrent()) return
 
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_PLAYER_PLAYBACK_ERROR",
+                severity = "ERROR",
+                source = "NativePlayerActivity",
+                result = "FAILED",
+                sessionId = playerSessionId,
+                error = error,
+                context = mapOf(
+                    "error_code" to error.errorCodeName,
+                    "player_generation" to playerGeneration,
+                    "transition_generation" to transitionGeneration,
+                ),
+            )
             val exoError = error as? ExoPlaybackException
             val rendererIndex = exoError?.rendererIndex?.takeIf { it >= 0 }
             val rendererType = exoError?.type?.let { "TYPE_$it" }.orEmpty()
