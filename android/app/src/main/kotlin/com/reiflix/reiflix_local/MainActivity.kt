@@ -4337,6 +4337,20 @@ class MainActivity : FlutterFragmentActivity() {
         applyApplicationSystemUi()
         ViewCompat.requestApplyInsets(window.decorView)
     }
+    private fun publishNativeComposeAccountChanged(requestId: String) {
+        runCatching {
+            NativeMailbox.write(
+                this,
+                JSONObject()
+                    .put("type", "compose_settings_native_account_changed")
+                    .put("requestId", requestId)
+                    .put("payload", JSONObject().put("requestId", requestId)),
+            )
+        }.onFailure { error ->
+            Log.w(tag, "NATIVE_ACCOUNT_RUNTIME_PROJECTION_FAILED requestId=" + requestId, error)
+        }
+    }
+
     private fun runNativeComposeAccountAction(action: String, requestId: String) {
         val safeActions = setOf("login", "logout", "switch")
         if (action !in safeActions || !SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId)) {
@@ -4345,6 +4359,7 @@ class MainActivity : FlutterFragmentActivity() {
         }
         lifecycleScope.launch {
             var terminalState = NativeRequestState.OperationState.FAILED
+            var accountStateChanged = false
             try {
                 val accountRepository = ReiAnixAppDependencies.from(applicationContext).sqliteAccountRepository
                 val clientId = getString(R.string.reiflix_google_web_client_id).trim()
@@ -4359,6 +4374,7 @@ class MainActivity : FlutterFragmentActivity() {
                         throw IllegalStateException("Não foi possível encerrar a sessão Google com segurança.")
                     }
                     withContext(Dispatchers.IO) { accountRepository.clearProfile() }
+                    accountStateChanged = true
                 }
 
                 var signedInProfile: GoogleIdentity.AccountProfile? = null
@@ -4380,6 +4396,7 @@ class MainActivity : FlutterFragmentActivity() {
                                 )
                             }
                             settingsViewModel.refresh()
+                            if (accountStateChanged) publishNativeComposeAccountChanged(requestId)
                             publishNativeDiagnostic(
                                 "GOOGLE_COMPOSE_ACCOUNT_CANCELLED", requestId, action,
                                 NativeRequestState.OperationState.CANCELLED.name,
@@ -4400,20 +4417,11 @@ class MainActivity : FlutterFragmentActivity() {
                             ),
                         )
                     }
+                    accountStateChanged = true
                 }
 
                 settingsViewModel.refresh()
-                runCatching {
-                    NativeMailbox.write(
-                        this@MainActivity,
-                        JSONObject()
-                            .put("type", "compose_settings_native_account_changed")
-                            .put("requestId", requestId)
-                            .put("payload", JSONObject().put("requestId", requestId)),
-                    )
-                }.onFailure { error ->
-                    Log.w(tag, "NATIVE_ACCOUNT_RUNTIME_PROJECTION_FAILED requestId=" + requestId, error)
-                }
+                publishNativeComposeAccountChanged(requestId)
                 terminalState = NativeRequestState.OperationState.COMPLETED
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(
@@ -4440,6 +4448,7 @@ class MainActivity : FlutterFragmentActivity() {
                 Log.e(tag, "NATIVE_COMPOSE_ACCOUNT_ACTION_FAILED requestId=" + requestId + " action=" + action, error)
                 terminalState = NativeRequestState.OperationState.FAILED
                 settingsViewModel.refresh()
+                if (accountStateChanged) publishNativeComposeAccountChanged(requestId)
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "ERROR", "ERROR",
