@@ -3395,11 +3395,6 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /**
-     * A media or broad-storage permission is not, by itself, a configured library
-     * folder. Startup discovery may only run when Android still holds a persisted
-     * read grant for a SAF tree; explicit selection has its own scan path.
-     */
-    /**
      * Dismissal changes only the onboarding presentation; it never grants access,
      * deletes a configured root, or marks a missing folder as ready.
      */
@@ -3517,6 +3512,11 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    /**
+     * A media or broad-storage permission is not, by itself, a configured library
+     * folder. Startup discovery may only run when Android still holds a persisted
+     * read grant for a SAF tree; explicit selection has its own scan path.
+     */
     private fun hasPersistedSafTreeGrant(): Boolean = runCatching {
         contentResolver.persistedUriPermissions.any { permission ->
             permission.isReadPermission && DocumentsContract.isTreeUri(permission.uri)
