@@ -26,7 +26,27 @@ class ReiAnixDiagnosticsService(context: Context) {
     private val databaseFile = File(dataDirectory, "library.sqlite3")
     private val coversDirectory = File(dataDirectory, "covers")
 
-    fun exportJson(): ByteArray {
+    fun exportJson(): ByteArray = try {
+        createReport().also { bytes ->
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_DIAGNOSTIC_REPORT_EXPORTED",
+                source = "ReiAnixDiagnosticsService",
+                result = "COMPLETED",
+                context = mapOf("report_bytes" to bytes.size),
+            )
+        }
+    } catch (error: Exception) {
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_DIAGNOSTIC_REPORT_EXPORT_FAILED",
+            severity = "ERROR",
+            source = "ReiAnixDiagnosticsService",
+            result = "FAILED",
+            error = error,
+        )
+        throw error
+    }
+
+    private fun createReport(): ByteArray {
         val backupService = ReiAnixBackupService(appContext)
         val integrity = backupService.integrityReport()
         val library = librarySummary()
@@ -88,6 +108,13 @@ class ReiAnixDiagnosticsService(context: Context) {
                     .put("genres", count(db, "SELECT COUNT(*) FROM genres"))
             }
         } catch (error: Exception) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_DIAGNOSTIC_LIBRARY_SUMMARY_FAILED",
+                severity = "ERROR",
+                source = "ReiAnixDiagnosticsService",
+                result = "FAILED",
+                error = error,
+            )
             JSONObject().put("available", false).put("error", safeError(error))
         }
     }
@@ -116,6 +143,13 @@ class ReiAnixDiagnosticsService(context: Context) {
                     .put("missing_local_references", missing)
             }
         } catch (error: Exception) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_DIAGNOSTIC_ARTWORK_SUMMARY_FAILED",
+                severity = "ERROR",
+                source = "ReiAnixDiagnosticsService",
+                result = "FAILED",
+                error = error,
+            )
             JSONObject().put("available", false).put("error", safeError(error))
         }
     }
