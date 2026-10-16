@@ -1,7 +1,6 @@
 package com.reiflix.reiflix_local
 
 import com.reiflix.reiflix_local.bridge.GoogleIdentity
-import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.player.NativePlayerRequest
 import com.reiflix.reiflix_local.bridge.NativeRequestState
@@ -1189,24 +1188,13 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appDependencies.bootstrap.start()
         PerformanceDiagnostics.attach(this)
         PerformanceDiagnostics.sampleMemory(this, "main_on_create")
         installSystemBackHandler()
         nativeRequestState.bind(this)
-        // Recovery may touch SQLite and large persisted receipts. Keep it off the main
-        // thread, then start the mailbox dispatcher after durable recovery receipts exist.
-        lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    NativeScanRunner.recoverInterruptedSafScans(applicationContext)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (exception: Exception) {
-                Log.e(tag, "Could not recover interrupted SAF generations.", exception)
-            }
-            NativeCommandDispatcher.start(this@MainActivity)
-        }
+        // The process-scoped application bootstrap owns interrupted-scan recovery and command dispatch.
+        // Repeated calls are idempotent and never create another service graph.
         nativeRequestState.restore(
             savedInstanceState?.getString(STATE_LAST_NATIVE_REQUEST_ID),
             savedInstanceState?.getString(STATE_PENDING_LIFECYCLE_ACTION),
@@ -1270,43 +1258,10 @@ class MainActivity : FlutterFragmentActivity() {
         composeLibraryHost = ReiAnixComposeLibraryHost(this, libraryViewModel, settingsViewModel)
         composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
 
-        // Detect a damaged/incompatible pre-existing canonical database without
-        // asking Python to classify the failure. Fresh installs (no DB yet) keep
-        // the current startup path and are not misclassified as recovery cases.
+        // Canonical database inspection belongs to the process bootstrap. Keep the existing
+        // non-destructive recovery route and await startup ordering away from the main thread.
         lifecycleScope.launch {
-            val recoveryRequired = withContext(Dispatchers.IO) {
-                val canonicalFile = File(File(applicationContext.filesDir, "data"), ReiAnixBackupService.DATABASE_NAME)
-                if (!canonicalFile.exists()) {
-                    // A genuinely absent file can be a fresh installation, unless
-                    // a prior interrupted promotion left recoverable artifacts.
-                    val dataDirectory = File(applicationContext.filesDir, "data")
-                    val interruptedPromotion = dataDirectory.listFiles()
-                        ?.any { it.isFile && (
-                            it.name.startsWith(".library.sqlite3.previous-") ||
-                                it.name.startsWith(".library.sqlite3.candidate-")
-                            )
-                        } == true
-                    val priorRecoverySnapshots = File(dataDirectory, "backups")
-                        .listFiles()
-                        ?.any { it.isDirectory && it.name.startsWith("recovery-snapshot-") } == true
-                    interruptedPromotion || priorRecoverySnapshots
-                } else if (!canonicalFile.isFile || canonicalFile.length() <= 0L) {
-                    // An existing non-file/empty database path is not a fresh install:
-                    // never initialize over it or bypass recovery.
-                    true
-                } else {
-                    runCatching {
-                        val schemaCompatible = appDependencies.sqliteDatabase
-                            .inspectSchema()
-                            .supportsCurrentContract
-                        val integrity = ReiAnixBackupService(applicationContext).integrityReport()
-                        !schemaCompatible || !integrity.healthy
-                    }.getOrElse { error ->
-                        Log.e(tag, "NATIVE_DATABASE_RECOVERY_REQUIRED", error)
-                        true
-                    }
-                }
-            }
+            val recoveryRequired = appDependencies.bootstrap.validateCanonicalDatabase()
             if (recoveryRequired && !isFinishing && !isDestroyed) {
                 Log.w(tag, "NATIVE_DATABASE_RECOVERY_ROUTE_OPENED")
                 composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)

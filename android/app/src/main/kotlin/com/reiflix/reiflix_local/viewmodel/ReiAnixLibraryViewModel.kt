@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reiflix.reiflix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +106,10 @@ class ReiAnixLibraryViewModel(
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
     private val appContext = context.applicationContext
     private val appDependencies = dependencies ?: ReiAnixAppDependencies.existingOrNull(appContext)
+
+    /** Process-owned bootstrap state is observable by Compose without transferring lifecycle ownership. */
+    val bootstrapState: StateFlow<ReiAnixBootstrapState> =
+        appDependencies?.bootstrap?.state ?: MutableStateFlow(ReiAnixBootstrapState())
 
     
     companion object {
