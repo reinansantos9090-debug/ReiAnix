@@ -1196,20 +1196,24 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         if (pendingSettingsFileAction != null || settingsFileProcessing) {
-            writeSettingsFileActionResult(
-                requestId, action, "ERROR", "ERROR",
-                error = "Outra operação de arquivo de configurações está em andamento.",
-            )
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(
+                    requestId, action, "ERROR", "ERROR",
+                    error = "Outra operação de arquivo de configurações está em andamento.",
+                )
+            }
             return
         }
 
         pendingSettingsFileAction = action
         pendingSettingsFileRequestId = requestId
-        writeSettingsFileActionResult(
-            requestId, action, "RUNNING", "RUNNING",
-            message = "Aguardando o seletor de arquivos do Android.",
-        )
         lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                writeSettingsFileActionResult(
+                    requestId, action, "RUNNING", "RUNNING",
+                    message = "Aguardando o seletor de arquivos do Android.",
+                )
+            }
             lifecycle.whenStarted {
                 try {
                     when (action) {
