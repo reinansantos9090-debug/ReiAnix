@@ -434,8 +434,10 @@ class StorageOnboardingTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         resume = source[source.index("override fun onResume()"):source.index("override fun onPause")]
         self.assertIn("val hasPersistedSafTree = hasPersistedSafTreeGrant()", resume)
-        self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
+        self.assertIn("if (shouldDiscover) {", resume)
         self.assertIn('"STARTUP_SCAN_SKIPPED"', resume)
+        self.assertIn('result = "explicit_scan_required"', resume)
+        self.assertNotIn('reason = "first_activity_resume"', resume)
         self.assertIn("hasPersistedSafTree &&", resume)
         self.assertIn("private fun hasPersistedSafTreeGrant()", source)
         self.assertIn("DocumentsContract.isTreeUri(permission.uri)", source)
@@ -740,9 +742,9 @@ class StorageOnboardingTests(unittest.TestCase):
     def test_on_resume_does_not_publish_intermediate_denied_before_pending_request(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         resume = source[source.index("override fun onResume()"):source.index("override fun onPause()", source.index("override fun onResume()"))]
-        self.assertLess(resume.index("val pending = nativeRequestState.consumeLifecycleAction()"), resume.index("publishStorageStatus()"))
-        self.assertIn("if (pending != null)", resume)
-        self.assertIn("return", resume)
+        self.assertLess(resume.index("consumeAndDispatchPendingLifecycleAction()"), resume.index("publishStorageStatus()"))
+        self.assertIn("if (hadPendingLifecycleAction) return", resume)
+        self.assertIn("consumeLifecycleAction()", source[source.index("private fun consumeAndDispatchPendingLifecycleAction()"):])
 
     def test_broad_scanner_is_guarded_in_python_refresh_flow(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
