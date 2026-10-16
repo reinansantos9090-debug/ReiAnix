@@ -163,7 +163,7 @@ private fun RemoteAniListDetailsContent(anime: AniListAnime) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(
-            text = "Resultado do catálogo remoto. Este anime ainda não corresponde a um registro local; nenhuma entrada local foi criada.",
+            text = "Resultado do catálogo remoto. Esta busca não cria nem altera registros locais.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
