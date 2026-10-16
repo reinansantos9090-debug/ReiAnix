@@ -359,10 +359,13 @@ class ReiAnixSettingsRepository(
             launchNativeSettingsFileAction(normalizedAction)
             return
         }
+        if (normalizedAction in NATIVE_STORAGE_SETTINGS_ACTIONS) {
+            launchNativeStorageSettingsAction(normalizedAction)
+            return
+        }
         if (normalizedAction !in setOf(
-            "select_saf", "request_media_access",
-            "check_storage_access", "open_broad_storage_settings", "backup_create",
-            "backup_restore", "backup_integrity", "backup_reconcile", "diagnostic_export",
+            "backup_create", "backup_restore", "backup_integrity", "backup_reconcile",
+            "diagnostic_export",
         )) return
         dispatchCommand(normalizedAction, normalizedAction) { requestId ->
             JSONObject()
@@ -371,6 +374,58 @@ class ReiAnixSettingsRepository(
                 .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
         }
     }
+    private fun launchNativeStorageSettingsAction(action: String) {
+        val requestId = UUID.randomUUID().toString()
+        val nativeAction = if (action == "select_saf") "select_tree" else action
+        synchronized(stateLock) {
+            val current = _state.value
+            _state.value = current.copy(
+                operations = upsertOperationLocked(
+                    current.operations,
+                    ReiAnixSettingsOperationUiState(
+                        requestId = requestId,
+                        action = action,
+                        state = ReiAnixSettingsOperationState.QUEUED,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+        scope.launch {
+            try {
+                val intent = MainActivity.createNativeStorageActionIntent(
+                    context = appContext,
+                    action = nativeAction,
+                    requestId = requestId,
+                ).apply {
+                    data = data?.buildUpon()
+                        ?.appendQueryParameter("settings_action", action)
+                        ?.build()
+                }
+                appContext.startActivity(intent)
+                Log.i(
+                    TAG,
+                    "SETTINGS_STORAGE_ACTION_LAUNCHED requestId=" + requestId +
+                        " action=" + action + " nativeAction=" + nativeAction,
+                )
+            } catch (cancelled: CancellationException) {
+                updateSettingsFileOperation(
+                    requestId,
+                    ReiAnixSettingsOperationState.CANCELLED,
+                    error = "A operação de armazenamento foi cancelada.",
+                )
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "SETTINGS_STORAGE_ACTION_LAUNCH_FAILED requestId=" + requestId + " action=" + action, error)
+                updateSettingsFileOperation(
+                    requestId,
+                    ReiAnixSettingsOperationState.ERROR,
+                    error = "Não foi possível iniciar a operação nativa de armazenamento.",
+                )
+            }
+        }
+    }
+
     private fun launchNativeSettingsFileAction(action: String) {
         val requestId = UUID.randomUUID().toString()
         synchronized(stateLock) {
