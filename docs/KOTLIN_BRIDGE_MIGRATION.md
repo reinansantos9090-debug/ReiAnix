@@ -2,7 +2,7 @@
 
 ## Scope and baseline
 
-This document records the selective bridge changes made for Prompt 18/29. The implementation is based on the official repository state from `main` at baseline commit `9df33cd5c86f0ca7676af94b50b54f8a8ebb46ec` (Prompt 17/29). The runtime is still hybrid; this document does **not** claim that the application communication is **100% Kotlin**.
+This document records the selective bridge changes made for Prompt 18/29. The implementation is based on the official repository state from `main` at baseline commit `9df33cd5c86f0ca7676af94b50b54f8a8ebb46ec` (Prompt 17/29). The runtime is still hybrid, and the application's communication is not 100% Kotlin.
 
 The architectural invariant remains: the canonical LibraryStore SQLite database is the source of persisted library/settings state. IPC files, snapshots, mailbox envelopes and ViewModel flows are transport or projections, not a second source of truth.
 
@@ -18,8 +18,8 @@ The architectural invariant remains: the canonical LibraryStore SQLite database 
 
 ### Group B — partially migrated contracts retained for legacy consumers
 
-- **`core/compose_library_bridge.py`:** retained for Python-produced projection/compatibility commands and scan/storage/onboarding state still observed at the native repository boundary. It is not used as the canonical writer for the native catalog. The Python implementation and its snapshot schema were not deleted because scan, storage and legacy consumers remain connected to the contract.
-- **`core/compose_settings_bridge.py`:** retained as an auxiliary settings/account/storage projection and legacy command-result contract. It no longer determines the canonical persisted preference values when Kotlin has successfully read SQLite. Existing result files continue to correlate operations by request ID.
+- **`ComposeLibraryBridge` (`core/compose_library_bridge.py`):** retained for Python-produced projection/compatibility commands and scan/storage/onboarding state still observed at the native repository boundary. It is not used as the canonical writer for the native catalog. The Python implementation and its snapshot schema were not deleted because scan, storage and legacy consumers remain connected to the contract.
+- **`ComposeSettingsBridge` (`core/compose_settings_bridge.py`):** retained as an auxiliary settings/account/storage projection and legacy command-result contract. It no longer determines the canonical persisted preference values when Kotlin has successfully read SQLite. Existing result files continue to correlate operations by request ID.
 - **`NativeMailbox`:** retained as the durable Kotlin-to-Python event transport for real remaining consumers. The envelope contract (`eventId`, `eventVersion`, `eventType`, timestamps and optional `requestId`) and atomic publication stay unchanged. Best-effort telemetry still uses its bounded executor; control-plane writes retain their durability behavior.
 - **`AndroidBridge` / `MainActivity`:** retained for command and lifecycle contracts that still cross the hybrid boundary, including platform SAF/MediaStore and permission operations, compatibility navigation, runtime notifications and the established player launch lifecycle. Kotlin handlers continue to own operations implemented natively.
 - **`NativeCommandDispatcher`:** retained for legacy Python-to-Android internal player, thumbnail and player-transition cancellation commands. The native Media3 player remains the only player; this dispatcher is not a second domain service.
