@@ -500,12 +500,20 @@ class ReiAnixBackupService(context: Context) {
         check(directory.isDirectory || directory.mkdirs()) {
             "Não foi possível criar o diretório de snapshot de recuperação."
         }
+        val interruptedFiles = dataDirectory.listFiles().orEmpty()
+            .filter {
+                it.isFile && (
+                    it.name.startsWith("." + DATABASE_NAME + ".previous-") ||
+                        it.name.startsWith("." + DATABASE_NAME + ".candidate-")
+                    )
+            }
+            .sortedBy { it.name }
         val files = listOf(
             databaseFile,
             File(databaseFile.absolutePath + "-wal"),
             File(databaseFile.absolutePath + "-shm"),
             File(databaseFile.absolutePath + "-journal"),
-        )
+        ) + interruptedFiles
         val manifestEntries = JSONArray()
         try {
             files.forEach { source ->
