@@ -146,7 +146,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             inFlight.joinAll()
             backfill?.join()
             synchronized(jobs) {
-                jobs.entries.removeAll { !it.value.isActive }
+                jobs.entries.toList()
+                    .filter { !it.value.isActive }
+                    .forEach { (id, job) -> jobs.remove(id, job) }
             }
 
             val removedPaths = database.transaction { db ->
