@@ -1210,15 +1210,10 @@ class ReiAnixLibraryViewModel(
     }
 
     fun refresh() {
-        val filters = libraryFilters.value
-        repository.refresh(
-            query = filters.query,
-            genre = filters.selectedGenreKey ?: "Todos",
-            sort = filters.sort,
-            favoritesOnly = filters.favoritesOnly,
-            watchingOnly = filters.watchingOnly,
-            completedOnly = filters.completedOnly,
-        )
+        // The repository starts the native scan only. After its terminal event,
+        // refreshNativeCatalog() reloads both the canonical catalog and the active
+        // filtered page directly from SQLite.
+        repository.refresh()
     }
 
     /**
