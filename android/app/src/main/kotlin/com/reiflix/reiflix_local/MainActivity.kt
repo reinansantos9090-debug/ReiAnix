@@ -2433,12 +2433,39 @@ class MainActivity : FlutterFragmentActivity() {
                 "google_sign_in" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
-                    signInWithGoogle(intent.data?.getQueryParameter("server_client_id"), requestId)
+                    val nativeOwner = intent.data?.getQueryParameter("native_account_owner") == "true"
+                    val settingsAction = intent.data?.getQueryParameter("settings_action")?.trim()
+                    if (nativeOwner && settingsAction == "login") {
+                        runNativeComposeAccountAction("login", requestId)
+                    } else {
+                        signInWithGoogle(intent.data?.getQueryParameter("server_client_id"), requestId)
+                    }
                 }
                 "google_sign_out" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
-                    signOutWithGoogle(requestId)
+                    val nativeOwner = intent.data?.getQueryParameter("native_account_owner") == "true"
+                    val settingsAction = intent.data?.getQueryParameter("settings_action")?.trim()
+                    if (nativeOwner && settingsAction == "logout") {
+                        runNativeComposeAccountAction("logout", requestId)
+                    } else {
+                        signOutWithGoogle(requestId)
+                    }
+                }
+                "google_account_switch" -> {
+                    nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
+                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+                    if (
+                        intent.data?.getQueryParameter("native_account_owner") == "true" &&
+                        intent.data?.getQueryParameter("settings_action")?.trim() == "switch"
+                    ) {
+                        runNativeComposeAccountAction("switch", requestId)
+                    } else {
+                        publishNativeCommandError(
+                            requestId, action, "dispatch", "UNSUPPORTED_ACCOUNT_ACTION",
+                            "A troca de conta precisa ser iniciada pelas configurações nativas.",
+                        )
+                    }
                 }
                 "cancel_player_transition" -> {
                     val originRequestId = data.getQueryParameter("origin_request_id")?.trim().orEmpty()
@@ -4296,6 +4323,133 @@ class MainActivity : FlutterFragmentActivity() {
         applyApplicationSystemUi()
         ViewCompat.requestApplyInsets(window.decorView)
     }
+    private fun runNativeComposeAccountAction(action: String, requestId: String) {
+        val safeActions = setOf("login", "logout", "switch")
+        if (action !in safeActions || !SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId)) {
+            Log.w(tag, "SETTINGS_ACCOUNT_ACTION_REJECTED action=" + action)
+            return
+        }
+        lifecycleScope.launch {
+            var terminalState = NativeRequestState.OperationState.FAILED
+            try {
+                val accountRepository = ReiAnixAppDependencies.from(applicationContext).sqliteAccountRepository
+                val clientId = getString(R.string.reiflix_google_web_client_id).trim()
+                val signedOut = action == "logout" || action == "switch"
+                if (signedOut) {
+                    val cleared = GoogleIdentity.signOut(
+                        this@MainActivity,
+                        requestId,
+                        publishLegacyMailboxEvents = false,
+                    )
+                    if (!cleared) {
+                        throw IllegalStateException("Não foi possível encerrar a sessão Google com segurança.")
+                    }
+                    withContext(Dispatchers.IO) { accountRepository.clearProfile() }
+                }
+
+                var signedInProfile: GoogleIdentity.AccountProfile? = null
+                if (action == "login" || action == "switch") {
+                    val result = GoogleIdentity.signIn(
+                        this@MainActivity,
+                        clientId,
+                        requestId,
+                        publishLegacyMailboxEvents = false,
+                    )
+                    signedInProfile = result.profile
+                    if (signedInProfile == null) {
+                        if (result.cancelled) {
+                            terminalState = NativeRequestState.OperationState.CANCELLED
+                            val message = "Login Google cancelado."
+                            withContext(Dispatchers.IO) {
+                                writeSettingsFileActionResult(
+                                    requestId, action, "CANCELLED", "CANCELLED", message = message,
+                                )
+                            }
+                            settingsViewModel.refresh()
+                            publishNativeDiagnostic(
+                                "GOOGLE_COMPOSE_ACCOUNT_CANCELLED", requestId, action,
+                                NativeRequestState.OperationState.CANCELLED.name,
+                            )
+                            return@launch
+                        }
+                        throw IllegalStateException(
+                            result.errorMessage ?: "Não foi possível validar a conta Google.",
+                        )
+                    }
+                    withContext(Dispatchers.IO) {
+                        accountRepository.saveProfile(
+                            com.reiflix.reiflix_local.data.sqlite.ReiAnixAccountProfile(
+                                id = signedInProfile!!.id,
+                                name = signedInProfile!!.name,
+                                email = signedInProfile!!.email,
+                                picture = signedInProfile!!.picture,
+                            ),
+                        )
+                    }
+                }
+
+                settingsViewModel.refresh()
+                runCatching {
+                    NativeMailbox.write(
+                        this@MainActivity,
+                        JSONObject()
+                            .put("type", "compose_settings_native_account_changed")
+                            .put("requestId", requestId)
+                            .put("payload", JSONObject().put("requestId", requestId)),
+                    )
+                }.onFailure { error ->
+                    Log.w(tag, "NATIVE_ACCOUNT_RUNTIME_PROJECTION_FAILED requestId=" + requestId, error)
+                }
+                terminalState = NativeRequestState.OperationState.COMPLETED
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "SUCCESS", "SUCCESS",
+                        message = when (action) {
+                            "login" -> "Conta Google conectada."
+                            "logout" -> "Sessão Google encerrada."
+                            else -> "Conta Google trocada."
+                        },
+                    )
+                }
+                publishNativeDiagnostic(
+                    "GOOGLE_COMPOSE_ACCOUNT_COMPLETED", requestId, action, terminalState.name,
+                )
+            } catch (cancelled: CancellationException) {
+                terminalState = NativeRequestState.OperationState.CANCELLED
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "CANCELLED", "CANCELLED", error = "A operação da conta foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_COMPOSE_ACCOUNT_ACTION_FAILED requestId=" + requestId + " action=" + action, error)
+                terminalState = NativeRequestState.OperationState.FAILED
+                settingsViewModel.refresh()
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = error.message?.takeIf { it.isNotBlank() } ?: "A operação da conta não foi concluída.",
+                    )
+                }
+                publishNativeDiagnostic(
+                    "GOOGLE_COMPOSE_ACCOUNT_FAILED", requestId, action, terminalState.name,
+                    error = error::class.java.simpleName,
+                )
+            } finally {
+                nativeRequestState.markOperationState(
+                    requestId,
+                    when (action) {
+                        "login" -> "google_sign_in"
+                        "logout" -> "google_sign_out"
+                        else -> "google_account_switch"
+                    },
+                    terminalState,
+                )
+            }
+        }
+    }
+
     private fun signOutWithGoogle(requestId: String? = null) {
         googleSignInJob?.cancel()
         googleSignInJob = null
