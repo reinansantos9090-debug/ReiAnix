@@ -342,8 +342,12 @@ class StorageOnboardingTests(unittest.TestCase):
             ROOT
             / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixLibraryFolderOnboarding.kt"
         ).read_text(encoding="utf-8")
-        self.assertIn("onboardingDismissed", host)
-        self.assertIn('onboardingState in setOf("checking", "needs_folder", "folder_picker_open", "error")', host)
+        self.assertIn("activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()", host)
+        self.assertIn("nativeOnboarding.isPromptVisible", host)
+        self.assertIn("onCancel = activity::dismissNativeStorageOnboarding", host)
+        self.assertIn('activity.requestNativeStorageAction("select_tree")', host)
+        self.assertNotIn("libraryState.storage.onboardingState", host)
+        self.assertNotIn("libraryViewModel::dismissStorageOnboarding", host)
         self.assertIn('text = "Fonte da biblioteca necessária"', screen)
         self.assertIn('text = "ESCOLHER PASTA"', screen)
         self.assertIn('text = "CANCELAR"', screen)
