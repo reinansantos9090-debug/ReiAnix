@@ -101,11 +101,6 @@ class ReiAnixAppBootstrap internal constructor(
                     error = null,
                 )
             }
-            recordDiagnostic(
-                name = "APP_BOOTSTRAP_STARTED",
-                result = ReiAnixBootstrapPhase.STARTING.name,
-                stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
-            )
             startupJob = processScope.launch { initializeProcessServices() }
         }
     }
@@ -192,6 +187,12 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     private suspend fun initializeProcessServices() {
+        // Timeline storage is observational work too; keep it off Application.onCreate's main thread.
+        recordDiagnostic(
+            name = "APP_BOOTSTRAP_STARTED",
+            result = ReiAnixBootstrapPhase.STARTING.name,
+            stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
+        )
         updateState {
             it.copy(
                 phase = ReiAnixBootstrapPhase.STARTING,
