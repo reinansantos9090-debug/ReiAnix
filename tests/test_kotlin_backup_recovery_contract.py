@@ -37,8 +37,8 @@ def test_native_recovery_validates_candidate_before_promoting_canonical_database
     assert promotion < post_validation < schema_check < integrity_check
     assert "PRAGMA foreign_key_check" in service
     assert "PRAGMA integrity_check" in service
-    assert "library.sqlite3-wal" in service
-    assert "library.sqlite3-journal" in service
+    assert 'File(databaseFile.absolutePath + "-wal")' in service
+    assert 'File(databaseFile.absolutePath + "-journal")' in service
     assert "sidecarPairs.asReversed()" in recovery
     assert "previousDatabaseMoved" in recovery
     assert "createRecoverySafetySnapshot" in recovery
