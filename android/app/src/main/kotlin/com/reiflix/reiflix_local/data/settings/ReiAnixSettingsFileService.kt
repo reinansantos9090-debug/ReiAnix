@@ -146,8 +146,10 @@ class ReiAnixSettingsFileService(
             null -> normalized
         }
 
-    private companion object {
-        const val EXPORT_FORMAT = "reiflix-settings"
+    companion object {
+        const val EXTRA_ACTION = "reianix.settings.file_action"
+        const val EXTRA_REQUEST_ID = "reianix.settings.request_id"
+        private const val EXPORT_FORMAT = "reiflix-settings"
         const val SCHEMA_VERSION = 2
         val SUPPORTED_SCHEMA_VERSIONS = setOf(1, SCHEMA_VERSION)
         val EXPORT_KEYS = ReiAnixSettingsContract.definitions.keys.toSet()
