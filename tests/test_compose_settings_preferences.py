@@ -382,8 +382,13 @@ def test_compose_settings_storage_actions_dispatch_to_native_android_host():
     native_method = repository[native_method_start:native_method_end]
 
     assert "NATIVE_STORAGE_SETTINGS_ACTIONS" in request_action
+    dispatch_start = request_action.index("dispatchCommand(")
+    native_dispatch_contract = request_action[:dispatch_start]
+    legacy_dispatch_contract = request_action[dispatch_start:]
     assert '"backup_create", "backup_restore", "backup_integrity", "backup_reconcile"' in request_action
-    assert '"compose_settings_action"' not in request_action
+    assert '"select_saf"' not in legacy_dispatch_contract
+    assert '"request_media_access"' not in legacy_dispatch_contract
+    assert '"compose_settings_action"' in legacy_dispatch_contract  # backup/diagnostic actions still use the Python contract
     assert "MainActivity.createNativeStorageActionIntent(" in native_method
     assert 'appendQueryParameter("settings_action", action)' in native_method
     assert '"select_saf"' in native_method and '"select_tree"' in native_method
