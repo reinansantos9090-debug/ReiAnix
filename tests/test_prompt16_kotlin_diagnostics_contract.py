@@ -101,5 +101,7 @@ def test_python_diagnostic_modules_are_preserved_for_active_legacy_consumers():
     assert (ROOT / "core/diagnostics.py").is_file()
     assert (ROOT / "core/performance.py").is_file()
     main = read("main.py")
+    assert "from core.diagnostics import DiagnosticTimeline" in main
+    assert "from core.performance import get_performance_monitor" in main
+    assert "from core.diagnostic_service import DiagnosticsService" in main
     assert "performance.record_native_event(event)" in main
-    assert "core/diagnostic_service.py" not in main  # service is wired through imports/call sites, not string paths
