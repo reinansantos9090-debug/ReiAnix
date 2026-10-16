@@ -1335,6 +1335,238 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    private fun finishNativeBackupExport(uri: Uri?) {
+        val action = pendingSettingsFileAction
+        val requestId = pendingSettingsFileRequestId
+        pendingSettingsFileAction = null
+        pendingSettingsFileRequestId = null
+        if (action != "backup_create" || requestId.isNullOrBlank()) return
+        if (uri == null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Exportação de backup cancelada.")
+            }
+            return
+        }
+        if (settingsFileProcessing) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
+            }
+            return
+        }
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            var archive: File? = null
+            try {
+                archive = withContext(Dispatchers.IO) {
+                    ReiAnixBackupService(applicationContext).createBackupFile()
+                }
+                withContext(Dispatchers.IO) {
+                    val output = contentResolver.openOutputStream(uri, "w")
+                        ?: throw IllegalStateException("O Android não abriu o destino do backup.")
+                    output.use { target -> archive!!.inputStream().use { input -> input.copyTo(target) } }
+                }
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = "Backup ReiAnix criado e validado.")
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A exportação de backup foi cancelada.")
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_BACKUP_EXPORT_FAILED requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível criar o backup.")
+                }
+            } finally {
+                archive?.delete()
+                settingsFileProcessing = false
+            }
+        }
+    }
+
+    private fun finishNativeBackupImport(uri: Uri?) {
+        val action = pendingSettingsFileAction
+        val requestId = pendingSettingsFileRequestId
+        pendingSettingsFileAction = null
+        pendingSettingsFileRequestId = null
+        if (action != "backup_restore" || requestId.isNullOrBlank()) return
+        if (uri == null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Restauração cancelada.")
+            }
+            return
+        }
+        if (settingsFileProcessing) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
+            }
+            return
+        }
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            val inputCopy = File(cacheDir, "reianix-restore-" + UUID.randomUUID() + ".zip")
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val input = contentResolver.openInputStream(uri)
+                        ?: throw IllegalStateException("O Android não abriu o backup selecionado.")
+                    input.use { source ->
+                        FileOutputStream(inputCopy).use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            var total = 0L
+                            while (true) {
+                                val read = source.read(buffer)
+                                if (read < 0) break
+                                if (read == 0) continue
+                                total += read
+                                require(total <= ReiAnixBackupService.MAX_ARCHIVE_BYTES) {
+                                    "O arquivo de backup excede o limite permitido."
+                                }
+                                output.write(buffer, 0, read)
+                            }
+                            output.fd.sync()
+                        }
+                    }
+                    ReiAnixBackupService(applicationContext).restoreBackup(inputCopy)
+                }
+                settingsViewModel.refresh()
+                libraryViewModel.refresh()
+                // Runtime consumers are notified only after the canonical transaction commits.
+                runCatching {
+                    NativeMailbox.write(
+                        this@MainActivity,
+                        JSONObject()
+                            .put("type", "compose_settings_native_backup_restored")
+                            .put("requestId", requestId)
+                            .put("payload", JSONObject().put("requestId", requestId)),
+                    )
+                }.onFailure { error ->
+                    Log.w(tag, "NATIVE_RESTORE_RUNTIME_PROJECTION_FAILED requestId=" + requestId, error)
+                }
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "SUCCESS", "SUCCESS",
+                        message = "Backup restaurado. Itens: " + result.importedRows +
+                            "; arquivos indisponíveis: " + result.missingFiles +
+                            "; capas manuais reconectadas: " + result.manualArtworkReconnected + ".",
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A restauração foi cancelada.")
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_BACKUP_RESTORE_FAILED requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível restaurar o backup.",
+                    )
+                }
+            } finally {
+                inputCopy.delete()
+                settingsFileProcessing = false
+            }
+        }
+    }
+
+    private fun finishNativeDiagnosticExport(uri: Uri?) {
+        val action = pendingSettingsFileAction
+        val requestId = pendingSettingsFileRequestId
+        pendingSettingsFileAction = null
+        pendingSettingsFileRequestId = null
+        if (action != "diagnostic_export" || requestId.isNullOrBlank()) return
+        if (uri == null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Exportação de diagnóstico cancelada.")
+            }
+            return
+        }
+        if (settingsFileProcessing) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
+            }
+            return
+        }
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            try {
+                val report = withContext(Dispatchers.IO) { ReiAnixDiagnosticsService(applicationContext).exportJson() }
+                withContext(Dispatchers.IO) {
+                    val output = contentResolver.openOutputStream(uri, "w")
+                        ?: throw IllegalStateException("O Android não abriu o destino do diagnóstico.")
+                    output.use { it.write(report) }
+                    writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = "Diagnóstico nativo exportado.")
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A exportação de diagnóstico foi cancelada.")
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_DIAGNOSTIC_EXPORT_FAILED requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível exportar o diagnóstico.")
+                }
+            } finally {
+                settingsFileProcessing = false
+            }
+        }
+    }
+
+    private fun runNativeSettingsMaintenanceAction(action: String, requestId: String) {
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "RUNNING", "RUNNING", message = "Executando verificação nativa.")
+                }
+                when (action) {
+                    "backup_integrity" -> {
+                        val report = withContext(Dispatchers.IO) { ReiAnixBackupService(applicationContext).integrityReport() }
+                        if (!report.healthy) {
+                            throw IllegalStateException(report.error ?: "O banco falhou na verificação de integridade.")
+                        }
+                        withContext(Dispatchers.IO) {
+                            writeSettingsFileActionResult(
+                                requestId, action, "SUCCESS", "SUCCESS",
+                                message = "SQLite íntegro; schema " + report.schemaVersion +
+                                    "; violações de foreign key: " + report.foreignKeyViolations + ".",
+                            )
+                        }
+                    }
+                    "backup_reconcile" -> {
+                        val updated = withContext(Dispatchers.IO) {
+                            ReiAnixBackupService(applicationContext).reconcileRestoredFileAvailability()
+                        }
+                        libraryViewModel.refresh()
+                        withContext(Dispatchers.IO) {
+                            writeSettingsFileActionResult(
+                                requestId, action, "SUCCESS", "SUCCESS",
+                                message = "Reconciliação concluída. Referências locais verificadas: " + updated +
+                                    ". URIs SAF/MediaStore permanecem sob o scanner nativo.",
+                            )
+                        }
+                    }
+                    else -> throw IllegalArgumentException("Ação de manutenção nativa desconhecida.")
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A operação foi cancelada.")
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_SETTINGS_MAINTENANCE_FAILED requestId=" + requestId + " action=" + action, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error.message?.takeIf { it.isNotBlank() } ?: "A operação não pôde ser concluída.",
+                    )
+                }
+            }
+        }
+    }
+
     private fun writeSettingsFileActionResult(
         requestId: String,
         action: String,
