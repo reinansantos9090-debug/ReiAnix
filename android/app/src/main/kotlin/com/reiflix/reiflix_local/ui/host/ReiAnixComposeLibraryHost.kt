@@ -33,6 +33,15 @@ import com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFolderOnboarding
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import org.json.JSONObject
 
 /**
@@ -95,9 +104,42 @@ class ReiAnixComposeLibraryHost(
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
-            // Opening the host only projects local state. AniList reconciliation belongs
-            // to explicit metadata/pipeline requests, never to Activity creation or catalog
-            // rendering, so a route mount cannot trigger remote work.
+            // A route mount must not cause remote reconciliation. Observe scan-state
+            // transitions only; drop the first snapshot so a stored/idle state on process
+            // startup never triggers AniList or artwork work.
+            LaunchedEffect(libraryViewModel) {
+                libraryViewModel.uiState
+                    .map { it.scanInProgress }
+                    .distinctUntilChanged()
+                    .drop(1)
+                    .filter { scanning -> !scanning }
+                    .collectLatest {
+                        if (libraryViewModel.uiState.value.animes.isEmpty()) return@collectLatest
+                        val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                        try {
+                            withContext(Dispatchers.IO) {
+                                dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w(
+                                TAG,
+                                "Native AniList reconciliation after scan failed. errorType=" +
+                                    error::class.java.simpleName,
+                            )
+                        }
+                        runCatching { dependencies.artworkService.requestPendingArtwork() }
+                            .onFailure { error ->
+                                android.util.Log.w(
+                                    TAG,
+                                    "Native artwork backfill after scan failed. errorType=" +
+                                        error::class.java.simpleName,
+                                )
+                            }
+                    }
+            }
+
             ReiAnixComposeRoot(
                 themeMode = themeMode,
             ) {
