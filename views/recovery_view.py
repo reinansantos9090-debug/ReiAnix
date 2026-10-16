@@ -1,4 +1,4 @@
-"""Minimal explicit recovery UI for an inconsistent ReiAnix database."""
+"""Legacy Flet recovery UI retained for non-Android fallback only."""
 from __future__ import annotations
 
 import json
