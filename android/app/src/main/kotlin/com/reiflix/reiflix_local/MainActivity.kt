@@ -1251,7 +1251,7 @@ class MainActivity : FlutterFragmentActivity() {
             "settings_export", "settings_import", "backup_create", "backup_restore",
             "backup_integrity", "backup_reconcile", "diagnostic_export",
         )
-        if (action !in nativeActions) return
+        if (action == null || action !in nativeActions) return
 
         // Consume the one-shot request before opening UI or starting asynchronous work.
         intent.removeExtra(ReiAnixSettingsFileService.EXTRA_ACTION)
