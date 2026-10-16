@@ -10,11 +10,12 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
   
-  <!-- Permissão para Android 13, 14, 15 e 16 lerem vídeos -->
+  <!-- Runtime media access; selected-only access is not equivalent to a SAF tree grant. -->
   <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
   <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
-  <!-- Permissão bruta para acessar pastas locais (igual o VLC usa) -->
+  <!-- Optional, explicit Broad Storage feature only. SAF and MediaStore do not require it;
+       MainActivity opens Android Settings only after the user invokes that feature. -->
   <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
   <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
   <uses-feature android:name="android.software.leanback" android:required="false" />

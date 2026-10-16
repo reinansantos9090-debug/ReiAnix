@@ -176,6 +176,24 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn('Path.home() / ".pub-cache"', workflow)
         self.assertIn("-Dorg.gradle.parallel=false", workflow)
         self.assertIn(":app:compileReleaseKotlin --no-daemon --console=plain --stacktrace", workflow)
+        # The Kotlin-only verification must still compile release Kotlin, but it
+        # does not need to run unrelated per-ABI Python/Dart payload downloads.
+        for task in (
+            "downloadDartBridge_arm64-v8a",
+            "downloadDartBridge_armeabi-v7a",
+            "downloadDartBridge_x86_64",
+            "downloadDistArchive_arm64-v8a",
+            "downloadDistArchive_armeabi-v7a",
+            "downloadDistArchive_x86_64",
+            "untarFile_arm64-v8a",
+            "untarFile_armeabi-v7a",
+            "untarFile_x86_64",
+            "splitStdlib_arm64-v8a",
+            "splitStdlib_armeabi-v7a",
+            "splitStdlib_x86_64",
+        ):
+            self.assertIn(f"-x :serious_python_android:{task}", workflow)
+        self.assertNotIn("-x :app:compileReleaseKotlin", workflow)
         self.assertNotIn("--ignore=tests/test_certification_runner.py", workflow)
         self.assertNotIn("pytest-first.txt", workflow)
         self.assertNotIn("pytest-second.txt", workflow)

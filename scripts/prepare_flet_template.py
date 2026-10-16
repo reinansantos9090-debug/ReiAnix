@@ -547,6 +547,7 @@ def main() -> int:
         source / "src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreRetryScheduler.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/storage/NativeBatch.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt",
+        source / "src/main/kotlin/com/reiflix/reiflix_local/storage/NativeStorageOnboardingState.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/storage/StorageAuthorization.kt",
         source / "src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt",
         source / "src/main/res/values/styles.xml",

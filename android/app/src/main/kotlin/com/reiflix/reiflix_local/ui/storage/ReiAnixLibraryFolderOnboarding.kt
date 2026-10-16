@@ -37,8 +37,9 @@ import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
  *
  * Uses the ReiAnix theme and tokens while adapting the source reference's
  * horizontal action row to wide layouts. Compact layouts retain stacked,
- * touch-friendly actions. Storage authorization, persistence, scan coordination
- * and navigation remain owned by the existing Python LibraryStore + Android bridge.
+ * touch-friendly actions. The native Activity owns SAF authorization and onboarding
+ * state; canonical SQLite owns configured roots. Mailbox events remain available for
+ * still-active legacy consumers, not as the Compose overlay's source of truth.
  */
 @Composable
 fun ReiAnixLibraryFolderOnboarding(
