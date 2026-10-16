@@ -108,6 +108,21 @@ class ReiAnixSqliteDatabase(context: Context) {
         }
     }
 
+    /**
+     * Serializes file-level backup/recovery maintenance with all Kotlin readers and writers
+     * that share this canonical database instance. The block receives the existing database
+     * path but must not assume a connection is open; recovery may run precisely because the
+     * database cannot be opened. Revalidate the runtime schema contract after maintenance.
+     */
+    internal fun <T> withExclusiveFileMaintenance(block: (File) -> T): T =
+        synchronized(connectionLock) {
+            try {
+                block(databaseFile)
+            } finally {
+                contractValidated = false
+            }
+        }
+
     private fun notifyTransactionOutcome(
         onOutcome: ((ReiAnixSqliteTransactionOutcome) -> Unit)?,
         outcome: ReiAnixSqliteTransactionOutcome,

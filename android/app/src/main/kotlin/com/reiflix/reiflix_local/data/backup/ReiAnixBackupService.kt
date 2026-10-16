@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import com.reiflix.reiflix_local.BuildConfig
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import org.json.JSONArray
 import org.json.JSONObject
@@ -51,6 +52,13 @@ class ReiAnixBackupService(context: Context) {
         val manualArtworkReconnected: Int,
         val safetyBackup: File,
         val warnings: List<String>,
+        val accountStatePreserved: Boolean = false,
+        val reauthenticationRequired: Boolean = true,
+    )
+
+    private data class RecoveryAccountSnapshot(
+        val rows: List<Pair<String, String>>,
+        val readable: Boolean,
     )
 
     data class IntegrityReport(
@@ -81,7 +89,10 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    fun createBackupFile(destination: File? = null): File {
+    fun createBackupFile(destination: File? = null): File =
+        withCanonicalFileMaintenance { createBackupFileLocked(destination) }
+
+    private fun createBackupFileLocked(destination: File?): File {
         requireCanonicalDatabase()
         val base = destination ?: File(backupDirectory, "reiflix-backup-" + timestamp() + ".zip")
         val target = uniqueFile(if (base.extension.isBlank()) File(base.path + ".zip") else base)
@@ -186,7 +197,10 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    fun restoreBackup(file: File): RestoreResult {
+    fun restoreBackup(file: File): RestoreResult =
+        withCanonicalFileMaintenance { restoreBackupLocked(file) }
+
+    private fun restoreBackupLocked(file: File): RestoreResult {
         val preview = inspectBackup(file)
         val safety = createBackupFile(File(backupDirectory, "pre-restore-" + timestamp() + ".zip"))
         val staging = File(backupDirectory, ".reiflix-restore-" + UUID.randomUUID())
@@ -268,10 +282,12 @@ class ReiAnixBackupService(context: Context) {
                 manualArtworkReconnected = mappings.size,
                 safetyBackup = safety,
                 warnings = listOf(
-                    "A sessão/conta Google não é restaurada.",
+                    "Credenciais da sessão Google não são incluídas; o perfil local existente permanece na tabela account.",
                     "Os arquivos de vídeo não são incluídos no backup.",
                     "Capas remotas e thumbnails gerados podem ser reconstruídos.",
                 ) + preview.warnings + postCommitWarning,
+                accountStatePreserved = true,
+                reauthenticationRequired = false,
             )
         } catch (error: Exception) {
             if (!canonicalCommitCompleted) createdAssets.forEach { asset -> runCatching { asset.delete() } }
@@ -286,7 +302,419 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    fun integrityReport(): IntegrityReport {
+    /**
+     * Creates an explicit, non-destructive raw safety snapshot from the current SQLite
+     * file, sidecars and interrupted-promotion remnants. This is a diagnostic/recovery
+     * copy, not a ZIP v1 archive and not something restoreBackup can import directly.
+     */
+    fun createRecoverySafetySnapshotForUser(): File = withCanonicalFileMaintenance {
+        val hasDatabase = databaseFile.isFile
+        val hasSidecar = listOf("-wal", "-shm", "-journal").any {
+            File(databaseFile.absolutePath + it).isFile
+        }
+        val hasInterruptedPromotion = dataDirectory.listFiles().orEmpty().any {
+            it.isFile && (
+                it.name.startsWith("." + DATABASE_NAME + ".previous-") ||
+                    it.name.startsWith("." + DATABASE_NAME + ".candidate-")
+                )
+        }
+        require(hasDatabase || hasSidecar || hasInterruptedPromotion) {
+            "Não há arquivo SQLite ou remanescente recuperável para criar um snapshot."
+        }
+        createRecoverySafetySnapshot()
+    }
+
+    /**
+     * Recovery-only restore path for an unreadable or incompatible canonical database.
+     * The incoming archive is fully inspected before touching the active path. The
+     * previous database and SQLite sidecars are preserved byte-for-byte before an
+     * adjacent staged file is promoted into place.
+     */
+    fun restoreRecoveryBackup(file: File): RestoreResult =
+        withCanonicalFileMaintenance { restoreRecoveryBackupLocked(file) }
+
+    private fun restoreRecoveryBackupLocked(file: File): RestoreResult {
+        val preview = inspectBackup(file)
+        // The backup format intentionally excludes account/authentication. Preserve
+        // the existing non-secret profile key/value rows only when SQLite can still
+        // read that table; otherwise surface the legacy reauthentication outcome.
+        val accountSnapshot = readRecoverableAccountSnapshot()
+        val recoverySnapshot = createRecoverySafetySnapshot()
+        val token = UUID.randomUUID().toString()
+        val staging = File(dataDirectory, ".recovery-restore-" + token)
+        val candidate = File(dataDirectory, "." + DATABASE_NAME + ".candidate-" + token)
+        val displaced = File(dataDirectory, "." + DATABASE_NAME + ".previous-" + token)
+        val sidecarPairs = mutableListOf<Pair<File, File>>()
+        val createdAssets = mutableListOf<File>()
+        val artworkMappings = mutableListOf<Pair<String, String>>()
+        var previousDatabaseMoved = false
+        var replacementPromoted = false
+
+        try {
+            check(staging.isDirectory || staging.mkdirs()) {
+                "Não foi possível preparar a restauração de recuperação."
+            }
+            val stagedDatabase = File(staging, DATABASE_NAME)
+            ZipFile(file).use { zip ->
+                val databaseEntry = zip.getEntry(DATABASE_NAME)
+                    ?: throw BackupValidationException("Backup sem library.sqlite3.")
+                zip.getInputStream(databaseEntry).use { input ->
+                    FileOutputStream(stagedDatabase).use { output ->
+                        copyBounded(input, output, MAX_MEMBER_BYTES)
+                        output.fd.sync()
+                    }
+                }
+                validateSnapshot(stagedDatabase, sanitizeUnknownPreferences = true)
+
+                val artwork = preview.manifest.optJSONArray("artwork") ?: JSONArray()
+                for (index in 0 until artwork.length()) {
+                    val item = artwork.optJSONObject(index) ?: continue
+                    if (!item.optBoolean("portable")) continue
+                    val member = safeMemberName(item.optString("member"))
+                    if (member in preview.invalidOptionalEntries) continue
+                    val entry = zip.getEntry(member) ?: continue
+                    val stagedAsset = File(staging, "asset-" + index + safeSuffix(member))
+                    zip.getInputStream(entry).use { input ->
+                        FileOutputStream(stagedAsset).use { output ->
+                            copyBounded(input, output, MAX_MEMBER_BYTES)
+                            output.fd.sync()
+                        }
+                    }
+                    val expectedHash = item.optString("sha256").lowercase(Locale.ROOT)
+                    require(expectedHash.matches(Regex("[0-9a-f]{64}")) && sha256(stagedAsset) == expectedHash) {
+                        "Checksum inválido para arte manual."
+                    }
+                    require(stagedAsset.length() == item.optLong("size", stagedAsset.length())) {
+                        "Tamanho inválido para arte manual."
+                    }
+                    val target = File(manualArtworkDirectory, expectedHash + safeSuffix(member))
+                    if (target.exists()) {
+                        require(sha256(target) == expectedHash) {
+                            "Já existe um arquivo de arte manual conflitante."
+                        }
+                    } else {
+                        check(manualArtworkDirectory.isDirectory || manualArtworkDirectory.mkdirs()) {
+                            "Não foi possível preparar o diretório de arte manual."
+                        }
+                        val temporaryAsset = File(
+                            manualArtworkDirectory,
+                            "." + target.name + "." + UUID.randomUUID() + ".tmp",
+                        )
+                        try {
+                            stagedAsset.copyTo(temporaryAsset, overwrite = false)
+                            syncFile(temporaryAsset)
+                            check(temporaryAsset.renameTo(target)) {
+                                "Não foi possível publicar a arte manual restaurada."
+                            }
+                            createdAssets += target
+                        } finally {
+                            temporaryAsset.delete()
+                        }
+                    }
+                    artworkMappings += item.optString("original_path") to target.absolutePath
+                }
+            }
+
+            restoreRecoverableAccountSnapshot(stagedDatabase, accountSnapshot)
+            reconnectArtworkReferences(stagedDatabase, artworkMappings)
+            validateSnapshot(stagedDatabase, sanitizeUnknownPreferences = false)
+            FileInputStream(stagedDatabase).use { input ->
+                FileOutputStream(candidate).use { output ->
+                    copyBounded(input, output, MAX_MEMBER_BYTES)
+                    output.fd.sync()
+                }
+            }
+            validateSnapshot(candidate, sanitizeUnknownPreferences = false)
+
+            // A live WAL/journal must never be allowed to attach itself to the new
+            // database. Preserve and detach every sidecar before promoting the candidate.
+            listOf("-wal", "-shm", "-journal").forEach { suffix ->
+                val activeSidecar = File(databaseFile.absolutePath + suffix)
+                if (activeSidecar.isFile) {
+                    val preservedSidecar = File(recoverySnapshot, "active-" + activeSidecar.name)
+                    check(activeSidecar.renameTo(preservedSidecar)) {
+                        "Não foi possível isolar o arquivo SQLite auxiliar " + suffix + "."
+                    }
+                    sidecarPairs += activeSidecar to preservedSidecar
+                }
+            }
+
+            if (databaseFile.exists()) {
+                check(databaseFile.renameTo(displaced)) {
+                    "Não foi possível preservar o banco ativo antes da recuperação."
+                }
+                previousDatabaseMoved = true
+            }
+            check(candidate.renameTo(databaseFile)) {
+                "Não foi possível promover atomicamente o banco validado."
+            }
+            replacementPromoted = true
+
+            validateSnapshot(databaseFile, sanitizeUnknownPreferences = false)
+            requireCanonicalDatabase()
+            val sharedDatabase = ReiAnixAppDependencies.existingOrNull(appContext)?.sqliteDatabase
+            val schemaSnapshot = sharedDatabase?.inspectSchema()
+            require(schemaSnapshot == null || schemaSnapshot.supportsCurrentContract) {
+                "O banco restaurado não corresponde ao contrato SQLite canônico do aplicativo."
+            }
+            val postRestoreIntegrity = integrityReportLocked()
+            require(postRestoreIntegrity.healthy) {
+                "O banco restaurado não passou na verificação de integridade posterior à promoção."
+            }
+            val counts = databaseCounts(databaseFile)
+            val missingFiles = countMissingEpisodes()
+
+            // Keep a second copy of the displaced live file inside the recovery bundle;
+            // the manifest also contains byte-verified copies of the pre-restore file set.
+            if (previousDatabaseMoved && displaced.isFile) {
+                val preservedLiveDatabase = File(recoverySnapshot, "active-" + DATABASE_NAME)
+                check(displaced.renameTo(preservedLiveDatabase)) {
+                    "O banco foi restaurado, mas não foi possível arquivar o arquivo anterior."
+                }
+                previousDatabaseMoved = false
+            }
+
+            return RestoreResult(
+                importedRows = (counts.optLong("anime", 0L) + counts.optLong("episodes", 0L)).toInt(),
+                missingFiles = missingFiles,
+                manualArtworkReconnected = artworkMappings.size,
+                safetyBackup = recoverySnapshot,
+                warnings = listOf(
+                    "A restauração de recuperação preservou uma cópia bruta do SQLite anterior e de seus arquivos auxiliares.",
+                    if (accountSnapshot.readable) {
+                        if (accountSnapshot.rows.isEmpty()) {
+                            "A tabela local de conta pôde ser lida; não havia perfil local para copiar."
+                        } else {
+                            "O perfil local da conta foi preservado; credenciais e tokens de sessão não são exportados."
+                        }
+                    } else {
+                        "A tabela local de conta não pôde ser lida antes da recuperação; talvez seja necessário entrar novamente."
+                    },
+                    "Arquivos de vídeo não são incluídos no backup.",
+                    "Permissões SAF e acesso ao armazenamento dependem de concessão Android válida.",
+                    "Capas remotas e thumbnails gerados podem ser reconstruídos.",
+                ) + preview.warnings,
+                accountStatePreserved = accountSnapshot.readable,
+                reauthenticationRequired = !accountSnapshot.readable,
+            )
+        } catch (error: Exception) {
+            if (replacementPromoted && databaseFile.exists()) {
+                val failedReplacement = File(recoverySnapshot, "failed-restored-" + DATABASE_NAME)
+                if (!databaseFile.renameTo(failedReplacement)) {
+                    // A copy fallback preserves the failed candidate before removing it
+                    // from the canonical path so the previous DB can be restored safely.
+                    try {
+                        FileInputStream(databaseFile).use { input ->
+                            FileOutputStream(failedReplacement).use { output ->
+                                input.copyTo(output, COPY_BUFFER_BYTES)
+                                output.fd.sync()
+                            }
+                        }
+                        check(databaseFile.length() == failedReplacement.length() &&
+                            sha256(databaseFile) == sha256(failedReplacement)) {
+                            "Não foi possível preservar a base substituta que falhou."
+                        }
+                        check(databaseFile.delete()) {
+                            "Não foi possível retirar do caminho canônico a base que falhou."
+                        }
+                    } catch (preservationError: Exception) {
+                        android.util.Log.e("ReiAnixBackup", "Could not preserve failed recovery database", preservationError)
+                        throw BackupRestoreException(
+                            "A recuperação falhou e o arquivo substituto não pôde ser isolado. Os arquivos de recuperação foram mantidos em: " +
+                                recoverySnapshot.absolutePath,
+                            preservationError,
+                            recoverySnapshot,
+                        )
+                    }
+                }
+            }
+            if (previousDatabaseMoved && displaced.exists() && !databaseFile.exists()) {
+                if (!displaced.renameTo(databaseFile)) {
+                    throw BackupRestoreException(
+                        "A recuperação falhou e não foi possível devolver o banco anterior ao caminho canônico. Snapshot preservado em: " +
+                            recoverySnapshot.absolutePath,
+                        error,
+                        recoverySnapshot,
+                    )
+                }
+                previousDatabaseMoved = false
+            }
+            sidecarPairs.asReversed().forEach { (original, preserved) ->
+                if (preserved.exists()) {
+                    if (original.exists()) {
+                        val failedSidecar = File(recoverySnapshot, "failed-" + original.name + "-" + UUID.randomUUID())
+                        original.renameTo(failedSidecar)
+                    }
+                    if (!preserved.renameTo(original)) {
+                        android.util.Log.e("ReiAnixBackup", "Could not restore SQLite sidecar " + original.name, error)
+                    }
+                }
+            }
+            createdAssets.forEach { asset -> runCatching { asset.delete() } }
+            if (error is BackupValidationException || error is BackupRestoreException) throw error
+            throw BackupRestoreException(
+                error.message?.takeIf { it.isNotBlank() }
+                    ?: "A recuperação foi interrompida; o estado anterior foi preservado quando possível.",
+                error,
+                recoverySnapshot,
+            )
+        } finally {
+            candidate.delete()
+            staging.deleteRecursively()
+        }
+    }
+
+    private fun readRecoverableAccountSnapshot(): RecoveryAccountSnapshot {
+        if (!databaseFile.isFile) return RecoveryAccountSnapshot(emptyList(), readable = false)
+        return try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+                val tableExists = countRows(
+                    db,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='account'",
+                ) == 1L
+                if (!tableExists) {
+                    RecoveryAccountSnapshot(emptyList(), readable = false)
+                } else {
+                    val rows = db.rawQuery("SELECT key,value FROM account ORDER BY key", null).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) {
+                                add(cursor.getString(0) to cursor.getString(1))
+                            }
+                        }
+                    }
+                    RecoveryAccountSnapshot(rows, readable = true)
+                }
+            }
+        } catch (error: Exception) {
+            android.util.Log.w("ReiAnixBackup", "Could not read the current account profile before recovery", error)
+            RecoveryAccountSnapshot(emptyList(), readable = false)
+        }
+    }
+
+    private fun restoreRecoverableAccountSnapshot(
+        target: File,
+        accountSnapshot: RecoveryAccountSnapshot,
+    ) {
+        if (!accountSnapshot.readable || accountSnapshot.rows.isEmpty()) return
+        SQLiteDatabase.openDatabase(target.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.beginTransactionNonExclusive()
+            try {
+                db.delete("account", null, null)
+                accountSnapshot.rows.forEach { (key, value) ->
+                    val values = ContentValues().apply {
+                        put("key", key)
+                        put("value", value)
+                    }
+                    val rowId = db.insertWithOnConflict(
+                        "account",
+                        null,
+                        values,
+                        SQLiteDatabase.CONFLICT_REPLACE,
+                    )
+                    check(rowId != -1L) {
+                        "Não foi possível preservar o perfil local da conta durante a recuperação."
+                    }
+                }
+                validateDatabaseConnection(db)
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        }
+    }
+
+    private fun createRecoverySafetySnapshot(): File {
+        val token = UUID.randomUUID().toString()
+        val directory = File(backupDirectory, "recovery-snapshot-" + timestamp() + "-" + token.take(8))
+        check(directory.isDirectory || directory.mkdirs()) {
+            "Não foi possível criar o diretório de snapshot de recuperação."
+        }
+        val interruptedFiles = dataDirectory.listFiles().orEmpty()
+            .filter {
+                it.isFile && (
+                    it.name.startsWith("." + DATABASE_NAME + ".previous-") ||
+                        it.name.startsWith("." + DATABASE_NAME + ".candidate-")
+                    )
+            }
+            .sortedBy { it.name }
+        val files = listOf(
+            databaseFile,
+            File(databaseFile.absolutePath + "-wal"),
+            File(databaseFile.absolutePath + "-shm"),
+            File(databaseFile.absolutePath + "-journal"),
+        ) + interruptedFiles
+        val manifestEntries = JSONArray()
+        try {
+            files.forEach { source ->
+                if (!source.isFile) return@forEach
+                val destination = File(directory, source.name)
+                FileInputStream(source).use { input ->
+                    FileOutputStream(destination).use { output ->
+                        input.copyTo(output, COPY_BUFFER_BYTES)
+                        output.fd.sync()
+                    }
+                }
+                check(source.length() == destination.length() && sha256(source) == sha256(destination)) {
+                    "O snapshot de recuperação não corresponde ao arquivo de origem " + source.name + "."
+                }
+                manifestEntries.put(
+                    JSONObject()
+                        .put("name", source.name)
+                        .put("size", destination.length())
+                        .put("sha256", sha256(destination)),
+                )
+            }
+            val metadata = JSONObject()
+                .put("format", "reianix-recovery-snapshot-v1")
+                .put("created_at", utcTimestamp())
+                .put("database_present", databaseFile.isFile)
+                .put("files", manifestEntries)
+                .put("note", "Cópia bruta de segurança; não é um backup restaurável do formato rei-flix-backup-v1.")
+            FileOutputStream(File(directory, "recovery-snapshot.json")).use { output ->
+                output.write(prettyJson(metadata).toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            return directory
+        } catch (error: Exception) {
+            directory.deleteRecursively()
+            throw error
+        }
+    }
+
+    private fun reconnectArtworkReferences(snapshot: File, mappings: List<Pair<String, String>>) {
+        if (mappings.isEmpty()) return
+        SQLiteDatabase.openDatabase(snapshot.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.beginTransactionNonExclusive()
+            try {
+                mappings.forEach { (oldPath, newPath) ->
+                    if (oldPath.isBlank() || newPath.isBlank()) return@forEach
+                    db.execSQL(
+                        "UPDATE artwork SET local_path=?,source_ref=? WHERE local_path=? AND manual=1",
+                        arrayOf(newPath, newPath, oldPath),
+                    )
+                    db.execSQL("UPDATE anime SET cover_cache=? WHERE cover_cache=?", arrayOf(newPath, oldPath))
+                }
+                validateDatabaseConnection(db)
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        }
+    }
+
+    private fun <T> withCanonicalFileMaintenance(block: () -> T): T {
+        val sharedDatabase = ReiAnixAppDependencies.existingOrNull(appContext)?.sqliteDatabase
+        return if (sharedDatabase != null) {
+            sharedDatabase.withExclusiveFileMaintenance { block() }
+        } else {
+            synchronized(MAINTENANCE_LOCK) { block() }
+        }
+    }
+
+    fun integrityReport(): IntegrityReport =
+        withCanonicalFileMaintenance { integrityReportLocked() }
+
+    private fun integrityReportLocked(): IntegrityReport {
         return try {
             requireCanonicalDatabase()
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
@@ -317,7 +745,10 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    fun reconcileRestoredFileAvailability(): Int {
+    fun reconcileRestoredFileAvailability(): Int =
+        withCanonicalFileMaintenance { reconcileRestoredFileAvailabilityLocked() }
+
+    private fun reconcileRestoredFileAvailabilityLocked(): Int {
         requireCanonicalDatabase()
         val updates = mutableListOf<Pair<Long, Pair<Int, String>>>()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
@@ -880,6 +1311,7 @@ class ReiAnixBackupService(context: Context) {
     class BackupRestoreException(message: String, cause: Throwable, val safetyBackup: File) : IOException(message, cause)
 
     companion object {
+        private val MAINTENANCE_LOCK = Any()
         const val DATABASE_NAME = "library.sqlite3"
         const val SCHEMA_VERSION = 29
         const val SETTINGS_SCHEMA_VERSION = 2

@@ -50,6 +50,8 @@ class ReiAnixSettingsRepository(
         private val NATIVE_BACKUP_DIAGNOSTIC_ACTIONS = setOf(
             "backup_create",
             "backup_restore",
+            "backup_recovery_restore",
+            "backup_recovery_snapshot",
             "backup_integrity",
             "backup_reconcile",
             "diagnostic_export",

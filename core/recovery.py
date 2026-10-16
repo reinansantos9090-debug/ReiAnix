@@ -1,11 +1,11 @@
-"""Explicit, non-destructive recovery service for an inconsistent local database.
+"""Legacy non-destructive recovery service for desktop/Flet recovery mode.
 
-Recovery is an exceptional path. It validates an incoming ReiAnix backup with
-the existing BackupService, preserves the current database as a safety copy, and
-only replaces the database after the replacement has passed SQLite integrity and
-foreign-key checks. Authentication is preserved when the damaged database can
-still be read; if it cannot, recovery restore is refused rather than silently
-losing the current account.
+Android Compose uses ReiAnixBackupService.restoreRecoveryBackup for canonical DB recovery;
+this module remains as the non-Android fallback and must not be dispatched by migrated
+Compose recovery actions.
+
+Recovery is an exceptional path. It validates incoming ReiAnix backups and preserves the
+current database when a safe restore is possible.
 """
 from __future__ import annotations
 

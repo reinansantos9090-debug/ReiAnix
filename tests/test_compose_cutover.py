@@ -97,7 +97,8 @@ class ComposeCutoverTests(unittest.TestCase):
     def test_recovery_and_collector_keep_real_legacy_surfaces(self):
         source = MAIN.read_text(encoding="utf-8")
         self.assertIn("recovery_bridge = AndroidBridge(data_dir, page)", source)
-        self.assertIn("await recovery_bridge.hide_library()", source)
+        self.assertIn('await recovery_bridge.open_library(start_destination="recovery")', source)
+        self.assertNotIn("await recovery_bridge.hide_library()", source)
         self.assertIn("elif destination == 'collector':", source)
         self.assertIn("await bridge.hide_library()", source)
         self.assertIn("def navigate_collector():", source)

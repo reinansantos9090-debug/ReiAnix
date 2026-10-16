@@ -77,10 +77,48 @@ async def main(page: ft.Page):
     store=LibraryStore(data_dir)
     performance.event("startup.library_store", duration_ms=(performance.now()-store_started)*1000.0,
                       metadata={"schema_version": getattr(store, "SCHEMA_VERSION", None)})
-    recovery_service = RecoveryService(store)
-    recovery_status = recovery_service.diagnose()
+    recovery_bridge = AndroidBridge(data_dir, page)
+    if recovery_bridge.available:
+        # Android recovery is owned by the native Compose/SQLite services. Avoid
+        # opening the legacy Python recovery writer against the same canonical DB.
+        recovery_status = {
+            "required": bool(store.recovery_error),
+            "error": str(store.recovery_error or ""),
+        }
+    else:
+        # Preserve the desktop fallback until that surface is migrated separately.
+        recovery_service = RecoveryService(store)
+        recovery_status = recovery_service.diagnose()
     if store.recovery_error or recovery_status.get("required"):
         logger.error("[RECOVERY] database inconsistency detected: %s", store.recovery_error or recovery_status.get("error") or recovery_status.get("quick_check"))
+        if recovery_bridge.available:
+            try:
+                await recovery_bridge.open_library(start_destination="recovery")
+            except Exception:
+                # MainActivity independently validates the existing SQLite contract
+                # on startup; keep the host message non-destructive if IPC is unavailable.
+                logger.exception("[RECOVERY] native Compose recovery route request failed")
+            page.views.clear()
+            page.views.append(
+                ft.View(
+                    route="/recovery-native",
+                    controls=[
+                        ft.Container(
+                            expand=True,
+                            bgcolor="#050505",
+                            padding=24,
+                            content=ft.Text(
+                                "O banco da biblioteca requer recuperação. Use a interface nativa do ReiAnix para selecionar um backup validado. Nenhum dado foi apagado por esta tela.",
+                                color="#FFFFFF",
+                            ),
+                        )
+                    ],
+                    padding=0,
+                )
+            )
+            page.update()
+            return
+
         async def recovery_diagnostic():
             return await asyncio.to_thread(recovery_service.diagnostic_bytes)
         async def recovery_snapshot():
@@ -103,11 +141,6 @@ async def main(page: ft.Page):
                 padding=0,
             )
         )
-        try:
-            recovery_bridge = AndroidBridge(data_dir, page)
-            await recovery_bridge.hide_library()
-        except Exception:
-            logger.exception("[RECOVERY] failed to hide native Compose shell")
         page.update()
         return
     settings_started = performance.now()
