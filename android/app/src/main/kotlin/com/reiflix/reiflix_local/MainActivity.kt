@@ -51,6 +51,7 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
 import io.flutter.embedding.android.FlutterFragmentActivity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -652,7 +653,7 @@ class MainActivity : FlutterFragmentActivity() {
             settingsFileProcessing = true
             lifecycleScope.launch {
                 try {
-                    val json = withContext(Dispatchers.IO) {
+                    val json = withContext(NonCancellable + Dispatchers.IO) {
                         ReiAnixSettingsFileService(appDependencies.sqliteSettingsRepository).exportJson()
                     }
                     withContext(Dispatchers.IO) {
@@ -667,7 +668,7 @@ class MainActivity : FlutterFragmentActivity() {
                         )
                     }
                 } catch (cancelled: CancellationException) {
-                    withContext(Dispatchers.IO) {
+                    withContext(NonCancellable + Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action, "CANCELLED", "CANCELLED",
                             error = "A exportação de configurações foi cancelada.",
@@ -773,7 +774,7 @@ class MainActivity : FlutterFragmentActivity() {
                         )
                     }
                 } catch (cancelled: CancellationException) {
-                    withContext(Dispatchers.IO) {
+                    withContext(NonCancellable + Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action, "CANCELLED", "CANCELLED",
                             error = "A importação de configurações foi cancelada.",
@@ -1102,7 +1103,7 @@ class MainActivity : FlutterFragmentActivity() {
         // thread, then start the mailbox dispatcher after durable recovery receipts exist.
         lifecycleScope.launch {
             try {
-                withContext(Dispatchers.IO) {
+                withContext(NonCancellable + Dispatchers.IO) {
                     NativeScanRunner.recoverInterruptedSafScans(applicationContext)
                 }
             } catch (cancelled: CancellationException) {
@@ -1208,7 +1209,7 @@ class MainActivity : FlutterFragmentActivity() {
         pendingSettingsFileAction = action
         pendingSettingsFileRequestId = requestId
         lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
+            withContext(NonCancellable + Dispatchers.IO) {
                 writeSettingsFileActionResult(
                     requestId, action, "RUNNING", "RUNNING",
                     message = "Aguardando o seletor de arquivos do Android.",
@@ -1228,7 +1229,7 @@ class MainActivity : FlutterFragmentActivity() {
                 } catch (cancelled: CancellationException) {
                     pendingSettingsFileAction = null
                     pendingSettingsFileRequestId = null
-                    withContext(Dispatchers.IO) {
+                    withContext(NonCancellable + Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action, "CANCELLED", "CANCELLED",
                             error = "A operação de arquivos foi cancelada.",
@@ -2468,7 +2469,7 @@ class MainActivity : FlutterFragmentActivity() {
             val error = persistedInspection.optString("error", "persisted_permission_missing")
             lifecycleScope.launch {
                 try {
-                    withContext(Dispatchers.IO) {
+                    withContext(NonCancellable + Dispatchers.IO) {
                         appDependencies.sqliteLibraryRepository.updateSafFolderAccess(reference, "revoked", error)
                     }
                 } catch (cancelled: CancellationException) {
@@ -2506,7 +2507,7 @@ class MainActivity : FlutterFragmentActivity() {
             }
             lifecycleScope.launch {
                 try {
-                    withContext(Dispatchers.IO) {
+                    withContext(NonCancellable + Dispatchers.IO) {
                         appDependencies.sqliteLibraryRepository.updateSafFolderAccess(reference, authorization, error)
                     }
                 } catch (cancelled: CancellationException) {
@@ -3207,7 +3208,7 @@ class MainActivity : FlutterFragmentActivity() {
             if (nativeFolderConfigOwner) {
                 lifecycleScope.launch {
                     try {
-                        val sourceExists = withContext(Dispatchers.IO) {
+                        val sourceExists = withContext(NonCancellable + Dispatchers.IO) {
                             appDependencies.sqliteLibraryRepository.listFolders().any { folder ->
                                 folder.kind.equals("saf", ignoreCase = true) &&
                                     folder.path.trim() == normalizedReference
