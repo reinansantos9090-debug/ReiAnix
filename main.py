@@ -4132,7 +4132,7 @@ async def main(page: ft.Page):
                 error=type(exc).__name__,
             )
 
-    async def _run_compose_settings_action(action, request_id):
+    async def _run_compose_settings_action(action, request_id, *, native_handled=False, native_removed=0):
         started = performance.now()
         performance.event(
             "SETTINGS_OPERATION_START",
@@ -4163,12 +4163,23 @@ async def main(page: ft.Page):
                 )
                 compose_settings_bridge.request_publish("all_settings_reset")
             elif action == 'clear_anilist_cache':
-                removed = await asyncio.to_thread(library.clear_anilist_cache)
-                logger.info(
-                    "[COMPOSE_SETTINGS] artwork cache cleared removed=%s requestId=%s",
-                    removed,
-                    request_id or '-',
-                )
+                if native_handled:
+                    # Kotlin already committed the cache cleanup against canonical SQLite.
+                    # This compatibility callback only refreshes the legacy runtime projection.
+                    removed = int(native_removed or 0)
+                    logger.info(
+                        "[COMPOSE_SETTINGS] native artwork cache clear acknowledged removed=%s requestId=%s",
+                        removed,
+                        request_id or '-',
+                    )
+                else:
+                    # Legacy Flet Settings still owns its own action until that screen is retired.
+                    removed = await asyncio.to_thread(library.clear_anilist_cache)
+                    logger.info(
+                        "[COMPOSE_SETTINGS] legacy artwork cache cleared removed=%s requestId=%s",
+                        removed,
+                        request_id or '-',
+                    )
                 compose_settings_bridge.request_publish("artwork_cache_cleared")
             elif action == 'settings_export':
                 raw = await asyncio.to_thread(
@@ -4873,7 +4884,16 @@ async def main(page: ft.Page):
                                     operation_state="QUEUED",
                                     message="Comando recebido e agendado.",
                                 )
-                                task = asyncio.create_task(_run_compose_settings_action(action, request_id))
+                                native_handled = payload.get('nativeHandled') is True
+                                native_removed = payload.get('removed') or 0
+                                task = asyncio.create_task(
+                                    _run_compose_settings_action(
+                                        action,
+                                        request_id,
+                                        native_handled=native_handled,
+                                        native_removed=native_removed,
+                                    )
+                                )
                                 if not _track_compose_settings_task(task):
                                     task.cancel()
                                     compose_settings_bridge.write_command_result(
