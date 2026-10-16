@@ -141,7 +141,7 @@ class ReiAnixAppBootstrap internal constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Log.e(TAG, "Canonical SQLite validation failed; normal services remain gated.", error)
+                Log.e(TAG, "Canonical SQLite validation failed; normal services remain gated. errorType=" + error::class.java.simpleName)
                 CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
@@ -187,7 +187,7 @@ class ReiAnixAppBootstrap internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            Log.e(TAG, "Initial canonical SQLite validation failed; normal services remain gated.", error)
+            Log.e(TAG, "Initial canonical SQLite validation failed; normal services remain gated. errorType=" + error::class.java.simpleName)
             CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
@@ -249,6 +249,7 @@ class ReiAnixAppBootstrap internal constructor(
         contains("base canônica SQLite", ignoreCase = true) ||
             contains("arquivo da base SQLite", ignoreCase = true) ||
             contains("recuperação SQLite interrompida", ignoreCase = true) ||
+            contains("promoção SQLite interrompida", ignoreCase = true) ||
             contains("recibos SAF interrompidos", ignoreCase = true)
 
     /**
@@ -312,7 +313,7 @@ class ReiAnixAppBootstrap internal constructor(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (validationError: Exception) {
-                    Log.e(TAG, "SQLite revalidation after SAF receipt recovery failed.", validationError)
+                    Log.e(TAG, "SQLite revalidation after SAF receipt recovery failed. errorType=" + validationError::class.java.simpleName)
                     CanonicalDatabaseCheck(
                         status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                         recoveryRequired = true,
@@ -415,7 +416,7 @@ class ReiAnixAppBootstrap internal constructor(
             val pendingSafRecovery = try {
                 NativeIndex.pendingSafRecovery(appContext).length() > 0
             } catch (error: Exception) {
-                Log.e(TAG, "Could not inspect durable SAF recovery receipts; treating the state as recovery evidence.", error)
+                Log.e(TAG, "Could not inspect durable SAF recovery receipts; treating the state as recovery evidence. errorType=" + error::class.java.simpleName)
                 true
             }
             return if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
@@ -469,7 +470,7 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     private fun recordWarning(message: String, error: Throwable) {
-        Log.e(TAG, message, error)
+        Log.e(TAG, message + " errorType=" + error::class.java.simpleName)
         updateState { current ->
             current.copy(
                 warnings = if (message in current.warnings) current.warnings
