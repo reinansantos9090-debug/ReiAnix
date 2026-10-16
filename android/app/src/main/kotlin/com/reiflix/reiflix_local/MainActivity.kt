@@ -62,7 +62,9 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.LinkedHashSet
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -1250,7 +1252,11 @@ class MainActivity : FlutterFragmentActivity() {
                     interruptedPromotion || priorRecoverySnapshots
                 } else {
                     runCatching {
-                        !appDependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
+                        val schemaCompatible = appDependencies.sqliteDatabase
+                            .inspectSchema()
+                            .supportsCurrentContract
+                        val integrity = ReiAnixBackupService(applicationContext).integrityReport()
+                        !schemaCompatible || !integrity.healthy
                     }.getOrElse { error ->
                         Log.e(tag, "NATIVE_DATABASE_RECOVERY_REQUIRED", error)
                         true
@@ -1372,6 +1378,64 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    /**
+     * Writes the already validated archive to the user-selected SAF document and
+     * verifies the persisted document by reading it back. A successful internal ZIP
+     * build is not reported as a successful export if the provider truncated or
+     * failed to persist the selected destination.
+     */
+    private fun copyBackupToDocumentAndVerify(archive: File, destination: Uri) {
+        require(archive.isFile && archive.length() in 1..ReiAnixBackupService.MAX_ARCHIVE_BYTES) {
+            "O backup temporário está ausente, vazio ou fora do limite suportado."
+        }
+        val expectedDigest = MessageDigest.getInstance("SHA-256")
+        var writtenBytes = 0L
+        val output = contentResolver.openOutputStream(destination, "w")
+            ?: throw IllegalStateException("O Android não abriu o destino do backup.")
+        FileInputStream(archive).use { source ->
+            output.use { target ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = source.read(buffer)
+                    if (read < 0) break
+                    if (read == 0) continue
+                    writtenBytes += read
+                    require(writtenBytes <= ReiAnixBackupService.MAX_ARCHIVE_BYTES) {
+                        "O backup excede o limite de tamanho suportado."
+                    }
+                    expectedDigest.update(buffer, 0, read)
+                    target.write(buffer, 0, read)
+                }
+                target.flush()
+            }
+        }
+        require(writtenBytes == archive.length()) {
+            "A gravação do backup no destino foi incompleta."
+        }
+
+        val actualDigest = MessageDigest.getInstance("SHA-256")
+        var actualBytes = 0L
+        val input = contentResolver.openInputStream(destination)
+            ?: throw IllegalStateException("O destino foi gravado, mas não pôde ser reaberto para validação.")
+        input.use { source ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = source.read(buffer)
+                if (read < 0) break
+                if (read == 0) continue
+                actualBytes += read
+                require(actualBytes <= ReiAnixBackupService.MAX_ARCHIVE_BYTES) {
+                    "O destino contém mais dados do que o limite de backup suportado."
+                }
+                actualDigest.update(buffer, 0, read)
+            }
+        }
+        require(actualBytes == writtenBytes &&
+            MessageDigest.isEqual(expectedDigest.digest(), actualDigest.digest())) {
+            "O backup foi escrito, mas a validação do conteúdo no destino falhou."
+        }
+    }
+
     private fun finishNativeBackupExport(uri: Uri?) {
         val action = pendingSettingsFileAction
         val requestId = pendingSettingsFileRequestId
@@ -1398,9 +1462,10 @@ class MainActivity : FlutterFragmentActivity() {
                     ReiAnixBackupService(applicationContext).createBackupFile()
                 }
                 withContext(Dispatchers.IO) {
-                    val output = contentResolver.openOutputStream(uri, "w")
-                        ?: throw IllegalStateException("O Android não abriu o destino do backup.")
-                    output.use { target -> archive!!.inputStream().use { input -> input.copyTo(target) } }
+                    copyBackupToDocumentAndVerify(
+                        archive = requireNotNull(archive),
+                        destination = uri,
+                    )
                 }
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = "Backup ReiAnix criado e validado.")
