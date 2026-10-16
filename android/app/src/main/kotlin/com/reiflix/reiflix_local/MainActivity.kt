@@ -1516,6 +1516,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun runNativeSettingsMaintenanceAction(action: String, requestId: String) {
+        settingsFileProcessing = true
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -1563,6 +1564,8 @@ class MainActivity : FlutterFragmentActivity() {
                         error.message?.takeIf { it.isNotBlank() } ?: "A operação não pôde ser concluída.",
                     )
                 }
+            } finally {
+                settingsFileProcessing = false
             }
         }
     }
