@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
@@ -39,6 +40,7 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
@@ -1153,6 +1155,24 @@ class ReiAnixLibraryViewModel(
 
         // Populate catalog data even when the bridge snapshot does not exist yet.
         viewModelScope.launch { refreshNativeCatalog() }
+
+        // Player notifications are emitted only after a successful SQLite commit.
+        // Periodic notifications arrive at the existing 15-second checkpoint, not the
+        // 250 ms UI clock, so Compose remains responsive without excessive full queries.
+        viewModelScope.launch {
+            ReiAnixConsumptionService.playbackChanges
+                .conflate()
+                .collectLatest { change ->
+                    Log.d(
+                        TAG,
+                        "Native playback committed episodeId=${change.episodeId} " +
+                            "event=${change.eventType} sessionId=${change.playerSessionId} " +
+                            "playerGeneration=${change.playerGeneration} " +
+                            "transitionGeneration=${change.transitionGeneration}",
+                    )
+                    refreshNativeCatalog()
+                }
+        }
 
         // Load catalog records directly from the canonical SQLite repository. The legacy
         // snapshot is retained only for storage/onboarding and diagnostic scan state.
