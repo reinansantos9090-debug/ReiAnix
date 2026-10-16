@@ -90,7 +90,7 @@ class NativeSearchTests(unittest.TestCase):
         self.assertIn("aniListDetails(anilistId", navigation)
         self.assertIn("loadAniListDetails(anilistId)", details)
         self.assertIn("client.getAnime(anilistId)", integration)
-        self.assertIn("nenhuma entrada local foi criada", details.lower())
+        self.assertIn("esta busca não cria nem altera registros locais", details.lower())
 
     def test_search_engine_indexes_only_projection_fields(self):
         source = ENGINE.read_text(encoding="utf-8")
