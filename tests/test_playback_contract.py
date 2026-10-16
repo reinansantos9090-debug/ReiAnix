@@ -348,7 +348,8 @@ class PlaybackContractTests(unittest.TestCase):
         progress_start = self.main.index("elif event_type in {'player_progress', 'player_paused', 'player_completed'}:")
         progress_end = self.main.index("elif event_type == 'player_mark_watched':", progress_start)
         progress_block = self.main[progress_start:progress_end]
-        self.assertIn('if updated and payload.get("nativeProgressPersisted") is not True:', progress_block)
+        self.assertIn("if updated:", progress_block)
+        self.assertIn('if payload.get("nativeProgressPersisted") is not True:', progress_block)
 
 if __name__ == "__main__":
     unittest.main()
