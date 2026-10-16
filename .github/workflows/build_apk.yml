@@ -382,6 +382,9 @@ jobs:
             -x :serious_python_android:downloadDistArchive_arm64-v8a \
             -x :serious_python_android:downloadDistArchive_armeabi-v7a \
             -x :serious_python_android:downloadDistArchive_x86_64 \
+            -x :serious_python_android:untarFile_arm64-v8a \
+            -x :serious_python_android:untarFile_armeabi-v7a \
+            -x :serious_python_android:untarFile_x86_64 \
             :app:compileReleaseKotlin --no-daemon --console=plain --stacktrace
 
       - name: Preserve build identity evidence
