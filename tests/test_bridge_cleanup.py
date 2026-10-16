@@ -148,7 +148,7 @@ def test_prompt_18_bridge_migration_docs_preserve_legacy_boundaries():
         "NativeCommandDispatcher",
         "NativeRequestState",
         "SQLite",
-        "still required",
+        "remain required",
         "does not claim",
     ):
         assert token.lower() in doc.lower()
