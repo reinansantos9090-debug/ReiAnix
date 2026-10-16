@@ -22,7 +22,7 @@ O manifesto mantém versão, schema, contagens, inventário de artwork e checksu
 
 O serviço Kotlin cria um snapshot consistente com `VACUUM INTO`, sanitiza a cópia temporária, valida `PRAGMA integrity_check`, `PRAGMA foreign_key_check`, schema v29 e invariantes de preferências/consumo, então produz o ZIP temporário. O ZIP é inspecionado e seus membros/manifesto/checksums são validados antes da publicação. O seletor de destino usa `ActivityResultContracts.CreateDocument` e a escrita de destino usa `ContentResolver`, portanto o fluxo não pressupõe um caminho físico para um destino SAF.
 
-A interface só apresenta sucesso depois que a criação interna e a gravação do documento selecionado terminam sem exceção. A criação não inclui arquivos de mídia externos e não sobrescreve o backup interno anterior com um nome idêntico: o serviço escolhe um nome interno exclusivo.
+A interface só apresenta sucesso depois que a criação interna e a gravação do documento selecionado terminam sem exceção. Na exportação Compose, o destino SAF é reaberto para leitura e o conteúdo é comparado por tamanho e SHA-256 com o ZIP temporário validado; se o provedor não permitir leitura de retorno ou o conteúdo divergir, a operação retorna erro em vez de anunciar sucesso. A criação não inclui arquivos de mídia externos e não sobrescreve o backup interno anterior com um nome idêntico: o serviço escolhe um nome interno exclusivo.
 
 ## Restauração normal
 
