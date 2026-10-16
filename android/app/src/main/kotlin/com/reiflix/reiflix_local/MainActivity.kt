@@ -1688,13 +1688,21 @@ class MainActivity : FlutterFragmentActivity() {
                 }.onFailure { error ->
                     Log.w(tag, "NATIVE_RESTORE_RUNTIME_PROJECTION_FAILED requestId=" + requestId, error)
                 }
+                val accountMessage = when {
+                    result.reauthenticationRequired ->
+                        " O estado local da conta não pôde ser lido antes da recuperação; entre novamente se necessário."
+                    action == "backup_recovery_restore" && result.accountStatePreserved ->
+                        " O estado local da conta foi preservado."
+                    else -> ""
+                }
                 val message = (if (action == "backup_recovery_restore") {
                     "Biblioteca recuperada. Snapshot de segurança: " + result.safetyBackup.name + ". "
                 } else {
                     "Backup restaurado. "
                 }) + "Itens: " + result.importedRows +
                     "; arquivos indisponíveis: " + result.missingFiles +
-                    "; capas manuais reconectadas: " + result.manualArtworkReconnected + "."
+                    "; capas manuais reconectadas: " + result.manualArtworkReconnected + "." +
+                    accountMessage
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = message)
                 }
