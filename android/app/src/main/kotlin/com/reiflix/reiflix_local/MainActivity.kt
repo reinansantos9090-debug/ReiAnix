@@ -192,6 +192,9 @@ class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         private const val BRIDGE_PROTOCOL_VERSION = 2
+        private val SETTINGS_STORAGE_ACTIONS = setOf(
+            "select_saf", "request_media_access", "check_storage_access", "open_broad_storage_settings",
+        )
 
         @JvmStatic
         fun createNativeStorageActionIntent(
@@ -625,6 +628,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingSettingsFileAction: String? = null
     private var pendingSettingsFileRequestId: String? = null
     private var settingsFileProcessing = false
+    private val composeSettingsStorageActions = mutableMapOf<String, String>()
 
     private val settingsExportLauncher =
         registerForActivityResult(
@@ -1132,6 +1136,14 @@ class MainActivity : FlutterFragmentActivity() {
         pendingSettingsFileAction = savedInstanceState?.getString("reiflix.settingsFileAction")
         pendingSettingsFileRequestId = savedInstanceState?.getString("reiflix.settingsFileRequestId")
         settingsFileProcessing = false
+        val restoredSettingsStorageIds = savedInstanceState?.getStringArrayList("reiflix.settingsStorageIds").orEmpty()
+        val restoredSettingsStorageActions = savedInstanceState?.getStringArrayList("reiflix.settingsStorageActions").orEmpty()
+        composeSettingsStorageActions.clear()
+        restoredSettingsStorageIds.zip(restoredSettingsStorageActions).forEach { (id, action) ->
+            if (SETTINGS_FILE_REQUEST_ID_REGEX.matches(id) && action in SETTINGS_STORAGE_ACTIONS) {
+                composeSettingsStorageActions[id] = action
+            }
+        }
         pendingMediaRequestId = savedInstanceState?.getString(STATE_PENDING_MEDIA_REQUEST_ID)
         pendingBroadRequestId = savedInstanceState?.getString(STATE_PENDING_BROAD_REQUEST_ID)
         pendingSafRequestId = savedInstanceState?.getString(STATE_PENDING_SAF_REQUEST_ID)
@@ -1300,6 +1312,55 @@ class MainActivity : FlutterFragmentActivity() {
             }
         } catch (exception: Exception) {
             Log.e(tag, "SETTINGS_FILE_RESULT_WRITE_FAILED requestId=" + requestId + " action=" + action, exception)
+        }
+    }
+
+    private fun beginComposeSettingsStorageAction(requestId: String, action: String) {
+        composeSettingsStorageActions[requestId] = action
+        lifecycleScope.launch(Dispatchers.IO) {
+            writeSettingsFileActionResult(
+                requestId,
+                action,
+                "RUNNING",
+                "RUNNING",
+                message = "Operação nativa de armazenamento em andamento.",
+            )
+        }
+    }
+
+    private fun completeComposeSettingsStorageAction(
+        requestId: String?,
+        status: String,
+        message: String? = null,
+        error: String? = null,
+    ) {
+        val id = requestId?.trim()?.takeIf { SETTINGS_FILE_REQUEST_ID_REGEX.matches(it) } ?: return
+        val action = composeSettingsStorageActions.remove(id) ?: return
+        lifecycleScope.launch(Dispatchers.IO) {
+            writeSettingsFileActionResult(
+                id,
+                action,
+                status,
+                status,
+                message = message,
+                error = error,
+            )
+        }
+    }
+
+    private fun rejectComposeSettingsStorageAction(
+        requestId: String,
+        action: String,
+        error: String,
+    ) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            writeSettingsFileActionResult(
+                requestId,
+                action,
+                "ERROR",
+                "ERROR",
+                error = error,
+            )
         }
     }
 
@@ -1603,6 +1664,8 @@ class MainActivity : FlutterFragmentActivity() {
         outState.putString("reiflix.externalSettingsRequestId", externalSettingsRequestId)
         outState.putString("reiflix.settingsFileAction", pendingSettingsFileAction)
         outState.putString("reiflix.settingsFileRequestId", pendingSettingsFileRequestId)
+        outState.putStringArrayList("reiflix.settingsStorageIds", ArrayList(composeSettingsStorageActions.keys))
+        outState.putStringArrayList("reiflix.settingsStorageActions", ArrayList(composeSettingsStorageActions.values))
         outState.putBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED, startupDiscoveryTriggered)
         outState.putString(STATE_LAST_OBSERVED_MEDIA_ACCESS, lastObservedMediaAccess)
         lastObservedBroadAccess?.let { outState.putBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS, it) }
