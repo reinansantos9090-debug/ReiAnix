@@ -367,20 +367,24 @@ class ReiAnixAppBootstrap internal constructor(
         result: String,
         stage: ReiAnixBootstrapStage,
     ) {
-        runCatching {
-            ReiAnixDiagnosticTimeline.record(
-                name = name,
-                source = "ReiAnixAppBootstrap",
-                result = result,
-                context = mapOf(
-                    "stage" to stage.name,
-                    "phase" to state.value.phase.name,
-                    "persistence" to state.value.persistenceStatus.name,
-                ),
-            )
-        }.onFailure { error ->
-            // Diagnostics are observational; they must not gate startup.
-            Log.w(TAG, "Could not record bootstrap diagnostic event=$name.", error)
+        // Diagnostic persistence can touch disk. Enqueue it on the process IO scope
+        // so Application/Activity lifecycle callbacks never perform it synchronously.
+        processScope.launch {
+            runCatching {
+                ReiAnixDiagnosticTimeline.record(
+                    name = name,
+                    source = "ReiAnixAppBootstrap",
+                    result = result,
+                    context = mapOf(
+                        "stage" to stage.name,
+                        "phase" to state.value.phase.name,
+                        "persistence" to state.value.persistenceStatus.name,
+                    ),
+                )
+            }.onFailure { error ->
+                // Diagnostics are observational; they must not gate startup.
+                Log.w(TAG, "Could not record bootstrap diagnostic event=$name.", error)
+            }
         }
     }
 
