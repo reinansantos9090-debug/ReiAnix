@@ -54,7 +54,7 @@ A recuperação usa apenas membros de arte manual declarados no manifesto e auto
 
 O serviço não inventa caminhos físicos para URIs `content://`, não recria permissões do Android e não apaga registros só porque um arquivo externo está indisponível. A reconciliação subsequente preserva referências URI/SAF/MediaStore para os scanners existentes. Para caminhos locais comuns, a verificação pode marcar disponibilidade; isso não implica que o vídeo esteja incluído no ZIP.
 
-## Concorrrência e SQLite
+## Concorrência e SQLite
 
 As operações de backup, restauração, integridade e reconciliação usam a função de manutenção exclusiva de `ReiAnixSqliteDatabase`, que sincroniza com leitores/escritores Kotlin que compartilham a instância canônica e invalida a validação em cache do contrato após a manutenção. O bloqueio não cria uma nova conexão persistente e não modifica o schema.
 
