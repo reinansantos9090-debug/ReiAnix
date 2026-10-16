@@ -269,7 +269,9 @@ class ScanCoordinatorSourceContractTests(unittest.TestCase):
         end = source.index("override fun onPause()", start)
         resume = source[start:end]
         self.assertIn('publishScanRequest(', resume)
-        self.assertIn('"STARTUP"', resume)
+        self.assertIn('"STARTUP_SCAN_SKIPPED"', resume)
+        self.assertIn('result = "explicit_scan_required"', resume)
+        self.assertNotIn('"STARTUP"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
         self.assertNotIn("scanTree(tree, null)", resume)
