@@ -409,6 +409,12 @@ class ReiAnixBackupService(context: Context) {
                 val key = cursor.getString(0)
                 val value = cursor.getString(1)
                 if (key !in exportedPreferenceKeys()) continue
+                if (key == "settings.schema_version") {
+                    require(value.toIntOrNull() in 1..SETTINGS_SCHEMA_VERSION) {
+                        "Versão de Settings inválida no backup."
+                    }
+                    continue
+                }
                 runCatching { ReiAnixSettingsContract.normalize(key, value) }.getOrElse {
                     throw BackupValidationException("Valor inválido no SettingsStore: " + key + ".", it)
                 }
@@ -853,6 +859,7 @@ class ReiAnixBackupService(context: Context) {
     companion object {
         const val DATABASE_NAME = "library.sqlite3"
         const val SCHEMA_VERSION = 29
+        const val SETTINGS_SCHEMA_VERSION = 2
         const val FORMAT = "rei-flix-backup-v1"
         const val FORMAT_VERSION = 1
         const val APP_NAME = "ReiAnix"
