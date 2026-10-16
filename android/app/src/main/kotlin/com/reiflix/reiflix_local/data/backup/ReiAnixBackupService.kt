@@ -455,7 +455,7 @@ class ReiAnixBackupService(context: Context) {
             if (replacementPromoted && databaseFile.exists()) {
                 val failedReplacement = File(recoverySnapshot, "failed-restored-" + DATABASE_NAME)
                 if (!databaseFile.renameTo(failedReplacement)) {
-                    LogRecoveryFailure.log("Could not quarantine failed recovery database", error)
+                    android.util.Log.e("ReiAnixBackup", "Could not quarantine failed recovery database", error)
                 }
             }
             if (previousDatabaseMoved && displaced.exists() && !databaseFile.exists()) {
@@ -476,7 +476,7 @@ class ReiAnixBackupService(context: Context) {
                         original.renameTo(failedSidecar)
                     }
                     if (!preserved.renameTo(original)) {
-                        LogRecoveryFailure.log("Could not restore SQLite sidecar " + original.name, error)
+                        android.util.Log.e("ReiAnixBackup", "Could not restore SQLite sidecar " + original.name, error)
                     }
                 }
             }
@@ -574,7 +574,10 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    fun integrityReport(): IntegrityReport {
+    fun integrityReport(): IntegrityReport =
+        withCanonicalFileMaintenance { integrityReportLocked() }
+
+    private fun integrityReportLocked(): IntegrityReport {
         return try {
             requireCanonicalDatabase()
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
@@ -605,7 +608,10 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    fun reconcileRestoredFileAvailability(): Int {
+    fun reconcileRestoredFileAvailability(): Int =
+        withCanonicalFileMaintenance { reconcileRestoredFileAvailabilityLocked() }
+
+    private fun reconcileRestoredFileAvailabilityLocked(): Int {
         requireCanonicalDatabase()
         val updates = mutableListOf<Pair<Long, Pair<Int, String>>>()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
@@ -1168,6 +1174,7 @@ class ReiAnixBackupService(context: Context) {
     class BackupRestoreException(message: String, cause: Throwable, val safetyBackup: File) : IOException(message, cause)
 
     companion object {
+        private val MAINTENANCE_LOCK = Any()
         const val DATABASE_NAME = "library.sqlite3"
         const val SCHEMA_VERSION = 29
         const val SETTINGS_SCHEMA_VERSION = 2
