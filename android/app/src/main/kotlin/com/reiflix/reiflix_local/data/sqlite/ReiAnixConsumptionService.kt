@@ -1,6 +1,11 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+
+private const val REIANIX_CONSUMPTION_COMPLETION_RATIO = 0.90
 
 /**
  * Native consumption contract over the canonical LibraryStore SQLite database.
@@ -16,7 +21,14 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
     ) {
         // Legacy rows may retain a valid progress value without last_played_at.
         val hasSavedPosition: Boolean get() = positionMs != null
-        val isInProgress: Boolean get() = (positionMs ?: 0L) > 0L && !watched
+        val isCompleted: Boolean
+            get() {
+                if (watched) return true
+                val duration = durationMs?.takeIf { it > 0L } ?: return false
+                val position = positionMs?.takeIf { it >= 0L } ?: return false
+                return position.toDouble() / duration.toDouble() >= REIANIX_CONSUMPTION_COMPLETION_RATIO
+            }
+        val isInProgress: Boolean get() = (positionMs ?: 0L) > 0L && !isCompleted
     }
 
     suspend fun getProgress(episodeId: Long): Progress? {
@@ -61,7 +73,7 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
         val positionSeconds = positionMs.toDouble() / 1_000.0
         val boundedPosition = durationSeconds?.let(positionSeconds::coerceAtMost) ?: positionSeconds
         val reachedCompletionThreshold = durationSeconds != null && durationSeconds > 0.0 &&
-            boundedPosition / durationSeconds >= COMPLETION_RATIO
+            boundedPosition / durationSeconds >= REIANIX_CONSUMPTION_COMPLETION_RATIO
         val finalPosition = if (completed && durationSeconds != null) {
             durationSeconds
         } else boundedPosition
@@ -90,10 +102,14 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
     }
 
     suspend fun continueWatching(limit: Int = 36): List<Progress> =
-        queryRecentlyPlayed(limit) { it.missing != true && it.watched != true && (it.progress ?: 0.0) > 0.0 }
+        queryRecentlyPlayed(limit) { it.missing != true && it.toConsumptionProgress().isInProgress }
 
     suspend fun watchedRecently(limit: Int = 36): List<Progress> =
-        queryRecentlyPlayed(limit) { it.watched == true && it.missing != true }
+        queryRecentlyPlayed(limit) { it.missing != true && it.toConsumptionProgress().isCompleted }
+
+    /** Recent playback history is projected from the canonical episodes table. */
+    suspend fun playbackHistory(limit: Int = 36): List<Progress> =
+        queryRecentlyPlayed(limit) { true }
 
     /** Filters across pages so a large watched/missing prefix cannot hide eligible items. */
     private suspend fun queryRecentlyPlayed(
@@ -117,15 +133,69 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
     private fun ReiAnixEpisodeRecord.toConsumptionProgress(): Progress {
         val durationSeconds = duration?.takeIf { it.isFinite() && it > 0.0 }
         val positionSeconds = progress?.takeIf { it.isFinite() && it >= 0.0 }
+        val boundedPositionSeconds = positionSeconds?.let { position ->
+            durationSeconds?.let(position::coerceAtMost) ?: position
+        }
         return Progress(
-            episodeId = id, positionMs = positionSeconds?.let { (it * 1_000.0).toLong() },
-            durationMs = durationSeconds?.let { (it * 1_000.0).toLong() }, watched = watched == true,
+            episodeId = id,
+            positionMs = boundedPositionSeconds?.let(::secondsToMilliseconds),
+            durationMs = durationSeconds?.let(::secondsToMilliseconds),
+            watched = watched == true,
             lastPlayedAtEpochSeconds = lastPlayedAt?.takeIf { it.isFinite() && it >= 0.0 },
         )
     }
 
-    private companion object {
-        // Existing release certification defines completion as 90 percent.
-        const val COMPLETION_RATIO = 0.90
+    private fun secondsToMilliseconds(seconds: Double): Long? {
+        val milliseconds = seconds * 1_000.0
+        return milliseconds
+            .takeIf { it.isFinite() && it >= 0.0 && it <= Long.MAX_VALUE.toDouble() }
+            ?.toLong()
+    }
+
+    data class PlaybackChange(
+        val episodeId: Long,
+        val eventType: String,
+        val playerSessionId: String,
+        val playerGeneration: Long,
+        val transitionGeneration: Long,
+        val eventCreatedAtEpochMs: Long,
+    )
+
+    companion object {
+        private val mutablePlaybackChanges =
+            MutableSharedFlow<PlaybackChange>(replay = 1, extraBufferCapacity = 32)
+        val playbackChanges: SharedFlow<PlaybackChange> = mutablePlaybackChanges.asSharedFlow()
+
+        /**
+         * Notify Compose after a committed checkpoint. Periodic player progress emits
+         * only at the existing 15-second persistence boundary, never on each UI tick.
+         */
+        internal fun publishCommittedProgress(
+            episodeId: Long,
+            eventType: String,
+            playerSessionId: String,
+            playerGeneration: Long,
+            transitionGeneration: Long,
+            eventCreatedAtEpochMs: Long,
+        ) {
+            if (episodeId <= 0L || eventType !in UI_REFRESH_EVENT_TYPES) return
+            mutablePlaybackChanges.tryEmit(
+                PlaybackChange(
+                    episodeId = episodeId,
+                    eventType = eventType,
+                    playerSessionId = playerSessionId,
+                    playerGeneration = playerGeneration,
+                    transitionGeneration = transitionGeneration,
+                    eventCreatedAtEpochMs = eventCreatedAtEpochMs,
+                ),
+            )
+        }
+
+        private val UI_REFRESH_EVENT_TYPES = setOf(
+            "player_progress",
+            "player_paused",
+            "player_completed",
+            "player_exited",
+        )
     }
 }
