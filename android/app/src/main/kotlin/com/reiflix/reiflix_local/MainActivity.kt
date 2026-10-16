@@ -18,6 +18,7 @@ import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.storage.NativeIndex
 import com.reiflix.reiflix_local.storage.StorageAuthorization
 import com.reiflix.reiflix_local.storage.StorageLifecycleState
+import com.reiflix.reiflix_local.storage.NativeStorageOnboardingState
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
@@ -58,6 +59,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -119,6 +123,9 @@ class MainActivity : FlutterFragmentActivity() {
     private val seenPlayerRequestIds = LinkedHashSet<String>()
     private var startupDiscoveryTriggered = false
     private var lastObservedMediaAccess: String? = null
+    private val _nativeStorageOnboardingState = MutableStateFlow(NativeStorageOnboardingState())
+    val nativeStorageOnboardingState: StateFlow<NativeStorageOnboardingState> = _nativeStorageOnboardingState.asStateFlow()
+    private var storageOnboardingRefreshJob: Job? = null
     private var lastObservedBroadAccess: Boolean? = null
     private var interactionProfileFingerprint: String? = null
     private val nativeRequestState = NativeRequestState()
@@ -196,6 +203,8 @@ class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         private const val BRIDGE_PROTOCOL_VERSION = 2
+        private const val NATIVE_STORAGE_ONBOARDING_PREFS = "reiflix_native_storage_onboarding"
+        private const val NATIVE_STORAGE_ONBOARDING_DISMISSED = "dismissed"
         private val SETTINGS_STORAGE_ACTIONS = setOf(
             "select_saf", "request_media_access", "check_storage_access", "open_broad_storage_settings",
         )
@@ -497,6 +506,7 @@ class MainActivity : FlutterFragmentActivity() {
                     // converge to the authoritative native snapshot on return.
                     Log.i(tag, "SETTINGS_RETURN revalidating non-broad surface kind=" + (kind ?: "-"))
                     publishStorageStatus()
+                    refreshNativeStorageOnboardingState("external_settings_return")
                 }
             }
         }
@@ -875,6 +885,16 @@ class MainActivity : FlutterFragmentActivity() {
         requestId: String?, message: String, stage: String, code: String,
         status: String = SafScanner.STATUS_FAILED, treeUri: Uri? = null,
     ) {
+        _nativeStorageOnboardingState.value = NativeStorageOnboardingState(
+            phase = NativeStorageOnboardingState.PHASE_ERROR,
+            message = message,
+            error = message,
+            dismissed = false,
+        )
+        getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
+            .apply()
         completeComposeSettingsStorageAction(
             requestId,
             "ERROR",
@@ -1000,6 +1020,14 @@ class MainActivity : FlutterFragmentActivity() {
                 result = "user_cancelled_picker",
             )
             clearSafPickerPending(requestId, SafPickerPhase.CANCELLED)
+            getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
+                .apply()
+            _nativeStorageOnboardingState.value = NativeStorageOnboardingState(
+                phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
+                message = "Seleção de pasta cancelada. A biblioteca não foi alterada; você pode tentar novamente.",
+            )
             completeComposeSettingsStorageAction(
                 requestId,
                 "CANCELLED",
@@ -1074,6 +1102,13 @@ class MainActivity : FlutterFragmentActivity() {
                         status = SafScanner.STATUS_FAILED, treeUri = uri)
                     return@launch
                 }
+                getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+                    .edit()
+                    .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
+                    .apply()
+                _nativeStorageOnboardingState.value = NativeStorageOnboardingState(
+                    phase = NativeStorageOnboardingState.PHASE_READY,
+                )
                 completeComposeSettingsStorageAction(
                     requestId,
                     "SUCCESS",
@@ -2110,6 +2145,7 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
 
+        refreshNativeStorageOnboardingState("activity_resume")
         val currentMediaAccess = MediaStoreScanner.accessLevel(this)
         val currentBroadAccess = BroadStorageScanner.hasAccess(this)
         val mediaAccessChangedToUsable = lastObservedMediaAccess != null &&
@@ -3359,6 +3395,121 @@ class MainActivity : FlutterFragmentActivity() {
      * folder. Startup discovery may only run when Android still holds a persisted
      * read grant for a SAF tree; explicit selection has its own scan path.
      */
+    /**
+     * Dismissal changes only the onboarding presentation; it never grants access,
+     * deletes a configured root, or marks a missing folder as ready.
+     */
+    fun dismissNativeStorageOnboarding() {
+        storageOnboardingRefreshJob?.cancel()
+        getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, true)
+            .apply()
+        _nativeStorageOnboardingState.value = _nativeStorageOnboardingState.value.copy(dismissed = true)
+    }
+
+    /**
+     * The canonical folder table decides which SAF trees are configured; Android's
+     * persisted URI grants and a live provider query decide whether they remain usable.
+     * No filesystem path or Python projection is used to establish this state.
+     */
+    private fun refreshNativeStorageOnboardingState(origin: String) {
+        // The ActivityResult callback owns the outcome while DocumentsUI is open.
+        // A lifecycle refresh must not overwrite its in-flight state.
+        if (safPickerPending) return
+
+        val previous = _nativeStorageOnboardingState.value
+        if (previous.phase != NativeStorageOnboardingState.PHASE_READY) {
+            _nativeStorageOnboardingState.value = previous.copy(
+                phase = NativeStorageOnboardingState.PHASE_CHECKING,
+                message = "Verificando o acesso à pasta da biblioteca…",
+                error = null,
+            )
+        }
+        storageOnboardingRefreshJob?.cancel()
+        storageOnboardingRefreshJob = lifecycleScope.launch {
+            val prefs = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+            val wasDismissed = prefs.getBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    val roots = appDependencies.sqliteLibraryRepository.listFolders()
+                        .filter { it.kind.equals("saf", ignoreCase = true) }
+                    if (roots.isEmpty()) {
+                        NativeStorageOnboardingState(
+                            phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
+                            message = "Selecione uma pasta para criar sua biblioteca. A permissão de mídia ou o acesso amplo não substitui uma pasta SAF configurada.",
+                            dismissed = wasDismissed,
+                        )
+                    } else {
+                        var revoked = false
+                        var providerUnavailable = false
+                        var accessibleRootFound = false
+                        for (folder in roots) {
+                            val uri = runCatching { Uri.parse(folder.path) }.getOrNull()
+                            if (uri == null || !uri.scheme.equals("content", ignoreCase = true) ||
+                                !DocumentsContract.isTreeUri(uri)
+                            ) {
+                                revoked = true
+                                continue
+                            }
+                            val persisted = SafScanner.hasPersistedReadPermission(applicationContext, uri)
+                            val inspection = SafScanner.inspectTree(applicationContext, uri, requirePersisted = true)
+                            val status = inspection.optString("status")
+                            if (persisted && status in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) {
+                                accessibleRootFound = true
+                                break
+                            }
+                            if (!persisted || status == SafScanner.STATUS_REVOKED) revoked = true
+                            else providerUnavailable = true
+                        }
+                        when {
+                            accessibleRootFound -> NativeStorageOnboardingState(
+                                phase = NativeStorageOnboardingState.PHASE_READY,
+                            )
+                            revoked -> NativeStorageOnboardingState(
+                                phase = NativeStorageOnboardingState.PHASE_ERROR,
+                                message = "A pasta configurada não está mais autorizada. Selecione novamente a pasta para recuperar o acesso; os dados da biblioteca foram preservados.",
+                                error = "A concessão SAF foi revogada ou a URI configurada deixou de ser válida.",
+                                dismissed = wasDismissed,
+                            )
+                            providerUnavailable -> NativeStorageOnboardingState(
+                                phase = NativeStorageOnboardingState.PHASE_ERROR,
+                                message = "A pasta configurada existe, mas o Android não conseguiu abri-la agora. Verifique o provedor ou escolha novamente a pasta.",
+                                error = "O provedor de documentos está indisponível ou não conseguiu consultar a raiz.",
+                                dismissed = wasDismissed,
+                            )
+                            else -> NativeStorageOnboardingState(
+                                phase = NativeStorageOnboardingState.PHASE_ERROR,
+                                message = "Não foi possível validar a pasta configurada. Tente novamente ou escolha outra pasta; os dados existentes foram preservados.",
+                                error = "A validação da fonte SAF não produziu um estado de acesso utilizável.",
+                                dismissed = wasDismissed,
+                            )
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exception: Exception) {
+                Log.w(tag, "Native storage onboarding validation failed origin=" + origin, exception)
+                NativeStorageOnboardingState(
+                    phase = NativeStorageOnboardingState.PHASE_ERROR,
+                    message = "Não foi possível verificar o acesso ao armazenamento. Tente novamente em Storage; os dados existentes foram preservados.",
+                    error = "A verificação nativa da configuração de armazenamento falhou.",
+                    dismissed = wasDismissed,
+                )
+            }
+
+            // The picker can be launched while the IO query is running. Let its
+            // state/result own the surface rather than publishing a stale snapshot.
+            if (safPickerPending) return@launch
+            if (result.phase == NativeStorageOnboardingState.PHASE_READY) {
+                prefs.edit().putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false).apply()
+            }
+            _nativeStorageOnboardingState.value = result
+            Log.i(tag, "NATIVE_STORAGE_ONBOARDING_REVALIDATED origin=" + origin + " phase=" + result.phase)
+        }
+    }
+
     private fun hasPersistedSafTreeGrant(): Boolean = runCatching {
         contentResolver.persistedUriPermissions.any { permission ->
             permission.isReadPermission && DocumentsContract.isTreeUri(permission.uri)
@@ -3494,6 +3645,7 @@ class MainActivity : FlutterFragmentActivity() {
             publishScanRequest("PERMISSION_CHANGE", "broad_storage", null, false, "broad_storage_settings_return", resolvedRequestId)
         }
         publishStorageCapabilities(StorageLifecycleState.REVALIDATED)
+        refreshNativeStorageOnboardingState("broad_settings_return")
     }
 
     private fun launchExternalSettings(kind: String, requestId: String?, intents: List<Pair<String, Intent>>): Boolean {
@@ -4525,6 +4677,14 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         safPickerPending = true
+        getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
+            .apply()
+        _nativeStorageOnboardingState.value = NativeStorageOnboardingState(
+            phase = NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN,
+            message = "Escolha a pasta da biblioteca na tela do Android.",
+        )
         safPickerStartedAtMs = System.currentTimeMillis()
         safPickerFocusLost = false
         safPickerFocusRegainedAtMs = 0L
