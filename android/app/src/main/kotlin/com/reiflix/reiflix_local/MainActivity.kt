@@ -3437,8 +3437,8 @@ class MainActivity : FlutterFragmentActivity() {
         storageOnboardingRefreshJob?.cancel()
         val current = _nativeStorageOnboardingState.value
         if (
-            current.phase != NativeStorageOnboardingState.PHASE_READY &&
-            !hasPersistedSafTreeGrant()
+            current.phase == NativeStorageOnboardingState.PHASE_NEEDS_FOLDER ||
+            (current.phase != NativeStorageOnboardingState.PHASE_READY && !hasPersistedSafTreeGrant())
         ) {
             getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
                 .edit()
