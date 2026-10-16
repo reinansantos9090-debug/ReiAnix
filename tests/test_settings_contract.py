@@ -24,7 +24,9 @@ class SettingsContractTests(unittest.TestCase):
         self.assertIn("async def _run_compose_settings_action", main)
         self.assertIn("_track_compose_settings_task", main)
         self.assertIn("COMPOSE_SETTINGS_MAX_TASKS = 8", main)
-        self.assertIn("asyncio.create_task(_run_compose_settings_set", main)
+        self.assertIn("task = asyncio.create_task(", main)
+        self.assertIn("_run_compose_settings_set(", main)
+        self.assertIn("native_persisted=native_persisted", main)
         self.assertIn("asyncio.create_task(_run_compose_settings_action", main)
         self.assertIn("claim_native_request(request_id, namespace=\"compose_settings\")", main)
         self.assertIn('write_command_result(', main)
@@ -42,7 +44,9 @@ class SettingsContractTests(unittest.TestCase):
         self.assertNotIn("await add_folder()", block)
         self.assertNotIn("await create_backup()", block)
         self.assertNotIn("await restore_backup(", block)
-        self.assertIn("asyncio.create_task(_run_compose_settings_set", block)
+        self.assertIn("task = asyncio.create_task(", block)
+        self.assertIn("_run_compose_settings_set(", block)
+        self.assertIn("native_persisted=native_persisted", block)
         self.assertIn("asyncio.create_task(_run_compose_settings_action", block)
 
     def test_settings_export_import_contract_exists(self):
