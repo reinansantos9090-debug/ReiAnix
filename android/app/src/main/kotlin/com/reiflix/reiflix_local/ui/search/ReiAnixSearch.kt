@@ -134,10 +134,12 @@ fun ReiAnixSearchRoute(
     )
     val aniListState by aniListViewModel.uiState.collectAsStateWithLifecycle()
     var source by rememberSaveable { mutableStateOf("local") }
+    var aniListQuery by rememberSaveable { mutableStateOf("") }
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
+    val displayedQuery = if (source == "anilist") aniListQuery else searchQuery
 
-    LaunchedEffect(source, searchQuery, aniListViewModel) {
-        aniListViewModel.setDiscoveryQuery(if (source == "anilist") searchQuery else "")
+    LaunchedEffect(source, aniListQuery, aniListViewModel) {
+        aniListViewModel.setDiscoveryQuery(if (source == "anilist") aniListQuery else "")
     }
 
     if (showFilterSheet && source == "local") {
@@ -166,14 +168,20 @@ fun ReiAnixSearchRoute(
     ReiAnixSearchScreen(
         libraryState = libraryState,
         browseAnimes = catalogAnimes,
-        searchQuery = searchQuery,
+        searchQuery = displayedQuery,
         searchState = searchState,
         genres = genres,
         aniListState = aniListState,
         source = source,
         cardSize = cardSize,
         showBackButton = showBackButton,
-        onQueryChange = viewModel::setSearchQuery,
+        onQueryChange = { value ->
+            if (source == "anilist") {
+                aniListQuery = value
+            } else {
+                viewModel.setSearchQuery(value)
+            }
+        },
         onBack = { navController.popBackStack() },
         onRefresh = viewModel::refresh,
         onSelectSource = viewModel::selectSafTree,
