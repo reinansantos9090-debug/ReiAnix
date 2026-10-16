@@ -3469,6 +3469,7 @@ class MainActivity : FlutterFragmentActivity() {
             isDestroyed ||
             automaticSafPickerAttempted ||
             safPickerPending ||
+            nativeRequestState.pendingLifecycleAction == "select_tree" ||
             appDependencies.bootstrap.state.value.recoveryRequired ||
             appDependencies.bootstrap.state.value.stage != ReiAnixBootstrapStage.READY ||
             _nativeStorageOnboardingState.value.phase != NativeStorageOnboardingState.PHASE_NEEDS_FOLDER
@@ -4877,6 +4878,7 @@ class MainActivity : FlutterFragmentActivity() {
                     openTreePicker(queued.requestId)
                 }
             }
+            maybeLaunchAutomaticSafPicker()
         } else if (safPickerPending) {
             safPickerFocusLost = true
             safPickerFocusRegainedAtMs = 0L
