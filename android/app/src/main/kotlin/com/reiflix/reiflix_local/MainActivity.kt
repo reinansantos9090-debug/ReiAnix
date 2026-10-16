@@ -611,9 +611,19 @@ class MainActivity : FlutterFragmentActivity() {
                 .put("source", MediaStoreScanner.SOURCE)
                 .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED))))
         if (granted) {
+            completeComposeSettingsStorageAction(
+                requestId,
+                "SUCCESS",
+                message = "Permissão de acesso aos vídeos confirmada.",
+            )
             nativeRequestState.markOperationState(requestId, "request_media_access", NativeRequestState.OperationState.COMPLETED)
             scanMediaStore(requestId)
         } else {
+            completeComposeSettingsStorageAction(
+                requestId,
+                "ERROR",
+                error = "A permissão de acesso aos vídeos foi negada.",
+            )
             nativeRequestState.markOperationState(requestId, "request_media_access", NativeRequestState.OperationState.FAILED)
             NativeMailbox.write(this, JSONObject().put("type", "mediastore_error")
                 .put("requestId", requestId ?: "")
@@ -629,6 +639,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingSettingsFileRequestId: String? = null
     private var settingsFileProcessing = false
     private val composeSettingsStorageActions = mutableMapOf<String, String>()
+    private val composeSettingsStorageStatusJobs = mutableMapOf<String, Job>()
 
     private val settingsExportLauncher =
         registerForActivityResult(
@@ -1332,7 +1343,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun beginComposeSettingsStorageAction(requestId: String, action: String) {
         composeSettingsStorageActions[requestId] = action
-        lifecycleScope.launch(Dispatchers.IO) {
+        composeSettingsStorageStatusJobs[requestId] = lifecycleScope.launch(Dispatchers.IO) {
             writeSettingsFileActionResult(
                 requestId,
                 action,
@@ -1351,7 +1362,9 @@ class MainActivity : FlutterFragmentActivity() {
     ) {
         val id = requestId?.trim()?.takeIf { SETTINGS_FILE_REQUEST_ID_REGEX.matches(it) } ?: return
         val action = composeSettingsStorageActions.remove(id) ?: return
+        val previousStatusJob = composeSettingsStorageStatusJobs.remove(id)
         lifecycleScope.launch(Dispatchers.IO) {
+            previousStatusJob?.join()
             writeSettingsFileActionResult(
                 id,
                 action,
@@ -2694,6 +2707,11 @@ class MainActivity : FlutterFragmentActivity() {
         }
         val currentAccess = MediaStoreScanner.accessLevel(this)
         if (currentAccess != "denied") {
+        completeComposeSettingsStorageAction(
+            pendingMediaRequestId,
+            "SUCCESS",
+            message = "Permissão de acesso aos vídeos confirmada.",
+        )
         nativeRequestState.markOperationState(pendingMediaRequestId, "request_media_access", NativeRequestState.OperationState.COMPLETED)
             Log.i(tag, "Media access already present; continuing directly to scan access=" + currentAccess)
             NativeMailbox.write(this, JSONObject().put("type", "mediastore_permission")
@@ -2711,6 +2729,11 @@ class MainActivity : FlutterFragmentActivity() {
         }
         val permissions = MediaStoreScanner.requiredPermissions()
         if (permissions.isEmpty()) {
+            completeComposeSettingsStorageAction(
+                pendingMediaRequestId,
+                "ERROR",
+                error = "Este Android não disponibiliza permissão de leitura de vídeos.",
+            )
             NativeMailbox.write(this, JSONObject().put("type", "mediastore_error")
                 .put("requestId", pendingMediaRequestId ?: "")
                 .put("message", "Este Android não disponibiliza permissão de leitura de vídeos.")
@@ -2735,6 +2758,11 @@ class MainActivity : FlutterFragmentActivity() {
             mediaPermissionRequester.launch(permissions)
         } catch (exception: Exception) {
             mediaPermissionRequestPending = false
+            completeComposeSettingsStorageAction(
+                pendingMediaRequestId,
+                "ERROR",
+                error = "Não foi possível abrir a solicitação de permissão para vídeos.",
+            )
             nativeRequestState.markOperationState(pendingMediaRequestId, "request_media_access", NativeRequestState.OperationState.FAILED)
             pendingMediaRequestId = null
             Log.e(tag, "Media permission launcher failed", exception)
@@ -2928,6 +2956,11 @@ class MainActivity : FlutterFragmentActivity() {
         }
         val requestId = pendingBroadRequestId
         if (BroadStorageScanner.hasAccess(this)) {
+            completeComposeSettingsStorageAction(
+                requestId,
+                "SUCCESS",
+                message = "O acesso amplo ao armazenamento já está autorizado.",
+            )
             pendingBroadRequestId = null
             NativeMailbox.write(
                 this,
@@ -2944,6 +2977,11 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         if (Build.VERSION.SDK_INT < 30) {
+            completeComposeSettingsStorageAction(
+                requestId,
+                "ERROR",
+                error = "O acesso amplo ao armazenamento exige Android 11 ou superior.",
+            )
             broadStoragePermissionPending = false
             pendingBroadRequestId = null
             NativeMailbox.write(this, JSONObject().put("type", "broad_storage_error")
@@ -2980,6 +3018,11 @@ class MainActivity : FlutterFragmentActivity() {
             ),
         )
         if (!launched) {
+            completeComposeSettingsStorageAction(
+                requestId,
+                "ERROR",
+                error = "O Android não conseguiu abrir as configurações de acesso amplo.",
+            )
             broadStoragePermissionPending = false
             pendingBroadRequestId = null
             NativeMailbox.write(this, JSONObject().put("type", "broad_storage_error")
@@ -2993,6 +3036,11 @@ class MainActivity : FlutterFragmentActivity() {
                     .put("fallbackOpened", false)
                     .put("source", BroadStorageScanner.SOURCE)))
         } else {
+            completeComposeSettingsStorageAction(
+                requestId,
+                "SUCCESS",
+                message = "As configurações de acesso amplo foram abertas.",
+            )
             Log.i(tag, "SETTINGS_LAUNCH accepted kind=broad_storage requestId=" + (requestId ?: "-"))
         }
     }
