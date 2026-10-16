@@ -380,6 +380,9 @@ class ReiAnixBackupService(context: Context) {
                 }
                 val schema = queryLongOrNull(db, "SELECT MAX(version) FROM schema_migrations")?.toInt()
                 require(schema == SCHEMA_VERSION) { "Schema do backup incompatível com o schema v29." }
+                require(queryLongOrNull(db, "PRAGMA user_version")?.toInt() == SCHEMA_VERSION) {
+                    "PRAGMA user_version do backup não corresponde ao schema v29."
+                }
                 if (sanitizeUnknownPreferences) {
                     val allowed = exportedPreferenceKeys().toList().sorted()
                     val placeholders = allowed.joinToString(",") { "?" }
