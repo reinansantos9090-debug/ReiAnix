@@ -61,11 +61,10 @@ data class ReiAnixBootstrapState(
 /**
  * Process-owned startup coordinator.
  *
- * It starts only native process services whose ordering matters: interrupted SAF
- * scan recovery is attempted before the file-observer command dispatcher starts
- * consuming queued work. Database health is validated on demand by the activity
- * recovery decision; an absent database is a fresh install unless durable
- * recovery evidence exists.
+ * It validates the canonical database before attempting interrupted SAF receipt
+ * recovery or starting the file-observer command dispatcher. A damaged database or
+ * durable evidence of an interrupted promotion keeps normal work gated until Recovery
+ * Mode succeeds; an absent database without such evidence remains a fresh install.
  *
  * This class does not start a scanner, issue remote AniList requests, warm artwork,
  * create a player session, or start a second Python/Flet runtime.
