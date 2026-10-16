@@ -1121,6 +1121,9 @@ class MainActivity : FlutterFragmentActivity() {
         broadStoragePermissionPending = savedInstanceState?.getBoolean(STATE_BROAD_SETTINGS_PENDING) ?: false
         externalSettingsKind = savedInstanceState?.getString("reiflix.externalSettingsKind")
         externalSettingsRequestId = savedInstanceState?.getString("reiflix.externalSettingsRequestId")
+        pendingSettingsFileAction = savedInstanceState?.getString("reiflix.settingsFileAction")
+        pendingSettingsFileRequestId = savedInstanceState?.getString("reiflix.settingsFileRequestId")
+        settingsFileProcessing = false
         pendingMediaRequestId = savedInstanceState?.getString(STATE_PENDING_MEDIA_REQUEST_ID)
         pendingBroadRequestId = savedInstanceState?.getString(STATE_PENDING_BROAD_REQUEST_ID)
         pendingSafRequestId = savedInstanceState?.getString(STATE_PENDING_SAF_REQUEST_ID)
@@ -1582,6 +1585,8 @@ class MainActivity : FlutterFragmentActivity() {
         outState.putString(STATE_SAF_PICKER_PHASE, safPickerPhase.name)
         outState.putString("reiflix.externalSettingsKind", externalSettingsKind)
         outState.putString("reiflix.externalSettingsRequestId", externalSettingsRequestId)
+        outState.putString("reiflix.settingsFileAction", pendingSettingsFileAction)
+        outState.putString("reiflix.settingsFileRequestId", pendingSettingsFileRequestId)
         outState.putBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED, startupDiscoveryTriggered)
         outState.putString(STATE_LAST_OBSERVED_MEDIA_ACCESS, lastObservedMediaAccess)
         lastObservedBroadAccess?.let { outState.putBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS, it) }
