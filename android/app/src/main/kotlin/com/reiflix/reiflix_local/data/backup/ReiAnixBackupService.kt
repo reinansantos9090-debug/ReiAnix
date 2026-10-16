@@ -411,8 +411,8 @@ class ReiAnixBackupService(context: Context) {
                 if (key !in exportedPreferenceKeys()) continue
                 if (key == "settings.schema_version") {
                     val settingsSchemaVersion = value.toIntOrNull()
-                    require(settingsSchemaVersion != null && settingsSchemaVersion in 1..SETTINGS_SCHEMA_VERSION) {
-                        "Versão de Settings inválida no backup."
+                    require(settingsSchemaVersion == SETTINGS_SCHEMA_VERSION) {
+                        "Versão persistida do SettingsStore incompatível com o aplicativo."
                     }
                     continue
                 }
