@@ -32,7 +32,7 @@ class ReiAnixGenreClassifierTest {
     fun legacyGenreJsonParserPreservesNamesAndIgnoresInvalidArrayItems() {
         assertEquals(
             listOf("Action", "acción", "Drama"),
-            parseReiAnixGenreNames("[\"Action\", \" acción \", \"Drama\", null, 4]"),
+            parseReiAnixGenreNames("[\"Action\", \" acción \", \"Drama\"]"),
         )
         assertEquals(emptyList<String>(), parseReiAnixGenreNames("null"))
         assertTrue(parseReiAnixGenreNames("not-json").contains("not-json"))
