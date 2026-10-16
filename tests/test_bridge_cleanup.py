@@ -80,3 +80,75 @@ def test_has_zero_removed_host_references_in_runtime_sources():
             source = path.read_text(encoding="utf-8")
             for token in forbidden:
                 assert token not in source, f"{token} remains in runtime source: {path}"
+
+
+
+def test_native_request_state_rejects_stale_lifecycle_regressions():
+    source = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt"
+    )
+    assert "private fun OperationState.isTerminal()" in source
+    assert "private fun canAdvanceState(" in source
+    assert "if (!canAdvanceState(previous?.state, state)) return false" in source
+    assert "OperationState.RUNNING ->" in source
+    assert "next != OperationState.QUEUED" in source
+    assert "fun operationState(requestId:String?)" in source
+    assert "fun requestSnapshot(requestId:String?)" in source
+
+
+def test_native_settings_preferences_do_not_depend_on_optional_python_projection():
+    settings_repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
+    sqlite_repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSettingsRepository.kt"
+    )
+    assert "sqliteSettingsRepository.allPreferences()" in settings_repository
+    assert "private fun publishCanonicalPreferencesAfterBridgeFailure(" in settings_repository
+    assert "publishCanonicalPreferencesAfterBridgeFailure(" in settings_repository
+    assert "settings = persistedPreferences" in settings_repository
+    assert "status = ReiAnixSettingsLoadStatus.READY" in settings_repository
+    assert "class ReiAnixSqliteSettingsRepository" in sqlite_repository
+    # Keep the mailbox notification for remaining Python consumers; it is not the writer.
+    assert 'put("type", "compose_settings_set")' in settings_repository
+    assert "nativePersisted" in settings_repository
+
+
+def test_library_scan_refresh_no_longer_dispatches_a_duplicate_python_page_query():
+    repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
+    )
+    view_model = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+    )
+    assert "pendingRefreshPage" not in repository
+    assert "RefreshPageRequest" not in repository
+    refresh_result_start = repository.index(
+        'if (action == ReiAnixLibraryCommandCodec.Action.REFRESH.value'
+    )
+    page_result_start = repository.index(
+        'if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value',
+        refresh_result_start,
+    )
+    assert "loadLibraryPage(" not in repository[refresh_result_start:page_result_start]
+    assert "repository.refresh()" in view_model
+    native_refresh_start = view_model.index("private suspend fun refreshNativeCatalog()")
+    native_refresh_end = view_model.index("\n    }", native_refresh_start)
+    assert "loadNativeLibraryPage(" in view_model[native_refresh_start:native_refresh_end]
+
+
+def test_prompt_18_bridge_migration_docs_preserve_legacy_boundaries():
+    doc_path = ROOT / "docs/KOTLIN_BRIDGE_MIGRATION.md"
+    assert doc_path.is_file()
+    doc = doc_path.read_text(encoding="utf-8")
+    for token in (
+        "NativeMailbox",
+        "ComposeLibraryBridge",
+        "ComposeSettingsBridge",
+        "NativeCommandDispatcher",
+        "NativeRequestState",
+        "SQLite",
+        "still required",
+        "not 100% Kotlin",
+    ):
+        assert token.lower() in doc.lower()
