@@ -164,21 +164,21 @@ class ReiAnixLibraryViewModel(
      * The legacy repository remains only for projection/IPC operations that have
      * not yet been migrated; it is not the writer for favorite/watched mutations.
      */
-    private val nativeLibraryRepository = appDependencies?.sqliteLibraryRepository
+    private val nativeLibraryRepository = dependencies?.sqliteLibraryRepository
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository(context)
     /** Shared native genre identity service; uses the same canonical SQLite object. */
-    private val nativeGenreRegistry = appDependencies?.genreRegistry
+    private val nativeGenreRegistry = dependencies?.genreRegistry
         ?: ReiAnixGenreRegistry(nativeLibraryRepository.database)
-    private val nativeLibraryQueries = appDependencies?.libraryQueryService
+    private val nativeLibraryQueries = dependencies?.libraryQueryService
         ?: ReiAnixLibraryQueryService(context, nativeLibraryRepository)
-    private val nativeLibraryService = appDependencies?.libraryService
+    private val nativeLibraryService = dependencies?.libraryService
         ?: ReiAnixLibraryService(nativeLibraryRepository)
-    private val personalListService = appDependencies?.personalListService
+    private val personalListService = dependencies?.personalListService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(
             nativeLibraryRepository.database,
             nativeLibraryRepository,
         )
-    private val consumptionService = appDependencies?.consumptionService
+    private val consumptionService = dependencies?.consumptionService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService(nativeLibraryRepository)
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
@@ -1011,7 +1011,7 @@ class ReiAnixLibraryViewModel(
                     report.classifiedAnime > 0 ->
                         "${report.assignedGenreCount} associação(ões) de gênero salvas em ${report.classifiedAnime} animes."
                     report.skippedAuthoritativeMetadata > 0 ->
-                        "Nenhum gênero novo foi inferido. ${report.skippedAuthoritativeMetadata} registro(s) foram preservados por metadados AniList/manuais; títulos sem regra correspondente ficaram sem rótulos."
+                        "Nenhum gênero novo foi inferido. ${report.skippedAuthoritativeMetadata} registro(s) foram preservados por metadados remotos/manuais; títulos sem regra correspondente ficaram sem rótulos."
                     else ->
                         "Nenhum gênero ausente pôde ser inferido pelas regras locais."
                 }
