@@ -80,6 +80,7 @@ class ReiAnixComposeLibraryHost(
             val continueWatchingEnabled by settingsViewModel.continueWatchingEnabled.collectAsStateWithLifecycle()
             val continueWatchingLimit by settingsViewModel.continueWatchingLimit.collectAsStateWithLifecycle()
             val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+            val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
             // Keep local search/browse ViewModels independent from remote APIs. The
             // application-level AniList integration owns this separate reconciliation
@@ -227,18 +228,15 @@ class ReiAnixComposeLibraryHost(
                             publishLegacyNavigation("collector")
                         },
                     )
-                    val onboardingState = libraryState.storage.onboardingState.trim().lowercase()
-                    if (
-                        onboardingAllowed &&
-                        !libraryState.storage.onboardingDismissed &&
-                        onboardingState in setOf("checking", "needs_folder", "folder_picker_open", "error")
-                    ) {
+                    if (onboardingAllowed && nativeOnboarding.isPromptVisible) {
                         ReiAnixLibraryFolderOnboarding(
-                            state = onboardingState,
-                            message = libraryState.storage.onboardingMessage,
-                            error = libraryState.storage.onboardingError,
-                            onCancel = libraryViewModel::dismissStorageOnboarding,
-                            onSelectFolder = libraryViewModel::selectSafTree,
+                            state = nativeOnboarding.phase,
+                            message = nativeOnboarding.message,
+                            error = nativeOnboarding.error,
+                            onCancel = activity::dismissNativeStorageOnboarding,
+                            onSelectFolder = {
+                                activity.requestNativeStorageAction("select_tree")
+                            },
                         )
                     }
                 }
