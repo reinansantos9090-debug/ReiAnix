@@ -26,7 +26,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.details.ReiAnixDetailsRoute
-import com.reiflix.reiflix_local.ui.recovery.ReiAnixRecoveryRoute
 import com.reiflix.reiflix_local.ui.details.ReiAnixAniListDetailsRoute
 import com.reiflix.reiflix_local.ui.home.ReiAnixHomeRoute
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryRoute
