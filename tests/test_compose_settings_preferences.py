@@ -343,3 +343,27 @@ def test_compose_artwork_cache_clear_is_native_and_does_not_repeat_python_mutati
     worker = main[worker_start:worker_end]
     assert "if native_handled:" in worker
     assert "library.clear_anilist_cache" in worker  # legacy Flet path only
+
+def test_compose_settings_import_export_use_native_android_pickers_and_canonical_sqlite():
+    repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
+    file_service = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsFileService.kt"
+    )
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    main = read("main.py")
+
+    assert 'normalizedAction == "settings_export" || normalizedAction == "settings_import"' in repository
+    assert "Intent(appContext, MainActivity::class.java)" in repository
+    assert "EXTRA_ACTION" in repository and "EXTRA_REQUEST_ID" in repository
+    assert 'CreateDocument("application/json")' in activity
+    assert "ActivityResultContracts.OpenDocument()" in activity
+    assert "ReiAnixSettingsFileService(appDependencies.sqliteSettingsRepository)" in activity
+    assert 'const val EXPORT_FORMAT = "reiflix-settings"' in file_service
+    assert "SUPPORTED_SCHEMA_VERSIONS = setOf(1, SCHEMA_VERSION)" in file_service
+    assert "setPreferencesAtomically(valuesToCommit)" in file_service
+    assert "compose_settings_bulk_applied" in activity
+    assert "writeSettingsFileActionResult" in activity
+    assert "if action == 'settings_export':" in main
+    assert "if action == 'settings_import':" in main  # legacy Flet Settings consumer remains supported
