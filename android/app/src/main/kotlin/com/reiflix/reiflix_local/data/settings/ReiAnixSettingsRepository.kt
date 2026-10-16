@@ -922,6 +922,7 @@ class ReiAnixSettingsRepository(
     }
 
     private suspend fun loadSnapshot() {
+        val canonicalAccountState = readNativeAccountUiState()
         // The JSON file is a projection for account/storage/action state, not a
         // second settings database. Prefer the canonical preferences table when it
         // is available, and retain snapshot compatibility if the database cannot be read.
@@ -952,6 +953,7 @@ class ReiAnixSettingsRepository(
                     confirmedSettings.putAll(persistedPreferences)
                     _state.value = current.copy(
                         status = ReiAnixSettingsLoadStatus.READY,
+                        account = canonicalAccountState ?: current.account,
                         settings = persistedPreferences,
                         error = null,
                     )
@@ -970,11 +972,14 @@ class ReiAnixSettingsRepository(
                     val snapshotState = ReiAnixSettingsUiState.fromSnapshot(decoded)
                     // SQLite preferences remain authoritative even when the account/storage
                     // projection is stale or reports an error.
-                    val base = if (persistedPreferences != null) {
-                        snapshotState.copy(settings = snapshotState.settings + persistedPreferences)
-                    } else {
-                        snapshotState
-                    }
+                    val base = snapshotState.copy(
+                        settings = if (persistedPreferences != null) {
+                            snapshotState.settings + persistedPreferences
+                        } else {
+                            snapshotState.settings
+                        },
+                        account = canonicalAccountState ?: snapshotState.account,
+                    )
                     if (base.status == ReiAnixSettingsLoadStatus.READY) {
                         // The SQLite snapshot is authoritative. Do not let a pending
                         // write leak into Compose before the writer confirms its commit,
@@ -992,6 +997,7 @@ class ReiAnixSettingsRepository(
                     if (message.startsWith("Stale Compose settings snapshot")) return@onFailure
                     _state.value = _state.value.copy(
                         status = ReiAnixSettingsLoadStatus.ERROR,
+                        account = canonicalAccountState ?: _state.value.account,
                         error = message.ifBlank { error::class.java.simpleName },
                     )
                 }
@@ -1083,6 +1089,16 @@ class ReiAnixSettingsRepository(
             )
         }
         file.delete()
+        if (
+            action in setOf("login", "logout", "switch") &&
+            operationState in setOf(
+                ReiAnixSettingsOperationState.SUCCESS,
+                ReiAnixSettingsOperationState.ERROR,
+                ReiAnixSettingsOperationState.CANCELLED,
+            )
+        ) {
+            restoreNativeAccountProjection()
+        }
     }
     override fun close() {
         snapshotObserver.stopWatching()
