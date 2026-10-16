@@ -410,7 +410,8 @@ class ReiAnixBackupService(context: Context) {
                 val value = cursor.getString(1)
                 if (key !in exportedPreferenceKeys()) continue
                 if (key == "settings.schema_version") {
-                    require(value.toIntOrNull() in 1..SETTINGS_SCHEMA_VERSION) {
+                    val settingsSchemaVersion = value.toIntOrNull()
+                    require(settingsSchemaVersion != null && settingsSchemaVersion in 1..SETTINGS_SCHEMA_VERSION) {
                         "Versão de Settings inválida no backup."
                     }
                     continue
@@ -700,6 +701,9 @@ class ReiAnixBackupService(context: Context) {
             require(queryStrings(db, "PRAGMA quick_check") == listOf("ok")) { "O banco SQLite canônico falhou no quick_check." }
             require(queryLongOrNull(db, "SELECT MAX(version) FROM schema_migrations")?.toInt() == SCHEMA_VERSION) {
                 "O banco SQLite canônico não corresponde ao schema v29."
+            }
+            require(queryLongOrNull(db, "PRAGMA user_version")?.toInt() == SCHEMA_VERSION) {
+                "PRAGMA user_version não corresponde ao schema v29."
             }
             require(resultRowCount(db, "PRAGMA foreign_key_check") == 0) {
                 "O banco SQLite canônico contém referências inválidas."
