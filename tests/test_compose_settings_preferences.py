@@ -321,3 +321,25 @@ def test_compose_settings_reads_and_writes_existing_sqlite_preferences():
     assert "SELECT key, value FROM preferences ORDER BY key COLLATE NOCASE ASC" in sqlite_repository
     assert "database.transaction" in sqlite_repository
 
+def test_compose_artwork_cache_clear_is_native_and_does_not_repeat_python_mutation():
+    settings_repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
+    artwork_service = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt"
+    )
+    main = read("main.py")
+
+    assert 'if (normalizedAction == "clear_anilist_cache")' in settings_repository
+    assert "nativeArtworkService.clearManagedCache()" in settings_repository
+    assert '.put("nativeHandled", true)' in settings_repository
+    assert "suspend fun clearManagedCache(): Int" in artwork_service
+    assert 'source IN (\'cache\',\'anilist\') AND manual=0' in artwork_service
+    assert 'UPDATE anime SET metadata_updated_at=NULL, cover_cache=\'\'' in artwork_service
+    assert "isArtworkPathReferenced" in artwork_service
+    assert "native_handled=native_handled" in main
+    worker_start = main.index("async def _run_compose_settings_action")
+    worker_end = main.index("async def _hydrate_compose_details_context", worker_start)
+    worker = main[worker_start:worker_end]
+    assert "if native_handled:" in worker
+    assert "library.clear_anilist_cache" in worker  # legacy Flet path only
