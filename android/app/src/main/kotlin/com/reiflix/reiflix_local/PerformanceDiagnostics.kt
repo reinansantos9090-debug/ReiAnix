@@ -1,6 +1,6 @@
 package com.reiflix.reiflix_local
 
-import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 
 import android.app.Activity
 import android.os.Debug
@@ -29,7 +29,8 @@ object PerformanceDiagnostics {
     private var maxFrameDurationNs = 0L
     private var refreshRateHz = 60f
     private var lastFlushAtMs = 0L
-    private var lastMemoryPssKb = -1L
+    @Volatile private var lastMemoryPssKb = -1L
+    @Volatile private var lastFrameSummary = JSONObject()
 
     private data class PlayerMark(
         var commandCreatedAtMs: Long = 0L,
@@ -49,6 +50,12 @@ object PerformanceDiagnostics {
     fun attach(activity: Activity) {
         if (!enabled()) return
         refreshRateHz = activity.display?.refreshRate?.takeIf { it > 0f } ?: 60f
+        ReiAnixDiagnosticTimeline.record(
+            name = "ANDROID_PERFORMANCE_ATTACHED",
+            source = "PerformanceDiagnostics",
+            result = "ATTACHED",
+            context = mapOf("refresh_rate_hz" to refreshRateHz),
+        )
         detach()
         attachedWindow = activity.window
         val listener = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
@@ -85,12 +92,15 @@ object PerformanceDiagnostics {
     fun sampleMemory(activity: Activity, stage: String) {
         if (!enabled()) return
         lastMemoryPssKb = Debug.getPss()
-        NativeMailbox.writeBestEffort(
-            activity,
-            JSONObject().put("type", "performance_metrics")
-                .put("payload", JSONObject().put("stage", stage)
-                    .put("memoryPssKb", lastMemoryPssKb)
-                    .put("refreshRateHz", refreshRateHz)),
+        ReiAnixDiagnosticTimeline.record(
+            name = "ANDROID_MEMORY_SAMPLE",
+            source = "PerformanceDiagnostics",
+            result = "SAMPLED",
+            context = mapOf(
+                "stage" to stage,
+                "memory_pss_kb" to lastMemoryPssKb,
+                "refresh_rate_hz" to refreshRateHz,
+            ),
         )
     }
 
@@ -132,10 +142,31 @@ object PerformanceDiagnostics {
                 payload.put("prepareToFirstFrameMs",
                     mark.firstFrameAtMs - mark.prepareAtMs)
             }
-            NativeMailbox.writeBestEffort(
-                activity,
-                JSONObject().put("type", "performance_player")
-                    .put("requestId", id).put("payload", payload),
+            val context = linkedMapOf<String, Any?>(
+                "stage" to stage,
+                "reused" to mark.reused,
+                "command_created_at_ms" to mark.commandCreatedAtMs,
+                "activity_created_at_ms" to mark.activityCreatedAtMs,
+                "player_created_at_ms" to mark.playerCreatedAtMs,
+                "prepare_at_ms" to mark.prepareAtMs,
+                "first_frame_at_ms" to mark.firstFrameAtMs,
+                "playing_at_ms" to mark.playingAtMs,
+            )
+            if (payload.has("commandToFirstFrameMs")) {
+                context["command_to_first_frame_ms"] = payload.optLong("commandToFirstFrameMs")
+            }
+            if (payload.has("activityToFirstFrameMs")) {
+                context["activity_to_first_frame_ms"] = payload.optLong("activityToFirstFrameMs")
+            }
+            if (payload.has("prepareToFirstFrameMs")) {
+                context["prepare_to_first_frame_ms"] = payload.optLong("prepareToFirstFrameMs")
+            }
+            ReiAnixDiagnosticTimeline.record(
+                name = "PLAYER_PERFORMANCE_MILESTONE",
+                source = "PerformanceDiagnostics",
+                result = stage,
+                requestId = id,
+                context = context,
             )
         }
         if (playerMarks.size > 128) playerMarks.remove(playerMarks.keys.first())
@@ -147,24 +178,39 @@ object PerformanceDiagnostics {
         val count = frames
         val avgMs = if (count == 0L) 0.0
         else totalFrameDurationNs.toDouble() / count.toDouble() / 1_000_000.0
-        NativeMailbox.writeBestEffort(
-            activity,
-            JSONObject().put("type", "performance_metrics")
-                .put("payload", JSONObject()
-                    .put("stage", "frame_window")
-                    .put("frames", count)
-                    .put("framesOverBudget", framesOverBudget)
-                    .put("jankyFrames", jankyFrames)
-                    .put("framesOver16Ms", framesOverBudget)
-                    .put("framesOver32Ms", framesOver32Ms)
-                    .put("framesOver50Ms", framesOver50Ms)
-                    .put("framesOver100Ms", framesOver100Ms)
-                    .put("avgFrameMs", avgMs)
-                    .put("maxFrameMs", maxFrameDurationNs.toDouble() / 1_000_000.0)
-                    .put("refreshRateHz", refreshRateHz)
-                    .put("frameBudgetMs",
-                        frameBudgetNs().toDouble() / 1_000_000.0)
-                    .put("memoryPssKb", lastMemoryPssKb)),
+        val summary = JSONObject()
+            .put("stage", "frame_window")
+            .put("frames", count)
+            .put("framesOverBudget", framesOverBudget)
+            .put("jankyFrames", jankyFrames)
+            .put("framesOver16Ms", framesOverBudget)
+            .put("framesOver32Ms", framesOver32Ms)
+            .put("framesOver50Ms", framesOver50Ms)
+            .put("framesOver100Ms", framesOver100Ms)
+            .put("avgFrameMs", avgMs)
+            .put("maxFrameMs", maxFrameDurationNs.toDouble() / 1_000_000.0)
+            .put("refreshRateHz", refreshRateHz)
+            .put("frameBudgetMs", frameBudgetNs().toDouble() / 1_000_000.0)
+            .put("memoryPssKb", lastMemoryPssKb)
+        lastFrameSummary = JSONObject(summary.toString())
+        ReiAnixDiagnosticTimeline.record(
+            name = "ANDROID_FRAME_WINDOW",
+            severity = if (framesOverBudget > 0L) "WARN" else "INFO",
+            source = "PerformanceDiagnostics",
+            result = if (framesOverBudget > 0L) "OVER_BUDGET" else "WITHIN_BUDGET",
+            context = mapOf(
+                "frames" to count,
+                "frames_over_budget" to framesOverBudget,
+                "janky_frames" to jankyFrames,
+                "frames_over_32_ms" to framesOver32Ms,
+                "frames_over_50_ms" to framesOver50Ms,
+                "frames_over_100_ms" to framesOver100Ms,
+                "average_frame_ms" to avgMs,
+                "max_frame_ms" to maxFrameDurationNs.toDouble() / 1_000_000.0,
+                "refresh_rate_hz" to refreshRateHz,
+                "frame_budget_ms" to frameBudgetNs().toDouble() / 1_000_000.0,
+                "memory_pss_kb" to lastMemoryPssKb,
+            ),
         )
         frames = 0L
         framesOverBudget = 0L
@@ -175,6 +221,13 @@ object PerformanceDiagnostics {
         totalFrameDurationNs = 0L
         maxFrameDurationNs = 0L
     }
+
+    /** Snapshot of the most recent aggregate window; never emits mailbox traffic. */
+    @JvmStatic
+    fun snapshotJson(): JSONObject = JSONObject()
+        .put("enabled", enabled())
+        .put("last_memory_pss_kb", lastMemoryPssKb)
+        .put("last_frame_window", JSONObject(lastFrameSummary.toString()))
 
     private fun frameBudgetNs(): Long =
         (1_000_000_000.0 / refreshRateHz.toDouble()).toLong().coerceAtLeast(1L)
