@@ -56,6 +56,10 @@ class NativeGenreMigrationContractTests(unittest.TestCase):
         self.assertIn("AUTHORITATIVE_SOURCES", registry)
         self.assertIn("AND NOT EXISTS (SELECT 1 FROM anime_genres", registry)
         self.assertIn("changedAnimeIds", registry)
+        self.assertIn("CLASSIFICATION_BATCH_SIZE", registry)
+        self.assertIn("lastScannedId", registry)
+        self.assertIn("while (candidates.size < limit)", registry)
+        self.assertIn("manualFieldsOwnGenres(candidate.manualFields)", registry)
 
     def test_one_shared_database_registry_is_wired_to_anilist_and_viewmodel(self):
         dependencies = self.read(DEPENDENCIES)
