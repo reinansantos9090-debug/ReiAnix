@@ -26,7 +26,7 @@ A interface só apresenta sucesso depois que a criação interna e a gravação 
 
 ## Restauração normal
 
-O fluxo Compose seleciona um documento ZIP por `OpenDocument`. O arquivo é copiado por fluxo para uma área temporária com limite de bytes e sincronização de escrita. `inspectBackup` valida o ZIP, os nomes dos membros, a versão, o schema, os hashes e o banco importado antes de modificar os dados operacionais.
+O fluxo Compose seleciona um documento ZIP por `OpenDocument`. O arquivo é copiado por fluxo para uma área temporária com limite de bytes e sincronização de escrita. `inspectBackup` valida o ZIP, os nomes dos membros, a versão, o schema, os hashes e o banco importado. Antes de iniciar tanto a restauração normal quanto a recuperação, a interface mostra os metadados e contagens do arquivo escolhido e exige confirmação específica desse arquivo; cancelar mantém o catálogo sem alterações.
 
 Quando o banco ativo está saudável e compatível, a restauração lógica permanece transacional: a implementação anexa o snapshot ao SQLite canônico, substitui as tabelas na ordem de integridade referencial dentro de uma única transação, reconecta capas manuais e verifica integridade, foreign keys, preferências e invariantes antes do commit. Um backup inválido é rejeitado antes da transação; uma falha anterior ao commit não é apresentada como sucesso. O caminho normal preserva o snapshot pré-restauração ZIP produzido pelo próprio serviço.
 
