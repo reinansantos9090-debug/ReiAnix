@@ -18,7 +18,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
 import com.reiflix.reiflix_local.R
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -35,9 +34,6 @@ import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import org.json.JSONObject
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Single native Compose root used during the incremental Flet -> Compose cutover.
@@ -99,27 +95,9 @@ class ReiAnixComposeLibraryHost(
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
-            // Keep local search/browse ViewModels independent from remote APIs. The
-            // application-level AniList integration owns this separate reconciliation
-            // job; trigger it only when the canonical catalog identity set or scan
-            // lifecycle changes, not on every metadata/artwork snapshot publication.
-            val catalogSize = libraryState.animes.size
-            val scanning = libraryState.scanInProgress
-            LaunchedEffect(catalogSize, scanning) {
-                if (catalogSize == 0 || scanning) return@LaunchedEffect
-                try {
-                    val service = ReiAnixAppDependencies.from(activity.applicationContext)
-                        .aniListIntegrationService
-                    withContext(Dispatchers.IO) {
-                        service.reconcileUnmatchedLibraryMetadata()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(TAG, "Native AniList catalog reconciliation failed", error)
-                }
-            }
-
+            // Opening the host only projects local state. AniList reconciliation belongs
+            // to explicit metadata/pipeline requests, never to Activity creation or catalog
+            // rendering, so a route mount cannot trigger remote work.
             ReiAnixComposeRoot(
                 themeMode = themeMode,
             ) {
