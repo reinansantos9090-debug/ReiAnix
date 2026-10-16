@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -61,13 +62,17 @@ class ReiAnixSqliteAccountRepository(
                 "picture" to picture,
             )
             entries.forEach { (key, value) ->
-                val values = ContentValues().apply { put("value", value) }
-                val updated = db.update("account", values, "key=?", arrayOf(key))
-                if (updated == 0) {
-                    values.put("key", key)
-                    val inserted = db.insertOrThrow("account", null, values)
-                    check(inserted >= 0L) { "Não foi possível persistir o perfil da conta." }
+                val values = ContentValues().apply {
+                    put("key", key)
+                    put("value", value)
                 }
+                val written = db.insertWithOnConflict(
+                    "account",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+                check(written >= 0L) { "Não foi possível persistir o perfil da conta." }
             }
         }
         val persisted = loadProfile()
