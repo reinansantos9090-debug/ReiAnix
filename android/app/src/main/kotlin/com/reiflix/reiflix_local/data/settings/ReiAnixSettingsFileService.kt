@@ -46,11 +46,11 @@ class ReiAnixSettingsFileService(
         }
         val versionValue = payload.opt("schema_version")
         val version = when (versionValue) {
-            is Number -> versionValue.toDouble().takeIf { it.isFinite() }?.toInt()
+            is Number -> versionValue.toDouble().takeIf { it.isFinite() && it % 1.0 == 0.0 }?.toInt()
             is String -> versionValue.toIntOrNull()
             else -> null
         }
-        require(version in SUPPORTED_SCHEMA_VERSIONS) {
+        require(version != null && version in SUPPORTED_SCHEMA_VERSIONS) {
             "Versão de configurações incompatível."
         }
         val settings = payload.optJSONObject("settings")
