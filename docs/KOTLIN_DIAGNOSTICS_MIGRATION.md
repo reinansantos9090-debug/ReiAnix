@@ -72,3 +72,12 @@ Os testes Kotlin/JVM permanecem manuais conforme a política do projeto; nenhum 
 2. A timeline Kotlin é local à vida do processo; não é um histórico persistente. Ela serve para inspeção na sessão e exportação do estado disponível naquele momento.
 3. A coexistência híbrida continua para eventos de domínio e projeções ainda consumidos por Python. Esta etapa não remove NativeMailbox, Flet, Flutter nem `main.py`.
 4. A integração nativa cobre os produtores listados nesta documentação; não reivindica migração completa de todos os logs ou todos os erros de cada subsistema Python.
+
+
+## Auditoria complementar dos consumidores híbridos
+
+Não foi encontrada evidência suficiente para remover com segurança os módulos Python de diagnóstico. `core.diagnostics` ainda recebe eventos da integração Android/Python, da projeção da biblioteca, de refresh e de produtores usados por Flet; `core.diagnostic_service` produz um relatório legado mais amplo usando `LibraryStore` e `core.performance`. `main.py` e os bridges Compose permanecem consumidores ativos. Esses módulos não são redundâncias obsoletas enquanto esses caminhos continuarem ativos.
+
+Origens Android com registro exclusivamente nativo para o ato de diagnóstico: métricas de frames/memória, marcos do player, transições nativas do scanner, exportação/resultado do backup nativo, validações do bootstrap e eventos emitidos pelo serviço Android de artwork. Essas operações não precisam acionar uma segunda mutação Python somente para registrar o evento. Isso não remove as notificações de domínio `NativeMailbox` que atualizam consumidores híbridos reais — por exemplo, publicação de artwork, permissão/raiz SAF, conclusão de scan e projeções de AniList.
+
+O filtro privacy-first, a retenção de 300 eventos em memória na timeline Kotlin, o limite de 100 eventos do relatório e a visualização reduzida no Compose permanecem intactos. Não foi adicionada persistência, tabela nem banco de diagnóstico. A migração global continua parcial até os consumidores Flet/Python deixarem de depender dos relatórios e handoffs legados.
