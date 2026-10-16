@@ -26,6 +26,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.details.ReiAnixDetailsRoute
+import com.reiflix.reiflix_local.ui.details.ReiAnixAniListDetailsRoute
 import com.reiflix.reiflix_local.ui.home.ReiAnixHomeRoute
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryRoute
 import com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListRoute
@@ -46,9 +47,11 @@ object ReiAnixRoutes {
     const val STORAGE = "storage"
     const val ORGANIZE = "organize"
     const val DETAILS = "details/{animeId}?origin={origin}"
+    const val ANILIST_DETAILS = "anilist_details/{anilistId}?origin={origin}"
     const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"
 
     const val ARG_ANIME_ID = "animeId"
+    const val ARG_ANILIST_ID = "anilistId"
     const val ARG_EPISODE_ID = "episodeId"
     const val ARG_ORIGIN = "origin"
     const val DETAILS_ORIGIN = "details"
@@ -85,6 +88,11 @@ object ReiAnixRoutes {
 
     fun details(animeId: String, origin: String): String =
         "details/" + encode(animeId) + "?origin=" + encode(origin)
+
+    fun aniListDetails(anilistId: Int, origin: String): String {
+        require(anilistId > 0) { "AniList ID must be positive" }
+        return "anilist_details/" + anilistId + "?origin=" + encode(origin)
+    }
 
     fun player(episodeId: String, animeId: String, origin: String): String =
         "player/" + encode(episodeId) +
@@ -333,12 +341,16 @@ fun ReiAnixNavigationHost(
             detailOrigin == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
         currentRoute == ReiAnixRoutes.DETAILS &&
             topLevelDestinations.any { it.route == detailOrigin } -> detailOrigin
+        currentRoute == ReiAnixRoutes.ANILIST_DETAILS &&
+            topLevelDestinations.any { it.route == detailOrigin } -> detailOrigin
         topLevelDestinations.any { it.route == currentRoute } -> currentRoute
         else -> null
     }
     val shouldShowBottomNavigation = showBottomNavigation &&
         currentRoute != ReiAnixRoutes.STORAGE &&
-        (selectedBottomRoute != null || currentRoute == ReiAnixRoutes.DETAILS)
+        (selectedBottomRoute != null ||
+            currentRoute == ReiAnixRoutes.DETAILS ||
+            currentRoute == ReiAnixRoutes.ANILIST_DETAILS)
 
     val composeRoute = when (currentRoute) {
         ReiAnixRoutes.HOME,
@@ -349,6 +361,7 @@ fun ReiAnixNavigationHost(
         ReiAnixRoutes.STORAGE,
         ReiAnixRoutes.ORGANIZE,
         ReiAnixRoutes.DETAILS,
+        ReiAnixRoutes.ANILIST_DETAILS,
         ReiAnixRoutes.PLAYER,
         -> currentRoute
         else -> null
@@ -418,6 +431,25 @@ fun ReiAnixNavigationHost(
                     .ifBlank { ReiAnixRoutes.HOME }
 
                 details(ReiAnixDetailsArgs(animeId = animeId, origin = origin))
+            }
+
+            composable(
+                route = ReiAnixRoutes.ANILIST_DETAILS,
+                arguments = listOf(
+                    navArgument(ReiAnixRoutes.ARG_ANILIST_ID) {
+                        type = NavType.IntType
+                    },
+                    navArgument(ReiAnixRoutes.ARG_ORIGIN) {
+                        type = NavType.StringType
+                        defaultValue = ReiAnixRoutes.SEARCH
+                    },
+                ),
+            ) { entry ->
+                val anilistId = entry.arguments?.getInt(ReiAnixRoutes.ARG_ANILIST_ID) ?: 0
+                ReiAnixAniListDetailsRoute(
+                    navController = navController,
+                    anilistId = anilistId,
+                )
             }
 
             composable(
