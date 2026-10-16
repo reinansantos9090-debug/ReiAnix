@@ -8,6 +8,7 @@ import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
+import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
@@ -75,6 +76,12 @@ enum class ReiAnixNativeFoldersStatus {
     NOT_FOUND,
     ERROR,
 }
+
+data class ReiAnixOrganizerGenreOperationState(
+    val isRunning: Boolean = false,
+    val message: String? = null,
+    val isError: Boolean = false,
+)
 
 data class ReiAnixNativeFolderUiModel(
     val name: String?,
@@ -159,6 +166,9 @@ class ReiAnixLibraryViewModel(
      */
     private val nativeLibraryRepository = dependencies?.sqliteLibraryRepository
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository(context)
+    /** Shared native genre identity service; uses the same canonical SQLite object. */
+    private val nativeGenreRegistry = dependencies?.genreRegistry
+        ?: ReiAnixGenreRegistry(nativeLibraryRepository.database)
     private val nativeLibraryQueries = dependencies?.libraryQueryService
         ?: ReiAnixLibraryQueryService(context, nativeLibraryRepository)
     private val nativeLibraryService = dependencies?.libraryService
@@ -961,6 +971,64 @@ class ReiAnixLibraryViewModel(
         _organizeFilters.value = _organizeFilters.value.copy(
             mode = ReiAnixOrganizeMode.OVERVIEW,
         )
+    }
+
+    private val _organizerGenreOperationState =
+        MutableStateFlow(ReiAnixOrganizerGenreOperationState())
+    val organizerGenreOperationState: StateFlow<ReiAnixOrganizerGenreOperationState> =
+        _organizerGenreOperationState.asStateFlow()
+
+    /**
+     * Explicit local classification action for missing genres only. The writer is
+     * Kotlin and commits to the canonical database; mailbox events below are
+     * projection-refresh notifications only and never repeat the catalog mutation.
+     */
+    fun classifyMissingLocalGenres() {
+        if (_organizerGenreOperationState.value.isRunning) return
+        viewModelScope.launch {
+            _organizerGenreOperationState.value = ReiAnixOrganizerGenreOperationState(
+                isRunning = true,
+                message = "Classificando gêneros locais ausentes…",
+            )
+            try {
+                nativeGenreRegistry.initialize()
+                val report = nativeGenreRegistry.classifyMissingLocalGenres()
+                val notificationFailed = report.changedAnimeIds.isNotEmpty() &&
+                    !withContext(Dispatchers.IO) {
+                        NativeMailbox.write(
+                            appContext,
+                            JSONObject()
+                                .put("type", "native_genres_committed")
+                                .put(
+                                    "payload",
+                                    JSONObject().put("changedCount", report.changedAnimeIds.size),
+                                ),
+                        )
+                    }
+                val message = when {
+                    report.classifiedAnime > 0 && notificationFailed ->
+                        "Gêneros salvos para ${report.classifiedAnime} animes; reabra a biblioteca para atualizar a projeção."
+                    report.classifiedAnime > 0 ->
+                        "${report.assignedGenreCount} associação(ões) de gênero salvas em ${report.classifiedAnime} animes."
+                    report.skippedAuthoritativeMetadata > 0 ->
+                        "Nenhum gênero novo foi inferido. ${report.skippedAuthoritativeMetadata} registro(s) foram preservados por metadados remotos/manuais; títulos sem regra correspondente ficaram sem rótulos."
+                    else ->
+                        "Nenhum gênero ausente pôde ser inferido pelas regras locais."
+                }
+                _organizerGenreOperationState.value = ReiAnixOrganizerGenreOperationState(
+                    message = message,
+                )
+            } catch (cancelled: CancellationException) {
+                _organizerGenreOperationState.value = ReiAnixOrganizerGenreOperationState()
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "Local genre classification failed", error)
+                _organizerGenreOperationState.value = ReiAnixOrganizerGenreOperationState(
+                    message = "Não foi possível classificar os gêneros locais: ${error.message ?: "erro desconhecido"}",
+                    isError = true,
+                )
+            }
+        }
     }
 
     private data class SearchRequest(

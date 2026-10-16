@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.data.anilist
 
+import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
+
 import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -35,7 +37,11 @@ class ReiAnixAniListIntegrationService(
     private val settings: ReiAnixSqliteSettingsRepository,
     private val descriptionLocalizer: ReiAnixAniListDescriptionLocalizer? = null,
     private val metadataCommitPublisher: ((Long, Boolean) -> Boolean)? = null,
+    private val genreRegistry: ReiAnixGenreRegistry? = null,
 ) {
+    private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        genreRegistry ?: ReiAnixGenreRegistry(library.database)
+    }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
 
     constructor(context: Context) : this(
@@ -353,6 +359,26 @@ class ReiAnixAniListIntegrationService(
                     ),
                 )
             }
+            // The metadata patch above is already committed to the canonical database.
+            // Keep genre identity associations aligned when AniList supplied real labels;
+            // empty remote arrays intentionally do not erase previously persisted genres.
+            if (remote.genres.isNotEmpty() && !manualFieldOwnsGenres(updated.metadataManualFieldsJson)) {
+                try {
+                    effectiveGenreRegistry.syncAnime(
+                        animeId = updated.id,
+                        names = remote.genres,
+                        source = if (manual) "manual" else "anilist",
+                        replaceSource = true,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // A registry failure must not misreport the already-committed metadata
+                    // transaction as rolled back. The explicit organizer initialization can
+                    // backfill the JSON column into the canonical registry later.
+                    Log.w(TAG, "AniList metadata committed but genre registry sync failed", error)
+                }
+            }
             enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled)
             AniListResult.Success(updated)
         } catch (cancelled: CancellationException) {
@@ -376,6 +402,20 @@ class ReiAnixAniListIntegrationService(
             throw cancelled
         } catch (error: Exception) {
             Log.w(TAG, "Could not publish AniList metadata update to native consumers", error)
+        }
+    }
+
+    /** Metadata patch ownership applies to the normalized genre relation as well. */
+    private fun manualFieldOwnsGenres(raw: String?): Boolean {
+        val value = raw?.trim().orEmpty()
+        if (value.isBlank()) return false
+        return try {
+            val fields = JSONArray(value)
+            (0 until fields.length()).any {
+                fields.optString(it).trim().equals("genres", ignoreCase = true)
+            }
+        } catch (_: Exception) {
+            value.contains("genres", ignoreCase = true)
         }
     }
 

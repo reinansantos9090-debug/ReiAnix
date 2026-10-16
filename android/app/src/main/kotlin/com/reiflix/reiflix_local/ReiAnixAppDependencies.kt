@@ -6,6 +6,7 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import java.io.File
 import java.util.UUID
 import org.json.JSONObject
@@ -76,6 +77,11 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixConsumptionService(sqliteLibraryRepository)
     }
 
+    /** Local genre identity/classification uses the same canonical SQLite database. */
+    val genreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixGenreRegistry(sqliteDatabase)
+    }
+
     val artworkService: ReiAnixArtworkService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixArtworkService(appContext, sqliteDatabase)
     }
@@ -91,6 +97,7 @@ class ReiAnixAppDependencies(context: Context) {
             client = aniListClient,
             library = sqliteLibraryRepository,
             settings = sqliteSettingsRepository,
+            genreRegistry = genreRegistry,
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),

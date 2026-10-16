@@ -4827,6 +4827,20 @@ async def main(page: ft.Page):
                                         "[ANILIST_METADATA] projection refreshed animeId=%s artwork_owner=kotlin",
                                         anime_id,
                                     )
+                        if event_type == 'native_genres_committed':
+                            # Kotlin has already committed genre rows in one transaction.
+                            # This single event refreshes the projection only; Python never
+                            # repeats the catalog mutation or emits one event per anime.
+                            try:
+                                changed_count = int(payload.get('changedCount') or 0)
+                            except (TypeError, ValueError):
+                                changed_count = 0
+                            if changed_count <= 0:
+                                logger.warning("[ORGANIZE_GENRES] projection refresh rejected reason=invalid_changed_count")
+                            else:
+                                compose_library_bridge.request_publish(
+                                    f"native_genres_updated:bulk:{changed_count}"
+                                )
                         if event_type == 'artwork_published':
                             artwork_event = str(payload.get('event') or '').strip().upper()
                             entity_type = str(payload.get('entity_type') or '').strip().lower()
