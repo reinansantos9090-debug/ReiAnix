@@ -367,3 +367,30 @@ def test_compose_settings_import_export_use_native_android_pickers_and_canonical
     assert "writeSettingsFileActionResult" in activity
     assert "if action == 'settings_export':" in main
     assert "if action == 'settings_import':" in main  # legacy Flet Settings consumer remains supported
+
+def test_compose_settings_storage_actions_dispatch_to_native_android_host():
+    repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    main = read("main.py")
+
+    request_action_start = repository.index("fun requestAction(action: String)")
+    native_method_start = repository.index("private fun launchNativeStorageSettingsAction")
+    request_action = repository[request_action_start:native_method_start]
+    native_method_end = repository.index("private fun launchNativeSettingsFileAction", native_method_start)
+    native_method = repository[native_method_start:native_method_end]
+
+    assert "NATIVE_STORAGE_SETTINGS_ACTIONS" in request_action
+    assert '"backup_create", "backup_restore", "backup_integrity", "backup_reconcile"' in request_action
+    assert '"compose_settings_action"' not in request_action
+    assert "MainActivity.createNativeStorageActionIntent(" in native_method
+    assert 'appendQueryParameter("settings_action", action)' in native_method
+    assert '"select_saf"' in native_method and '"select_tree"' in native_method
+    assert 'data.getQueryParameter("settings_action")' in activity
+    assert "beginComposeSettingsStorageAction(requestId, settingsAction)" in activity
+    assert "completeComposeSettingsStorageAction(" in activity
+    assert 'message = "Pasta adicionada à biblioteca."' in activity
+    assert 'message = "Seleção de pasta cancelada."' in activity
+    assert "if action == 'select_saf':" in main  # legacy Flet Settings keeps its own consumer
+    assert "if action == 'request_media_access':" in main
