@@ -433,6 +433,8 @@ def test_compose_backup_restore_integrity_and_diagnostics_are_native():
     assert "VACUUM INTO" in backup
     assert "SHA-256" in backup
     assert "manifest_core_sha256" in backup
+    assert "SETTINGS_SCHEMA_VERSION = 2" in backup
+    assert 'key == "settings.schema_version"' in backup
     assert "MAX_ARCHIVE_BYTES" in backup
     assert "MANUAL_ARTWORK_PREFIX" in backup
     assert "ATTACH DATABASE" in backup
