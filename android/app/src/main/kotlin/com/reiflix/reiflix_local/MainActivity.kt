@@ -1237,15 +1237,14 @@ class MainActivity : FlutterFragmentActivity() {
                     // Hidden previous/candidate files are deliberately retained until a
                     // recovery succeeds; their presence must not trigger fresh-database
                     // initialization and accidentally bypass recovery.
-                    val interruptedPromotion = File(File(applicationContext.filesDir, "data"), ".")
-                        .parentFile
-                        ?.listFiles()
+                    val dataDirectory = File(applicationContext.filesDir, "data")
+                    val interruptedPromotion = dataDirectory.listFiles()
                         ?.any { it.isFile && (
                             it.name.startsWith(".library.sqlite3.previous-") ||
                                 it.name.startsWith(".library.sqlite3.candidate-")
                             )
                         } == true
-                    val priorRecoverySnapshots = File(File(applicationContext.filesDir, "data"), "backups")
+                    val priorRecoverySnapshots = File(dataDirectory, "backups")
                         .listFiles()
                         ?.any { it.isDirectory && it.name.startsWith("recovery-snapshot-") } == true
                     interruptedPromotion || priorRecoverySnapshots
