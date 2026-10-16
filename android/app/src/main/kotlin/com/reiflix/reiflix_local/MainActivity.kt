@@ -639,7 +639,6 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingSettingsFileRequestId: String? = null
     private var settingsFileProcessing = false
     private val composeSettingsStorageActions = mutableMapOf<String, String>()
-    private val composeSettingsStorageStatusJobs = mutableMapOf<String, Job>()
 
     private val settingsExportLauncher =
         registerForActivityResult(
@@ -1342,16 +1341,10 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun beginComposeSettingsStorageAction(requestId: String, action: String) {
+        // Compose marks its operation RUNNING before dispatch. The Activity records
+        // ownership here and writes only one terminal command result, avoiding a
+        // race between concurrent RUNNING/SUCCESS files for the same request ID.
         composeSettingsStorageActions[requestId] = action
-        composeSettingsStorageStatusJobs[requestId] = lifecycleScope.launch(Dispatchers.IO) {
-            writeSettingsFileActionResult(
-                requestId,
-                action,
-                "RUNNING",
-                "RUNNING",
-                message = "Operação nativa de armazenamento em andamento.",
-            )
-        }
     }
 
     private fun completeComposeSettingsStorageAction(
@@ -1362,9 +1355,7 @@ class MainActivity : FlutterFragmentActivity() {
     ) {
         val id = requestId?.trim()?.takeIf { SETTINGS_FILE_REQUEST_ID_REGEX.matches(it) } ?: return
         val action = composeSettingsStorageActions.remove(id) ?: return
-        val previousStatusJob = composeSettingsStorageStatusJobs.remove(id)
         lifecycleScope.launch(Dispatchers.IO) {
-            previousStatusJob?.join()
             writeSettingsFileActionResult(
                 id,
                 action,
