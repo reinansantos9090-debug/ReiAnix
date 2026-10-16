@@ -4886,14 +4886,12 @@ async def main(page: ft.Page):
                                 )
                                 native_handled = payload.get('nativeHandled') is True
                                 native_removed = payload.get('removed') or 0
-                                task = asyncio.create_task(
-                                    _run_compose_settings_action(
-                                        action,
-                                        request_id,
-                                        native_handled=native_handled,
-                                        native_removed=native_removed,
-                                    )
-                                )
+                                task = asyncio.create_task(_run_compose_settings_action(
+                                    action,
+                                    request_id,
+                                    native_handled=native_handled,
+                                    native_removed=native_removed,
+                                ))
                                 if not _track_compose_settings_task(task):
                                     task.cancel()
                                     compose_settings_bridge.write_command_result(
