@@ -67,6 +67,20 @@ class ReiAnixAniListIntegrationService(
         return client.searchAnime(term, limit)
     }
 
+    /**
+     * Read-only lookup for a remote catalogue result. It never creates a local
+     * anime row or association; persistence remains an explicit user/domain action.
+     */
+    suspend fun lookupAnimeById(anilistId: Int): AniListResult<AniListAnime?> {
+        if (!isAniListEnabled()) {
+            return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
+        }
+        if (anilistId <= 0) {
+            return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive."))
+        }
+        return client.getAnime(anilistId)
+    }
+
     suspend fun refreshMetadata(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
