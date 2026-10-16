@@ -264,14 +264,6 @@ class ReiAnixGenreRegistry(private val database: ReiAnixSqliteDatabase) {
                 var unmatched = 0
                 val changedIds = mutableListOf<Long>()
                 candidates.forEach { candidate ->
-                    if (
-                        candidate.aniListId != null ||
-                        candidate.source.normalizedSource() in AUTHORITATIVE_SOURCES ||
-                        manualFieldsOwnGenres(candidate.manualFields)
-                    ) {
-                        skipped += 1
-                        return@forEach
-                    }
                     val inferred = ReiAnixGenreClassifier.classify(candidate.title)
                     if (inferred.isEmpty()) {
                         unmatched += 1
