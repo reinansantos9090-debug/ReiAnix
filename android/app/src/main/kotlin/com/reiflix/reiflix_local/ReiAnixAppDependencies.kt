@@ -31,6 +31,12 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 class ReiAnixAppDependencies(context: Context) {
     private val appContext = context.applicationContext
 
+    /** Single process-scoped coordinator for native startup ordering and health state. */
+    val bootstrap: ReiAnixAppBootstrap by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixAppBootstrap(appContext, this)
+    }
+
+
     val sqliteDatabase: ReiAnixSqliteDatabase by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixSqliteDatabase(appContext)
     }

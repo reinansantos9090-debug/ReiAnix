@@ -19,6 +19,7 @@ import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
 import com.reiflix.reiflix_local.R
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
@@ -80,6 +81,22 @@ class ReiAnixComposeLibraryHost(
             val continueWatchingEnabled by settingsViewModel.continueWatchingEnabled.collectAsStateWithLifecycle()
             val continueWatchingLimit by settingsViewModel.continueWatchingLimit.collectAsStateWithLifecycle()
             val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+            val bootstrapState by libraryViewModel.bootstrapState.collectAsStateWithLifecycle()
+
+            LaunchedEffect(
+                bootstrapState.phase,
+                bootstrapState.stage,
+                bootstrapState.persistenceStatus,
+            ) {
+                if (bootstrapState.phase == ReiAnixBootstrapPhase.DEGRADED) {
+                    android.util.Log.w(
+                        TAG,
+                        "APP_BOOTSTRAP_DEGRADED stage=${bootstrapState.stage} " +
+                            "persistence=${bootstrapState.persistenceStatus} " +
+                            "warningCount=${bootstrapState.warnings.size}",
+                    )
+                }
+            }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
             // Keep local search/browse ViewModels independent from remote APIs. The

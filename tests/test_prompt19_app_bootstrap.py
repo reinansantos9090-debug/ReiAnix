@@ -1,0 +1,93 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_application_owns_and_starts_one_process_bootstrap():
+    application = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt"
+    )
+    dependencies = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppDependencies.kt"
+    )
+    bootstrap = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt"
+    )
+    assert "dependencies = ReiAnixAppDependencies(this)" in application
+    assert "dependencies.bootstrap.start()" in application
+    assert "val bootstrap: ReiAnixAppBootstrap by lazy" in dependencies
+    assert "CoroutineScope(SupervisorJob() + Dispatchers.IO)" in bootstrap
+    assert "private var startupJob: Job? = null" in bootstrap
+    assert "if (startupJob != null) return" in bootstrap
+    assert "NativeScanRunner.recoverInterruptedSafScans(appContext)" in bootstrap
+    assert "NativeCommandDispatcher.start(appContext)" in bootstrap
+    assert bootstrap.index("NativeScanRunner.recoverInterruptedSafScans(appContext)") < bootstrap.index(
+        "NativeCommandDispatcher.start(appContext)"
+    )
+
+
+def test_activity_delegates_process_startup_and_database_health_to_bootstrap():
+    activity = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+    )
+    assert "appDependencies.bootstrap.start()" in activity
+    assert "appDependencies.bootstrap.validateCanonicalDatabase()" in activity
+    assert "NativeScanRunner.recoverInterruptedSafScans(applicationContext)" not in activity
+    assert "NativeCommandDispatcher.start(" not in activity
+    # The Activity still calls the existing runner for explicitly authorized scans.
+    assert "NativeScanRunner.runSafScan(" in activity
+    assert "NativeScanRunner.runMediaStoreScan(" in activity
+
+
+def test_bootstrap_preserves_canonical_sqlite_and_recovery_contract():
+    bootstrap = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt"
+    )
+    activity = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+    )
+    assert "ReiAnixBackupService.DATABASE_NAME" in bootstrap
+    assert "dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract" in bootstrap
+    assert "ReiAnixBackupService(appContext).integrityReport().healthy" in bootstrap
+    assert "ReiAnixBootstrapPersistenceStatus.NOT_CREATED" in bootstrap
+    assert "interruptedPromotion || priorRecoverySnapshots" in bootstrap
+    assert 'File(dataDirectory, "backups")' in bootstrap
+    assert "ReiAnixRoutes.RECOVERY" in activity
+    assert "Thread.sleep" not in bootstrap
+    assert "GlobalScope" not in bootstrap
+
+
+def test_compose_observes_process_bootstrap_state_without_owning_service_lifecycle():
+    view_model = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+    )
+    host = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    )
+    bootstrap = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt"
+    )
+    assert "val bootstrapState: StateFlow<ReiAnixBootstrapState>" in view_model
+    assert "appDependencies?.bootstrap?.state" in view_model
+    assert "libraryViewModel.bootstrapState.collectAsStateWithLifecycle()" in host
+    assert "ReiAnixBootstrapPhase.DEGRADED" in host
+    assert "ReiAnixDiagnosticTimeline.record(" in bootstrap
+    assert 'Log.w(TAG, "Could not record bootstrap diagnostic event=$name.", error)' in bootstrap
+
+
+def test_legacy_runtime_is_preserved_and_documented_as_a_migration_boundary():
+    main = read("main.py")
+    doc = read("docs/KOTLIN_APP_BOOTSTRAP_MIGRATION.md")
+    assert "async def main(page: ft.Page)" in main
+    assert "LibraryStore(data_dir)" in main
+    assert "SettingsStore(store)" in main
+    assert "ComposeLibraryBridge(" in main
+    assert "ComposeSettingsBridge(" in main
+    assert "ScanCoordinator(" in main
+    for token in ("Grupo A", "Grupo B", "Grupo C", "FlutterFragmentActivity", "NOT_CREATED", "não"):
+        assert token.lower() in doc.lower()
+    assert "Não foi removida delegação global Python" in doc

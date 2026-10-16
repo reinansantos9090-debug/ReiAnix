@@ -17,7 +17,8 @@ class ReiAnixApplication : FlutterApplication() {
     override fun onCreate() {
         super.onCreate()
         dependencies = ReiAnixAppDependencies(this)
-        Log.i(TAG, "APPLICATION_READY nativeDependencyGraph=lazy")
+        dependencies.bootstrap.start()
+        Log.i(TAG, "APPLICATION_READY nativeDependencyGraph=lazy bootstrap=started")
     }
 
     private companion object {

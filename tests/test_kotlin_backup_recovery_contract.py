@@ -73,18 +73,24 @@ def test_database_file_maintenance_shares_the_canonical_sqlite_lock():
 
 def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     activity = read(ACTIVITY)
+    bootstrap = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt")
     repository = read(SETTINGS_REPOSITORY)
     navigation = read(NAVIGATION)
     route = read(RECOVERY_ROUTE)
     host = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
 
+    # Canonical database health checking now belongs to the process bootstrap,
+    # while Activity still routes an explicit recovery requirement to Compose.
     assert "NATIVE_DATABASE_RECOVERY_REQUIRED" in activity
-    assert "else if (!canonicalFile.isFile || canonicalFile.length() <= 0L)" in activity
-    assert "integrityReport()" in activity
-    assert "!schemaCompatible || !integrity.healthy" in activity
+    assert "if (!canonicalFile.exists())" in bootstrap
+    assert "if (!canonicalFile.isFile || canonicalFile.length() <= 0L)" in bootstrap
+    assert "integrityReport().healthy" in bootstrap
+    assert "if (schemaCompatible && integrityHealthy)" in bootstrap
+    assert "ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED" in bootstrap
+    assert "interruptedPromotion || priorRecoverySnapshots" in bootstrap
+    assert "ReiAnixRoutes.RECOVERY" in activity
     assert "copyBackupToDocumentAndVerify" in activity
     assert "MessageDigest.isEqual" in activity
-    assert "ReiAnixRoutes.RECOVERY" in activity
     assert "backupService.restoreRecoveryBackup(inputCopy)" in activity
     assert "createRecoverySafetySnapshotForUser()" in activity
     assert '"backup_recovery_snapshot"' in activity
@@ -105,7 +111,6 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "Criar snapshot bruto de segurança" in route
     assert "Restaurar a biblioteca?" in route or "Recuperar a biblioteca?" in route
     assert "diagnostic_export" in route
-
 
 def test_android_startup_recovery_does_not_invoke_python_restore_writer():
     main = read("main.py")
