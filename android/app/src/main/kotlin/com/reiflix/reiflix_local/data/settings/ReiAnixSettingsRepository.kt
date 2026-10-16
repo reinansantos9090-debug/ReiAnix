@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.FileObserver
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import org.json.JSONObject
 import java.util.UUID
@@ -28,6 +30,7 @@ import java.io.File
 class ReiAnixSettingsRepository(
     context: Context,
     private val sharedSqliteSettingsRepository: ReiAnixSqliteSettingsRepository? = null,
+    private val sharedArtworkService: ReiAnixArtworkService? = null,
 ) : AutoCloseable {
     companion object {
         private const val TAG = "ReiAnixSettingsRepo"
@@ -71,6 +74,11 @@ class ReiAnixSettingsRepository(
     // retained only to notify still-Python consumers after native persistence succeeds.
     private val sqliteSettingsRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         sharedSqliteSettingsRepository ?: ReiAnixSqliteSettingsRepository(appContext)
+    }
+    // The application dependency graph supplies its shared artwork worker in production.
+    // The fallback exists for isolated repository construction and targets the same canonical DB.
+    private val nativeArtworkService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        sharedArtworkService ?: ReiAnixArtworkService(appContext, ReiAnixSqliteDatabase(appContext))
     }
     private val dataDirectory = File(appContext.filesDir, "data")
     private val bridgeDirectory = File(dataDirectory, "reianix-compose")
@@ -337,16 +345,19 @@ class ReiAnixSettingsRepository(
      */
     fun requestAction(action: String) {
         val normalizedAction = action.trim().lowercase()
-        if (normalizedAction !in setOf(
-            "reset_player", "reset_all_settings", "clear_anilist_cache", "settings_export",
-            "settings_import", "select_saf", "request_media_access", "check_storage_access",
-            "open_broad_storage_settings", "backup_create", "backup_restore", "backup_integrity",
-            "backup_reconcile", "diagnostic_export",
-        )) return
         if (normalizedAction == "reset_player" || normalizedAction == "reset_all_settings") {
             resetSettingsNatively(normalizedAction)
             return
         }
+        if (normalizedAction == "clear_anilist_cache") {
+            clearArtworkCacheNatively()
+            return
+        }
+        if (normalizedAction !in setOf(
+            "settings_export", "settings_import", "select_saf", "request_media_access",
+            "check_storage_access", "open_broad_storage_settings", "backup_create",
+            "backup_restore", "backup_integrity", "backup_reconcile", "diagnostic_export",
+        )) return
         dispatchCommand(normalizedAction, normalizedAction) { requestId ->
             JSONObject()
                 .put("type", "compose_settings_action")
@@ -354,6 +365,109 @@ class ReiAnixSettingsRepository(
                 .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
         }
     }
+    private fun clearArtworkCacheNatively() {
+        val requestId = UUID.randomUUID().toString()
+        synchronized(stateLock) {
+            val current = _state.value
+            _state.value = current.copy(
+                operations = upsertOperationLocked(
+                    current.operations,
+                    ReiAnixSettingsOperationUiState(
+                        requestId = requestId,
+                        action = "clear_anilist_cache",
+                        state = ReiAnixSettingsOperationState.QUEUED,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+        Log.i(TAG, "SETTINGS_ACTION_START requestId=" + requestId + " action=clear_anilist_cache owner=kotlin")
+        scope.launch {
+            try {
+                val removed = nativeArtworkService.clearManagedCache()
+                synchronized(stateLock) {
+                    val current = _state.value
+                    val existing = current.operations[requestId]
+                    if (existing != null) {
+                        _state.value = current.copy(
+                            operations = upsertOperationLocked(
+                                current.operations,
+                                existing.copy(
+                                    state = ReiAnixSettingsOperationState.SUCCESS,
+                                    message = "Cache de capas limpo.",
+                                    error = null,
+                                    timestampMs = System.currentTimeMillis(),
+                                ),
+                            ),
+                        )
+                    }
+                }
+                // Python remains a legacy Flet consumer. This post-commit notification
+                // refreshes its projection but marks the clear itself as already native.
+                val notified = runCatching {
+                    NativeMailbox.write(
+                        appContext,
+                        JSONObject()
+                            .put("type", "compose_settings_action")
+                            .put("requestId", requestId)
+                            .put(
+                                "payload",
+                                JSONObject()
+                                    .put("action", "clear_anilist_cache")
+                                    .put("requestId", requestId)
+                                    .put("nativeHandled", true)
+                                    .put("removed", removed),
+                            ),
+                    )
+                }.getOrElse { false }
+                Log.i(
+                    TAG,
+                    "SETTINGS_CACHE_CLEAR_COMMITTED requestId=" + requestId +
+                        " removed=" + removed +
+                        " legacyRuntimeNotificationPublished=" + notified,
+                )
+            } catch (cancelled: CancellationException) {
+                updateCacheClearOperation(
+                    requestId,
+                    ReiAnixSettingsOperationState.CANCELLED,
+                    "A limpeza do cache foi cancelada.",
+                    "A limpeza do cache foi cancelada.",
+                )
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "SETTINGS_CACHE_CLEAR_FAILED requestId=" + requestId, error)
+                updateCacheClearOperation(
+                    requestId,
+                    ReiAnixSettingsOperationState.ERROR,
+                    error = "Não foi possível limpar o cache de capas.",
+                )
+            }
+        }
+    }
+
+    private fun updateCacheClearOperation(
+        requestId: String,
+        state: ReiAnixSettingsOperationState,
+        message: String? = null,
+        error: String? = null,
+    ) {
+        synchronized(stateLock) {
+            val current = _state.value
+            val existing = current.operations[requestId] ?: return
+            _state.value = current.copy(
+                operations = upsertOperationLocked(
+                    current.operations,
+                    existing.copy(
+                        state = state,
+                        message = message,
+                        error = error,
+                        timestampMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+    }
+
     fun requestAccountAction(action: String) {
         val normalizedAction = action.trim().lowercase()
         if (normalizedAction !in setOf("login", "logout", "switch")) return
