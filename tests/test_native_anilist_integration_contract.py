@@ -134,8 +134,13 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         self.assertIn('AUTO_MATCH_TERMINAL_STATUSES', service)
         self.assertIn('recordAniListAutoMatchOutcome', service)
         self.assertIn('recordAniListAutoMatchOutcome(', association)
-        self.assertIn('service.reconcileUnmatchedLibraryMetadata()', host)
-        self.assertIn('LaunchedEffect(catalogSize, scanning)', host)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertNotIn('reconcileUnmatchedLibraryMetadata()', host)
+        self.assertNotIn('LaunchedEffect(catalogSize, scanning)', host)
+        assert "NativeScanController.progress" in view_model
+        assert "reconcileAniListAfterNativeScan()" in view_model
+        assert "service.reconcileUnmatchedLibraryMetadata()" in view_model
+        assert "requestPendingArtwork()" in view_model
         self.assertNotIn('anilist', view_model.lower())
         self.assertNotIn('network_error",\n            "rate_limited', service)
         self.assertIn('allow_anilist_metadata=not compose_library_bridge.enabled', main)
