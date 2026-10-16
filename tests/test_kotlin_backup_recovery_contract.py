@@ -99,6 +99,18 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "showNativeBackupRestoreConfirmation" in activity
     assert "setPositiveButton(" in activity
     assert "completeNativeBackupRestore(inputCopy, action, requestId)" in activity
+    restore_handler_start = activity.index("private fun completeNativeBackupRestore")
+    restore_handler_end = activity.index("private fun finishNativeDiagnosticExport", restore_handler_start)
+    restore_handler = activity[restore_handler_start:restore_handler_end]
+    promoted_restore = restore_handler.index("backupService.restoreRecoveryBackup(inputCopy)")
+    bootstrap_revalidation = restore_handler.index("appDependencies.bootstrap.validateCanonicalDatabase()", promoted_restore)
+    failed_revalidation_route = restore_handler.index("composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)", bootstrap_revalidation)
+    settings_projection = restore_handler.index("settingsViewModel.refresh()", bootstrap_revalidation)
+    canonical_catalog_projection = restore_handler.index("refreshCanonicalCatalogAfterBootstrapValidation()", settings_projection)
+    restored_home = restore_handler.index("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", canonical_catalog_projection)
+    assert promoted_restore < bootstrap_revalidation < failed_revalidation_route
+    assert bootstrap_revalidation < settings_projection < canonical_catalog_projection < restored_home
+    assert "libraryViewModel.refresh()" in restore_handler  # ordinary restore keeps its existing contract
     assert "Confirmar restauração do backup" in activity
     assert "preview.manifest" in activity
     assert "counts.optLong(\"anime\"" in activity
