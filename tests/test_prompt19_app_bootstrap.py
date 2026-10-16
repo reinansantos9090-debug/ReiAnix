@@ -23,6 +23,18 @@ def test_application_owns_and_starts_one_process_bootstrap():
     assert "CoroutineScope(SupervisorJob() + Dispatchers.IO)" in bootstrap
     assert "private var startupJob: Job? = null" in bootstrap
     assert "if (startupJob != null) return" in bootstrap
+    initialize = bootstrap[
+        bootstrap.index("private suspend fun initializeProcessServices()"):
+        bootstrap.index("private fun publishDatabaseCheck")
+    ]
+    assert "inspectCanonicalDatabase()" in initialize
+    assert initialize.index("inspectCanonicalDatabase()") < initialize.index("if (check.recoveryRequired)")
+    assert initialize.index("if (check.recoveryRequired)") < initialize.index("ensureNativeServicesStarted()")
+    services = bootstrap[bootstrap.index("private suspend fun ensureNativeServicesStarted()"):
+                         bootstrap.index("private fun inspectCanonicalDatabase()")]
+    assert services.index("validated.recoveryRequired") < services.index("NativeScanRunner.recoverInterruptedSafScans(appContext)")
+    assert services.index("NativeScanRunner.recoverInterruptedSafScans(appContext)") < services.index("NativeCommandDispatcher.start(appContext)")
+    assert "NativeIndex.pendingSafRecovery(appContext).length() > 0" in bootstrap
     assert "NativeScanRunner.recoverInterruptedSafScans(appContext)" in bootstrap
     assert "NativeCommandDispatcher.start(appContext)" in bootstrap
     assert bootstrap.index("NativeScanRunner.recoverInterruptedSafScans(appContext)") < bootstrap.index(
@@ -54,7 +66,7 @@ def test_bootstrap_preserves_canonical_sqlite_and_recovery_contract():
     assert "dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract" in bootstrap
     assert "ReiAnixBackupService(appContext).integrityReport().healthy" in bootstrap
     assert "ReiAnixBootstrapPersistenceStatus.NOT_CREATED" in bootstrap
-    assert "interruptedPromotion || priorRecoverySnapshots" in bootstrap
+    assert "interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
     assert 'File(dataDirectory, "backups")' in bootstrap
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "Thread.sleep" not in bootstrap
@@ -91,3 +103,24 @@ def test_legacy_runtime_is_preserved_and_documented_as_a_migration_boundary():
     for token in ("Grupo A", "Grupo B", "Grupo C", "FlutterFragmentActivity", "NOT_CREATED", "não"):
         assert token.lower() in doc.lower()
     assert "Não foi removida delegação global Python" in doc
+
+
+def test_compose_consumers_and_remote_side_effects_wait_for_a_validated_bootstrap():
+    view_model = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+    )
+    host = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    )
+    activity = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+    )
+    assert "dependencies.bootstrap.state.first" in view_model
+    assert "startCanonicalConsumersAfterDatabaseValidation()" in view_model
+    assert "requestPendingArtwork()" not in view_model
+    assert "reconcileUnmatchedLibraryMetadata()" not in host
+    assert "composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)" in activity
+    assert "composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)" in activity
+    assert activity.index("appDependencies.bootstrap.validateCanonicalDatabase()") < activity.index(
+        "composeLibraryHost = ReiAnixComposeLibraryHost("
+    )
