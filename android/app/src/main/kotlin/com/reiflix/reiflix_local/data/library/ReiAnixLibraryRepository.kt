@@ -450,10 +450,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         )
     }
 
-    fun toggleFavorite(animeId: Long) {
-        send(ReiAnixLibraryCommandCodec.Action.TOGGLE_FAVORITE, animeId = animeId)
-    }
-
     /**
      * Ask the existing Python bridge to republish the canonical catalog snapshot
      * after a native SQLite mutation. Unlike refresh(), this never requests a scan.
@@ -475,7 +471,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
 
     private fun send(
         action: ReiAnixLibraryCommandCodec.Action,
-        animeId: Long? = null,
         episodeId: Long? = null,
         watched: Boolean? = null,
         source: String? = null,
@@ -493,7 +488,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         val command = ReiAnixLibraryCommandCodec.create(
             requestId = requestId,
             action = action,
-            animeId = animeId,
             episodeId = episodeId,
             watched = watched,
             source = source,

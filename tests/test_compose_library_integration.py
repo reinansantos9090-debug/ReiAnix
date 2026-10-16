@@ -27,7 +27,7 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("if event_type == 'compose_library_command':", MAIN)
         self.assertIn("_track_compose_library_task", dispatch)
         self.assertIn('namespace="compose_library"', dispatch)
-        for action in ("toggle_favorite", "set_watched", "refresh", "publish_catalog", "load_library_page", "open_media"):
+        for action in ("set_watched", "refresh", "publish_catalog", "load_library_page", "open_media"):
             self.assertIn('action == "' + action + '":', worker)
         self.assertIn("'load_library_page'", dispatch)
 
@@ -56,25 +56,32 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn('namespace="compose_library"', block)
         self.assertIn("duplicate request ignored", block)
 
-    def test_favorite_command_does_not_treat_false_new_state_as_failure(self):
-        block = self._command_worker_block()
-        start = block.index('if action == "toggle_favorite":')
-        end = block.index('elif action == "set_watched":', start)
-        favorite = block[start:end]
-        self.assertIn("existing = await asyncio.to_thread(store.catalog, anime_ids=[anime_id])", favorite)
-        self.assertIn("await asyncio.to_thread(store.toggle_favorite, anime_id)", favorite)
-        self.assertNotIn("if not updated:", favorite)
 
     def test_mutations_run_outside_python_ui_event_thread(self):
         worker = self._command_worker_block()
         for token in (
-            "await asyncio.to_thread(store.toggle_favorite",
             "await asyncio.to_thread(",
             "store.set_watched",
             "store.episode_by_id",
         ):
             self.assertIn(token, worker)
 
+    def test_compose_favorite_mutation_is_owned_by_the_native_personal_list_service(self):
+        worker = self._command_worker_block()
+        codec = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        legacy_details = (ROOT / "views/details_view.py").read_text(encoding="utf-8")
+
+        self.assertNotIn('action == "toggle_favorite":', worker)
+        self.assertNotIn("store.toggle_favorite", worker)
+        self.assertNotIn('TOGGLE_FAVORITE("toggle_favorite")', codec)
+        self.assertNotIn("fun toggleFavorite(animeId: Long)", repository)
+        self.assertIn("personalListService.toggle(animeId)", view_model)
+        self.assertIn("personalListService.add(animeId)", view_model)
+        self.assertIn("personalListService.remove(animeId)", view_model)
+        self.assertIn("def _toggle_favorite_from_details(anime_id):", MAIN)
+        self.assertIn("on_toggle_favorite", legacy_details)
     def test_repository_snapshot_reconciliation_does_not_reset_to_first_page(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
         self.assertIn("reconcilePagedState", repository)

@@ -4484,16 +4484,7 @@ async def main(page: ft.Page):
         command_error = None
         command_payload = None
         try:
-            if action == "toggle_favorite":
-                anime_id = int(payload.get("animeId") or 0)
-                if anime_id <= 0:
-                    raise ValueError("animeId inválido.")
-                existing = await asyncio.to_thread(store.catalog, anime_ids=[anime_id])
-                if not existing:
-                    raise ValueError("Anime não encontrado.")
-                await asyncio.to_thread(store.toggle_favorite, anime_id)
-                on_catalog_changed(refresh_details=False)
-            elif action == "set_watched":
+            if action == "set_watched":
                 episode_id = int(payload.get("episodeId") or 0)
                 if episode_id <= 0:
                     raise ValueError("episodeId inválido.")
@@ -5241,7 +5232,6 @@ async def main(page: ft.Page):
                                 event_request_id or payload.get('requestId') or ''
                             ).strip()
                             supported_actions = {
-                                'toggle_favorite',
                                 'set_watched',
                                 'select_saf',
                                 'dismiss_storage_onboarding',

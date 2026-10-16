@@ -88,7 +88,7 @@ Os métodos acima não criam nem removem registros e não introduzem novas tabel
 
 ### Biblioteca e listas pessoais
 
-A mudança de favorito já estava no caminho Kotlin: `ReiAnixLibraryViewModel.toggleFavorite` usa `ReiAnixPersonalListService`, que modifica o campo `anime.favorite` do banco canônico. Esse serviço permanece o único writer da operação de favoritos. A ponte de projeção `ReiAnixLibraryRepository` é usada depois da gravação para republicar o catálogo apresentado, não para repetir a mutação de favorito.
+A mudança de favorito no caminho Compose/Android é gravada por `ReiAnixLibraryViewModel.toggleFavorite` através de `ReiAnixPersonalListService`, que modifica o campo `anime.favorite` do banco canônico. A ponte de projeção `ReiAnixLibraryRepository` pode republicar o catálogo depois do commit, mas não recebe a mutação. O comando legado `toggle_favorite` foi retirado de `ReiAnixLibraryCommandCodec`, do adapter Kotlin e do dispatcher `compose_library_command`. Ainda há um callback direto da UI Flet em `views/details_view.py` que usa `LibraryStore.toggle_favorite`; essa dependência é explicitamente legada e permanece apenas enquanto essa tela Python tiver consumidor real.
 
 O ViewModel passou a usar explicitamente a instância compartilhada de `ReiAnixSqliteLibraryRepository` do grafo nativo para os serviços de consulta, lista pessoal e consumo. O fallback de construção também compartilha uma instância de repositório/database dentro daquele ViewModel, evitando locks independentes entre os serviços que participam do mesmo fluxo.
 

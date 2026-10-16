@@ -7,7 +7,6 @@ internal object ReiAnixLibraryCommandCodec {
     fun create(
         requestId: String,
         action: Action,
-        animeId: Long? = null,
         episodeId: Long? = null,
         watched: Boolean? = null,
         source: String? = null,
@@ -23,7 +22,6 @@ internal object ReiAnixLibraryCommandCodec {
     ): JSONObject {
         require(requestId.isNotBlank()) { "requestId must not be blank" }
         val payload = JSONObject().put("action", action.value)
-        animeId?.let { payload.put("animeId", it) }
         episodeId?.let { payload.put("episodeId", it) }
         watched?.let { payload.put("watched", it) }
         source?.takeIf { it.isNotBlank() }?.let { payload.put("source", it) }
@@ -44,7 +42,6 @@ internal object ReiAnixLibraryCommandCodec {
     }
 
     enum class Action(val value: String) {
-        TOGGLE_FAVORITE("toggle_favorite"),
         SET_WATCHED("set_watched"),
         REFRESH("refresh"),
         PUBLISH_CATALOG("publish_catalog"),

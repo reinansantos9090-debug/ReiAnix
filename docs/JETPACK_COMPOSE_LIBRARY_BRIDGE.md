@@ -8,7 +8,7 @@ As operações que ainda dependem de serviços Python seguem a direção inversa
 
 Compose → NativeMailbox → main.py → LibraryStore/ScanCoordinator/AndroidBridge
 
-A transição é por operação, com um único writer: favoritos/lista pessoal já são gravados por `ReiAnixPersonalListService` no SQLite canônico. A ação Compose de marcar/desmarcar episódio como assistido agora é gravada por `ReiAnixConsumptionService` e pelo repositório SQLite nativo; depois do commit, o adapter pede a republicação do snapshot. Essa publicação não executa novamente a mutação. Os handlers legados de `toggle_favorite` e `set_watched` permanecem somente para consumidores Python/fluxos antigos que ainda os utilizem.
+A transição é por operação. No caminho Compose/Android, inclusão pessoal/favoritos são gravados por `ReiAnixPersonalListService` no SQLite canônico e o estado de consumo é gravado por `ReiAnixConsumptionService`; a republicação posterior do snapshot não executa novamente a mutação. O antigo comando NativeMailbox `toggle_favorite` foi removido porque nenhum consumidor Compose restante deve escrever esse estado via Python. O handler legado `set_watched` continua temporariamente no canal de comandos enquanto consumidores antigos de consumo ainda existirem. Separadamente, a tela Flet antiga de detalhes ainda tem um callback próprio para `LibraryStore.toggle_favorite`; ele não é o caminho do ViewModel Compose e só deve ser removido quando o consumidor Flet for migrado.
 
 ## Responsabilidades
 
@@ -42,6 +42,6 @@ Os comandos de projeção/coordenação ainda utilizados pela UI Compose são:
 - `load_library_page`, enquanto a projeção paginada ainda não tiver todos os consumidores cortados para as consultas Kotlin;
 - `open_media` por `episodeId`, resolvido contra a linha canônica do SQLite antes de usar o player existente.
 
-A UI Compose não envia `toggle_favorite` nem `set_watched` para realizar essas duas mutações: elas têm owners Kotlin. O protocolo e os handlers continuam disponíveis para compatibilidade com consumidores legados que ainda os chamem.
+A UI Compose não envia `toggle_favorite` nem `set_watched` para realizar essas mutações: o estado pessoal e o consumo têm owners Kotlin. `toggle_favorite` deixou de fazer parte do protocolo `compose_library_command`; a gravação direta que permanece em `views/details_view.py` pertence ao consumidor Flet legado, não à tela Compose. `set_watched` permanece temporariamente no dispatcher para os consumidores antigos ainda identificados. `publish_catalog` continua sendo somente uma solicitação de republicação/compatibilidade posterior ao commit nativo.
 
 Nenhum objeto de catálogo completo é serializado pela navegação ou pelos comandos.
