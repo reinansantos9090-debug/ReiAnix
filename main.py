@@ -4132,6 +4132,42 @@ async def main(page: ft.Page):
                 error=type(exc).__name__,
             )
 
+    async def _run_compose_settings_native_backup_restored(request_id):
+        """Refresh legacy projections after Kotlin committed a native backup restore."""
+        try:
+            # Kotlin owns the restore transaction. This callback only invalidates
+            # Python read caches and refreshes projections; it never restores or
+            # writes a second copy of the catalog.
+            await asyncio.to_thread(settings.invalidate_cache)
+            for setting_key in settings.EXPORT_KEYS:
+                await asyncio.to_thread(settings.get, setting_key)
+            library.configure_settings(settings)
+            apply_page_theme(page, settings.get("appearance.theme"))
+            on_catalog_changed()
+            compose_settings_bridge.request_publish("native_backup_restored")
+            diagnostics.record(
+                "NATIVE_BACKUP_RESTORE_PROJECTION_REFRESHED",
+                request_id=request_id,
+                result="SUCCESS",
+            )
+            performance.event(
+                "NATIVE_BACKUP_RESTORE_PROJECTION_REFRESHED",
+                request_id=request_id,
+                metadata={"owner": "kotlin", "catalog_write_repeated": False},
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "[COMPOSE_SETTINGS] native backup restore projection failed requestId=%s",
+                request_id or "-",
+            )
+            diagnostics.record(
+                "NATIVE_BACKUP_RESTORE_PROJECTION_FAILED",
+                request_id=request_id,
+                error=type(exc).__name__,
+            )
+
     async def _run_compose_settings_action(action, request_id, *, native_handled=False, native_removed=0):
         started = performance.now()
         performance.event(
@@ -5044,6 +5080,32 @@ async def main(page: ft.Page):
                                     task.cancel()
                                     diagnostics.record(
                                         "SETTINGS_RUNTIME_BULK_APPLY_SKIPPED",
+                                        request_id=request_id,
+                                        reason="settings_task_limit",
+                                    )
+
+                        if event_type == 'compose_settings_native_backup_restored':
+                            request_id = str(event_request_id or payload.get('requestId') or '').strip()
+                            if not request_id:
+                                logger.warning(
+                                    "[COMPOSE_SETTINGS] native backup restore refresh rejected without requestId"
+                                )
+                            elif not store.claim_native_request(
+                                request_id,
+                                namespace="compose_settings_backup_restored",
+                            ):
+                                logger.info(
+                                    "[COMPOSE_SETTINGS] duplicate native backup restore refresh ignored requestId=%s",
+                                    request_id,
+                                )
+                            else:
+                                task = asyncio.create_task(
+                                    _run_compose_settings_native_backup_restored(request_id)
+                                )
+                                if not _track_compose_settings_task(task):
+                                    task.cancel()
+                                    diagnostics.record(
+                                        "NATIVE_BACKUP_RESTORE_PROJECTION_SKIPPED",
                                         request_id=request_id,
                                         reason="settings_task_limit",
                                     )
