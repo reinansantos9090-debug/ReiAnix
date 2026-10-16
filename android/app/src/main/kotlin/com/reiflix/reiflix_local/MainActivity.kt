@@ -1286,6 +1286,7 @@ class MainActivity : FlutterFragmentActivity() {
                 handleNativeSettingsFileIntent(deferredIntent)
             }
             if (!recoveryRequired) {
+                val hadPendingLifecycleAction = !nativeRequestState.pendingLifecycleAction.isNullOrBlank()
                 if (activityResumed) {
                     if (broadStoragePermissionPending) {
                         handleBroadSettingsReturn(pendingBroadRequestId, "bootstrap_validated")
@@ -1293,7 +1294,7 @@ class MainActivity : FlutterFragmentActivity() {
                         consumeAndDispatchPendingLifecycleAction()
                     }
                 }
-                maybeLaunchAutomaticSafPicker()
+                if (!hadPendingLifecycleAction) maybeLaunchAutomaticSafPicker()
             }
         }
         // The existing SystemUiController remains the single Android system-bar
@@ -2033,7 +2034,9 @@ class MainActivity : FlutterFragmentActivity() {
         // that snapshot as the final result and close the onboarding while the
         // real Android permission/settings UI is only about to open.
         if (bootstrapAllowsNativeOperations()) {
+            val hadPendingLifecycleAction = !nativeRequestState.pendingLifecycleAction.isNullOrBlank()
             consumeAndDispatchPendingLifecycleAction()
+            if (hadPendingLifecycleAction) return
         }
 
         if (!bootstrapAllowsNativeOperations()) {
@@ -3499,6 +3502,9 @@ class MainActivity : FlutterFragmentActivity() {
             isDestroyed ||
             automaticSafPickerAttempted ||
             safPickerPending ||
+            pendingMediaRequestId != null ||
+            broadStoragePermissionPending ||
+            externalSettingsKind != null ||
             nativeRequestState.pendingLifecycleAction == "select_tree" ||
             appDependencies.bootstrap.state.value.recoveryRequired ||
             appDependencies.bootstrap.state.value.stage != ReiAnixBootstrapStage.READY ||
