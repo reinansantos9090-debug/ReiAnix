@@ -13,7 +13,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+
+private const val ANI_LIST_SEARCH_DEBOUNCE_MS = 300L
 
 data class ReiAnixAniListUiState(
     val query: String = "",
@@ -22,6 +27,9 @@ data class ReiAnixAniListUiState(
     val isAutoMatchLoading: Boolean = false,
     val results: List<AniListAnime> = emptyList(),
     val error: String? = null,
+    val selectedAnime: AniListAnime? = null,
+    val isDetailsLoading: Boolean = false,
+    val detailsError: String? = null,
     val lastAssociationMessage: String? = null,
     val associationRevision: Long = 0L,
 ) {
@@ -41,7 +49,92 @@ class ReiAnixAniListViewModel(
         ?: ReiAnixAniListIntegrationService(context.applicationContext)
     private val _aniListUiState = MutableStateFlow(ReiAnixAniListUiState())
     override val uiState: StateFlow<ReiAnixAniListUiState> = _aniListUiState.asStateFlow()
+    private val _discoveryQuery = MutableStateFlow("")
+    private var discoveryQueryJob: Job? = null
     private var searchJob: Job? = null
+    private var detailsJob: Job? = null
+    private var detailsRequestId: Long = 0L
+
+    init {
+        discoveryQueryJob = viewModelScope.launch {
+            _discoveryQuery
+                .debounce(ANI_LIST_SEARCH_DEBOUNCE_MS)
+                .distinctUntilChanged()
+                .collectLatest { term -> searchAniList(term) }
+        }
+    }
+
+    /** Entry point for the Search screen; requests are debounced and cancellable. */
+    fun setDiscoveryQuery(term: String) {
+        _discoveryQuery.value = term
+    }
+
+    /** Explicit retry path used after a remote search failure. */
+    fun retryDiscoverySearch(term: String) {
+        searchAniList(term)
+    }
+
+    /**
+     * Loads one external catalogue record without persisting it to the local
+     * library, favorites, history, or AniList association tables.
+     */
+    fun loadAniListDetails(anilistId: Int) {
+        detailsJob?.cancel()
+        val requestId = ++detailsRequestId
+        if (anilistId <= 0) {
+            _aniListUiState.value = _aniListUiState.value.copy(
+                selectedAnime = null,
+                isDetailsLoading = false,
+                detailsError = "O identificador AniList é inválido.",
+            )
+            return
+        }
+        _aniListUiState.value = _aniListUiState.value.copy(
+            selectedAnime = null,
+            isDetailsLoading = true,
+            detailsError = null,
+        )
+        detailsJob = viewModelScope.launch {
+            try {
+                when (val result = integration.lookupAnimeById(anilistId)) {
+                    is AniListResult.Success -> if (requestId == detailsRequestId) {
+                        _aniListUiState.value = _aniListUiState.value.copy(
+                            selectedAnime = result.value,
+                            isDetailsLoading = false,
+                            detailsError = if (result.value == null) {
+                                "O AniList não encontrou esse anime."
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                    is AniListResult.Failure -> if (requestId == detailsRequestId) {
+                        _aniListUiState.value = _aniListUiState.value.copy(
+                            isDetailsLoading = false,
+                            detailsError = result.error.userMessage(),
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                if (requestId == detailsRequestId) {
+                    _aniListUiState.value = _aniListUiState.value.copy(isDetailsLoading = false)
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                if (requestId == detailsRequestId) {
+                    _aniListUiState.value = _aniListUiState.value.copy(
+                        isDetailsLoading = false,
+                        detailsError = error.message?.takeIf(String::isNotBlank)
+                            ?: "Não foi possível carregar os detalhes AniList.",
+                    )
+                }
+            } finally {
+                if (requestId == detailsRequestId && _aniListUiState.value.isDetailsLoading) {
+                    _aniListUiState.value = _aniListUiState.value.copy(isDetailsLoading = false)
+                }
+            }
+        }
+    }
     private var manualAssociationJob: Job? = null
     private var autoMatchJob: Job? = null
     private var searchRequestId: Long = 0L

@@ -63,14 +63,34 @@ class NativeSearchTests(unittest.TestCase):
         self.assertIn("anime.year", source)
         self.assertIn("anime.genres", source)
 
-    def test_search_does_not_add_remote_catalog_or_synthetic_history(self):
-        for path in (SEARCH, ENGINE):
-            source = path.read_text(encoding="utf-8").lower()
-            self.assertNotIn("http://", source)
-            self.assertNotIn("https://", source)
-            self.assertNotIn("most searched", source)
-            self.assertNotIn("recent searches", source)
-            self.assertNotIn("sqlite", source)
+    def test_remote_search_reuses_native_anilist_services(self):
+        search = SEARCH.read_text(encoding="utf-8")
+        engine = ENGINE.read_text(encoding="utf-8")
+        ani_view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixAniListViewModel.kt").read_text(encoding="utf-8")
+        integration = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")
+        self.assertIn("Descobrir no AniList", search)
+        self.assertIn("aniListViewModel.setDiscoveryQuery", search)
+        self.assertIn("var aniListQuery by rememberSaveable", search)
+        self.assertIn("val displayedQuery = if (source == \"anilist\") aniListQuery else searchQuery", search)
+        self.assertIn("aniListQuery = value", search)
+        self.assertIn("AniListSearchResults", search)
+        self.assertIn(".debounce(ANI_LIST_SEARCH_DEBOUNCE_MS)", ani_view_model)
+        self.assertIn("integration.search(query)", ani_view_model)
+        self.assertIn("client.searchAnime(term, limit)", integration)
+        self.assertIn("normalizedAlternateTitles", engine)
+        self.assertNotIn("anilist", engine.lower())
+        self.assertNotIn("https://", search.lower())
+        self.assertNotIn("recent searches", search.lower())
+
+    def test_remote_details_keep_anilist_identity_separate_from_sqlite_ids(self):
+        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
+        details = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixAniListDetails.kt").read_text(encoding="utf-8")
+        integration = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")
+        self.assertIn("ANILIST_DETAILS", navigation)
+        self.assertIn("aniListDetails(anilistId", navigation)
+        self.assertIn("loadAniListDetails(anilistId)", details)
+        self.assertIn("client.getAnime(anilistId)", integration)
+        self.assertIn("esta busca não cria nem altera registros locais", details.lower())
 
     def test_search_engine_indexes_only_projection_fields(self):
         source = ENGINE.read_text(encoding="utf-8")
@@ -88,13 +108,15 @@ class NativeSearchTests(unittest.TestCase):
 
     def test_search_query_is_debounced_and_cancelable_off_main(self):
         source = SEARCH.read_text(encoding="utf-8") + VM.read_text(encoding="utf-8")
+        ani_view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixAniListViewModel.kt").read_text(encoding="utf-8")
         self.assertIn(".debounce(", source)
         self.assertIn(".mapLatest", source)
+        self.assertIn(".transformLatest", source)
         self.assertIn("flowOn(Dispatchers.Default)", source)
-        self.assertNotIn("delay(", source)
-        self.assertNotIn("http://", source.lower())
-        self.assertNotIn("https://", source.lower())
-        self.assertNotIn("anilist", source.lower())
+        self.assertNotIn("Thread.sleep(", source)
+        self.assertNotIn("GlobalScope", source)
+        self.assertIn(".debounce(ANI_LIST_SEARCH_DEBOUNCE_MS)", ani_view_model)
+        self.assertIn("searchJob?.cancel()", ani_view_model)
 
     def test_search_opens_immediately_from_canonical_catalog(self):
         source = SEARCH.read_text(encoding="utf-8")
