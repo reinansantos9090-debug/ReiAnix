@@ -385,10 +385,16 @@ def test_compose_settings_storage_actions_dispatch_to_native_android_host():
     dispatch_start = request_action.index("dispatchCommand(")
     native_dispatch_contract = request_action[:dispatch_start]
     legacy_dispatch_contract = request_action[dispatch_start:]
-    assert '"backup_create", "backup_restore", "backup_integrity", "backup_reconcile"' in request_action
+    assert "NATIVE_BACKUP_DIAGNOSTIC_ACTIONS" in request_action
+    native_backup_start = request_action.index("if (normalizedAction in NATIVE_BACKUP_DIAGNOSTIC_ACTIONS)")
+    dispatch_start = request_action.index("dispatchCommand(")
+    assert native_backup_start < dispatch_start
+    for action in ("backup_create", "backup_restore", "backup_integrity", "backup_reconcile", "diagnostic_export"):
+        assert f'"{action}"' in repository[repository.index("private val NATIVE_BACKUP_DIAGNOSTIC_ACTIONS"):native_method_start]
     assert '"select_saf"' not in legacy_dispatch_contract
     assert '"request_media_access"' not in legacy_dispatch_contract
-    assert '"compose_settings_action"' in legacy_dispatch_contract  # backup/diagnostic actions still use the Python contract
+    assert '"compose_settings_action"' not in request_action[request_action.index("if (normalizedAction in NATIVE_BACKUP_DIAGNOSTIC_ACTIONS)"):dispatch_start]
+    assert '"compose_settings_action"' in legacy_dispatch_contract  # fallback remains for still-legacy settings actions
     assert "MainActivity.createNativeStorageActionIntent(" in native_method
     assert 'appendQueryParameter("settings_action", action)' in native_method
     assert '"select_saf"' in native_method and '"select_tree"' in native_method
@@ -399,3 +405,54 @@ def test_compose_settings_storage_actions_dispatch_to_native_android_host():
     assert 'message = "Seleção de pasta cancelada."' in activity
     assert "elif action == 'select_saf':" in main  # legacy Flet Settings keeps its own consumer
     assert "elif action == 'request_media_access':" in main
+
+
+def test_compose_backup_restore_integrity_and_diagnostics_are_native():
+    repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
+    )
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    backup = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/backup/ReiAnixBackupService.kt"
+    )
+    diagnostics = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/backup/ReiAnixDiagnosticsService.kt"
+    )
+    main = read("main.py")
+
+    assert "NATIVE_BACKUP_DIAGNOSTIC_ACTIONS" in repository
+    assert "launchNativeSettingsFileAction(normalizedAction)" in repository
+    assert 'CreateDocument("application/zip")' in activity
+    assert "ActivityResultContracts.OpenDocument()" in activity
+    assert "finishNativeBackupExport" in activity
+    assert "finishNativeBackupImport" in activity
+    assert "finishNativeDiagnosticExport" in activity
+    assert "runNativeSettingsMaintenanceAction" in activity
+    assert 'const val FORMAT = "rei-flix-backup-v1"' in backup
+    assert "const val SCHEMA_VERSION = 29" in backup
+    assert "VACUUM INTO" in backup
+    assert "SHA-256" in backup
+    assert "manifest_core_sha256" in backup
+    assert "MAX_ARCHIVE_BYTES" in backup
+    assert "MANUAL_ARTWORK_PREFIX" in backup
+    assert "ATTACH DATABASE" in backup
+    assert "beginTransactionNonExclusive" in backup
+    assert "createBackupFile" in backup
+    assert "restoreBackup" in backup
+    assert "integrityReport" in backup
+    assert "reconcileRestoredFileAvailability" in backup
+    assert "includes_document_uris" in diagnostics
+    assert "includes_anime_titles" in diagnostics
+    assert "compose_settings_native_backup_restored" in activity
+    assert "_run_compose_settings_native_backup_restored" in main
+    assert "NATIVE_BACKUP_RESTORE_PROJECTION_REFRESHED" in main
+
+    # Python stays for genuine Flet and startup-Recovery consumers. The Compose
+    # route must not execute the same backup/restore a second time after Kotlin commits.
+    assert "elif action == 'backup_create':" in main
+    assert "elif action == 'backup_restore':" in main
+    assert "elif action == 'diagnostic_export':" in main
+    worker_start = main.index("async def _run_compose_settings_action")
+    worker_end = main.index("async def _hydrate_compose_details_context", worker_start)
+    worker = main[worker_start:worker_end]
+    assert "BackupService" not in worker
