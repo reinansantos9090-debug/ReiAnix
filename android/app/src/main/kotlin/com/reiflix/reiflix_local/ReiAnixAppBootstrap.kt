@@ -6,6 +6,7 @@ import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
+import com.reiflix.reiflix_local.storage.NativeIndex
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -78,6 +79,9 @@ class ReiAnixAppBootstrap internal constructor(
     private val stateLock = Any()
     private val startupLock = Any()
     private val databaseValidationMutex = Mutex()
+    private val nativeServicesMutex = Mutex()
+    @Volatile
+    private var nativeServicesStarted = false
     private val mutableState = MutableStateFlow(ReiAnixBootstrapState())
 
     val state: StateFlow<ReiAnixBootstrapState> = mutableState.asStateFlow()
@@ -96,7 +100,7 @@ class ReiAnixAppBootstrap internal constructor(
             updateState {
                 it.copy(
                     phase = ReiAnixBootstrapPhase.STARTING,
-                    stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
+                    stage = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE,
                     startedAtMillis = System.currentTimeMillis(),
                     error = null,
                 )
@@ -105,7 +109,7 @@ class ReiAnixAppBootstrap internal constructor(
         }
     }
 
-    /** Waits on the job's completion contract instead of polling or sleeping. */
+    /** Waits for the one process-owned startup decision without polling or sleeping. */
     suspend fun awaitStarted() {
         start()
         val job = synchronized(startupLock) { startupJob }
@@ -113,9 +117,9 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     /**
-     * Preserves the existing non-destructive recovery policy and centralizes its
-     * result in bootstrap state. A mutex prevents simultaneous Activity instances
-     * from opening the canonical database for competing health checks.
+     * Revalidates the canonical database using the same startup contract. A successful
+     * revalidation resumes the existing service graph exactly once; failure keeps the
+     * dispatcher gated and publishes Recovery Mode to all process-owned observers.
      */
     suspend fun validateCanonicalDatabase(): Boolean {
         awaitStarted()
@@ -128,7 +132,7 @@ class ReiAnixAppBootstrap internal constructor(
             }
             recordDiagnostic(
                 name = "APP_BOOTSTRAP_STAGE_STARTED",
-                result = "VALIDATING_CANONICAL_DATABASE",
+                result = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE.name,
                 stage = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE,
             )
 
@@ -137,146 +141,259 @@ class ReiAnixAppBootstrap internal constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Log.e(TAG, "Canonical SQLite validation failed; recovery will be offered.", error)
+                Log.e(TAG, "Canonical SQLite validation failed; normal services remain gated.", error)
                 CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
-                    warning = "A base canônica SQLite requer validação ou recuperação.",
+                    warning = DATABASE_RECOVERY_WARNING,
                 )
             }
-
-            updateState { current ->
-                val nextWarnings = check.warning?.let { warning ->
-                    if (warning in current.warnings) current.warnings
-                    else current.warnings + warning
-                } ?: current.warnings
-                val finalStage = if (check.recoveryRequired) {
-                    ReiAnixBootstrapStage.RECOVERY_REQUIRED
-                } else {
-                    ReiAnixBootstrapStage.READY
-                }
-                current.copy(
-                    phase = if (check.recoveryRequired || nextWarnings.isNotEmpty()) {
-                        ReiAnixBootstrapPhase.DEGRADED
+            publishDatabaseCheck(check)
+            if (check.recoveryRequired) {
+                recordDiagnostic(
+                    name = "APP_BOOTSTRAP_RECOVERY_REQUIRED",
+                    result = check.status.name,
+                    stage = ReiAnixBootstrapStage.RECOVERY_REQUIRED,
+                )
+            } else {
+                ensureNativeServicesStarted()
+                recordDiagnostic(
+                    name = if (state.value.phase == ReiAnixBootstrapPhase.READY) {
+                        "APP_BOOTSTRAP_DATABASE_VALIDATED"
                     } else {
-                        ReiAnixBootstrapPhase.READY
+                        "APP_BOOTSTRAP_DEGRADED"
                     },
-                    stage = finalStage,
-                    persistenceStatus = check.status,
-                    recoveryRequired = check.recoveryRequired,
-                    completedStages = if (check.recoveryRequired) {
-                        current.completedStages
-                    } else {
-                        current.completedStages + ReiAnixBootstrapStage.READY
-                    },
-                    warnings = nextWarnings,
-                    error = check.warning ?: current.error,
+                    result = state.value.persistenceStatus.name,
+                    stage = state.value.stage,
                 )
             }
-            recordDiagnostic(
-                name = if (check.recoveryRequired) {
-                    "APP_BOOTSTRAP_RECOVERY_REQUIRED"
-                } else {
-                    "APP_BOOTSTRAP_DATABASE_VALIDATED"
-                },
-                result = check.status.name,
-                stage = state.value.stage,
-            )
-            check.recoveryRequired
+            state.value.recoveryRequired
         }
     }
 
+    /**
+     * The first database decision happens before SAF receipt recovery or command
+     * dispatch. A corrupt/mid-promotion database leaves receipts intact and exposes
+     * Recovery Mode without allowing queued catalog mutations to run.
+     */
     private suspend fun initializeProcessServices() {
-        // Timeline storage is observational work too; keep it off Application.onCreate's main thread.
         recordDiagnostic(
             name = "APP_BOOTSTRAP_STARTED",
             result = ReiAnixBootstrapPhase.STARTING.name,
-            stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
+            stage = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE,
         )
-        updateState {
-            it.copy(
-                phase = ReiAnixBootstrapPhase.STARTING,
-                stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
-            )
-        }
-        try {
-            NativeScanRunner.recoverInterruptedSafScans(appContext)
-            completeStage(ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS)
-            recordDiagnostic(
-                name = "APP_BOOTSTRAP_STAGE_COMPLETED",
-                result = "COMPLETED",
-                stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
-            )
+        val check = try {
+            withContext(Dispatchers.IO) { inspectCanonicalDatabase() }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            recordWarning(
-                "A recuperação de varreduras SAF interrompidas não pôde ser concluída.",
-                error,
-            )
-            recordDiagnostic(
-                name = "APP_BOOTSTRAP_STAGE_FAILED",
-                result = "RECOVERY_DEFERRED",
-                stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
+            Log.e(TAG, "Initial canonical SQLite validation failed; normal services remain gated.", error)
+            CanonicalDatabaseCheck(
+                status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                recoveryRequired = true,
+                warning = DATABASE_RECOVERY_WARNING,
             )
         }
+        publishDatabaseCheck(check)
+        if (check.recoveryRequired) {
+            recordDiagnostic(
+                name = "APP_BOOTSTRAP_RECOVERY_REQUIRED",
+                result = check.status.name,
+                stage = ReiAnixBootstrapStage.RECOVERY_REQUIRED,
+            )
+            Log.w(TAG, "Normal native services were not started because canonical SQLite requires recovery.")
+            return
+        }
+        ensureNativeServicesStarted()
+    }
 
-        updateState {
-            it.copy(
-                phase = ReiAnixBootstrapPhase.STARTING,
-                stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
-            )
-        }
-        try {
-            NativeCommandDispatcher.start(appContext)
-            completeStage(ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER)
-            recordDiagnostic(
-                name = "APP_BOOTSTRAP_STAGE_COMPLETED",
-                result = "COMPLETED",
-                stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
-            )
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            recordWarning(
-                "O canal interno de comandos nativos não pôde ser iniciado.",
-                error,
-            )
-            recordDiagnostic(
-                name = "APP_BOOTSTRAP_STAGE_FAILED",
-                result = "COMMAND_CHANNEL_UNAVAILABLE",
-                stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
-            )
-        }
-
+    private fun publishDatabaseCheck(check: CanonicalDatabaseCheck) {
         updateState { current ->
-            val nextPhase = if (current.warnings.isEmpty()) {
-                ReiAnixBootstrapPhase.READY
+            val retainedWarnings = current.warnings.filterNot { it.isCanonicalDatabaseWarning() }
+            val nextWarnings = if (check.recoveryRequired && !check.warning.isNullOrBlank()) {
+                (retainedWarnings + check.warning).distinct()
             } else {
-                ReiAnixBootstrapPhase.DEGRADED
+                retainedWarnings
             }
+            val servicesReady = nativeServicesStarted
             current.copy(
-                phase = nextPhase,
-                stage = ReiAnixBootstrapStage.NATIVE_SERVICES_READY,
-                completedStages = current.completedStages +
-                    ReiAnixBootstrapStage.NATIVE_SERVICES_READY,
-                error = current.error ?: current.warnings.firstOrNull(),
+                phase = when {
+                    check.recoveryRequired -> ReiAnixBootstrapPhase.DEGRADED
+                    servicesReady && nextWarnings.isEmpty() -> ReiAnixBootstrapPhase.READY
+                    servicesReady -> ReiAnixBootstrapPhase.DEGRADED
+                    else -> ReiAnixBootstrapPhase.STARTING
+                },
+                stage = when {
+                    check.recoveryRequired -> ReiAnixBootstrapStage.RECOVERY_REQUIRED
+                    servicesReady -> ReiAnixBootstrapStage.READY
+                    else -> ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE
+                },
+                persistenceStatus = check.status,
+                recoveryRequired = check.recoveryRequired,
+                completedStages = when {
+                    check.recoveryRequired -> current.completedStages - ReiAnixBootstrapStage.READY
+                    servicesReady -> current.completedStages + ReiAnixBootstrapStage.READY
+                    else -> current.completedStages - ReiAnixBootstrapStage.READY
+                },
+                warnings = nextWarnings,
+                error = if (check.recoveryRequired) {
+                    check.warning ?: DATABASE_RECOVERY_WARNING
+                } else {
+                    nextWarnings.firstOrNull()
+                },
             )
         }
-        recordDiagnostic(
-            name = if (state.value.phase == ReiAnixBootstrapPhase.READY) {
-                "APP_BOOTSTRAP_NATIVE_SERVICES_READY"
-            } else {
-                "APP_BOOTSTRAP_DEGRADED"
-            },
-            result = state.value.phase.name,
-            stage = ReiAnixBootstrapStage.NATIVE_SERVICES_READY,
-        )
-        Log.i(
-            TAG,
-            "NATIVE_BOOTSTRAP_FINISHED phase=${state.value.phase} " +
-                "warnings=${state.value.warnings.size}",
-        )
+    }
+
+    private fun String.isCanonicalDatabaseWarning(): Boolean =
+        contains("base canônica SQLite", ignoreCase = true) ||
+            contains("arquivo da base SQLite", ignoreCase = true) ||
+            contains("recuperação SQLite interrompida", ignoreCase = true) ||
+            contains("recibos SAF interrompidos", ignoreCase = true)
+
+    /**
+     * May be reached on first healthy startup or after Recovery Mode succeeds. The
+     * mutex makes Application/Activity calls idempotent and keeps the single graph's
+     * receipt recovery ahead of the existing dispatcher.
+     */
+    private suspend fun ensureNativeServicesStarted() {
+        nativeServicesMutex.withLock {
+            if (nativeServicesStarted) {
+                updateState { current ->
+                    if (current.recoveryRequired) current else current.copy(
+                        phase = if (current.warnings.isEmpty()) {
+                            ReiAnixBootstrapPhase.READY
+                        } else {
+                            ReiAnixBootstrapPhase.DEGRADED
+                        },
+                        stage = ReiAnixBootstrapStage.READY,
+                        completedStages = current.completedStages +
+                            ReiAnixBootstrapStage.NATIVE_SERVICES_READY +
+                            ReiAnixBootstrapStage.READY,
+                    )
+                }
+                return@withLock
+            }
+
+            val validated = state.value
+            if (
+                validated.recoveryRequired ||
+                validated.persistenceStatus !in setOf(
+                    ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                    ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+                )
+            ) return@withLock
+
+            updateState {
+                it.copy(
+                    phase = ReiAnixBootstrapPhase.STARTING,
+                    stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
+                )
+            }
+            try {
+                NativeScanRunner.recoverInterruptedSafScans(appContext)
+                completeStage(ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS)
+                recordDiagnostic(
+                    name = "APP_BOOTSTRAP_STAGE_COMPLETED",
+                    result = "COMPLETED",
+                    stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                recordWarning(
+                    "A recuperação dos recibos de varreduras SAF foi adiada; os recibos foram preservados.",
+                    error,
+                )
+                // A recovery pass can discover that a previously healthy database is no
+                // longer safe to mutate. Revalidate before allowing queued commands through.
+                val afterFailure = try {
+                    withContext(Dispatchers.IO) { inspectCanonicalDatabase() }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (validationError: Exception) {
+                    Log.e(TAG, "SQLite revalidation after SAF receipt recovery failed.", validationError)
+                    CanonicalDatabaseCheck(
+                        status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                        recoveryRequired = true,
+                        warning = DATABASE_RECOVERY_WARNING,
+                    )
+                }
+                if (afterFailure.recoveryRequired) {
+                    publishDatabaseCheck(afterFailure)
+                    recordDiagnostic(
+                        name = "APP_BOOTSTRAP_RECOVERY_REQUIRED",
+                        result = afterFailure.status.name,
+                        stage = ReiAnixBootstrapStage.RECOVERY_REQUIRED,
+                    )
+                    return@withLock
+                }
+                publishDatabaseCheck(afterFailure)
+            }
+
+            updateState {
+                it.copy(
+                    phase = ReiAnixBootstrapPhase.STARTING,
+                    stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
+                )
+            }
+            try {
+                NativeCommandDispatcher.start(appContext)
+                completeStage(ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER)
+                recordDiagnostic(
+                    name = "APP_BOOTSTRAP_STAGE_COMPLETED",
+                    result = "COMPLETED",
+                    stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                recordWarning(
+                    "O canal interno de comandos nativos não pôde ser iniciado.",
+                    error,
+                )
+                recordDiagnostic(
+                    name = "APP_BOOTSTRAP_STAGE_FAILED",
+                    result = "COMMAND_CHANNEL_UNAVAILABLE",
+                    stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
+                )
+            }
+
+            nativeServicesStarted = true
+            updateState { current ->
+                if (current.recoveryRequired) {
+                    current
+                } else {
+                    current.copy(
+                        phase = if (current.warnings.isEmpty()) {
+                            ReiAnixBootstrapPhase.READY
+                        } else {
+                            ReiAnixBootstrapPhase.DEGRADED
+                        },
+                        stage = ReiAnixBootstrapStage.READY,
+                        completedStages = current.completedStages +
+                            ReiAnixBootstrapStage.NATIVE_SERVICES_READY +
+                            ReiAnixBootstrapStage.READY,
+                        error = current.warnings.firstOrNull(),
+                    )
+                }
+            }
+            recordDiagnostic(
+                name = if (state.value.phase == ReiAnixBootstrapPhase.READY) {
+                    "APP_BOOTSTRAP_NATIVE_SERVICES_READY"
+                } else {
+                    "APP_BOOTSTRAP_DEGRADED"
+                },
+                result = state.value.phase.name,
+                stage = ReiAnixBootstrapStage.READY,
+            )
+            Log.i(
+                TAG,
+                "NATIVE_BOOTSTRAP_FINISHED phase=${state.value.phase} " +
+                    "persistence=${state.value.persistenceStatus} " +
+                    "warnings=${state.value.warnings.size}",
+            )
+        }
     }
 
     private fun inspectCanonicalDatabase(): CanonicalDatabaseCheck {
@@ -295,11 +412,21 @@ class ReiAnixAppBootstrap internal constructor(
                 ?.any { file ->
                     file.isDirectory && file.name.startsWith("recovery-snapshot-")
                 } == true
-            return if (interruptedPromotion || priorRecoverySnapshots) {
+            val pendingSafRecovery = try {
+                NativeIndex.pendingSafRecovery(appContext).length() > 0
+            } catch (error: Exception) {
+                Log.e(TAG, "Could not inspect durable SAF recovery receipts; treating the state as recovery evidence.", error)
+                true
+            }
+            return if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
                 CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
-                    warning = "Há evidências de uma recuperação SQLite interrompida.",
+                    warning = when {
+                        pendingSafRecovery -> SAF_RECEIPT_RECOVERY_WARNING
+                        interruptedPromotion -> PROMOTION_RECOVERY_WARNING
+                        else -> INTERRUPTED_RECOVERY_WARNING
+                    },
                 )
             } else {
                 // LibraryStore in the remaining hybrid runtime initializes a fresh install.
@@ -330,7 +457,7 @@ class ReiAnixAppBootstrap internal constructor(
             CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
-                warning = "A base canônica SQLite requer validação ou recuperação.",
+                warning = DATABASE_RECOVERY_WARNING,
             )
         }
     }
@@ -396,5 +523,9 @@ class ReiAnixAppBootstrap internal constructor(
 
     private companion object {
         const val TAG = "ReiAnixAppBootstrap"
+        const val DATABASE_RECOVERY_WARNING = "A base canônica SQLite requer validação ou recuperação."
+        const val PROMOTION_RECOVERY_WARNING = "Há evidências de uma promoção SQLite interrompida."
+        const val INTERRUPTED_RECOVERY_WARNING = "Há evidências de uma recuperação SQLite interrompida."
+        const val SAF_RECEIPT_RECOVERY_WARNING = "Há recibos SAF interrompidos sem base canônica; a recuperação é necessária."
     }
 }
