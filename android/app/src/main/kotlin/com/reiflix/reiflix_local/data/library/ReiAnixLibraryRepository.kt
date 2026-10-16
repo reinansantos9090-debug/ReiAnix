@@ -231,7 +231,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private val stateMutex = Mutex()
     private val pageGeneration = AtomicLong(0L)
     private val refreshInFlight = AtomicBoolean(false)
-    /** Keeps the active refresh flag and the latest requested post-refresh page filters atomic. */
+    /** Keeps duplicate scan requests from being started concurrently. */
     private val refreshRequestGuard = Any()
     private val pageRequestGuard = Any()
     private data class InFlightPage(
@@ -500,7 +500,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 if (action == ReiAnixLibraryCommandCodec.Action.REFRESH) {
                     synchronized(refreshRequestGuard) {
                         refreshInFlight.set(false)
-                        pendingRefreshPage = null
                     }
                 }
                 if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE) {
