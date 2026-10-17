@@ -131,11 +131,15 @@ object MediaStoreScanner {
             .filter { volumeMatches(it, volumeName, volumeUuid) }
             .mapNotNull { scope ->
                 val root = normalizeScopePath(scope.treeDocumentId)
-                if (root.isBlank() || !(candidate == root || candidate.startsWith(root + "/"))) {
-                    null
+                // ExternalStorageProvider uses "volume:" to represent the explicitly
+                // granted root of a volume. An empty ID is not such a grant and stays rejected.
+                val volumeRoot = root.isBlank() && scope.treeDocumentId.trim().endsWith(":")
+                val inside = if (volumeRoot) {
+                    candidate.isNotBlank()
                 } else {
-                    scope to root.length
+                    root.isNotBlank() && (candidate == root || candidate.startsWith(root + "/"))
                 }
+                if (!inside) null else scope to root.length
             }
             // When configured roots overlap, assign an item to the most specific root only.
             .maxByOrNull { it.second }
