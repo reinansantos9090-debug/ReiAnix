@@ -19,6 +19,9 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
+import com.reiflix.reiflix_local.data.sqlite.toggleAnimePinned
+import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
+import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
@@ -1760,6 +1763,41 @@ class ReiAnixLibraryViewModel(
                     ?: "Não foi possível atualizar o episódio."
             }
         }
+    }
+
+    /** Persist personal pin state in the canonical SQLite store and refresh native projections. */
+    suspend fun toggleAnimePinnedNative(animeId: Long): Boolean {
+        val pinned = nativeLibraryRepository.toggleAnimePinned(animeId)
+        refreshNativeCatalog()
+        repository.publishCatalog()
+        return pinned
+    }
+
+    /** Save the private note without modifying AniList editorial metadata or another store. */
+    suspend fun saveAnimePersonalNoteNative(animeId: Long, note: String?): String? {
+        val saved = nativeLibraryRepository.setAnimePersonalNote(animeId, note)
+        refreshNativeCatalog()
+        repository.publishCatalog()
+        return saved
+    }
+
+    /** Persist a manual episode identity while preserving its playback progress and file identity. */
+    suspend fun setEpisodeManualIdentificationNative(
+        episodeId: Long,
+        season: Int?,
+        number: Double?,
+        episodeType: String,
+        title: String?,
+    ) {
+        nativeLibraryRepository.setEpisodeManualIdentification(
+            episodeId = episodeId,
+            season = season,
+            number = number,
+            episodeType = episodeType,
+            title = title,
+        )
+        refreshNativeCatalog()
+        repository.publishCatalog()
     }
 
     fun openEpisode(episodeId: Long): String = repository.openEpisode(episodeId)
