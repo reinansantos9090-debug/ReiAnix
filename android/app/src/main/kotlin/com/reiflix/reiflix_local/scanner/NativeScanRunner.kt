@@ -1456,11 +1456,34 @@ object NativeScanRunner {
             val volumeName = volume.optString("volumeId").trim()
             val scopeKey = "mediastore:" + volumeName
             val generation = volume.optLong("scanGeneration", 0L)
+            val libraryScopeSignature = volume.optString("libraryScopeSignature").trim()
+            val signatureIsVerifiable = libraryScopeSignature.matches(Regex("[0-9a-f]{64}"))
+            // A catalog scope is tied to the exact configured SAF-root set. If the user later
+            // changes that set, a new signature produces a new source_folder scope so a complete
+            // scan of the new selection cannot mark rows from a previous selection as missing.
+            val catalogScopeRef = if (signatureIsVerifiable) {
+                "$scopeKey:roots:$libraryScopeSignature"
+            } else {
+                "$scopeKey:roots:unverified:$generation"
+            }
             val volumeResult = JSONObject().put("volumeId", volumeName)
-                .put("scopeKey", scopeKey).put("generation", generation)
+                .put("scopeKey", scopeKey).put("catalogScopeRef", catalogScopeRef)
+                .put("libraryScopeSignature", libraryScopeSignature)
+                .put("generation", generation)
                 .put("complete", volume.optBoolean("complete"))
                 .put("reused", volume.optBoolean("reused"))
             summary.put("attemptedVolumes", summary.optInt("attemptedVolumes") + 1)
+
+            if (!signatureIsVerifiable) {
+                scopeCoverageStillAllowed = false
+                summary.put("scopeCoverageComplete", false)
+                if (summary.optInt("coverageWarnings", 0) == 0) {
+                    summary.put("coverageWarnings", 1)
+                }
+                summary.optJSONArray("errors")?.put(
+                    "A geração MediaStore não contém a assinatura validada das árvores SAF; descobertas positivas podem ser preservadas, mas ausências não serão inferidas.",
+                )
+            }
 
             if (scopeCoverageStillAllowed && !areMediaStoreScopesCurrentlyReadable(appContext, libraryScopes)) {
                 scopeCoverageStillAllowed = false
@@ -1512,7 +1535,8 @@ object NativeScanRunner {
 
             val status = volume.optString("status").trim().uppercase()
             val generationComplete = volume.optBoolean("complete")
-            val safeForAbsenceReconciliation = generationComplete && scopeCoverageStillAllowed
+            val safeForAbsenceReconciliation = generationComplete &&
+                scopeCoverageStillAllowed && signatureIsVerifiable
             val snapshotStatus = if (
                 generationComplete && !scopeCoverageStillAllowed &&
                 status in setOf(NativeIndex.STATUS_COMPLETED, NativeIndex.STATUS_EMPTY_COMPLETE)
@@ -1538,8 +1562,8 @@ object NativeScanRunner {
                 complete = safeForAbsenceReconciliation,
                 cancelled = cancelled,
                 authorizationValid = canReadMediaStore && safeForAbsenceReconciliation,
-                items = discoveredMediaFromSnapshot(documents, scopeKey),
-                scopeReference = scopeKey,
+                items = discoveredMediaFromSnapshot(documents, catalogScopeRef),
+                scopeReference = catalogScopeRef,
                 scanGeneration = generation,
             )
             if (!NativeIndex.markNativeCatalogIndexing(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation)) {
