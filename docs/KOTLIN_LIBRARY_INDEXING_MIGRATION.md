@@ -85,3 +85,11 @@ Verificações de entrega:
 - registrar limites de runtime que exigem validação no aparelho sem inventar confirmação.
 
 Critério técnico já satisfeito no código para o fluxo SAF normal: scanner nativo, indexação transacional no SQLite canônico, política de reconciliação não destrutiva e registro terminal de execução pertencem a Kotlin. O critério de cutover integral de todo o subsistema/UI só poderá ser afirmado depois que as dependências de projeção/compatibilidade acima forem substituídas; o resultado da CI do SHA final ainda é a evidência de build necessária para esta PR.
+
+## Prompt 28/29 — corte do transporte de lotes de descoberta
+
+No snapshot de referência `e9e3fcc67bb778f0c7fe861f16dd1ff18d0c976d`, foi confirmado que o `NativeScanRunner` já prepara lotes em `NativeIndex`, indexa os registros no SQLite canônico através de `ReiAnixLibraryService` e finaliza `scan_runs` no lado Kotlin. Para os eventos atuais, `nativeLibraryIndexOwner=true` levava o Python a ignorar os documentos do lote e apenas registrar telemetria. Enviar cada array completo pelo `NativeMailbox` era portanto uma duplicação de IPC, não uma transferência de ownership.
+
+A implementação do Prompt 28 remove esse envio de sucesso: `NativeScanPublisher` continua a persistir/preparar o lote em `NativeIndex`, publica um evento de diagnóstico local limitado a metadados e não copia a lista de documentos para o poller Python. A notificação de erro, sem conteúdo de mídia, permanece temporariamente para preservar a superfície de compatibilidade existente. Os handlers Python para eventos de lote também permanecem como leitura de compatibilidade para mensagens originadas por versões antigas; sua existência não torna o produtor atual dependente deles.
+
+Este é um corte específico de transporte, não a remoção integral da `NativeMailbox` nem prova de runtime nativo completo. O fluxo ainda publica eventos de progresso/resultado terminal e outros contratos continuam consumidos pelo runtime Python. A retirada adicional exige migrar e validar esses contratos, incluindo recuperação e persistência dos recibos SAF, antes de apagar a mailbox ou o runtime híbrido.
