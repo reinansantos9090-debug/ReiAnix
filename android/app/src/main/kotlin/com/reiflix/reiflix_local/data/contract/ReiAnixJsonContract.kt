@@ -29,6 +29,15 @@ internal fun JSONObject.longRequired(key: String): Long {
         ?: error("Invalid required long JSON contract field '$key'.")
 }
 
+internal fun JSONObject.longOrDefault(key: String, default: Long): Long {
+    if (!has(key)) return default
+    require(!isNull(key)) { "Invalid JSON contract field '$key': null is not valid for this integer field." }
+    val value = opt(key)
+    require(value is Number) { "Invalid JSON contract field '$key': expected a JSON number." }
+    return ReiAnixContractValues.longOrNull(value, key)
+        ?: error("Invalid long JSON contract field '$key'.")
+}
+
 internal fun JSONObject.intRequired(key: String): Int {
     require(has(key) && !isNull(key)) { "Missing required JSON contract field '$key'." }
     val value = opt(key)
