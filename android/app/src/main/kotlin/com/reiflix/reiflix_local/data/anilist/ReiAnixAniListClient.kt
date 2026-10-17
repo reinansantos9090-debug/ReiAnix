@@ -148,7 +148,7 @@ class ReiAnixAniListClient(
         }
         if (errors != null && errors.length() > 0) {
             val messages = try {
-                buildList {
+                buildList<String> {
                     for (index in 0 until errors.length()) {
                         val errorObject = errors.optJSONObject(index)
                             ?: error("Malformed GraphQL error item at index=$index")
