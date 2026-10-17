@@ -103,7 +103,8 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         # the source's global/partial result cannot mark SAF-owned rows missing or rewrite their
         # durable tree URI and tree-relative path as a volume-relative MediaStore path.
         self.assertIn('val generationComplete = volume.optBoolean("complete")', runner)
-        self.assertIn("val safeForAbsenceReconciliation = generationComplete && scopeCoverageStillAllowed", runner)
+        self.assertIn("val safeForAbsenceReconciliation = generationComplete &&", runner)
+        self.assertIn("scopeCoverageStillAllowed && signatureIsVerifiable", runner)
         self.assertIn("complete = safeForAbsenceReconciliation", runner)
         self.assertIn("authorizationValid = canReadMediaStore && safeForAbsenceReconciliation", runner)
         self.assertIn("areMediaStoreScopesCurrentlyReadable", runner)
