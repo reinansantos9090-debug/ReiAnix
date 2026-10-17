@@ -138,7 +138,7 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         self.assertIn("error = error", self.discovery_dialogs)
 
     def test_details_actions_mutate_the_canonical_sqlite_store(self):
-        for label in ("Maratona", "Adicionar nota pessoal", "Corrigir identificação"):
+        for label in ("Maratona", "Adicionar nota pessoal", "Adicionar tags", "Corrigir identificação"):
             self.assertIn(label, self.details)
         for callback in (
             "viewModel::toggleAnimePinnedNative",
