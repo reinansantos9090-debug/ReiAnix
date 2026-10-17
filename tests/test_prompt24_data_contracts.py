@@ -7,6 +7,8 @@ CONTRACT_VALUES = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/
 LIBRARY_MAPPERS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mapper/LibraryUiMappers.kt"
 SQLITE_MODELS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteModels.kt"
 SNAPSHOT_CODEC = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibrarySnapshotCodec.kt"
+SETTINGS_CODEC = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsSnapshotCodec.kt"
+JSON_CONTRACT = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/contract/ReiAnixJsonContract.kt"
 SQLITE_DATABASE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteDatabase.kt"
 PYTHON_STORE = ROOT / "core/library_store.py"
 LIBRARY_BRIDGE = ROOT / "core/compose_library_bridge.py"
@@ -75,6 +77,19 @@ class Prompt24DataContractTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("\npull_request:", workflow)
         self.assertNotIn("\npush:", workflow)
+
+
+    def test_settings_snapshot_uses_shared_typed_json_contract(self):
+        source = SETTINGS_CODEC.read_text(encoding="utf-8")
+        shared = JSON_CONTRACT.read_text(encoding="utf-8")
+        self.assertIn('root.intRequired("schemaVersion")', source)
+        self.assertIn('root.longRequired("revision")', source)
+        self.assertIn("booleanOrDefault", source)
+        self.assertIn("intOrDefault", source)
+        self.assertIn("cannot be null; omit an absent setting instead", source)
+        self.assertIn("JSONObject.stringOrNull", shared)
+        self.assertIn("expected a JSON Boolean", shared)
+        self.assertIn("null is not valid for this array field", shared)
 
 
 if __name__ == "__main__":
