@@ -60,7 +60,12 @@ class CollectorJourneyKotlinMigrationContractTests(unittest.TestCase):
         self.assertIn("navController.navigateToCollector()", host)
         self.assertIn("service.setActiveTitle(titleId)", view_model)
         self.assertIn("collectAsStateWithLifecycle()", screen)
-        self.assertIn("'collector'}", main)
+        # The legacy route table remains for Flet fallback, but Compose no longer
+        # mirrors its active route or sends a navigation decision through Python.
+        self.assertIn('"collector": "/collector"', main)
+        self.assertNotIn("compose_navigation_changed", main)
+        self.assertNotIn("compose_library_navigation", main)
+        self.assertNotIn("compose_settings_navigation", main)
         self.assertIn("if compose_primary_ui:", main)
         self.assertIn("control = ft.Container(expand=True)", main)
 
