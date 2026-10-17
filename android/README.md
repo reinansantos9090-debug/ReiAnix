@@ -23,11 +23,16 @@ implemented by Python:
 | Flet | `0.86.5` (`pyproject.toml`) |
 | Flutter required by installed Flet | `3.44.8` (`flet.version.flutter_version`) |
 | Android Gradle Plugin | `8.9.1` |
-| Kotlin | `2.0.21` |
+| Kotlin (Flet host atual) | `2.0.21` |
 | Java toolchain | 17 |
 | compile / target SDK | 36 / 36 |
 | minimum SDK | 24 |
 | Media3 | `1.11.1` for ExoPlayer and UI |
+
+The independent root Gradle validation project uses Kotlin/Compose Compiler 2.2.0 with
+AGP 8.9.1 and Gradle 8.11.1, following the current official compatibility matrices.
+This toolchain applies to `./gradlew :app:assembleDebug`; it does not silently
+replace the separate Flet host toolchain used by the full-feature distribution.
 
 The repository does **not** commit an APK. The workflow builds one and refuses
 to publish it unless DEX contains `MainActivity`, `NativeMailbox`,
