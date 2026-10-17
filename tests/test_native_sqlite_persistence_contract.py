@@ -174,7 +174,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("scope.optString(\"nativeCatalogWriteOutcome\") != \"COMMITTED\"", native_index)
         self.assertIn("meta.optString(\"libraryScopeSignature\") == libraryScopeSignature", native_index)
         self.assertIn('val preserveSafLocation = snapshot.source == "mediastore"', repository)
-        self.assertIn("authorizedSafTreeUris = libraryScopes.map { it.treeUri }", runner)
+        self.assertIn("authorizedSafTreeUris = readableScopeUris", runner)
         self.assertIn("legacySafRowsByPhysicalIdentity", repository)
         self.assertIn("LocalMediaIdentity.identityFromDocument(", repository)
         self.assertIn("readableMediaStoreScopeUris(appContext, libraryScopes)", runner)

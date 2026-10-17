@@ -120,7 +120,7 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         self.assertIn("if (!preserveSafLocation && current.path != item.location)", repository)
         self.assertIn("if (!preserveSafLocation)", repository)
         self.assertIn("currentSourceFolder in snapshot.authorizedSafTreeUris", repository)
-        self.assertIn("authorizedSafTreeUris = libraryScopes.map { it.treeUri }", runner)
+        self.assertIn("authorizedSafTreeUris = readableScopeUris", runner)
         self.assertIn("legacySafRowsByPhysicalIdentity", repository)
         self.assertIn('if (snapshot.source == "mediastore") {', repository)
         self.assertIn("AND source_folder LIKE 'content://com.android.externalstorage.documents/tree/%'", repository)
