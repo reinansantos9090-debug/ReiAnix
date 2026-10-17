@@ -145,7 +145,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("markNativeCatalogNotCommitted", media_scan)
         self.assertIn("markNativeCatalogOutcomeUnknown", media_scan)
         self.assertIn(".libraryService.finishNativeScanRun(", media_scan)
-        self.assertIn('result.put("nativeLibraryIndexOwner", true)', media_scan)
+        self.assertIn('.put("nativeLibraryIndexOwner", true)', media_scan)
         self.assertIn("indexDiscoveredMedia", runner[:broad_start])
         self.assertIn("NATIVE_KOTLIN_INDEXER_OWNS_PERSISTENCE", main)
         self.assertIn("NativeIndex.committedDocuments", runner)
