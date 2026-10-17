@@ -3,8 +3,7 @@ package com.reiflix.reiflix_local.data.collector
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixCollectorEpisodeRow
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
-import java.time.Instant
-import java.time.ZoneId
+import java.util.Calendar
 import java.util.Locale
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -164,10 +163,16 @@ internal object ReiAnixCollectorJourneyCalculator {
             val timestamp = finiteNumber(row.lastPlayedAt)
             if (timestamp <= 0.0 || timestamp >= MAX_SUPPORTED_EPOCH_SECONDS) return@forEach
             runCatching {
-                val date = Instant.ofEpochMilli((timestamp * 1000.0).toLong())
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDate()
-                if (date.year in 1..9999) activeDays.add(date.toString())
+                // Calendar uses the device's local zone and supports the declared minSdk (24).
+                val date = Calendar.getInstance().apply {
+                    timeInMillis = (timestamp * 1000.0).toLong()
+                }
+                val year = date.get(Calendar.YEAR)
+                if (year in 1..9999) {
+                    val month = date.get(Calendar.MONTH) + 1
+                    val day = date.get(Calendar.DAY_OF_MONTH)
+                    activeDays.add(String.format(Locale.ROOT, "%04d-%02d-%02d", year, month, day))
+                }
             }
         }
 
