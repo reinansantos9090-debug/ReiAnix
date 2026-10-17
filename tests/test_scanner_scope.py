@@ -176,7 +176,9 @@ class ScopePolicyTests(unittest.TestCase):
         source = MEDIA.read_text(encoding="utf-8")
         # An empty root or a neighboring-prefix path must never match an authorized
         # MediaStore library tree. Overlapping configured trees assign a row only once.
-        self.assertIn('if (root.isBlank() || !(candidate == root || candidate.startsWith(root + "/")))', source)
+        self.assertIn('val volumeRoot = root.isBlank() && scope.treeDocumentId.trim().endsWith(":")', source)
+        self.assertIn('candidate.isNotBlank()', source)
+        self.assertIn('root.isNotBlank() && (candidate == root || candidate.startsWith(root + "/"))', source)
         self.assertIn('scope.authority != "com.android.externalstorage.documents"', source)
         self.assertIn('.maxByOrNull { it.second }', source)
         self.assertIn('matchingLibraryScope(authorizedScopes, actualVol, actualVolumeUuid, rel)', source)
