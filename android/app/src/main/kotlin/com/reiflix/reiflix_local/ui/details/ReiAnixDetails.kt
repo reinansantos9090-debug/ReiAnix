@@ -260,7 +260,7 @@ fun ReiAnixDetailsScreen(
     onManageAniList: () -> Unit = {},
     onOpenMarathon: () -> Unit = {},
     onTogglePinned: suspend (Long) -> Boolean = { false },
-    onSavePersonalNote: suspend (Long, String?) -> String? = { _, note -> note?.trim()?.ifEmpty { null } },
+    onSavePersonalNote: suspend (Long, String?) -> String? = { _, note -> note?.trim()?.takeIf { it.isNotEmpty() } },
     onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit = { _, _, _, _, _ -> },
 ) {
     ReiAnixResponsiveRoot {
