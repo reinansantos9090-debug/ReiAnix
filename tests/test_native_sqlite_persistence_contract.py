@@ -47,7 +47,11 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("SQLiteDatabase.OPEN_READWRITE", database)
         self.assertNotIn("CREATE_IF_NECESSARY", database)
         self.assertNotIn("SQLiteOpenHelper", database)
-        self.assertNotIn("CREATE TABLE", database.upper())
+        # Canonical DDL is allowed only in the guarded fresh-install initializer.
+        self.assertIn("initializeFreshInstall()", database)
+        self.assertIn('normalized.startsWith("CREATE TABLE ")', database)
+        self.assertIn("if (databaseFile.exists()) return@synchronized false", database)
+        self.assertNotIn("DROP TABLE", database.upper())
         self.assertNotIn("DROP TABLE", database.upper())
         self.assertNotIn("openOrCreateDatabase", database)
         self.assertNotIn("CREATE_IF_NECESSARY", database)
