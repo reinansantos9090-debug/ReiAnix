@@ -44,6 +44,7 @@ data class ReiAnixDetailsAnimeUiModel(
     val metadataAvailability: ReiAnixMetadataAvailability = ReiAnixMetadataAvailability.UNRESOLVED,
     val presentationState: ReiAnixPresentationState = ReiAnixPresentationState.METADATA_MISSING,
     val pinned: Boolean = false,
+    val personalNote: String? = null,
     val playbackTargetEpisode: ReiAnixEpisodeUiModel? = null,
 ) {
     val stableKey: String
@@ -107,6 +108,7 @@ object ReiAnixDetailsUiStateProjection {
                     metadataAvailability = anime.metadataAvailability,
                     presentationState = anime.presentationState,
                     pinned = anime.pinned,
+                    personalNote = anime.personalNote,
                     playbackTargetEpisode = playableTarget,
                 ),
                 sourceAvailable = state.sourceAvailable,
