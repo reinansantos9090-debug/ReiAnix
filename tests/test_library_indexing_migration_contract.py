@@ -95,8 +95,12 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         # A complete catalog reconciliation is only possible for a complete authorized scope;
         # the source's global/partial result cannot mark SAF-owned rows missing or rewrite their
         # durable tree URI and tree-relative path as a volume-relative MediaStore path.
-        self.assertIn("complete = complete", runner)
-        self.assertIn("authorizationValid = canReadMediaStore && libraryScopes.isNotEmpty()", runner)
+        self.assertIn('val generationComplete = volume.optBoolean("complete")', runner)
+        self.assertIn("val safeForAbsenceReconciliation = generationComplete && scopeCoverageStillAllowed", runner)
+        self.assertIn("complete = safeForAbsenceReconciliation", runner)
+        self.assertIn("authorizationValid = canReadMediaStore && safeForAbsenceReconciliation", runner)
+        self.assertIn("areMediaStoreScopesCurrentlyReadable", runner)
+        self.assertIn("scopeCoverageStillAllowed && !areMediaStoreScopesCurrentlyReadable", runner)
         self.assertIn("val preserveSafLocation = snapshot.source == \"mediastore\"", repository)
         self.assertIn("if (!preserveSafLocation && current.path != item.location)", repository)
         self.assertIn("if (!preserveSafLocation)", repository)
