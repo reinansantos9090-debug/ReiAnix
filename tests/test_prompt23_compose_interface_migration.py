@@ -8,6 +8,11 @@ MAIN = ROOT / "main.py"
 NAVIGATION = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
 COMPOSE_HOST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
 SETTINGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
+HOME = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt"
+DETAILS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"
+DISCOVERY_DIALOGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/discovery/ReiAnixDiscoveryDialogs.kt"
+LIBRARY_VIEW_MODEL = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+SQLITE_MUTATIONS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryMutations.kt"
 COVERAGE = ROOT / "docs/PROMPT_23_COMPOSE_INTERFACE_COVERAGE.md"
 
 
@@ -18,6 +23,11 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         cls.navigation = NAVIGATION.read_text(encoding="utf-8")
         cls.compose_host = COMPOSE_HOST.read_text(encoding="utf-8")
         cls.settings = SETTINGS.read_text(encoding="utf-8")
+        cls.home = HOME.read_text(encoding="utf-8")
+        cls.details = DETAILS.read_text(encoding="utf-8")
+        cls.discovery_dialogs = DISCOVERY_DIALOGS.read_text(encoding="utf-8")
+        cls.library_view_model = LIBRARY_VIEW_MODEL.read_text(encoding="utf-8")
+        cls.sqlite_mutations = SQLITE_MUTATIONS.read_text(encoding="utf-8")
         build_start = cls.main.index("    def _build_screen(")
         cls.build_screen = cls.main[
             build_start:cls.main.index("    def _settings_view_paths()", build_start)
@@ -113,6 +123,50 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         self.assertIn("ReiAnixLibraryRoute(", self.navigation)
         self.assertIn("ReiAnixSearchRoute(", self.navigation)
         self.assertIn("ReiAnixDetailsRoute(", self.navigation)
+
+    def test_home_discovery_tools_use_native_compose_queries(self):
+        self.assertIn('text = "Linha do tempo"', self.home)
+        self.assertIn('text = "Durações incomuns"', self.home)
+        self.assertIn("ReiAnixTimelineDialog(", self.home)
+        self.assertIn("ReiAnixDurationAnomalyDialog(", self.home)
+        self.assertIn("viewModel.queryNativeTimelineGroups()", self.discovery_dialogs)
+        self.assertIn("viewModel.queryNativeDurationAnomalies()", self.discovery_dialogs)
+        self.assertIn("viewModel.queryNativeMarathonPlan(animeId, currentPath)", self.discovery_dialogs)
+        self.assertIn("LaunchedEffect(", self.discovery_dialogs)
+        self.assertIn("Tentar novamente", self.discovery_dialogs)
+        self.assertIn("loading = loading", self.discovery_dialogs)
+        self.assertIn("error = error", self.discovery_dialogs)
+
+    def test_details_actions_mutate_the_canonical_sqlite_store(self):
+        for label in ("Maratona", "Adicionar nota pessoal", "Corrigir identificação"):
+            self.assertIn(label, self.details)
+        for callback in (
+            "viewModel::toggleAnimePinnedNative",
+            "viewModel::saveAnimePersonalNoteNative",
+            "viewModel::setEpisodeManualIdentificationNative",
+        ):
+            self.assertIn(callback, self.details)
+        for mutation in (
+            "toggleAnimePinned",
+            "setAnimePersonalNote",
+            "setEpisodeManualIdentification",
+        ):
+            self.assertIn(mutation, self.sqlite_mutations)
+            self.assertIn(mutation, self.library_view_model)
+        self.assertIn('put("manual_override", 1)', self.sqlite_mutations)
+        self.assertIn('put("identification_source", "manual")', self.sqlite_mutations)
+        self.assertIn("refreshNativeCatalog()", self.library_view_model)
+        self.assertIn("personalNote = anime.personalNote", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixDetailsUiModels.kt").read_text(encoding="utf-8"))
+
+    def test_gacha_is_explicitly_blocked_until_native_filter_parity_exists(self):
+        report = COVERAGE.read_text(encoding="utf-8")
+        self.assertIn("Gacha do acervo", report)
+        for filter_name in (
+            "query", "state", "genre", "sort", "tag", "media_type",
+            "season", "episode_type", "availability", "metadata", "artwork",
+        ):
+            self.assertIn(filter_name, report)
+        self.assertIn("Bloqueado por dependência concreta", report)
 
     def test_coverage_matrix_records_the_actual_cutover_and_remaining_fallback(self):
         report = COVERAGE.read_text(encoding="utf-8")
