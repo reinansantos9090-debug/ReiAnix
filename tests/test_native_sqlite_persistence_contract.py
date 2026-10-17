@@ -123,10 +123,23 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         media_start = runner.index("suspend fun runMediaStoreScan(", broad_start)
         broad_scan = runner[broad_start:media_start]
         media_scan = runner[media_start:]
-        # Existing domain contract treats these two scans as diagnostics, not catalog sources.
+        # Broad Storage remains diagnostic-only: its global filesystem scope is not
+        # the user's selected SAF library root and cannot authorize catalog reconciliation.
         self.assertNotIn("indexDiscoveredMedia", broad_scan)
-        self.assertNotIn("indexDiscoveredMedia", media_scan)
         self.assertIn('result.put("nativeLibraryIndexOwner", true)', broad_scan)
+
+        # MediaStore must now stage and index only records inside persisted, readable SAF roots.
+        # The same canonical SQLite service owns persistence; terminal compatibility events
+        # are emitted only after the explicit transaction outcome has been recorded.
+        self.assertIn("configuredMediaStoreScopes(appContext)", media_scan)
+        self.assertIn("libraryScopes = libraryScopes", media_scan)
+        self.assertIn("indexMediaStoreSnapshots(", media_scan)
+        self.assertIn(".libraryService.indexDiscoveredMedia(snapshot)", media_scan)
+        self.assertIn("markNativeCatalogIndexing", media_scan)
+        self.assertIn("markNativeCatalogCommitted", media_scan)
+        self.assertIn("markNativeCatalogNotCommitted", media_scan)
+        self.assertIn("markNativeCatalogOutcomeUnknown", media_scan)
+        self.assertIn(".libraryService.finishNativeScanRun(", media_scan)
         self.assertIn('result.put("nativeLibraryIndexOwner", true)', media_scan)
         self.assertIn("indexDiscoveredMedia", runner[:broad_start])
         self.assertIn("NATIVE_KOTLIN_INDEXER_OWNS_PERSISTENCE", main)
@@ -137,6 +150,16 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("sourceFolder = sourceFolder", runner)
         self.assertIn("fun stagedDocuments(", native_index)
         self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
+        media_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt").read_text(encoding="utf-8")
+        self.assertIn("NativeIndex.SOURCE_MEDIASTORE", media_scanner)
+        self.assertIn("matchingLibraryScope(authorizedScopes", media_scanner)
+        self.assertIn('put("scopeVerified", true)', media_scanner)
+        self.assertIn("libraryScopeSignature", media_scanner)
+        self.assertIn("SAFE_LIBRARY_SCOPE_REQUIRES_API_29", media_scanner)
+        self.assertIn("NativeIndex.SOURCE_MEDIASTORE", native_index)
+        self.assertIn("scope.optString(\"nativeCatalogWriteOutcome\") != \"COMMITTED\"", native_index)
+        self.assertIn("meta.optString(\"libraryScopeSignature\") == libraryScopeSignature", native_index)
+        self.assertIn('val preserveSafLocation = snapshot.source == "mediastore"', repository)
         # A failed native transaction must retain receipt-gated positive discoveries for Kotlin recovery.
         self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
         self.assertIn('put("documents", JSONArray())', runner)
