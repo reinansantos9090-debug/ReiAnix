@@ -249,7 +249,8 @@ private fun JSONObject.stringOrNull(key: String): String? =
     }
 
 private fun JSONObject.stringOrDefault(key: String, default: String): String =
-    stringOrNull(key) ?: default
+    if (!has(key)) default
+    else stringOrNull(key) ?: error("Invalid snapshot field '$key': null is not valid for this string field.")
 
 private fun JSONObject.longRequired(key: String): Long {
     require(has(key) && !isNull(key)) { "Missing required snapshot field '$key'." }
@@ -274,7 +275,8 @@ private fun JSONObject.booleanRequired(key: String): Boolean {
 }
 
 private fun JSONObject.booleanOrDefault(key: String, default: Boolean): Boolean {
-    if (!has(key) || isNull(key)) return default
+    if (!has(key)) return default
+    require(!isNull(key)) { "Invalid snapshot field '$key': null is not valid for this Boolean field." }
     return (opt(key) as? Boolean)
         ?: error("Invalid snapshot field '$key': expected a JSON Boolean.")
 }
@@ -287,7 +289,8 @@ private fun JSONObject.requiredArray(key: String): JSONArray {
 
 private fun JSONObject.arrayOrDefault(key: String): JSONArray =
     when {
-        !has(key) || isNull(key) -> JSONArray()
+        !has(key) -> JSONArray()
+        isNull(key) -> error("Invalid snapshot field '$key': null is not valid for this array field.")
         optJSONArray(key) != null -> optJSONArray(key)!!
         else -> error("Invalid snapshot field '$key': expected an array.")
     }
