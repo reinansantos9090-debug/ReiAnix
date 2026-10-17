@@ -1135,7 +1135,9 @@ class NativeMainActivityDecompositionTests(unittest.TestCase):
         self.assertNotIn("NativeIndex.prepareBatch(", main)
         self.assertIn("NativeScanPublisher.publish(", main)
         self.assertIn("NativeIndex.prepareBatch(", publisher)
-        self.assertIn("NativeMailbox.writeOrThrow(", publisher)
+        self.assertIn("NATIVE_SCAN_BATCH_STAGED", publisher)
+        self.assertNotIn("NativeMailbox.writeOrThrow(", publisher)
+        self.assertNotIn('.put("documents", documents)', publisher)
 
     def test_main_activity_delegates_media_store_retry_scheduling(self):
         main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
