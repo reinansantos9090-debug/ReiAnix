@@ -10,6 +10,8 @@ SNAPSHOT_CODEC = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/d
 SETTINGS_CODEC = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsSnapshotCodec.kt"
 JSON_CONTRACT = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/contract/ReiAnixJsonContract.kt"
 ANILIST_CLIENT = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClient.kt"
+NATIVE_MAILBOX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt"
+BACKUP_SERVICE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/backup/ReiAnixBackupService.kt"
 SQLITE_DATABASE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteDatabase.kt"
 PYTHON_STORE = ROOT / "core/library_store.py"
 LIBRARY_BRIDGE = ROOT / "core/compose_library_bridge.py"
@@ -73,6 +75,24 @@ class Prompt24DataContractTests(unittest.TestCase):
         self.assertIn("Malformed AniList field", source)
         self.assertIn("Malformed GraphQL errors array", source)
         self.assertIn("AniListError.InvalidResponse", source)
+
+    def test_native_mailbox_rejects_lossy_event_envelope_coercions(self):
+        source = NATIVE_MAILBOX.read_text(encoding="utf-8")
+        self.assertIn('event.longOrDefault("createdAt", 0L)', source)
+        self.assertIn('payload?.booleanOrDefault("granted", false)', source)
+        self.assertIn('event.stringOrDefault("type", "unknown")', source)
+        self.assertIn('payload.stringOrNull("requestId")', source)
+        self.assertNotIn('event.optLong("createdAt", 0L)', source)
+        self.assertNotIn('payload?.optBoolean("granted", false)', source)
+
+    def test_backup_integrity_validation_rejects_wrong_field_types(self):
+        source = BACKUP_SERVICE.read_text(encoding="utf-8")
+        self.assertIn('manifest.intRequired("format_version")', source)
+        self.assertIn('manifest.intRequired("schema_version")', source)
+        self.assertIn('integrity.arrayOrDefault("optional_entries")', source)
+        self.assertIn('expected.longRequired("size")', source)
+        self.assertIn('expected.stringOrNull("sha256")', source)
+        self.assertIn('manifest.optInt("schema_version", -1)', source)
 
     def test_transport_boundary_keeps_its_real_schema_and_timestamp_units_documented_in_code(self):
         bridge = LIBRARY_BRIDGE.read_text(encoding="utf-8")
