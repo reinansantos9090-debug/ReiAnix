@@ -401,12 +401,13 @@ class ReiAnixAppBootstrap internal constructor(
         val dataDirectory = File(appContext.filesDir, "data")
         val canonicalFile = File(dataDirectory, ReiAnixBackupService.DATABASE_NAME)
         if (!canonicalFile.exists()) {
-            val interruptedPromotion = dataDirectory.listFiles()
+            // A previous canonical database is durable evidence of an interrupted
+            // promotion. A candidate alone is only a temporary fresh-install schema
+            // file: bootstrap uses unique candidate names and can safely leave stale
+            // candidates untouched while creating a new candidate.
+            val interruptedPreviousDatabase = dataDirectory.listFiles()
                 ?.any { file ->
-                    file.isFile && (
-                        file.name.startsWith(".library.sqlite3.previous-") ||
-                            file.name.startsWith(".library.sqlite3.candidate-")
-                        )
+                    file.isFile && file.name.startsWith(".library.sqlite3.previous-")
                 } == true
             val priorRecoverySnapshots = File(dataDirectory, "backups")
                 .listFiles()
@@ -419,13 +420,13 @@ class ReiAnixAppBootstrap internal constructor(
                 Log.e(TAG, "Could not inspect durable SAF recovery receipts; treating the state as recovery evidence. errorType=" + error::class.java.simpleName)
                 true
             }
-            if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
+            if (interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery) {
                 return CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
                     warning = when {
                         pendingSafRecovery -> SAF_RECEIPT_RECOVERY_WARNING
-                        interruptedPromotion -> PROMOTION_RECOVERY_WARNING
+                        interruptedPreviousDatabase -> PROMOTION_RECOVERY_WARNING
                         else -> INTERRUPTED_RECOVERY_WARNING
                     },
                 )
