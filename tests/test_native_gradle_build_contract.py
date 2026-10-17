@@ -60,6 +60,8 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         self.assertIn("GZIPInputStream", module)
         self.assertIn("native-sqlite-contract-v29.json.gz.b64", module)
         self.assertIn("if (!canonicalContractAsset.isFile)", module)
+        self.assertIn('resValue("string", "reiflix_google_web_client_id", providers.environmentVariable("REIFLIX_GOOGLE_WEB_CLIENT_ID").orElse("").get())', module)
+        self.assertNotIn('implementation("io.coil-kt:coil-okhttp:2.7.0")', module)
         self.assertIn('tasks.named("preBuild")', module)
 
     def test_native_workflow_builds_and_verifies_apk_and_zip_without_legacy_setup(self):
