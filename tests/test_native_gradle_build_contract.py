@@ -109,6 +109,7 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/native_gradle_apk.yml").read_text(encoding="utf-8")
         self.assertIn("native-sqlite-bootstrap-v29.json.gz.b64", module)
         self.assertIn("assets/native-sqlite-bootstrap-v29.json", workflow)
+        self.assertIn("grep -Eq '^classes([0-9]+)?\\.dex$'", workflow)
 
     def test_flet_package_excludes_the_separate_build_tooling(self):
         config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
