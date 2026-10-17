@@ -318,7 +318,10 @@ object LibraryUiMappers {
                 } else {
                     val array = try {
                         JSONArray(raw)
-                    } catch (_: JSONException) {
+                    } catch (error: JSONException) {
+                        if (raw.startsWith("[")) {
+                            throw IllegalArgumentException("Malformed JSON list in library field '$key'.", error)
+                        }
                         null
                     }
                     if (array == null) {
