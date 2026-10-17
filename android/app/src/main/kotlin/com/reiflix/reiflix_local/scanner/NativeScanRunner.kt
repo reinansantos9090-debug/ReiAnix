@@ -1471,7 +1471,6 @@ object NativeScanRunner {
                             )
                             if (!persisted) commitReceiptPersisted.set(false)
                         }
-                        null -> commitReceiptPersisted.set(false)
                     }
                 }
                 if (outcome.get() != ReiAnixSqliteTransactionOutcome.COMMITTED) {
