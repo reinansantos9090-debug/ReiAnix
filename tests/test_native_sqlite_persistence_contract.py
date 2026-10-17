@@ -82,7 +82,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
 
-        self.assertIn('nativeLibraryIndexOwner", true', publisher)
+        self.assertIn("NATIVE_SCAN_BATCH_STAGED", publisher)
+        self.assertNotIn('put("nativeLibraryIndexOwner", true)', publisher)
         self.assertIn('if payload.get("nativeLibraryIndexOwner") is True:', main)
         self.assertNotIn('if source_kind == "saf" and payload.get("nativeLibraryIndexOwner") is True:', main)
         broad_start = runner.index("suspend fun runBroadScan(")
