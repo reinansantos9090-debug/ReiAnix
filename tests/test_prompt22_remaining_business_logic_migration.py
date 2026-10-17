@@ -64,6 +64,8 @@ class Prompt22RemainingBusinessLogicMigrationContract(unittest.TestCase):
             "ainda dependente de Python",
             "ferramenta de desenvolvimento",
             "schema v29",
+            "gacha_pick",
+            "random_catalog_item",
         ):
             self.assertIn(token, document)
 
