@@ -13,9 +13,14 @@ class TestMediaStoreAndroidHost(unittest.TestCase):
     def test_media_store_scanner_uses_content_uris_and_media_store_video(self):
         source = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "MediaStoreScanner.kt").read_text(encoding="utf-8")
         self.assertIn("MediaStore.Video.Media.getContentUri(volumeName)", source)
+        self.assertIn("MediaStore.Video.Media.getContentUri(actualVol,id)", source)
         self.assertIn("MediaStore.Video.Media.EXTERNAL_CONTENT_URI", source)
-        self.assertIn("ContentUris.withAppendedId", source)
-        self.assertIn("content://", source) if "content://" in source else self.assertIn("uri.toString()", source)
+        # Older Android releases cannot prove that a MediaStore row belongs to a
+        # user-selected SAF root; do not keep an unscoped _ID-only query as fallback.
+        self.assertIn("if (Build.VERSION.SDK_INT < 29)", source)
+        self.assertIn("SAFE_LIBRARY_SCOPE_REQUIRES_API_29", source)
+        self.assertNotIn("ContentUris.withAppendedId", source)
+        self.assertIn("uri.toString()", source)
         self.assertNotIn("MediaStore.Video.Media.DATA", source)
         self.assertNotIn("Environment.getExternalStorageDirectory", source)
 

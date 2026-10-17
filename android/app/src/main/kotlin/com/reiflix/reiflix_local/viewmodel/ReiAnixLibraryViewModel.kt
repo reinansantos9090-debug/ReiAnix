@@ -470,16 +470,17 @@ class ReiAnixLibraryViewModel(
             else -> catalog.status
         }
 
-        // Current Android scan progress and terminal status come from the native
-        // coordinator. The compatibility snapshot still owns storage/onboarding,
-        // but can no longer leave Compose in "scanning" after Kotlin has finished.
-        val safScans = scans.values.filter { it.source.equals("saf", ignoreCase = true) }
-        val activeSafScan = safScans
+        // Native scan lifecycle is authoritative for SAF, MediaStore, and broad-storage
+        // operations. Do not rely on Python batch events to keep the Compose scan indicator
+        // alive: all current native runners publish their lifecycle through this StateFlow.
+        // The compatibility snapshot remains a fallback only before a native scan has existed.
+        val nativeScans = scans.values
+        val activeNativeScan = nativeScans
             .filter { !it.state.isTerminal }
             .maxByOrNull { it.startedAtMillis }
-        val latestSafScan = safScans
+        val latestNativeScan = nativeScans
             .maxByOrNull { it.finishedAtMillis ?: it.startedAtMillis }
-        val selectedScan = activeSafScan ?: latestSafScan
+        val selectedScan = activeNativeScan ?: latestNativeScan
         val nativeScanState = when (selectedScan?.state) {
             ScanLifecycleState.PREPARING -> "PREPARING"
             ScanLifecycleState.RUNNING -> "RUNNING"
@@ -490,7 +491,7 @@ class ReiAnixLibraryViewModel(
             ScanLifecycleState.FAILED -> "FAILED"
             ScanLifecycleState.IDLE, null -> bridgeState.scanState
         }
-        val nativeLastScanStatus = when (latestSafScan?.state) {
+        val nativeLastScanStatus = when (latestNativeScan?.state) {
             ScanLifecycleState.CANCELLED -> "CANCELLED"
             ScanLifecycleState.SUCCEEDED -> "COMPLETED"
             ScanLifecycleState.PARTIAL -> "PARTIAL"
@@ -498,8 +499,8 @@ class ReiAnixLibraryViewModel(
             else -> bridgeState.lastScanStatus
         }
         val nativeScanInProgress = when {
-            latestSafScan == null -> bridgeState.scanInProgress
-            else -> activeSafScan != null
+            latestNativeScan == null -> bridgeState.scanInProgress
+            else -> activeNativeScan != null
         }
 
         bridgeState.copy(

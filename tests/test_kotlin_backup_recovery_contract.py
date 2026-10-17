@@ -87,7 +87,7 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "integrityReport().healthy" in bootstrap
     assert "if (schemaCompatible && integrityHealthy)" in bootstrap
     assert "ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED" in bootstrap
-    assert "interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
+    assert "interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "copyBackupToDocumentAndVerify" in activity
     assert "MessageDigest.isEqual" in activity

@@ -1,4 +1,6 @@
 from pathlib import Path
+import base64
+import gzip
 import json
 import re
 import subprocess
@@ -10,6 +12,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 STORE = ROOT / "core/library_store.py"
 DATABASE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteDatabase.kt"
+BOOTSTRAPPER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteBootstrapper.kt"
+BOOTSTRAP_ARCHIVE = ROOT / "build-logic/native-sqlite-bootstrap-v29.json.gz.b64"
 LIBRARY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt"
 SETTINGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSettingsRepository.kt"
 MODELS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteModels.kt"
@@ -56,6 +60,35 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("setTransactionSuccessful", database)
         self.assertIn("endTransaction", database)
 
+    def test_fresh_install_bootstrap_is_atomic_and_keeps_database_opener_read_only(self):
+        bootstrapper = BOOTSTRAPPER.read_text(encoding="utf-8")
+        bootstrap = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt").read_text(encoding="utf-8")
+        database = DATABASE.read_text(encoding="utf-8")
+        archive = json.loads(gzip.decompress(base64.b64decode(
+            BOOTSTRAP_ARCHIVE.read_text(encoding="ascii").strip()
+        )))
+
+        self.assertEqual(29, archive["schema_version"])
+        self.assertEqual(29, archive["initial_migration_version"])
+        self.assertEqual(0, archive["sqlite_user_version"])
+        self.assertIn("schema_migrations", archive["tables"])
+        self.assertGreater(len(archive["statements"]), 10)
+        self.assertIn("ReiAnixSqliteBootstrapper(appContext, dependencies.sqliteDatabase).bootstrapIfMissing()", bootstrap)
+        self.assertIn("interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery", bootstrap)
+        recovery_gate_start = bootstrap.index("val interruptedPreviousDatabase")
+        recovery_gate_end = bootstrap.index("val priorRecoverySnapshots", recovery_gate_start)
+        recovery_evidence = bootstrap[recovery_gate_start:recovery_gate_end]
+        self.assertIn('file.name.startsWith(".library.sqlite3.previous-")', recovery_evidence)
+        self.assertNotIn('file.name.startsWith(".library.sqlite3.candidate-")', recovery_evidence)
+        self.assertIn("Os.link(candidateFile.absolutePath, canonicalFile.absolutePath)", bootstrapper)
+        self.assertIn(".library.sqlite3.candidate-", bootstrapper)
+        self.assertIn("inspectSchemaFile(candidateFile)", bootstrapper)
+        self.assertIn("quickCheckFile(candidateFile)", bootstrapper)
+        self.assertIn("schema_migrations(version, applied_at)", bootstrapper)
+        self.assertNotIn("CREATE TABLE", database.upper())
+        self.assertNotIn("DROP TABLE", database.upper())
+        self.assertNotIn("openOrCreateDatabase", database)
+
     def test_native_library_repository_uses_canonical_tables_and_bound_values(self):
         library = LIBRARY.read_text(encoding="utf-8")
 
@@ -82,17 +115,36 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         main = (ROOT / "main.py").read_text(encoding="utf-8")
 
-        self.assertIn('nativeLibraryIndexOwner", true', publisher)
+        self.assertIn("NATIVE_SCAN_BATCH_STAGED", publisher)
+        self.assertNotIn('put("nativeLibraryIndexOwner", true)', publisher)
         self.assertIn('if payload.get("nativeLibraryIndexOwner") is True:', main)
         self.assertNotIn('if source_kind == "saf" and payload.get("nativeLibraryIndexOwner") is True:', main)
         broad_start = runner.index("suspend fun runBroadScan(")
         media_start = runner.index("suspend fun runMediaStoreScan(", broad_start)
         broad_scan = runner[broad_start:media_start]
         media_scan = runner[media_start:]
-        # Existing domain contract treats these two scans as diagnostics, not catalog sources.
+        # Broad Storage remains diagnostic-only: its global filesystem scope is not
+        # the user's selected SAF library root and cannot authorize catalog reconciliation.
         self.assertNotIn("indexDiscoveredMedia", broad_scan)
-        self.assertNotIn("indexDiscoveredMedia", media_scan)
         self.assertIn('result.put("nativeLibraryIndexOwner", true)', broad_scan)
+
+        # MediaStore must now stage and index only records inside persisted, readable SAF roots.
+        # The same canonical SQLite service owns persistence; terminal compatibility events
+        # are emitted only after the explicit transaction outcome has been recorded.
+        self.assertIn("configuredMediaStoreScopes(appContext)", media_scan)
+        self.assertIn("libraryScopes = libraryScopes", media_scan)
+        self.assertIn("canReconcileAbsences = distinctScopes.isNotEmpty()", runner)
+        self.assertIn("areMediaStoreScopesCurrentlyReadable", media_scan)
+        self.assertIn("scopeCoverageWarning", media_scan)
+        self.assertIn("scopeCoverageStillAllowed && !areMediaStoreScopesCurrentlyReadable", media_scan)
+        self.assertIn("complete = safeForAbsenceReconciliation", media_scan)
+        self.assertIn("indexMediaStoreSnapshots(", media_scan)
+        self.assertIn(".libraryService.indexDiscoveredMedia(snapshot)", media_scan)
+        self.assertIn("markNativeCatalogIndexing", media_scan)
+        self.assertIn("markNativeCatalogCommitted", media_scan)
+        self.assertIn("markNativeCatalogNotCommitted", media_scan)
+        self.assertIn("markNativeCatalogOutcomeUnknown", media_scan)
+        self.assertIn(".libraryService.finishNativeScanRun(", media_scan)
         self.assertIn('result.put("nativeLibraryIndexOwner", true)', media_scan)
         self.assertIn("indexDiscoveredMedia", runner[:broad_start])
         self.assertIn("NATIVE_KOTLIN_INDEXER_OWNS_PERSISTENCE", main)
@@ -103,6 +155,22 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("sourceFolder = sourceFolder", runner)
         self.assertIn("fun stagedDocuments(", native_index)
         self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
+        media_scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt").read_text(encoding="utf-8")
+        self.assertIn("NativeIndex.SOURCE_MEDIASTORE", media_scanner)
+        self.assertIn("matchingLibraryScope(authorizedScopes", media_scanner)
+        self.assertIn('put("scopeVerified", true)', media_scanner)
+        self.assertIn("libraryScopeSignature", media_scanner)
+        self.assertIn('put("libraryScopeSignature",scopeSignature)', media_scanner)
+        self.assertIn("val catalogScopeRef = if (signatureIsVerifiable)", runner)
+        self.assertIn('"$scopeKey:roots:$libraryScopeSignature"', runner)
+        self.assertIn("items = discoveredMediaFromSnapshot(documents, catalogScopeRef)", runner)
+        self.assertIn("scopeReference = catalogScopeRef", runner)
+        self.assertIn("scopeCoverageStillAllowed && signatureIsVerifiable", runner)
+        self.assertIn("SAFE_LIBRARY_SCOPE_REQUIRES_API_29", media_scanner)
+        self.assertIn("NativeIndex.SOURCE_MEDIASTORE", native_index)
+        self.assertIn("scope.optString(\"nativeCatalogWriteOutcome\") != \"COMMITTED\"", native_index)
+        self.assertIn("meta.optString(\"libraryScopeSignature\") == libraryScopeSignature", native_index)
+        self.assertIn('val preserveSafLocation = snapshot.source == "mediastore"', repository)
         # A failed native transaction must retain receipt-gated positive discoveries for Kotlin recovery.
         self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
         self.assertIn('put("documents", JSONArray())', runner)
@@ -389,6 +457,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         template = TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("Generate canonical SQLite runtime contract and JVM fixture", workflow)
         self.assertIn("--contract-output android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
+        self.assertIn("--bootstrap-output build/native-sqlite-bootstrap-v29.json", workflow)
+        self.assertIn("ReiAnix-native-sqlite-bootstrap-source-${{ github.run_number }}", workflow)
         self.assertIn("rm -f android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
         self.assertIn("assets_source = overlay / \"src\" / \"main\" / \"assets\"", template)
         self.assertIn("shutil.copytree(assets_source, app / \"src\" / \"main\" / \"assets\"", template)
@@ -407,11 +477,15 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="reianix-contract-test-") as temporary:
             fixture_path = Path(temporary) / "canonical-schema.json"
             contract_path = Path(temporary) / "canonical-contract.json"
+            bootstrap_path = Path(temporary) / "canonical-bootstrap.json"
+            bootstrap_asset_path = Path(temporary) / "canonical-bootstrap-asset.json"
             result = subprocess.run(
                 [
                     sys.executable, str(FIXTURE_GENERATOR),
                     "--output", str(fixture_path),
                     "--contract-output", str(contract_path),
+                    "--bootstrap-output", str(bootstrap_path),
+                    "--bootstrap-asset-output", str(bootstrap_asset_path),
                 ],
                 cwd=ROOT,
                 text=True,
@@ -421,7 +495,23 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
             contract = json.loads(contract_path.read_text(encoding="utf-8"))
+            bootstrap = json.loads(bootstrap_path.read_text(encoding="utf-8"))
+            bootstrap_asset = json.loads(bootstrap_asset_path.read_text(encoding="utf-8"))
 
+        self.assertEqual(bootstrap, bootstrap_asset)
+        self.assertEqual(29, bootstrap["schema_version"])
+        self.assertEqual(29, bootstrap["initial_migration_version"])
+        archive_content = BOOTSTRAP_ARCHIVE.read_text(encoding="ascii").strip()
+        archive_bootstrap = json.loads(gzip.decompress(base64.b64decode(archive_content)))
+        self.assertEqual(bootstrap, archive_bootstrap)
+        self.assertEqual(0, bootstrap["sqlite_user_version"])
+        self.assertEqual(fixture["tables"], bootstrap["tables"])
+        self.assertEqual(fixture["statements"], bootstrap["statements"])
+        self.assertEqual(
+            [item["sql"] for item in fixture["triggers"] if item.get("sql")],
+            bootstrap["triggers"],
+        )
+        self.assertGreater(len(bootstrap["statements"]), 10)
         self.assertEqual(29, fixture["schema_version"])
         self.assertEqual(0, fixture["sqlite_user_version"])
         self.assertEqual(

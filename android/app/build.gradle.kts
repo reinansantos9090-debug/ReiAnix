@@ -134,3 +134,46 @@ if (!canonicalContractAsset.isFile) {
         dependsOn(generateNativeSqliteContractAsset)
     }
 }
+
+// The standalone Gradle APK must ship native fresh-install bootstrap data without Python.
+val canonicalBootstrapAsset = layout.projectDirectory
+    .file("src/main/assets/native-sqlite-bootstrap-v29.json")
+    .asFile
+val compressedCanonicalBootstrap = rootProject.file("build-logic/native-sqlite-bootstrap-v29.json.gz.b64")
+val generatedBootstrapAssets = layout.buildDirectory.dir("generated/native-sqlite-bootstrap/assets")
+val generateNativeSqliteBootstrapAsset by tasks.registering {
+    inputs.file(compressedCanonicalBootstrap)
+    outputs.file(generatedBootstrapAssets.map { it.file("native-sqlite-bootstrap-v29.json") })
+
+    doLast {
+        check(compressedCanonicalBootstrap.isFile) {
+            "Canonical SQLite bootstrap archive is missing: ${compressedCanonicalBootstrap.absolutePath}"
+        }
+        val encodedArchive = compressedCanonicalBootstrap.readText(Charsets.US_ASCII).trim()
+        val compressedBytes = Base64.getDecoder().decode(encodedArchive)
+        val outputFile = generatedBootstrapAssets.get()
+            .file("native-sqlite-bootstrap-v29.json")
+            .asFile
+        outputFile.parentFile.mkdirs()
+        GZIPInputStream(ByteArrayInputStream(compressedBytes)).use { input ->
+            outputFile.outputStream().buffered().use { output -> input.copyTo(output) }
+        }
+        check(outputFile.isFile && outputFile.length() > 0L) {
+            "Generated native SQLite bootstrap is empty."
+        }
+        val generatedJson = outputFile.readText(Charsets.UTF_8)
+        check(generatedJson.contains("\"schema_version\": 29,")) {
+            "Native SQLite bootstrap must declare schema v29."
+        }
+        check(generatedJson.contains("\"initial_migration_version\": 29")) {
+            "Native SQLite bootstrap must seed schema_migrations with version 29."
+        }
+    }
+}
+
+if (!canonicalBootstrapAsset.isFile) {
+    android.sourceSets.getByName("main").assets.srcDir(generatedBootstrapAssets)
+    tasks.named("preBuild").configure {
+        dependsOn(generateNativeSqliteBootstrapAsset)
+    }
+}

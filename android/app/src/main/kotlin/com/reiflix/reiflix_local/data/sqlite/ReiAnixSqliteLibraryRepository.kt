@@ -1510,19 +1510,27 @@ class ReiAnixSqliteLibraryRepository(
                     val current = identityRow ?: pathRow
                     if (current != null) {
                         val patch = ContentValues()
-                        if (current.path != item.location) patch.put("path", item.location)
+                        // SAF and MediaStore can identify the same physical file. When MediaStore
+                        // observes a row currently owned by a persisted SAF tree, retain that
+                        // URI and tree-relative path: replacing them with a MediaStore URI or a
+                        // volume-relative path would cause playback/permission flapping on each scan.
+                        val preserveSafLocation = snapshot.source == "mediastore" &&
+                            current.sourceFolder?.trim()?.startsWith("content://", ignoreCase = true) == true
+                        if (!preserveSafLocation && current.path != item.location) patch.put("path", item.location)
                         if (current.fileName != item.fileName) patch.put("file_name", item.fileName)
                         item.mimeType?.takeIf { it.isNotBlank() }?.let { if (current.mimeType != it) patch.put("mime_type", it) }
                         item.sizeBytes?.let { if (current.fileSize != it) patch.put("file_size", it) }
                         item.modifiedAtEpochSeconds?.let { if (current.modifiedAt != it) patch.put("modified_at", it) }
-                        val folder = item.sourceFolder?.takeIf { it.isNotBlank() }
-                            ?: snapshot.scopeReference.trim().takeIf { it.isNotEmpty() }
-                            ?: snapshot.scopeRoot
-                        if (current.sourceFolder != folder) patch.put("source_folder", folder)
-                        item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
-                        item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
-                        item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
-                        item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
+                        if (!preserveSafLocation) {
+                            val folder = item.sourceFolder?.takeIf { it.isNotBlank() }
+                                ?: snapshot.scopeReference.trim().takeIf { it.isNotEmpty() }
+                                ?: snapshot.scopeRoot
+                            if (current.sourceFolder != folder) patch.put("source_folder", folder)
+                            item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
+                            item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
+                            item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
+                            item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
+                        }
                         if (current.manualOverride != true) {
                             item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
                             item.episodeTitle?.takeIf { it.isNotBlank() }?.let { if (current.episodeTitle != it) patch.put("episode_title", it) }

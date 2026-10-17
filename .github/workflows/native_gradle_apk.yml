@@ -83,6 +83,7 @@ jobs:
           grep -F 'com.reiflix.reiflix_local.MainActivity' build/native-gradle-distribution/effective-manifest.txt
           grep -F 'com.reiflix.reiflix_local.NativePlayerActivity' build/native-gradle-distribution/effective-manifest.txt
           unzip -Z1 "$source_apk" | grep -Fx 'assets/native-sqlite-contract-v29.json'
+          unzip -Z1 "$source_apk" | grep -Fx 'assets/native-sqlite-bootstrap-v29.json'
           unzip -Z1 "$source_apk" | grep -Eq '^classes([0-9]+)?\.dex$'
           while IFS= read -r dex; do
             unzip -p "$source_apk" "$dex"

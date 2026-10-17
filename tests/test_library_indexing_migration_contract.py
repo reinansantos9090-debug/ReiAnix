@@ -41,6 +41,10 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
 
         self.assertIn("nativeLibraryRepository.loadLibraryCatalogRows()", view_model)
         self.assertIn("NativeScanController.progress", view_model)
+        self.assertIn("val nativeScans = scans.values", view_model)
+        self.assertIn("val activeNativeScan = nativeScans", view_model)
+        self.assertIn("val latestNativeScan = nativeScans", view_model)
+        self.assertNotIn("val safScans = scans.values.filter", view_model)
         self.assertIn("scanState = nativeScanState", view_model)
         self.assertIn("lastScanStatus = nativeLastScanStatus", view_model)
         self.assertIn("loadNativeLibraryPage(", view_model)
@@ -62,6 +66,56 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         self.assertIn("libraryOnly = libraryOnly", query_service)
         self.assertIn("LibraryUiMappers.anime(projection)", projector)
         self.assertIn("playback_target_episode_id", projector)
+
+    def test_mediastore_indexes_only_authorized_saf_scopes_and_preserves_existing_saf_locations(self):
+        runner = (KOTLIN / "scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        media_store = (KOTLIN / "scanner/MediaStoreScanner.kt").read_text(encoding="utf-8")
+        native_index = (KOTLIN / "storage/NativeIndex.kt").read_text(encoding="utf-8")
+        repository = (KOTLIN / "data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+
+        # The selected roots come from the persisted canonical folders table and must
+        # still be authorized/readable SAF trees before they can bound MediaStore results.
+        self.assertIn("sqliteLibraryRepository.listFolders()", runner)
+        self.assertIn('filter { it.kind.equals("saf", ignoreCase = true) }', runner)
+        self.assertIn("SafScanner.inspectTree(context, treeUri, requirePersisted = true)", runner)
+        self.assertIn("libraryScopes = libraryScopes", runner)
+        self.assertIn("matchingLibraryScope(authorizedScopes", media_store)
+        self.assertIn("maxByOrNull { it.second }", media_store)
+        self.assertIn('put("scopeVerified", true)', media_store)
+
+        # Native staging, reuse, and transaction receipts use exactly one source key.
+        self.assertIn("NativeIndex.SOURCE_MEDIASTORE", media_store)
+        self.assertIn("NativeIndex.SOURCE_MEDIASTORE", runner)
+        self.assertIn("libraryScopeSignature", media_store)
+        self.assertIn('put("libraryScopeSignature",scopeSignature)', media_store)
+        self.assertIn('val catalogScopeRef = if (signatureIsVerifiable)', runner)
+        self.assertIn('"$scopeKey:roots:$libraryScopeSignature"', runner)
+        self.assertIn('"$scopeKey:roots:unverified:$generation"', runner)
+        self.assertIn("scopeCoverageStillAllowed && signatureIsVerifiable", runner)
+        self.assertIn("items = discoveredMediaFromSnapshot(documents, catalogScopeRef)", runner)
+        self.assertIn("scopeReference = catalogScopeRef", runner)
+        self.assertIn('scope.optString("nativeCatalogWriteOutcome") != "COMMITTED"', native_index)
+        self.assertIn('meta.optString("libraryScopeSignature") == libraryScopeSignature', native_index)
+        self.assertIn("indexMediaStoreSnapshots(", runner)
+        self.assertIn(".libraryService.indexDiscoveredMedia(snapshot)", runner)
+
+        # A complete catalog reconciliation is only possible for a complete authorized scope;
+        # the source's global/partial result cannot mark SAF-owned rows missing or rewrite their
+        # durable tree URI and tree-relative path as a volume-relative MediaStore path.
+        self.assertIn('val generationComplete = volume.optBoolean("complete")', runner)
+        self.assertIn("val safeForAbsenceReconciliation = generationComplete && scopeCoverageStillAllowed", runner)
+        self.assertIn("complete = safeForAbsenceReconciliation", runner)
+        self.assertIn("authorizationValid = canReadMediaStore && safeForAbsenceReconciliation", runner)
+        self.assertIn("areMediaStoreScopesCurrentlyReadable", runner)
+        self.assertIn("scopeCoverageStillAllowed && !areMediaStoreScopesCurrentlyReadable", runner)
+        self.assertIn("permissionDenied = mediaStoreAccess == \"denied\"", runner)
+        self.assertIn("Conceda acesso a vídeos ou use a seleção de pasta SAF", runner)
+        scan_controller = (KOTLIN / "scanner/NativeScanController.kt").read_text(encoding="utf-8")
+        self.assertIn('payload.optString("message").trim().takeIf', scan_controller)
+        self.assertIn("val preserveSafLocation = snapshot.source == \"mediastore\"", repository)
+        self.assertIn("if (!preserveSafLocation && current.path != item.location)", repository)
+        self.assertIn("if (!preserveSafLocation)", repository)
+        self.assertIn("SAFE_LIBRARY_SCOPE_REQUIRES_API_29", media_store)
 
     def test_migration_document_records_safe_reconciliation_and_remaining_hybrid_edges(self):
         migration = (ROOT / "docs/KOTLIN_LIBRARY_INDEXING_MIGRATION.md").read_text(encoding="utf-8")
