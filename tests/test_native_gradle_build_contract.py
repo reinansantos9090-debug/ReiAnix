@@ -25,7 +25,7 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         wrapper = (ROOT / "gradle/wrapper/gradle-wrapper.properties").read_text(encoding="utf-8")
         module = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
         self.assertIn('com.android.application") version "8.9.1"', root_build)
-        self.assertIn('org.jetbrains.kotlin.android") version "2.0.21"', root_build)
+        self.assertIn('org.jetbrains.kotlin.android") version "2.2.0"', root_build)
         self.assertIn('org.jetbrains.kotlin.plugin.compose") version "2.0.21"', root_build)
         self.assertIn("gradle-8.11.1-bin.zip", wrapper)
         self.assertIn("jvmToolchain(17)", module)
