@@ -171,9 +171,7 @@ object NativeMailbox {
                     }
                 }
             }
-            val requestId=payload.optString("requestId").ifBlank{
-                nested?.optString("requestId").orEmpty()
-            }.trim()
+            val requestId=(payload.stringOrNull("requestId") ?: nested?.stringOrNull("requestId")).orEmpty().trim()
             if(requestId.isNotEmpty())payload.put("requestId",requestId)
             promote("scanId", "scanId")
             promote("source", "source")
