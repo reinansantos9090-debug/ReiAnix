@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.ui.mapper
 
+import com.reiflix.reiflix_local.data.contract.ReiAnixContractValues
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
@@ -259,13 +260,18 @@ object LibraryUiMappers {
             ?: fallback?.let { stringOrNull(it)?.takeIf(String::isNotBlank) }
             ?: error("Missing required library field: $key")
 
-    private fun Map<String, Any?>.requiredLong(key: String): Long =
-        longOrNull(key) ?: error("Missing required library field: $key")
+    private fun Map<String, Any?>.requiredLong(key: String): Long {
+        val value = longOrNull(key) ?: error("Missing required library field: $key")
+        require(value > 0L) { "Invalid library identifier '$key': IDs must be positive." }
+        return value
+    }
 
     private fun Map<String, Any?>.mapValue(key: String): Map<String, Any?> =
-        (this[key] as? Map<*, *>)?.entries
-            ?.associate { (k, v) -> k.toString() to v }
-            ?: emptyMap()
+        when (val value = this[key]) {
+            null -> emptyMap()
+            is Map<*, *> -> value.entries.associate { (k, v) -> k.toString() to v }
+            else -> error("Invalid library field '$key': expected an object.")
+        }
 
     private fun Map<String, Any?>.stringOrNull(key: String): String? =
         when (val value = this[key]) {
@@ -274,34 +280,17 @@ object LibraryUiMappers {
             else -> value.toString()
         }?.trim()?.takeIf { it.isNotEmpty() }
 
-    private fun Map<String, Any?>.longOrNull(key: String): Long? = when (val value = this[key]) {
-        is Number -> value.toLong()
-        is String -> value.trim().toLongOrNull()
-        else -> null
-    }
+    private fun Map<String, Any?>.longOrNull(key: String): Long? =
+        ReiAnixContractValues.longOrNull(this[key], key)
 
-    private fun Map<String, Any?>.intOrNull(key: String): Int? = when (val value = this[key]) {
-        is Number -> value.toInt()
-        is String -> value.trim().toIntOrNull()
-        else -> null
-    }
+    private fun Map<String, Any?>.intOrNull(key: String): Int? =
+        ReiAnixContractValues.intOrNull(this[key], key)
 
-    private fun Map<String, Any?>.doubleOrNull(key: String): Double? = when (val value = this[key]) {
-        is Number -> value.toDouble()
-        is String -> value.trim().toDoubleOrNull()
-        else -> null
-    }
+    private fun Map<String, Any?>.doubleOrNull(key: String): Double? =
+        ReiAnixContractValues.doubleOrNull(this[key], key)
 
-    private fun Map<String, Any?>.booleanOrNull(key: String): Boolean? = when (val value = this[key]) {
-        is Boolean -> value
-        is Number -> value.toInt() != 0
-        is String -> when (value.trim().lowercase()) {
-            "true", "1" -> true
-            "false", "0" -> false
-            else -> null
-        }
-        else -> null
-    }
+    private fun Map<String, Any?>.booleanOrNull(key: String): Boolean? =
+        ReiAnixContractValues.booleanOrNull(this[key], key)
 
     private fun Map<String, Any?>.stringList(key: String): List<String> =
         when (val value = this[key]) {
@@ -329,18 +318,23 @@ object LibraryUiMappers {
             else -> emptyList()
         }
 
-    private fun Map<String, Any?>.listOfMaps(key: String): List<Map<String, Any?>> =
-        when (val value = this[key]) {
-            is Iterable<*> ->
-                value.mapNotNull { item ->
-                    (item as? Map<*, *>)?.entries
-                        ?.associate { (k, v) -> k.toString() to v }
+    private fun Map<String, Any?>.listOfMaps(key: String): List<Map<String, Any?>> {
+        fun convert(items: Iterable<*>): List<Map<String, Any?>> =
+            items.mapIndexedNotNull { index, item ->
+                if (item == null) {
+                    null
+                } else {
+                    val map = item as? Map<*, *>
+                        ?: error("Invalid library field '$key[$index]': expected an object.")
+                    map.entries.associate { (k, v) -> k.toString() to v }
                 }
-            is Array<*> ->
-                value.mapNotNull { item ->
-                    (item as? Map<*, *>)?.entries
-                        ?.associate { (k, v) -> k.toString() to v }
-                }
-            else -> emptyList()
+            }
+
+        return when (val value = this[key]) {
+            null -> emptyList()
+            is Iterable<*> -> convert(value)
+            is Array<*> -> convert(value.asIterable())
+            else -> error("Invalid library field '$key': expected an array.")
         }
+    }
 }
