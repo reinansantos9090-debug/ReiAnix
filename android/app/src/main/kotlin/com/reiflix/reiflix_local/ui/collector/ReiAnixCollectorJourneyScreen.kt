@@ -59,7 +59,7 @@ fun ReiAnixCollectorJourneyRoute(
     LaunchedEffect(libraryViewModel, viewModel) {
         combine(
             libraryViewModel.uiState.map { it.animes }.distinctUntilChanged(),
-            libraryViewModel.continueWatching.distinctUntilChanged(),
+            libraryViewModel.continueWatching,
         ) { _, _ -> Unit }.collect {
             viewModel.refresh()
         }
