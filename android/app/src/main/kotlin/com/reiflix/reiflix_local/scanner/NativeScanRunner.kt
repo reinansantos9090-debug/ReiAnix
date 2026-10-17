@@ -1141,6 +1141,22 @@ object NativeScanRunner {
         )
     }
 
+    private fun areMediaStoreScopesCurrentlyReadable(
+        context: Context,
+        scopes: List<MediaStoreScanner.LibraryScope>,
+    ): Boolean {
+        if (scopes.isEmpty()) return false
+        return scopes.all { scope ->
+            runCatching {
+                SafScanner.inspectTree(
+                    context,
+                    Uri.parse(scope.treeUri),
+                    requirePersisted = true,
+                ).optString("status") == SafScanner.STATUS_COMPLETED
+            }.getOrDefault(false)
+        }
+    }
+
     /**
      * Stages MediaStore discoveries natively, indexes each volume snapshot in the same
      * canonical SQLite repository as SAF, and publishes a terminal UI state only after
@@ -1201,10 +1217,14 @@ object NativeScanRunner {
                 .put("scopeKind", "volume")
                 .put("scopeRef", MediaStoreScanner.SOURCE)
 
+            // Recheck grants after provider enumeration and before any catalog reconciliation.
+            // The SAF grant may be revoked while MediaStore is being queried.
+            val allowMissingReconciliation = scopeResolution.canReconcileAbsences &&
+                areMediaStoreScopesCurrentlyReadable(appContext, libraryScopes)
             val stats = result.optJSONObject("stats") ?: JSONObject()
             val rejection = stats.optString("rejection").trim()
-            if (!scopeResolution.canReconcileAbsences && libraryScopes.isNotEmpty()) {
-                val coverageWarning = "Uma ou mais árvores SAF configuradas não puderam ser confirmadas como legíveis. Itens encontrados serão indexados, mas o MediaStore não marcará registros ausentes nesta varredura."
+            if (!allowMissingReconciliation && libraryScopes.isNotEmpty()) {
+                val coverageWarning = "Uma ou mais árvores SAF configuradas não puderam ser confirmadas como legíveis antes da persistência. Itens encontrados serão indexados, mas o MediaStore não marcará registros ausentes nesta varredura."
                 result.put("scopeCoverageWarning", coverageWarning)
                 stats.optJSONArray("errors")?.put(coverageWarning)
             }
@@ -1225,7 +1245,7 @@ object NativeScanRunner {
                 scanId = scanId,
                 result = result,
                 libraryScopes = libraryScopes,
-                allowMissingReconciliation = scopeResolution.canReconcileAbsences,
+                allowMissingReconciliation = allowMissingReconciliation,
             )
             result.put("nativeCatalogIndex", indexSummary)
                 .put("nativeLibraryIndexOwner", true)
@@ -1394,6 +1414,7 @@ object NativeScanRunner {
         val stats = result.optJSONObject("stats") ?: JSONObject()
         val canReadMediaStore = stats.optBoolean("canScan", false)
         val dependencies = ReiAnixAppDependencies.from(appContext)
+        var scopeCoverageStillAllowed = allowMissingReconciliation
 
         for (index in 0 until allVolumes.length()) {
             val volume = allVolumes.optJSONObject(index) ?: continue
@@ -1405,6 +1426,17 @@ object NativeScanRunner {
                 .put("complete", volume.optBoolean("complete"))
                 .put("reused", volume.optBoolean("reused"))
             summary.put("attemptedVolumes", summary.optInt("attemptedVolumes") + 1)
+
+            if (scopeCoverageStillAllowed && !areMediaStoreScopesCurrentlyReadable(appContext, libraryScopes)) {
+                scopeCoverageStillAllowed = false
+                summary.put("scopeCoverageComplete", false)
+                if (summary.optInt("coverageWarnings", 0) == 0) {
+                    summary.put("coverageWarnings", 1)
+                }
+                summary.optJSONArray("errors")?.put(
+                    "A autorização de uma árvore SAF mudou antes da indexação; a reconciliação de ausências foi desabilitada.",
+                )
+            }
 
             if (volumeName.isBlank() || generation <= 0L) {
                 summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
@@ -1445,9 +1477,9 @@ object NativeScanRunner {
 
             val status = volume.optString("status").trim().uppercase()
             val generationComplete = volume.optBoolean("complete")
-            val safeForAbsenceReconciliation = generationComplete && allowMissingReconciliation
+            val safeForAbsenceReconciliation = generationComplete && scopeCoverageStillAllowed
             val snapshotStatus = if (
-                generationComplete && !allowMissingReconciliation &&
+                generationComplete && !scopeCoverageStillAllowed &&
                 status in setOf(NativeIndex.STATUS_COMPLETED, NativeIndex.STATUS_EMPTY_COMPLETE)
             ) NativeIndex.STATUS_PARTIAL else status
             val cancelled = result.optBoolean("cancelled") || status == NativeIndex.STATUS_CANCELLED
