@@ -70,6 +70,7 @@ class ComposeCutoverTests(unittest.TestCase):
 
     def test_migrated_screens_do_not_build_parallel_flet_ui_on_android(self):
         source = MAIN.read_text(encoding="utf-8")
+        nav_host = NAV_HOST.read_text(encoding="utf-8")
         start = source.index("    def _build_screen(")
         end = source.index("    def _settings_view_paths()", start)
         block = source[start:end]
