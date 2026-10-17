@@ -1154,13 +1154,12 @@ object NativeScanRunner {
         )
     }
 
-    private fun areMediaStoreScopesCurrentlyReadable(
+    private fun readableMediaStoreScopeUris(
         context: Context,
         scopes: List<MediaStoreScanner.LibraryScope>,
-    ): Boolean {
-        if (scopes.isEmpty()) return false
-        return scopes.all { scope ->
-            runCatching {
+    ): Set<String> = scopes.asSequence()
+        .filter { scope ->
+            scope.treeUri.isNotBlank() && runCatching {
                 SafScanner.inspectTree(
                     context,
                     Uri.parse(scope.treeUri),
@@ -1168,6 +1167,29 @@ object NativeScanRunner {
                 ).optString("status") == SafScanner.STATUS_COMPLETED
             }.getOrDefault(false)
         }
+        .map { it.treeUri }
+        .toSet()
+
+    private fun areMediaStoreScopesCurrentlyReadable(
+        context: Context,
+        scopes: List<MediaStoreScanner.LibraryScope>,
+    ): Boolean = scopes.isNotEmpty() &&
+        readableMediaStoreScopeUris(context, scopes).size == scopes.size
+
+    /** A revoked tree may have been readable during discovery; its staged rows must not be ingested. */
+    private fun filterMediaStoreDocumentsForAuthorizedTrees(
+        documents: JSONArray,
+        authorizedTreeUris: Set<String>,
+    ): JSONArray {
+        val filtered = JSONArray()
+        for (index in 0 until documents.length()) {
+            val document = documents.optJSONObject(index) ?: continue
+            val root = document.optString("libraryScopeUri").trim()
+            if (document.optBoolean("scopeVerified") && root.isNotBlank() && root in authorizedTreeUris) {
+                filtered.put(JSONObject(document.toString()))
+            }
+        }
+        return filtered
     }
 
     /**
@@ -1485,7 +1507,8 @@ object NativeScanRunner {
                 )
             }
 
-            if (scopeCoverageStillAllowed && !areMediaStoreScopesCurrentlyReadable(appContext, libraryScopes)) {
+            val liveScopeUrisAtVolumeStart = readableMediaStoreScopeUris(appContext, libraryScopes)
+            if (scopeCoverageStillAllowed && liveScopeUrisAtVolumeStart.size != libraryScopes.size) {
                 scopeCoverageStillAllowed = false
                 summary.put("scopeCoverageComplete", false)
                 if (summary.optInt("coverageWarnings", 0) == 0) {
@@ -1520,18 +1543,33 @@ object NativeScanRunner {
             }
 
             val complete = volume.optBoolean("complete")
-            val documents = if (complete) {
+            val storedDocuments = if (complete) {
                 NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey)
             } else {
                 NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation)
             }
-            if (documents == null) {
+            if (storedDocuments == null) {
                 summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
                 summary.optJSONArray("errors")?.put("O snapshot MediaStore do volume " + volumeName + " não pôde ser validado para indexação.")
                 volumeResult.put("status", "SNAPSHOT_UNAVAILABLE")
                 summary.optJSONArray("volumes")?.put(volumeResult)
                 continue
             }
+
+            // Revalidate after reading the staged snapshot, immediately before converting
+            // it into catalog items. Grants can be revoked while MediaStore is enumerating.
+            val readableScopeUris = readableMediaStoreScopeUris(appContext, libraryScopes)
+            if (scopeCoverageStillAllowed && readableScopeUris.size != libraryScopes.size) {
+                scopeCoverageStillAllowed = false
+                summary.put("scopeCoverageComplete", false)
+                if (summary.optInt("coverageWarnings", 0) == 0) {
+                    summary.put("coverageWarnings", 1)
+                }
+                summary.optJSONArray("errors")?.put(
+                    "Uma árvore SAF perdeu autorização antes da persistência; os itens dessa árvore foram descartados e ausências não serão inferidas.",
+                )
+            }
+            val documents = filterMediaStoreDocumentsForAuthorizedTrees(storedDocuments, readableScopeUris)
 
             val status = volume.optString("status").trim().uppercase()
             val generationComplete = volume.optBoolean("complete")
@@ -1565,8 +1603,7 @@ object NativeScanRunner {
                 items = discoveredMediaFromSnapshot(documents, catalogScopeRef),
                 scopeReference = catalogScopeRef,
                 scanGeneration = generation,
-                authorizedSafTreeUris = libraryScopes.map { it.treeUri }
-                    .filter { it.isNotBlank() }.toSet(),
+                authorizedSafTreeUris = readableScopeUris,
             )
             if (!NativeIndex.markNativeCatalogIndexing(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation)) {
                 summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)

@@ -174,6 +174,9 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("authorizedSafTreeUris = libraryScopes.map { it.treeUri }", runner)
         self.assertIn("legacySafRowsByPhysicalIdentity", repository)
         self.assertIn("LocalMediaIdentity.identityFromDocument(", repository)
+        self.assertIn("readableMediaStoreScopeUris(appContext, libraryScopes)", runner)
+        self.assertIn("filterMediaStoreDocumentsForAuthorizedTrees(storedDocuments, readableScopeUris)", runner)
+        self.assertIn('document.optBoolean("scopeVerified") && root in authorizedTreeUris', runner)
         self.assertIn("legacyCandidates.size > 1", repository)
         self.assertIn("existingIdentity != incomingIdentity", repository)
         # A failed native transaction must retain receipt-gated positive discoveries for Kotlin recovery.
