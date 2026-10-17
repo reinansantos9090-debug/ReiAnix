@@ -79,6 +79,67 @@ import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeMode
 import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
 import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
+
+private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
+private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
+    setOf("movie", "special", "ova", "oad", "ona", "extra")
+
+/**
+ * Mirrors LibraryStore._episode_order_key for the native Compose player.
+ * Rows with relative episode numbers sort before absolute-number-only rows;
+ * stable media identity, filename and local path are the final tie breakers.
+ */
+private data class ReiAnixNativePlayerEpisodeOrderKey(
+    val season: Double,
+    val orderGroup: Int,
+    val primaryNumber: Double,
+    val secondaryNumber: Double,
+    val mediaIdentity: String,
+    val fileName: String,
+    val path: String,
+) : Comparable<ReiAnixNativePlayerEpisodeOrderKey> {
+    override fun compareTo(other: ReiAnixNativePlayerEpisodeOrderKey): Int {
+        var result = season.compareTo(other.season)
+        if (result != 0) return result
+        result = orderGroup.compareTo(other.orderGroup)
+        if (result != 0) return result
+        result = primaryNumber.compareTo(other.primaryNumber)
+        if (result != 0) return result
+        if (orderGroup == 1) {
+            result = secondaryNumber.compareTo(other.secondaryNumber)
+            if (result != 0) return result
+        }
+        result = mediaIdentity.compareTo(other.mediaIdentity)
+        if (result != 0) return result
+        result = fileName.compareTo(other.fileName)
+        if (result != 0) return result
+        return path.compareTo(other.path)
+    }
+}
+
+private fun nativePlayerOrderText(value: String): String =
+    value.lowercase(Locale.ROOT).replace("ß", "ss").replace("ς", "σ")
+
+private fun nativePlayerEpisodeOrderKey(
+    episode: ReiAnixEpisodeRecord,
+): ReiAnixNativePlayerEpisodeOrderKey {
+    fun numeric(value: Double?): Double =
+        value?.takeIf { it.isFinite() } ?: REIANIX_PLAYER_ORDER_SENTINEL
+
+    val number = numeric(episode.number)
+    val absolute = numeric(episode.absoluteNumber)
+    val hasRelativeNumber = number < REIANIX_PLAYER_ORDER_SENTINEL
+    return ReiAnixNativePlayerEpisodeOrderKey(
+        season = episode.season.toDouble(),
+        orderGroup = if (hasRelativeNumber) 1 else 0,
+        primaryNumber = if (hasRelativeNumber) number else absolute,
+        secondaryNumber = if (hasRelativeNumber) absolute else 0.0,
+        mediaIdentity = episode.mediaIdentity.orEmpty(),
+        fileName = nativePlayerOrderText(episode.fileName),
+        path = nativePlayerOrderText(episode.path),
+    )
+}
+
 enum class ReiAnixNativeFoldersStatus {
     IDLE,
     LOADING,
@@ -1819,6 +1880,15 @@ class ReiAnixLibraryViewModel(
      * existing native MainActivity handoff. This path does not send open_media
      * through NativeMailbox or invoke the Python worker.
      */
+    /** Publish native player handoff status into the existing library UI state. */
+    fun reportNativePlayerHandoff(
+        requestId: String,
+        status: String,
+        error: String? = null,
+    ) {
+        repository.reportNativePlayerHandoff(requestId, status, error)
+    }
+
     fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String {
         val requestId = UUID.randomUUID().toString()
         viewModelScope.launch(Dispatchers.IO) {
@@ -1839,24 +1909,30 @@ class ReiAnixLibraryViewModel(
                 fun preferenceValue(key: String): String =
                     persistedSettings[key] ?: ReiAnixSettingsContract.defaultFor(key).orEmpty()
 
-                val playableEpisodes = nativeLibraryRepository.listEpisodes(episode.animeId)
+                // Preserve the availability predicate and ordering used by
+                // LibraryStore.player_navigation()/adjacent_episode() for Next/Previous.
+                // The native path must not silently change episode adjacency while
+                // removing the Python OPEN_MEDIA dispatcher.
+                val neighborKeys = nativeLibraryRepository.listEpisodes(episode.animeId)
                     .asSequence()
-                    .filter { it.missing != true && it.path.isNotBlank() }
+                    .filter { it.missing == false }
                     .filter {
-                        it.episodeType.orEmpty().lowercase(Locale.ROOT) !in
-                            setOf("special", "ova", "oad", "ona", "extra", "movie")
+                        it.availabilityState == null || it.availabilityState == "available"
                     }
-                    .sortedWith(
-                        compareBy<ReiAnixEpisodeRecord> { it.season }
-                            .thenBy { it.number ?: Double.POSITIVE_INFINITY }
-                            .thenBy { it.absoluteNumber ?: Double.POSITIVE_INFINITY }
-                            .thenBy { it.fileName.lowercase(Locale.ROOT) }
-                            .thenBy { it.id },
-                    )
+                    // SQL NOT IN excludes NULL episode_type rows.
+                    .filter {
+                        it.episodeType != null &&
+                            it.episodeType !in REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES
+                    }
+                    .map(::nativePlayerEpisodeOrderKey)
                     .toList()
-                val currentIndex = playableEpisodes.indexOfFirst { it.id == episodeId }
-                val canPrevious = currentIndex > 0
-                val canNext = currentIndex >= 0 && currentIndex < playableEpisodes.lastIndex
+                val currentEpisodeKey = nativePlayerEpisodeOrderKey(episode)
+                val currentIsRegularEpisode = episode.episodeType.orEmpty()
+                    .lowercase(Locale.ROOT) !in REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES
+                val canPrevious = currentIsRegularEpisode &&
+                    neighborKeys.any { it < currentEpisodeKey }
+                val canNext = currentIsRegularEpisode &&
+                    neighborKeys.any { it > currentEpisodeKey }
 
                 val rawReference = episode.path.trim()
                 val parsedReference = Uri.parse(rawReference)

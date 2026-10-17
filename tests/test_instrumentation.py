@@ -48,6 +48,7 @@ class InstrumentationTests(unittest.TestCase):
         self.assertNotIn("import com.reiflix.reiflix_local.NativePlayerActivity", player)
         self.assertNotIn("fun openEpisode(episodeId: Long): String", repository)
         self.assertIn("fun reportNativePlayerHandoff(", repository)
+        self.assertIn("fun reportNativePlayerHandoff(", view_model)
         self.assertIn("fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String", view_model)
         self.assertIn("nativeLibraryRepository.getEpisode(episodeId)", view_model)
         self.assertIn("private fun performOpenPlayer(", self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"))

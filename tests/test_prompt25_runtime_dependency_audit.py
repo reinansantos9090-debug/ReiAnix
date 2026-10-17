@@ -36,6 +36,7 @@ def test_compose_player_uses_the_native_sqlite_to_activity_handoff():
     assert '.appendQueryParameter("native_compose", "true")' in launch
     assert "NativeMailbox.write" not in launch
     assert "fun reportNativePlayerHandoff(" in repository
+    assert "fun reportNativePlayerHandoff(" in view_model
     assert 'OPEN_MEDIA("open_media")' not in codec
     assert 'elif action == "open_media":' not in main
     assert "private fun performOpenPlayer(" in activity
@@ -67,8 +68,15 @@ def test_compose_player_handoff_preserves_local_identity_and_player_contract():
         '.appendQueryParameter("can_next", canNext.toString())',
         '.appendQueryParameter("can_previous", canPrevious.toString())',
         "setting_audio_preferred_subtitle_language",
+        "it.missing == false",
+        'it.availabilityState == null || it.availabilityState == "available"',
+        "it.episodeType != null",
+        "neighborKeys.any { it < currentEpisodeKey }",
+        "neighborKeys.any { it > currentEpisodeKey }",
     ):
         assert token in launch
+    assert "private data class ReiAnixNativePlayerEpisodeOrderKey" in view_model
+    assert "LibraryStore.player_navigation()" in launch
     assert "NativePlayerRequest.fromBridgeUri(source)" in activity
     assert 'putExtra("episodeId", episodeId)' in player_request
     assert 'putExtra("positionMs", positionMs)' in player_request
@@ -86,3 +94,18 @@ def test_prompt25_traceability_documents_keep_remaining_runtime_explicit():
         "não conclusiva",
     ):
         assert token.lower() in (bridge_doc + audit_doc).lower()
+
+
+
+def test_prompt25_dependency_matrix_classifies_runtime_build_and_tooling_separately():
+    audit_doc = read("docs/KOTLIN_MIGRATION_AUDIT.md")
+    for token in (
+        "RT-01",
+        "RT-18",
+        "18 famílias de fluxo",
+        "Dependência de build e, para o APK atual, também de runtime",
+        "Não conclusiva",
+        "Nenhuma Activity base",
+        "notificação mantida",
+    ):
+        assert token.lower() in audit_doc.lower()
