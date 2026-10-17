@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.data.library
 
+import com.reiflix.reiflix_local.data.contract.ReiAnixContractValues
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
@@ -12,22 +13,23 @@ internal object ReiAnixLibrarySnapshotCodec {
 
     fun decode(raw: String, previousRevision: Long = 0L): ReiAnixLibraryUiState {
         val root = JSONObject(raw)
-        val schemaVersion = root.optInt("schemaVersion", 0)
+        val schemaVersion = ReiAnixContractValues.intOrNull(root.opt("schemaVersion"), "schemaVersion") ?: 0
         require(schemaVersion == 1) { "Unsupported Compose library snapshot schema: $schemaVersion" }
 
-        val revision = root.optLong("revision", 0L)
+        val revision = root.longOrDefault("revision", 0L)
+        require(revision >= 0L) { "Compose library snapshot revision must be non-negative." }
         require(previousRevision == 0L || revision > previousRevision) {
             "Stale Compose library snapshot revision=$revision previous=$previousRevision"
         }
 
         val sourceState = root.optString("sourceState").trim().ifEmpty { "UNKNOWN" }
-        val sourceAvailable = root.optBoolean("sourceAvailable", sourceState == "AVAILABLE")
+        val sourceAvailable = root.booleanOrDefault("sourceAvailable", sourceState == "AVAILABLE")
         val scanState = root.optString("scanState").trim().uppercase().ifEmpty { "IDLE" }
         val lastScanStatus = root.optString("lastScanStatus")
             .trim()
             .uppercase()
             .takeIf { it.isNotEmpty() && it != "NULL" }
-        val scanInProgress = root.optBoolean(
+        val scanInProgress = root.booleanOrDefault(
             "scanInProgress",
             scanState in setOf(
                 "QUEUED",
@@ -41,7 +43,7 @@ internal object ReiAnixLibrarySnapshotCodec {
         val snapshotStatus = root.optString("status").trim().uppercase()
         val error = root.optString("error").trim().takeIf { it.isNotEmpty() && it != "null" }
 
-        val rawAnimes = root.optJSONArray("animes") ?: JSONArray()
+        val rawAnimes = root.arrayOrDefault("animes")
         val animes = buildList(rawAnimes.length()) {
             for (index in 0 until rawAnimes.length()) {
                 val item = rawAnimes.optJSONObject(index)
@@ -61,7 +63,7 @@ internal object ReiAnixLibrarySnapshotCodec {
             .map { it.id }
             .toSet()
 
-        val rawContinueWatching = root.optJSONArray("continue_watching") ?: JSONArray()
+        val rawContinueWatching = root.arrayOrDefault("continue_watching")
         val continueWatching = buildList(rawContinueWatching.length()) {
             for (index in 0 until rawContinueWatching.length()) {
                 val item = rawContinueWatching.optJSONObject(index)
@@ -100,11 +102,12 @@ internal object ReiAnixLibrarySnapshotCodec {
 
     private fun decodeStorage(raw: JSONObject?): ReiAnixStorageUiState {
         if (raw == null) return ReiAnixStorageUiState()
-        val capabilities = raw.optJSONObject("capabilities") ?: JSONObject()
-        val configured = raw.optJSONArray("configuredSources") ?: JSONArray()
+        val capabilities = raw.objectOrNull("capabilities") ?: JSONObject()
+        val configured = raw.arrayOrDefault("configuredSources")
         val sources = buildList(configured.length()) {
             for (index in 0 until configured.length()) {
-                val item = configured.optJSONObject(index) ?: continue
+                val item = configured.optJSONObject(index)
+                    ?: error("Malformed configured storage source at snapshot index=$index")
                 add(
                     ReiAnixStorageSourceUiModel(
                         reference = item.optString("reference").trim(),
@@ -126,27 +129,27 @@ internal object ReiAnixLibrarySnapshotCodec {
             onboardingState = raw.optString("onboardingState", "checking").trim().lowercase(),
             onboardingMessage = raw.optString("onboardingMessage").trim()
                 .takeIf { it.isNotEmpty() && it != "null" },
-            onboardingDismissed = raw.optBoolean("onboardingDismissed", false),
+            onboardingDismissed = raw.booleanOrDefault("onboardingDismissed", false),
             onboardingError = raw.optString("onboardingError").trim()
                 .takeIf { it.isNotEmpty() && it != "null" },
             safRoots = capabilities.stringList("safRoots"),
-            safSelectionPending = raw.optBoolean("safSelectionPending", false),
+            safSelectionPending = raw.booleanOrDefault("safSelectionPending", false),
             safRootIdentities = capabilities.stringList("safRootIdentities"),
             removableVolumes = capabilities.stringList("removableVolumes"),
             scannerCapabilities = capabilities.stringList("scannerCapabilities").sorted(),
             reconciliationCapabilities = capabilities.stringList("reconciliationCapabilities").sorted(),
             lifecycleState = capabilities.optString("lifecycleState", "unknown").trim().lowercase(),
-            api = capabilities.optIntOrNull("api"),
+            api = capabilities.intOrNull("api"),
             configuredSources = sources,
         )
     }
 
     fun decodeCommandResult(raw: String): CommandResult {
         val root = JSONObject(raw)
-        require(root.optInt("schemaVersion", 0) == 1) {
+        require(ReiAnixContractValues.intOrNull(root.opt("schemaVersion"), "schemaVersion") == 1) {
             "Unsupported Compose command-result schema"
         }
-        val payload = root.optJSONObject("payload")
+        val payload = root.objectOrNull("payload")
         val libraryPage = payload
             ?.takeIf { it.optString("kind").trim() == "library_page" }
             ?.let { decodeLibraryPage(it) }
@@ -161,7 +164,7 @@ internal object ReiAnixLibrarySnapshotCodec {
     }
 
     private fun decodeLibraryPage(payload: JSONObject): LibraryPageResult {
-        val rawItems = payload.optJSONArray("items") ?: JSONArray()
+        val rawItems = payload.arrayOrDefault("items")
         val items = buildList(rawItems.length()) {
             for (index in 0 until rawItems.length()) {
                 val item = rawItems.optJSONObject(index)
@@ -170,12 +173,20 @@ internal object ReiAnixLibrarySnapshotCodec {
                 add(LibraryUiMappers.anime(item.toMap()))
             }
         }
+        val generation = payload.longOrDefault("generation", 0L)
+        val page = payload.intOrDefault("page", 0)
+        val pageSize = payload.intOrDefault("page_size", 0)
+        val total = payload.intOrDefault("total", 0)
+        require(generation >= 0L) { "Library page generation must be non-negative." }
+        require(page >= 0 && pageSize >= 0 && total >= 0) {
+            "Library page pagination values must be non-negative."
+        }
         return LibraryPageResult(
-            generation = payload.optLong("generation", 0L),
-            page = payload.optInt("page", 0),
-            pageSize = payload.optInt("page_size", 0),
-            total = payload.optInt("total", 0),
-            hasMore = payload.optBoolean("has_more", false),
+            generation = generation,
+            page = page,
+            pageSize = pageSize,
+            total = total,
+            hasMore = payload.booleanOrDefault("has_more", false),
             items = items,
         )
     }
@@ -226,5 +237,35 @@ private fun JSONObject.stringList(key: String): List<String> {
     }.distinct()
 }
 
-private fun JSONObject.optIntOrNull(key: String): Int? =
-    if (!has(key) || isNull(key)) null else optInt(key)
+private fun JSONObject.longOrDefault(key: String, default: Long): Long =
+    if (!has(key) || isNull(key)) default
+    else ReiAnixContractValues.longOrNull(opt(key), key)
+        ?: error("Invalid non-null long field '$key'.")
+
+private fun JSONObject.intOrDefault(key: String, default: Int): Int =
+    if (!has(key) || isNull(key)) default
+    else ReiAnixContractValues.intOrNull(opt(key), key)
+        ?: error("Invalid non-null integer field '$key'.")
+
+private fun JSONObject.booleanOrDefault(key: String, default: Boolean): Boolean =
+    if (!has(key) || isNull(key)) default
+    else ReiAnixContractValues.booleanOrNull(opt(key), key)
+        ?: error("Invalid non-null Boolean field '$key'.")
+
+private fun JSONObject.arrayOrDefault(key: String): JSONArray =
+    when {
+        !has(key) || isNull(key) -> JSONArray()
+        optJSONArray(key) != null -> optJSONArray(key)!!
+        else -> error("Invalid snapshot field '$key': expected an array.")
+    }
+
+private fun JSONObject.objectOrNull(key: String): JSONObject? =
+    when {
+        !has(key) || isNull(key) -> null
+        optJSONObject(key) != null -> optJSONObject(key)
+        else -> error("Invalid snapshot field '$key': expected an object.")
+    }
+
+private fun JSONObject.intOrNull(key: String): Int? =
+    if (!has(key) || isNull(key)) null
+    else ReiAnixContractValues.intOrNull(opt(key), key)
