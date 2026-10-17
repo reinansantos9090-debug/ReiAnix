@@ -113,6 +113,33 @@ data class ReiAnixCollectorEpisodeRow(
     val mediaKind: String?,
 )
 
+/** Minimal canonical SQLite projection consumed by native discovery calculations. */
+data class ReiAnixTimelineSourceRecord(
+    val id: Long,
+    val title: String,
+    val year: Int?,
+    val season: String?,
+    val status: String?,
+    val mediaKind: String?,
+    val coverCache: String?,
+    val coverUrl: String?,
+    val addedAt: Double?,
+)
+
+/** Canonical episode duration row; durations remain stored in seconds. */
+data class ReiAnixDurationObservationRecord(
+    val id: Long,
+    val animeId: Long,
+    val season: Int?,
+    val number: Double?,
+    val absoluteNumber: Double?,
+    val fileName: String,
+    val episodeTitle: String?,
+    val durationSeconds: Double?,
+    val animeTitle: String,
+)
+
+
 data class ReiAnixArtworkRecord(
     val id: Long,
     val entityType: String,

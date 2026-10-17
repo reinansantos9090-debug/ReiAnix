@@ -9,6 +9,7 @@ import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
+import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -185,6 +186,10 @@ class ReiAnixLibraryViewModel(
         )
     private val consumptionService = dependencies?.consumptionService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService(nativeLibraryRepository)
+    /** Native projection-only discovery rules use the same canonical library repository. */
+    private val nativeLibraryDiscovery = dependencies?.libraryDiscoveryService
+        ?: ReiAnixLibraryDiscoveryService(nativeLibraryRepository)
+
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
 
@@ -312,6 +317,17 @@ class ReiAnixLibraryViewModel(
 
     suspend fun deleteSafItem(uri: Uri): SafFileOperations.Result =
         nativeFileOperations.delete(uri)
+
+    /** Native replacement for legacy local release timeline calculations. */
+    suspend fun queryNativeTimelineGroups() = nativeLibraryDiscovery.timelineGroups()
+
+    /** Native replacement for the local duration anomaly report; does not mutate playback state. */
+    suspend fun queryNativeDurationAnomalies(animeId: Long? = null) =
+        nativeLibraryDiscovery.durationAnomalies(animeId)
+
+    /** Native replacement for the remaining-time marathon projection. */
+    suspend fun queryNativeMarathonPlan(animeId: Long, currentPath: String? = null) =
+        nativeLibraryDiscovery.marathonPlan(animeId, currentPath)
 
     suspend fun queryNativeAnime(id: Long): ReiAnixLibraryQueryResult<ReiAnixAnimeRecord> =
         nativeLibraryQueries.animeById(id)
