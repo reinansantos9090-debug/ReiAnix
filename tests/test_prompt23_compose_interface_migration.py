@@ -18,9 +18,9 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         cls.navigation = NAVIGATION.read_text(encoding="utf-8")
         cls.compose_host = COMPOSE_HOST.read_text(encoding="utf-8")
         cls.settings = SETTINGS.read_text(encoding="utf-8")
+        build_start = cls.main.index("    def _build_screen(")
         cls.build_screen = cls.main[
-            cls.main.index("    def _build_screen("):
-            cls.main.index("    def _settings_view_paths()", cls.main.index("    def _build_screen("))
+            build_start:cls.main.index("    def _settings_view_paths()", build_start)
         ]
 
     def test_legacy_flet_screen_modules_are_not_imported_at_module_startup(self):
@@ -29,24 +29,16 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
             module_prefix,
             r"from views\.(home_view|details_view|organize_view|settings_view|collector_view|recovery_view) import",
         )
-        self.assertEqual(
-            self.main.count("from views.home_view import HomeView"), 1
-        )
-        self.assertEqual(
-            self.main.count("from views.details_view import DetailView"), 1
-        )
-        self.assertEqual(
-            self.main.count("from views.organize_view import OrganizeView"), 1
-        )
-        self.assertEqual(
-            self.main.count("from views.settings_view import SettingsView"), 1
-        )
-        self.assertEqual(
-            self.main.count("from views.collector_view import CollectorView"), 1
-        )
-        self.assertEqual(
-            self.main.count("from views.recovery_view import RecoveryView"), 1
-        )
+        for import_statement in (
+            "from views.home_view import HomeView",
+            "from views.details_view import DetailView",
+            "from views.organize_view import OrganizeView",
+            "from views.settings_view import SettingsView",
+            "from views.collector_view import CollectorView",
+            "from views.recovery_view import RecoveryView",
+        ):
+            with self.subTest(import_statement=import_statement):
+                self.assertEqual(self.main.count(import_statement), 1)
 
     def test_migrated_screens_keep_real_non_compose_fallbacks_only(self):
         cases = (
@@ -61,10 +53,8 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         )
         for start, end, native_guard, legacy_import, legacy_builder in cases:
             with self.subTest(route=start):
-                block = self.build_screen[
-                    self.build_screen.index(start):
-                    self.build_screen.index(end, self.build_screen.index(start))
-                ]
+                begin = self.build_screen.index(start)
+                block = self.build_screen[begin:self.build_screen.index(end, begin)]
                 self.assertIn(native_guard, block)
                 self.assertIn("control = ft.Container(expand=True)", block)
                 self.assertIn(legacy_import, block)
@@ -99,55 +89,10 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         ))
         managed_end = self.settings.index("\n)", managed_start)
         managed_block = self.settings[managed_start:managed_end]
-        managed = set(re.findall(r'^\s*"([^"]+)"\s*,?, managed_block, re.MULTILINE))
+        managed = set(re.findall(r'^\s*"([^"]+)"\s*,?$', managed_block, re.MULTILINE))
         self.assertTrue(declared, "No native settings categories were found")
         self.assertEqual(declared, managed)
-        self.assertIn('onOpenCategory = { label ->', self.settings)
-        self.assertIn("selectedCategory = label", self.settings)
-
-    def test_compose_destinations_are_wired_to_the_existing_native_host(self):
-        for route in (
-            "HOME", "LIBRARY", "MY_LIST", "ORGANIZE", "SEARCH", "SETTINGS",
-            "STORAGE", "RECOVERY", "COLLECTOR", "DETAILS", "PLAYER",
-        ):
-            self.assertIn("ReiAnixRoutes." + route, self.navigation)
-        for native_screen in (
-            "ReiAnixOrganizeRoute(",
-            "ReiAnixSettingsRoute(",
-            "ReiAnixRecoveryRoute(",
-            "ReiAnixStorageRoute(",
-            "navigateToCollector()",
-        ):
-            self.assertIn(native_screen, self.compose_host)
-        self.assertIn("ReiAnixHomeRoute(", self.navigation)
-        self.assertIn("ReiAnixLibraryRoute(", self.navigation)
-        self.assertIn("ReiAnixSearchRoute(", self.navigation)
-        self.assertIn("ReiAnixDetailsRoute(", self.navigation)
-
-    def test_coverage_matrix_records_the_actual_cutover_and_remaining_fallback(self):
-        report = COVERAGE.read_text(encoding="utf-8")
-        for token in (
-            "Prompt 23/29",
-            "views/home_view.py",
-            "views/details_view.py",
-            "views/organize_view.py",
-            "views/settings_view.py",
-            "views/collector_view.py",
-            "views/recovery_view.py",
-            "ReiAnixSettingsRoute",
-            "fallback não Android",
-            "não declara o projeto 100% Kotlin",
-            "matriz",
-        ):
-            self.assertIn(token, report)
-
-
-if __name__ == "__main__":
-    unittest.main()
-, managed_block, re.MULTILINE))
-        self.assertTrue(declared, "No native settings categories were found")
-        self.assertEqual(declared, managed)
-        self.assertIn('onOpenCategory = { label ->', self.settings)
+        self.assertIn("onOpenCategory = { label ->", self.settings)
         self.assertIn("selectedCategory = label", self.settings)
 
     def test_compose_destinations_are_wired_to_the_existing_native_host(self):
