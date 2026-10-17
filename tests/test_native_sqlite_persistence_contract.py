@@ -133,6 +133,11 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         # are emitted only after the explicit transaction outcome has been recorded.
         self.assertIn("configuredMediaStoreScopes(appContext)", media_scan)
         self.assertIn("libraryScopes = libraryScopes", media_scan)
+        self.assertIn("canReconcileAbsences = distinctScopes.isNotEmpty()", media_scan)
+        self.assertIn("areMediaStoreScopesCurrentlyReadable", media_scan)
+        self.assertIn("scopeCoverageWarning", media_scan)
+        self.assertIn("scopeCoverageStillAllowed && !areMediaStoreScopesCurrentlyReadable", media_scan)
+        self.assertIn("complete = safeForAbsenceReconciliation", media_scan)
         self.assertIn("indexMediaStoreSnapshots(", media_scan)
         self.assertIn(".libraryService.indexDiscoveredMedia(snapshot)", media_scan)
         self.assertIn("markNativeCatalogIndexing", media_scan)
