@@ -644,6 +644,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
+                    onSetEpisodeIdentification = onSetEpisodeIdentification,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
                 )
             }
         }
@@ -670,6 +672,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
+                    onSetEpisodeIdentification = onSetEpisodeIdentification,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
                 )
             }
         }
