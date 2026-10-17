@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.viewmodel
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
@@ -19,6 +20,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import com.reiflix.reiflix_local.data.sqlite.toggleAnimePinned
 import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
 import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
@@ -31,6 +33,9 @@ import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
 import android.net.Uri
+import java.io.File
+import java.util.Locale
+import java.util.UUID
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState
@@ -1809,7 +1814,160 @@ class ReiAnixLibraryViewModel(
         repository.publishCatalog()
     }
 
-    fun openEpisode(episodeId: Long): String = repository.openEpisode(episodeId)
+    /**
+     * Resolve a Compose playback request from canonical SQLite and request the
+     * existing native MainActivity handoff. This path does not send open_media
+     * through NativeMailbox or invoke the Python worker.
+     */
+    fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String {
+        val requestId = UUID.randomUUID().toString()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                require(episodeId > 0L) { "O identificador do episódio é inválido." }
+                val episode = nativeLibraryRepository.getEpisode(episodeId)
+                    ?: throw IllegalArgumentException("Episódio não encontrado no catálogo local.")
+                require(expectedAnimeId == null || episode.animeId == expectedAnimeId) {
+                    "O episódio não pertence ao anime solicitado."
+                }
+                require(episode.missing != true && episode.path.isNotBlank()) {
+                    "Este episódio não possui uma mídia local disponível."
+                }
+                nativeLibraryRepository.getAnime(episode.animeId)
+                    ?: throw IllegalStateException("O anime associado ao episódio não existe no catálogo.")
+
+                val persistedSettings = appDependencies?.sqliteSettingsRepository?.allPreferences().orEmpty()
+                fun preferenceValue(key: String): String =
+                    persistedSettings[key] ?: ReiAnixSettingsContract.defaultFor(key).orEmpty()
+
+                val playableEpisodes = nativeLibraryRepository.listEpisodes(episode.animeId)
+                    .asSequence()
+                    .filter { it.missing != true && it.path.isNotBlank() }
+                    .filter {
+                        it.episodeType.orEmpty().lowercase(Locale.ROOT) !in
+                            setOf("special", "ova", "oad", "ona", "extra", "movie")
+                    }
+                    .sortedWith(
+                        compareBy<ReiAnixEpisodeRecord> { it.season }
+                            .thenBy { it.number ?: Double.POSITIVE_INFINITY }
+                            .thenBy { it.absoluteNumber ?: Double.POSITIVE_INFINITY }
+                            .thenBy { it.fileName.lowercase(Locale.ROOT) }
+                            .thenBy { it.id },
+                    )
+                    .toList()
+                val currentIndex = playableEpisodes.indexOfFirst { it.id == episodeId }
+                val canPrevious = currentIndex > 0
+                val canNext = currentIndex >= 0 && currentIndex < playableEpisodes.lastIndex
+
+                val rawReference = episode.path.trim()
+                val parsedReference = Uri.parse(rawReference)
+                val mediaUri = when (parsedReference.scheme?.lowercase(Locale.ROOT)) {
+                    "content", "file" -> parsedReference
+                    null -> {
+                        require(rawReference.startsWith("/")) {
+                            "A referência de mídia local não é um caminho absoluto nem uma URI autorizada."
+                        }
+                        Uri.fromFile(File(rawReference))
+                    }
+                    else -> throw IllegalArgumentException(
+                        "O ReiAnix aceita somente mídias locais autorizadas.",
+                    )
+                }
+
+                val resumeEnabled = preferenceValue("player.resume").toBooleanStrictOrNull() ?: true
+                val progressSeconds = episode.progress
+                    ?.takeIf { it.isFinite() && it >= 0.0 }
+                    ?: 0.0
+                val positionMs = if (resumeEnabled) {
+                    (progressSeconds * 1_000.0).toLong().coerceAtLeast(0L)
+                } else {
+                    0L
+                }
+                val createdAtMs = System.currentTimeMillis()
+                val playerSessionId = UUID.randomUUID().toString()
+                val title = episode.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: episode.fileName.trim().takeIf { it.isNotEmpty() }
+                    ?: "Episódio"
+
+                val commandUri = Uri.parse("reiflix://native").buildUpon()
+                    .appendQueryParameter("action", "play")
+                    .appendQueryParameter("request_id", requestId)
+                    .appendQueryParameter("protocol_version", "2")
+                    .appendQueryParameter("created_at", createdAtMs.toString())
+                    .appendQueryParameter("uri", mediaUri.toString())
+                    .appendQueryParameter("episode_id", episode.id.toString())
+                    .appendQueryParameter("anime_id", episode.animeId.toString())
+                    .appendQueryParameter("player_session_id", playerSessionId)
+                    .appendQueryParameter("title", title)
+                    .appendQueryParameter("position_ms", positionMs.toString())
+                    .appendQueryParameter("can_next", canNext.toString())
+                    .appendQueryParameter("can_previous", canPrevious.toString())
+                    .appendQueryParameter(
+                        "autoplay",
+                        preferenceValue("player.autoplay_next").toBooleanStrictOrNull()?.toString() ?: "true",
+                    )
+                    .appendQueryParameter("native_compose", "true")
+
+                val playerSettings = listOf(
+                    "player.default_speed" to "setting_player_default_speed",
+                    "player.aspect_ratio" to "setting_player_aspect_ratio",
+                    "player.zoom_enabled" to "setting_player_zoom_enabled",
+                    "player.immersive" to "setting_player_immersive",
+                    "player.rotation" to "setting_player_rotation",
+                    "player.pip" to "setting_player_pip",
+                    "player.lock_mode" to "setting_player_lock_mode",
+                    "player.auto_hide_seconds" to "setting_player_auto_hide_seconds",
+                    "player.double_tap_seek_seconds" to "setting_player_double_tap_seek_seconds",
+                    "player.long_press_speed" to "setting_player_long_press_speed",
+                    "player.max_video_resolution" to "setting_player_max_video_resolution",
+                    "player.max_video_frame_rate" to "setting_player_max_video_frame_rate",
+                    "player.max_audio_channels" to "setting_player_max_audio_channels",
+                    "gestures.volume" to "setting_gestures_volume",
+                    "gestures.brightness" to "setting_gestures_brightness",
+                    "gestures.double_tap" to "setting_gestures_double_tap",
+                    "gestures.long_press" to "setting_gestures_long_press",
+                    "audio.preferred_language" to "setting_audio_preferred_language",
+                    "audio.preferred_subtitle_language" to "setting_audio_preferred_subtitle_language",
+                    "audio.subtitles" to "setting_audio_subtitles",
+                    "audio.subtitle_scale" to "setting_audio_subtitle_scale",
+                    "audio.subtitle_bottom_padding" to "setting_audio_subtitle_bottom_padding",
+                    "audio.subtitle_embedded_style" to "setting_audio_subtitle_embedded_style",
+                )
+                playerSettings.forEach { (preferenceKey, queryKey) ->
+                    commandUri.appendQueryParameter(queryKey, preferenceValue(preferenceKey))
+                }
+
+                val intent = Intent(
+                    Intent.ACTION_VIEW,
+                    commandUri.build(),
+                    appContext,
+                    MainActivity::class.java,
+                ).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                )
+                withContext(Dispatchers.Main) {
+                    appContext.startActivity(intent)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(
+                    TAG,
+                    "Native Compose player handoff failed requestId=$requestId episodeId=$episodeId",
+                    error,
+                )
+                repository.reportNativePlayerHandoff(
+                    requestId = requestId,
+                    status = "FAILED",
+                    error = error.message?.takeIf(String::isNotBlank)
+                        ?: "Não foi possível preparar a reprodução local.",
+                )
+            }
+        }
+        return requestId
+    }
+
 
     override fun onCleared() {
         repository.close()

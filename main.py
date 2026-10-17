@@ -4592,34 +4592,6 @@ async def main(page: ft.Page):
                     result,
                     generation=generation,
                 )
-            elif action == "open_media":
-                episode_id = int(payload.get("episodeId") or 0)
-                if episode_id <= 0:
-                    raise ValueError("episodeId inválido.")
-                fresh_episode = await asyncio.to_thread(store.episode_by_id, episode_id)
-                if not fresh_episode:
-                    raise ValueError("Episódio não encontrado.")
-                path_ref = str(fresh_episode.get("path") or "").strip()
-                if not path_ref or bool(fresh_episode.get("missing")):
-                    raise ValueError("Este episódio não possui uma mídia local disponível.")
-                anime_id = fresh_episode.get("anime_id")
-                title = (
-                    str(fresh_episode.get("episode_title") or "").strip()
-                    or str(fresh_episode.get("file_name") or "").strip()
-                    or "Episódio"
-                )
-                try:
-                    progress_seconds = float(fresh_episode.get("progress") or 0.0)
-                except (TypeError, ValueError):
-                    progress_seconds = 0.0
-                command_status = "QUEUED"
-                play_episode(
-                    path_ref,
-                    title,
-                    progress_seconds=max(0.0, progress_seconds),
-                    episode_id=episode_id,
-                    anime_id=anime_id,
-                )
             else:
                 command_status = "FAILED"
                 command_error = "Comando de biblioteca Compose desconhecido."

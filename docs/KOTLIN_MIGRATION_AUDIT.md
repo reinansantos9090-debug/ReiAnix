@@ -243,3 +243,14 @@ Nenhum critério abaixo é satisfeito pelo simples fato de uma tela já usar Com
 - Não foi alterado o gatilho Kotlin/JVM: o YAML atual de .github/workflows/kotlin_jvm_tests.yml contém apenas workflow_dispatch, conforme exigido.
 - Não foram disparados testes Kotlin/JVM ou instrumentados, não houve alteração no schema, não foi alterado o manifesto e nenhum runtime foi removido.
 - Foram preparados este inventário e um roadmap executável com critérios de aceitação e dependências explícitas.
+
+
+## Atualização Prompt 25/29 — estado do grafo de runtime (17/10/2026)
+
+Esta atualização complementa a fotografia inicial e não altera retroativamente as 40 áreas classificadas na auditoria original.
+
+**Caminho removido do consumidor Compose:** `ReiAnixPlayerRoute → ReiAnixLibraryViewModel.openEpisode → ReiAnixLibraryRepository.openEpisode → NativeMailbox → worker main.py/open_media → LibraryStore.episode_by_id/play_episode → AndroidBridge.play`. O consumidor Compose agora resolve a linha canônica em SQLite Kotlin e chama a entrada nativa existente da `MainActivity`; a Activity mantém a validação de URI/autorização e o único player Media3. O caminho de bridge de Python continua para callers Flet e para transições de player que ainda dependem de listeners/runtime híbridos.
+
+**Estado de verificação:** os testes de contrato Python verificam a ligação SQLite/Compose → MainActivity, a ausência do comando `open_media` no worker e a remoção de `OPEN_MEDIA` do codec. Compilação, regressão CI e artefatos têm de ser confirmados para o SHA final deste prompt; revisão estática não substitui a execução do workflow.
+
+**Dependências preservadas:** `main.py`, `MainActivity : FlutterFragmentActivity`, empacotamento Flet/Flutter/SeriousPython, projeções `ComposeLibraryBridge`/`ComposeSettingsBridge`, mailbox de scanner/storage, eventos de AniList/artwork/settings/account, projeção/diagnóstico e a transição Next/Previous ainda híbrida. O código/protocolo `load_library_page` é mantido como referência não conclusiva: o caminho de UI Compose já usa consultas Kotlin, porém a família de estado/resultado compatível ainda está no adapter.

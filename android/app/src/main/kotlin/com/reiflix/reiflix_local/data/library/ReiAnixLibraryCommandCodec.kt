@@ -46,7 +46,6 @@ internal object ReiAnixLibraryCommandCodec {
         REFRESH("refresh"),
         PUBLISH_CATALOG("publish_catalog"),
         LOAD_LIBRARY_PAGE("load_library_page"),
-        OPEN_MEDIA("open_media"),
         SELECT_SAF("select_saf"),
         DISMISS_STORAGE_ONBOARDING("dismiss_storage_onboarding"),
         REMOVE_SAF("remove_saf"),
