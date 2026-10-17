@@ -6,6 +6,7 @@ import com.reiflix.reiflix_local.data.contract.booleanRequired
 import com.reiflix.reiflix_local.data.contract.intOrNull
 import com.reiflix.reiflix_local.data.contract.intRequired
 import com.reiflix.reiflix_local.data.contract.longRequired
+import com.reiflix.reiflix_local.data.contract.objectOrDefault
 import com.reiflix.reiflix_local.data.contract.objectOrNull
 import com.reiflix.reiflix_local.data.contract.requiredArray
 import com.reiflix.reiflix_local.data.contract.stringList
@@ -63,7 +64,7 @@ internal object ReiAnixLibrarySnapshotCodec {
             }
         }
 
-        val storage = decodeStorage(root.objectOrNull("storage"))
+        val storage = decodeStorage(root.objectOrDefault("storage"))
 
         val validAnimeIds = animes.asSequence()
             .map { it.id }
@@ -110,9 +111,8 @@ internal object ReiAnixLibrarySnapshotCodec {
         )
     }
 
-    private fun decodeStorage(raw: JSONObject?): ReiAnixStorageUiState {
-        if (raw == null) return ReiAnixStorageUiState()
-        val capabilities = raw.objectOrNull("capabilities") ?: JSONObject()
+    private fun decodeStorage(raw: JSONObject): ReiAnixStorageUiState {
+        val capabilities = raw.objectOrDefault("capabilities")
         val configured = raw.arrayOrDefault("configuredSources")
         val sources = buildList(configured.length()) {
             for (index in 0 until configured.length()) {
