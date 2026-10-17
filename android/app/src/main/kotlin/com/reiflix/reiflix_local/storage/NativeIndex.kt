@@ -1031,6 +1031,9 @@ object NativeIndex {
         // not record the configured SAF scope. Force one safe rescan rather than reusing
         // a snapshot that cannot be proven to belong to the current authorized roots.
         if (scope.optString("source") != SOURCE_MEDIASTORE) return@synchronized false
+        // A physical MediaStore snapshot is reusable only after the matching catalog
+        // transaction was confirmed committed. Otherwise retry indexing from this source.
+        if (scope.optString("nativeCatalogWriteOutcome") != "COMMITTED") return@synchronized false
         val status = scope.optString("status")
         if (!isCompleteStatus(status)) return@synchronized false
         val meta = scope.optJSONObject("metadata") ?: return@synchronized false
