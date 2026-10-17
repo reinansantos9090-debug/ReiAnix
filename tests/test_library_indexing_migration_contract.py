@@ -119,6 +119,8 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         self.assertIn("currentSourceFolder in snapshot.authorizedSafTreeUris", repository)
         self.assertIn("authorizedSafTreeUris = libraryScopes.map { it.treeUri }", runner)
         self.assertIn("legacySafRowsByPhysicalIdentity", repository)
+        self.assertIn('if (snapshot.source == "mediastore") {', repository)
+        self.assertIn("AND source_folder LIKE 'content://com.android.externalstorage.documents/tree/%'", repository)
         self.assertIn("LocalMediaIdentity.identityFromDocument(", repository)
         self.assertIn("legacyCandidates.size > 1", repository)
         self.assertIn("existingIdentity != incomingIdentity", repository)

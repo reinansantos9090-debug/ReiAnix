@@ -1485,9 +1485,10 @@ class ReiAnixSqliteLibraryRepository(
                 // ExternalStorageProvider SAF rows; opaque/cloud providers never share a
                 // guessed identity with MediaStore.
                 val legacySafRowsByPhysicalIdentity = linkedMapOf<String, MutableList<ReiAnixEpisodeRecord>>()
+                if (snapshot.source == "mediastore") {
                 db.rawQuery(
                     "SELECT * FROM episodes WHERE (media_identity IS NULL OR TRIM(media_identity) = '') " +
-                        "AND source_folder LIKE 'content://%' " +
+                        "AND source_folder LIKE 'content://com.android.externalstorage.documents/tree/%' " +
                         "AND relative_path IS NOT NULL AND TRIM(relative_path) != ''",
                     null,
                 ).use { cursor ->
@@ -1509,6 +1510,8 @@ class ReiAnixSqliteLibraryRepository(
                             .getOrPut(physicalIdentity) { mutableListOf() }
                             .add(legacy)
                     }
+                }
+
                 }
 
                 for (item in snapshot.items) {
