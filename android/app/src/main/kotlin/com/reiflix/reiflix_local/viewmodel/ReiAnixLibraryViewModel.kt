@@ -1234,14 +1234,38 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    init {
-        // Repair missing/stale artwork asynchronously. The service bounds batches
-        // and HTTP concurrency and is independent of scanner/player progress.
-        appDependencies?.artworkService?.requestPendingArtwork()
+    private var canonicalConsumersStarted = false
 
-        // Populate catalog data even when the bridge snapshot does not exist yet.
+    init {
+        val dependencies = appDependencies
+        if (dependencies == null) {
+            // Isolated UI/test construction has no process bootstrap to await.
+            startCanonicalConsumersAfterDatabaseValidation()
+        } else {
+            viewModelScope.launch {
+                dependencies.bootstrap.state.first { state ->
+                    !state.recoveryRequired &&
+                        state.stage == com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY &&
+                        state.persistenceStatus in setOf(
+                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+                        )
+                }
+                startCanonicalConsumersAfterDatabaseValidation()
+            }
+        }
+    }
+
+    @Synchronized
+    private fun startCanonicalConsumersAfterDatabaseValidation() {
+        if (canonicalConsumersStarted) return
+        canonicalConsumersStarted = true
+
+        // Read the local canonical catalog only after bootstrap allows normal use.
         viewModelScope.launch { refreshNativeCatalog() }
 
+        // Opening the app must not schedule missing/stale artwork downloads. Artwork is
+        // requested only by explicit details/artwork actions or existing pipeline events.
         // Player notifications are emitted only after a successful SQLite commit.
         // Periodic notifications arrive at the existing 15-second checkpoint, not the
         // 250 ms UI clock, so Compose remains responsive without excessive full queries.
@@ -1270,7 +1294,12 @@ class ReiAnixLibraryViewModel(
                 }
                 .distinctUntilChanged()
                 .drop(1)
-                .collectLatest { refreshNativeCatalog() }
+                .collectLatest {
+                    // This collector emits only after a new terminal native-scan snapshot;
+                    // its first saved value is dropped, so process startup alone does not
+                    // trigger network metadata matching or artwork backfill.
+                    refreshNativeCatalog()
+                }
         }
         // Legacy commands can still mutate unrelated fields; their revision is only an
         // invalidation signal. Actual anime/episode values are always reread from SQLite.
@@ -1301,6 +1330,29 @@ class ReiAnixLibraryViewModel(
                     )
                 }
         }
+
+    }
+
+    /**
+     * Recovery restore uses this path after the process bootstrap has revalidated the
+     * canonical database. Unlike refresh(), this never starts a scan or Python catalog
+     * page request; it reloads the committed SQLite catalog and its local filtered page.
+     */
+    suspend fun refreshCanonicalCatalogAfterBootstrapValidation(): Boolean {
+        val state = appDependencies?.bootstrap?.state?.value ?: return false
+        if (
+            state.recoveryRequired ||
+            state.stage != com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY ||
+            state.persistenceStatus !in setOf(
+                com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+            )
+        ) return false
+
+        startCanonicalConsumersAfterDatabaseValidation()
+        refreshNativeCatalog()
+        return nativeCatalogState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
+            nativePagedLibraryState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
     }
 
     private suspend fun refreshNativeCatalog() {

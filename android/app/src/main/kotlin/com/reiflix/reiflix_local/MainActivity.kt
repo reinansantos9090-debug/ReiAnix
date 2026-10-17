@@ -121,6 +121,9 @@ class MainActivity : FlutterFragmentActivity() {
     private var activePlayerCommandCreatedAtMs: Long = 0L
     private val seenPlayerRequestIds = LinkedHashSet<String>()
     private var startupDiscoveryTriggered = false
+    private var nativeBootstrapDecisionComplete = false
+    private var automaticSafPickerAttempted = false
+    private val pendingNativeIntentsBeforeBootstrap = ArrayList<Intent>()
     private var lastObservedMediaAccess: String? = null
     private val _nativeStorageOnboardingState = MutableStateFlow(NativeStorageOnboardingState())
     val nativeStorageOnboardingState: StateFlow<NativeStorageOnboardingState> = _nativeStorageOnboardingState.asStateFlow()
@@ -271,6 +274,7 @@ class MainActivity : FlutterFragmentActivity() {
         private const val STATE_SAF_PICKER_PHASE = "reiflix.safPickerPhase"
         private const val STATE_SEEN_NATIVE_REQUEST_IDS = "reiflix.seenNativeRequestIds"
         private const val STATE_STARTUP_DISCOVERY_TRIGGERED = "reiflix.startupDiscoveryTriggered"
+        private const val STATE_AUTO_SAF_PICKER_ATTEMPTED = "reiflix.autoSafPickerAttempted"
         private const val STATE_LAST_OBSERVED_MEDIA_ACCESS = "reiflix.lastObservedMediaAccess"
         private const val STATE_LAST_OBSERVED_BROAD_ACCESS = "reiflix.lastObservedBroadAccess"
         private const val LOG_TAG = "[REIFLIX][ANDROID]"
@@ -1188,6 +1192,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val launchIntent = intent
         appDependencies.bootstrap.start()
         PerformanceDiagnostics.attach(this)
         PerformanceDiagnostics.sampleMemory(this, "main_on_create")
@@ -1241,6 +1246,7 @@ class MainActivity : FlutterFragmentActivity() {
             runCatching { SafPickerPhase.valueOf(it) }.getOrNull()
         } ?: if (safPickerPending) SafPickerPhase.WAITING_RESULT else SafPickerPhase.IDLE
         startupDiscoveryTriggered = savedInstanceState?.getBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED) ?: false
+        automaticSafPickerAttempted = savedInstanceState?.getBoolean(STATE_AUTO_SAF_PICKER_ATTEMPTED) ?: false
         lastObservedMediaAccess = savedInstanceState?.getString(STATE_LAST_OBSERVED_MEDIA_ACCESS)
         if (savedInstanceState?.containsKey(STATE_LAST_OBSERVED_BROAD_ACCESS) == true) {
             lastObservedBroadAccess = savedInstanceState.getBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS)
@@ -1252,33 +1258,65 @@ class MainActivity : FlutterFragmentActivity() {
             dismissed = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
                 .getBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false),
         )
-        // The legacy-named Library host is now the single runtime Compose
-        // visual shell. Settings and Storage are routes inside the same shell;
-        // no competing Compose host is mounted for either screen.
-        composeLibraryHost = ReiAnixComposeLibraryHost(this, libraryViewModel, settingsViewModel)
-        composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
-
-        // Canonical database inspection belongs to the process bootstrap. Keep the existing
-        // non-destructive recovery route and await startup ordering away from the main thread.
+        // Do not construct the Compose host or expose catalog consumers until the
+        // process-owned bootstrap has decided whether the canonical SQLite database is usable.
+        // The launch intent and any new intents received during validation are replayed only
+        // after a safe normal route or Recovery Mode has been selected.
         lifecycleScope.launch {
             val recoveryRequired = appDependencies.bootstrap.validateCanonicalDatabase()
-            if (recoveryRequired && !isFinishing && !isDestroyed) {
+            if (isFinishing || isDestroyed) return@launch
+
+            nativeBootstrapDecisionComplete = true
+            composeLibraryHost = ReiAnixComposeLibraryHost(this@MainActivity, libraryViewModel, settingsViewModel)
+            if (recoveryRequired) {
                 Log.w(tag, "NATIVE_DATABASE_RECOVERY_REQUIRED route_opened=true")
                 composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+            } else {
+                composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+                refreshNativeStorageOnboardingState("bootstrap_validated")
+            }
+
+            handleNativeIntent(launchIntent)
+            handleNativeSettingsFileIntent(launchIntent)
+            val deferredIntents = synchronized(pendingNativeIntentsBeforeBootstrap) {
+                pendingNativeIntentsBeforeBootstrap.toList().also { pendingNativeIntentsBeforeBootstrap.clear() }
+            }
+            deferredIntents.forEach { deferredIntent ->
+                handleNativeIntent(deferredIntent)
+                handleNativeSettingsFileIntent(deferredIntent)
+            }
+            if (!recoveryRequired) {
+                val hadPendingLifecycleAction = !nativeRequestState.pendingLifecycleAction.isNullOrBlank()
+                if (activityResumed) {
+                    if (broadStoragePermissionPending) {
+                        handleBroadSettingsReturn(pendingBroadRequestId, "bootstrap_validated")
+                    } else {
+                        consumeAndDispatchPendingLifecycleAction()
+                    }
+                }
+                if (!hadPendingLifecycleAction && activityResumed && !broadStoragePermissionPending) {
+                    dispatchStartupDiscoveryAfterBootstrap()
+                }
+                if (!hadPendingLifecycleAction) maybeLaunchAutomaticSafPicker()
             }
         }
         // The existing SystemUiController remains the single Android system-bar
         // authority while the Compose shell and legacy Flet surfaces coexist.
         systemUiController.applyApplicationPolicy(useContextAppearance = false)
-        // Permission-sensitive actions are queued until the Activity is resumed.
-        handleNativeIntent(intent)
-        handleNativeSettingsFileIntent(intent)
+        // The initial intent is processed once, after the bootstrap selects the safe route.
     }
 
     public override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         logLifecycle("onNewIntent", intent)
+        if (!nativeBootstrapDecisionComplete || !::composeLibraryHost.isInitialized) {
+            synchronized(pendingNativeIntentsBeforeBootstrap) {
+                pendingNativeIntentsBeforeBootstrap.add(intent)
+            }
+            Log.i(tag, "NATIVE_INTENT_DEFERRED reason=bootstrap_decision_pending")
+            return
+        }
         handleNativeIntent(intent)
         handleNativeSettingsFileIntent(intent)
     }
@@ -1302,6 +1340,28 @@ class MainActivity : FlutterFragmentActivity() {
 
         if (!SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId)) {
             Log.w(tag, "SETTINGS_NATIVE_ACTION_REJECTED reason=invalid_request_id action=" + action)
+            return
+        }
+        // Only actions required to inspect or recover data remain available in
+        // Recovery Mode. In particular, normal restore/reconcile/import paths are
+        // unavailable while SQLite health is unresolved.
+        val recoveryAllowedActions = setOf(
+            "backup_integrity",
+            "backup_recovery_restore",
+            "backup_recovery_snapshot",
+            "diagnostic_export",
+        )
+        if (
+            appDependencies.bootstrap.state.value.recoveryRequired &&
+            action !in recoveryAllowedActions
+        ) {
+            Log.w(tag, "SETTINGS_NATIVE_ACTION_BLOCKED_RECOVERY_REQUIRED action=" + action)
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(
+                    requestId, action!!, "ERROR", "ERROR",
+                    error = "A base canônica exige Recovery Mode. A operação foi bloqueada para preservar os dados; use a restauração de recuperação.",
+                )
+            }
             return
         }
         if (pendingSettingsFileAction != null || settingsFileProcessing) {
@@ -1671,11 +1731,37 @@ class MainActivity : FlutterFragmentActivity() {
                         backupService.restoreBackup(inputCopy)
                     }
                 }
-                settingsViewModel.refresh()
-                libraryViewModel.refresh()
                 if (action == "backup_recovery_restore") {
-                    // Leave Recovery Mode only after integrity and runtime-schema validation.
+                    // The backup service validates/promotes the candidate and preserves its
+                    // rollback snapshot. The process-owned bootstrap must independently accept
+                    // the canonical database before any normal ViewModel projection is refreshed.
+                    val recoveryRequired = appDependencies.bootstrap.validateCanonicalDatabase()
+                    if (recoveryRequired) {
+                        composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+                        throw IllegalStateException(
+                            "A base restaurada não passou pela revalidação do bootstrap.",
+                        )
+                    }
+                    settingsViewModel.refresh()
+                    val catalogRefreshed = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+                    if (!catalogRefreshed) {
+                        composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+                        throw IllegalStateException(
+                            "O catálogo restaurado não pôde ser carregado após a validação.",
+                        )
+                    }
+                    // Recovery Mode exits only after both the canonical SQLite check and
+                    // the local catalog projection have completed successfully.
                     composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+                    refreshNativeStorageOnboardingState("recovery_restore_complete")
+                    if (activityResumed && bootstrapAllowsNativeOperations()) {
+                        consumeAndDispatchPendingLifecycleAction()
+                    }
+                } else {
+                    // Preserve the normal backup-restore contract; it is not the exceptional
+                    // startup-recovery path and continues using the established refresh flow.
+                    settingsViewModel.refresh()
+                    libraryViewModel.refresh()
                 }
                 runCatching {
                     NativeMailbox.write(
@@ -1715,12 +1801,26 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 throw cancelled
             } catch (error: Exception) {
-                Log.e(tag, "NATIVE_BACKUP_RESTORE_FAILED requestId=" + requestId, error)
+                if (action == "backup_recovery_restore" && ::composeLibraryHost.isInitialized) {
+                    // Never leave the recovery route because of an exception after promotion.
+                    runCatching {
+                        composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+                    }
+                }
+                Log.e(
+                    tag,
+                    "NATIVE_BACKUP_RESTORE_FAILED requestId=" + requestId +
+                        " category=" + error::class.java.simpleName,
+                )
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "ERROR", "ERROR",
-                        error = error.message?.takeIf { it.isNotBlank() }
-                            ?: "Não foi possível restaurar o backup.",
+                        error = if (action == "backup_recovery_restore") {
+                            "A recuperação foi interrompida porque a base restaurada não passou por todas as validações. O modo de recuperação foi mantido."
+                        } else {
+                            error.message?.takeIf { it.isNotBlank() }
+                                ?: "Não foi possível restaurar o backup."
+                        },
                     )
                 }
             } finally {
@@ -1962,138 +2062,14 @@ class MainActivity : FlutterFragmentActivity() {
         // publish an intermediate "denied" snapshot first: Python could treat
         // that snapshot as the final result and close the onboarding while the
         // real Android permission/settings UI is only about to open.
-        val pending = nativeRequestState.consumeLifecycleAction()
-        val pendingRequestId = nativeRequestState.consumedLifecycleRequestId()
-        if (pending != null) {
-            // Restore only the correlation id owned by the queued lifecycle action.
-            // Keeping one request id in unrelated permission fields can make a later
-            // Settings/SAF callback look like it belongs to the wrong operation.
-            when (pending) {
-                "select_tree" -> {
-                    pendingSafRequestId = pendingRequestId
-                    if (window?.decorView?.hasWindowFocus() == true) {
-                        openTreePicker(pendingRequestId)
-                    } else {
-                        Log.i(tag, "SAF_PICKER_WAITING_FOR_FOCUS requestId=" + (pendingRequestId ?: "-"))
-                        nativeRequestState.queueLifecycleAction("select_tree", pendingRequestId)
-                    }
-                }
-                "request_media_access" -> {
-                    pendingMediaRequestId = pendingRequestId
-                    requestMediaAccess()
-                }
-                "open_broad_storage_settings" -> {
-                    pendingBroadRequestId = pendingRequestId
-                    openBroadStorageSettings()
-                }
-                "scan_library" -> {
-                    nativeRequestState.markOperationState(
-                        pendingRequestId,
-                        "scan_library",
-                        NativeRequestState.OperationState.RUNNING,
-                    )
-                    publishNativeDiagnostic(
-                        "OPERATION_STARTED",
-                        pendingRequestId,
-                        "scan_library",
-                        NativeRequestState.OperationState.RUNNING.name,
-                    )
-                    scanConfiguredSafRoots(
-                        pendingRequestId,
-                        "USER_REFRESH",
-                        "compose_library_refresh",
-                        includeAuthorizedDiagnostics = true,
-                    )
-                }
-                "play" -> {
-                    val uri = pendingPlayUri
-                    if (!uri.isNullOrBlank()) {
-                        val pendingRequestId = pendingPlayRequestId
-                        nativeRequestState.markOperationState(
-                            pendingRequestId,
-                            "play",
-                            NativeRequestState.OperationState.RUNNING,
-                        )
-                        publishNativeDiagnostic(
-                            "OPERATION_STARTED",
-                            pendingRequestId,
-                            "play",
-                            NativeRequestState.OperationState.RUNNING.name,
-                        )
+        if (bootstrapAllowsNativeOperations()) {
+            val hadPendingLifecycleAction = !nativeRequestState.pendingLifecycleAction.isNullOrBlank()
+            consumeAndDispatchPendingLifecycleAction()
+            if (hadPendingLifecycleAction) return
+        }
 
-                        // Reuse the exact command that arrived from Python whenever possible.
-                        // This preserves playerSessionId, origin request/generation fencing,
-                        // monotonic correlation and all player settings across onResume.
-                        val preservedPlayData = pendingPlayIntentData
-                            ?.trim()
-                            ?.takeIf { it.isNotEmpty() }
-                            ?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() }
-                        val restoredPlayerSessionId = pendingPlayIntentData
-                            ?.let { raw -> runCatching { Uri.parse(raw).getQueryParameter("player_session_id") }.getOrNull() }
-                            ?.trim()
-                            ?.takeIf { it.isNotEmpty() }
-                            ?: activePlayerSessionId
-                        if (restoredPlayerSessionId.isNullOrBlank()) {
-                            nativeRequestState.markOperationState(
-                                pendingRequestId,
-                                "play",
-                                NativeRequestState.OperationState.FAILED,
-                            )
-                            publishNativeDiagnostic(
-                                "PLAYER_HANDOFF_REJECTED",
-                                pendingRequestId,
-                                "play",
-                                NativeRequestState.OperationState.FAILED.name,
-                                result = "PLAYER_SESSION_INVALID",
-                            )
-                            clearPendingPlay()
-                            return
-                        }
-                        if (preservedPlayData == null && pendingPlayPositionInvalid) {
-                            publishNativeCommandError(
-                                pendingRequestId,
-                                "play",
-                                "request_validation",
-                                "INVALID_POSITION_MS",
-                                "A posição inicial enviada para o player não é válida.",
-                            )
-                            clearPendingPlay()
-                            return
-                        }
-                        val playData = preservedPlayData ?: Uri.parse("reiflix://native").buildUpon()
-                            .appendQueryParameter("action", "play")
-                            .appendQueryParameter("request_id", pendingRequestId.orEmpty())
-                            .appendQueryParameter("uri", uri)
-                            .appendQueryParameter("episode_id", pendingPlayEpisodeId.orEmpty())
-                            .appendQueryParameter("anime_id", pendingPlayAnimeId.orEmpty())
-                            .appendQueryParameter("title", pendingPlayTitle ?: "Episódio")
-                            .apply {
-                                if (pendingPlayPositionSpecified) {
-                                    appendQueryParameter("position_ms", pendingPlayPositionMs.toString())
-                                }
-                            }
-                            .appendQueryParameter("can_next", pendingPlayCanNext.toString())
-                            .appendQueryParameter("can_previous", pendingPlayCanPrevious.toString())
-                            .appendQueryParameter("autoplay", pendingPlayAutoplay.toString())
-                            .appendQueryParameter("created_at", pendingPlayCommandCreatedAtMs.toString())
-                            .appendQueryParameter("player_session_id", restoredPlayerSessionId)
-                            .build()
-                        clearPendingPlay()
-                        if (openPlayer(playData, commandReceivedAtMs = System.currentTimeMillis())) {
-                            publishNativeDiagnostic(
-                                "COMMAND_DISPATCHED",
-                                pendingRequestId,
-                                "play",
-                                nativeRequestState.operationState(pendingRequestId)?.name,
-                                result = if (preservedPlayData != null) "dispatched_preserved_request" else "dispatched_legacy_restore",
-                            )
-                        }
-                    } else {
-                        clearPendingPlay()
-                    }
-                }
-            }
-            // Established host contract: "request_media_access" -> requestMediaAccess()
+        if (!bootstrapAllowsNativeOperations()) {
+            Log.i(tag, "NATIVE_LIFECYCLE_WORK_DEFERRED reason=bootstrap_not_ready_or_recovery")
             return
         }
 
@@ -2126,10 +2102,8 @@ class MainActivity : FlutterFragmentActivity() {
 
         publishStorageStatus()
 
-        // Activity resume is a lifecycle signal, not a scan command. Startup
-        // discovery and permission-triggered reconciliation require a persisted SAF
-        // tree. Explicit SAF selection publishes its own PERMISSION_CHANGE after the
-        // grant has been persisted and validated.
+        // Only an already-configured, persisted SAF root authorizes startup discovery.
+        // With no root, preserve the first-run onboarding and do not enumerate storage.
         if (shouldDiscover && hasPersistedSafTree) {
             publishScanRequest(
                 "STARTUP",
@@ -2162,6 +2136,192 @@ class MainActivity : FlutterFragmentActivity() {
                 reason = "permission_available_after_resume",
             )
         }
+    }
+
+    /**
+     * onResume may execute before the asynchronous process bootstrap validates SQLite.
+     * Make the one-time startup discovery decision after bootstrap too, otherwise an
+     * already-authorized SAF library could miss its first scan until another resume.
+     */
+    private fun dispatchStartupDiscoveryAfterBootstrap() {
+        if (
+            !activityResumed ||
+            startupDiscoveryTriggered ||
+            !bootstrapAllowsNativeOperations()
+        ) return
+
+        val hasPersistedSafTree = hasPersistedSafTreeGrant()
+        startupDiscoveryTriggered = true
+        lastObservedMediaAccess = MediaStoreScanner.accessLevel(this)
+        lastObservedBroadAccess = BroadStorageScanner.hasAccess(this)
+        publishStorageStatus()
+
+        if (hasPersistedSafTree) {
+            publishScanRequest(
+                "STARTUP",
+                source = null,
+                full = false,
+                reason = "first_activity_resume",
+            )
+        } else {
+            Log.i(tag, "STARTUP_SCAN_SKIPPED reason=no_persisted_saf_tree")
+            publishNativeDiagnostic(
+                "STARTUP_SCAN_SKIPPED",
+                null,
+                action = "scan",
+                state = "SKIPPED",
+                result = "no_persisted_saf_tree",
+            )
+        }
+    }
+
+    private fun bootstrapAllowsNativeOperations(): Boolean {
+        val state = appDependencies.bootstrap.state.value
+        return nativeBootstrapDecisionComplete &&
+            !state.recoveryRequired &&
+            state.stage == ReiAnixBootstrapStage.READY &&
+            state.persistenceStatus in setOf(
+                ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+            )
+    }
+
+    /** Process persisted lifecycle work only after the canonical DB decision is healthy. */
+    private fun consumeAndDispatchPendingLifecycleAction() {
+                val pending = nativeRequestState.consumeLifecycleAction()
+                if (pending != null) {
+                    val pendingRequestId = nativeRequestState.consumedLifecycleRequestId()
+                    // Restore only the correlation id owned by the queued lifecycle action.
+                    // Keeping one request id in unrelated permission fields can make a later
+                    // Settings/SAF callback look like it belongs to the wrong operation.
+                    when (pending) {
+                        "select_tree" -> {
+                            pendingSafRequestId = pendingRequestId
+                            if (window?.decorView?.hasWindowFocus() == true) {
+                                openTreePicker(pendingRequestId)
+                            } else {
+                                Log.i(tag, "SAF_PICKER_WAITING_FOR_FOCUS requestId=" + (pendingRequestId ?: "-"))
+                                nativeRequestState.queueLifecycleAction("select_tree", pendingRequestId)
+                            }
+                        }
+                        "request_media_access" -> {
+                            pendingMediaRequestId = pendingRequestId
+                            requestMediaAccess()
+                        }
+                        "open_broad_storage_settings" -> {
+                            pendingBroadRequestId = pendingRequestId
+                            openBroadStorageSettings()
+                        }
+                        "scan_library" -> {
+                            nativeRequestState.markOperationState(
+                                pendingRequestId,
+                                "scan_library",
+                                NativeRequestState.OperationState.RUNNING,
+                            )
+                            publishNativeDiagnostic(
+                                "OPERATION_STARTED",
+                                pendingRequestId,
+                                "scan_library",
+                                NativeRequestState.OperationState.RUNNING.name,
+                            )
+                            scanConfiguredSafRoots(
+                                pendingRequestId,
+                                "USER_REFRESH",
+                                "compose_library_refresh",
+                                includeAuthorizedDiagnostics = true,
+                            )
+                        }
+                        "play" -> {
+                            val uri = pendingPlayUri
+                            if (!uri.isNullOrBlank()) {
+                                val pendingRequestId = pendingPlayRequestId
+                                nativeRequestState.markOperationState(
+                                    pendingRequestId,
+                                    "play",
+                                    NativeRequestState.OperationState.RUNNING,
+                                )
+                                publishNativeDiagnostic(
+                                    "OPERATION_STARTED",
+                                    pendingRequestId,
+                                    "play",
+                                    NativeRequestState.OperationState.RUNNING.name,
+                                )
+        
+                                // Reuse the exact command that arrived from Python whenever possible.
+                                // This preserves playerSessionId, origin request/generation fencing,
+                                // monotonic correlation and all player settings across onResume.
+                                val preservedPlayData = pendingPlayIntentData
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() }
+                                val restoredPlayerSessionId = pendingPlayIntentData
+                                    ?.let { raw -> runCatching { Uri.parse(raw).getQueryParameter("player_session_id") }.getOrNull() }
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?: activePlayerSessionId
+                                if (restoredPlayerSessionId.isNullOrBlank()) {
+                                    nativeRequestState.markOperationState(
+                                        pendingRequestId,
+                                        "play",
+                                        NativeRequestState.OperationState.FAILED,
+                                    )
+                                    publishNativeDiagnostic(
+                                        "PLAYER_HANDOFF_REJECTED",
+                                        pendingRequestId,
+                                        "play",
+                                        NativeRequestState.OperationState.FAILED.name,
+                                        result = "PLAYER_SESSION_INVALID",
+                                    )
+                                    clearPendingPlay()
+                                    return
+                                }
+                                if (preservedPlayData == null && pendingPlayPositionInvalid) {
+                                    publishNativeCommandError(
+                                        pendingRequestId,
+                                        "play",
+                                        "request_validation",
+                                        "INVALID_POSITION_MS",
+                                        "A posição inicial enviada para o player não é válida.",
+                                    )
+                                    clearPendingPlay()
+                                    return
+                                }
+                                val playData = preservedPlayData ?: Uri.parse("reiflix://native").buildUpon()
+                                    .appendQueryParameter("action", "play")
+                                    .appendQueryParameter("request_id", pendingRequestId.orEmpty())
+                                    .appendQueryParameter("uri", uri)
+                                    .appendQueryParameter("episode_id", pendingPlayEpisodeId.orEmpty())
+                                    .appendQueryParameter("anime_id", pendingPlayAnimeId.orEmpty())
+                                    .appendQueryParameter("title", pendingPlayTitle ?: "Episódio")
+                                    .apply {
+                                        if (pendingPlayPositionSpecified) {
+                                            appendQueryParameter("position_ms", pendingPlayPositionMs.toString())
+                                        }
+                                    }
+                                    .appendQueryParameter("can_next", pendingPlayCanNext.toString())
+                                    .appendQueryParameter("can_previous", pendingPlayCanPrevious.toString())
+                                    .appendQueryParameter("autoplay", pendingPlayAutoplay.toString())
+                                    .appendQueryParameter("created_at", pendingPlayCommandCreatedAtMs.toString())
+                                    .appendQueryParameter("player_session_id", restoredPlayerSessionId)
+                                    .build()
+                                clearPendingPlay()
+                                if (openPlayer(playData, commandReceivedAtMs = System.currentTimeMillis())) {
+                                    publishNativeDiagnostic(
+                                        "COMMAND_DISPATCHED",
+                                        pendingRequestId,
+                                        "play",
+                                        nativeRequestState.operationState(pendingRequestId)?.name,
+                                        result = if (preservedPlayData != null) "dispatched_preserved_request" else "dispatched_legacy_restore",
+                                    )
+                                }
+                            } else {
+                                clearPendingPlay()
+                            }
+                        }
+                    }
+                    // Established host contract: "request_media_access" -> requestMediaAccess()
+                    return
+                }
     }
 
     override fun onPause() {
@@ -2233,6 +2393,7 @@ class MainActivity : FlutterFragmentActivity() {
         outState.putStringArrayList("reiflix.settingsStorageIds", ArrayList(composeSettingsStorageActions.keys))
         outState.putStringArrayList("reiflix.settingsStorageActions", ArrayList(composeSettingsStorageActions.values))
         outState.putBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED, startupDiscoveryTriggered)
+        outState.putBoolean(STATE_AUTO_SAF_PICKER_ATTEMPTED, automaticSafPickerAttempted)
         outState.putString(STATE_LAST_OBSERVED_MEDIA_ACCESS, lastObservedMediaAccess)
         lastObservedBroadAccess?.let { outState.putBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS, it) }
         outState.putString(STATE_SEEN_NATIVE_REQUEST_IDS, nativeRequestState.seenRequestIdsState())
@@ -2538,6 +2699,37 @@ class MainActivity : FlutterFragmentActivity() {
             commandCreatedAt = commandCreatedAt,
             parameterNames = parameterNames)
 
+        if (
+            appDependencies.bootstrap.state.value.recoveryRequired &&
+            action in setOf("open_library", "open_organize", "open_storage_settings", "open_settings")
+        ) {
+            composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
+            nativeRequestState.markOperationState(
+                requestId, action, NativeRequestState.OperationState.COMPLETED,
+            )
+            publishNativeDiagnostic(
+                "OPERATION_ROUTED_TO_RECOVERY",
+                requestId,
+                action,
+                NativeRequestState.OperationState.COMPLETED.name,
+                result = "canonical_database_recovery_required",
+            )
+            return
+        }
+        // Navigation requests are redirected to Recovery Mode above. Every other
+        // native operation is rejected while the canonical database is unhealthy;
+        // this also blocks scans, playback, storage mutations, and account actions
+        // that could otherwise bypass the Recovery route.
+        if (appDependencies.bootstrap.state.value.recoveryRequired) {
+            publishNativeCommandError(
+                requestId,
+                action,
+                "recovery_gate",
+                "CANONICAL_DATABASE_RECOVERY_REQUIRED",
+                "A base canônica exige recuperação. Restaure um backup válido antes de executar esta operação.",
+            )
+            return
+        }
         try {
             when (action) {
                 "open_library" -> {
@@ -3358,11 +3550,57 @@ class MainActivity : FlutterFragmentActivity() {
      */
     fun dismissNativeStorageOnboarding() {
         storageOnboardingRefreshJob?.cancel()
+        val current = _nativeStorageOnboardingState.value
+        if (
+            current.phase == NativeStorageOnboardingState.PHASE_NEEDS_FOLDER ||
+            (current.phase != NativeStorageOnboardingState.PHASE_READY && !hasPersistedSafTreeGrant())
+        ) {
+            getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
+                .apply()
+            _nativeStorageOnboardingState.value = current.copy(
+                dismissed = false,
+                phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
+                message = "A biblioteca ainda não tem uma pasta SAF configurada. Escolha uma pasta para continuar.",
+            )
+            maybeLaunchAutomaticSafPicker()
+            return
+        }
         getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
             .edit()
             .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, true)
             .apply()
-        _nativeStorageOnboardingState.value = _nativeStorageOnboardingState.value.copy(dismissed = true)
+        _nativeStorageOnboardingState.value = current.copy(dismissed = true)
+    }
+
+    /** Launches the existing SAF picker once after bootstrap and lifecycle validation. */
+    private fun maybeLaunchAutomaticSafPicker() {
+        if (
+            !nativeBootstrapDecisionComplete ||
+            !activityResumed ||
+            window?.decorView?.hasWindowFocus() != true ||
+            isFinishing ||
+            isDestroyed ||
+            automaticSafPickerAttempted ||
+            safPickerPending ||
+            pendingMediaRequestId != null ||
+            broadStoragePermissionPending ||
+            externalSettingsKind != null ||
+            nativeRequestState.pendingLifecycleAction == "select_tree" ||
+            appDependencies.bootstrap.state.value.recoveryRequired ||
+            appDependencies.bootstrap.state.value.stage != ReiAnixBootstrapStage.READY ||
+            _nativeStorageOnboardingState.value.phase != NativeStorageOnboardingState.PHASE_NEEDS_FOLDER
+        ) return
+
+        // Set the idempotence guard before dispatching into the existing command/picker flow.
+        automaticSafPickerAttempted = true
+        getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
+            .apply()
+        Log.i(tag, "SAF_PICKER_AUTO_REQUESTED origin=first_run_no_configured_root")
+        requestNativeStorageAction("select_tree")
     }
 
     /**
@@ -3371,6 +3609,19 @@ class MainActivity : FlutterFragmentActivity() {
      * No filesystem path or Python projection is used to establish this state.
      */
     private fun refreshNativeStorageOnboardingState(origin: String) {
+        val bootstrap = appDependencies.bootstrap.state.value
+        if (
+            !nativeBootstrapDecisionComplete ||
+            bootstrap.recoveryRequired ||
+            bootstrap.stage != ReiAnixBootstrapStage.READY ||
+            bootstrap.persistenceStatus !in setOf(
+                ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+            )
+        ) {
+            Log.i(tag, "NATIVE_STORAGE_ONBOARDING_REFRESH_DEFERRED origin=" + origin + " reason=bootstrap_not_ready")
+            return
+        }
         // The ActivityResult callback owns the outcome while DocumentsUI is open.
         // A lifecycle refresh must not overwrite its in-flight state.
         if (
@@ -3398,7 +3649,7 @@ class MainActivity : FlutterFragmentActivity() {
                         NativeStorageOnboardingState(
                             phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
                             message = "Selecione uma pasta para criar sua biblioteca. A permissão de mídia ou o acesso amplo não substitui uma pasta SAF configurada.",
-                            dismissed = wasDismissed,
+                            dismissed = false,
                         )
                     } else {
                         var revoked = false
@@ -3465,11 +3716,19 @@ class MainActivity : FlutterFragmentActivity() {
                 safPickerPending ||
                 _nativeStorageOnboardingState.value.phase == NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN
             ) return@launch
-            if (result.phase == NativeStorageOnboardingState.PHASE_READY) {
-                prefs.edit().putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false).apply()
+            if (result.phase == NativeStorageOnboardingState.PHASE_READY ||
+                result.phase == NativeStorageOnboardingState.PHASE_NEEDS_FOLDER
+            ) {
+                prefs.edit().putBoolean(
+                    NATIVE_STORAGE_ONBOARDING_DISMISSED,
+                    result.phase != NativeStorageOnboardingState.PHASE_NEEDS_FOLDER && result.dismissed,
+                ).apply()
             }
             _nativeStorageOnboardingState.value = result
             Log.i(tag, "NATIVE_STORAGE_ONBOARDING_REVALIDATED origin=" + origin + " phase=" + result.phase)
+            if (result.phase == NativeStorageOnboardingState.PHASE_NEEDS_FOLDER) {
+                maybeLaunchAutomaticSafPicker()
+            }
         }
     }
 
@@ -4737,6 +4996,7 @@ class MainActivity : FlutterFragmentActivity() {
                     openTreePicker(queued.requestId)
                 }
             }
+            maybeLaunchAutomaticSafPicker()
         } else if (safPickerPending) {
             safPickerFocusLost = true
             safPickerFocusRegainedAtMs = 0L

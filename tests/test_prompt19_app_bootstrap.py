@@ -23,6 +23,18 @@ def test_application_owns_and_starts_one_process_bootstrap():
     assert "CoroutineScope(SupervisorJob() + Dispatchers.IO)" in bootstrap
     assert "private var startupJob: Job? = null" in bootstrap
     assert "if (startupJob != null) return" in bootstrap
+    initialize = bootstrap[
+        bootstrap.index("private suspend fun initializeProcessServices()"):
+        bootstrap.index("private fun publishDatabaseCheck")
+    ]
+    assert "inspectCanonicalDatabase()" in initialize
+    assert initialize.index("inspectCanonicalDatabase()") < initialize.index("if (check.recoveryRequired)")
+    assert initialize.index("if (check.recoveryRequired)") < initialize.index("ensureNativeServicesStarted()")
+    services = bootstrap[bootstrap.index("private suspend fun ensureNativeServicesStarted()"):
+                         bootstrap.index("private fun inspectCanonicalDatabase()")]
+    assert services.index("validated.recoveryRequired") < services.index("NativeScanRunner.recoverInterruptedSafScans(appContext)")
+    assert services.index("NativeScanRunner.recoverInterruptedSafScans(appContext)") < services.index("NativeCommandDispatcher.start(appContext)")
+    assert "NativeIndex.pendingSafRecovery(appContext).length() > 0" in bootstrap
     assert "NativeScanRunner.recoverInterruptedSafScans(appContext)" in bootstrap
     assert "NativeCommandDispatcher.start(appContext)" in bootstrap
     assert bootstrap.index("NativeScanRunner.recoverInterruptedSafScans(appContext)") < bootstrap.index(
@@ -54,7 +66,7 @@ def test_bootstrap_preserves_canonical_sqlite_and_recovery_contract():
     assert "dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract" in bootstrap
     assert "ReiAnixBackupService(appContext).integrityReport().healthy" in bootstrap
     assert "ReiAnixBootstrapPersistenceStatus.NOT_CREATED" in bootstrap
-    assert "interruptedPromotion || priorRecoverySnapshots" in bootstrap
+    assert "interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
     assert 'File(dataDirectory, "backups")' in bootstrap
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "Thread.sleep" not in bootstrap
@@ -91,3 +103,92 @@ def test_legacy_runtime_is_preserved_and_documented_as_a_migration_boundary():
     for token in ("Grupo A", "Grupo B", "Grupo C", "FlutterFragmentActivity", "NOT_CREATED", "não"):
         assert token.lower() in doc.lower()
     assert "Não foi removida delegação global Python" in doc
+
+
+def test_compose_consumers_and_remote_side_effects_wait_for_a_validated_bootstrap():
+    view_model = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+    )
+    host = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    )
+    activity = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+    )
+    assert "dependencies.bootstrap.state.first" in view_model
+    assert "startCanonicalConsumersAfterDatabaseValidation()" in view_model
+    init = view_model[view_model.index("init {"):view_model.index("private suspend fun refreshNativeCatalog()")]
+    assert "requestPendingArtwork()" not in init
+    assert "requestPendingArtwork()" not in view_model
+    assert "requestPendingArtwork()" in host
+    assert "reconcileUnmatchedLibraryMetadata()" in host
+    assert "LaunchedEffect(libraryViewModel)" in host
+    assert ".drop(1)" in host
+    assert '.filter { scanning -> !scanning }' in host
+    assert "composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)" in activity
+    assert "composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)" in activity
+    assert activity.index("appDependencies.bootstrap.validateCanonicalDatabase()") < activity.index(
+        "composeLibraryHost = ReiAnixComposeLibraryHost("
+    )
+
+def test_initial_and_persisted_native_intents_wait_for_bootstrap_decision():
+    activity = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+    )
+    on_create_start = activity.index("override fun onCreate(savedInstanceState: Bundle?)")
+    on_create_end = activity.index("public override fun onNewIntent(intent: Intent)", on_create_start)
+    on_create = activity[on_create_start:on_create_end]
+    assert "handleNativeIntent(launchIntent)" in on_create
+    assert on_create.index("appDependencies.bootstrap.validateCanonicalDatabase()") < on_create.index(
+        "handleNativeIntent(launchIntent)"
+    )
+    assert "handleNativeIntent(intent)" not in on_create
+    assert "private fun bootstrapAllowsNativeOperations()" in activity
+    resume_start = activity.index("override fun onResume()")
+    resume_end = activity.index("override fun onPause()", resume_start)
+    on_resume = activity[resume_start:resume_end]
+    assert "if (bootstrapAllowsNativeOperations())" in on_resume
+    assert "if (!bootstrapAllowsNativeOperations())" in on_resume
+    assert "consumeAndDispatchPendingLifecycleAction()" in on_resume
+    assert "NATIVE_LIFECYCLE_WORK_DEFERRED" in on_resume
+
+
+
+def test_recovery_mode_rejects_non_navigation_native_commands_and_normal_settings_mutations():
+    activity = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+    )
+    native_start = activity.index("private fun handleNativeIntent(intent: Intent?)")
+    native_end = activity.index("\n    private fun ", native_start + 25)
+    native_handler = activity[native_start:native_end]
+    routed = native_handler.index("OPERATION_ROUTED_TO_RECOVERY")
+    native_gate = native_handler.index(
+        'if (appDependencies.bootstrap.state.value.recoveryRequired) {',
+        routed,
+    )
+    native_when = native_handler.index("try {\n            when (action)", native_gate)
+    assert routed < native_gate < native_when
+    assert "CANONICAL_DATABASE_RECOVERY_REQUIRED" in native_handler[native_gate:native_when]
+    assert "publishNativeCommandError(" in native_handler[native_gate:native_when]
+
+    settings_start = activity.index("private fun handleNativeSettingsFileIntent")
+    settings_end = activity.index("\n    private fun ", settings_start + 25)
+    settings_handler = activity[settings_start:settings_end]
+    settings_gate = settings_handler.index("val recoveryAllowedActions = setOf(")
+    assert settings_handler.index("if (!SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId))") < settings_gate
+    assert settings_handler.index("action !in recoveryAllowedActions") > settings_gate
+    assert settings_handler.index("action !in recoveryAllowedActions") < settings_handler.index(
+        "pendingSettingsFileAction = action"
+    )
+    allowed_block = settings_handler[settings_gate:settings_handler.index(
+        "if (pendingSettingsFileAction != null || settingsFileProcessing)"
+    )]
+    for action in (
+        '"backup_integrity"',
+        '"backup_recovery_restore"',
+        '"backup_recovery_snapshot"',
+        '"diagnostic_export"',
+    ):
+        assert action in allowed_block
+    assert "SETTINGS_NATIVE_ACTION_BLOCKED_RECOVERY_REQUIRED" in allowed_block
+    assert 'error = "A base canônica exige Recovery Mode.' in allowed_block
