@@ -1100,7 +1100,12 @@ object NativeScanRunner {
             }
 
             val treeUri = runCatching { Uri.parse(reference) }.getOrNull()
-            val identity = treeUri?.let { runCatching { SafScanner.treeIdentity(it) }.getOrNull() }
+            if (treeUri == null) {
+                allExternalRootsReadable = false
+                Log.w(TAG, "MediaStore scope skipped because a configured SAF tree URI could not be parsed.")
+                continue
+            }
+            val identity = runCatching { SafScanner.treeIdentity(treeUri) }.getOrNull()
             if (identity == null) {
                 allExternalRootsReadable = false
                 Log.w(TAG, "MediaStore scope skipped because a configured SAF tree could not be validated: " + reference)
