@@ -1,3 +1,7 @@
+import java.io.ByteArrayInputStream
+import java.util.Base64
+import java.util.zip.GZIPInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -84,4 +88,48 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+}
+
+
+// Native Gradle validation builds must not invoke Python to generate this runtime contract.
+// The checked-in archive is derived from the canonical LibraryStore schema v29. The official
+// legacy packaging path may supply its just-generated asset instead; in that case no duplicate
+// asset is added and this task is not part of the generated host build graph.
+val canonicalContractAsset = layout.projectDirectory
+    .file("src/main/assets/native-sqlite-contract-v29.json")
+    .asFile
+val compressedCanonicalContract = rootProject.file("build-logic/native-sqlite-contract-v29.json.gz.b64")
+val generatedContractAssets = layout.buildDirectory.dir("generated/native-sqlite-contract/assets")
+val generateNativeSqliteContractAsset by tasks.registering {
+    inputs.file(compressedCanonicalContract)
+    outputs.file(generatedContractAssets.map { it.file("native-sqlite-contract-v29.json") })
+
+    doLast {
+        check(compressedCanonicalContract.isFile) {
+            "Canonical SQLite schema v29 contract archive is missing: ${compressedCanonicalContract.absolutePath}"
+        }
+        val encodedArchive = compressedCanonicalContract.readText(Charsets.US_ASCII).trim()
+        val compressedBytes = Base64.getDecoder().decode(encodedArchive)
+        val outputFile = generatedContractAssets.get()
+            .file("native-sqlite-contract-v29.json")
+            .asFile
+        outputFile.parentFile.mkdirs()
+        GZIPInputStream(ByteArrayInputStream(compressedBytes)).use { input ->
+            outputFile.outputStream().buffered().use { output -> input.copyTo(output) }
+        }
+        check(outputFile.isFile && outputFile.length() > 0L) {
+            "Generated canonical SQLite schema v29 contract is empty."
+        }
+        check(Regex("\\\"schema_version\\\"\\s*:\\s*29(?:\\s*[,}])")
+            .containsMatchIn(outputFile.readText(Charsets.UTF_8))) {
+            "Embedded SQLite contract does not declare canonical schema v29."
+        }
+    }
+}
+
+if (!canonicalContractAsset.isFile) {
+    android.sourceSets.getByName("main").assets.srcDir(generatedContractAssets)
+    tasks.named("preBuild").configure {
+        dependsOn(generateNativeSqliteContractAsset)
+    }
 }
