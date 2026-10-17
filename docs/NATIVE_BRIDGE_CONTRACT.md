@@ -109,8 +109,7 @@ Eventos de domínio/integração mantidos sem renomear:
 - scanner/storage: `scan_request`, `saf_scan`, `broad_storage_scan`, `mediastore_scan`, seus progressos, permissões e erros;
 - player: `player_progress`, `player_paused`, `player_completed`, `player_mark_watched`, `player_mark_unwatched`, `player_autoplay_changed`, `player_exited`, `player_error`;
 - thumbnail: `thumbnail_ready`, `thumbnail_error`;
-- Compose navigation: `compose_navigation_changed`, `compose_library_navigation`, `compose_settings_navigation`;
-- Compose commands: `compose_library_command`, `compose_settings_set`;
+- Compose domain commands: `compose_library_command`, `compose_settings_set`. Route changes, Compose Back and settings-category navigation are owned by Navigation Compose and are not sent through the mailbox.
 - identidade: eventos `google_*` existentes.
 
 Eventos são mensagens transitórias. Estado persistente continua em StateFlow/ViewModel/repository conforme a arquitetura existente.

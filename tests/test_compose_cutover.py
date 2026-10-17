@@ -44,29 +44,29 @@ class ComposeCutoverTests(unittest.TestCase):
         ):
             self.assertIn(destination, source)
 
-    def test_compose_routes_project_back_to_the_existing_python_navigation(self):
+    def test_compose_navigation_is_native_without_python_route_mirroring(self):
         main = MAIN.read_text(encoding="utf-8")
         navigation = NAVIGATION.read_text(encoding="utf-8")
         host = COMPOSE_HOST.read_text(encoding="utf-8")
         nav_host = NAV_HOST.read_text(encoding="utf-8")
 
         self.assertIn("compose_primary_ui = bool(bridge.available)", main)
-        self.assertIn("event_type == 'compose_navigation_changed'", main)
-        self.assertIn("navigation.sync_top_level(destination)", main)
-        self.assertIn('navigation.sync_top_level("settings")', main)
-        self.assertIn('navigation.push("details")', main)
-        self.assertIn("Compose is the visible navigation owner", main)
         self.assertIn("if compose_primary_ui:", main)
-        self.assertIn('return\n        _drop_screen_cache', main)
+        self.assertNotIn("event_type == 'compose_navigation_changed'", main)
+        self.assertNotIn("event_type == 'compose_library_navigation'", main)
+        self.assertNotIn("event_type == 'compose_settings_navigation'", main)
+        self.assertNotIn("navigation.sync_top_level", main)
+        self.assertNotIn("def sync_top_level", navigation)
+        self.assertNotIn("compose_navigation_changed", host)
+        self.assertNotIn("compose_library_navigation", host)
+        self.assertNotIn("compose_settings_navigation", host)
+        self.assertNotIn("onRouteChanged", nav_host)
+        self.assertIn("NavHost(", nav_host)
+        self.assertIn("LaunchedEffect(startDestination, effectiveStartDestination)", nav_host)
 
-
-        self.assertIn('"my_list"', navigation)
-        self.assertIn('"search"', navigation)
-        self.assertIn("def sync_top_level", navigation)
-
-        self.assertIn("onRouteChanged = ::publishComposeRouteChanged", host)
-        self.assertIn('"compose_navigation_changed"', host)
-        self.assertIn("LaunchedEffect(composeRoute, animeId, episodeId, routeOrigin)", nav_host)
+        # Flet remains only as guarded fallback for non-Compose runtime paths.
+        self.assertIn("if compose_primary_ui:", main)
+        self.assertIn("HomeView.build(", main)
 
     def test_migrated_screens_do_not_build_parallel_flet_ui_on_android(self):
         source = MAIN.read_text(encoding="utf-8")

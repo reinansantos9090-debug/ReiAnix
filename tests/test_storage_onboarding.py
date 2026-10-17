@@ -210,7 +210,7 @@ class StorageOnboardingTests(unittest.TestCase):
 
         settings_worker = source[
             source.index("async def _run_compose_settings_action"):
-            source.index("async def _hydrate_compose_details_context")
+            source.index("async def _run_compose_library_command")
         ]
         self.assertIn(
             'if action == "select_saf":\n                # SAF completes asynchronously',

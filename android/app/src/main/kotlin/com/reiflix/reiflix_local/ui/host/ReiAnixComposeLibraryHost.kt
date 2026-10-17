@@ -155,6 +155,12 @@ class ReiAnixComposeLibraryHost(
                     }
 
                     val currentRoute by navController.currentBackStackEntryAsState()
+                    LaunchedEffect(currentRoute?.destination?.route) {
+                        val route = currentRoute?.destination?.route
+                        if (route != ReiAnixRoutes.HOME && route != ReiAnixRoutes.RECOVERY) {
+                            lastHomeBackAtElapsedRealtimeMs = 0L
+                        }
+                    }
                     val onboardingAllowed =
                         currentRoute?.destination?.route in setOf(
                             ReiAnixRoutes.HOME,

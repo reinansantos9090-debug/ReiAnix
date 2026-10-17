@@ -2424,22 +2424,26 @@ class MainActivity : FlutterFragmentActivity() {
                     // producing a second pop before the first event settles.
                     systemBackDispatchPosted = true
                     try {
-                        // Compose owns Back while the visible route is an internal
-                        // destination. At the true Home root, handleBack() returns
-                        // false and the canonical Flet navigation bridge below runs.
+                        // A visible Compose shell owns the complete native Back
+                        // decision, including Home-root exit confirmation. Never send
+                        // a Compose-owned Back event to Flet/Python.
                         if (::composeLibraryHost.isInitialized && composeLibraryHost.isVisible) {
                             if (composeLibraryHost.handleBack()) {
                                 Log.i(tag, "BACK_COMPOSE_SHELL_HANDLED id=" + backId)
-                                return
+                            } else {
+                                Log.w(tag, "BACK_COMPOSE_SHELL_UNHANDLED id=" + backId)
                             }
+                            return
                         }
 
+                        // Keep the old host route only for legacy Flet surfaces while
+                        // the Compose shell is hidden, not as a second navigation owner.
                         val engine = flutterEngine
                         if (engine == null) {
                             Log.w(tag, "SYSTEM_BACK ignored reason=flutter_engine_unavailable")
                             return
                         }
-                        Log.i(tag, "BACK_FLUTTER_POP_SENT id=" + backId)
+                        Log.i(tag, "BACK_FLUTTER_POP_SENT id=" + backId + " reason=compose_host_hidden_fallback")
                         engine.navigationChannel.popRoute()
                     } finally {
                         // Reset only after the current dispatcher turn has returned so

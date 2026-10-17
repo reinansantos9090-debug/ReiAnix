@@ -24,7 +24,7 @@ A preferência collector.active_title mantém a chave e os valores já usados. T
 
 ## Consumidores Python preservados
 
-O caminho Android Compose não chama a jornada Python. A projeção compose_navigation_changed inclui collector para manter a rota lógica do controlador Python alinhada, sem renderizar outra tela Flet. A delegação antiga via evento compose_library_navigation e seu handler que devolvia a ação do Compose para o Flet foram removidos: a Home nativa navega diretamente pelo Navigation Compose. O ramo Flet de CollectorView é guardado para ambientes de fallback onde o host Compose não está disponível.
+O caminho Android Compose não chama a jornada Python e agora mantém a navegação inteiramente em Navigation Compose, sem publicar eventos de mudança de rota nem espelhar Collector/Details em NavigationController. Os eventos legados compose_navigation_changed, compose_library_navigation e compose_settings_navigation foram retirados do fluxo de produção. O ramo Flet de CollectorView e o controlador Python permanecem guardados para ambientes de fallback onde o host Compose não está disponível.
 
 core/collector_journey.py, views/collector_view.py e os métodos antigos em core/library_service.py permanecem para o fallback Flet e os contratos de regressão desktop. Não são fonte de verdade para a tela nativa Android. A remoção definitiva desses módulos depende da retirada global do runtime Flet e da comprovação de que não há outros consumidores.
 
