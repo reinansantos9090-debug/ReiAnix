@@ -14,6 +14,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
 import com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
 import org.json.JSONArray
+import org.json.JSONException
 
 /**
  * Explicit adapters from the existing Python/SQLite catalog projection to the
@@ -315,26 +316,30 @@ object LibraryUiMappers {
                 if (raw.isEmpty()) {
                     emptyList()
                 } else {
-                    runCatching {
-                        JSONArray(raw).let { array ->
-                            (0 until array.length())
-                                .map { index ->
-                                    val item = array.opt(index)
-                                    val text = item as? String
-                                        ?: error("Invalid library field '$key[$index]': expected text.")
-                                    text.trim().also {
-                                        require(it.isNotEmpty()) {
-                                            "Invalid library field '$key[$index]': text must not be blank."
-                                        }
-                                    }
-                                }
-                        }
-                    }.getOrElse {
+                    val array = try {
+                        JSONArray(raw)
+                    } catch (_: JSONException) {
+                        null
+                    }
+                    if (array == null) {
+                        // Preserve the legacy single-string representation; valid JSON
+                        // arrays, however, must pass element validation without fallback.
                         listOf(raw)
+                    } else {
+                        (0 until array.length()).map { index ->
+                            val item = array.opt(index)
+                            val text = item as? String
+                                ?: error("Invalid library field '$key[$index]': expected text.")
+                            text.trim().also {
+                                require(it.isNotEmpty()) {
+                                    "Invalid library field '$key[$index]': text must not be blank."
+                                }
+                            }
+                        }
                     }
                 }
-            }
-            else -> emptyList()
+            null -> emptyList()
+            else -> error("Invalid library field '$key': expected a list or legacy string.")
         }
 
     private fun Map<String, Any?>.listOfMaps(key: String): List<Map<String, Any?>> {
