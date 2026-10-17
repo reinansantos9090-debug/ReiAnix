@@ -1,0 +1,63 @@
+# Prompt 28/29 — Runtime cutover status and dependency matrix
+
+Data da verificação: 17/10/2026 (UTC).
+Snapshot-base analisado: `main` em `e9e3fcc67bb778f0c7fe861f16dd1ff18d0c976d` (merge do PR #193).
+Status: **MIGRAÇÃO INCOMPLETA**. Este documento separa o que já é nativo, o que foi reduzido nesta alteração e os bloqueios que impedem a retirada segura do runtime híbrido.
+
+## Definições de aceitação
+
+- **Independência do runtime:** o APK instalado abre e executa as operações do produto sem interpretar Python, iniciar Flet/SeriousPython ou usar o embedding Flutter.
+- **Independência do build oficial:** o workflow que produz o APK completo de distribuição utiliza somente Gradle, Android SDK e JDK. O workflow de validação Gradle já separado não equivale a essa prova.
+- **Limpeza do código-fonte:** módulos Python de produção removidos apenas quando seus consumidores e efeitos colaterais foram substituídos; testes e ferramentas de desenvolvimento podem continuar em Python desde que separados do APK.
+- **Resultado nesta alteração:** foi removido o transporte dos arrays de documentos dos lotes de scan bem-sucedidos para a mailbox Python. Nenhum módulo de runtime ou ferramenta de empacotamento foi apagado; as outras categorias ainda não atingiram os critérios de aceitação.
+
+## Matriz de dependências verificada
+
+| Componente/arquivo | Responsabilidade atual | Runtime instalado | Participa do build oficial | Teste/ferramenta | Substituto Kotlin observado | Ação e risco de remoção |
+|---|---|---:|---:|---|---|---|
+| `android/app/src/main/AndroidManifest.xml` + `MainActivity.kt` | Launcher, lifecycle, intents, SAF/permissões e montagem do shell Compose | Sim | Integrado ao host gerado | Contratos Kotlin/Python | **Já nativo:** `MainActivity : ComponentActivity` | Não remover a Activity. Falta provar cold start completo sem host híbrido e preservar os intents/lifecycle. |
+| `ReiAnixApplication.kt` + `ReiAnixAppBootstrap.kt` | Grafo de serviços, validação SQLite e recuperação de scans interrompidos | Sim | Sim | Testes de contrato/bootstrap | **Parcialmente nativo:** grafo e bootstrap Kotlin | Não remover o runtime Python enquanto o banco ausente não puder ser inicializado nativamente e os consumidores legados não forem migrados. |
+| `main.py` | Ponto de entrada Python, Flet, LibraryStore/SettingsStore, bridges, handlers e poller | **Sim** | **Sim** | Suíte de regressão e ferramentas atuais | Serviços nativos parciais | **Bloqueador:** remover hoje quebra inicialização, contratos de comandos e operações ainda delegadas ao Python. |
+| `requirements.txt`, `pyproject.toml`, Flet CLI | Dependências Python e ferramenta de runtime/empacotamento | Via bundle da aplicação | **Sim** | Testes Python/manutenção | Não existe cutover completo para o build oficial | Preservar até o workflow oficial não executar Flet e o conjunto de testes/ferramentas ter dependências separadas. |
+| `.github/workflows/build_apk.yml` | APK completo, validações, bundle Python, APK/ZIP, checksum | N/A | **Sim: Python + Flet + Flutter** | Testes Python e validação do APK completo | Não substituído pelo workflow de validação | **Bloqueador:** trocar pelo APK Gradle de validação agora publicaria um produto que não certifica paridade funcional. |
+| `.github/workflows/native_gradle_apk.yml` | Compila `:app:assembleDebug`, inspeciona manifest/DEX e publica ZIP/checksum de validação | N/A | Build de validação isolado | CI Gradle | **Já independente do toolchain híbrido** | Não renomear/usar como release completo antes de a aplicação passar a executar sem Python. Manifesto declara `runtimeIndependenceCertified: false`. |
+| `ReiAnixSqliteDatabase.kt` | Abre/valida o SQLite canônico `filesDir/data/library.sqlite3` | Sim | Sim | Contratos Kotlin e fixture gerado | Leitura/escrita nativa sobre DB existente | **Bloqueador P0:** `openExisting()` recusa DB ausente; a criação/migração do schema 29 depende de `LibraryStore` Python na instalação nova. Não criar DB paralelo ou resetar dados. |
+| `core/library_store.py`, `core/library_service.py` | Schema/migrações v29, catálogo, escrita de domínio e compatibilidade | **Sim** | **Sim** | Muitos testes de regressão | Repositórios e serviços Kotlin cobrem partes | Migrar bootstrap/migrações e semântica das operações antes de remover. Risco: perda de dados, divergência de constraints e múltiplos escritores. |
+| `core/scan_coordinator.py`, `core/storage_access.py` | Coordenação lógica/estado de discovery e compatibilidade de storage | Sim | Empacotados | Testes de scanner/storage | `NativeScanController`, `NativeScanRunner`, scanners SAF/MediaStore/Broad Storage e `NativeIndex` | Coordenação Kotlin já é dominante, mas resultados/progresso e alguns callbacks continuam cruzando a mailbox. Remover o resto requer paridade de retry, cancelamento, scan parcial e recuperação. |
+| `NativeScanPublisher.kt` | Estágio durável dos lotes de arquivos encontrados | Sim | Sim | Contratos de scanner | **Nativo nesta alteração:** `NativeIndex.prepareBatch` + diagnóstico local | Arrays de lotes bem-sucedidos não são mais copiados para Python. A mailbox continua sendo usada para notificação compacta de erro; resultados/progresso terminais permanecem no contrato híbrido. |
+| `bridge/NativeMailbox.kt` e `core/android_bridge.py` | Fila de eventos/commands entre Android Kotlin e Python | **Sim** | Parte do APK completo | Testes de IPC/eventos | Consumidores nativos existem para diversas operações, mas não substituem todos | **Bloqueador P0:** permissão/storage, terminal/progresso, account, artwork e operações restantes ainda usam eventos. Não excluir antes do inventário de produtor–consumidor e reconciliação de resultados. |
+| `core/compose_library_bridge.py` e `data/library/ReiAnixLibraryRepository.kt` | Snapshot JSON de estado compatível, resultados de comandos e parte do fluxo de biblioteca | **Sim** | Empacotado | Testes de bridge/Compose | Consultas/paginação nativas via `ReiAnixSqliteLibraryRepository` e `ReiAnixLibraryQueryService` | Desligar somente após a UI deixar de depender do estado de storage/onboarding/comandos da projeção e todas as ações usarem Kotlin diretamente. |
+| `core/compose_settings_bridge.py` e `data/settings/ReiAnixSettingsRepository.kt` | Projeção de settings/conta e resultados legados | Sim | Empacotado | Testes Settings/bridge | Preferências leem/escrevem SQLite via Kotlin em diversos caminhos | Migração parcial. Ainda é preciso remover consumidores restantes sem perder account state, resultados, import/export e feedback de erro. |
+| `core/anilist.py`, `core/library_discovery.py` | Matching/fluxos de metadados, normalização/localização pt-BR e compatibilidade | Sim | Empacotados | Testes AniList/matching | `ReiAnixAniListClient`, `ReiAnixAniListIntegrationService`, matcher/localizer Kotlin | Não remover enquanto matching, cache, atualização parcial, status manual e falhas de rede não tiverem paridade validada. |
+| `core/artwork.py`, `core/artwork_palette.py`, Pillow e eventos de artwork | Produtor legado de capas, miniaturas, cache/paleta e notificação | Sim | Empacotados | Testes artwork/thumbnail | `ReiAnixArtworkService`, Coil e extração de thumbnails nativos parciais | Ainda há funções produtoras/eventos no Python. Risco: capas vazias, perda do cache local ou falha offline. Não apagar. |
+| `core/backup.py`, `core/recovery.py`, `core/diagnostic_service.py`, `core/diagnostics.py` | Backup/restauração, Recovery Mode e diagnóstico legado | Sim | Empacotados | Testes de backup/recovery/diagnóstico | Serviços Kotlin de backup/diagnóstico existentes | O formato, validação e recuperação sem perda devem ser compatíveis. Não remover até testes da base existente, falha/corrupção e restauração estarem cobertos no caminho nativo. |
+| `core/settings.py`, `core/google_account.py`, `bridge/GoogleIdentity.kt` | Preferências, estado de conta e autenticação | Parte Python ainda ativa | Empacotados | Testes de account/configuração | Credentials Manager e SQLite Kotlin | Ownership é misto; não remover o estado Python até fechar login/logout/cancelamento/erros e estado visual. |
+| `views/*.py`, `core/ui.py`, `core/navigation.py` | UI Flet e fallback/rotas legadas | A sessão Flet faz parte do runtime atual; consumidores de desenvolvimento permanecem | Empacotados | Testes de UI legada/Compose e fallback | UI principal Compose e Navigation Compose já existem | UI Compose principal não significa que Flet deixou de executar. Remover só depois de provar que o APK não cria uma sessão Flet e preservar ferramentas realmente mantidas. |
+| `scripts/generate_native_sqlite_test_fixture.py` e `scripts/release_certification.py` | Geração de contrato/fixture e certificação do repositório | Não deveriam integrar runtime | Usados na CI oficial atual | Testes Python e CI | Gradle decodifica o contrato compactado do build de validação; não substitui todas as funções de certificação | Separar geradores de build native-only das ferramentas de teste. Não apagar testes/scripts úteis por extensão de arquivo. |
+| `tests/*.py`, `requirements.txt` de teste | Regressões de comportamento, contratos, storage, player e bridge | Não no APK por finalidade; alguns pacotes são instalados no workflow oficial | Sim, no workflow oficial atual | Testes Python mantidos | Testes Kotlin também existem, Kotlin/JVM segue manual | Preservar. Separar job Python de build oficial depois do cutover. Não remover testes para reduzir a contagem de arquivos Python. |
+| `android/app/src/androidTest` | Testes instrumentados existentes | Não no runtime | Configuração existe no repositório | Infraestrutura existente/manual | N/A | Prompt 28 não acrescentou nem executou testes de emulador/instrumentados. Não confundir presença histórica com evidência de validação deste prompt. |
+
+## Auditoria dos caminhos de runtime
+
+| Caminho | Situação atual | Condição para remoção |
+|---|---|---|
+| Launcher → Activity → bootstrap → banco SQLite | Activity/bootstrap em Kotlin; DB ausente ainda é erro ao acessar os serviços nativos | Criar/validar schema v29 no Kotlin de forma não destrutiva e provar cold start sem Python |
+| Compose → projeção de biblioteca/settings → JSON/commands | Catálogo principal já lê SQLite nativamente; estado/ação compatível ainda cruza bridges | Migrar storage/onboarding e todos os comandos/eventos observados; nenhum snapshot JSON necessário pela UI ativa |
+| SAF/MediaStore/Broad Storage → NativeIndex → SQLite | Descoberta e indexação principais são nativas; o batch JSON deixou de atravessar a mailbox | Remover notificações de scan restantes somente quando os consumidores de erro/terminal/recovery e status forem nativos |
+| AniList → metadata → artwork/cache → UI | Serviços Kotlin já existem, mas o produtor e/ou as compatibilidades Python ainda participam | Verificar execução offline, falha remota, proteção de `local_path`, cache e publicação nativa |
+| Settings/account/backup/recovery/diagnostics | Implementações Kotlin parciais coexistem com handlers Python e eventos | Substituir cada contrato com equivalência e preservar dados/identificadores |
+| Gradle → APK nativo de validação | Funciona em workflow separado sem Python/Flet/Flutter | Só substituir a distribuição oficial quando todas as responsabilidades anteriores estiverem fechadas |
+
+## Critérios ainda não comprovados
+
+1. Runtime integralmente independente: **não comprovado**. O APK oficial inclui o runtime Python e a sessão Flet/Flutter continua no fluxo de distribuição.
+2. Build oficial independente: **não comprovado**. O workflow oficial usa Python, Flet e Flutter. Apenas o workflow de validação Gradle está isolado.
+3. SQLite v29 em instalação nova: **bloqueado** pela ausência do bootstrap nativo do schema.
+4. Remoção integral de código Python de produção: **não iniciada em massa** e não deve ocorrer antes da migração de consumidores.
+5. APK/ZIP de distribuição: o workflow oficial deve permanecer como está até que a paridade esteja comprovada; não usar o APK nativo de validação como substituto.
+6. Validação física no dispositivo: não afirmada neste documento. Nenhuma instalação/dispositivo real é alegado.
+7. Suíte Kotlin/JVM: permanece manual; não foi executada durante este trabalho. Não foram adicionados novos testes instrumentados/emulador.
+
+## Conclusão do snapshot
+
+Este trabalho reduz uma dependência redundante: o payload de documentos dos lotes nativos não passa mais pelo Python. Ele **não** remove o runtime híbrido e não satisfaz ainda os critérios totais do Prompt 28. A retirada definitiva de `main.py`, Flet/Flutter, bridges e dependências Python do build oficial continua condicionada aos bloqueios acima e à confirmação dos workflows para o SHA final de cada incremento.
