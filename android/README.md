@@ -23,11 +23,16 @@ implemented by Python:
 | Flet | `0.86.5` (`pyproject.toml`) |
 | Flutter required by installed Flet | `3.44.8` (`flet.version.flutter_version`) |
 | Android Gradle Plugin | `8.9.1` |
-| Kotlin | `2.0.21` |
+| Kotlin (Flet host atual) | `2.0.21` |
 | Java toolchain | 17 |
 | compile / target SDK | 36 / 36 |
 | minimum SDK | 24 |
 | Media3 | `1.11.1` for ExoPlayer and UI |
+
+The independent root Gradle validation project uses Kotlin/Compose Compiler 2.2.0 with
+AGP 8.9.1 and Gradle 8.11.1, following the current official compatibility matrices.
+This toolchain applies to `./gradlew :app:assembleDebug`; it does not silently
+replace the separate Flet host toolchain used by the full-feature distribution.
 
 The repository does **not** commit an APK. The workflow builds one and refuses
 to publish it unless DEX contains `MainActivity`, `NativeMailbox`,
@@ -37,16 +42,23 @@ releasing the stock Flet client, which would not understand `reiflix://native`.
 
 ## Required Flet host integration
 
-The supported APK build still merges `android/app` into Flet's generated Android
-project and uses its toolchain/dependency configuration; this packaging dependency
-is separate from the native `ComponentActivity` launcher. The root `android/`
-overlay is not the verified release-build entry point, so validate changes with
-the official APK workflow rather than assuming standalone Gradle settings are
-equivalent. Do not fabricate a filesystem path for a SAF URI.
+The repository root now includes an independent Gradle wrapper and maps its sole
+`:app` project to this existing `android/app` source directory. Use
+`./gradlew :app:assembleDebug` to compile and package these native Kotlin/Compose
+sources directly without setting up a Python or Flutter runtime. This direct APK
+is a **native build-validation artifact**, not yet a replacement for the full-feature
+distribution, because database creation on first launch and several mailbox,
+settings/library projection, and artwork operations still have Python consumers.
 
-`flet build apk --yes` is followed by `scripts/verify_android_host.py` in CI.
-If this check reports missing descriptors, the selected Flet template did not
-merge this overlay; the build must be fixed before an APK can be published.
+The official full-feature APK workflow continues to merge this same Android source
+directory into the generated host until those runtime contracts are migrated.
+Do not fabricate a filesystem path for a SAF URI.
+
+The full-feature distribution workflow still runs `flet build apk --yes` followed
+by `scripts/verify_android_host.py`. That gate is retained because the complete
+runtime currently includes Python operations; the separate native Gradle workflow
+has its own APK/ZIP/hash checks and does not silently substitute its validation APK
+for the full-feature distribution.
 
 ## Validação física e escalabilidade de bibliotecas
 
