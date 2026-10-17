@@ -41,6 +41,10 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
 
         self.assertIn("nativeLibraryRepository.loadLibraryCatalogRows()", view_model)
         self.assertIn("NativeScanController.progress", view_model)
+        self.assertIn("val nativeScans = scans.values", view_model)
+        self.assertIn("val activeNativeScan = nativeScans", view_model)
+        self.assertIn("val latestNativeScan = nativeScans", view_model)
+        self.assertNotIn("val safScans = scans.values.filter", view_model)
         self.assertIn("scanState = nativeScanState", view_model)
         self.assertIn("lastScanStatus = nativeLastScanStatus", view_model)
         self.assertIn("loadNativeLibraryPage(", view_model)
