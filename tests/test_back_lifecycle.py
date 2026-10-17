@@ -18,21 +18,22 @@ class BackLifecycleTests(unittest.TestCase):
         source = self.read(MAIN_ACTIVITY)
         self.assertIn("import androidx.activity.OnBackPressedCallback", source)
         self.assertEqual(source.count("onBackPressedDispatcher.addCallback("), 1)
-        self.assertIn("engine.navigationChannel.popRoute()", source)
+        self.assertNotIn("engine.navigationChannel.popRoute()", source)
         self.assertIn("BACK_PHYSICAL_RECEIVED", source)
-        self.assertIn("BACK_FLUTTER_POP_SENT", source)
+        self.assertIn("BACK_NATIVE_SHELL_RESTORED", source)
         self.assertNotIn('put("type", "android_back")', source)
         handler = source[source.index("private fun installSystemBackHandler"):source.index("private fun persistedSafTreeUris")]
         self.assertNotIn("finish()", handler)
         self.assertLess(handler.index("systemBackDispatchPosted = true"), handler.index("composeLibraryHost.handleBack()"))
         self.assertIn("if (systemBackDispatchPosted)", handler)
-        self.assertEqual(handler.count("engine.navigationChannel.popRoute()"), 1)
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", handler)
         self.assertIn("try {", handler)
         self.assertIn("finally {", handler)
         self.assertIn("window.decorView.post { systemBackDispatchPosted = false }", handler)
-        self.assertLess(handler.index("engine.navigationChannel.popRoute()"), handler.index("finally {"))
+        self.assertLess(handler.index("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)"), handler.index("finally {"))
         self.assertIn("if (composeLibraryHost.handleBack())", handler)
-        self.assertIn("return", handler[handler.index("if (composeLibraryHost.handleBack())"):handler.index("val engine = flutterEngine")])
+        self.assertNotIn("flutterEngine", handler)
+        self.assertIn("return", handler[handler.index("if (composeLibraryHost.handleBack())"):handler.index("// Compose is the only Android product surface.")])
 
     def test_flet_view_pop_dispatches_exactly_one_logical_back_operation(self):
         source = self.read(MAIN)
@@ -76,7 +77,7 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn("systemUiController.applyNormal(useContextAppearance = false)", player[exit_start:exit_end])
         self.assertIn("systemUiController.applyImmersive()", player)
 
-    def test_compose_root_back_uses_native_exit_policy_with_legacy_hidden_host_fallback(self):
+    def test_compose_root_back_restores_the_native_shell_without_flutter_fallback(self):
         host = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
         activity = self.read(MAIN_ACTIVITY)
         root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
@@ -85,9 +86,9 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", root)
         self.assertIn("activity.finish()", root)
         self.assertNotIn("Python NavigationController", root)
-        self.assertIn("engine.navigationChannel.popRoute()", activity)
-        self.assertIn("reason=compose_host_hidden_fallback", activity)
-        self.assertEqual(activity.count("engine.navigationChannel.popRoute()"), 1)
+        self.assertNotIn("engine.navigationChannel.popRoute()", activity)
+        self.assertIn("BACK_NATIVE_SHELL_RESTORED", activity)
+        self.assertNotIn("flutterEngine", activity)
 
     def test_player_finish_is_idempotent_while_exiting(self):
         source = self.read(PLAYER_ACTIVITY)
