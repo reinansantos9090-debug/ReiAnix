@@ -105,8 +105,9 @@ class Prompt24DataContractTests(unittest.TestCase):
     def test_kotlin_jvm_test_workflow_remains_manual(self):
         workflow = KOTLIN_JVM_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertNotIn("\npull_request:", workflow)
-        self.assertNotIn("\npush:", workflow)
+        trigger_block = workflow.split("\njobs:", 1)[0]
+        self.assertNotIn("pull_request:", trigger_block)
+        self.assertNotIn("push:", trigger_block)
 
 
     def test_settings_snapshot_uses_shared_typed_json_contract(self):
