@@ -17,6 +17,16 @@ Quando o arquivo canônico `filesDir/data/library.sqlite3` ainda não existe, ap
 
 Esta correção trata somente o bloqueio indevido causado por candidatos temporários órfãos. Não migra bancos existentes, não altera schema v29, não comprova execução em dispositivo e não remove dependências do runtime Python/Flet/Flutter.
 
+## Adendo Prompt 28.2/29 — indexação canônica MediaStore
+
+O follow-up implementa a escrita nativa do MediaStore **somente dentro de árvores SAF persistidas, atualmente legíveis e mapeáveis para `ExternalStorageProvider`**. O runner obtém as pastas do `folders` canônico; o scanner valida volume e `RELATIVE_PATH`, escolhe apenas o escopo autorizado mais específico quando árvores se sobrepõem e publica documentos com evidência de escopo. Para a mesma mídia física, a chave compartilhada volume+caminho permite encontrar a linha criada via SAF; o repositório preserva a localização/URI e caminho relativo SAF já existentes e atualiza os fatos de mídia sem alternar a localização a cada varredura.
+
+A origem usada em `NativeScanPublisher`, início/término da geração `NativeIndex`, leitura do snapshot, recibos de indexação e transação SQLite foi alinhada a `NativeIndex.SOURCE_MEDIASTORE`. O runner agora indexa cada snapshot de volume pelo `ReiAnixLibraryService` no único SQLite canônico e só publica o estado terminal depois da decisão transacional conhecida. A reutilização do staging exige versão/geração MediaStore, assinatura igual das árvores autorizadas e recibo `COMMITTED` do catálogo; snapshots anteriores que não possuem tais evidências forçam uma nova varredura.
+
+Permissões negadas, erro de provider, cancelamento, acesso parcial e snapshots incompletos não podem reconciliar arquivos ausentes. Em Android anterior à API 29, este caminho explicitamente não promete indexação MediaStore delimitada porque faltam `RELATIVE_PATH`/`VOLUME_NAME` suficientes para provar a pertença ao escopo; a indexação SAF continua disponível. Broad Storage permanece diagnóstico-only: seu alcance global não corresponde à pasta da biblioteca selecionada e não há contrato seguro para transformar a ausência global em ausência canônica da biblioteca.
+
+Essas são garantias de código e contratos sujeitos à CI; ainda não comprovam o comportamento de todos os providers em runtime de aparelho real. O APK oficial permanece híbrido. A migração de upgrades SQLite existentes, a retirada de `NativeMailbox`/consumidores legados, AniList/artwork/backup/recovery híbridos e independência do runtime/build oficial seguem fora do que esta etapa pode declarar concluído sem validação específica.
+
 ## Matriz de dependências verificada
 
 | Componente/arquivo | Responsabilidade atual | Runtime instalado | Participa do build oficial | Teste/ferramenta | Substituto Kotlin observado | Ação e risco de remoção |
@@ -49,7 +59,7 @@ Esta correção trata somente o bloqueio indevido causado por candidatos tempor�
 |---|---|---|
 | Launcher → Activity → bootstrap → banco SQLite | Activity/bootstrap em Kotlin; numa instalação realmente nova, o bootstrapper cria e valida schema v29 em arquivo candidato; banco existente/corrompido segue por verificação e Recovery Mode | Validar cold start e todas as operações sem Python/Flet/Flutter; migrações de bancos existentes ainda exigem paridade nativa |
 | Compose → projeção de biblioteca/settings → JSON/commands | Catálogo principal já lê SQLite nativamente; estado/ação compatível ainda cruza bridges | Migrar storage/onboarding e todos os comandos/eventos observados; nenhum snapshot JSON necessário pela UI ativa |
-| SAF/MediaStore/Broad Storage → NativeIndex → SQLite | Descoberta e indexação principais são nativas; o batch JSON deixou de atravessar a mailbox | Remover notificações de scan restantes somente quando os consumidores de erro/terminal/recovery e status forem nativos |
+| SAF/MediaStore/Broad Storage → NativeIndex → SQLite | SAF indexa o catálogo canônico; MediaStore agora indexa apenas dentro de escopos SAF autorizados e mantém recibos por volume; Broad Storage é diagnóstico-only | Validar runtime em dispositivo e remover notificações/consumidores legados apenas após contratos de erro/terminal/recovery nativos |
 | AniList → metadata → artwork/cache → UI | Serviços Kotlin já existem, mas o produtor e/ou as compatibilidades Python ainda participam | Verificar execução offline, falha remota, proteção de `local_path`, cache e publicação nativa |
 | Settings/account/backup/recovery/diagnostics | Implementações Kotlin parciais coexistem com handlers Python e eventos | Substituir cada contrato com equivalência e preservar dados/identificadores |
 | Gradle → APK nativo de validação | Funciona em workflow separado sem Python/Flet/Flutter | Só substituir a distribuição oficial quando todas as responsabilidades anteriores estiverem fechadas |
