@@ -1074,44 +1074,69 @@ object NativeScanRunner {
      * library root. This keeps Android's broader media permission from silently expanding
      * the user's library to unrelated folders and gives SAF/MediaStore a shared path identity.
      */
-    private suspend fun configuredMediaStoreScopes(context: Context): List<MediaStoreScanner.LibraryScope> {
+    private data class MediaStoreScopeResolution(
+        val scopes: List<MediaStoreScanner.LibraryScope>,
+        val canReconcileAbsences: Boolean,
+        val configuredExternalRoots: Int,
+    )
+
+    private suspend fun configuredMediaStoreScopes(context: Context): MediaStoreScopeResolution {
         val dependencies = ReiAnixAppDependencies.from(context)
         val folders = dependencies.sqliteLibraryRepository.listFolders()
-        return folders.mapNotNull { folder ->
+            .filter { it.kind.equals("saf", ignoreCase = true) }
+        val scopes = mutableListOf<MediaStoreScanner.LibraryScope>()
+        var configuredExternalRoots = 0
+        var allExternalRootsReadable = true
+
+        for (folder in folders) {
             val reference = folder.path.trim()
-            if (reference.isBlank() || !folder.kind.equals("saf", ignoreCase = true) ||
-                folder.authorization.equals("revoked", ignoreCase = true) ||
-                folder.authorization.equals("denied", ignoreCase = true)
-            ) {
-                return@mapNotNull null
+            if (reference.isBlank()) {
+                // A malformed persisted SAF source means the configured coverage is not
+                // fully known, so positive discoveries may be accepted but absence inference
+                // must remain disabled for this MediaStore pass.
+                allExternalRootsReadable = false
+                Log.w(TAG, "MediaStore scope skipped because a configured SAF tree URI is blank.")
+                continue
             }
-            try {
-                val treeUri = Uri.parse(reference)
-                val identity = SafScanner.treeIdentity(treeUri)
-                // Only ExternalStorageProvider document IDs map safely to MediaStore's
-                // volume-relative RELATIVE_PATH. Other providers continue through SAF.
-                if (identity.authority != "com.android.externalstorage.documents") {
-                    Log.i(TAG, "MediaStore catalog scope skipped for non-filesystem SAF provider authority=" + identity.authority)
-                    return@mapNotNull null
-                }
-                val authorization = SafScanner.inspectTree(context, treeUri, requirePersisted = true)
-                if (authorization.optString("status") != SafScanner.STATUS_COMPLETED) {
-                    Log.w(TAG, "MediaStore catalog scope skipped because the persisted SAF root is not readable: " + reference)
-                    return@mapNotNull null
-                }
-                MediaStoreScanner.LibraryScope(
-                    authority = identity.authority,
-                    volumeId = identity.volumeId,
-                    treeDocumentId = identity.documentId,
-                    treeUri = reference,
-                )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TAG, "Could not validate a persisted SAF root for MediaStore indexing.", error)
-                null
+
+            val treeUri = runCatching { Uri.parse(reference) }.getOrNull()
+            val identity = treeUri?.let { runCatching { SafScanner.treeIdentity(it) }.getOrNull() }
+            if (identity == null) {
+                allExternalRootsReadable = false
+                Log.w(TAG, "MediaStore scope skipped because a configured SAF tree could not be validated: " + reference)
+                continue
             }
-        }.distinctBy { listOf(it.authority, it.volumeId, it.treeDocumentId).joinToString("|") }
+
+            // Non-filesystem providers stay SAF-only. They cannot contribute MediaStore
+            // rows and are not part of MediaStore's physical-volume reconciliation scope.
+            if (identity.authority != "com.android.externalstorage.documents") {
+                Log.i(TAG, "MediaStore catalog scope skipped for non-filesystem SAF provider authority=" + identity.authority)
+                continue
+            }
+
+            configuredExternalRoots++
+            val authorization = SafScanner.inspectTree(context, treeUri, requirePersisted = true)
+            if (authorization.optString("status") != SafScanner.STATUS_COMPLETED) {
+                allExternalRootsReadable = false
+                Log.w(TAG, "MediaStore catalog scope skipped because the persisted SAF root is not readable: " + reference)
+                continue
+            }
+            scopes += MediaStoreScanner.LibraryScope(
+                authority = identity.authority,
+                volumeId = identity.volumeId,
+                treeDocumentId = identity.documentId,
+                treeUri = reference,
+            )
+        }
+
+        val distinctScopes = scopes.distinctBy { listOf(it.authority, it.volumeId, it.treeDocumentId).joinToString("|") }
+        return MediaStoreScopeResolution(
+            scopes = distinctScopes,
+            configuredExternalRoots = configuredExternalRoots,
+            canReconcileAbsences = distinctScopes.isNotEmpty() &&
+                allExternalRootsReadable &&
+                distinctScopes.size == configuredExternalRoots,
+        )
     }
 
     /**
@@ -1128,13 +1153,16 @@ object NativeScanRunner {
         val appContext = context.applicationContext
         val dependencies = ReiAnixAppDependencies.from(appContext)
         try {
-            val libraryScopes = configuredMediaStoreScopes(appContext)
+            val scopeResolution = configuredMediaStoreScopes(appContext)
+            val libraryScopes = scopeResolution.scopes
             NativeMailbox.write(
                 appContext,
                 JSONObject().put("type", "mediastore_scan_progress")
                     .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE)
                         .put("scanId", scanId).put("requestId", requestId ?: "")
-                        .put("phase", "started").put("configuredLibraryScopes", libraryScopes.size)),
+                        .put("phase", "started").put("configuredLibraryScopes", libraryScopes.size)
+                        .put("configuredExternalRoots", scopeResolution.configuredExternalRoots)
+                        .put("scopeCoverageComplete", scopeResolution.canReconcileAbsences)),
             )
             val result = MediaStoreScanner.scan(
                 appContext,
@@ -1177,7 +1205,7 @@ object NativeScanRunner {
                 stats.optJSONArray("errors")?.put(
                     "Selecione uma pasta da biblioteca e mantenha sua autorização SAF válida para indexar os vídeos dessa pasta pelo MediaStore.",
                 )
-                result.put("message", "Nenhuma pasta SAF autorizada está configurada para delimitar a indexação MediaStore.")
+                result.put("message", "Nenhuma pasta SAF local, persistida e legível pode delimitar a indexação MediaStore. Outras pastas permanecem disponíveis pelo scanner SAF.")
             } else if (rejection == "SAFE_LIBRARY_SCOPE_REQUIRES_API_29") {
                 stats.optJSONArray("errors")?.put(
                     "Neste Android, a indexação MediaStore não consegue provar a pertença à pasta autorizada. A descoberta SAF continua disponível.",
@@ -1190,6 +1218,7 @@ object NativeScanRunner {
                 scanId = scanId,
                 result = result,
                 libraryScopes = libraryScopes,
+                allowMissingReconciliation = scopeResolution.canReconcileAbsences,
             )
             result.put("nativeCatalogIndex", indexSummary)
                 .put("nativeLibraryIndexOwner", true)
@@ -1200,6 +1229,7 @@ object NativeScanRunner {
             val hasDiscoveryBlock = rejection.isNotBlank()
             val indexFailures = indexSummary.optInt("failedVolumes", 0)
             val receiptWarnings = indexSummary.optInt("receiptWarnings", 0)
+            val coverageWarnings = indexSummary.optInt("coverageWarnings", 0)
             val indexedVolumes = indexSummary.optInt("committedVolumes", 0) +
                 indexSummary.optInt("reusedVolumes", 0)
             val classifiedDiscoveryStatus = ScanResultClassifier.classifyMediaStore(
@@ -1210,16 +1240,17 @@ object NativeScanRunner {
             val terminalStatus = when {
                 cancelled -> "CANCELLED"
                 hasDiscoveryBlock -> "FAILED"
-                indexFailures > 0 || receiptWarnings > 0 ->
+                indexFailures > 0 || receiptWarnings > 0 || coverageWarnings > 0 ->
                     if (indexedVolumes > 0) "PARTIAL" else "FAILED"
                 else -> classifiedDiscoveryStatus
             }
-            if (indexFailures > 0 || receiptWarnings > 0 || terminalStatus == "PARTIAL") {
+            if (indexFailures > 0 || receiptWarnings > 0 || coverageWarnings > 0 || terminalStatus == "PARTIAL") {
                 result.put("partial", true)
             }
             result.put("status", terminalStatus)
                 .put("nativeCatalogIndexingStatus", when {
                     indexFailures > 0 -> "PARTIAL"
+                    coverageWarnings > 0 -> "PARTIAL_SCOPE_COVERAGE"
                     receiptWarnings > 0 -> "COMMIT_CONFIRMED_RECEIPT_WARNING"
                     indexedVolumes > 0 -> "COMMITTED_OR_UNCHANGED"
                     hasDiscoveryBlock -> "BLOCKED"
@@ -1333,9 +1364,12 @@ object NativeScanRunner {
         scanId: String,
         result: JSONObject,
         libraryScopes: List<MediaStoreScanner.LibraryScope>,
+        allowMissingReconciliation: Boolean,
     ): JSONObject {
         val summary = JSONObject()
             .put("source", NativeIndex.SOURCE_MEDIASTORE)
+            .put("scopeCoverageComplete", allowMissingReconciliation)
+            .put("coverageWarnings", if (allowMissingReconciliation) 0 else 1)
             .put("attemptedVolumes", 0)
             .put("committedVolumes", 0)
             .put("reusedVolumes", 0)
@@ -1403,6 +1437,12 @@ object NativeScanRunner {
             }
 
             val status = volume.optString("status").trim().uppercase()
+            val generationComplete = volume.optBoolean("complete")
+            val safeForAbsenceReconciliation = generationComplete && allowMissingReconciliation
+            val snapshotStatus = if (
+                generationComplete && !allowMissingReconciliation &&
+                status in setOf(NativeIndex.STATUS_COMPLETED, NativeIndex.STATUS_EMPTY_COMPLETE)
+            ) NativeIndex.STATUS_PARTIAL else status
             val cancelled = result.optBoolean("cancelled") || status == NativeIndex.STATUS_CANCELLED
             val scopeErrors = volume.optJSONArray("errors")
             val failedLocations = if (scopeErrors != null && scopeErrors.length() > 0) {
@@ -1417,13 +1457,13 @@ object NativeScanRunner {
                 source = NativeIndex.SOURCE_MEDIASTORE,
                 scopeRoot = volumeName,
                 expectedLocations = setOf(volumeName),
-                processedLocations = if (complete) setOf(volumeName) else emptySet(),
+                processedLocations = if (safeForAbsenceReconciliation) setOf(volumeName) else emptySet(),
                 failedLocations = failedLocations,
-                unprocessedLocations = if (complete) emptySet() else setOf(volumeName),
-                status = status,
-                complete = complete,
+                unprocessedLocations = if (safeForAbsenceReconciliation) emptySet() else setOf(volumeName),
+                status = snapshotStatus,
+                complete = safeForAbsenceReconciliation,
                 cancelled = cancelled,
-                authorizationValid = canReadMediaStore && libraryScopes.isNotEmpty(),
+                authorizationValid = canReadMediaStore && safeForAbsenceReconciliation,
                 items = discoveredMediaFromSnapshot(documents, scopeKey),
                 scopeReference = scopeKey,
                 scanGeneration = generation,
