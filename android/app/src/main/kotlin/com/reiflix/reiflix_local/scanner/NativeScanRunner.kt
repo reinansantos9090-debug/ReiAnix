@@ -1231,7 +1231,13 @@ object NativeScanRunner {
             if (!allowMissingReconciliation && libraryScopes.isNotEmpty()) {
                 val coverageWarning = "Uma ou mais árvores SAF configuradas não puderam ser confirmadas como legíveis antes da persistência. Itens encontrados serão indexados, mas o MediaStore não marcará registros ausentes nesta varredura."
                 result.put("scopeCoverageWarning", coverageWarning)
+                    .put("message", coverageWarning)
                 stats.optJSONArray("errors")?.put(coverageWarning)
+            } else if (stats.optString("access").equals("partial", ignoreCase = true)) {
+                result.put(
+                    "message",
+                    "O Android concedeu acesso parcial aos vídeos. Somente itens visíveis dentro das pastas SAF configuradas serão indexados; os demais registros serão preservados.",
+                )
             }
             if (rejection == "NO_CONFIGURED_LIBRARY_SOURCE") {
                 stats.optJSONArray("errors")?.put(
@@ -1361,6 +1367,13 @@ object NativeScanRunner {
                 NativeIndex.SOURCE_MEDIASTORE,
                 exception.message ?: "MediaStore scan failed",
             )
+            val mediaStoreAccess = runCatching { MediaStoreScanner.accessLevel(appContext) }.getOrDefault("denied")
+            val permissionDenied = mediaStoreAccess == "denied"
+            val failureMessage = if (permissionDenied) {
+                "O Android não concedeu permissão para ler vídeos. Conceda acesso a vídeos ou use a seleção de pasta SAF; a biblioteca já salva será preservada."
+            } else {
+                "Não foi possível consultar o MediaStore. A biblioteca já salva será preservada e a varredura poderá ser repetida após corrigir o acesso."
+            }
             runCatching {
                 dependencies.libraryService.finishNativeScanRun(
                     scanId = scanId,
@@ -1371,20 +1384,29 @@ object NativeScanRunner {
                     nativeGeneration = null,
                     generationId = null,
                     status = "FAILED",
-                    stats = JSONObject().put("errorType", exception::class.java.simpleName),
+                    stats = JSONObject().put("errorType", exception::class.java.simpleName)
+                        .put("access", mediaStoreAccess).put("permissionDenied", permissionDenied)
+                        .put("message", failureMessage),
                     indexReport = null,
                     startedAtMillis = NativeScanController.snapshot(scanId)?.startedAtMillis,
                 )
             }.onFailure { Log.w(TAG, "Could not finalize failed MediaStore scan history.", it) }
-            NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", exception::class.java.simpleName))
+            NativeScanController.complete(
+                scanId,
+                "FAILED",
+                JSONObject().put("errorType", exception::class.java.simpleName)
+                    .put("access", mediaStoreAccess).put("permissionDenied", permissionDenied)
+                    .put("message", failureMessage),
+            )
             NativeMailbox.write(
                 appContext,
                 JSONObject().put("type", "mediastore_error")
                     .put("requestId", requestId ?: "")
-                    .put("message", "Não foi possível atualizar os vídeos da biblioteca.")
+                    .put("message", failureMessage)
                     .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE)
                         .put("scanId", scanId).put("status", NativeIndex.STATUS_FAILED)
-                        .put("access", MediaStoreScanner.accessLevel(appContext))),
+                        .put("errorType", exception::class.java.simpleName)
+                        .put("access", mediaStoreAccess).put("permissionDenied", permissionDenied)),
             )
         } finally {
             NativeScanController.finish(scanId)
