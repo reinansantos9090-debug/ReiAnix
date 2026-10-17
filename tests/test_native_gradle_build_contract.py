@@ -61,8 +61,20 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         self.assertIn("native-sqlite-contract-v29.json.gz.b64", module)
         self.assertIn("if (!canonicalContractAsset.isFile)", module)
         self.assertIn('resValue("string", "reiflix_google_web_client_id", providers.environmentVariable("REIFLIX_GOOGLE_WEB_CLIENT_ID").orElse("").get())', module)
-        self.assertNotIn('implementation("io.coil-kt:coil-okhttp:2.7.0")', module)
         self.assertIn('tasks.named("preBuild")', module)
+
+    def test_remote_artwork_fallback_has_a_network_fetcher_and_internet_permission(self):
+        module = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        artwork = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt").read_text(
+            encoding="utf-8"
+        )
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+
+        self.assertIn('implementation("io.coil-kt:coil-compose:2.7.0")', module)
+        self.assertIn('implementation("io.coil-kt:coil-okhttp:2.7.0")', module)
+        self.assertIn('source.startsWith("https://", ignoreCase = true)', artwork)
+        self.assertIn('source.startsWith("http://", ignoreCase = true)', artwork)
+        self.assertIn('android.permission.INTERNET', manifest)
 
     def test_native_workflow_builds_and_verifies_apk_and_zip_without_legacy_setup(self):
         workflow = (ROOT / ".github/workflows/native_gradle_apk.yml").read_text(encoding="utf-8")
