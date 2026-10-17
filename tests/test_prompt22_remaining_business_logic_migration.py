@@ -43,6 +43,9 @@ class Prompt22RemainingBusinessLogicMigrationContract(unittest.TestCase):
         self.assertIn("data class ReiAnixTimelineSourceRecord", models)
         self.assertIn("data class ReiAnixDurationObservationRecord", models)
         self.assertIn("ReiAnixLibraryDiscoveryService(sqliteLibraryRepository)", dependencies)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        for token in ("queryNativeTimelineGroups(", "queryNativeDurationAnomalies(", "queryNativeMarathonPlan("):
+            self.assertIn(token, view_model)
 
     def test_migration_report_has_traceability_and_describes_remaining_runtime(self):
         document = DOC.read_text(encoding="utf-8")
