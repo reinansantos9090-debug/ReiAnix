@@ -261,7 +261,7 @@ object MediaStoreScanner {
                             .put("documents",batch))
                     }
                     files+=cachedCount;videos+=cachedCount
-                    volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",cachedGeneration).put("complete",true).put("reused",true).put("status",if(cachedCount==0) NativeIndex.STATUS_EMPTY_COMPLETE else NativeIndex.STATUS_COMPLETED)
+                    volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",cachedGeneration).put("libraryScopeSignature",scopeSignature).put("complete",true).put("reused",true).put("status",if(cachedCount==0) NativeIndex.STATUS_EMPTY_COMPLETE else NativeIndex.STATUS_COMPLETED)
                         .put("generationId",NativeIndex.generationId(NativeIndex.SOURCE_MEDIASTORE,scopeKey,cachedGeneration))
                         .put("scanId",(scanId ?: "") + ":" + volumeName)
                         .put("scopeKind","volume").put("scopeRef",volumeName)
@@ -418,7 +418,7 @@ object MediaStoreScanner {
                     JSONObject(scopeMetadata.toString()).put("errors",localErrors).put("status",status)
                         .put("batchCount",batchCount).put("processed",stagedDocuments)
                 )
-                volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",generationId).put("generationId",NativeIndex.generationId(NativeIndex.SOURCE_MEDIASTORE, scopeKey, generationId)).put("status",status)
+                volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",generationId).put("libraryScopeSignature",scopeSignature).put("generationId",NativeIndex.generationId(NativeIndex.SOURCE_MEDIASTORE, scopeKey, generationId)).put("status",status)
                     .put("complete",complete).put("reused",false).put("batchCount",batchCount).put("processed",stagedDocuments)
                     .put("duplicates",finished.optInt("duplicates",0)).put("removed",0).put("errors",localErrors))
                 if(cancelled)break
