@@ -32,6 +32,7 @@ core/collector_journey.py, views/collector_view.py e os métodos antigos em core
 
 - Os testes de regressão existentes da semântica Python foram preservados para o caminho Flet legado.
 - tests/test_compose_cutover.py verifica a rota Compose e que o fallback Flet fica guardado.
+- ReiAnixCollectorJourneyCalculatorTest.kt contém casos Kotlin/JVM de limiar de conclusão, progresso de atividade, agregação por anime e desbloqueio de gênero; permanece para execução manual e não foi executado nesta tarefa.
 - tests/test_prompt20_collector_journey_migration.py verifica contratos da consulta canônica, persistência, rota e ausência de armazenamento alternativo.
 - A CI existente executa a suíte de regressão Python e compila/empacota o APK conforme o workflow. Nenhum teste Kotlin/JVM foi executado manualmente; nenhum teste instrumentado/emulador nem workflow novo foi criado.
 

@@ -14,6 +14,7 @@ NAVIGATION = ANDROID / "ui/navigation/ReiAnixNavigation.kt"
 COMPOSE_HOST = ANDROID / "ui/host/ReiAnixComposeLibraryHost.kt"
 MAIN = ROOT / "main.py"
 DOCUMENTATION = ROOT / "docs/KOTLIN_COLLECTOR_JOURNEY_MIGRATION.md"
+KOTLIN_JVM_TEST = ROOT / "android/app/src/test/java/com/reiflix/reiflix_local/data/collector/ReiAnixCollectorJourneyCalculatorTest.kt"
 
 
 class CollectorJourneyKotlinMigrationContractTests(unittest.TestCase):
@@ -58,6 +59,13 @@ class CollectorJourneyKotlinMigrationContractTests(unittest.TestCase):
         self.assertIn("'collector'}", main)
         self.assertIn("if compose_primary_ui:", main)
         self.assertIn("control = ft.Container(expand=True)", main)
+
+    def test_manual_kotlin_jvm_regressions_cover_domain_thresholds(self):
+        source = KOTLIN_JVM_TEST.read_text(encoding="utf-8")
+        self.assertIn("completionThresholdIsNinetyPercent", source)
+        self.assertIn("activityThresholdIsFivePercent", source)
+        self.assertIn("onlyFullyCompletedAnimeUnlocksAnimeTitle", source)
+        self.assertIn("genreAchievementUsesCompletedTitles", source)
 
     def test_documentation_records_legacy_parity_and_runtime_boundary(self):
         document = DOCUMENTATION.read_text(encoding="utf-8")

@@ -55,7 +55,7 @@ class ReiAnixCollectorJourneyViewModel(
         if (mutableState.value.isSaving) return
         loadJob?.cancel()
         viewModelScope.launch {
-            mutableState.value = mutableState.value.copy(isSaving = true, error = null)
+            mutableState.value = mutableState.value.copy(isLoading = false, isSaving = true, error = null)
             try {
                 val updated = service.setActiveTitle(titleId)
                 mutableState.value = mutableState.value.copy(
