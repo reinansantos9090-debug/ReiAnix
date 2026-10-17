@@ -1085,7 +1085,7 @@ object NativeScanRunner {
         val folders = dependencies.sqliteLibraryRepository.listFolders()
             .filter { it.kind.equals("saf", ignoreCase = true) }
         val scopes = mutableListOf<MediaStoreScanner.LibraryScope>()
-        var configuredExternalRoots = 0
+        val configuredExternalRootIdentities = linkedSetOf<String>()
         var allExternalRootsReadable = true
 
         for (folder in folders) {
@@ -1114,7 +1114,9 @@ object NativeScanRunner {
                 continue
             }
 
-            configuredExternalRoots++
+            configuredExternalRootIdentities += listOf(
+                identity.authority, identity.volumeId, identity.documentId,
+            ).joinToString("|")
             val authorization = SafScanner.inspectTree(context, treeUri, requirePersisted = true)
             if (authorization.optString("status") != SafScanner.STATUS_COMPLETED) {
                 allExternalRootsReadable = false
@@ -1132,10 +1134,10 @@ object NativeScanRunner {
         val distinctScopes = scopes.distinctBy { listOf(it.authority, it.volumeId, it.treeDocumentId).joinToString("|") }
         return MediaStoreScopeResolution(
             scopes = distinctScopes,
-            configuredExternalRoots = configuredExternalRoots,
+            configuredExternalRoots = configuredExternalRootIdentities.size,
             canReconcileAbsences = distinctScopes.isNotEmpty() &&
                 allExternalRootsReadable &&
-                distinctScopes.size == configuredExternalRoots,
+                distinctScopes.size == configuredExternalRootIdentities.size,
         )
     }
 
@@ -1201,6 +1203,11 @@ object NativeScanRunner {
 
             val stats = result.optJSONObject("stats") ?: JSONObject()
             val rejection = stats.optString("rejection").trim()
+            if (!scopeResolution.canReconcileAbsences && libraryScopes.isNotEmpty()) {
+                val coverageWarning = "Uma ou mais árvores SAF configuradas não puderam ser confirmadas como legíveis. Itens encontrados serão indexados, mas o MediaStore não marcará registros ausentes nesta varredura."
+                result.put("scopeCoverageWarning", coverageWarning)
+                stats.optJSONArray("errors")?.put(coverageWarning)
+            }
             if (rejection == "NO_CONFIGURED_LIBRARY_SOURCE") {
                 stats.optJSONArray("errors")?.put(
                     "Selecione uma pasta da biblioteca e mantenha sua autorização SAF válida para indexar os vídeos dessa pasta pelo MediaStore.",
