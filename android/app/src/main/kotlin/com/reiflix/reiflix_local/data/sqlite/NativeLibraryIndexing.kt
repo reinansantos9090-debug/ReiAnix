@@ -17,6 +17,8 @@ data class NativeLibraryScanSnapshot(
     val items: List<NativeDiscoveredMedia>,
     val scopeReference: String = scopeRoot,
     val scanGeneration: Long? = null,
+    /** SAF tree URIs revalidated as readable for this MediaStore transaction. */
+    val authorizedSafTreeUris: Set<String> = emptySet(),
 ) {
     init { require(scanGeneration == null || scanGeneration > 0L) { "scanGeneration must be positive when supplied." } }
 

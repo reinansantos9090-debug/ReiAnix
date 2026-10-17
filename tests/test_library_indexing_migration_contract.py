@@ -116,6 +116,13 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         self.assertIn("val preserveSafLocation = snapshot.source == \"mediastore\"", repository)
         self.assertIn("if (!preserveSafLocation && current.path != item.location)", repository)
         self.assertIn("if (!preserveSafLocation)", repository)
+        self.assertIn("currentSourceFolder in snapshot.authorizedSafTreeUris", repository)
+        self.assertIn("authorizedSafTreeUris = libraryScopes.map { it.treeUri }", runner)
+        self.assertIn("legacySafRowsByPhysicalIdentity", repository)
+        self.assertIn("LocalMediaIdentity.identityFromDocument(", repository)
+        self.assertIn("legacyCandidates.size > 1", repository)
+        self.assertIn("existingIdentity != incomingIdentity", repository)
+        self.assertIn('if (current.mediaIdentity.isNullOrBlank()) patch.put("media_identity", it)', repository)
         self.assertIn("SAFE_LIBRARY_SCOPE_REQUIRES_API_29", media_store)
 
     def test_migration_document_records_safe_reconciliation_and_remaining_hybrid_edges(self):

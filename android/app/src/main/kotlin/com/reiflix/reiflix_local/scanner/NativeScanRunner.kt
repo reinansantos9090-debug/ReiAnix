@@ -1565,6 +1565,8 @@ object NativeScanRunner {
                 items = discoveredMediaFromSnapshot(documents, catalogScopeRef),
                 scopeReference = catalogScopeRef,
                 scanGeneration = generation,
+                authorizedSafTreeUris = libraryScopes.map { it.treeUri }
+                    .filter { it.isNotBlank() }.toSet(),
             )
             if (!NativeIndex.markNativeCatalogIndexing(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation)) {
                 summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)

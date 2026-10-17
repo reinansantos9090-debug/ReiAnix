@@ -9,6 +9,7 @@ import android.provider.DocumentsContract
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+import com.reiflix.reiflix_local.data.media.LocalMediaIdentity
 import org.json.JSONException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1479,6 +1480,37 @@ class ReiAnixSqliteLibraryRepository(
                 val seenIdentities = linkedSetOf<String>()
                 val inputIdentities = hashSetOf<String>()
 
+                // Legacy schema-v29 rows can legitimately lack media_identity because that
+                // column was introduced after the row existed. Index only provable local
+                // ExternalStorageProvider SAF rows; opaque/cloud providers never share a
+                // guessed identity with MediaStore.
+                val legacySafRowsByPhysicalIdentity = linkedMapOf<String, MutableList<ReiAnixEpisodeRecord>>()
+                db.rawQuery(
+                    "SELECT * FROM episodes WHERE (media_identity IS NULL OR TRIM(media_identity) = '') " +
+                        "AND source_folder LIKE 'content://%' " +
+                        "AND relative_path IS NOT NULL AND TRIM(relative_path) != ''",
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val legacy = cursor.toEpisodeRecord()
+                        val treeUri = runCatching { Uri.parse(legacy.sourceFolder.orEmpty()) }.getOrNull()
+                            ?: continue
+                        if (!treeUri.scheme.equals("content", ignoreCase = true) ||
+                            !treeUri.authority.equals("com.android.externalstorage.documents", ignoreCase = true) ||
+                            !DocumentsContract.isTreeUri(treeUri)
+                        ) continue
+                        val physicalIdentity = LocalMediaIdentity.identityFromDocument(
+                            legacy.path,
+                            legacy.relativePath,
+                            legacy.volumeId,
+                            legacy.sourceFolder,
+                        ) ?: continue
+                        legacySafRowsByPhysicalIdentity
+                            .getOrPut(physicalIdentity) { mutableListOf() }
+                            .add(legacy)
+                    }
+                }
+
                 for (item in snapshot.items) {
                     db.execSQL("SAVEPOINT native_index_item")
                     try {
@@ -1507,15 +1539,43 @@ class ReiAnixSqliteLibraryRepository(
                         ambiguous++
                         continue
                     }
-                    val current = identityRow ?: pathRow
+                    val incomingIdentity = item.mediaIdentity?.trim()?.takeIf { it.isNotEmpty() }
+                    val legacyCandidates = if (snapshot.source == "mediastore" && incomingIdentity != null) {
+                        legacySafRowsByPhysicalIdentity[incomingIdentity].orEmpty()
+                    } else emptyList()
+                    // Never choose arbitrarily when more than one old SAF row maps to this
+                    // physical path or when legacy identity conflicts with path/ID matches.
+                    if (legacyCandidates.size > 1) {
+                        ambiguous++
+                        continue
+                    }
+                    val legacyCandidate = legacyCandidates.singleOrNull()
+                    val matchedByIdentityOrPath = identityRow ?: pathRow
+                    if (legacyCandidate != null && matchedByIdentityOrPath != null &&
+                        legacyCandidate.id != matchedByIdentityOrPath.id
+                    ) {
+                        ambiguous++
+                        continue
+                    }
+                    val current = matchedByIdentityOrPath ?: legacyCandidate
                     if (current != null) {
+                        val existingIdentity = current.mediaIdentity?.trim().orEmpty()
+                        if (existingIdentity.isNotEmpty() && incomingIdentity != null &&
+                            existingIdentity != incomingIdentity
+                        ) {
+                            // A path match must not overwrite a different nonblank identity.
+                            ambiguous++
+                            continue
+                        }
                         val patch = ContentValues()
                         // SAF and MediaStore can identify the same physical file. When MediaStore
                         // observes a row currently owned by a persisted SAF tree, retain that
                         // URI and tree-relative path: replacing them with a MediaStore URI or a
                         // volume-relative path would cause playback/permission flapping on each scan.
+                        val currentSourceFolder = current.sourceFolder?.trim().orEmpty()
                         val preserveSafLocation = snapshot.source == "mediastore" &&
-                            current.sourceFolder?.trim()?.startsWith("content://", ignoreCase = true) == true
+                            currentSourceFolder.startsWith("content://", ignoreCase = true) &&
+                            currentSourceFolder in snapshot.authorizedSafTreeUris
                         if (!preserveSafLocation && current.path != item.location) patch.put("path", item.location)
                         if (current.fileName != item.fileName) patch.put("file_name", item.fileName)
                         item.mimeType?.takeIf { it.isNotBlank() }?.let { if (current.mimeType != it) patch.put("mime_type", it) }
@@ -1529,7 +1589,11 @@ class ReiAnixSqliteLibraryRepository(
                             item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
                             item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
                             item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
-                            item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
+                        }
+                        // Backfill a missing identity even if an actively granted SAF URI
+                        // stays preferred for playback. Do not replace a nonblank identity.
+                        incomingIdentity?.let {
+                            if (current.mediaIdentity.isNullOrBlank()) patch.put("media_identity", it)
                         }
                         if (current.manualOverride != true) {
                             item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
