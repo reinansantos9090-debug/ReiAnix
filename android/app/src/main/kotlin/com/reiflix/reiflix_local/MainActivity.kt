@@ -2401,10 +2401,9 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /**
-     * Android owns the physical Back dispatch. The active Compose App Shell gets
-     * first refusal while its Navigation Compose stack contains a previous
-     * destination. At the shell root, the existing Flet/navigation bridge keeps
-     * ownership of the legacy transition and exit semantics.
+     * Android owns physical Back dispatch. The visible Compose shell handles its
+     * own nested destinations and root-exit policy. The legacy Flutter navigation
+     * channel is a fallback only while the Compose host is hidden for a Flet surface.
      */
     private fun installSystemBackHandler() {
         onBackPressedDispatcher.addCallback(
