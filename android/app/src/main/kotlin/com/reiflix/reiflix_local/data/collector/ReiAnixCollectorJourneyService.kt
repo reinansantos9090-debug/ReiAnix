@@ -143,7 +143,7 @@ internal object ReiAnixCollectorJourneyCalculator {
             if (completedHere.isEmpty()) return@forEach
 
             val source = completedHere.first()
-            decodeGenres(source.genresJson).forEach(completedGenres::add)
+            decodeGenres(source.genresJson).forEach { genre -> completedGenres.add(genre) }
             source.year
                 ?.takeIf { it in 1800..3000 }
                 ?.let { completedDecades.add((it / 10) * 10) }
