@@ -127,7 +127,7 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         self.assertIn("LocalMediaIdentity.identityFromDocument(", repository)
         self.assertIn("readableMediaStoreScopeUris(appContext, libraryScopes)", runner)
         self.assertIn("filterMediaStoreDocumentsForAuthorizedTrees(storedDocuments, readableScopeUris)", runner)
-        self.assertIn('document.optBoolean("scopeVerified") && root in authorizedTreeUris', runner)
+        self.assertIn('document.optBoolean("scopeVerified") && root.isNotBlank() && root in authorizedTreeUris', runner)
         self.assertIn("legacyCandidates.size > 1", repository)
         self.assertIn("existingIdentity != incomingIdentity", repository)
         self.assertIn('if (current.mediaIdentity.isNullOrBlank()) patch.put("media_identity", it)', repository)
