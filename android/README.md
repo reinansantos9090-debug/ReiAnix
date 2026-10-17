@@ -1,11 +1,12 @@
 # ReiAnix native Android host
 
-This directory is the **native host overlay** for the Flet Android client. It
-is not a standalone Flutter application and, by itself, it is not a complete
-Android project: it intentionally relies on the Flutter embedding supplied by
-the Flet-generated host. The overlay replaces that host's `MainActivity` with
-`com.reiflix.reiflix_local.MainActivity` and adds the classes and dependencies
-that cannot be implemented by Python:
+This directory contains the native Android host overlay used by the official
+Flet-generated APK build. The product entry point is now AndroidX
+`ComponentActivity`; the main Activity does not create or delegate startup to a
+Flutter engine. The generated Flet project and its Flutter toolchain remain part
+of the current packaging process until the later build-cutover stage. The overlay
+supplies the Compose shell, native services and platform APIs that cannot be
+implemented by Python:
 
 * `SafScanner` uses `ACTION_OPEN_DOCUMENT_TREE`, preserves URI grants and
   enumerates `DocumentFile` objects as `content://` references;
@@ -36,12 +37,12 @@ releasing the stock Flet client, which would not understand `reiflix://native`.
 
 ## Required Flet host integration
 
-A build template must merge `android/app` into Flet's generated Android host,
-retain the Flet Flutter embedding, and use this module's manifest/activity and
-dependencies. The standalone `android/` directory deliberately cannot be built
-with `gradle :app:compileDebugKotlin` because `FlutterActivity` is supplied by
-that generated host. Do not replace it with a plain Android app or fabricate a
-filesystem path for a SAF URI.
+The supported APK build still merges `android/app` into Flet's generated Android
+project and uses its toolchain/dependency configuration; this packaging dependency
+is separate from the native `ComponentActivity` launcher. The root `android/`
+overlay is not the verified release-build entry point, so validate changes with
+the official APK workflow rather than assuming standalone Gradle settings are
+equivalent. Do not fabricate a filesystem path for a SAF URI.
 
 `flet build apk --yes` is followed by `scripts/verify_android_host.py` in CI.
 If this check reports missing descriptors, the selected Flet template did not
