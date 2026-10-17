@@ -49,7 +49,6 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertNotIn("SQLiteOpenHelper", database)
         self.assertNotIn("CREATE TABLE", database.upper())
         self.assertNotIn("DROP TABLE", database.upper())
-        self.assertNotIn("DROP TABLE", database.upper())
         self.assertNotIn("openOrCreateDatabase", database)
         self.assertNotIn("CREATE_IF_NECESSARY", database)
         self.assertNotIn("deleteDatabase(", database)
