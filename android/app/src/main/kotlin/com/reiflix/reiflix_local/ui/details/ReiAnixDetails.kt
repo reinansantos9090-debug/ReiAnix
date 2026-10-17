@@ -224,6 +224,7 @@ fun ReiAnixDetailsRoute(
         onOpenMarathon = { showMarathonDialog = true },
         onTogglePinned = viewModel::toggleAnimePinnedNative,
         onSavePersonalNote = viewModel::saveAnimePersonalNoteNative,
+        onSaveUserTags = viewModel::saveAnimeUserTagsNative,
         onSetEpisodeIdentification = viewModel::setEpisodeManualIdentificationNative,
     )
     if (showAniListDialog) {
@@ -261,6 +262,7 @@ fun ReiAnixDetailsScreen(
     onOpenMarathon: () -> Unit = {},
     onTogglePinned: suspend (Long) -> Boolean = { false },
     onSavePersonalNote: suspend (Long, String?) -> String? = { _, note -> note?.trim()?.takeIf { it.isNotEmpty() } },
+    onSaveUserTags: suspend (Long, List<String>) -> List<String> = { _, tags -> tags },
     onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit = { _, _, _, _, _ -> },
 ) {
     ReiAnixResponsiveRoot {
@@ -286,6 +288,7 @@ fun ReiAnixDetailsScreen(
                         onOpenMarathon = onOpenMarathon,
                         onTogglePinned = onTogglePinned,
                         onSavePersonalNote = onSavePersonalNote,
+                        onSaveUserTags = onSaveUserTags,
                         onSetEpisodeIdentification = onSetEpisodeIdentification,
                     )
                 } ?: ReiAnixRecoverableErrorState(
@@ -442,6 +445,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onOpenMarathon: () -> Unit,
     onTogglePinned: suspend (Long) -> Boolean,
     onSavePersonalNote: suspend (Long, String?) -> String?,
+    onSaveUserTags: suspend (Long, List<String>) -> List<String>,
     onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit,
 ) {
     val firstSeasonKey = anime.seasons.firstOrNull()?.stableKey
@@ -531,6 +535,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onOpenMarathon = onOpenMarathon,
                 onTogglePinned = onTogglePinned,
                 onSavePersonalNote = onSavePersonalNote,
+                onSaveUserTags = onSaveUserTags,
             )
         }
 
@@ -750,6 +755,7 @@ private fun DetailsHero(
     onOpenMarathon: () -> Unit,
     onTogglePinned: suspend (Long) -> Boolean,
     onSavePersonalNote: suspend (Long, String?) -> String?,
+    onSaveUserTags: suspend (Long, List<String>) -> List<String>,
 ) {
     val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
     var showNoteEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
@@ -757,6 +763,10 @@ private fun DetailsHero(
     var noteSaving by rememberSaveable(anime.id) { mutableStateOf(false) }
     var noteError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
     var actionError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
+    var showTagsEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
+    var tagsDraft by rememberSaveable(anime.id) { mutableStateOf(anime.userTags.joinToString(", ")) }
+    var tagsSaving by rememberSaveable(anime.id) { mutableStateOf(false) }
+    var tagsError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
     val actionScope = rememberCoroutineScope()
     val responsive = LocalReiAnixResponsiveMetrics.current
     val heroHeight = responsive.detailsHeroHeight()
@@ -1088,6 +1098,23 @@ private fun DetailsHero(
                 )
             }
         }
+        if (anime.userTags.isNotEmpty()) {
+            Text(
+                text = "Tags: " + anime.userTags.joinToString(" • "),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        ReiAnixSecondaryButton(
+            text = if (anime.userTags.isEmpty()) "Adicionar tags" else "Editar tags",
+            onClick = {
+                tagsDraft = anime.userTags.joinToString(", ")
+                tagsError = null
+                showTagsEditor = true
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+        )
         anime.personalNote?.takeIf(String::isNotBlank)?.let { note ->
             Text(
                 text = note,
@@ -1117,6 +1144,58 @@ private fun DetailsHero(
                 .fillMaxWidth()
                 .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
         )
+        if (showTagsEditor) {
+            AlertDialog(
+                onDismissRequest = { if (!tagsSaving) showTagsEditor = false },
+                title = { Text("Tags pessoais") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
+                        OutlinedTextField(
+                            value = tagsDraft,
+                            onValueChange = { value -> if (value.length <= 2000) tagsDraft = value },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Tags separadas por vírgula") },
+                            minLines = 2,
+                            maxLines = 5,
+                            enabled = !tagsSaving,
+                            isError = tagsError != null,
+                        )
+                        tagsError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    }
+                },
+                confirmButton = {
+                    ReiAnixPrimaryButton(
+                        text = if (tagsSaving) "Salvando…" else "Salvar",
+                        enabled = !tagsSaving,
+                        onClick = {
+                            if (!tagsSaving) {
+                                tagsSaving = true
+                                tagsError = null
+                                val tags = tagsDraft.split(Regex("[,\\n]")).map(String::trim).filter(String::isNotEmpty)
+                                actionScope.launch {
+                                    try {
+                                        onSaveUserTags(anime.id, tags)
+                                        showTagsEditor = false
+                                    } catch (failure: Exception) {
+                                        tagsError = failure.message?.takeIf(String::isNotBlank)
+                                            ?: "Não foi possível salvar as tags."
+                                    } finally {
+                                        tagsSaving = false
+                                    }
+                                }
+                            }
+                        },
+                    )
+                },
+                dismissButton = {
+                    ReiAnixCompactButton(
+                        text = "Cancelar",
+                        onClick = { if (!tagsSaving) showTagsEditor = false },
+                    )
+                },
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
+        }
         if (showNoteEditor) {
             AlertDialog(
                 onDismissRequest = { if (!noteSaving) showNoteEditor = false },
