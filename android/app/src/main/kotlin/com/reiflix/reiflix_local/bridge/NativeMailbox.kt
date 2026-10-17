@@ -2,6 +2,11 @@ package com.reiflix.reiflix_local.bridge
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import com.reiflix.reiflix_local.data.contract.booleanOrDefault
+import com.reiflix.reiflix_local.data.contract.longOrDefault
+import com.reiflix.reiflix_local.data.contract.objectOrNull
+import com.reiflix.reiflix_local.data.contract.stringOrDefault
+import com.reiflix.reiflix_local.data.contract.stringOrNull
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -34,10 +39,10 @@ object NativeMailbox {
     )
 
     private fun operationState(event: JSONObject): String {
-        val type = event.optString("type")
-        val nested = event.optJSONObject("payload")
+        val type = event.stringOrDefault("type", "unknown")
+        val nested = event.objectOrNull("payload")
         if (type == "diagnostic") {
-            return nested?.optString("state").orEmpty().uppercase()
+            return nested?.stringOrNull("state").orEmpty().uppercase()
         }
         return when (type) {
             "saf_permission_request", "mediastore_permission_request", "broad_storage_permission_request" -> "REQUESTED"
@@ -46,7 +51,7 @@ object NativeMailbox {
             "saf_error", "mediastore_error", "broad_storage_error", "google_error", "native_error" -> "FAILED"
             "saf_scan_progress", "mediastore_scan_progress", "broad_storage_scan_progress" -> "RUNNING"
             "saf_scan", "mediastore_scan", "broad_storage_scan" -> {
-                when ((nested?.optString("status") ?: nested?.optString("generationStatus")).orEmpty().uppercase()) {
+                when ((nested?.stringOrNull("status") ?: nested?.stringOrNull("generationStatus")).orEmpty().uppercase()) {
                     "CANCELLED" -> "CANCELLED"
                     "FAILED", "UNAVAILABLE", "REVOKED" -> "FAILED"
                     else -> "COMPLETED"
@@ -57,20 +62,20 @@ object NativeMailbox {
     }
 
     private fun eventType(event: JSONObject): String {
-        val type = event.optString("type")
-        val payload = event.optJSONObject("payload")
+        val type = event.stringOrDefault("type", "unknown")
+        val payload = event.objectOrNull("payload")
         return when {
             type in setOf("mediastore_permission_request","broad_storage_permission_request","saf_permission_request") ->
                 "permission_requested"
             type == "saf_cancelled" -> "permission_cancelled"
             type == "saf_permission" ->
-                if (payload?.optBoolean("granted", false) == true) "saf_granted" else "saf_revoked"
+                if (payload?.booleanOrDefault("granted", false) == true) "saf_granted" else "saf_revoked"
             type == "broad_storage_permission" ->
-                if (payload?.optBoolean("granted", false) == true) "broad_granted" else "broad_denied"
+                if (payload?.booleanOrDefault("granted", false) == true) "broad_granted" else "broad_denied"
             type == "mediastore_permission" || type == "broad_storage_status" -> "permission_changed"
             type in setOf("saf_scan_progress","mediastore_scan_progress","broad_storage_scan_progress") &&
-                payload?.optString("phase") == "started" -> "scan_started"
-            type == "saf_scan" -> when (payload?.optString("status")) {
+                payload?.stringOrNull("phase") == "started" -> "scan_started"
+            type == "saf_scan" -> when (payload?.stringOrNull("status")) {
                 "REVOKED" -> "saf_revoked"
                 "UNAVAILABLE" -> "saf_unavailable"
                 "CANCELLED" -> "scan_cancelled"
@@ -78,7 +83,7 @@ object NativeMailbox {
                 "FAILED" -> "scan_failed"
                 else -> "scan_completed"
             }
-            type in setOf("mediastore_scan","broad_storage_scan") -> when (payload?.optString("status") ?: payload?.optString("generationStatus")) {
+            type in setOf("mediastore_scan","broad_storage_scan") -> when (payload?.stringOrNull("status") ?: payload?.stringOrNull("generationStatus")) {
                 "cancelled","CANCELLED" -> "scan_cancelled"
                 "partial","PARTIAL" -> "scan_partial"
                 "failed","FAILED" -> "scan_failed"
@@ -86,7 +91,7 @@ object NativeMailbox {
             }
             type == "scan_cancelled" -> "scan_cancelled"
             type in setOf("saf_error","mediastore_error","broad_storage_error") ->
-                when (payload?.optString("status")) {
+                when (payload?.stringOrNull("status")) {
                     "REVOKED" -> "saf_revoked"
                     "UNAVAILABLE" -> "saf_unavailable"
                     "PARTIAL" -> "scan_partial"
@@ -148,7 +153,9 @@ object NativeMailbox {
             temporary = temp
             val writeStartedNs = SystemClock.elapsedRealtimeNanos()
             val now=System.currentTimeMillis()
-            val capturedAt = event.optLong("createdAt", 0L).takeIf { it > 0L } ?: now
+            val suppliedCreatedAt = event.longOrDefault("createdAt", 0L)
+            require(suppliedCreatedAt >= 0L) { "Native mailbox createdAt must be non-negative epoch milliseconds." }
+            val capturedAt = suppliedCreatedAt.takeIf { it > 0L } ?: now
             val payload=JSONObject(event.toString())
                 .put("eventId",id)
                 .put("eventVersion",EVENT_VERSION)
@@ -166,9 +173,7 @@ object NativeMailbox {
                     }
                 }
             }
-            val requestId=payload.optString("requestId").ifBlank{
-                nested?.optString("requestId").orEmpty()
-            }.trim()
+            val requestId=(payload.stringOrNull("requestId") ?: nested?.stringOrNull("requestId")).orEmpty().trim()
             if(requestId.isNotEmpty())payload.put("requestId",requestId)
             promote("scanId", "scanId")
             promote("source", "source")

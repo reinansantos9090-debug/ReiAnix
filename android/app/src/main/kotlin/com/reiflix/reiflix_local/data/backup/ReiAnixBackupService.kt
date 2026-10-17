@@ -1,6 +1,12 @@
 package com.reiflix.reiflix_local.data.backup
 
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.contract.arrayOrDefault
+import com.reiflix.reiflix_local.data.contract.intOrNull
+import com.reiflix.reiflix_local.data.contract.intRequired
+import com.reiflix.reiflix_local.data.contract.longRequired
+import com.reiflix.reiflix_local.data.contract.objectOrNull
+import com.reiflix.reiflix_local.data.contract.stringOrNull
 
 import android.content.ContentValues
 import android.content.Context
@@ -1119,20 +1125,31 @@ class ReiAnixBackupService(context: Context) {
     }
 
     private fun validateManifestHeader(manifest: JSONObject) {
-        require(manifest.optString("app") == APP_NAME) { "Este arquivo não é um backup do ReiAnix." }
-        require(manifest.optString("format") == FORMAT && manifest.optInt("format_version", -1) == FORMAT_VERSION) {
+        require(manifest.stringOrNull("app") == APP_NAME) { "Este arquivo não é um backup do ReiAnix." }
+        require(
+            manifest.stringOrNull("format") == FORMAT &&
+                manifest.intRequired("format_version") == FORMAT_VERSION,
+        ) {
             "Formato de backup incompatível."
         }
-        require(manifest.optInt("schema_version", -1) == SCHEMA_VERSION) { "Schema do backup incompatível com o schema v29." }
-        val compatibility = manifest.optJSONObject("compatibility")
+        require(manifest.intRequired("schema_version") == SCHEMA_VERSION) {
+            "Schema do backup incompatível com o schema v29."
+        }
+        val compatibility = manifest.objectOrNull("compatibility")
             ?: throw BackupValidationException("Bloco de compatibilidade inválido.")
         listOf("min_schema", "max_schema").forEach { key ->
-            if (compatibility.has(key)) require(compatibility.optInt(key, -1) >= 0) { "Faixa de schema inválida." }
+            if (compatibility.has(key)) {
+                val value = compatibility.intOrNull(key)
+                    ?: throw BackupValidationException("Faixa de schema inválida: $key.")
+                require(value >= 0) { "Faixa de schema inválida." }
+            }
         }
-        val integrity = manifest.optJSONObject("integrity")
+        val integrity = manifest.objectOrNull("integrity")
             ?: throw BackupValidationException("Integridade SHA-256 ausente.")
-        require(integrity.optString("algorithm") == "SHA-256") { "Algoritmo de integridade incompatível." }
-        require(integrity.optJSONObject("entries")?.has("library.sqlite3") == true) {
+        require(integrity.stringOrNull("algorithm") == "SHA-256") {
+            "Algoritmo de integridade incompatível."
+        }
+        require(integrity.objectOrNull("entries")?.has("library.sqlite3") == true) {
             "Manifesto de integridade incompleto."
         }
     }
@@ -1142,9 +1159,11 @@ class ReiAnixBackupService(context: Context) {
         actualEntries: Map<String, ZipEntry>,
         manifest: JSONObject,
     ): Set<String> {
-        val integrity = manifest.getJSONObject("integrity")
-        val stored = integrity.getJSONObject("entries")
-        val optional = integrity.optJSONArray("optional_entries") ?: JSONArray()
+        val integrity = manifest.objectOrNull("integrity")
+            ?: throw BackupValidationException("Integridade SHA-256 ausente.")
+        val stored = integrity.objectOrNull("entries")
+            ?: throw BackupValidationException("Manifesto de integridade incompleto.")
+        val optional = integrity.arrayOrDefault("optional_entries")
         val optionalNames = (0 until optional.length()).map { safeMemberName(optional.getString(it)) }.toSet()
         val actual = JSONObject()
         val invalidOptional = linkedSetOf<String>()
@@ -1153,8 +1172,8 @@ class ReiAnixBackupService(context: Context) {
             actual.put(name, JSONObject().put("size", measured.second).put("sha256", measured.first))
             val expected = stored.optJSONObject(name)
             if (expected == null ||
-                expected.optLong("size", -1L) != measured.second ||
-                expected.optString("sha256").lowercase(Locale.ROOT) != measured.first
+                expected.longRequired("size") != measured.second ||
+                expected.stringOrNull("sha256")?.lowercase(Locale.ROOT) != measured.first
             ) {
                 if (name in optionalNames) invalidOptional += name
                 else throw BackupValidationException("Checksum/integridade inválida para " + name + ".")
@@ -1164,7 +1183,7 @@ class ReiAnixBackupService(context: Context) {
         val actualNames = actual.keys().asSequence().toSet()
         val missing = storedNames - actualNames
         require((missing - optionalNames).isEmpty()) { "Manifesto de integridade não corresponde ao container." }
-        val expectedPayload = integrity.optString("payload_sha256")
+        val expectedPayload = integrity.stringOrNull("payload_sha256").orEmpty()
         val actualPayload = sha256(canonicalJson(actual).toByteArray(Charsets.UTF_8))
         val optionalMissingOrInvalid = missing.intersect(optionalNames) + invalidOptional
         if (optionalMissingOrInvalid.isEmpty()) {
@@ -1172,7 +1191,7 @@ class ReiAnixBackupService(context: Context) {
         }
         val core = JSONObject(canonicalJson(manifest))
         core.remove("integrity")
-        val expectedCore = integrity.optString("manifest_core_sha256")
+        val expectedCore = integrity.stringOrNull("manifest_core_sha256").orEmpty()
         val actualCore = sha256(canonicalJson(core).toByteArray(Charsets.UTF_8))
         require(expectedCore == actualCore) { "Checksum do manifest inválido." }
         return invalidOptional + missing.intersect(optionalNames)

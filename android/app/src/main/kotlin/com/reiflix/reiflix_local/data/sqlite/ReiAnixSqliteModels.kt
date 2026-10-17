@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.database.Cursor
+import com.reiflix.reiflix_local.data.contract.ReiAnixContractValues
 
 /**
  * Persistence records mirror columns in LibraryStore's existing schema.
@@ -250,7 +251,9 @@ internal fun Cursor.requiredLong(column: String): Long {
 internal fun Cursor.requiredDouble(column: String): Double {
     val index = getColumnIndexOrThrow(column)
     check(!isNull(index)) { "Required SQLite numeric column is null: " + column }
-    return getDouble(index)
+    val value = getDouble(index)
+    check(value.isFinite()) { "Required SQLite numeric column is not finite: " + column }
+    return value
 }
 
 internal fun Cursor.optionalString(column: String): String? {
@@ -263,15 +266,19 @@ internal fun Cursor.optionalLong(column: String): Long? {
     return if (index < 0 || isNull(index)) null else getLong(index)
 }
 
-internal fun Cursor.optionalInt(column: String): Int? = optionalLong(column)?.toInt()
+internal fun Cursor.optionalInt(column: String): Int? =
+    ReiAnixContractValues.intOrNull(optionalLong(column), column)
 
 internal fun Cursor.optionalDouble(column: String): Double? {
     val index = getColumnIndex(column)
-    return if (index < 0 || isNull(index)) null else getDouble(index)
+    if (index < 0 || isNull(index)) return null
+    val value = getDouble(index)
+    check(value.isFinite()) { "Optional SQLite numeric column is not finite: " + column }
+    return value
 }
 
 internal fun Cursor.optionalBoolean(column: String): Boolean? =
-    optionalLong(column)?.let { it != 0L }
+    ReiAnixContractValues.booleanOrNull(optionalLong(column), column)
 
 /** Joined records required to project the canonical SQLite library into Compose. */
 data class ReiAnixLibraryCatalogGenre(
