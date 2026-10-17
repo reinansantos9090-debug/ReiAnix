@@ -463,6 +463,61 @@ class ReiAnixSqliteLibraryRepository(
             }
         }
 
+    /**
+     * Canonical projection for Collector Journey; one read joins existing episode consumption
+     * and anime metadata. No gamification tables or parallel library storage are introduced.
+     */
+    suspend fun collectorSnapshot(): List<ReiAnixCollectorEpisodeRow> =
+        withContext(Dispatchers.IO) {
+            database.read { connection ->
+                connection.rawQuery(
+                    """
+                    SELECT
+                        e.id,
+                        e.anime_id,
+                        e.progress,
+                        e.duration,
+                        e.watched,
+                        e.missing,
+                        e.last_played_at,
+                        e.episode_type,
+                        a.title AS anime_title,
+                        a.year,
+                        a.genres,
+                        a.format,
+                        a.media_kind
+                    FROM episodes e
+                    JOIN anime a ON a.id = e.anime_id
+                    WHERE e.missing = 0
+                    ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.id
+                    """.trimIndent(),
+                    null,
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            add(
+                                ReiAnixCollectorEpisodeRow(
+                                    id = cursor.requiredLong("id"),
+                                    animeId = cursor.requiredLong("anime_id"),
+                                    progress = cursor.optionalDouble("progress"),
+                                    duration = cursor.optionalDouble("duration"),
+                                    watched = cursor.optionalBoolean("watched"),
+                                    missing = cursor.optionalBoolean("missing"),
+                                    lastPlayedAt = cursor.optionalDouble("last_played_at"),
+                                    episodeType = cursor.optionalString("episode_type"),
+                                    animeTitle = cursor.optionalString("anime_title"),
+                                    year = cursor.optionalInt("year"),
+                                    genresJson = cursor.optionalString("genres"),
+                                    format = cursor.optionalString("format"),
+                                    mediaKind = cursor.optionalString("media_kind"),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
     suspend fun listRecentlyPlayed(limit: Int = 36, offset: Int = 0): List<ReiAnixEpisodeRecord> =
         withContext(Dispatchers.IO) {
             require(limit in 1..200) { "Page size must be between 1 and 200." }

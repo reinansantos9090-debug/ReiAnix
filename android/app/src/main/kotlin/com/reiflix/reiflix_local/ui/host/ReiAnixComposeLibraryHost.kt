@@ -25,6 +25,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
+import com.reiflix.reiflix_local.ui.navigation.navigateToCollector
 import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeRoute
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
@@ -262,7 +263,7 @@ class ReiAnixComposeLibraryHost(
                         showBottomNavigation = true,
                         onRouteChanged = ::publishComposeRouteChanged,
                         onOpenCollector = {
-                            publishLegacyNavigation("collector")
+                            navController.navigateToCollector()
                         },
                     )
                     if (onboardingAllowed && nativeOnboarding.isPromptVisible) {

@@ -87,9 +87,13 @@ class ComposeCutoverTests(unittest.TestCase):
         self.assertIn("else:", details)
         self.assertIn("DetailView.build(", details)
 
-        # Collector remains a real Flet surface because no Compose equivalent
-        # exists yet.
-        self.assertIn("CollectorView.build(", block)
+        # Android uses a native Compose route; Flet remains guarded for fallback environments.
+        collector = block[block.index('        elif route == "collector":'):block.index('        elif route == "settings":')]
+        self.assertIn("if compose_primary_ui:", collector)
+        self.assertIn("control = ft.Container(expand=True)", collector)
+        self.assertIn("CollectorView.build(", collector)
+        self.assertIn("ReiAnixRoutes.COLLECTOR", nav_host)
+        self.assertIn("navigateToCollector()", nav_host)
 
         # Nested Settings remains the guarded legacy fallback.
         self.assertIn("SettingsView.build(", block)
