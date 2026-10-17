@@ -62,16 +62,19 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         self.assertIn("if (!canonicalContractAsset.isFile)", module)
         self.assertIn('resValue("string", "reiflix_google_web_client_id", providers.environmentVariable("REIFLIX_GOOGLE_WEB_CLIENT_ID").orElse("").get())', module)
         self.assertIn('tasks.named("preBuild")', module)
+        self.assertNotIn('implementation("io.coil-kt:coil-okhttp:2.7.0")', module)
 
-    def test_remote_artwork_fallback_has_a_network_fetcher_and_internet_permission(self):
+    def test_remote_artwork_fallback_uses_supported_coil_v2_network_support(self):
         module = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
         artwork = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt").read_text(
             encoding="utf-8"
         )
         manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 
+        # Coil 2.7.0 brings OkHttp-backed network fetching through coil-compose -> coil -> coil-base.
+        # The separate coil-network-okhttp artifact belongs to Coil 3, not this Coil 2 dependency line.
         self.assertIn('implementation("io.coil-kt:coil-compose:2.7.0")', module)
-        self.assertIn('implementation("io.coil-kt:coil-okhttp:2.7.0")', module)
+        self.assertNotIn('implementation("io.coil-kt:coil-okhttp:2.7.0")', module)
         self.assertIn('source.startsWith("https://", ignoreCase = true)', artwork)
         self.assertIn('source.startsWith("http://", ignoreCase = true)', artwork)
         self.assertIn('android.permission.INTERNET', manifest)
