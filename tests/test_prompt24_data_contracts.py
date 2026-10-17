@@ -39,7 +39,7 @@ class Prompt24DataContractTests(unittest.TestCase):
     def test_snapshot_codec_rejects_malformed_typed_fields(self):
         source = SNAPSHOT_CODEC.read_text(encoding="utf-8")
         self.assertIn('ReiAnixContractValues.intOrNull(root.opt("schemaVersion"), "schemaVersion")', source)
-        self.assertIn('root.longOrDefault("revision", 0L)', source)
+        self.assertIn('root.longRequired("revision")', source)
         self.assertIn("booleanOrDefault", source)
         self.assertIn("arrayOrDefault", source)
         self.assertIn("objectOrNull", source)
