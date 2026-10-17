@@ -82,6 +82,7 @@ class Prompt24DataContractTests(unittest.TestCase):
         self.assertIn('payload?.booleanOrDefault("granted", false)', source)
         self.assertIn('event.stringOrDefault("type", "unknown")', source)
         self.assertIn('payload.stringOrNull("requestId")', source)
+        self.assertIn("createdAt must be non-negative epoch milliseconds", source)
         self.assertNotIn('event.optLong("createdAt", 0L)', source)
         self.assertNotIn('payload?.optBoolean("granted", false)', source)
 
