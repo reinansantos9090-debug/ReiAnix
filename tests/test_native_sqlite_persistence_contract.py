@@ -390,6 +390,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         template = TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("Generate canonical SQLite runtime contract and JVM fixture", workflow)
         self.assertIn("--contract-output android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
+        self.assertIn("--bootstrap-output build/native-sqlite-bootstrap-v29.json", workflow)
+        self.assertIn("ReiAnix-native-sqlite-bootstrap-source-${{ github.run_number }}", workflow)
         self.assertIn("rm -f android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
         self.assertIn("assets_source = overlay / \"src\" / \"main\" / \"assets\"", template)
         self.assertIn("shutil.copytree(assets_source, app / \"src\" / \"main\" / \"assets\"", template)
@@ -408,11 +410,13 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="reianix-contract-test-") as temporary:
             fixture_path = Path(temporary) / "canonical-schema.json"
             contract_path = Path(temporary) / "canonical-contract.json"
+            bootstrap_path = Path(temporary) / "canonical-bootstrap.json"
             result = subprocess.run(
                 [
                     sys.executable, str(FIXTURE_GENERATOR),
                     "--output", str(fixture_path),
                     "--contract-output", str(contract_path),
+                    "--bootstrap-output", str(bootstrap_path),
                 ],
                 cwd=ROOT,
                 text=True,
@@ -422,7 +426,17 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
             contract = json.loads(contract_path.read_text(encoding="utf-8"))
+            bootstrap = json.loads(bootstrap_path.read_text(encoding="utf-8"))
 
+        self.assertEqual(29, bootstrap["schema_version"])
+        self.assertEqual(0, bootstrap["sqlite_user_version"])
+        self.assertEqual(fixture["tables"], bootstrap["tables"])
+        self.assertEqual(fixture["statements"], bootstrap["statements"])
+        self.assertEqual(
+            [item["sql"] for item in fixture["triggers"] if item.get("sql")],
+            bootstrap["triggers"],
+        )
+        self.assertGreater(len(bootstrap["statements"]), 10)
         self.assertEqual(29, fixture["schema_version"])
         self.assertEqual(0, fixture["sqlite_user_version"])
         self.assertEqual(
