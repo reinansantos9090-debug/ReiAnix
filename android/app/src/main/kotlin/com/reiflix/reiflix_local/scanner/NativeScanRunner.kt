@@ -1122,7 +1122,15 @@ object NativeScanRunner {
             configuredExternalRootIdentities += listOf(
                 identity.authority, identity.volumeId, identity.documentId,
             ).joinToString("|")
-            val authorization = SafScanner.inspectTree(context, treeUri, requirePersisted = true)
+            val authorization = try {
+                SafScanner.inspectTree(context, treeUri, requirePersisted = true)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                allExternalRootsReadable = false
+                Log.w(TAG, "MediaStore catalog scope skipped because the persisted SAF root could not be inspected: " + reference, error)
+                continue
+            }
             if (authorization.optString("status") != SafScanner.STATUS_COMPLETED) {
                 allExternalRootsReadable = false
                 Log.w(TAG, "MediaStore catalog scope skipped because the persisted SAF root is not readable: " + reference)
