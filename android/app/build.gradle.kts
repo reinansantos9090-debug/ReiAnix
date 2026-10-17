@@ -25,6 +25,7 @@ android {
         applicationId = "com.reiflix.reiflix_local"
         minSdk = 24
         targetSdk = 36
+        resValue("string", "reiflix_google_web_client_id", providers.environmentVariable("REIFLIX_GOOGLE_WEB_CLIENT_ID").orElse("").get())
         versionCode = 2
         versionName = "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -57,7 +58,6 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.06.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("io.coil-kt:coil-okhttp:2.7.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
