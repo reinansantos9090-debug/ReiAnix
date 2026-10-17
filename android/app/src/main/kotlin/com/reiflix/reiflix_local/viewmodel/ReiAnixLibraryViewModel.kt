@@ -21,6 +21,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.data.sqlite.toggleAnimePinned
 import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
+import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
 import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -1776,6 +1777,14 @@ class ReiAnixLibraryViewModel(
     /** Save the private note without modifying AniList editorial metadata or another store. */
     suspend fun saveAnimePersonalNoteNative(animeId: Long, note: String?): String? {
         val saved = nativeLibraryRepository.setAnimePersonalNote(animeId, note)
+        refreshNativeCatalog()
+        repository.publishCatalog()
+        return saved
+    }
+
+    /** Persist normalized personal tags in the canonical anime.user_tags field. */
+    suspend fun saveAnimeUserTagsNative(animeId: Long, tags: List<String>): List<String> {
+        val saved = nativeLibraryRepository.setAnimeUserTags(animeId, tags)
         refreshNativeCatalog()
         repository.publishCatalog()
         return saved
