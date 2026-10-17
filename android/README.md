@@ -118,16 +118,15 @@ As dependências seguem o sentido operacional host → bridge/ui → scanner/pla
 
 O mapa atualizado das camadas existentes, do fluxo Python ↔ Kotlin, dos contratos transitórios, da responsabilidade de cada módulo Python e da sequência segura de migração está em [`docs/ARCHITECTURE_NATIVE_KOTLIN.md`](../docs/ARCHITECTURE_NATIVE_KOTLIN.md).
 
-Distinção essencial: `data/library` e `data/settings` são adapters de projeção/IPC; `library.json` e as projeções de configurações não substituem `LibraryStore`/SQLite. `NativeIndex` é staging/indexação do scan, não um segundo catálogo canônico. A Activity de entrada continua herdando de `FlutterFragmentActivity` dentro do host gerado pelo Flet; portanto, o estado atual ainda não é um aplicativo independente de Python/Flet/Flutter.
+Distinção essencial: `data/library` e `data/settings` são adapters de projeção/IPC; `library.json` e as projeções de configurações não substituem `LibraryStore`/SQLite. `NativeIndex` é staging/indexação do scan, não um segundo catálogo canônico. `MainActivity` agora herda de `ComponentActivity` e `ReiAnixApplication` de `Application`; o bootstrap valida a base canônica e monta o shell Compose no conteúdo da Activity nativa. O APK ainda é renderizado/compilado pelo workflow Flet/Flutter e alguns contratos de projeção/IPC permanecem do lado Python, portanto esta etapa migra a fronteira de entrada, mas não declara removido todo o runtime/toolchain híbrido.
 
 
 ## Prompt 24 — Native shell boundary status
 
 The Compose shell owns the visible migrated routes, arguments and back stack. Back pops native nested
 destinations; Home and Recovery use a native double-Back exit policy. MainActivity's single
-navigationChannel.popRoute() remains only as a compatibility fallback when the Compose host is hidden.
-This is a limited navigation cutover, not proof of a standalone Android runtime. The launcher still
-inherits from `FlutterFragmentActivity`, the official APK workflow still renders a Flet template,
-and library/settings projection, scanning coordination, AniList/artwork and backup/restore have
-remaining Python-side responsibilities. Keep those components until native replacements and data
+legacy `hide` requests no longer hide the sole Compose app shell, and native Back never delegates to `navigationChannel.popRoute()`.
+This is an entry/bootstrap cutover, not proof that every domain operation or build tool is fully native. The launcher now
+inherits from `ComponentActivity` and the application from `Application`; the official APK workflow still renders a Flet template,
+and library/settings projection plus selected operation contracts still retain Python-side responsibilities. Keep those components until native replacements and data
 parity are validated; do not treat this stage as completion of the overall migration.

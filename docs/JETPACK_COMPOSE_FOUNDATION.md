@@ -7,10 +7,11 @@ shared Material 3 visual design system without migrating any complete applicatio
 
 ## Current entry boundary
 
-MainActivity is still a FlutterFragmentActivity supplied by the Flet-generated Android host. The
-Compose shell is the visible application surface for the migrated routes, but the app is not yet an
-independent Android runtime: library/settings projections and several domain operations still use
-NativeMailbox and Python services. Prompt 24 must not remove the generated host until those contracts
+`MainActivity` now inherits from AndroidX `ComponentActivity`, and `ReiAnixApplication` inherits from
+`android.app.Application`. The app uses the existing Compose shell as its native launcher surface after
+canonical SQLite validation. The APK build still renders the Android module through Flet/Flutter tooling,
+and some library/settings projection and operation contracts still use `NativeMailbox` and Python services;
+therefore this entry cutover does not claim that all runtime/domain dependencies have been removed. Prompt 24 must not remove the generated host until those contracts
 have native equivalents. Navigation Compose owns visible native route changes and Back handling.
 Nested destinations pop one native entry; a secondary route without an origin returns to a safe
 in-app destination; Storage returns to Settings. Home and Recovery use the native double-Back exit

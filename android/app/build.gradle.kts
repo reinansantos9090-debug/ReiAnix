@@ -46,7 +46,8 @@ kotlin { jvmToolchain(17) }
     // earlier validation stage 29: dependencies remain unchanged; the cleanup is structural and reuses
     // the existing Compose/Navigation/Lifecycle/Media3 stack without new abstractions.
 dependencies {
-    // These are merged into the Flet Flutter host by the custom Android template.
+    // The official APK still uses Flet/Flutter tooling to render and compile this module.
+    // Runtime entry and the primary Compose surface are native Android components.
     implementation("androidx.activity:activity-ktx:1.13.0")
     // Compose line compatible with the existing compileSdk 36 / AGP 8.9.1 toolchain.
     implementation(platform("androidx.compose:compose-bom:2026.06.00"))

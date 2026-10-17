@@ -46,11 +46,11 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 
 /**
- * Single native Compose root used during the incremental Flet -> Compose cutover.
+ * The single Compose root for the Android application.
  *
- * The legacy class name is retained because MainActivity, packaging checks and
- * the existing bridge already depend on it. Runtime-wise this is now the app
- * shell host rather than a Library-only surface.
+ * The historical class name is retained to avoid needless churn in callers and
+ * packaging contracts. This host mounts the real shell/navigation graph into the
+ * native Activity content root; it is not an alternate surface.
  */
 class ReiAnixComposeLibraryHost(
     private val activity: MainActivity,
@@ -296,8 +296,17 @@ class ReiAnixComposeLibraryHost(
         view.visibility = View.VISIBLE
     }
 
+    /**
+     * Legacy callers may still send a hide command while Python/Flet contracts are
+     * being migrated. Hiding the sole application shell would leave the native
+     * launcher blank, so this compatibility boundary keeps the shell visible.
+     */
     fun hide() {
-        composeView?.visibility = View.GONE
+        val view = composeView ?: return
+        if (view.visibility == View.GONE) {
+            view.visibility = View.VISIBLE
+            android.util.Log.w(TAG, "Ignored legacy hide request; restored native Compose shell")
+        }
     }
 
     /**

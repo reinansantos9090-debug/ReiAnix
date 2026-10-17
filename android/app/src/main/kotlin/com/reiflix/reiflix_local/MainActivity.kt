@@ -51,7 +51,7 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
-import io.flutter.embedding.android.FlutterFragmentActivity
+import androidx.activity.ComponentActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
@@ -76,11 +76,13 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Flet's generated Android template must use this activity instead of its default
- * FlutterActivity. It owns SAF and Google identity because only Android has a
- * ContentResolver/Credential Manager.
+ * Native Android entry point for ReiAnix.
+ *
+ * SAF, identity, startup coordination and the existing Compose shell are hosted
+ * by Android lifecycle components. Flet remains a build/template dependency while
+ * remaining Python-side operation contracts are migrated in later stages.
  */
-class MainActivity : FlutterFragmentActivity() {
+class MainActivity : ComponentActivity() {
     private val tag = "[REIFLIX][ANDROID]"
     private val MAX_SETTINGS_FILE_BYTES = 1024 * 1024
     private val SETTINGS_FILE_REQUEST_ID_REGEX = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -1300,8 +1302,8 @@ class MainActivity : FlutterFragmentActivity() {
                 if (!hadPendingLifecycleAction) maybeLaunchAutomaticSafPicker()
             }
         }
-        // The existing SystemUiController remains the single Android system-bar
-        // authority while the Compose shell and legacy Flet surfaces coexist.
+        // SystemUiController remains the single authority for Android system bars
+        // while the native Compose application is visible.
         systemUiController.applyApplicationPolicy(useContextAppearance = false)
         // The initial intent is processed once, after the bootstrap selects the safe route.
     }
@@ -2401,9 +2403,9 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /**
-     * Android owns physical Back dispatch. The visible Compose shell handles its
-     * own nested destinations and root-exit policy. The legacy Flutter navigation
-     * channel is a fallback only while the Compose host is hidden for a Flet surface.
+     * Android owns physical Back dispatch. The Compose shell handles nested
+     * destinations and root-exit policy; an accidental legacy hide request restores
+     * the native Home destination rather than forwarding Back to another runtime.
      */
     private fun installSystemBackHandler() {
         onBackPressedDispatcher.addCallback(
@@ -2435,15 +2437,16 @@ class MainActivity : FlutterFragmentActivity() {
                             return
                         }
 
-                        // Keep the old host route only for legacy Flet surfaces while
-                        // the Compose shell is hidden, not as a second navigation owner.
-                        val engine = flutterEngine
-                        if (engine == null) {
-                            Log.w(tag, "SYSTEM_BACK ignored reason=flutter_engine_unavailable")
-                            return
+                        // Compose is the only Android product surface. If a legacy
+                        // command hid the host, restore its real Home route instead
+                        // of delegating Back to a Flutter engine that is not part of
+                        // the native entry path.
+                        if (::composeLibraryHost.isInitialized) {
+                            composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+                            Log.i(tag, "BACK_NATIVE_SHELL_RESTORED id=" + backId)
+                        } else {
+                            Log.w(tag, "BACK_NATIVE_STARTUP_NOT_READY id=" + backId)
                         }
-                        Log.i(tag, "BACK_FLUTTER_POP_SENT id=" + backId + " reason=compose_host_hidden_fallback")
-                        engine.navigationChannel.popRoute()
                     } finally {
                         // Reset only after the current dispatcher turn has returned so
                         // the same Android Back event cannot enter the handler twice.
