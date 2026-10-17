@@ -72,6 +72,13 @@ Ainda permanecem fronteiras híbridas, sem que sejam confundidas com a proprieda
 
 Essas dependências remanescentes devem ser removidas apenas quando seus contratos específicos e consumidores forem substituídos. Não foi removido globalmente Python, Flet, Flutter ou NativeMailbox, pois ainda possuem consumidores fora do caminho de registros principal descrito acima.
 
+## Permissões e compatibilidade por versão Android
+
+- Android 14 (API 34+) solicita `READ_MEDIA_VIDEO` e `READ_MEDIA_VISUAL_USER_SELECTED`. O modelo diferencia `FULL` de `PARTIAL`: acesso parcial permite descobrir e indexar somente os vídeos expostos pelo provider, mas não qualifica uma geração como completa nem autoriza reconciliar ausências.
+- Android 13 (API 33) usa `READ_MEDIA_VIDEO`. Android 6 até Android 12L (API 23–32) usa `READ_EXTERNAL_STORAGE`, com limite de manifesto já aplicado.
+- Concessões negadas não provocam limpeza do catálogo: o runner encerra a varredura com mensagem de permissão e preserva os registros anteriores. SAF continua sendo uma alternativa baseada na URI de árvore escolhida pelo usuário e na permissão de leitura persistida ainda válida.
+- Broad Storage depende de `Environment.isExternalStorageManager()` e permanece opcional/diagnóstico; a aplicação não assume esse acesso nem o usa para ampliar a biblioteca além das árvores configuradas.
+
 ## Prompt 28.2/29 — indexação MediaStore nativa dentro de árvores autorizadas
 
 O runner obtém as pastas SAF do `folders` canônico e, antes de construir os escopos MediaStore, valida a URI de árvore, a autoridade `com.android.externalstorage.documents` e a autorização persistida/leitura atual. Nenhum escopo é inventado a partir de permissão ampla sozinha. Para MediaStore, a identidade de caminho usa o volume e `RELATIVE_PATH` do provider; árvores sobrepostas escolhem a raiz configurada mais específica para evitar encaminhar o mesmo arquivo a mais de um escopo.
