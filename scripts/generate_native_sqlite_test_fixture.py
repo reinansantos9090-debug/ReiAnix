@@ -297,6 +297,14 @@ def main() -> int:
         type=Path,
         help="Optional production runtime contract JSON, generated from the same canonical snapshot",
     )
+    parser.add_argument(
+        "--bootstrap-output",
+        type=Path,
+        help=(
+            "Optional native fresh-install SQLite bootstrap JSON. Its DDL is emitted from "
+            "the real schema v29 snapshot, not duplicated in handwritten Kotlin."
+        ),
+    )
     args = parser.parse_args()
     fixture_path = args.output.resolve()
     fixture_path.parent.mkdir(parents=True, exist_ok=True)
@@ -310,6 +318,40 @@ def main() -> int:
         contract_path.write_text(
             json.dumps(contract, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
+        )
+
+    if args.bootstrap_output:
+        if payload["schema_version"] != EXPECTED_SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Refusing to emit native bootstrap for unexpected schema version "
+                f"{payload['schema_version']} (expected {EXPECTED_SCHEMA_VERSION})."
+            )
+        statements = list(payload["statements"])
+        trigger_statements = [
+            item["sql"] for item in payload["triggers"]
+            if str(item.get("sql") or "").strip()
+        ]
+        if not statements or not payload["tables"] or not any(
+            "schema_migrations" in sql.lower() for sql in statements
+        ):
+            raise RuntimeError("Canonical schema snapshot is incomplete; native bootstrap was not emitted.")
+        bootstrap_path = args.bootstrap_output.resolve()
+        bootstrap_path.parent.mkdir(parents=True, exist_ok=True)
+        bootstrap = {
+            "schema_version": payload["schema_version"],
+            "sqlite_user_version": payload["sqlite_user_version"],
+            "tables": payload["tables"],
+            "statements": statements,
+            "triggers": trigger_statements,
+        }
+        bootstrap_path.write_text(
+            json.dumps(bootstrap, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            f"Generated native fresh-install bootstrap schema v{payload['schema_version']}: "
+            f"{len(statements)} table/index statements and {len(trigger_statements)} triggers "
+            f"-> {bootstrap_path}"
         )
 
     print(
