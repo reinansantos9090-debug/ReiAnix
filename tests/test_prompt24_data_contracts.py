@@ -9,6 +9,7 @@ SQLITE_MODELS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/da
 SNAPSHOT_CODEC = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibrarySnapshotCodec.kt"
 SETTINGS_CODEC = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsSnapshotCodec.kt"
 JSON_CONTRACT = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/contract/ReiAnixJsonContract.kt"
+ANILIST_CLIENT = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClient.kt"
 SQLITE_DATABASE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteDatabase.kt"
 PYTHON_STORE = ROOT / "core/library_store.py"
 LIBRARY_BRIDGE = ROOT / "core/compose_library_bridge.py"
@@ -63,6 +64,15 @@ class Prompt24DataContractTests(unittest.TestCase):
         self.assertIn("native-sqlite-contract-v29.json", database)
         self.assertIn("SCHEMA_VERSION = 29", python_store)
         self.assertNotIn("RoomDatabase", source)
+
+    def test_anilist_client_validates_external_contract_types_and_ranges(self):
+        source = ANILIST_CLIENT.read_text(encoding="utf-8")
+        self.assertIn('media.intOrNull("id")', source)
+        self.assertIn('media.nonNegativeIntOrNull("episodes")', source)
+        self.assertIn('it in 0..100', source)
+        self.assertIn("Malformed AniList field", source)
+        self.assertIn("Malformed GraphQL errors array", source)
+        self.assertIn("AniListError.InvalidResponse", source)
 
     def test_transport_boundary_keeps_its_real_schema_and_timestamp_units_documented_in_code(self):
         bridge = LIBRARY_BRIDGE.read_text(encoding="utf-8")
