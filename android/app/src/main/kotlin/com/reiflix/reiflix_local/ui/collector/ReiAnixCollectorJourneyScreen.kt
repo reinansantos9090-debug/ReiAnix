@@ -39,6 +39,7 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixCollectorJourneyViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixCollectorJourneyViewModelFactory
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
