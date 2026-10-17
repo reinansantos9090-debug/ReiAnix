@@ -74,7 +74,12 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("schema_migrations", archive["tables"])
         self.assertGreater(len(archive["statements"]), 10)
         self.assertIn("ReiAnixSqliteBootstrapper(appContext, dependencies.sqliteDatabase).bootstrapIfMissing()", bootstrap)
-        self.assertIn("interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery", bootstrap)
+        self.assertIn("interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery", bootstrap)
+        recovery_gate_start = bootstrap.index("val interruptedPreviousDatabase")
+        recovery_gate_end = bootstrap.index("val priorRecoverySnapshots", recovery_gate_start)
+        recovery_evidence = bootstrap[recovery_gate_start:recovery_gate_end]
+        self.assertIn('file.name.startsWith(".library.sqlite3.previous-")', recovery_evidence)
+        self.assertNotIn('file.name.startsWith(".library.sqlite3.candidate-")', recovery_evidence)
         self.assertIn("Os.link(candidateFile.absolutePath, canonicalFile.absolutePath)", bootstrapper)
         self.assertIn(".library.sqlite3.candidate-", bootstrapper)
         self.assertIn("inspectSchemaFile(candidateFile)", bootstrapper)
