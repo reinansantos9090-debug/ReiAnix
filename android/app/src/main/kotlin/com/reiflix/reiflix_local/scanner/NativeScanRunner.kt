@@ -1068,32 +1068,93 @@ object NativeScanRunner {
 
     }
 
+
+    /**
+     * MediaStore can enter the catalog only inside a currently persisted, readable SAF
+     * library root. This keeps Android's broader media permission from silently expanding
+     * the user's library to unrelated folders and gives SAF/MediaStore a shared path identity.
+     */
+    private suspend fun configuredMediaStoreScopes(context: Context): List<MediaStoreScanner.LibraryScope> {
+        val dependencies = ReiAnixAppDependencies.from(context)
+        val folders = dependencies.sqliteLibraryRepository.listFolders()
+        return folders.mapNotNull { folder ->
+            val reference = folder.path.trim()
+            if (reference.isBlank() || !folder.kind.equals("saf", ignoreCase = true) ||
+                folder.authorization.equals("revoked", ignoreCase = true) ||
+                folder.authorization.equals("denied", ignoreCase = true)
+            ) {
+                return@mapNotNull null
+            }
+            try {
+                val treeUri = Uri.parse(reference)
+                val identity = SafScanner.treeIdentity(treeUri)
+                // Only ExternalStorageProvider document IDs map safely to MediaStore's
+                // volume-relative RELATIVE_PATH. Other providers continue through SAF.
+                if (identity.authority != "com.android.externalstorage.documents") {
+                    Log.i(TAG, "MediaStore catalog scope skipped for non-filesystem SAF provider authority=" + identity.authority)
+                    return@mapNotNull null
+                }
+                val authorization = SafScanner.inspectTree(context, treeUri, requirePersisted = true)
+                if (authorization.optString("status") != SafScanner.STATUS_COMPLETED) {
+                    Log.w(TAG, "MediaStore catalog scope skipped because the persisted SAF root is not readable: " + reference)
+                    return@mapNotNull null
+                }
+                MediaStoreScanner.LibraryScope(
+                    authority = identity.authority,
+                    volumeId = identity.volumeId,
+                    treeDocumentId = identity.documentId,
+                    treeUri = reference,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not validate a persisted SAF root for MediaStore indexing.", error)
+                null
+            }
+        }.distinctBy { listOf(it.authority, it.volumeId, it.treeDocumentId).joinToString("|") }
+    }
+
+    /**
+     * Stages MediaStore discoveries natively, indexes each volume snapshot in the same
+     * canonical SQLite repository as SAF, and publishes a terminal UI state only after
+     * the database transaction outcome is known. Partial scopes may add positive items but
+     * can never reconcile missing rows.
+     */
     suspend fun runMediaStoreScan(
         context: Context,
         scanId: String,
         requestId: String?,
     ) {
         val appContext = context.applicationContext
-
-            try {
-                NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_scan_progress")
-                    .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE).put("scanId", scanId)
-                        .put("requestId", requestId ?: "").put("phase", "started")))
-                val result = MediaStoreScanner.scan(
-                    appContext,
-                    { progress ->
-                        NativeScanController.updateProgress(scanId, progress)
-                        NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_scan_progress")
-                            .put("payload", progress.put("scanId", scanId).put("requestId", requestId ?: "").put("scopeKind", "global")))
-                    },
-                    { NativeScanController.isCancelled(scanId) },
-                    scanId,
-                    onBatch = { batch ->
+        val dependencies = ReiAnixAppDependencies.from(appContext)
+        try {
+            val libraryScopes = configuredMediaStoreScopes(appContext)
+            NativeMailbox.write(
+                appContext,
+                JSONObject().put("type", "mediastore_scan_progress")
+                    .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE)
+                        .put("scanId", scanId).put("requestId", requestId ?: "")
+                        .put("phase", "started").put("configuredLibraryScopes", libraryScopes.size)),
+            )
+            val result = MediaStoreScanner.scan(
+                appContext,
+                { progress ->
+                    NativeScanController.updateProgress(scanId, progress)
+                    NativeMailbox.write(
+                        appContext,
+                        JSONObject().put("type", "mediastore_scan_progress")
+                            .put("payload", progress.put("scanId", scanId)
+                                .put("requestId", requestId ?: "").put("scopeKind", "volume")),
+                    )
+                },
+                { NativeScanController.isCancelled(scanId) },
+                scanId,
+                onBatch = { batch ->
                     val volume = batch.optString("volumeId")
                     NativeScanPublisher.publish(
                         appContext,
                         "mediastore_scan_batch",
-                        "mediastore",
+                        NativeIndex.SOURCE_MEDIASTORE,
                         scanId,
                         requestId,
                         "volume",
@@ -1102,50 +1163,391 @@ object NativeScanRunner {
                         batch.optLong("generation", NativeIndex.cachedGeneration(appContext, "mediastore:" + volume)),
                         batch,
                     )
-                    }
+                },
+                libraryScopes = libraryScopes,
+            )
+            result.put("requestId", requestId ?: "")
+                .put("scanId", scanId)
+                .put("scopeKind", "volume")
+                .put("scopeRef", MediaStoreScanner.SOURCE)
+
+            val stats = result.optJSONObject("stats") ?: JSONObject()
+            val rejection = stats.optString("rejection").trim()
+            if (rejection == "NO_CONFIGURED_LIBRARY_SOURCE") {
+                stats.optJSONArray("errors")?.put(
+                    "Selecione uma pasta da biblioteca e mantenha sua autorização SAF válida para indexar os vídeos dessa pasta pelo MediaStore.",
                 )
-                result.put("requestId", requestId ?: "").put("scanId", scanId)
-                    .put("scopeKind", "global").put("scopeRef", MediaStoreScanner.SOURCE)
-                val finalStatus = result.optJSONObject("stats")?.optString("status").orEmpty().uppercase()
-                if (finalStatus == NativeIndex.STATUS_WAITING_FOR_MEDIASTORE) {
-                    NativeMailbox.write(appContext, JSONObject().put("type", "diagnostic")
-                        .put("payload", JSONObject().put("event", "WAITING_FOR_MEDIASTORE").put("scanId", scanId).put("requestId", requestId ?: "")))
-                    MediaStoreRetryScheduler.schedule(
-                        appContext,
-                        reason = "media_store_indexing_completed",
-                        triggerRequestId = requestId,
-                    )
-                }
-                // MediaStore is diagnostic-only under the existing library-source contract.
-                result.put("nativeLibraryIndexOwner", true)
-                NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "mediastore_scan")
-                    .put("requestId", requestId ?: "").put("payload", result))
-                val terminalStatus = ScanResultClassifier.classifyMediaStore(
-                    finalStatus,
-                    cancelled = result.optBoolean("cancelled"),
-                    partial = result.optBoolean("partial"),
+                result.put("message", "Nenhuma pasta SAF autorizada está configurada para delimitar a indexação MediaStore.")
+            } else if (rejection == "SAFE_LIBRARY_SCOPE_REQUIRES_API_29") {
+                stats.optJSONArray("errors")?.put(
+                    "Neste Android, a indexação MediaStore não consegue provar a pertença à pasta autorizada. A descoberta SAF continua disponível.",
                 )
-                NativeScanController.complete(scanId, terminalStatus, result)
-            } catch (exception: CancellationException) {
-                NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
-                throw exception
-            } catch (exception: Exception) {
-                Log.e(TAG, "MediaStore scan failed", exception)
-                NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", exception::class.java.simpleName))
-                NativeIndex.failActiveGenerations(appContext, NativeIndex.SOURCE_MEDIASTORE, exception.message ?: "MediaStore scan failed")
-                NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_error")
-                    .put("requestId", requestId ?: "")
-                    .put("message", "Não foi possível atualizar os vídeos do dispositivo.")
-                    .put("payload", JSONObject()
-                        .put("source", MediaStoreScanner.SOURCE)
-                        .put("scanId", scanId)
-                        .put("status", NativeIndex.STATUS_FAILED)
-                        .put("access", MediaStoreScanner.accessLevel(appContext))))
-            } finally {
-                NativeScanController.finish(scanId)
+                result.put("message", "A indexação MediaStore delimitada por pasta requer Android 10 (API 29) ou posterior.")
             }
 
+            val indexSummary = indexMediaStoreSnapshots(
+                appContext = appContext,
+                scanId = scanId,
+                result = result,
+                libraryScopes = libraryScopes,
+            )
+            result.put("nativeCatalogIndex", indexSummary)
+                .put("nativeLibraryIndexOwner", true)
+
+            val discoveryStatus = stats.optString("status").trim().uppercase()
+            val cancelled = result.optBoolean("cancelled") ||
+                discoveryStatus == NativeIndex.STATUS_CANCELLED
+            val hasDiscoveryBlock = rejection.isNotBlank()
+            val indexFailures = indexSummary.optInt("failedVolumes", 0)
+            val receiptWarnings = indexSummary.optInt("receiptWarnings", 0)
+            val indexedVolumes = indexSummary.optInt("committedVolumes", 0) +
+                indexSummary.optInt("reusedVolumes", 0)
+            val classifiedDiscoveryStatus = ScanResultClassifier.classifyMediaStore(
+                stats.optString("status"),
+                cancelled = cancelled,
+                partial = result.optBoolean("partial"),
+            )
+            val terminalStatus = when {
+                cancelled -> "CANCELLED"
+                hasDiscoveryBlock -> "FAILED"
+                indexFailures > 0 || receiptWarnings > 0 ->
+                    if (indexedVolumes > 0) "PARTIAL" else "FAILED"
+                else -> classifiedDiscoveryStatus
+            }
+            if (indexFailures > 0 || receiptWarnings > 0 || terminalStatus == "PARTIAL") {
+                result.put("partial", true)
+            }
+            result.put("status", terminalStatus)
+                .put("nativeCatalogIndexingStatus", when {
+                    indexFailures > 0 -> "PARTIAL"
+                    receiptWarnings > 0 -> "COMMIT_CONFIRMED_RECEIPT_WARNING"
+                    indexedVolumes > 0 -> "COMMITTED_OR_UNCHANGED"
+                    hasDiscoveryBlock -> "BLOCKED"
+                    else -> "NO_CATALOG_CHANGES"
+                })
+
+            val indexReport = JSONObject(indexSummary.toString())
+            val persistedStats = JSONObject(stats.toString())
+                .put("nativeCatalogIndex", indexReport)
+            try {
+                dependencies.libraryService.finishNativeScanRun(
+                    scanId = scanId,
+                    requestId = requestId,
+                    sourceKind = NativeIndex.SOURCE_MEDIASTORE,
+                    scopeKind = "volume",
+                    scopeRef = MediaStoreScanner.SOURCE,
+                    nativeGeneration = null,
+                    generationId = null,
+                    status = terminalStatus,
+                    stats = persistedStats,
+                    indexReport = indexReport,
+                    startedAtMillis = NativeScanController.snapshot(scanId)?.startedAtMillis,
+                )
+            } catch (cancelledException: CancellationException) {
+                throw cancelledException
+            } catch (historyError: Exception) {
+                // Scan-history failure must not undo or misrepresent a confirmed catalog commit.
+                Log.e(TAG, "MediaStore catalog transaction completed but scan history could not be finalized.", historyError)
+                result.put("scanHistoryWarning", "A biblioteca foi processada, mas o histórico da varredura não pôde ser atualizado.")
+            }
+
+            if (stats.optString("status").equals(NativeIndex.STATUS_WAITING_FOR_MEDIASTORE, ignoreCase = true)) {
+                NativeMailbox.write(
+                    appContext,
+                    JSONObject().put("type", "diagnostic")
+                        .put("payload", JSONObject().put("event", "WAITING_FOR_MEDIASTORE")
+                            .put("scanId", scanId).put("requestId", requestId ?: "")),
+                )
+                MediaStoreRetryScheduler.schedule(
+                    appContext,
+                    reason = "media_store_indexing_completed",
+                    triggerRequestId = requestId,
+                )
+            }
+
+            // Mailbox consumers are compatibility/diagnostic subscribers. SQLite and the
+            // NativeScanController outcome have already been finalized at this point.
+            NativeMailbox.write(
+                appContext,
+                JSONObject().put("type", "mediastore_scan")
+                    .put("requestId", requestId ?: "").put("payload", result),
+            )
+            NativeScanController.complete(scanId, terminalStatus, result)
+        } catch (exception: CancellationException) {
+            runCatching {
+                dependencies.libraryService.finishNativeScanRun(
+                    scanId = scanId,
+                    requestId = requestId,
+                    sourceKind = NativeIndex.SOURCE_MEDIASTORE,
+                    scopeKind = "volume",
+                    scopeRef = MediaStoreScanner.SOURCE,
+                    nativeGeneration = null,
+                    generationId = null,
+                    status = "CANCELLED",
+                    stats = JSONObject().put("cancelled", true),
+                    indexReport = null,
+                    startedAtMillis = NativeScanController.snapshot(scanId)?.startedAtMillis,
+                )
+            }.onFailure { Log.w(TAG, "Could not finalize cancelled MediaStore scan history.", it) }
+            NativeScanController.complete(scanId, "CANCELLED", JSONObject().put("cancelled", true))
+            throw exception
+        } catch (exception: Exception) {
+            Log.e(TAG, "MediaStore scan or catalog indexing failed", exception)
+            NativeIndex.failActiveGenerations(
+                appContext,
+                NativeIndex.SOURCE_MEDIASTORE,
+                exception.message ?: "MediaStore scan failed",
+            )
+            runCatching {
+                dependencies.libraryService.finishNativeScanRun(
+                    scanId = scanId,
+                    requestId = requestId,
+                    sourceKind = NativeIndex.SOURCE_MEDIASTORE,
+                    scopeKind = "volume",
+                    scopeRef = MediaStoreScanner.SOURCE,
+                    nativeGeneration = null,
+                    generationId = null,
+                    status = "FAILED",
+                    stats = JSONObject().put("errorType", exception::class.java.simpleName),
+                    indexReport = null,
+                    startedAtMillis = NativeScanController.snapshot(scanId)?.startedAtMillis,
+                )
+            }.onFailure { Log.w(TAG, "Could not finalize failed MediaStore scan history.", it) }
+            NativeScanController.complete(scanId, "FAILED", JSONObject().put("errorType", exception::class.java.simpleName))
+            NativeMailbox.write(
+                appContext,
+                JSONObject().put("type", "mediastore_error")
+                    .put("requestId", requestId ?: "")
+                    .put("message", "Não foi possível atualizar os vídeos da biblioteca.")
+                    .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE)
+                        .put("scanId", scanId).put("status", NativeIndex.STATUS_FAILED)
+                        .put("access", MediaStoreScanner.accessLevel(appContext))),
+            )
+        } finally {
+            NativeScanController.finish(scanId)
+        }
     }
+
+    private suspend fun indexMediaStoreSnapshots(
+        appContext: Context,
+        scanId: String,
+        result: JSONObject,
+        libraryScopes: List<MediaStoreScanner.LibraryScope>,
+    ): JSONObject {
+        val summary = JSONObject()
+            .put("source", NativeIndex.SOURCE_MEDIASTORE)
+            .put("attemptedVolumes", 0)
+            .put("committedVolumes", 0)
+            .put("reusedVolumes", 0)
+            .put("failedVolumes", 0)
+            .put("receiptWarnings", 0)
+            .put("inserted", 0)
+            .put("updated", 0)
+            .put("unchanged", 0)
+            .put("ambiguous", 0)
+            .put("rejectedOutOfScope", 0)
+            .put("reconciledMissing", 0)
+            .put("volumes", JSONArray())
+            .put("errors", JSONArray())
+        val allVolumes = result.optJSONArray("volumeScopes") ?: JSONArray()
+        val stats = result.optJSONObject("stats") ?: JSONObject()
+        val canReadMediaStore = stats.optBoolean("canScan", false)
+        val dependencies = ReiAnixAppDependencies.from(appContext)
+
+        for (index in 0 until allVolumes.length()) {
+            val volume = allVolumes.optJSONObject(index) ?: continue
+            val volumeName = volume.optString("volumeId").trim()
+            val scopeKey = "mediastore:" + volumeName
+            val generation = volume.optLong("scanGeneration", 0L)
+            val volumeResult = JSONObject().put("volumeId", volumeName)
+                .put("scopeKey", scopeKey).put("generation", generation)
+                .put("complete", volume.optBoolean("complete"))
+                .put("reused", volume.optBoolean("reused"))
+            summary.put("attemptedVolumes", summary.optInt("attemptedVolumes") + 1)
+
+            if (volumeName.isBlank() || generation <= 0L) {
+                summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
+                summary.optJSONArray("errors")?.put("MediaStore retornou uma geração inválida para o volume " + volumeName + ".")
+                volumeResult.put("status", "INVALID_GENERATION")
+                summary.optJSONArray("volumes")?.put(volumeResult)
+                continue
+            }
+            if (volume.optBoolean("reused")) {
+                // canReuseMediaStoreVolume now requires a matching scope signature and a
+                // confirmed COMMITTED receipt for this exact generation.
+                summary.put("reusedVolumes", summary.optInt("reusedVolumes") + 1)
+                volumeResult.put("status", "UNCHANGED_CACHED").put("catalogWriteOutcome", "COMMITTED")
+                summary.optJSONArray("volumes")?.put(volumeResult)
+                continue
+            }
+            if (!canReadMediaStore || libraryScopes.isEmpty()) {
+                summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
+                summary.optJSONArray("errors")?.put("A permissão MediaStore ou a pasta SAF não estava disponível ao persistir o volume " + volumeName + ".")
+                volumeResult.put("status", "ACCESS_NOT_VALID")
+                summary.optJSONArray("volumes")?.put(volumeResult)
+                continue
+            }
+
+            val complete = volume.optBoolean("complete")
+            val documents = if (complete) {
+                NativeIndex.committedDocuments(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey)
+            } else {
+                NativeIndex.stagedDocuments(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation)
+            }
+            if (documents == null) {
+                summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
+                summary.optJSONArray("errors")?.put("O snapshot MediaStore do volume " + volumeName + " não pôde ser validado para indexação.")
+                volumeResult.put("status", "SNAPSHOT_UNAVAILABLE")
+                summary.optJSONArray("volumes")?.put(volumeResult)
+                continue
+            }
+
+            val status = volume.optString("status").trim().uppercase()
+            val cancelled = result.optBoolean("cancelled") || status == NativeIndex.STATUS_CANCELLED
+            val scopeErrors = volume.optJSONArray("errors")
+            val failedLocations = if (scopeErrors != null && scopeErrors.length() > 0) {
+                buildSet {
+                    for (errorIndex in 0 until scopeErrors.length()) {
+                        add(scopeErrors.optString(errorIndex).ifBlank { "media_store_query_error" })
+                    }
+                }
+            } else emptySet()
+            val snapshot = NativeLibraryScanSnapshot(
+                operationId = scanId + ":" + volumeName,
+                source = NativeIndex.SOURCE_MEDIASTORE,
+                scopeRoot = volumeName,
+                expectedLocations = setOf(volumeName),
+                processedLocations = if (complete) setOf(volumeName) else emptySet(),
+                failedLocations = failedLocations,
+                unprocessedLocations = if (complete) emptySet() else setOf(volumeName),
+                status = status,
+                complete = complete,
+                cancelled = cancelled,
+                authorizationValid = canReadMediaStore && libraryScopes.isNotEmpty(),
+                items = discoveredMediaFromSnapshot(documents, scopeKey),
+                scopeReference = scopeKey,
+                scanGeneration = generation,
+            )
+            if (!NativeIndex.markNativeCatalogIndexing(appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation)) {
+                summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
+                summary.optJSONArray("errors")?.put("O recibo de início da escrita SQLite não pôde ser registrado para " + volumeName + ".")
+                volumeResult.put("status", "INDEX_RECEIPT_REJECTED")
+                summary.optJSONArray("volumes")?.put(volumeResult)
+                continue
+            }
+
+            val outcome = AtomicReference<ReiAnixSqliteTransactionOutcome?>(null)
+            val committedReport = AtomicReference<NativeLibraryIndexReport?>(null)
+            val commitReceiptPersisted = AtomicBoolean(true)
+            try {
+                val report = dependencies.libraryService.indexDiscoveredMedia(snapshot) { transactionOutcome, transactionReport ->
+                    outcome.set(transactionOutcome)
+                    if (transactionReport != null) committedReport.set(transactionReport)
+                    when (transactionOutcome) {
+                        ReiAnixSqliteTransactionOutcome.COMMITTED -> {
+                            val persisted = if (transactionReport != null) {
+                                NativeIndex.markNativeCatalogCommitted(
+                                    appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation, transactionReport,
+                                )
+                            } else {
+                                NativeIndex.markNativeCatalogCommittedWithoutReport(
+                                    appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation,
+                                    "MediaStore SQLite commit was confirmed but its report was unavailable.",
+                                )
+                            }
+                            if (!persisted) commitReceiptPersisted.set(false)
+                        }
+                        ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
+                            val persisted = NativeIndex.markNativeCatalogNotCommitted(
+                                appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation,
+                                "MediaStore SQLite transaction rolled back before a commit was confirmed.",
+                            )
+                            if (!persisted) commitReceiptPersisted.set(false)
+                        }
+                        ReiAnixSqliteTransactionOutcome.UNKNOWN -> {
+                            val persisted = NativeIndex.markNativeCatalogOutcomeUnknown(
+                                appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation,
+                                "MediaStore SQLite transaction finalization did not provide a definitive outcome.",
+                            )
+                            if (!persisted) commitReceiptPersisted.set(false)
+                        }
+                        null -> commitReceiptPersisted.set(false)
+                    }
+                }
+                if (outcome.get() != ReiAnixSqliteTransactionOutcome.COMMITTED) {
+                    summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
+                    summary.optJSONArray("errors")?.put(
+                        "A escrita SQLite do volume " + volumeName + " não teve resultado COMMITTED confirmado.",
+                    )
+                    volumeResult.put("status", "TRANSACTION_NOT_COMMITTED")
+                } else {
+                    val actualReport = committedReport.get() ?: report
+                    summary.put("committedVolumes", summary.optInt("committedVolumes") + 1)
+                    summary.put("inserted", summary.optInt("inserted") + actualReport.inserted)
+                    summary.put("updated", summary.optInt("updated") + actualReport.updated)
+                    summary.put("unchanged", summary.optInt("unchanged") + actualReport.unchanged)
+                    summary.put("ambiguous", summary.optInt("ambiguous") + actualReport.ambiguous)
+                    summary.put("rejectedOutOfScope", summary.optInt("rejectedOutOfScope") + actualReport.rejectedOutOfScope)
+                    summary.put("reconciledMissing", summary.optInt("reconciledMissing") + actualReport.reconciledMissing)
+                    volumeResult.put("status", "COMMITTED")
+                        .put("catalogWriteOutcome", "COMMITTED")
+                        .put("indexReport", JSONObject()
+                            .put("inserted", actualReport.inserted)
+                            .put("updated", actualReport.updated)
+                            .put("unchanged", actualReport.unchanged)
+                            .put("ambiguous", actualReport.ambiguous)
+                            .put("rejectedOutOfScope", actualReport.rejectedOutOfScope)
+                            .put("reconciledMissing", actualReport.reconciledMissing)
+                            .put("reconciliationAuthorized", actualReport.reconciliationAuthorized))
+                    if (!commitReceiptPersisted.get()) {
+                        summary.put("receiptWarnings", summary.optInt("receiptWarnings") + 1)
+                        summary.optJSONArray("errors")?.put("O commit SQLite foi confirmado, mas o recibo de catálogo não pôde ser persistido para " + volumeName + ".")
+                    }
+                }
+            } catch (cancelledException: CancellationException) {
+                throw cancelledException
+            } catch (error: Exception) {
+                val transactionOutcome = outcome.get()
+                when (transactionOutcome) {
+                    ReiAnixSqliteTransactionOutcome.COMMITTED -> {
+                        // Do not retry or transfer ownership after a confirmed commit.
+                        summary.put("committedVolumes", summary.optInt("committedVolumes") + 1)
+                        summary.put("receiptWarnings", summary.optInt("receiptWarnings") + 1)
+                        summary.optJSONArray("errors")?.put("A transação do volume " + volumeName + " foi confirmada, mas o relatório retornou com erro.")
+                        volumeResult.put("status", "COMMITTED_REPORT_UNAVAILABLE")
+                    }
+                    ReiAnixSqliteTransactionOutcome.ROLLED_BACK -> {
+                        if (!NativeIndex.markNativeCatalogNotCommitted(
+                                appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation,
+                                "MediaStore SQLite transaction rolled back: " + error::class.java.simpleName,
+                            )
+                        ) {
+                            summary.put("receiptWarnings", summary.optInt("receiptWarnings") + 1)
+                        }
+                        summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
+                        summary.optJSONArray("errors")?.put("A transação SQLite do volume " + volumeName + " foi revertida.")
+                        volumeResult.put("status", "ROLLED_BACK")
+                    }
+                    else -> {
+                        if (!NativeIndex.markNativeCatalogOutcomeUnknown(
+                                appContext, NativeIndex.SOURCE_MEDIASTORE, scopeKey, generation,
+                                "MediaStore SQLite transaction result is unknown: " + error::class.java.simpleName,
+                            )
+                        ) {
+                            summary.put("receiptWarnings", summary.optInt("receiptWarnings") + 1)
+                        }
+                        summary.put("failedVolumes", summary.optInt("failedVolumes") + 1)
+                        summary.optJSONArray("errors")?.put("O resultado da transação SQLite do volume " + volumeName + " é desconhecido; não será transferido para um escritor legado.")
+                        volumeResult.put("status", "TRANSACTION_UNKNOWN")
+                    }
+                }
+                Log.e(TAG, "MediaStore catalog indexing failed for volume " + volumeName, error)
+            }
+            summary.optJSONArray("volumes")?.put(volumeResult)
+        }
+        return summary
+    }
+
 }
 
 private fun discoveredMediaFromSnapshot(
