@@ -276,9 +276,9 @@ object LibraryUiMappers {
     private fun Map<String, Any?>.stringOrNull(key: String): String? =
         when (val value = this[key]) {
             null -> null
-            is String -> value
-            else -> value.toString()
-        }?.trim()?.takeIf { it.isNotEmpty() }
+            is String -> value.trim().takeIf { it.isNotEmpty() }
+            else -> error("Invalid library field '$key': expected text.")
+        }
 
     private fun Map<String, Any?>.longOrNull(key: String): Long? =
         ReiAnixContractValues.longOrNull(this[key], key)
@@ -295,9 +295,21 @@ object LibraryUiMappers {
     private fun Map<String, Any?>.stringList(key: String): List<String> =
         when (val value = this[key]) {
             is Iterable<*> ->
-                value.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
+                value.mapIndexed { index, item ->
+                    val text = item as? String
+                        ?: error("Invalid library field '$key[$index]': expected text.")
+                    text.trim().also {
+                        require(it.isNotEmpty()) { "Invalid library field '$key[$index]': text must not be blank." }
+                    }
+                }
             is Array<*> ->
-                value.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotEmpty) }
+                value.mapIndexed { index, item ->
+                    val text = item as? String
+                        ?: error("Invalid library field '$key[$index]': expected text.")
+                    text.trim().also {
+                        require(it.isNotEmpty()) { "Invalid library field '$key[$index]': text must not be blank." }
+                    }
+                }
             is String -> {
                 val raw = value.trim()
                 if (raw.isEmpty()) {
@@ -306,8 +318,15 @@ object LibraryUiMappers {
                     runCatching {
                         JSONArray(raw).let { array ->
                             (0 until array.length())
-                                .mapNotNull { index ->
-                                    array.optString(index).trim().takeIf(String::isNotEmpty)
+                                .map { index ->
+                                    val item = array.opt(index)
+                                    val text = item as? String
+                                        ?: error("Invalid library field '$key[$index]': expected text.")
+                                    text.trim().also {
+                                        require(it.isNotEmpty()) {
+                                            "Invalid library field '$key[$index]': text must not be blank."
+                                        }
+                                    }
                                 }
                         }
                     }.getOrElse {
@@ -320,14 +339,10 @@ object LibraryUiMappers {
 
     private fun Map<String, Any?>.listOfMaps(key: String): List<Map<String, Any?>> {
         fun convert(items: Iterable<*>): List<Map<String, Any?>> =
-            items.mapIndexedNotNull { index, item ->
-                if (item == null) {
-                    null
-                } else {
-                    val map = item as? Map<*, *>
-                        ?: error("Invalid library field '$key[$index]': expected an object.")
-                    map.entries.associate { (k, v) -> k.toString() to v }
-                }
+            items.mapIndexed { index, item ->
+                val map = item as? Map<*, *>
+                    ?: error("Invalid library field '$key[$index]': expected an object.")
+                map.entries.associate { (k, v) -> k.toString() to v }
             }
 
         return when (val value = this[key]) {
