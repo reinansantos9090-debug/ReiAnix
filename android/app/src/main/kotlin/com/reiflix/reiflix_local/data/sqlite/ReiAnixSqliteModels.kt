@@ -266,13 +266,8 @@ internal fun Cursor.optionalLong(column: String): Long? {
     return if (index < 0 || isNull(index)) null else getLong(index)
 }
 
-internal fun Cursor.optionalInt(column: String): Int? {
-    val value = optionalLong(column) ?: return null
-    check(value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
-        "Optional SQLite integer column is outside the 32-bit range: " + column
-    }
-    return value.toInt()
-}
+internal fun Cursor.optionalInt(column: String): Int? =
+    ReiAnixContractValues.intOrNull(optionalLong(column), column)
 
 internal fun Cursor.optionalDouble(column: String): Double? {
     val index = getColumnIndex(column)
@@ -282,13 +277,8 @@ internal fun Cursor.optionalDouble(column: String): Double? {
     return value
 }
 
-internal fun Cursor.optionalBoolean(column: String): Boolean? {
-    val value = optionalLong(column) ?: return null
-    check(value == 0L || value == 1L) {
-        "Optional SQLite Boolean column must contain 0 or 1: " + column
-    }
-    return value == 1L
-}
+internal fun Cursor.optionalBoolean(column: String): Boolean? =
+    ReiAnixContractValues.booleanOrNull(optionalLong(column), column)
 
 /** Joined records required to project the canonical SQLite library into Compose. */
 data class ReiAnixLibraryCatalogGenre(
