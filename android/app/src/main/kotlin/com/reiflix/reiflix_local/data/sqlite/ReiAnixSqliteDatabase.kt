@@ -500,6 +500,124 @@ class ReiAnixSqliteDatabase(context: Context) {
         )
     }
 
+    /**
+     * Creates the canonical v29 database only for a genuinely fresh install.
+     *
+     * The bootstrap asset is emitted from the real LibraryStore schema snapshot.
+     * An existing file, including an empty/partial file, is never deleted or
+     * replaced here. Recovery evidence is checked by the process bootstrap before
+     * this method is called; the file creation is atomic to avoid two writers
+     * claiming a fresh install at the same time.
+     *
+     * @return true if this call created the database; false if another call or
+     * another process already created a file and the caller must validate it.
+     */
+    internal fun initializeFreshInstall(): Boolean = synchronized(connectionLock) {
+        if (databaseFile.exists()) return@synchronized false
+
+        val bootstrap = loadCanonicalBootstrap()
+        val schemaVersion = bootstrap.getInt("schema_version")
+        check(schemaVersion == EXPECTED_SCHEMA_VERSION) {
+            "Native SQLite bootstrap schema version $schemaVersion does not match expected v$EXPECTED_SCHEMA_VERSION."
+        }
+        val userVersion = bootstrap.getInt("sqlite_user_version")
+        check(userVersion == EXPECTED_SQLITE_USER_VERSION) {
+            "Native SQLite bootstrap user_version $userVersion does not match expected $EXPECTED_SQLITE_USER_VERSION."
+        }
+        val tables = bootstrap.getJSONArray("tables").toStringSet()
+        check(SCHEMA_MIGRATIONS_TABLE in tables) {
+            "Native SQLite bootstrap is missing schema_migrations."
+        }
+        val statements = bootstrap.getJSONArray("statements")
+        val triggers = bootstrap.getJSONArray("triggers")
+        check(statements.length() > 0) { "Native SQLite bootstrap has no schema statements." }
+
+        val parent = databaseFile.parentFile
+            ?: throw IllegalStateException("Canonical SQLite database has no parent directory.")
+        check(parent.isDirectory || parent.mkdirs()) {
+            "Could not create the private data directory for the canonical SQLite database."
+        }
+        if (databaseFile.exists()) return@synchronized false
+        if (!databaseFile.createNewFile()) return@synchronized false
+
+        var database: SQLiteDatabase? = null
+        try {
+            database = SQLiteDatabase.openDatabase(
+                databaseFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE,
+            )
+            database.setForeignKeyConstraintsEnabled(true)
+            database.beginTransactionNonExclusive()
+            try {
+                for (index in 0 until statements.length()) {
+                    val sql = statements.getString(index).trim()
+                    val normalized = sql.uppercase(Locale.ROOT)
+                    require(
+                        normalized.startsWith("CREATE TABLE ") ||
+                            normalized.startsWith("CREATE INDEX ") ||
+                            normalized.startsWith("CREATE UNIQUE INDEX "),
+                    ) {
+                        "Refusing non-DDL statement in the native SQLite bootstrap at index $index."
+                    }
+                    database.execSQL(sql)
+                }
+                for (index in 0 until triggers.length()) {
+                    val sql = triggers.getString(index).trim()
+                    val normalized = sql.uppercase(Locale.ROOT)
+                    require(
+                        normalized.startsWith("CREATE TRIGGER ") ||
+                            normalized.startsWith("CREATE TEMP TRIGGER ") ||
+                            normalized.startsWith("CREATE TEMPORARY TRIGGER "),
+                    ) {
+                        "Refusing non-trigger statement in the native SQLite bootstrap at index $index."
+                    }
+                    database.execSQL(sql)
+                }
+                database.execSQL(
+                    "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                    arrayOf<Any>(schemaVersion, System.currentTimeMillis() / 1000.0),
+                )
+                database.execSQL("PRAGMA user_version = $userVersion")
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
+        } catch (error: Exception) {
+            // A failed fresh creation is intentionally not deleted. The empty or
+            // partial file becomes explicit recovery evidence, not a reason to
+            // silently retry by replacing a database on the next launch.
+            throw ReiAnixSqliteOpenException(
+                "Native SQLite v$EXPECTED_SCHEMA_VERSION initialization failed; the file was retained for Recovery Mode.",
+                error,
+            )
+        } finally {
+            database?.close()
+        }
+
+        val schema = inspectSchema()
+        if (!schema.supportsCurrentContract) {
+            throw ReiAnixSqliteSchemaMismatchException(schema.incompatibilities)
+        }
+        val integrity = quickCheck()
+        check(integrity == listOf("ok")) {
+            "Native SQLite bootstrap created a database that failed quick_check: ${integrity.joinToString("; ")}"
+        }
+        contractValidated = true
+        true
+    }
+
+    private fun loadCanonicalBootstrap(): JSONObject = try {
+        appContext.assets.open(BOOTSTRAP_ASSET_NAME).bufferedReader(Charsets.UTF_8).use { reader ->
+            JSONObject(reader.readText())
+        }
+    } catch (error: IOException) {
+        throw IllegalStateException(
+            "Canonical SQLite fresh-install bootstrap asset is missing: $BOOTSTRAP_ASSET_NAME.",
+            error,
+        )
+    }
+
     private fun openExisting(
         readOnly: Boolean,
         validateContract: Boolean = true,
@@ -567,6 +685,8 @@ class ReiAnixSqliteDatabase(context: Context) {
         const val EXPECTED_SCHEMA_VERSION = 29
         const val BUSY_TIMEOUT_MS = 10_000
         const val CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json"
+        const val BOOTSTRAP_ASSET_NAME = "native-sqlite-bootstrap-v29.json"
+        const EXPECTED_SQLITE_USER_VERSION = 0
         private const val SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
 
         private fun quoteIdentifier(identifier: String) = "\"" + identifier.replace("\"", "\"\"") + "\""
