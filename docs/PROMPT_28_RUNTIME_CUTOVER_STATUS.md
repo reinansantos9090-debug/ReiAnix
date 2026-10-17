@@ -11,6 +11,12 @@ Status: **MIGRAÇÃO INCOMPLETA**. Este documento separa o que já é nativo, o 
 - **Limpeza do código-fonte:** módulos Python de produção removidos apenas quando seus consumidores e efeitos colaterais foram substituídos; testes e ferramentas de desenvolvimento podem continuar em Python desde que separados do APK.
 - **Resultado nesta alteração:** foi removido o transporte dos arrays de documentos dos lotes de scan bem-sucedidos para a mailbox Python. `ReiAnixLibraryViewModel` também deriva o estado de scan do `NativeScanController.progress` para SAF, MediaStore e Broad Storage, não somente SAF. O bootstrap do SQLite v29 para instalações realmente novas foi implementado em Kotlin usando um asset gerado do snapshot canônico. A classe de conexão continua open-only; o candidato é validado antes da promoção exclusiva, sem sobrescrever uma base existente. Nenhum módulo Python de runtime ou ferramenta de empacotamento foi apagado; as demais categorias ainda não atingiram os critérios de aceitação.
 
+## Correção de recuperação do bootstrap (Prompt 28.1)
+
+Quando o arquivo canônico `filesDir/data/library.sqlite3` ainda não existe, apenas evidências que podem corresponder a dados/estado anterior bloqueiam a inicialização nova: um arquivo de base anterior `.library.sqlite3.previous-*`, snapshots de recuperação ou recibos SAF pendentes. Um `.library.sqlite3.candidate-*` isolado é um artefato temporário do bootstrap de instalação nova, não a base canônica nem evidência suficiente de dados do usuário. A inicialização não apaga nem reutiliza o candidato órfão; cria outro candidato de nome único, valida schema/integridade e usa a promoção exclusiva que só ocorre se o caminho canônico continuar ausente. Se existir uma base canônica, a verificação dessa base continua sendo o caminho prioritário.
+
+Esta correção trata somente o bloqueio indevido causado por candidatos temporários órfãos. Não migra bancos existentes, não altera schema v29, não comprova execução em dispositivo e não remove dependências do runtime Python/Flet/Flutter.
+
 ## Matriz de dependências verificada
 
 | Componente/arquivo | Responsabilidade atual | Runtime instalado | Participa do build oficial | Teste/ferramenta | Substituto Kotlin observado | Ação e risco de remoção |
