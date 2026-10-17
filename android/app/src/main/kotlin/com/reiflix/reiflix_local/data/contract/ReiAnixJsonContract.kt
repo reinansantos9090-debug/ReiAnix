@@ -72,6 +72,13 @@ internal fun JSONObject.requiredArray(key: String): JSONArray {
         ?: error("Invalid JSON contract field '$key': expected an array.")
 }
 
+internal fun JSONObject.arrayOrNull(key: String): JSONArray? =
+    when {
+        !has(key) || isNull(key) -> null
+        optJSONArray(key) != null -> optJSONArray(key)
+        else -> error("Invalid JSON contract field '$key': expected an array.")
+    }
+
 internal fun JSONObject.arrayOrDefault(key: String): JSONArray =
     when {
         !has(key) -> JSONArray()
