@@ -2,7 +2,7 @@
 
 ## O que foi adicionado
 
-A raiz do repositório agora possui um Gradle Wrapper independente. O único projeto Android é `:app`, mapeado diretamente para `android/app`; não há um segundo applicationId, outro módulo de produto ou outra base de dados. O build usa AGP 8.9.1, Kotlin/Compose Compiler 2.0.21, Gradle 8.11.1, JDK 17 e Android SDK 36, alinhados com a configuração efetiva do módulo.
+A raiz do repositório agora possui um Gradle Wrapper independente. O único projeto Android é `:app`, mapeado diretamente para `android/app`; não há um segundo applicationId, outro módulo de produto ou outra base de dados. O build usa AGP 8.9.1, Kotlin/Compose Compiler 2.2.0, Gradle 8.11.1, JDK 17 e Android SDK 36, alinhados com o módulo nativo e a matriz de compatibilidade: o KGP 2.2.0 aceita AGP 8.9.x e Gradle 8.11.x; a versão 2.0.21 do host Flet permanece isolada no workflow híbrido legado. Consulte a [matriz de compatibilidade Kotlin/Gradle](https://kotlinlang.org/docs/gradle-configure-project.html) e a [compatibilidade do AGP](https://developer.android.com/build/releases/about-agp).
 
 Comandos utilizados pelo workflow dedicado:
 
