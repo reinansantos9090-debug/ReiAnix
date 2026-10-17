@@ -38,7 +38,9 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("appContext: Context", publisher)
         self.assertNotIn("this@", publisher)
         self.assertIn("TAG", publisher)
-        self.assertIn("NativeMailbox.writeOrThrow", publisher)
+        self.assertIn("NATIVE_SCAN_BATCH_STAGED", publisher)
+        self.assertNotIn("NativeMailbox.writeOrThrow", publisher)
+        self.assertIn("NativeMailbox.write(", publisher)
 
     def test_saf_inventory_is_process_guarded_and_does_not_retain_activity(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
