@@ -219,7 +219,7 @@ suspend fun ReiAnixSqliteLibraryRepository.setEpisodeManualIdentification(
     require(normalizedType in setOf("regular", "special", "ova", "oad", "ona", "extra", "movie", "unknown")) {
         "Tipo de episódio inválido."
     }
-    val cleanTitle = title?.trim()?.ifEmpty { null }
+    val cleanTitle = title?.trim()?.takeIf { it.isNotEmpty() }
     database.transaction { connection ->
         val existing = connection.rawQuery(
             "SELECT * FROM episodes WHERE id = ? LIMIT 1",
