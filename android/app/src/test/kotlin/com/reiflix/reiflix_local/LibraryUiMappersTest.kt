@@ -12,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class LibraryUiMappersTest {
@@ -620,4 +621,46 @@ class LibraryUiMappersTest {
         "missing" to missing,
         "availability_state" to availabilityState,
     )
+
+    @Test
+    fun mapperRejectsFractionalAndNonPositivePersistedIds() {
+        val fractional = animeSource(id = 7L).toMutableMap().apply {
+            this["id"] = 7.5
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LibraryUiMappers.anime(fractional)
+        }
+
+        val nonPositive = animeSource(id = 7L).toMutableMap().apply {
+            this["id"] = 0L
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LibraryUiMappers.anime(nonPositive)
+        }
+    }
+
+    @Test
+    fun mapperRejectsWrongTypesInsteadOfConvertingTextOrBooleanFields() {
+        val invalidFavorite = animeSource(id = 7L).toMutableMap().apply {
+            this["favorite"] = 2
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LibraryUiMappers.anime(invalidFavorite)
+        }
+
+        val invalidTitle = animeSource(id = 7L).toMutableMap().apply {
+            this["main_title"] = 123
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LibraryUiMappers.anime(invalidTitle)
+        }
+
+        val fractionalYear = animeSource(id = 7L).toMutableMap().apply {
+            this["year"] = 2026.5
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LibraryUiMappers.anime(fractionalYear)
+        }
+    }
+
 }
