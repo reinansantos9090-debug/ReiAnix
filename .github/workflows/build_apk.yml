@@ -157,9 +157,19 @@ jobs:
         run: |
           python scripts/generate_native_sqlite_test_fixture.py \
             --output android/app/src/test/resources/native-sqlite-schema-v29.json \
-            --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
+            --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json \
+            --bootstrap-output build/native-sqlite-bootstrap-v29.json
           test -s android/app/src/test/resources/native-sqlite-schema-v29.json
           test -s android/app/src/main/assets/native-sqlite-contract-v29.json
+          test -s build/native-sqlite-bootstrap-v29.json
+
+      - name: Publish canonical SQLite bootstrap source for native migration
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-native-sqlite-bootstrap-source-${{ github.run_number }}
+          path: build/native-sqlite-bootstrap-v29.json
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Prepare Flet build template with Android host
         shell: bash
