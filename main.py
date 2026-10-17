@@ -41,13 +41,7 @@ from core.library_discovery import format_duration
 from core.settings import SettingsStore
 from core.ui import apply_page_theme
 from core.recovery import RecoveryService
-from views.recovery_view import RecoveryView
 from core.google_account import normalize_google_profile
-from views.home_view import HomeView
-from views.details_view import DetailView
-from views.organize_view import OrganizeView
-from views.settings_view import SettingsView
-from views.collector_view import CollectorView
 
 logger = logging.getLogger("reiflix")
 
@@ -127,6 +121,7 @@ async def main(page: ft.Page):
             if preview_only:
                 return await asyncio.to_thread(BackupService(store).inspect_bytes, raw)
             return await asyncio.to_thread(recovery_service.restore_backup, raw)
+        from views.recovery_view import RecoveryView
         page.views.clear()
         page.views.append(
             ft.View(
@@ -1093,6 +1088,9 @@ async def main(page: ft.Page):
             if compose_primary_ui:
                 control = ft.Container(expand=True)
             else:
+                # Keep legacy controls lazy: Android's Compose host must not import
+                # or construct the old Home tree when the native screen owns rendering.
+                from views.home_view import HomeView
                 control = HomeView.build(
                     page, library, navigate_details, navigate_settings, play_episode,
                     navigate_organize, view_state=home_state,
@@ -1115,6 +1113,8 @@ async def main(page: ft.Page):
                 # NavigationController/page.views bookkeeping.
                 control = ft.Container(expand=True)
             else:
+                # OrganizeView is only needed by the non-Compose fallback.
+                from views.organize_view import OrganizeView
                 control = OrganizeView.build(
                     page, library, navigate_details,
                     lambda: navigate_back("visual:organize"), navigate_settings,
@@ -1129,6 +1129,8 @@ async def main(page: ft.Page):
             if compose_primary_ui:
                 control = ft.Container(expand=True)
             else:
+                # Keep the legacy Details tree out of the Android Compose runtime path.
+                from views.details_view import DetailView
                 details_instance_generation[0] += 1
                 detail_instance_token = details_instance_generation[0]
                 detail_anime_id = (current[0] or {}).get("id")
@@ -1156,7 +1158,8 @@ async def main(page: ft.Page):
                 # Keep a compatibility shell here rather than rendering a second UI tree.
                 control = ft.Container(expand=True)
             else:
-                # Preserve the Flet implementation as fallback outside the Compose host.
+                # Preserve the Flet implementation as a non-Compose fallback only.
+                from views.collector_view import CollectorView
                 collector_instance_generation[0] += 1
                 collector_instance_token = collector_instance_generation[0]
                 control = CollectorView.build(
@@ -1175,15 +1178,14 @@ async def main(page: ft.Page):
                 if settings_path_override is not None
                 else None
             )
-            if fixed_settings_path == () and bridge.available:
-                # The root Settings surface is fully replaced by Compose on
-                # Android. Keep only the empty Flet shell required by the
-                # existing Python NavigationController/page.views projection.
+            if bridge.available:
+                # Compose owns both the Settings root and its nested categories on
+                # Android. Python page.views is only a compatibility projection;
+                # never build a hidden duplicate Flet Settings tree for a category.
                 control = ft.Container(expand=True)
             else:
-                # Nested Settings pages still belong to the existing Python/Flet
-                # flow, and this also remains the fallback when the native Compose
-                # host is unavailable.
+                # Keep the complete legacy Settings UI for non-Compose fallback only.
+                from views.settings_view import SettingsView
                 control = SettingsView.build(
                     page, store, library,
                     lambda: navigate_back("visual:settings"),
