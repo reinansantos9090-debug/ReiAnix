@@ -1774,7 +1774,7 @@ class ReiAnixLibraryViewModel(
         return pinned
     }
 
-    /** Save the private note without modifying AniList editorial metadata or another store. */
+    /** Save the private note without modifying remote editorial metadata or another store. */
     suspend fun saveAnimePersonalNoteNative(animeId: Long, note: String?): String? {
         val saved = nativeLibraryRepository.setAnimePersonalNote(animeId, note)
         refreshNativeCatalog()
