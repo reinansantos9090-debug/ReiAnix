@@ -4448,6 +4448,24 @@ class MainActivity : FlutterFragmentActivity() {
     }
     private fun openPlayer(data: Uri?, commandReceivedAtMs: Long = 0L): Boolean {
         val source = data ?: return false
+        val nativeComposeHandoff = source.getQueryParameter("native_compose") == "true"
+        val succeeded = performOpenPlayer(source, commandReceivedAtMs)
+        if (nativeComposeHandoff) {
+            val requestId = source.getQueryParameter("request_id")?.trim().orEmpty()
+            if (requestId.isNotBlank()) {
+                libraryViewModel.reportNativePlayerHandoff(
+                    requestId = requestId,
+                    status = if (succeeded) "COMPLETED" else "FAILED",
+                    error = if (succeeded) null else
+                        "Não foi possível iniciar o player nativo. Verifique a disponibilidade da mídia e a permissão de acesso.",
+                )
+            }
+        }
+        return succeeded
+    }
+
+    private fun performOpenPlayer(data: Uri?, commandReceivedAtMs: Long = 0L): Boolean {
+        val source = data ?: return false
         val playerRequest = NativePlayerRequest.fromBridgeUri(source)
         val episodeUri = playerRequest.episodeUri
         val requestId = playerRequest.requestId

@@ -411,6 +411,30 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         }
     }
 
+    /**
+     * Publishes the terminal result of a native Compose-to-player handoff to the
+     * existing UI state flow. This is status reporting, not domain persistence.
+     */
+    fun reportNativePlayerHandoff(
+        requestId: String,
+        status: String,
+        error: String? = null,
+    ) {
+        val normalizedRequestId = requestId.trim()
+        val normalizedStatus = status.trim().uppercase()
+        if (normalizedRequestId.isBlank() || normalizedStatus !in setOf("COMPLETED", "FAILED")) return
+        scope.launch {
+            stateMutex.withLock {
+                _state.value = _state.value.copy(
+                    lastCommandId = normalizedRequestId,
+                    lastCommandAction = "native_player_handoff",
+                    lastCommandStatus = normalizedStatus,
+                    lastCommandError = error?.trim()?.takeIf { it.isNotEmpty() }?.take(500),
+                )
+            }
+        }
+    }
+
     fun selectSafTree() {
         send(ReiAnixLibraryCommandCodec.Action.SELECT_SAF)
     }
@@ -443,9 +467,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             watched = watched,
         )
     }
-
-    fun openEpisode(episodeId: Long): String =
-        send(ReiAnixLibraryCommandCodec.Action.OPEN_MEDIA, episodeId = episodeId)
 
     private fun send(
         action: ReiAnixLibraryCommandCodec.Action,
