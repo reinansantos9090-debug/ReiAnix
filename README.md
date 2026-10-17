@@ -21,32 +21,18 @@ O banco SQLite e o cache de capas ficam no diretório privado definido por
 
 ## Android e APK
 
-O projeto fixa `flet==0.86.5`. A própria distribuição instalada declara
-**Flutter 3.44.8**; Java 17 e Android SDK 36 são o contrato de build. O código
-em [`android/`](android/README.md) é um overlay do host Flutter gerado pelo
-Flet, não um aplicativo Android independente.
+O módulo Android real fica em `android/app`. A configuração Gradle na raiz aponta para esse mesmo módulo (não cria um segundo aplicativo) e permite compilar as fontes Kotlin/Compose diretamente com JDK 17 e Android SDK 36:
 
 ```bash
-python -m unittest discover -s tests -v
-python -m compileall -q main.py app_config.py core views
-git diff --check
-flet build apk --yes
-python scripts/verify_android_host.py build/apk/<arquivo>.apk
+./gradlew --version
+./gradlew :app:assembleDebug
 ```
 
-A última verificação é obrigatória: ela procura no DEX as classes
-`MainActivity`, `NativeMailbox`, `SafScanner`, `MediaStoreScanner`,
-`BroadStorageScanner`, `NativePlayerActivity` e `GoogleIdentity`. Caso elas
-não estejam presentes, o APK é o cliente Flet stock e **não** deve ser
-distribuído, pois a bridge `reiflix://native`, SAF e Media3 não estarão
-integrados. O workflow GitHub Actions reproduz essas etapas, configura Python,
-Java 17, Flutter 3.44.8 e Android SDK 36, e publica apenas o APK verificado.
+O APK de validação nativa é gerado em `android/app/build/outputs/apk/debug/app-debug.apk`. O workflow `ReiAnix Native Gradle APK Validation` realiza essa compilação sem configurar Python, Flet ou Flutter; confere o manifesto, classes nativas, recurso do contrato SQLite v29, ZIP, SHA-256 e metadados de distribuição. Consulte [docs/KOTLIN_NATIVE_GRADLE_BUILD.md](docs/KOTLIN_NATIVE_GRADLE_BUILD.md).
 
-Não há APK comitado no repositório e não são incluídos secrets de Google. No
-Android, o usuário pode conceder leitura de vídeos pelo MediaStore e, para a
-biblioteca que procura vídeos em várias pastas, também pode conceder o acesso
-especial de armazenamento amplo. O SAF continua disponível para autorizar uma
-pasta específica. O app não converte URIs content:// em caminhos artificiais.
+**Atenção:** esse artefato valida o build Kotlin/Compose, mas não substitui ainda a distribuição completa. O aplicativo mantém operações reais no runtime Python: inicialização do SQLite v29 em instalação nova, consumidores da NativeMailbox/ScanCoordinator, algumas projeções e comandos de configurações/biblioteca e o produtor legado de artwork/metadata. Até essas responsabilidades serem migradas e validadas, o workflow oficial `Build ReiAnix Android APK` continua produzindo o APK completo pelo caminho Flet/Flutter, verifica a integração Android e publica os artefatos convencionais. Não remova esse caminho nem trate o APK nativo de validação como substituto funcional antes do cutover do runtime.
+
+O APK convencional pode ser validado pela presença no DEX de `MainActivity`, `NativeMailbox`, `SafScanner`, `MediaStoreScanner`, `BroadStorageScanner`, `NativePlayerActivity` e `GoogleIdentity`. O identificador continua `com.reiflix.reiflix_local`; as permissões SAF/MediaStore e o player Media3 são mantidos. Nenhuma chave privada é incluída no repositório.
 
 ## Licença e autoria
 
@@ -148,10 +134,4 @@ etapa mantém o app aberto e permite tentar de novo em Configurações.
 
 ## Build
 
-```bash
-flet build apk --yes
-```
-
-O build requer Java 17, Flutter e dependências Android acessíveis. Depois de
-configurar a mesclagem do overlay, valide em aparelho a seleção SAF, a conta
-Google e arquivos/codec reais, especialmente MKV.
+O comando nativo e os limites de distribuição estão documentados em [Kotlin native Gradle build](docs/KOTLIN_NATIVE_GRADLE_BUILD.md). O fluxo Android de distribuição completa permanece no workflow oficial enquanto existirem dependências de runtime legadas.
