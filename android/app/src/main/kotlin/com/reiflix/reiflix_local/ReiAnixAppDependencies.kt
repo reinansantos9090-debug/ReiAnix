@@ -6,6 +6,7 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import java.io.File
@@ -82,6 +83,16 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixConsumptionService(sqliteLibraryRepository)
+    }
+
+    /** Native Collector Journey derives statistics from canonical SQLite consumption rows. */
+    val collectorJourneyService: ReiAnixCollectorJourneyService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixCollectorJourneyService(
+            library = sqliteLibraryRepository,
+            settings = sqliteSettingsRepository,
+        )
     }
 
     /** Local genre identity/classification uses the same canonical SQLite database. */

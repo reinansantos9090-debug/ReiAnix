@@ -97,6 +97,22 @@ data class ReiAnixPreferenceRecord(
     val updatedAt: Double,
 )
 
+data class ReiAnixCollectorEpisodeRow(
+    val id: Long,
+    val animeId: Long,
+    val progress: Double?,
+    val duration: Double?,
+    val watched: Boolean?,
+    val missing: Boolean?,
+    val lastPlayedAt: Double?,
+    val episodeType: String?,
+    val animeTitle: String?,
+    val year: Int?,
+    val genresJson: String?,
+    val format: String?,
+    val mediaKind: String?,
+)
+
 data class ReiAnixArtworkRecord(
     val id: Long,
     val entityType: String,

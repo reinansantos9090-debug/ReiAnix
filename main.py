@@ -1159,18 +1159,24 @@ async def main(page: ft.Page):
                     view_state=details_state,
                 )
         elif route == "collector":
-            collector_instance_generation[0] += 1
-            collector_instance_token = collector_instance_generation[0]
-            control = CollectorView.build(
-                page,
-                library,
-                lambda: navigate_back("visual:collector"),
-                is_active=lambda token=collector_instance_token: (
-                    ui_alive[0]
-                    and navigation.current == "collector"
-                    and collector_instance_generation[0] == token
-                ),
-            )
+            if compose_primary_ui:
+                # Android Compose owns Collector Journey and its domain actions.
+                # Keep a compatibility shell here rather than rendering a second UI tree.
+                control = ft.Container(expand=True)
+            else:
+                # Preserve the Flet implementation as fallback outside the Compose host.
+                collector_instance_generation[0] += 1
+                collector_instance_token = collector_instance_generation[0]
+                control = CollectorView.build(
+                    page,
+                    library,
+                    lambda: navigate_back("visual:collector"),
+                    is_active=lambda token=collector_instance_token: (
+                        ui_alive[0]
+                        and navigation.current == "collector"
+                        and collector_instance_generation[0] == token
+                    ),
+                )
         elif route == "settings":
             fixed_settings_path = (
                 tuple(settings_path_override)
@@ -5084,7 +5090,7 @@ async def main(page: ft.Page):
                                 origin=origin,
                             )
 
-                            if destination in {'home', 'library', 'my_list', 'search', 'organize', 'settings'}:
+                            if destination in {'home', 'library', 'my_list', 'search', 'organize', 'settings', 'collector'}:
                                 current[0] = None
                                 try:
                                     # Compose is the visible navigation owner on Android;
@@ -5251,15 +5257,6 @@ async def main(page: ft.Page):
                             destination = str(payload.get('destination') or '').strip().lower()
                             if destination == 'back':
                                 navigate_back('compose_library_back')
-                            elif destination == 'collector':
-                                if bridge.available:
-                                    try:
-                                        await bridge.hide_library()
-                                    except Exception:
-                                        logger.exception(
-                                            "[COMPOSE_COLLECTOR] failed to hide Compose shell before Collector"
-                                        )
-                                navigate_collector()
                             elif destination == 'details':
                                 # Compose NavHost already owns the Details transition.
                                 # This event is compatibility-only and must not push

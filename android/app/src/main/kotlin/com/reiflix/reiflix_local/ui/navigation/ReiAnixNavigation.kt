@@ -27,6 +27,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.details.ReiAnixDetailsRoute
 import com.reiflix.reiflix_local.ui.details.ReiAnixAniListDetailsRoute
+import com.reiflix.reiflix_local.ui.collector.ReiAnixCollectorJourneyRoute
 import com.reiflix.reiflix_local.ui.home.ReiAnixHomeRoute
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryRoute
 import com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListRoute
@@ -47,6 +48,7 @@ object ReiAnixRoutes {
     const val STORAGE = "storage"
     const val ORGANIZE = "organize"
     const val RECOVERY = "recovery"
+    const val COLLECTOR = "collector"
     const val DETAILS = "details/{animeId}?origin={origin}"
     const val ANILIST_DETAILS = "anilist_details/{anilistId}?origin={origin}"
     const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"
@@ -69,7 +71,8 @@ object ReiAnixRoutes {
             normalized == MY_LIST ||
             normalized == STORAGE ||
             normalized == ORGANIZE ||
-            normalized == RECOVERY
+            normalized == RECOVERY ||
+            normalized == COLLECTOR
     }
 
     /**
@@ -159,6 +162,13 @@ fun NavHostController.navigateToTopLevel(route: String) {
     )
 }
 
+fun NavHostController.navigateToCollector() {
+    navigate(
+        ReiAnixRoutes.COLLECTOR,
+        navOptions { launchSingleTop = true },
+    )
+}
+
 fun NavHostController.navigateToOrganize() {
     navigate(
         ReiAnixRoutes.ORGANIZE,
@@ -220,6 +230,12 @@ fun ReiAnixNavigationHost(
         )
     },
     organize: @Composable () -> Unit = {},
+    collector: @Composable () -> Unit = {
+        ReiAnixCollectorJourneyRoute(
+            navController = navController,
+            libraryViewModel = homeViewModel,
+        )
+    },
     search: @Composable () -> Unit = {},
     settings: @Composable () -> Unit = {},
     storage: @Composable () -> Unit = {},
@@ -269,6 +285,7 @@ fun ReiAnixNavigationHost(
         },
         myList = myList,
         organize = organize,
+        collector = collector,
         search = {
             ReiAnixSearchRoute(
                 navController = navController,
@@ -307,6 +324,7 @@ fun ReiAnixNavigationHost(
     library: @Composable () -> Unit,
     myList: @Composable () -> Unit = {},
     organize: @Composable () -> Unit = {},
+    collector: @Composable () -> Unit = {},
     search: @Composable () -> Unit,
     settings: @Composable () -> Unit,
     storage: @Composable () -> Unit = {},
@@ -366,6 +384,7 @@ fun ReiAnixNavigationHost(
         ReiAnixRoutes.STORAGE,
         ReiAnixRoutes.ORGANIZE,
         ReiAnixRoutes.RECOVERY,
+        ReiAnixRoutes.COLLECTOR,
         ReiAnixRoutes.DETAILS,
         ReiAnixRoutes.ANILIST_DETAILS,
         ReiAnixRoutes.PLAYER,
@@ -414,6 +433,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.SETTINGS) { settings() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }
+            composable(ReiAnixRoutes.COLLECTOR) { collector() }
 
             composable(
                 route = ReiAnixRoutes.DETAILS,
