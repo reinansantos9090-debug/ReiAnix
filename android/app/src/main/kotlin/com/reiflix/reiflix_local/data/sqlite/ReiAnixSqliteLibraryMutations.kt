@@ -238,7 +238,7 @@ suspend fun ReiAnixSqliteLibraryRepository.setEpisodeManualIdentification(
             put("manual_override", 1)
             put("missing", 0)
         }
-        check(connection.update("episodes", values, "id = ?", arrayOf(episodeId.toString()) == 1) {
+        check(connection.update("episodes", values, "id = ?", arrayOf(episodeId.toString())) == 1) {
             "Não foi possível salvar a identificação do episódio."
         }
         if (normalizedType == "movie") {
