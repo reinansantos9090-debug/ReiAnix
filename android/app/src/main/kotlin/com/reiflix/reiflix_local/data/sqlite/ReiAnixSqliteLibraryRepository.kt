@@ -488,7 +488,7 @@ class ReiAnixSqliteLibraryRepository(
                         a.media_kind
                     FROM episodes e
                     JOIN anime a ON a.id = e.anime_id
-                    WHERE e.missing = 0
+                    -- Keep missing rows so collection counts preserve legacy semantics.
                     ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.id
                     """.trimIndent(),
                     null,

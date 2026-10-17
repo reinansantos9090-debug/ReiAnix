@@ -25,7 +25,11 @@ class CollectorJourneyKotlinMigrationContractTests(unittest.TestCase):
         self.assertIn("suspend fun collectorSnapshot()", repository)
         self.assertIn("FROM episodes e", repository)
         self.assertIn("JOIN anime a ON a.id = e.anime_id", repository)
-        self.assertIn("WHERE e.missing = 0", repository)
+        snapshot = repository.split("suspend fun collectorSnapshot()", 1)[1].split(
+            "suspend fun listRecentlyPlayed(", 1
+        )[0]
+        self.assertNotIn("WHERE e.missing = 0", snapshot)
+        self.assertIn("val libraryTitleCount = rows.map { it.animeId }.toSet().size", service)
         self.assertIn("data class ReiAnixCollectorEpisodeRow", models)
         self.assertIn("ReiAnixCollectorJourneyCalculator", service)
         self.assertIn("LEVEL_EPISODES = 10", service)

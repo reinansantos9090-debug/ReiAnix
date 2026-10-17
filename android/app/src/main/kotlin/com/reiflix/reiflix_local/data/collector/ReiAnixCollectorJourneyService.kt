@@ -128,7 +128,7 @@ internal object ReiAnixCollectorJourneyCalculator {
         }
 
         val completedEpisodeCount = completedRows.size
-        val libraryTitleCount = availableRows.map { it.animeId }.toSet().size
+        val libraryTitleCount = rows.map { it.animeId }.toSet().size
         val animeCompletedCount = completedTitles.size
         val completedGenres = linkedSetOf<String>()
         val completedDecades = linkedSetOf<Int>()

@@ -10,7 +10,7 @@ XP, nível, estatísticas, títulos desbloqueados e conquistas são projeções 
 
 ## Implementação Kotlin
 
-- ReiAnixSqliteLibraryRepository.collectorSnapshot consulta episodes e anime numa única leitura do SQLite canônico, mantendo o filtro de ausência e a ordenação da implementação anterior.
+- ReiAnixSqliteLibraryRepository.collectorSnapshot consulta episodes e anime numa única leitura do SQLite canônico e preserva a ordenação da implementação anterior. A projeção inclui também registros marcados como ausentes para que a contagem de títulos da coleção corresponda à implementação Python anterior; o calculador exclui esses registros das métricas de consumo, conclusão e atividade.
 - ReiAnixCollectorJourneyCalculator calcula conclusão, atividade, XP/níveis, estatísticas, conquistas e títulos sem mutações ao banco.
 - ReiAnixCollectorJourneyService usa ReiAnixSqliteSettingsRepository para ler, gravar ou remover somente collector.active_title. Não cria tabela, arquivo, cache permanente nem repositório paralelo; as operações são serializadas com Mutex.
 - ReiAnixAppDependencies compartilha o serviço através das mesmas instâncias de ReiAnixSqliteLibraryRepository e ReiAnixSqliteSettingsRepository usadas pelos demais serviços nativos.

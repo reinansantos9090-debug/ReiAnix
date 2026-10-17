@@ -62,6 +62,22 @@ class ReiAnixCollectorJourneyCalculatorTest {
     }
 
     @Test
+    fun missingOnlyAnimeStillCountsAsLibraryTitleButNotAsConsumption() {
+        val result = ReiAnixCollectorJourneyCalculator.build(
+            (1L..10L).map { animeId ->
+                row(id = animeId, animeId = animeId, missing = true, watched = true)
+            },
+            savedActiveTitle = null,
+        )
+
+        assertEquals(10, result.libraryTitles)
+        assertEquals(0, result.episodesCompleted)
+        assertEquals(0, result.animesCompleted)
+        assertTrue(result.achievements.first { it.id == "library_10" }.unlocked)
+        assertFalse(result.achievements.first { it.id == "first_episode" }.unlocked)
+    }
+
+    @Test
     fun genreAchievementUsesCompletedTitles() {
         val result = ReiAnixCollectorJourneyCalculator.build(
             listOf(
@@ -95,6 +111,7 @@ class ReiAnixCollectorJourneyCalculatorTest {
         progress: Double = 0.0,
         duration: Double = 100.0,
         watched: Boolean = false,
+        missing: Boolean = false,
         lastPlayedAt: Double? = null,
         year: Int = 2020,
         genresJson: String? = "[\"Action\"]",
@@ -106,7 +123,7 @@ class ReiAnixCollectorJourneyCalculatorTest {
         progress = progress,
         duration = duration,
         watched = watched,
-        missing = false,
+        missing = missing,
         lastPlayedAt = lastPlayedAt,
         episodeType = "regular",
         animeTitle = "Anime " + animeId,
