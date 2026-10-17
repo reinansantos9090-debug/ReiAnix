@@ -27,7 +27,7 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         module_prefix = self.main[:self.main.index("async def main(page: ft.Page):")]
         self.assertNotRegex(
             module_prefix,
-            r"from views\\.(home_view|details_view|organize_view|settings_view|collector_view|recovery_view) import",
+            r"from views\.(home_view|details_view|organize_view|settings_view|collector_view|recovery_view) import",
         )
         self.assertEqual(
             self.main.count("from views.home_view import HomeView"), 1
@@ -99,7 +99,52 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         ))
         managed_end = self.settings.index("\n)", managed_start)
         managed_block = self.settings[managed_start:managed_end]
-        managed = set(re.findall(r'^\\s*"([^"]+)"\\s*,?$', managed_block, re.MULTILINE))
+        managed = set(re.findall(r'^\s*"([^"]+)"\s*,?, managed_block, re.MULTILINE))
+        self.assertTrue(declared, "No native settings categories were found")
+        self.assertEqual(declared, managed)
+        self.assertIn('onOpenCategory = { label ->', self.settings)
+        self.assertIn("selectedCategory = label", self.settings)
+
+    def test_compose_destinations_are_wired_to_the_existing_native_host(self):
+        for route in (
+            "HOME", "LIBRARY", "MY_LIST", "ORGANIZE", "SEARCH", "SETTINGS",
+            "STORAGE", "RECOVERY", "COLLECTOR", "DETAILS", "PLAYER",
+        ):
+            self.assertIn("ReiAnixRoutes." + route, self.navigation)
+        for native_screen in (
+            "ReiAnixOrganizeRoute(",
+            "ReiAnixSettingsRoute(",
+            "ReiAnixRecoveryRoute(",
+            "ReiAnixStorageRoute(",
+            "navigateToCollector()",
+        ):
+            self.assertIn(native_screen, self.compose_host)
+        self.assertIn("ReiAnixHomeRoute(", self.navigation)
+        self.assertIn("ReiAnixLibraryRoute(", self.navigation)
+        self.assertIn("ReiAnixSearchRoute(", self.navigation)
+        self.assertIn("ReiAnixDetailsRoute(", self.navigation)
+
+    def test_coverage_matrix_records_the_actual_cutover_and_remaining_fallback(self):
+        report = COVERAGE.read_text(encoding="utf-8")
+        for token in (
+            "Prompt 23/29",
+            "views/home_view.py",
+            "views/details_view.py",
+            "views/organize_view.py",
+            "views/settings_view.py",
+            "views/collector_view.py",
+            "views/recovery_view.py",
+            "ReiAnixSettingsRoute",
+            "fallback não Android",
+            "não declara o projeto 100% Kotlin",
+            "matriz",
+        ):
+            self.assertIn(token, report)
+
+
+if __name__ == "__main__":
+    unittest.main()
+, managed_block, re.MULTILINE))
         self.assertTrue(declared, "No native settings categories were found")
         self.assertEqual(declared, managed)
         self.assertIn('onOpenCategory = { label ->', self.settings)
