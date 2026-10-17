@@ -151,3 +151,44 @@ def test_initial_and_persisted_native_intents_wait_for_bootstrap_decision():
     assert "if (!bootstrapAllowsNativeOperations())" in on_resume
     assert "consumeAndDispatchPendingLifecycleAction()" in on_resume
     assert "NATIVE_LIFECYCLE_WORK_DEFERRED" in on_resume
+
+
+
+def test_recovery_mode_rejects_non_navigation_native_commands_and_normal_settings_mutations():
+    activity = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+    )
+    native_start = activity.index("private fun handleNativeIntent(intent: Intent?)")
+    native_end = activity.index("\n    private fun ", native_start + 25)
+    native_handler = activity[native_start:native_end]
+    routed = native_handler.index("OPERATION_ROUTED_TO_RECOVERY")
+    native_gate = native_handler.index(
+        'if (appDependencies.bootstrap.state.value.recoveryRequired) {',
+        routed,
+    )
+    native_when = native_handler.index("try {\n            when (action)", native_gate)
+    assert routed < native_gate < native_when
+    assert "CANONICAL_DATABASE_RECOVERY_REQUIRED" in native_handler[native_gate:native_when]
+    assert "publishNativeCommandError(" in native_handler[native_gate:native_when]
+
+    settings_start = activity.index("private fun handleNativeSettingsFileIntent")
+    settings_end = activity.index("\n    private fun ", settings_start + 25)
+    settings_handler = activity[settings_start:settings_end]
+    settings_gate = settings_handler.index("val recoveryAllowedActions = setOf(")
+    assert settings_handler.index("if (!SETTINGS_FILE_REQUEST_ID_REGEX.matches(requestId))") < settings_gate
+    assert settings_handler.index("action !in recoveryAllowedActions") > settings_gate
+    assert settings_handler.index("action !in recoveryAllowedActions") < settings_handler.index(
+        "pendingSettingsFileAction = action"
+    )
+    allowed_block = settings_handler[settings_gate:settings_handler.index(
+        "if (pendingSettingsFileAction != null || settingsFileProcessing)"
+    )]
+    for action in (
+        '"backup_integrity"',
+        '"backup_recovery_restore"',
+        '"backup_recovery_snapshot"',
+        '"diagnostic_export"',
+    ):
+        assert action in allowed_block
+    assert "SETTINGS_NATIVE_ACTION_BLOCKED_RECOVERY_REQUIRED" in allowed_block
+    assert 'error = "A base canônica exige Recovery Mode.' in allowed_block

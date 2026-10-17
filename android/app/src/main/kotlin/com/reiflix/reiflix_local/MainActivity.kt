@@ -1342,6 +1342,28 @@ class MainActivity : FlutterFragmentActivity() {
             Log.w(tag, "SETTINGS_NATIVE_ACTION_REJECTED reason=invalid_request_id action=" + action)
             return
         }
+        // Only actions required to inspect or recover data remain available in
+        // Recovery Mode. In particular, normal restore/reconcile/import paths are
+        // unavailable while SQLite health is unresolved.
+        val recoveryAllowedActions = setOf(
+            "backup_integrity",
+            "backup_recovery_restore",
+            "backup_recovery_snapshot",
+            "diagnostic_export",
+        )
+        if (
+            appDependencies.bootstrap.state.value.recoveryRequired &&
+            action !in recoveryAllowedActions
+        ) {
+            Log.w(tag, "SETTINGS_NATIVE_ACTION_BLOCKED_RECOVERY_REQUIRED action=" + action)
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(
+                    requestId, action!!, "ERROR", "ERROR",
+                    error = "A base canônica exige Recovery Mode. A operação foi bloqueada para preservar os dados; use a restauração de recuperação.",
+                )
+            }
+            return
+        }
         if (pendingSettingsFileAction != null || settingsFileProcessing) {
             lifecycleScope.launch(Dispatchers.IO) {
                 writeSettingsFileActionResult(
@@ -2691,6 +2713,20 @@ class MainActivity : FlutterFragmentActivity() {
                 action,
                 NativeRequestState.OperationState.COMPLETED.name,
                 result = "canonical_database_recovery_required",
+            )
+            return
+        }
+        // Navigation requests are redirected to Recovery Mode above. Every other
+        // native operation is rejected while the canonical database is unhealthy;
+        // this also blocks scans, playback, storage mutations, and account actions
+        // that could otherwise bypass the Recovery route.
+        if (appDependencies.bootstrap.state.value.recoveryRequired) {
+            publishNativeCommandError(
+                requestId,
+                action,
+                "recovery_gate",
+                "CANONICAL_DATABASE_RECOVERY_REQUIRED",
+                "A base canônica exige recuperação. Restaure um backup válido antes de executar esta operação.",
             )
             return
         }
