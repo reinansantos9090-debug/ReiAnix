@@ -66,7 +66,7 @@ def test_bootstrap_preserves_canonical_sqlite_and_recovery_contract():
     assert "dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract" in bootstrap
     assert "ReiAnixBackupService(appContext).integrityReport().healthy" in bootstrap
     assert "ReiAnixBootstrapPersistenceStatus.NOT_CREATED" in bootstrap
-    assert "interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
+    assert "interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
     assert 'File(dataDirectory, "backups")' in bootstrap
     assert "ReiAnixRoutes.RECOVERY" in activity
     assert "Thread.sleep" not in bootstrap
@@ -80,8 +80,8 @@ def test_fresh_install_bootstraps_schema_v29_before_native_services_start():
     bootstrapper = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteBootstrapper.kt"
     )
-    assert "interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
-    assert bootstrap.index("interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery") < bootstrap.index(
+    assert "interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
+    assert bootstrap.index("interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery") < bootstrap.index(
         "ReiAnixSqliteBootstrapper(appContext, dependencies.sqliteDatabase).bootstrapIfMissing()"
     )
     assert "database.inspectSchemaFile(candidateFile)" in bootstrapper
