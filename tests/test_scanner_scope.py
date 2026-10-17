@@ -179,7 +179,7 @@ class ScopePolicyTests(unittest.TestCase):
         self.assertIn('val volumeRoot = root.isBlank() && scope.treeDocumentId.trim().endsWith(":")', source)
         self.assertIn('candidate.isNotBlank()', source)
         self.assertIn('root.isNotBlank() && (candidate == root || candidate.startsWith(root + "/"))', source)
-        self.assertIn('scope.authority != "com.android.externalstorage.documents"', source)
+        self.assertIn('.filter { it.authority == "com.android.externalstorage.documents" }', source)
         self.assertIn('.maxByOrNull { it.second }', source)
         self.assertIn('matchingLibraryScope(authorizedScopes, actualVol, actualVolumeUuid, rel)', source)
         self.assertIn('SAFE_LIBRARY_SCOPE_REQUIRES_API_29', source)
