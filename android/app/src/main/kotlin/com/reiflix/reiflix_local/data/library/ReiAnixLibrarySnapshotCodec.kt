@@ -1,6 +1,16 @@
 package com.reiflix.reiflix_local.data.library
 
-import com.reiflix.reiflix_local.data.contract.ReiAnixContractValues
+import com.reiflix.reiflix_local.data.contract.arrayOrDefault
+import com.reiflix.reiflix_local.data.contract.booleanOrDefault
+import com.reiflix.reiflix_local.data.contract.booleanRequired
+import com.reiflix.reiflix_local.data.contract.intOrNull
+import com.reiflix.reiflix_local.data.contract.intRequired
+import com.reiflix.reiflix_local.data.contract.longRequired
+import com.reiflix.reiflix_local.data.contract.objectOrNull
+import com.reiflix.reiflix_local.data.contract.requiredArray
+import com.reiflix.reiflix_local.data.contract.stringList
+import com.reiflix.reiflix_local.data.contract.stringOrDefault
+import com.reiflix.reiflix_local.data.contract.stringOrNull
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
@@ -227,84 +237,3 @@ private fun jsonValueToKotlin(value: Any?): Any? = when (value) {
     else -> value
 }
 
-private fun JSONObject.stringList(key: String): List<String> {
-    val array = arrayOrDefault(key)
-    return buildList(array.length()) {
-        for (index in 0 until array.length()) {
-            val rawValue = array.opt(index)
-            val value = rawValue as? String
-                ?: error("Invalid snapshot field '$key[$index]': expected text.")
-            val trimmed = value.trim()
-            require(trimmed.isNotEmpty()) { "Invalid snapshot field '$key[$index]': text must not be blank." }
-            add(trimmed)
-        }
-    }.distinct()
-}
-
-private fun JSONObject.stringOrNull(key: String): String? =
-    when {
-        !has(key) || isNull(key) -> null
-        opt(key) is String -> opt(key) as String
-        else -> error("Invalid snapshot field '$key': expected text.")
-    }
-
-private fun JSONObject.stringOrDefault(key: String, default: String): String =
-    if (!has(key)) default
-    else stringOrNull(key) ?: error("Invalid snapshot field '$key': null is not valid for this string field.")
-
-private fun JSONObject.longRequired(key: String): Long {
-    require(has(key) && !isNull(key)) { "Missing required snapshot field '$key'." }
-    val value = opt(key)
-    require(value is Number) { "Invalid snapshot field '$key': expected a JSON number." }
-    return ReiAnixContractValues.longOrNull(value, key)
-        ?: error("Invalid required long field '$key'.")
-}
-
-private fun JSONObject.intRequired(key: String): Int {
-    require(has(key) && !isNull(key)) { "Missing required snapshot field '$key'." }
-    val value = opt(key)
-    require(value is Number) { "Invalid snapshot field '$key': expected a JSON number." }
-    return ReiAnixContractValues.intOrNull(value, key)
-        ?: error("Invalid required integer field '$key'.")
-}
-
-private fun JSONObject.booleanRequired(key: String): Boolean {
-    require(has(key) && !isNull(key)) { "Missing required snapshot field '$key'." }
-    return (opt(key) as? Boolean)
-        ?: error("Invalid required Boolean field '$key'.")
-}
-
-private fun JSONObject.booleanOrDefault(key: String, default: Boolean): Boolean {
-    if (!has(key)) return default
-    require(!isNull(key)) { "Invalid snapshot field '$key': null is not valid for this Boolean field." }
-    return (opt(key) as? Boolean)
-        ?: error("Invalid snapshot field '$key': expected a JSON Boolean.")
-}
-
-private fun JSONObject.requiredArray(key: String): JSONArray {
-    require(has(key) && !isNull(key)) { "Missing required snapshot array '$key'." }
-    return optJSONArray(key)
-        ?: error("Invalid snapshot field '$key': expected an array.")
-}
-
-private fun JSONObject.arrayOrDefault(key: String): JSONArray =
-    when {
-        !has(key) -> JSONArray()
-        isNull(key) -> error("Invalid snapshot field '$key': null is not valid for this array field.")
-        optJSONArray(key) != null -> optJSONArray(key)!!
-        else -> error("Invalid snapshot field '$key': expected an array.")
-    }
-
-private fun JSONObject.objectOrNull(key: String): JSONObject? =
-    when {
-        !has(key) || isNull(key) -> null
-        optJSONObject(key) != null -> optJSONObject(key)
-        else -> error("Invalid snapshot field '$key': expected an object.")
-    }
-
-private fun JSONObject.intOrNull(key: String): Int? {
-    if (!has(key) || isNull(key)) return null
-    val value = opt(key)
-    require(value is Number) { "Invalid snapshot field '$key': expected a JSON number." }
-    return ReiAnixContractValues.intOrNull(value, key)
-}
