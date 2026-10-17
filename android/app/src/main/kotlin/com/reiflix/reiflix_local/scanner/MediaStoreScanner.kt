@@ -354,8 +354,37 @@ object MediaStoreScanner {
                         val stableGeneration=if(Build.VERSION.SDK_INT>=30)runCatching{MediaStore.getGeneration(context,volumeName)}.getOrDefault(postGeneration) else postGeneration
                         val changedAfterWait=consumeChangeNotification()
                         val probeHasMedia=if(!localCancelled && !cancelled && localErrors.length()==0){
-                            runCatching{
-                                resolver.query(collection,arrayOf(MediaStore.Video.Media._ID),null,null,null)?.use{probe->probe.moveToFirst()} ?: false
+                            runCatching {
+                                val probeCursor = resolver.query(collection, projection.toTypedArray(), null, null, null)
+                                if (probeCursor == null) {
+                                    localErrors.put("O MediaStore não conseguiu concluir a verificação de estabilidade do volume " + volumeName + ".")
+                                    false
+                                } else probeCursor.use { probe ->
+                                    val probeIdCol = probe.getColumnIndex(MediaStore.Video.Media._ID)
+                                    val probeNameCol = probe.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
+                                    val probeMimeCol = probe.getColumnIndex(MediaStore.Video.Media.MIME_TYPE)
+                                    val probeRelCol = probe.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
+                                    val probeVolCol = probe.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+                                    var foundInConfiguredScope = false
+                                    while (probe.moveToNext() && !foundInConfiguredScope) {
+                                        if (shouldCancel()) {
+                                            localCancelled = true
+                                            cancelled = true
+                                            break
+                                        }
+                                        val probeName = if (probeNameCol >= 0 && !probe.isNull(probeNameCol)) probe.getString(probeNameCol).orEmpty() else ""
+                                        val probeMime = if (probeMimeCol >= 0 && !probe.isNull(probeMimeCol)) probe.getString(probeMimeCol).orEmpty() else ""
+                                        val extension = probeName.substringAfterLast('.', "").lowercase()
+                                        if (!probeMime.startsWith("video/") && extension !in videoExtensions) continue
+                                        val directory = if (probeRelCol >= 0 && !probe.isNull(probeRelCol)) probe.getString(probeRelCol).orEmpty().trimEnd('/') else ""
+                                        val relative = if (directory.isBlank()) probeName else "$directory/$probeName"
+                                        val actualVolume = if (probeVolCol >= 0 && !probe.isNull(probeVolCol)) probe.getString(probeVolCol) else volumeName
+                                        val actualUuid = if (actualVolume == volumeName) baseVolumeUuid else
+                                            volumeUuidCache.getOrPut(actualVolume) { volumeUuid(context, actualVolume) }
+                                        foundInConfiguredScope = matchingLibraryScope(authorizedScopes, actualVolume, actualUuid, relative) != null
+                                    }
+                                    foundInConfiguredScope
+                                }
                             }.getOrElse{
                                 localErrors.put("O MediaStore não conseguiu concluir a verificação de estabilidade do volume "+volumeName+".")
                                 false
