@@ -76,8 +76,6 @@ object NativeScanPublisher {
                 context = mapOf(
                     "event_type" to eventType,
                     "scope_kind" to scopeKind,
-                    "scope_ref" to scopeRef,
-                    "scope_key" to scopeKey,
                     "batch_id" to batchId,
                     "batch_number" to batchNumber,
                     "generation" to effectiveGeneration,
