@@ -341,6 +341,7 @@ object LibraryUiMappers {
                         }
                     }
                 }
+            }
             null -> emptyList()
             else -> error("Invalid library field '$key': expected a list or legacy string.")
         }
