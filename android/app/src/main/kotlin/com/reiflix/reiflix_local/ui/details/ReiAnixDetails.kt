@@ -94,6 +94,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
+import com.reiflix.reiflix_local.ui.discovery.ReiAnixMarathonDialog
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
@@ -153,6 +154,7 @@ fun ReiAnixDetailsRoute(
     )
     val aniListState by aniListViewModel.uiState.collectAsStateWithLifecycle()
     var showAniListDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
+    var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     LaunchedEffect(canonicalId, state.status) {
         if (state.status == ReiAnixDetailsLoadStatus.READY) {
             aniListViewModel.autoMatchAniList(canonicalId)
@@ -219,6 +221,7 @@ fun ReiAnixDetailsRoute(
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
         onSelectSource = viewModel::selectSafTree,
         onManageAniList = { showAniListDialog = true },
+        onOpenMarathon = { showMarathonDialog = true },
     )
     if (showAniListDialog) {
         AniListAssociationDialog(
@@ -229,6 +232,14 @@ fun ReiAnixDetailsRoute(
             },
             onRefreshMetadata = { aniListViewModel.refreshAniListMetadata(canonicalId) },
             onDismiss = { showAniListDialog = false },
+        )
+    }
+    if (showMarathonDialog) {
+        ReiAnixMarathonDialog(
+            viewModel = viewModel,
+            animeId = canonicalId,
+            currentPath = state.anime?.playbackTargetEpisode?.media?.reference,
+            onDismiss = { showMarathonDialog = false },
         )
     }
 }
@@ -244,6 +255,7 @@ fun ReiAnixDetailsScreen(
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
     onSelectSource: () -> Unit = onRetry,
     onManageAniList: () -> Unit = {},
+    onOpenMarathon: () -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -265,6 +277,7 @@ fun ReiAnixDetailsScreen(
                         onToggleFavorite = onToggleFavorite,
                         onSetEpisodeWatched = onSetEpisodeWatched,
                         onManageAniList = onManageAniList,
+                        onOpenMarathon = onOpenMarathon,
                     )
                 } ?: ReiAnixRecoverableErrorState(
                     title = "Detalhes indisponíveis",
@@ -417,6 +430,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
+    onOpenMarathon: () -> Unit,
 ) {
     val firstSeasonKey = anime.seasons.firstOrNull()?.stableKey
     var savedSeasonKey by rememberSaveable(anime.id) {
@@ -502,6 +516,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onToggleFavorite = onToggleFavorite,
                 onSetEpisodeWatched = onSetEpisodeWatched,
                 onManageAniList = onManageAniList,
+                onOpenMarathon = onOpenMarathon,
             )
         }
 
@@ -712,6 +727,7 @@ private fun DetailsHero(
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
+    onOpenMarathon: () -> Unit,
 ) {
     val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
     val responsive = LocalReiAnixResponsiveMetrics.current
@@ -742,6 +758,7 @@ private fun DetailsHero(
         buildList { anime.seasons.forEach { addAll(it.episodes) }; addAll(anime.specials); addAll(anime.mediaFiles) }
     }
     val overallProgress = remember(allEpisodes) { detailsProgressFraction(allEpisodes) }
+    val hasMarathonContent = anime.seasons.any { it.episodes.isNotEmpty() }
 
     Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
         ReiAnixTopBar(
@@ -1028,6 +1045,14 @@ private fun DetailsHero(
                 )
             }
         }
+        ReiAnixSecondaryButton(
+            text = "Maratona",
+            onClick = onOpenMarathon,
+            enabled = hasMarathonContent,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+        )
     }
 }
 
