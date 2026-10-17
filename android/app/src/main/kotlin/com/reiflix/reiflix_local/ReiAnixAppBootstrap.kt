@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteBootstrapper
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
 import com.reiflix.reiflix_local.storage.NativeIndex
@@ -418,8 +419,8 @@ class ReiAnixAppBootstrap internal constructor(
                 Log.e(TAG, "Could not inspect durable SAF recovery receipts; treating the state as recovery evidence. errorType=" + error::class.java.simpleName)
                 true
             }
-            return if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
-                CanonicalDatabaseCheck(
+            if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
+                return CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
                     warning = when {
@@ -428,12 +429,36 @@ class ReiAnixAppBootstrap internal constructor(
                         else -> INTERRUPTED_RECOVERY_WARNING
                     },
                 )
-            } else {
-                // LibraryStore in the remaining hybrid runtime initializes a fresh install.
-                // Absence without durable recovery evidence is not data corruption.
+            }
+
+            // Only a genuinely fresh install gets a new database. Never repair or replace an
+            // existing/corrupt file through this path, and never bypass recovery evidence.
+            return try {
+                ReiAnixSqliteBootstrapper(appContext, dependencies.sqliteDatabase).bootstrapIfMissing()
+                val schemaCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
+                val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
+                if (schemaCompatible && integrityHealthy) {
+                    CanonicalDatabaseCheck(
+                        status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                        recoveryRequired = false,
+                    )
+                } else {
+                    CanonicalDatabaseCheck(
+                        status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                        recoveryRequired = true,
+                        warning = DATABASE_RECOVERY_WARNING,
+                    )
+                }
+            } catch (error: Exception) {
+                Log.e(
+                    TAG,
+                    "Native fresh-install SQLite bootstrap failed; database-dependent services remain gated. errorType=${error::class.java.simpleName}",
+                    error,
+                )
                 CanonicalDatabaseCheck(
-                    status = ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
-                    recoveryRequired = false,
+                    status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                    recoveryRequired = true,
+                    warning = DATABASE_RECOVERY_WARNING,
                 )
             }
         }

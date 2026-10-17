@@ -301,9 +301,14 @@ def main() -> int:
         "--bootstrap-output",
         type=Path,
         help=(
-            "Optional native fresh-install SQLite bootstrap JSON. Its DDL is emitted from "
-            "the real schema v29 snapshot, not duplicated in handwritten Kotlin."
+            "Optional native fresh-install SQLite bootstrap JSON artifact. Its DDL is emitted "
+            "from the real schema v29 snapshot, not duplicated in handwritten Kotlin."
         ),
+    )
+    parser.add_argument(
+        "--bootstrap-asset-output",
+        type=Path,
+        help="Optional generated Android runtime asset from the same canonical snapshot.",
     )
     args = parser.parse_args()
     fixture_path = args.output.resolve()
@@ -320,7 +325,7 @@ def main() -> int:
             encoding="utf-8",
         )
 
-    if args.bootstrap_output:
+    if args.bootstrap_output or args.bootstrap_asset_output:
         if payload["schema_version"] != EXPECTED_SCHEMA_VERSION:
             raise RuntimeError(
                 f"Refusing to emit native bootstrap for unexpected schema version "
@@ -335,24 +340,29 @@ def main() -> int:
             "schema_migrations" in sql.lower() for sql in statements
         ):
             raise RuntimeError("Canonical schema snapshot is incomplete; native bootstrap was not emitted.")
-        bootstrap_path = args.bootstrap_output.resolve()
-        bootstrap_path.parent.mkdir(parents=True, exist_ok=True)
         bootstrap = {
             "schema_version": payload["schema_version"],
             "sqlite_user_version": payload["sqlite_user_version"],
+            "initial_migration_version": payload["schema_version"],
             "tables": payload["tables"],
             "statements": statements,
             "triggers": trigger_statements,
         }
-        bootstrap_path.write_text(
-            json.dumps(bootstrap, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        print(
-            f"Generated native fresh-install bootstrap schema v{payload['schema_version']}: "
-            f"{len(statements)} table/index statements and {len(trigger_statements)} triggers "
-            f"-> {bootstrap_path}"
-        )
+        output_paths = [
+            path for path in (args.bootstrap_output, args.bootstrap_asset_output) if path is not None
+        ]
+        for raw_path in output_paths:
+            bootstrap_path = raw_path.resolve()
+            bootstrap_path.parent.mkdir(parents=True, exist_ok=True)
+            bootstrap_path.write_text(
+                json.dumps(bootstrap, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            print(
+                f"Generated native fresh-install bootstrap schema v{payload['schema_version']}: "
+                f"{len(statements)} table/index statements and {len(trigger_statements)} triggers "
+                f"-> {bootstrap_path}"
+            )
 
     print(
         f"Generated canonical SQLite schema v{payload['schema_version']}: "

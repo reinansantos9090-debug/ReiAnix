@@ -158,9 +158,11 @@ jobs:
           python scripts/generate_native_sqlite_test_fixture.py \
             --output android/app/src/test/resources/native-sqlite-schema-v29.json \
             --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json \
-            --bootstrap-output build/native-sqlite-bootstrap-v29.json
+            --bootstrap-output build/native-sqlite-bootstrap-v29.json \
+            --bootstrap-asset-output android/app/src/main/assets/native-sqlite-bootstrap-v29.json
           test -s android/app/src/test/resources/native-sqlite-schema-v29.json
           test -s android/app/src/main/assets/native-sqlite-contract-v29.json
+          test -s android/app/src/main/assets/native-sqlite-bootstrap-v29.json
           test -s build/native-sqlite-bootstrap-v29.json
 
       - name: Publish canonical SQLite bootstrap source for native migration

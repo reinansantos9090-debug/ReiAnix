@@ -1,4 +1,6 @@
 from pathlib import Path
+import base64
+import gzip
 import json
 import re
 import subprocess
@@ -10,6 +12,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 STORE = ROOT / "core/library_store.py"
 DATABASE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteDatabase.kt"
+BOOTSTRAPPER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteBootstrapper.kt"
+BOOTSTRAP_ARCHIVE = ROOT / "build-logic/native-sqlite-bootstrap-v29.json.gz.b64"
 LIBRARY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt"
 SETTINGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSettingsRepository.kt"
 MODELS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteModels.kt"
@@ -55,6 +59,30 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("beginTransactionNonExclusive", database)
         self.assertIn("setTransactionSuccessful", database)
         self.assertIn("endTransaction", database)
+
+    def test_fresh_install_bootstrap_is_atomic_and_keeps_database_opener_read_only(self):
+        bootstrapper = BOOTSTRAPPER.read_text(encoding="utf-8")
+        bootstrap = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt").read_text(encoding="utf-8")
+        database = DATABASE.read_text(encoding="utf-8")
+        archive = json.loads(gzip.decompress(base64.b64decode(
+            BOOTSTRAP_ARCHIVE.read_text(encoding="ascii").strip()
+        )))
+
+        self.assertEqual(29, archive["schema_version"])
+        self.assertEqual(29, archive["initial_migration_version"])
+        self.assertEqual(0, archive["sqlite_user_version"])
+        self.assertIn("schema_migrations", archive["tables"])
+        self.assertGreater(len(archive["statements"]), 10)
+        self.assertIn("ReiAnixSqliteBootstrapper(appContext, dependencies.sqliteDatabase).bootstrapIfMissing()", bootstrap)
+        self.assertIn("interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery", bootstrap)
+        self.assertIn("Os.link(candidateFile.absolutePath, canonicalFile.absolutePath)", bootstrapper)
+        self.assertIn(".library.sqlite3.candidate-", bootstrapper)
+        self.assertIn("inspectSchemaFile(candidateFile)", bootstrapper)
+        self.assertIn("quickCheckFile(candidateFile)", bootstrapper)
+        self.assertIn("schema_migrations(version, applied_at)", bootstrapper)
+        self.assertNotIn("CREATE TABLE", database.upper())
+        self.assertNotIn("DROP TABLE", database.upper())
+        self.assertNotIn("openOrCreateDatabase", database)
 
     def test_native_library_repository_uses_canonical_tables_and_bound_values(self):
         library = LIBRARY.read_text(encoding="utf-8")
@@ -411,12 +439,14 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             fixture_path = Path(temporary) / "canonical-schema.json"
             contract_path = Path(temporary) / "canonical-contract.json"
             bootstrap_path = Path(temporary) / "canonical-bootstrap.json"
+            bootstrap_asset_path = Path(temporary) / "canonical-bootstrap-asset.json"
             result = subprocess.run(
                 [
                     sys.executable, str(FIXTURE_GENERATOR),
                     "--output", str(fixture_path),
                     "--contract-output", str(contract_path),
                     "--bootstrap-output", str(bootstrap_path),
+                    "--bootstrap-asset-output", str(bootstrap_asset_path),
                 ],
                 cwd=ROOT,
                 text=True,
@@ -427,8 +457,14 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
             contract = json.loads(contract_path.read_text(encoding="utf-8"))
             bootstrap = json.loads(bootstrap_path.read_text(encoding="utf-8"))
+            bootstrap_asset = json.loads(bootstrap_asset_path.read_text(encoding="utf-8"))
 
+        self.assertEqual(bootstrap, bootstrap_asset)
         self.assertEqual(29, bootstrap["schema_version"])
+        self.assertEqual(29, bootstrap["initial_migration_version"])
+        archive_content = BOOTSTRAP_ARCHIVE.read_text(encoding="ascii").strip()
+        archive_bootstrap = json.loads(gzip.decompress(base64.b64decode(archive_content)))
+        self.assertEqual(bootstrap, archive_bootstrap)
         self.assertEqual(0, bootstrap["sqlite_user_version"])
         self.assertEqual(fixture["tables"], bootstrap["tables"])
         self.assertEqual(fixture["statements"], bootstrap["statements"])

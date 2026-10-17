@@ -73,6 +73,27 @@ def test_bootstrap_preserves_canonical_sqlite_and_recovery_contract():
     assert "GlobalScope" not in bootstrap
 
 
+def test_fresh_install_bootstraps_schema_v29_before_native_services_start():
+    bootstrap = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt"
+    )
+    bootstrapper = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteBootstrapper.kt"
+    )
+    assert "interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
+    assert bootstrap.index("interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery") < bootstrap.index(
+        "ReiAnixSqliteBootstrapper(appContext, dependencies.sqliteDatabase).bootstrapIfMissing()"
+    )
+    assert "database.inspectSchemaFile(candidateFile)" in bootstrapper
+    assert "database.quickCheckFile(candidateFile)" in bootstrapper
+    assert "Os.link(candidateFile.absolutePath, canonicalFile.absolutePath)" in bootstrapper
+    assert "schema_migrations(version, applied_at)" in bootstrapper
+    assert "initial_migration_version" in bootstrapper
+    assert "CREATE TABLE" not in read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteDatabase.kt"
+    ).upper()
+
+
 def test_compose_observes_process_bootstrap_state_without_owning_service_lifecycle():
     view_model = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
