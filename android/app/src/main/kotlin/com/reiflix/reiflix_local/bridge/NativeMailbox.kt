@@ -153,7 +153,9 @@ object NativeMailbox {
             temporary = temp
             val writeStartedNs = SystemClock.elapsedRealtimeNanos()
             val now=System.currentTimeMillis()
-            val capturedAt = event.longOrDefault("createdAt", 0L).takeIf { it > 0L } ?: now
+            val suppliedCreatedAt = event.longOrDefault("createdAt", 0L)
+            require(suppliedCreatedAt >= 0L) { "Native mailbox createdAt must be non-negative epoch milliseconds." }
+            val capturedAt = suppliedCreatedAt.takeIf { it > 0L } ?: now
             val payload=JSONObject(event.toString())
                 .put("eventId",id)
                 .put("eventVersion",EVENT_VERSION)
