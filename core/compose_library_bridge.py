@@ -88,9 +88,17 @@ class ComposeLibraryBridge:
         revision = 0
         try:
             raw = json.loads(self.snapshot_path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                revision = max(0, int(raw.get("revision") or 0))
-        except (OSError, TypeError, ValueError):
+            if not isinstance(raw, dict):
+                raise ValueError("persisted Compose snapshot must be a JSON object")
+            schema_version = raw.get("schemaVersion")
+            if type(schema_version) is not int or schema_version != self.SCHEMA_VERSION:
+                raise ValueError("persisted Compose snapshot schema version is invalid")
+            if "revision" in raw:
+                stored_revision = raw["revision"]
+                if type(stored_revision) is not int or stored_revision < 0:
+                    raise ValueError("persisted Compose snapshot revision must be a non-negative integer")
+                revision = stored_revision
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
             revision = 0
         self._requested_revision = revision
         self._last_published_revision = revision
@@ -198,11 +206,36 @@ class ComposeLibraryBridge:
             if not self.snapshot_path.is_file():
                 return None
             snapshot = json.loads(self.snapshot_path.read_text(encoding="utf-8"))
-            if (
-                not isinstance(snapshot, dict)
-                or int(snapshot.get("schemaVersion", 0)) != self.SCHEMA_VERSION
-            ):
+            if not isinstance(snapshot, dict):
                 return None
+            schema_version = snapshot.get("schemaVersion")
+            if type(schema_version) is not int or schema_version != self.SCHEMA_VERSION:
+                return None
+            if "revision" in snapshot:
+                revision = snapshot["revision"]
+                if type(revision) is not int or revision < 0:
+                    return None
+
+            animes = snapshot.get("animes")
+            if not isinstance(animes, list):
+                return None
+            for index, item in enumerate(animes):
+                if not isinstance(item, dict):
+                    return None
+                anime_id = item.get("id")
+                if type(anime_id) is not int or anime_id <= 0:
+                    logger.warning(
+                        "[COMPOSE_LIBRARY] ignoring malformed persisted snapshot: invalid anime id at index=%s",
+                        index,
+                    )
+                    return None
+
+            if "continue_watching" in snapshot:
+                continue_watching = snapshot["continue_watching"]
+                if not isinstance(continue_watching, list) or any(
+                    not isinstance(item, dict) for item in continue_watching
+                ):
+                    return None
             return snapshot
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             return None
