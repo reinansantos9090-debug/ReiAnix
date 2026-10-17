@@ -72,6 +72,8 @@ import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.ui.discovery.ReiAnixDurationAnomalyDialog
+import com.reiflix.reiflix_local.ui.discovery.ReiAnixTimelineDialog
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeAnimeUiModel
@@ -105,6 +107,7 @@ fun ReiAnixHomeRoute(
     val state by viewModel.homeState.collectAsStateWithLifecycle()
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
     val personalListMutationError by viewModel.personalListMutationError.collectAsStateWithLifecycle()
+    var activeDiscoveryDialog by rememberSaveable { mutableStateOf<String?>(null) }
     val visibleContinueWatching = if (continueWatchingEnabled) {
         continueWatching.take(continueWatchingLimit.coerceAtLeast(0))
     } else {
@@ -138,8 +141,29 @@ fun ReiAnixHomeRoute(
         onOpenLibrary = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) },
         onRefresh = viewModel::refresh,
         onSelectSource = viewModel::selectSafTree,
+        onOpenTimeline = { activeDiscoveryDialog = "timeline" },
+        onOpenDurationAnomalies = { activeDiscoveryDialog = "duration" },
     )
+
+    when (activeDiscoveryDialog) {
+        "timeline" -> ReiAnixTimelineDialog(
+            viewModel = viewModel,
+            onDismiss = { activeDiscoveryDialog = null },
+            onOpenAnime = { animeId ->
+                activeDiscoveryDialog = null
+                navController.navigateToDetails(
+                    animeId = animeId.toString(),
+                    origin = ReiAnixRoutes.HOME,
+                )
+            },
+        )
+        "duration" -> ReiAnixDurationAnomalyDialog(
+            viewModel = viewModel,
+            onDismiss = { activeDiscoveryDialog = null },
+        )
+    }
 }
+
 
 @Composable
 private fun ReiAnixHomeObservedScreen(
@@ -158,6 +182,8 @@ private fun ReiAnixHomeObservedScreen(
     onOpenLibrary: () -> Unit,
     onRefresh: () -> Unit,
     onSelectSource: () -> Unit,
+    onOpenTimeline: () -> Unit,
+    onOpenDurationAnomalies: () -> Unit,
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -171,6 +197,24 @@ private fun ReiAnixHomeObservedScreen(
             onSearch = onSearch,
             onRefresh = onRefresh,
         )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+        ) {
+            ReiAnixSecondaryButton(
+                text = "Linha do tempo",
+                onClick = onOpenTimeline,
+                modifier = Modifier.weight(1f),
+            )
+            ReiAnixSecondaryButton(
+                text = "Durações incomuns",
+                onClick = onOpenDurationAnomalies,
+                modifier = Modifier.weight(1f),
+            )
+        }
 
         if (!personalListMutationError.isNullOrBlank()) {
             HomeNotice(
