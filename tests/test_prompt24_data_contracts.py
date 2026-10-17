@@ -92,7 +92,7 @@ class Prompt24DataContractTests(unittest.TestCase):
         self.assertIn('integrity.arrayOrDefault("optional_entries")', source)
         self.assertIn('expected.longRequired("size")', source)
         self.assertIn('expected.stringOrNull("sha256")', source)
-        self.assertIn('manifest.optInt("schema_version", -1)', source)
+        self.assertNotIn('manifest.optInt("schema_version", -1)', source)
 
     def test_transport_boundary_keeps_its_real_schema_and_timestamp_units_documented_in_code(self):
         bridge = LIBRARY_BRIDGE.read_text(encoding="utf-8")
