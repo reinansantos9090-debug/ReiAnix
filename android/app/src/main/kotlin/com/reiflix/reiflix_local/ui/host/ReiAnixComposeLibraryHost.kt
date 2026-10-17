@@ -400,20 +400,6 @@ class ReiAnixComposeLibraryHost(
         }
     }
 
-    /**
-     * Compose is the visible navigation owner on Android. Publish only the
-     * stable route identity so Python can keep its existing lifecycle/domain
-     * navigation projection synchronized without rendering a second UI tree.
-     */
-    private fun publishLegacyNavigation(destination: String) {
-        NativeMailbox.writeBestEffort(
-            activity,
-            JSONObject()
-                .put("type", "compose_library_navigation")
-                .put("payload", JSONObject().put("destination", destination)),
-        )
-    }
-
     private fun publishComposeRouteChanged(
         route: String,
         animeId: String?,

@@ -5257,15 +5257,6 @@ async def main(page: ft.Page):
                             destination = str(payload.get('destination') or '').strip().lower()
                             if destination == 'back':
                                 navigate_back('compose_library_back')
-                            elif destination == 'collector':
-                                if bridge.available:
-                                    try:
-                                        await bridge.hide_library()
-                                    except Exception:
-                                        logger.exception(
-                                            "[COMPOSE_COLLECTOR] failed to hide Compose shell before Collector"
-                                        )
-                                navigate_collector()
                             elif destination == 'details':
                                 # Compose NavHost already owns the Details transition.
                                 # This event is compatibility-only and must not push

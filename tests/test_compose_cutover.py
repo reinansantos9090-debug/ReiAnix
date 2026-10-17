@@ -98,15 +98,20 @@ class ComposeCutoverTests(unittest.TestCase):
         # Nested Settings remains the guarded legacy fallback.
         self.assertIn("SettingsView.build(", block)
 
-    def test_recovery_and_collector_keep_real_legacy_surfaces(self):
+    def test_recovery_and_collector_keep_real_fallback_without_compose_delegation(self):
         source = MAIN.read_text(encoding="utf-8")
+        compose_host = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+        ).read_text(encoding="utf-8")
         self.assertIn("recovery_bridge = AndroidBridge(data_dir, page)", source)
         self.assertIn('await recovery_bridge.open_library(start_destination="recovery")', source)
         self.assertNotIn("await recovery_bridge.hide_library()", source)
-        self.assertIn("elif destination == 'collector':", source)
-        self.assertIn("await bridge.hide_library()", source)
+        self.assertNotIn("elif destination == 'collector':", source)
         self.assertIn("def navigate_collector():", source)
         self.assertIn("CollectorView.build(", source)
+        self.assertNotIn("publishLegacyNavigation(\"collector\")", compose_host)
+        self.assertIn("navController.navigateToCollector()", compose_host)
 
     def test_canonical_domain_boundaries_remain_intact(self):
         source = MAIN.read_text(encoding="utf-8")
