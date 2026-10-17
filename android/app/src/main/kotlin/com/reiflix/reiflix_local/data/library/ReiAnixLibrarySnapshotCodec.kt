@@ -13,7 +13,7 @@ internal object ReiAnixLibrarySnapshotCodec {
 
     fun decode(raw: String, previousRevision: Long = 0L): ReiAnixLibraryUiState {
         val root = JSONObject(raw)
-        val schemaVersion = ReiAnixContractValues.intOrNull(root.opt("schemaVersion"), "schemaVersion") ?: 0
+        val schemaVersion = root.intRequired("schemaVersion")
         require(schemaVersion == 1) { "Unsupported Compose library snapshot schema: $schemaVersion" }
 
         val revision = root.longRequired("revision")
@@ -146,7 +146,7 @@ internal object ReiAnixLibrarySnapshotCodec {
 
     fun decodeCommandResult(raw: String): CommandResult {
         val root = JSONObject(raw)
-        require(ReiAnixContractValues.intOrNull(root.opt("schemaVersion"), "schemaVersion") == 1) {
+        require(root.intRequired("schemaVersion") == 1) {
             "Unsupported Compose command-result schema"
         }
         val payload = root.objectOrNull("payload")
@@ -253,13 +253,17 @@ private fun JSONObject.stringOrDefault(key: String, default: String): String =
 
 private fun JSONObject.longRequired(key: String): Long {
     require(has(key) && !isNull(key)) { "Missing required snapshot field '$key'." }
-    return ReiAnixContractValues.longOrNull(opt(key), key)
+    val value = opt(key)
+    require(value is Number) { "Invalid snapshot field '$key': expected a JSON number." }
+    return ReiAnixContractValues.longOrNull(value, key)
         ?: error("Invalid required long field '$key'.")
 }
 
 private fun JSONObject.intRequired(key: String): Int {
     require(has(key) && !isNull(key)) { "Missing required snapshot field '$key'." }
-    return ReiAnixContractValues.intOrNull(opt(key), key)
+    val value = opt(key)
+    require(value is Number) { "Invalid snapshot field '$key': expected a JSON number." }
+    return ReiAnixContractValues.intOrNull(value, key)
         ?: error("Invalid required integer field '$key'.")
 }
 
@@ -295,6 +299,9 @@ private fun JSONObject.objectOrNull(key: String): JSONObject? =
         else -> error("Invalid snapshot field '$key': expected an object.")
     }
 
-private fun JSONObject.intOrNull(key: String): Int? =
-    if (!has(key) || isNull(key)) null
-    else ReiAnixContractValues.intOrNull(opt(key), key)
+private fun JSONObject.intOrNull(key: String): Int? {
+    if (!has(key) || isNull(key)) return null
+    val value = opt(key)
+    require(value is Number) { "Invalid snapshot field '$key': expected a JSON number." }
+    return ReiAnixContractValues.intOrNull(value, key)
+}
