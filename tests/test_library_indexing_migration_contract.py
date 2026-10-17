@@ -76,7 +76,7 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         # The selected roots come from the persisted canonical folders table and must
         # still be authorized/readable SAF trees before they can bound MediaStore results.
         self.assertIn("sqliteLibraryRepository.listFolders()", runner)
-        self.assertIn('folder.kind.equals("saf", ignoreCase = true)', runner)
+        self.assertIn('filter { it.kind.equals("saf", ignoreCase = true) }', runner)
         self.assertIn("SafScanner.inspectTree(context, treeUri, requirePersisted = true)", runner)
         self.assertIn("libraryScopes = libraryScopes", runner)
         self.assertIn("matchingLibraryScope(authorizedScopes", media_store)
