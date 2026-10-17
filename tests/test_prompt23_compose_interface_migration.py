@@ -144,11 +144,13 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
             "viewModel::toggleAnimePinnedNative",
             "viewModel::saveAnimePersonalNoteNative",
             "viewModel::setEpisodeManualIdentificationNative",
+            "viewModel::saveAnimeUserTagsNative",
         ):
             self.assertIn(callback, self.details)
         for mutation in (
             "toggleAnimePinned",
             "setAnimePersonalNote",
+            "setAnimeUserTags",
             "setEpisodeManualIdentification",
         ):
             self.assertIn(mutation, self.sqlite_mutations)
