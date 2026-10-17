@@ -94,6 +94,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
+import com.reiflix.reiflix_local.ui.discovery.ReiAnixMarathonDialog
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
@@ -153,6 +154,7 @@ fun ReiAnixDetailsRoute(
     )
     val aniListState by aniListViewModel.uiState.collectAsStateWithLifecycle()
     var showAniListDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
+    var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     LaunchedEffect(canonicalId, state.status) {
         if (state.status == ReiAnixDetailsLoadStatus.READY) {
             aniListViewModel.autoMatchAniList(canonicalId)
@@ -219,6 +221,11 @@ fun ReiAnixDetailsRoute(
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
         onSelectSource = viewModel::selectSafTree,
         onManageAniList = { showAniListDialog = true },
+        onOpenMarathon = { showMarathonDialog = true },
+        onTogglePinned = viewModel::toggleAnimePinnedNative,
+        onSavePersonalNote = viewModel::saveAnimePersonalNoteNative,
+        onSaveUserTags = viewModel::saveAnimeUserTagsNative,
+        onSetEpisodeIdentification = viewModel::setEpisodeManualIdentificationNative,
     )
     if (showAniListDialog) {
         AniListAssociationDialog(
@@ -229,6 +236,14 @@ fun ReiAnixDetailsRoute(
             },
             onRefreshMetadata = { aniListViewModel.refreshAniListMetadata(canonicalId) },
             onDismiss = { showAniListDialog = false },
+        )
+    }
+    if (showMarathonDialog) {
+        ReiAnixMarathonDialog(
+            viewModel = viewModel,
+            animeId = canonicalId,
+            currentPath = state.anime?.playbackTargetEpisode?.media?.reference,
+            onDismiss = { showMarathonDialog = false },
         )
     }
 }
@@ -244,6 +259,11 @@ fun ReiAnixDetailsScreen(
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
     onSelectSource: () -> Unit = onRetry,
     onManageAniList: () -> Unit = {},
+    onOpenMarathon: () -> Unit = {},
+    onTogglePinned: suspend (Long) -> Boolean = { false },
+    onSavePersonalNote: suspend (Long, String?) -> String? = { _, note -> note?.trim()?.takeIf { it.isNotEmpty() } },
+    onSaveUserTags: suspend (Long, List<String>) -> List<String> = { _, tags -> tags },
+    onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit = { _, _, _, _, _ -> },
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -265,6 +285,11 @@ fun ReiAnixDetailsScreen(
                         onToggleFavorite = onToggleFavorite,
                         onSetEpisodeWatched = onSetEpisodeWatched,
                         onManageAniList = onManageAniList,
+                        onOpenMarathon = onOpenMarathon,
+                        onTogglePinned = onTogglePinned,
+                        onSavePersonalNote = onSavePersonalNote,
+                        onSaveUserTags = onSaveUserTags,
+                        onSetEpisodeIdentification = onSetEpisodeIdentification,
                     )
                 } ?: ReiAnixRecoverableErrorState(
                     title = "Detalhes indisponíveis",
@@ -417,6 +442,11 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
+    onOpenMarathon: () -> Unit,
+    onTogglePinned: suspend (Long) -> Boolean,
+    onSavePersonalNote: suspend (Long, String?) -> String?,
+    onSaveUserTags: suspend (Long, List<String>) -> List<String>,
+    onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit,
 ) {
     val firstSeasonKey = anime.seasons.firstOrNull()?.stableKey
     var savedSeasonKey by rememberSaveable(anime.id) {
@@ -502,6 +532,10 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onToggleFavorite = onToggleFavorite,
                 onSetEpisodeWatched = onSetEpisodeWatched,
                 onManageAniList = onManageAniList,
+                onOpenMarathon = onOpenMarathon,
+                onTogglePinned = onTogglePinned,
+                onSavePersonalNote = onSavePersonalNote,
+                onSaveUserTags = onSaveUserTags,
             )
         }
 
@@ -587,6 +621,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
+                    onSetEpisodeIdentification = onSetEpisodeIdentification,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
                 )
             }
         }
@@ -613,6 +649,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
+                    onSetEpisodeIdentification = onSetEpisodeIdentification,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
                 )
             }
         }
@@ -639,6 +677,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
                     onSetEpisodeWatched = onSetEpisodeWatched,
+                    onSetEpisodeIdentification = onSetEpisodeIdentification,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
                 )
             }
         }
@@ -712,8 +752,22 @@ private fun DetailsHero(
     onToggleFavorite: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
+    onOpenMarathon: () -> Unit,
+    onTogglePinned: suspend (Long) -> Boolean,
+    onSavePersonalNote: suspend (Long, String?) -> String?,
+    onSaveUserTags: suspend (Long, List<String>) -> List<String>,
 ) {
     val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
+    var showNoteEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
+    var noteDraft by rememberSaveable(anime.id) { mutableStateOf(anime.personalNote.orEmpty()) }
+    var noteSaving by rememberSaveable(anime.id) { mutableStateOf(false) }
+    var noteError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
+    var actionError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
+    var showTagsEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
+    var tagsDraft by rememberSaveable(anime.id) { mutableStateOf(anime.userTags.joinToString(", ")) }
+    var tagsSaving by rememberSaveable(anime.id) { mutableStateOf(false) }
+    var tagsError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
+    val actionScope = rememberCoroutineScope()
     val responsive = LocalReiAnixResponsiveMetrics.current
     val heroHeight = responsive.detailsHeroHeight()
     val posterOverlap = ReiAnixTokens.Dimensions.detailsHeroPosterOverlap
@@ -742,6 +796,7 @@ private fun DetailsHero(
         buildList { anime.seasons.forEach { addAll(it.episodes) }; addAll(anime.specials); addAll(anime.mediaFiles) }
     }
     val overallProgress = remember(allEpisodes) { detailsProgressFraction(allEpisodes) }
+    val hasMarathonContent = anime.seasons.any { it.episodes.isNotEmpty() }
 
     Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
         ReiAnixTopBar(
@@ -767,6 +822,21 @@ private fun DetailsHero(
                             onClick = {
                                 menuExpanded.value = false
                                 onRefresh()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (anime.pinned) "Desafixar anime" else "Fixar anime") },
+                            onClick = {
+                                menuExpanded.value = false
+                                actionScope.launch {
+                                    try {
+                                        onTogglePinned(anime.id)
+                                    } catch (failure: Exception) {
+                                        actionError = failure.message
+                                            ?.takeIf(String::isNotBlank)
+                                            ?: "Não foi possível alterar o pin."
+                                    }
+                                }
                             },
                         )
                         DropdownMenuItem(
@@ -1027,6 +1097,190 @@ private fun DetailsHero(
                     leadingIcon = Icons.Filled.Check,
                 )
             }
+        }
+        if (anime.userTags.isNotEmpty()) {
+            Text(
+                text = "Tags: " + anime.userTags.joinToString(" • "),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        ReiAnixSecondaryButton(
+            text = if (anime.userTags.isEmpty()) "Adicionar tags" else "Editar tags",
+            onClick = {
+                tagsDraft = anime.userTags.joinToString(", ")
+                tagsError = null
+                showTagsEditor = true
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+        )
+        anime.personalNote?.takeIf(String::isNotBlank)?.let { note ->
+            Text(
+                text = note,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        ReiAnixSecondaryButton(
+            text = if (anime.personalNote.isNullOrBlank()) "Adicionar nota pessoal" else "Editar nota pessoal",
+            onClick = {
+                noteDraft = anime.personalNote.orEmpty()
+                noteError = null
+                showNoteEditor = true
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+        )
+        ReiAnixSecondaryButton(
+            text = "Maratona",
+            onClick = onOpenMarathon,
+            enabled = hasMarathonContent,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+        )
+        if (showTagsEditor) {
+            AlertDialog(
+                onDismissRequest = { if (!tagsSaving) showTagsEditor = false },
+                title = { Text("Tags pessoais") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
+                        OutlinedTextField(
+                            value = tagsDraft,
+                            onValueChange = { value -> if (value.length <= 2000) tagsDraft = value },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Tags separadas por vírgula") },
+                            minLines = 2,
+                            maxLines = 5,
+                            enabled = !tagsSaving,
+                            isError = tagsError != null,
+                        )
+                        tagsError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    }
+                },
+                confirmButton = {
+                    ReiAnixPrimaryButton(
+                        text = if (tagsSaving) "Salvando…" else "Salvar",
+                        enabled = !tagsSaving,
+                        onClick = {
+                            if (!tagsSaving) {
+                                tagsSaving = true
+                                tagsError = null
+                                val tags = tagsDraft.split(Regex("[,\\n]")).map(String::trim).filter(String::isNotEmpty)
+                                actionScope.launch {
+                                    try {
+                                        onSaveUserTags(anime.id, tags)
+                                        showTagsEditor = false
+                                    } catch (failure: Exception) {
+                                        tagsError = failure.message?.takeIf(String::isNotBlank)
+                                            ?: "Não foi possível salvar as tags."
+                                    } finally {
+                                        tagsSaving = false
+                                    }
+                                }
+                            }
+                        },
+                    )
+                },
+                dismissButton = {
+                    ReiAnixCompactButton(
+                        text = "Cancelar",
+                        onClick = { if (!tagsSaving) showTagsEditor = false },
+                    )
+                },
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
+        }
+        if (showNoteEditor) {
+            AlertDialog(
+                onDismissRequest = { if (!noteSaving) showNoteEditor = false },
+                title = { Text("Nota pessoal") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
+                        OutlinedTextField(
+                            value = noteDraft,
+                            onValueChange = { value -> if (value.length <= 2000) noteDraft = value },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Nota privada") },
+                            minLines = 3,
+                            maxLines = 8,
+                            enabled = !noteSaving,
+                            supportingText = { Text("${noteDraft.length}/2000") },
+                            isError = noteError != null,
+                        )
+                        noteError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    }
+                },
+                confirmButton = {
+                    ReiAnixPrimaryButton(
+                        text = if (noteSaving) "Salvando…" else "Salvar",
+                        enabled = !noteSaving,
+                        onClick = {
+                            if (!noteSaving) {
+                                noteSaving = true
+                                noteError = null
+                                actionScope.launch {
+                                    try {
+                                        onSavePersonalNote(anime.id, noteDraft)
+                                        showNoteEditor = false
+                                    } catch (failure: Exception) {
+                                        noteError = failure.message?.takeIf(String::isNotBlank)
+                                            ?: "Não foi possível salvar a nota."
+                                    } finally {
+                                        noteSaving = false
+                                    }
+                                }
+                            }
+                        },
+                    )
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
+                        ReiAnixCompactButton(
+                            text = "Cancelar",
+                            onClick = { if (!noteSaving) showNoteEditor = false },
+                        )
+                        if (!anime.personalNote.isNullOrBlank()) {
+                            ReiAnixCompactButton(
+                                text = "Apagar",
+                                onClick = {
+                                    if (!noteSaving) {
+                                        noteSaving = true
+                                        noteError = null
+                                        actionScope.launch {
+                                            try {
+                                                onSavePersonalNote(anime.id, null)
+                                                noteDraft = ""
+                                                showNoteEditor = false
+                                            } catch (failure: Exception) {
+                                                noteError = failure.message?.takeIf(String::isNotBlank)
+                                                    ?: "Não foi possível apagar a nota."
+                                            } finally {
+                                                noteSaving = false
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
+        }
+        actionError?.let { message ->
+            AlertDialog(
+                onDismissRequest = { actionError = null },
+                title = { Text("Não foi possível concluir a ação") },
+                text = { Text(message) },
+                confirmButton = { ReiAnixCompactButton(text = "Fechar", onClick = { actionError = null }) },
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
         }
     }
 }
@@ -1324,8 +1578,19 @@ private fun DetailsEpisodeItem(
     isNext: Boolean,
     onWatch: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
+    onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit = { _, _, _, _, _ -> },
+    allowEpisodeIdentification: Boolean = true,
 ) {
     var menuExpanded by remember(episode.stableKey) { mutableStateOf(false) }
+    var showIdentificationEditor by rememberSaveable(episode.stableKey) { mutableStateOf(false) }
+    var seasonInput by rememberSaveable(episode.stableKey) { mutableStateOf(episode.seasonNumber?.toString().orEmpty()) }
+    var numberInput by rememberSaveable(episode.stableKey) { mutableStateOf(episode.number?.toString().orEmpty()) }
+    var titleInput by rememberSaveable(episode.stableKey) { mutableStateOf(episode.title.orEmpty()) }
+    var typeInput by rememberSaveable(episode.stableKey) { mutableStateOf(episode.episodeType?.takeIf(String::isNotBlank) ?: "regular") }
+    var typeMenuExpanded by rememberSaveable(episode.stableKey) { mutableStateOf(false) }
+    var identificationSaving by rememberSaveable(episode.stableKey) { mutableStateOf(false) }
+    var identificationError by rememberSaveable(episode.stableKey) { mutableStateOf<String?>(null) }
+    val editScope = rememberCoroutineScope()
 
     ReiAnixEpisodeCard(episode = episode, showThumbnail = showThumbnail, isCurrent = isCurrent, isNext = isNext,
         modifier = Modifier.padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
@@ -1337,9 +1602,119 @@ private fun DetailsEpisodeItem(
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     DropdownMenuItem(text = { Text(if (episode.isWatched) "Marcar como não visto" else "Marcar como visto") },
                         onClick = { menuExpanded = false; onSetEpisodeWatched(episode.id, !episode.isWatched) })
+                    if (allowEpisodeIdentification) {
+                        DropdownMenuItem(
+                            text = { Text("Corrigir identificação") },
+                            onClick = {
+                                menuExpanded = false
+                                seasonInput = episode.seasonNumber?.toString().orEmpty()
+                                numberInput = episode.number?.toString().orEmpty()
+                                titleInput = episode.title.orEmpty()
+                                typeInput = episode.episodeType?.takeIf(String::isNotBlank) ?: "regular"
+                                identificationError = null
+                                showIdentificationEditor = true
+                            },
+                        )
+                    }
                 }
             }
         })
+    if (showIdentificationEditor) {
+        AlertDialog(
+            onDismissRequest = { if (!identificationSaving) showIdentificationEditor = false },
+            title = { Text("Corrigir identificação") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
+                    OutlinedTextField(
+                        value = seasonInput,
+                        onValueChange = { seasonInput = it },
+                        label = { Text("Temporada") },
+                        singleLine = true,
+                        enabled = !identificationSaving,
+                    )
+                    OutlinedTextField(
+                        value = numberInput,
+                        onValueChange = { numberInput = it },
+                        label = { Text("Número do episódio") },
+                        singleLine = true,
+                        enabled = !identificationSaving,
+                    )
+                    Box {
+                        ReiAnixSecondaryButton(
+                            text = "Tipo: $typeInput",
+                            onClick = { typeMenuExpanded = true },
+                        )
+                        DropdownMenu(
+                            expanded = typeMenuExpanded,
+                            onDismissRequest = { typeMenuExpanded = false },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            listOf("regular", "special", "ova", "oad", "ona", "extra", "movie", "unknown").forEach { value ->
+                                DropdownMenuItem(
+                                    text = { Text(value) },
+                                    onClick = { typeInput = value; typeMenuExpanded = false },
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = titleInput,
+                        onValueChange = { titleInput = it },
+                        label = { Text("Título do episódio") },
+                        singleLine = true,
+                        enabled = !identificationSaving,
+                    )
+                    identificationError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
+            },
+            confirmButton = {
+                ReiAnixPrimaryButton(
+                    text = if (identificationSaving) "Salvando…" else "Salvar",
+                    enabled = !identificationSaving,
+                    onClick = {
+                        if (!identificationSaving) {
+                            val seasonValue = if (seasonInput.isBlank()) null else seasonInput.trim().toIntOrNull()
+                            val numberValue = if (numberInput.isBlank()) null else numberInput.trim().toDoubleOrNull()
+                            when {
+                                seasonInput.isNotBlank() && (seasonValue == null || seasonValue < 0) ->
+                                    identificationError = "Temporada inválida."
+                                numberInput.isNotBlank() && (numberValue == null || !numberValue.isFinite() || numberValue < 0.0) ->
+                                    identificationError = "Número do episódio inválido."
+                                else -> {
+                                    identificationSaving = true
+                                    identificationError = null
+                                    editScope.launch {
+                                        try {
+                                            onSetEpisodeIdentification(
+                                                episode.id,
+                                                seasonValue,
+                                                numberValue,
+                                                typeInput,
+                                                titleInput.trim().ifBlank { null },
+                                            )
+                                            showIdentificationEditor = false
+                                        } catch (failure: Exception) {
+                                            identificationError = failure.message?.takeIf(String::isNotBlank)
+                                                ?: "Não foi possível salvar a identificação."
+                                        } finally {
+                                            identificationSaving = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                ReiAnixCompactButton(
+                    text = "Cancelar",
+                    onClick = { if (!identificationSaving) showIdentificationEditor = false },
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
+    }
 }
 
 @Composable

@@ -24,16 +24,18 @@ class FletUiRemovalTests(unittest.TestCase):
     def test_root_settings_uses_compose_without_building_flet_ui(self):
         block_start = self.build_screen.index('        elif route == "settings":')
         block = self.build_screen[block_start:]
-        self.assertIn("if fixed_settings_path == () and bridge.available:", block)
-        native_branch = block[:block.index("            else:", block.index("if fixed_settings_path == ()"))]
+        self.assertIn("if bridge.available:", block)
+        native_branch = block[:block.index("            else:", block.index("if bridge.available:"))]
         self.assertIn("control = ft.Container(expand=True)", native_branch)
         self.assertNotIn("SettingsView.build(", native_branch)
+        self.assertNotIn("fixed_settings_path == ()", native_branch)
 
     def test_settings_flet_view_is_retained_for_nested_and_unavailable_fallbacks(self):
         block_start = self.build_screen.index('        elif route == "settings":')
         block = self.build_screen[block_start:]
         self.assertIn("else:", block)
         fallback_block = block[block.index("            else:"):]
+        self.assertIn("from views.settings_view import SettingsView", fallback_block)
         self.assertIn("control = SettingsView.build(", fallback_block)
 
     def test_unmigrated_flet_screens_still_have_real_consumers(self):

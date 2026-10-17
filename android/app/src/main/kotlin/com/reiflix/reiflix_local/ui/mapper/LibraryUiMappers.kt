@@ -128,6 +128,8 @@ object LibraryUiMappers {
             lastPlayedAt = source.doubleOrNull("last_played_at"),
             modifiedAt = source.doubleOrNull("modified_at"),
             fileSizeBytes = source.longOrNull("file_size"),
+            episodeType = source.stringOrNull("episode_type"),
+            manualOverride = source.booleanOrNull("manual_override") ?: false,
         )
     }
 
