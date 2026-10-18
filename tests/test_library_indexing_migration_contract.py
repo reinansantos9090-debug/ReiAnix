@@ -33,6 +33,32 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         self.assertIn("repository.recordNativeVolumeChange(payload)", service)
         self.assertIn("repository.reconcileSafDocumentIdentityChange(", service)
 
+    def test_native_library_invalidations_follow_confirmed_canonical_writes(self):
+        service = (KOTLIN / "data/sqlite/ReiAnixLibraryService.kt").read_text(encoding="utf-8")
+
+        self.assertIn("import com.reiflix.reiflix_local.data.library.ReiAnixLibraryInvalidationBus", service)
+
+        index_start = service.index("suspend fun indexDiscoveredMedia(")
+        index_end = service.index("suspend fun finishNativeScanRun(", index_start)
+        indexing = service[index_start:index_end]
+        self.assertIn("outcome == ReiAnixSqliteTransactionOutcome.COMMITTED", indexing)
+        self.assertIn("committedReport != null", indexing)
+        self.assertIn("if (commitConfirmed)", indexing)
+        self.assertIn('reason = "native_scan_catalog_committed"', indexing)
+        self.assertLess(indexing.index("val report = repository.indexDiscoveredMedia"), indexing.index("if (commitConfirmed)"))
+
+        volume_start = service.index("suspend fun recordNativeVolumeChange(")
+        volume_end = service.index("/**", volume_start)
+        volume = service[volume_start:volume_end]
+        self.assertIn('if (!result.optBoolean("ignored", false))', volume)
+        self.assertIn('reason = "native_volume_catalog_changed"', volume)
+
+        identity_start = service.index("suspend fun reconcileSafDocumentIdentityChange(")
+        identity = service[identity_start:]
+        self.assertIn('result.optString("status") == "reconciled"', identity)
+        self.assertIn('reason = "saf_document_identity_reconciled"', identity)
+        self.assertIn('entityId = result.optLong("episode_id").takeIf { it > 0L }', identity)
+
     def test_compose_catalog_and_paging_read_canonical_sqlite(self):
         view_model = (KOTLIN / "viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
         repository = (KOTLIN / "data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
