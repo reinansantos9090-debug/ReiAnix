@@ -251,18 +251,18 @@ internal class ReiAnixSqliteSchemaUpgrader(
         CREATE_TABLE_PREFIX.replaceFirst(sql.trim(), "CREATE TABLE IF NOT EXISTS ")
 
     private fun createIndexIfAbsent(sql: String): String =
-        CREATE_INDEX_PREFIX.replaceFirst(sql.trim()) { match ->
-            val prefix = match.value
-            if (prefix.contains("IF NOT EXISTS", ignoreCase = true)) prefix
-            else prefix.replace(Regex("\\s+$"), "") + " IF NOT EXISTS "
-        }
+        ensureIfNotExists(sql.trim(), CREATE_INDEX_PREFIX)
 
     private fun createTriggerIfAbsent(sql: String): String =
-        CREATE_TRIGGER_PREFIX.replaceFirst(sql.trim()) { match ->
-            val prefix = match.value
-            if (prefix.contains("IF NOT EXISTS", ignoreCase = true)) prefix
-            else prefix.replace(Regex("\\s+$"), "") + " IF NOT EXISTS "
-        }
+        ensureIfNotExists(sql.trim(), CREATE_TRIGGER_PREFIX)
+
+    private fun ensureIfNotExists(sql: String, prefixPattern: Regex): String {
+        val match = prefixPattern.find(sql) ?: return sql
+        val prefix = match.value
+        if (prefix.contains("IF NOT EXISTS", ignoreCase = true)) return sql
+        val normalizedPrefix = prefix.replace(Regex("""\s+$"""), "") + " IF NOT EXISTS "
+        return sql.replaceRange(match.range, normalizedPrefix)
+    }
 
     private fun indexName(sql: String): String? {
         val match = INDEX_NAME.find(sql.trim()) ?: return null

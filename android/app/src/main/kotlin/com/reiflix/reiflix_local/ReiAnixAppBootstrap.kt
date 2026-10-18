@@ -5,6 +5,7 @@ import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteBootstrapper
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaUpgrader
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
 import com.reiflix.reiflix_local.storage.NativeIndex
