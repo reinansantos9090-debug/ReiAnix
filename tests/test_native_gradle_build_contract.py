@@ -111,6 +111,13 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         self.assertIn("assets/native-sqlite-bootstrap-v29.json", workflow)
         self.assertIn("grep -Eq '^classes([0-9]+)?\\.dex$'", workflow)
 
+    def test_native_workflow_checks_out_and_stamps_the_exact_pr_head(self):
+        workflow = (ROOT / ".github/workflows/native_gradle_apk.yml").read_text(encoding="utf-8")
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"', workflow)
+        self.assertIn('printf \'  "commit": "%s",\\n\' "$REIANIX_SOURCE_SHA"', workflow)
+        self.assertNotIn('printf \'  "commit": "%s",\\n\' "$GITHUB_SHA"', workflow)
+
     def test_flet_package_excludes_the_separate_build_tooling(self):
         config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         exclude_line = next(line for line in config.splitlines() if line.startswith("exclude = "))

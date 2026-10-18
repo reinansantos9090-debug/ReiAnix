@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Configure Java 17
         uses: actions/setup-java@v5
@@ -38,9 +40,12 @@ jobs:
 
       - name: Validate wrapper and source revision
         shell: bash
+        env:
+          REIANIX_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
+          echo "REIANIX_SOURCE_SHA=$REIANIX_SOURCE_SHA" >> "$GITHUB_ENV"
           test -s gradlew
           test -s gradle/wrapper/gradle-wrapper.jar
           test -s gradle/wrapper/gradle-wrapper.properties
@@ -128,7 +133,7 @@ jobs:
             printf '  "variant": "debug",\n'
             printf '  "versionCode": %s,\n' "$version_code"
             printf '  "versionName": "%s",\n' "$version_name"
-            printf '  "commit": "%s",\n' "$GITHUB_SHA"
+            printf '  "commit": "%s",\n' "$REIANIX_SOURCE_SHA"
             printf '  "artifactPurpose": "native-gradle-validation",\n'
             printf '  "pythonRuntimePackaged": false,\n'
             printf '  "fletRuntimePackaged": false,\n'

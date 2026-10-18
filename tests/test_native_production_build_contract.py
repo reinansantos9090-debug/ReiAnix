@@ -35,6 +35,13 @@ class NativeProductionBuildContractTests(unittest.TestCase):
         self.assertIn("native-sqlite-contract-v29.json", gradle)
         self.assertIn("native-sqlite-bootstrap-v29.json", gradle)
 
+    def test_official_workflow_checks_out_and_stamps_the_exact_pr_head(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"', workflow)
+        self.assertIn('printf \'  "commit": "%s",\\n\' "$REIANIX_SOURCE_SHA"', workflow)
+        self.assertNotIn('printf \'  "commit": "%s",\\n\' "$GITHUB_SHA"', workflow)
+
     def test_hybrid_runtime_build_is_not_an_automatic_release_workflow(self):
         legacy = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")
         trigger = legacy.split("concurrency:", 1)[0]

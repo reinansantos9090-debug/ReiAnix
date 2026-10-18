@@ -21,6 +21,17 @@ jobs:
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact source revision
+        shell: bash
+        env:
+          REIANIX_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
+          git diff --check
 
       - name: Configure Python for regression tests only
         uses: actions/setup-python@v5
