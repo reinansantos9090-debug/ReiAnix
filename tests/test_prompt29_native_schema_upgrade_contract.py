@@ -71,14 +71,25 @@ class Prompt29NativeSchemaUpgradeContractTests(unittest.TestCase):
             self.assertNotIn(method, repository)
         self.assertNotIn("fun dismissStorageOnboarding()", view_model)
 
+        # Current Compose page membership is queried directly from canonical SQLite;
+        # no second IPC-backed page producer/state should remain in the compatibility adapter.
+        self.assertNotIn("fun loadLibraryPage(", repository)
+        self.assertNotIn("pagedLibraryState", repository)
+        self.assertNotIn("Action.LOAD_LIBRARY_PAGE", repository)
+        self.assertNotIn("LOAD_LIBRARY_PAGE", codec)
+        self.assertIn("nativeLibraryQueries.searchAnime(", view_model)
+
         # Keep old receivers until messages durably queued by previous versions can be drained.
         for token in (
             'if action == "set_watched":',
             'elif action == "select_saf":',
             'elif action == "dismiss_storage_onboarding":',
             'elif action == "remove_saf":',
+            'elif action == "load_library_page":',
         ):
             self.assertIn(token, main)
+        bridge = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")
+        self.assertIn("project_library_page", bridge)
 
 
     def test_upgrade_refuses_non_additive_column_contracts(self):

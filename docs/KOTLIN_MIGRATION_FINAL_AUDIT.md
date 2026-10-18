@@ -70,9 +70,10 @@ A classe é integrada ao bootstrap nativo antes da decisão final de compatibili
 
 ## Corte adicional de emissores híbridos da UI Compose
 
-A alteração mais recente retirou do adapter Kotlin os emissores de `set_watched`, `select_saf`, `dismiss_storage_onboarding` e `remove_saf`. O ViewModel já persiste o consumo e Minha Lista pelos serviços SQLite Kotlin; seleção, remoção e cancelamento do onboarding passam pela Activity nativa. Os handlers Python correspondentes foram preservados deliberadamente para não abandonar comandos duráveis que uma versão anterior possa ter deixado na fila. Portanto, esta etapa fecha os produtores Kotlin dessas quatro mensagens, mas não declara eliminados seus receivers legados nem as demais dependências Python/Flet.
+A alteração anterior retirou do adapter Kotlin os emissores de `set_watched`, `select_saf`, `dismiss_storage_onboarding` e `remove_saf`. Este corte também elimina do adapter Kotlin o produtor `load_library_page`, a página IPC de estado e sua aplicação na UI. O ViewModel ativo consulta as páginas via `ReiAnixLibraryQueryService` no SQLite canônico. Os handlers/projetores Python para todas essas ações antigas foram preservados para drenar mensagens duráveis de versões anteriores e superfícies legadas; não foram eliminados globalmente.
 
-O teste estático `tests/test_prompt29_native_schema_upgrade_contract.py` verifica que esses emissores não retornam e que os receivers antigos permanecem. Nenhum teste Kotlin/JVM foi executado manualmente, e nenhum teste instrumentado/emulador foi criado ou executado.
+O contrato em `tests/test_prompt29_native_schema_upgrade_contract.py` verifica a ausência dos produtores Kotlin e a permanência dos receivers de compatibilidade. Nenhum teste Kotlin/JVM foi executado manualmente, e nenhum teste instrumentado/emulador foi criado ou executado.
+
 
 ## Verificações e limites
 

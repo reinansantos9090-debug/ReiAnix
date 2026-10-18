@@ -114,27 +114,32 @@ def test_native_settings_preferences_do_not_depend_on_optional_python_projection
     assert "nativePersisted" in settings_repository
 
 
-def test_library_scan_refresh_no_longer_dispatches_a_duplicate_python_page_query():
+def test_kotlin_library_adapter_no_longer_emits_legacy_page_commands():
     repository = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
+    )
+    codec = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt"
     )
     view_model = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
     )
-    assert "pendingRefreshPage" not in repository
-    assert "RefreshPageRequest" not in repository
-    refresh_result_start = repository.index(
-        'if (action == ReiAnixLibraryCommandCodec.Action.REFRESH.value'
-    )
-    page_result_start = repository.index(
-        'if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value',
-        refresh_result_start,
-    )
-    assert "loadLibraryPage(" not in repository[refresh_result_start:page_result_start]
+    legacy_runtime = read("main.py")
+    bridge = read("core/compose_library_bridge.py")
+
+    assert "fun loadLibraryPage(" not in repository
+    assert "pagedLibraryState" not in repository
+    assert "reconcilePagedState" not in repository
+    assert "Action.LOAD_LIBRARY_PAGE" not in repository
+    assert "LOAD_LIBRARY_PAGE" not in codec
     assert "repository.refresh()" in view_model
     native_refresh_start = view_model.index("private suspend fun refreshNativeCatalog()")
     native_refresh_end = view_model.index("\n    }", native_refresh_start)
     assert "loadNativeLibraryPage(" in view_model[native_refresh_start:native_refresh_end]
+
+    # Compatibility receiver remains to drain durable messages written by older app versions.
+    assert 'elif action == "load_library_page":' in legacy_runtime
+    assert '"kind": "library_page"' in bridge
 
 
 def test_prompt_18_bridge_migration_docs_preserve_legacy_boundaries():

@@ -949,7 +949,7 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
     def test_compose_library_refresh_dispatches_native_scan_and_terminal_result(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
         refresh_start = repository.index("fun refresh(")
-        refresh = repository[refresh_start:repository.index("fun loadLibraryPage(", refresh_start)]
+        refresh = repository[refresh_start:repository.index("fun reportNativePlayerHandoff(", refresh_start)]
         self.assertIn('appendQueryParameter("action", "scan_library")', refresh)
         self.assertIn("MainActivity::class.java", refresh)
         self.assertNotIn("send(ReiAnixLibraryCommandCodec.Action.REFRESH)", refresh)
@@ -1030,7 +1030,7 @@ class TestComposeStorageSnapshotMerge(unittest.TestCase):
             / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
         ).read_text(encoding="utf-8")
         start = source.index("internal fun mergeSnapshotState(")
-        end = source.index("\n        internal fun reconcilePagedState(", start)
+        end = source.index("\n    }\n    private val appContext", start)
         merge = source[start:end]
         # Catalog preservation and storage authorization are independent state
         # domains. A READY onboarding snapshot must not be replaced by stale UI

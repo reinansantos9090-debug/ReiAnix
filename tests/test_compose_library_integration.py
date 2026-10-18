@@ -81,13 +81,17 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("personalListService.remove(animeId)", view_model)
         self.assertIn("def _toggle_favorite_from_details(anime_id):", MAIN)
         self.assertIn("on_toggle_favorite", legacy_details)
-    def test_repository_snapshot_reconciliation_does_not_reset_to_first_page(self):
+    def test_kotlin_adapter_does_not_maintain_a_second_page_state(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
-        self.assertIn("reconcilePagedState", repository)
-        self.assertIn("loadedPage = current.loadedPage", repository)
-        self.assertIn("hasMore = current.hasMore ||", repository)
-        self.assertNotIn("animes = firstPage", repository)
-        self.assertNotIn("animes.take(36)", repository)
+        codec = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertNotIn("reconcilePagedState", repository)
+        self.assertNotIn("pagedLibraryState", repository)
+        self.assertNotIn("fun loadLibraryPage(", repository)
+        self.assertNotIn("LOAD_LIBRARY_PAGE", codec)
+        self.assertIn("nativeLibraryQueries.searchAnime(", view_model)
+        # Python can still drain legacy requests from versions before the native query cutover.
+        self.assertIn('elif action == "load_library_page":', MAIN)
 
     def test_library_page_worker_is_bounded_and_runs_off_ui_thread(self):
         worker = self._command_worker_block()
