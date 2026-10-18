@@ -1,6 +1,6 @@
 name: ReiAnix Native Gradle APK Validation
 
-# Validates the debug variant on PRs/manual runs; only build_apk.yml publishes the installable APK.
+# Validates the debug variant on PRs/manual runs; only build_apk.yml publishes the installable APK automatically.
 on:
   pull_request:
   workflow_dispatch:
@@ -170,3 +170,25 @@ jobs:
           test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
           git diff --check
           test -z "$(git status --porcelain)"
+
+      - name: Upload native Gradle APK validation artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-native-gradle-apk-${{ github.run_number }}
+          path: |
+            build/native-gradle-distribution/ReiAnix-native-debug.apk
+            build/native-gradle-distribution/ReiAnix-native-debug.apk.sha256
+            build/native-gradle-distribution/distribution-manifest.json
+            build/native-gradle-distribution/signing-certificate.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload native Gradle ZIP validation artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-native-gradle-ZIP-${{ github.run_number }}
+          path: build/native-gradle-distribution/ReiAnix-native-debug.zip
+          if-no-files-found: error
+          retention-days: 1
