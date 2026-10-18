@@ -128,6 +128,15 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         ):
             self.assertIn(item, exclude_line)
 
+    def test_native_validation_artifact_publishes_signing_and_abi_diagnostics(self):
+        workflow = (ROOT / ".github/workflows/native_gradle_apk.yml").read_text(encoding="utf-8")
+        self.assertIn("apksigner", workflow)
+        self.assertIn("signing-certificate.txt", workflow)
+        self.assertIn("signingCertificateSha256", workflow)
+        self.assertIn("supportedAbis", workflow)
+        self.assertIn("updateCompatibility", workflow)
+        self.assertIn("runtimeIndependenceCertified", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
