@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.data.sqlite
 
+import com.reiflix.reiflix_local.data.library.ReiAnixLibraryInvalidationBus
 import kotlinx.coroutines.sync.Mutex
 import org.json.JSONObject
 
@@ -38,7 +39,26 @@ class ReiAnixLibraryService(
             NativeLibraryIndexReport?,
         ) -> Unit)? = null,
     ): NativeLibraryIndexReport = serializeMutation {
-        repository.indexDiscoveredMedia(snapshot, onTransactionOutcome)
+        var commitConfirmed = false
+        val report = repository.indexDiscoveredMedia(snapshot) { outcome, committedReport ->
+            if (
+                outcome == ReiAnixSqliteTransactionOutcome.COMMITTED &&
+                committedReport != null
+            ) {
+                commitConfirmed = true
+            }
+            // Preserve the existing callback contract used by NativeScanRunner.
+            // A caller callback is advisory and must not suppress this service's
+            // own committed-write notification.
+            runCatching { onTransactionOutcome?.invoke(outcome, committedReport) }
+        }
+        if (commitConfirmed) {
+            ReiAnixLibraryInvalidationBus.publish(
+                reason = "native_scan_catalog_committed",
+                entityType = "catalog",
+            )
+        }
+        report
     }
 
     /**
@@ -78,7 +98,14 @@ class ReiAnixLibraryService(
 
     suspend fun recordNativeVolumeChange(payload: JSONObject): JSONObject =
         serializeMutation {
-            repository.recordNativeVolumeChange(payload)
+            val result = repository.recordNativeVolumeChange(payload)
+            if (!result.optBoolean("ignored", false)) {
+                ReiAnixLibraryInvalidationBus.publish(
+                    reason = "native_volume_catalog_changed",
+                    entityType = "catalog",
+                )
+            }
+            result
         }
 
     /**
@@ -92,11 +119,19 @@ class ReiAnixLibraryService(
         name: String,
         treeUri: String,
     ): JSONObject = serializeMutation {
-        repository.reconcileSafDocumentIdentityChange(
+        val result = repository.reconcileSafDocumentIdentityChange(
             oldUri = oldUri,
             newUri = newUri,
             name = name,
             treeUri = treeUri,
         )
+        if (result.optString("status") == "reconciled") {
+            ReiAnixLibraryInvalidationBus.publish(
+                reason = "saf_document_identity_reconciled",
+                entityType = "episode",
+                entityId = result.optLong("episode_id").takeIf { it > 0L },
+            )
+        }
+        result
     }
 }
