@@ -6,7 +6,6 @@ import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.util.Locale
-import java.util.UUID
 
 /**
  * Performs the schema-v29 additive upgrades previously applied by LibraryStore._init().
@@ -120,11 +119,6 @@ internal class ReiAnixSqliteSchemaUpgrader(
                 // Add only columns whose definitions are SQLite ALTER TABLE-safe.
                 // Ambiguous constraints cause rollback and Recovery Mode, never data replacement.
                 tableDefinitions.forEach { definition ->
-                    val actualColumns = queryStrings(
-                        connection,
-                        "PRAGMA table_info(" + quoteIdentifier(definition.name) + ")",
-                    ).toSet()
-                    // PRAGMA table_info returns rows rather than scalar strings; query the names below.
                     val presentColumns = connection.rawQuery(
                         "PRAGMA table_info(" + quoteIdentifier(definition.name) + ")",
                         null,
@@ -248,7 +242,7 @@ internal class ReiAnixSqliteSchemaUpgrader(
             ?: throw IllegalStateException("Canonical SQLite asset has an unsupported column definition.")
         val name = match.groupValues.drop(1).take(4).firstOrNull { it.isNotBlank() }
             ?: throw IllegalStateException("Canonical SQLite asset has an empty column name.")
-        val definition = match.groupValues[5].trim()
+        val definition = match.groupValues[4].trim()
         check(definition.isNotBlank()) { "Canonical SQLite column definition has no type or constraint." }
         return ColumnDefinition(name, definition)
     }
@@ -393,39 +387,39 @@ internal class ReiAnixSqliteSchemaUpgrader(
         const val ARTWORK_KEY_INDEX = "idx_artwork_key"
         val REQUIRED_EXISTING_TABLES = setOf("folders", "anime", "episodes", "schema_migrations")
         val TABLE_START = Regex(
-            "^CREATE\\\\s+TABLE\\\\s+(?:IF\\\\s+NOT\\\\s+EXISTS\\\\s+)?(?:\\\"([^\\\"]+)\\\"|\\\\[([^]]+)\\\\]|([A-Za-z_][A-Za-z0-9_]*))\\\\s*\\\\(",
+            """^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|\[([^]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s*\(""",
             RegexOption.IGNORE_CASE,
         )
         val COLUMN_START = Regex(
-            "^(?:\\\"((?:\\\"\\\"|[^\\\"])*)\\\"|\\\\[([^]]+)\\\\]|([A-Za-z_][A-Za-z0-9_]*))\\\\s+(.+)$",
+            """^(?:"((?:""|[^"])*)"|\[([^]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s+(.+)$""",
             RegexOption.IGNORE_CASE,
         )
         val TABLE_CONSTRAINT_START = Regex(
-            "^(?:CONSTRAINT\\\\b|PRIMARY\\\\s+KEY\\\\b|UNIQUE\\\\b|CHECK\\\\b|FOREIGN\\\\s+KEY\\\\b)",
+            """^(?:CONSTRAINT\b|PRIMARY\s+KEY\b|UNIQUE\b|CHECK\b|FOREIGN\s+KEY\b)""",
             RegexOption.IGNORE_CASE,
         )
         val UNSAFE_ADDITION = Regex(
-            "\\\\b(?:PRIMARY\\\\s+KEY|UNIQUE|REFERENCES|CHECK|GENERATED\\\\s+ALWAYS)\\\\b",
+            """\b(?:PRIMARY\s+KEY|UNIQUE|REFERENCES|CHECK|GENERATED\s+ALWAYS)\b""",
             RegexOption.IGNORE_CASE,
         )
         val UNSAFE_DEFAULT = Regex(
-            "\\\\bDEFAULT\\\\s*(?:\\\\(|CURRENT_TIME(?:STAMP)?\\\\b|CURRENT_DATE\\\\b)",
+            """\bDEFAULT\s*(?:\(|CURRENT_TIME(?:STAMP)?\b|CURRENT_DATE\b)""",
             RegexOption.IGNORE_CASE,
         )
         val CREATE_TABLE_PREFIX = Regex(
-            "^CREATE\\\\s+TABLE\\\\s+(?:IF\\\\s+NOT\\\\s+EXISTS\\\\s+)?",
+            """^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?""",
             RegexOption.IGNORE_CASE,
         )
         val CREATE_INDEX_PREFIX = Regex(
-            "^CREATE\\\\s+(?:UNIQUE\\\\s+)?INDEX\\\\s+(?:IF\\\\s+NOT\\\\s+EXISTS\\\\s+)?",
+            """^CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?""",
             RegexOption.IGNORE_CASE,
         )
         val CREATE_TRIGGER_PREFIX = Regex(
-            "^CREATE\\\\s+TRIGGER\\\\s+(?:IF\\\\s+NOT\\\\s+EXISTS\\\\s+)?",
+            """^CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?""",
             RegexOption.IGNORE_CASE,
         )
         val INDEX_NAME = Regex(
-            "^CREATE\\\\s+(?:UNIQUE\\\\s+)?INDEX\\\\s+(?:IF\\\\s+NOT\\\\s+EXISTS\\\\s+)?(?:\\\"([^\\\"]+)\\\"|([A-Za-z_][A-Za-z0-9_]*))",
+            """^CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))""",
             RegexOption.IGNORE_CASE,
         )
 
