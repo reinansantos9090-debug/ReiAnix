@@ -76,6 +76,23 @@ jobs:
             echo "::warning::Stable signing secrets are missing. This APK will not update an install signed with a different key."
           fi
 
+      - name: Validate optional public Google Web client ID
+        shell: bash
+        env:
+          REIFLIX_GOOGLE_WEB_CLIENT_ID: ${{ vars.REIFLIX_GOOGLE_WEB_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          client_id="${REIFLIX_GOOGLE_WEB_CLIENT_ID:-}"
+          if [[ -n "$client_id" ]]; then
+            if [[ ! "$client_id" =~ ^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$ ]]; then
+              echo "::error::REIFLIX_GOOGLE_WEB_CLIENT_ID has an invalid public OAuth client ID format."
+              exit 1
+            fi
+          else
+            echo "::warning::Google login will show configuration required until the public Web client ID is configured."
+          fi
+          echo "REIFLIX_GOOGLE_WEB_CLIENT_ID=$client_id" >> "$GITHUB_ENV"
+
       - name: Build native release APK without Python, Flet, or Flutter
         shell: bash
         env:
@@ -110,6 +127,7 @@ jobs:
           grep -F "package: name='com.reiflix.reiflix_local'" build/native-release/apk-badging.txt
           grep -F "versionCode='$(printf '%s' "$ORG_GRADLE_PROJECT_reianixVersionCode")'" build/native-release/apk-badging.txt
           grep -F "targetSdkVersion:'36'" build/native-release/apk-badging.txt
+          grep -F "versionName='0.2.1'" build/native-release/apk-badging.txt
           grep -F 'com.reiflix.reiflix_local.MainActivity' build/native-release/effective-manifest.txt
           grep -F 'com.reiflix.reiflix_local.NativePlayerActivity' build/native-release/effective-manifest.txt
           if grep -Eiq 'io\.flutter\.embedding|Flutter(Activity|FragmentActivity)|com\.flet' build/native-release/effective-manifest.txt; then
@@ -169,7 +187,7 @@ jobs:
             unzip -q -o ReiAnix-apk.zip -d zip-check
             cmp -s ReiAnix.apk zip-check/ReiAnix.apk
             (cd zip-check && sha256sum -c ReiAnix.apk.sha256)
-            rmdir zip-check
+            rm -rf zip-check
           )
           sha256sum build/reianix-release/ReiAnix.apk
           sha256sum build/reianix-release/ReiAnix-apk.zip

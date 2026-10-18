@@ -35,6 +35,15 @@ class NativeProductionBuildContractTests(unittest.TestCase):
         self.assertIn("native-sqlite-contract-v29.json", gradle)
         self.assertIn("native-sqlite-bootstrap-v29.json", gradle)
 
+    def test_hybrid_runtime_build_is_not_an_automatic_release_workflow(self):
+        legacy = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")
+        trigger = legacy.split("concurrency:", 1)[0]
+        self.assertIn("workflow_dispatch:", trigger)
+        self.assertNotIn("pull_request:", trigger)
+        self.assertNotIn("push:", trigger)
+        self.assertIn("flet build", legacy.lower())
+
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -156,10 +156,10 @@ class FinalRegressionTests(unittest.TestCase):
         workflow = Path(".github/workflows/build_apk.yml").read_text(encoding="utf-8")
         self.assertIn('version = "0.2.1"', project)
         self.assertIn('applicationId = "com.reiflix.reiflix_local"', android)
-        self.assertIn('versionCode = 2', android)
+        self.assertIn('versionCode = providers.gradleProperty("reianixVersionCode").orElse("2").get().toInt()', android)
         self.assertIn('versionName = "0.2.1"', android)
         self.assertIn('name=\'com.reiflix.reiflix_local\'', workflow)
-        self.assertIn("versionCode='$GITHUB_RUN_NUMBER'", workflow)
+        self.assertIn("ORG_GRADLE_PROJECT_reianixVersionCode=$((2000000 + GITHUB_RUN_NUMBER))", workflow)
         self.assertIn("versionName='0.2.1'", workflow)
 
     def test_settings_and_android_compile_regressions_are_closed_in_source(self):

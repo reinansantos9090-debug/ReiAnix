@@ -21,6 +21,7 @@ TEMPLATE = ROOT / "scripts/prepare_flet_template.py"
 FIXTURE_GENERATOR = ROOT / "scripts/generate_native_sqlite_test_fixture.py"
 KOTLIN_WORKFLOW = ROOT / ".github/workflows/kotlin_jvm_tests.yml"
 APK_WORKFLOW = ROOT / ".github/workflows/build_apk.yml"
+LEGACY_APK_WORKFLOW = ROOT / ".github/workflows/build_hybrid_legacy.yml"
 HOST_VERIFIER = ROOT / "scripts/verify_android_host.py"
 
 
@@ -464,7 +465,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("rm -f android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
 
     def test_apk_workflow_packages_and_cleans_generated_runtime_contract(self):
-        workflow = APK_WORKFLOW.read_text(encoding="utf-8")
+        workflow = LEGACY_APK_WORKFLOW.read_text(encoding="utf-8")
         template = TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("Generate canonical SQLite runtime contract and JVM fixture", workflow)
         self.assertIn("--contract-output android/app/src/main/assets/native-sqlite-contract-v29.json", workflow)
@@ -481,7 +482,7 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("CONTRACT_SCHEMA_VERSION = 29", verifier)
         self.assertIn("CONTRACT_SQLITE_USER_VERSION = 0", verifier)
         self.assertIn("missing_contract_keys", verifier)
-        workflow = APK_WORKFLOW.read_text(encoding="utf-8")
+        workflow = LEGACY_APK_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn('python scripts/verify_android_host.py "$apk"', workflow)
 
     def test_runtime_fixture_is_generated_from_the_real_library_store_schema(self):
