@@ -1,8 +1,19 @@
 # ReiAnix — auditoria final de migração para Kotlin
 
 Data da atualização: 2026-10-18 (UTC)  
-Pull request de trabalho: #194, branch migration/prompt-28-native-scan-bridge-cutover-20261017  
-Escopo: auditoria estática do repositório e validação de CI do código alterado pelo Prompt 29. A evidência de CI abaixo corresponde ao SHA de implementação `596d5a7e1bf391a02909f4ebcd8a352b15f98348`; ela comprova compilação/empacotamento e regressão, não paridade funcional completa.
+Pull request de trabalho: #194, branch `migration/prompt-28-native-scan-bridge-cutover-20261017`  
+Escopo: auditoria estática e histórico de validação do Prompt 29. As seções do baseline abaixo preservam evidências históricas dos SHAs nelas citados; **a evidência mais recente consultada está registrada em “Evidência atual verificada para o HEAD da PR”** e não deve ser confundida com os runs dos SHAs anteriores. A evidência de CI comprova compilação/empacotamento e regressão dentro do contexto efetivamente executado, não paridade funcional completa.
+
+## Evidência atual verificada para o HEAD da PR — 2026-10-18 UTC
+
+**Estado do Git verificado antes desta correção documental:** PR [#194](https://github.com/reinansantos9090-debug/ReiAnix/pull/194) aberta, em rascunho e não integrada; base `main`; branch `migration/prompt-28-native-scan-bridge-cutover-20261017`; HEAD da branch/PR `07e28c2fb6bfeb800b85e95d122ff94f3c07f466`; pai direto `d5bec88401ec2c8fc36415bf8580cc39443ca8ef`. O HEAD confirmado é `07e28c2...`, e não `d5bec884...`.
+
+**Distinção de SHA validado pelos workflows:** ambos os runs abaixo estão associados ao evento de PR cujo `head_sha` é `07e28c2fb6bfeb800b85e95d122ff94f3c07f466`. Os logs de checkout mostram, porém, que o runner compilou/testou a referência de merge `refs/remotes/pull/194/merge`, SHA `1aad8aeaec1b2db52c9cbc78c7813ca8206ec4d7`, mensagem “Merge 07e28c2... into e9e3fcc67bb778f0c7fe861f16dd1ff18d0c976d”. Portanto, o código do HEAD da PR foi incluído na validação, mas a fonte exata do workspace desses runs é o commit de merge `1aad8ae...`, não um checkout isolado somente de `07e28c2...`.
+
+- **Build oficial do Android** — [run 39088711613](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39088711613): estado `completed`, conclusão `success`; SHA da PR associado ao run `07e28c2fb6bfeb800b85e95d122ff94f3c07f466`; SHA efetivo do checkout/build `1aad8aeaec1b2db52c9cbc78c7813ca8206ec4d7`. A suíte Python concluiu com **1.993 testes aprovados e 58 subtests aprovados**. O build do APK e a compilação explícita Kotlin de release passaram; também passaram as verificações de pacote/manifest/DEX e a publicação dos artefatos. Artefatos não expirados: [`ReiAnix-apk-instalacao-direta-6045`](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39088711613/artifacts/12121699180), **33.071.050 bytes** (arquivo de artefato do Actions); [`ReiAnix-ZIP-extraia-primeiro-6045`](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39088711613/artifacts/12121928091), **33.021.685 bytes**; e artefato auxiliar [`ReiAnix-native-sqlite-bootstrap-source-6045`](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39088711613/artifacts/12121892066), **2.270 bytes**. SHA-256 do APK `ReiAnix.apk`, emitido e validado no log: `faed07b4e75197270f2e74cb1317ab111f3cbf427d3b66f5b9cb6e351912bf54`. A identidade do build confirma runtime Python 3.12 e Flet 0.86.5.
+- **Validação Gradle nativa** — [run 39088711605](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39088711605): estado `completed`, conclusão `success`; SHA da PR associado ao run `07e28c2...` e checkout efetivo `1aad8aeaec1b2db52c9cbc78c7813ca8206ec4d7`. A compilação `:app:assembleDebug`, inspeção de metadados, Manifest, classes/DEX e assets nativos, criação do ZIP e verificação `sha256sum -c` do APK passaram. Artefatos não expirados: [`ReiAnix-native-gradle-apk-81`](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39088711605/artifacts/12122285314), **26.948.746 bytes**; [`ReiAnix-native-gradle-ZIP-81`](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39088711605/artifacts/12122135819), **26.892.988 bytes**. O log acessível confirma que o arquivo de checksum do APK foi incluído no pacote e validado, mas não expõe o valor literal do SHA-256 do APK nativo; esse valor fica **não verificado nesta auditoria**. Os digests emitidos pelo upload do Actions são dos arquivos ZIP dos artefatos, não devem ser apresentados como hash do APK.
+
+**Limites que continuam ativos:** o workflow oficial continua montando o APK pelo caminho híbrido Python/Flet/Flutter. A validação Gradle separada prova compilação e empacotamento do conjunto nativo, não paridade funcional integral, execução em dispositivo nem independência do runtime híbrido. O schema SQLite permanece v29; nenhuma base pessoal foi acessada. A migração integral continua pendente enquanto existirem dependências reais e fluxos ativos Python/Flet/Flutter. Esta seção registra os runs anteriores à correção documental; ela não certifica automaticamente qualquer novo commit que venha a ser criado.
 
 ## Conclusão executiva
 
@@ -35,7 +46,7 @@ A classe é integrada ao bootstrap nativo antes da decisão final de compatibili
 
 **Limite de evidência:** o contrato Python adicionado fiscaliza a presença e o encadeamento do código-fonte. Ele não equivale a executar uma atualização de banco legado com dados reais, nem substitui um teste manual Kotlin/JVM ou a validação em dispositivo. A suíte Kotlin/JVM não deve ser executada automaticamente nem manualmente nesta etapa, conforme as restrições do projeto.
 
-## Matriz final de aceitação
+## Matriz de aceitação da auditoria-base (SHA histórico `596d5a7e1bf391a02909f4ebcd8a352b15f98348`)
 
 | Área | Evidência disponível nesta auditoria | Estado |
 |---|---|---|
@@ -75,7 +86,7 @@ A alteração anterior retirou do adapter Kotlin os emissores de `set_watched`, 
 O contrato em `tests/test_prompt29_native_schema_upgrade_contract.py` verifica a ausência dos produtores Kotlin e a permanência dos receivers de compatibilidade. Nenhum teste Kotlin/JVM foi executado manualmente, e nenhum teste instrumentado/emulador foi criado ou executado.
 
 
-## Verificações e limites
+## Verificações históricas do baseline `596d5a7e1bf391a02909f4ebcd8a352b15f98348`
 
 No SHA de implementação auditado `596d5a7e1bf391a02909f4ebcd8a352b15f98348`, os dois workflows obrigatórios terminaram oficialmente com sucesso: Gradle nativo [run 39084060927](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39084060927) e build oficial [run 39084060944](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39084060944). A suíte Python registrou **1.992 testes e 58 subtests aprovados**. O APK oficial publicado foi `ReiAnix-apk-instalacao-direta-6039` (33.073.120 bytes), o ZIP oficial `ReiAnix-ZIP-extraia-primeiro-6039` (33.023.539 bytes), o APK Gradle `ReiAnix-native-gradle-apk-75` (26.960.971 bytes) e o ZIP Gradle `ReiAnix-native-gradle-ZIP-75` (26.904.439 bytes). SHA-256 do APK oficial: `d5e80bd4ef53fee0a658b27052ebf56af377dfaa4cfa6867b85568b9d04507c9`. Isso valida compilação, empacotamento e regressão para o código auditado; não prova runtime exclusivamente Kotlin, execução em dispositivo nem migração comportamental de um banco pessoal existente.
 
@@ -88,7 +99,7 @@ O Prompt 29 só pode declarar a migração concluída depois de retirar ou subst
 **Conclusão desta auditoria:** há progresso nativo concreto e foi corrigida a lacuna de atualização aditiva do schema SQLite existente, mas a migração total do runtime e da distribuição ainda não foi comprovada. A PR #194 deve permanecer em rascunho e sem merge até que essas lacunas sejam efetivamente resolvidas ou aceitas explicitamente como limite do produto.
 
 
-## Verificação final do corte de paginação IPC — SHA `d5bec88401ec2c8fc36415bf8580cc39443ca8ef`
+## Registro histórico de validação do corte de paginação IPC — parent SHA `d5bec88401ec2c8fc36415bf8580cc39443ca8ef` (não é o HEAD atual)
 
 A sequência mais recente removeu de `ReiAnixLibraryRepository` a produção de `load_library_page`, o `StateFlow` paginado duplicado e a aplicação de respostas de páginas na UI do adapter. A paginação Compose permanece no ViewModel Kotlin, que consulta `ReiAnixLibraryQueryService.searchAnime()` diretamente no SQLite canônico. O adapter ainda decodifica resultados antigos de paginação e os descarta, e os handlers/projetores Python continuam preservados para comandos duráveis de versões anteriores. Não se declara a retirada global da ponte híbrida.
 
