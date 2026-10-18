@@ -4677,6 +4677,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         putExtra("episodeId", target.id.toString())
                         putExtra("animeId", target.animeId.toString())
                         putExtra("title", targetTitle)
+                        putExtra("episodeTitle", targetTitle)
                         putExtra("positionMs", positionMs ?: 0L)
                         putExtra("positionMsSpecified", positionMs != null)
                         putExtra("canNext", targetCanNext)

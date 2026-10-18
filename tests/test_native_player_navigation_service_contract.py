@@ -18,6 +18,7 @@ def test_native_player_resolves_next_previous_from_canonical_sqlite():
     assert "isAvailableRegularCandidate" in service
     assert "nextCanNext" in service and "previousCanPrevious" in service
     assert "nativePlayerNavigationService.resolve(sourceEpisodeId)" in request
+    assert 'putExtra("episodeTitle", targetTitle)' in request
     assert "startActivity(successorIntent)" in request
     assert 'putExtra("positionMsSpecified", positionMs != null)' in request
     assert 'putExtra("positionMs", positionMs ?: 0L)' in request
