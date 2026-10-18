@@ -289,8 +289,6 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
 
         stateMutex.withLock {
             _state.value = _state.value.copy(
-                lastCommandId = result.requestId,        stateMutex.withLock {
-            _state.value = _state.value.copy(
                 lastCommandId = result.requestId,
                 lastCommandAction = result.action,
                 lastCommandStatus = result.status,
