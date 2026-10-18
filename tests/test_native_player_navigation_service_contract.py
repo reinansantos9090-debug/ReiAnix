@@ -13,9 +13,16 @@ def test_native_player_resolves_next_previous_from_canonical_sqlite():
     request = player[player.index("private fun requestEpisode"):player.index("private fun seekToSavedPosition")]
 
     assert "ReiAnixNativePlayerNavigationService" in service
-    assert "library.getEpisode(episodeId)" in service
-    assert "library.listEpisodes(current.animeId)" in service
+    assert "library.playerNavigationRows(episodeId)" in service
+    assert "rows.availableCandidates" in service
     assert "isAvailableRegularCandidate" in service
+    repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+    rows = repository[repository.index("internal suspend fun playerNavigationRows"):repository.index("suspend fun collectorSnapshot")]
+    assert "database.readConsistentSnapshot" in rows
+    assert "JOIN anime a ON a.id = e.anime_id" in rows
+    assert "COALESCE(e.availability_state, 'available') = 'available'" in rows
+    assert "e.episode_type NOT IN" in rows
+    assert "CREATE TABLE" not in rows.upper()
     assert "nextCanNext" in service and "previousCanPrevious" in service
     assert "nativePlayerNavigationService.resolve(sourceEpisodeId)" in request
     assert 'putExtra("episodeTitle", targetTitle)' in request

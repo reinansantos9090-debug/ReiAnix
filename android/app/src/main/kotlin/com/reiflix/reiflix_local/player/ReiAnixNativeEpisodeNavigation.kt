@@ -93,10 +93,11 @@ class ReiAnixNativePlayerNavigationService(
 ) {
     suspend fun resolve(episodeId: Long): ReiAnixNativePlayerNavigationSnapshot {
         require(episodeId > 0L) { "Episode ID must be a positive persisted ID." }
-        val current = library.getEpisode(episodeId)
+        val rows = library.playerNavigationRows(episodeId)
+        val current = rows.current
             ?: throw NoSuchElementException("Episode ID does not exist: " + episodeId)
 
-        if (library.getAnime(current.animeId) == null ||
+        if (!rows.animeExists ||
             !ReiAnixNativePlayerEpisodeOrder.isRegularEpisode(current)
         ) {
             return ReiAnixNativePlayerNavigationSnapshot(
@@ -110,7 +111,7 @@ class ReiAnixNativePlayerNavigationService(
             )
         }
 
-        val available = library.listEpisodes(current.animeId)
+        val available = rows.availableCandidates
             .filter(ReiAnixNativePlayerEpisodeOrder::isAvailableRegularCandidate)
         val currentKey = ReiAnixNativePlayerEpisodeOrder.key(current)
         val next = available.asSequence()

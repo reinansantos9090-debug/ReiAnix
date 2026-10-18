@@ -21,6 +21,12 @@ import kotlinx.coroutines.withContext
  * This is not a second catalog. Callers that migrate a mutation here must stop
  * publishing that same mutation through the legacy Python mailbox.
  */
+internal data class ReiAnixPlayerNavigationRows(
+    val current: ReiAnixEpisodeRecord?,
+    val animeExists: Boolean,
+    val availableCandidates: List<ReiAnixEpisodeRecord>,
+)
+
 class ReiAnixSqliteLibraryRepository(
     internal val database: ReiAnixSqliteDatabase,
 ) {
@@ -566,6 +572,54 @@ class ReiAnixSqliteLibraryRepository(
                 }
             }
         }
+
+    /**
+     * Reads the current episode, parent-anime existence and playable neighbors from
+     * one canonical SQLite snapshot. Keeping these reads together matches the legacy
+     * LibraryStore.player_navigation() consistency boundary during concurrent scans.
+     */
+    internal suspend fun playerNavigationRows(episodeId: Long): ReiAnixPlayerNavigationRows =
+        withContext(Dispatchers.IO) {
+            require(episodeId > 0L) { "Episode ID must be a positive persisted ID." }
+            database.readConsistentSnapshot { connection ->
+                val current = queryEpisode(connection, episodeId)
+                if (current == null) {
+                    return@readConsistentSnapshot ReiAnixPlayerNavigationRows(
+                        current = null,
+                        animeExists = false,
+                        availableCandidates = emptyList(),
+                    )
+                }
+
+                val animeExists = connection.rawQuery(
+                    "SELECT 1 FROM anime WHERE id = ? LIMIT 1",
+                    arrayOf(current.animeId.toString()),
+                ).use { it.moveToFirst() }
+                val candidates = if (!animeExists) {
+                    emptyList()
+                } else {
+                    connection.rawQuery(
+                        "SELECT e.* FROM episodes e " +
+                            "JOIN anime a ON a.id = e.anime_id " +
+                            "WHERE e.anime_id = ? AND e.missing = 0 " +
+                            "AND COALESCE(e.availability_state, 'available') = 'available' " +
+                            "AND e.episode_type NOT IN " +
+                            "('movie','special','ova','oad','ona','extra')",
+                        arrayOf(current.animeId.toString()),
+                    ).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
+                        }
+                    }
+                }
+                ReiAnixPlayerNavigationRows(
+                    current = current,
+                    animeExists = animeExists,
+                    availableCandidates = candidates,
+                )
+            }
+        }
+
 
     /**
      * Canonical projection for Collector Journey; one read joins existing episode consumption
