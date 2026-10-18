@@ -58,7 +58,7 @@ Não satisfaz a meta final: Kotlin compilar dentro do host Flet; produzir APK h�
 
 O snapshot auditado continua híbrido. A equivalência do caminho SQLite precisa ser provada e existem regras de merge ainda atribuídas ao LibraryStore. O Prompt 01 documenta inventário, dependências, sequência e critérios; não declara migração funcional concluída.
 
-## 5. Aceitação específica do Prompt 02/18 — domínio de mídia
+## 6. Aceitação específica do Prompt 02/18 — domínio de mídia
 
 | ID | Critério | Condição verificável | Evidência exigida |
 |---|---|---|---|

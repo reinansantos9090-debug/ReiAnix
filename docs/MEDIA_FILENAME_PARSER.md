@@ -2,7 +2,7 @@
 
 ## Ownership and boundaries
 
-`MediaFilenameParser` is the single pure-JVM parser for local filename candidates. It consumes only a supplied path string; it does not open files, rename or move them, access storage, perform network calls, identify an AniList record, or create a persisted identity. `LocalMediaIdentity` and `MediaTitleNormalizer` remain separate APIs. The active legacy Python `core/library_service.py` still calls `core/library_parser.py`; Python remains necessary until all runtime consumers have switched and behavioral parity has been validated.
+`MediaFilenameParser` is the single pure-JVM parser for native filename candidates; the Python parser remains separately active in the legacy runtime. It consumes only a supplied path string; it does not open files, rename or move them, access storage, perform network calls, identify an AniList record, or create a persisted identity. `LocalMediaIdentity` and `MediaTitleNormalizer` remain separate APIs. The active legacy Python `core/library_service.py` still calls `core/library_parser.py`; Python remains necessary until all runtime consumers have switched and behavioral parity has been validated.
 
 ## Legacy-supported patterns retained
 

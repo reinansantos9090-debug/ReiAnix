@@ -125,6 +125,7 @@ enum class MediaLocationKind {
     SAF_TREE_URI,
     SAF_DOCUMENT_URI,
     OTHER_URI,
+    UNRESOLVED,
 }
 
 /**
@@ -172,20 +173,23 @@ data class LocalMediaReference(
 
 object MediaReferenceSyntax {
     private val uriScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
-    private const val externalStorageDocumentsAuthority = "com.android.externalstorage.documents"
 
     fun hasUriScheme(value: String): Boolean = uriScheme.containsMatchIn(value.trim())
 
     /** Pure-JVM classification; never resolves, rewrites, or persists a location. */
     fun classify(value: String): MediaLocationKind {
         val trimmed = value.trim()
+        if (trimmed.isEmpty()) return MediaLocationKind.UNRESOLVED
         if (!hasUriScheme(trimmed)) return MediaLocationKind.FILESYSTEM_PATH
-        val parsed = runCatching { java.net.URI(trimmed) }.getOrNull()
-            ?: return MediaLocationKind.OTHER_URI
-        return when (parsed.scheme?.lowercase(java.util.Locale.ROOT)) {
+
+        // Classify by scheme before URI parsing so even a legacy file URI with spaces
+        // is never misreported as a raw filesystem path or an unrelated URI scheme.
+        val scheme = trimmed.substringBefore(':').lowercase(java.util.Locale.ROOT)
+        return when (scheme) {
             "file" -> MediaLocationKind.FILE_URI
             "content" -> {
-                val path = parsed.rawPath.orEmpty().lowercase(java.util.Locale.ROOT)
+                val parsed = runCatching { java.net.URI(trimmed) }.getOrNull()
+                val path = parsed?.rawPath.orEmpty().lowercase(java.util.Locale.ROOT)
                 when {
                     path.contains("/document/") -> MediaLocationKind.SAF_DOCUMENT_URI
                     path.contains("/tree/") -> MediaLocationKind.SAF_TREE_URI
