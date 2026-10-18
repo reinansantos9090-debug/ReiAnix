@@ -74,6 +74,9 @@ object MediaFilenameParser {
     private val year = Regex("^(?:19\\d{2}|20\\d{2})$")
     private val filenameNumber = Regex("(?<!\\d)(\\d{1,4}(?:[.,]\\d{1,2})?)(?:v\\d+)?\\b")
     private val numericOnlyFilename = Regex("\\d+(?:[.,]\\d+)?(?:v\\d+)?")
+    private val unsupportedNumericSuffixDecimal = Regex(
+        "(?<!\\d)\\d{1,4}[.,]\\d{3,}(?:v\\d+)?\\b",
+    )
     private val genericFolders = setOf("anime", "videos", "video", "media", "downloads", "download", "complete", "finished", "batch", "dub", "sub")
     private val numericTechnicalFolder = setOf("264", "265", "4320", "2160", "1080", "720", "480", "8", "10", "12")
     private val seasonLabel = Regex("(?i)^(?:s|season|temporada|temp)[ ._-]*\\d{1,3}$")
@@ -215,34 +218,44 @@ object MediaFilenameParser {
                     evidence += "MOVIE_TYPE_TOKEN:${marker?.value.orEmpty()}"
                 }
                 else -> {
-                    val candidates = filenameNumber.findAll(stem).filter { match ->
-                        val value = match.groupValues[1]
-                        val before = stem.substring(0, match.range.first)
-                        val decimalContinuation = (before.endsWith(".") || before.endsWith(",")) &&
-                            (before.dropLast(1).lastOrNull()?.isDigit() == true)
-                        val technicalNumber = value in setOf("264", "265", "4320", "2160", "1080", "720", "480", "8", "10", "12")
-                        val numberFollowsTechnicalMarker =
-                            Regex("(?i)(?:x|h\\.?|codec|bit)\\s*${Regex.escape(value)}\\b").containsMatchIn(stem)
-                        !decimalContinuation &&
-                            !year.matches(value) &&
-                            !Regex("(?i)(?<!\\d)${Regex.escape(value)}p\\b").containsMatchIn(stem) &&
-                            !(technicalNumber && numberFollowsTechnicalMarker) &&
-                            value !in setOf("264", "265", "1080", "2160", "720", "480") &&
-                            !volumeOrDisc.containsMatchIn(stem) &&
-                            !Regex("(?i)\\b(?:vol(?:ume)?|disc|disk)\\s*$").containsMatchIn(before) &&
-                            before.trim(' ', '.', '_', '-', '[', ']', '(', ')', '{', '}').isNotEmpty()
-                    }.toList()
-                    if (candidates.isNotEmpty() && absoluteMatch == null && absoluteDecimalMatch == null &&
-                        unsupportedEpisodeDecimalMatch == null && !isNumericOnlyFilename
-                    ) {
-                        marker = candidates.last()
-                        episode = parseEpisodeNumber(marker!!.groupValues[1])
-                        season = season ?: 1
-                        kind = ParsedMediaKind.REGULAR
-                        source = "numeric_suffix"
-                        confidence = MediaIdentificationConfidence.MEDIUM
-                        evidence += "NUMERIC_SUFFIX:${marker!!.value}"
-                        if (candidates.size > 1) unresolved += "multiple_numeric_candidates"
+                    val unsupportedDecimalSuffix = unsupportedNumericSuffixDecimal.find(stem)
+                    if (unsupportedDecimalSuffix != null && !isNumericOnlyFilename) {
+                        marker = unsupportedDecimalSuffix
+                        kind = ParsedMediaKind.UNKNOWN
+                        source = "unsupported_numeric_suffix_decimal_precision"
+                        confidence = MediaIdentificationConfidence.LOW
+                        evidence += "UNSUPPORTED_NUMERIC_SUFFIX_DECIMAL_PRECISION:${unsupportedDecimalSuffix.value}"
+                        unresolved += "unsupported_numeric_suffix_decimal_precision"
+                    } else {
+                        val candidates = filenameNumber.findAll(stem).filter { match ->
+                            val value = match.groupValues[1]
+                            val before = stem.substring(0, match.range.first)
+                            val decimalContinuation = (before.endsWith(".") || before.endsWith(",")) &&
+                                (before.dropLast(1).lastOrNull()?.isDigit() == true)
+                            val technicalNumber = value in setOf("264", "265", "4320", "2160", "1080", "720", "480", "8", "10", "12")
+                            val numberFollowsTechnicalMarker =
+                                Regex("(?i)(?:x|h\\.?|codec|bit)\\s*${Regex.escape(value)}\\b").containsMatchIn(stem)
+                            !decimalContinuation &&
+                                !year.matches(value) &&
+                                !Regex("(?i)(?<!\\d)${Regex.escape(value)}p\\b").containsMatchIn(stem) &&
+                                !(technicalNumber && numberFollowsTechnicalMarker) &&
+                                value !in setOf("264", "265", "1080", "2160", "720", "480") &&
+                                !volumeOrDisc.containsMatchIn(stem) &&
+                                !Regex("(?i)\\b(?:vol(?:ume)?|disc|disk)\\s*$").containsMatchIn(before) &&
+                                before.trim(' ', '.', '_', '-', '[', ']', '(', ')', '{', '}').isNotEmpty()
+                        }.toList()
+                        if (candidates.isNotEmpty() && absoluteMatch == null && absoluteDecimalMatch == null &&
+                            unsupportedEpisodeDecimalMatch == null && !isNumericOnlyFilename
+                        ) {
+                            marker = candidates.last()
+                            episode = parseEpisodeNumber(marker!!.groupValues[1])
+                            season = season ?: 1
+                            kind = ParsedMediaKind.REGULAR
+                            source = "numeric_suffix"
+                            confidence = MediaIdentificationConfidence.MEDIUM
+                            evidence += "NUMERIC_SUFFIX:${marker!!.value}"
+                            if (candidates.size > 1) unresolved += "multiple_numeric_candidates"
+                        }
                     }
                 }
             }
