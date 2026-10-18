@@ -51,4 +51,4 @@ P02–P04 estabelecem boot, DB e IPC. P05–P06 fecham storage/scanner. P07–P1
 
 ## Definition of Done do Prompt 18
 
-Entry point e Application/Activity nativos; build Gradle e APK sem dependência/runtime Python/Flet/Flutter; biblioteca, SAF, MediaStore, scanner, metadados, artwork, settings, backup/recovery, navegação/lifecycle e Media3 equivalentes; SQLite v29/dados preservados; sem DB/gravad or paralelo; diff revisado; artefatos inspecionados; workflows oficiais aplicáveis em success no SHA final.
+Entry point e Application/Activity nativos; build Gradle e APK sem dependência/runtime Python/Flet/Flutter; biblioteca, SAF, MediaStore, scanner, metadados, artwork, settings, backup/recovery, navegação/lifecycle e Media3 equivalentes; SQLite v29/dados preservados; sem DB ou gravador paralelo; diff revisado; artefatos inspecionados; workflows oficiais aplicáveis em success no SHA final.
