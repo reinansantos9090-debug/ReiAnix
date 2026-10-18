@@ -15,18 +15,19 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * Native repository against the existing canonical library.sqlite3.
- *
- * This is not a second catalog. Callers that migrate a mutation here must stop
- * publishing that same mutation through the legacy Python mailbox.
- */
+/** Rows resolved from one SQLite snapshot for native player navigation. */
 internal data class ReiAnixPlayerNavigationRows(
     val current: ReiAnixEpisodeRecord?,
     val animeExists: Boolean,
     val availableCandidates: List<ReiAnixEpisodeRecord>,
 )
 
+/**
+ * Native repository against the existing canonical library.sqlite3.
+ *
+ * This is not a second catalog. Callers that migrate a mutation here must stop
+ * publishing that same mutation through the legacy Python mailbox.
+ */
 class ReiAnixSqliteLibraryRepository(
     internal val database: ReiAnixSqliteDatabase,
 ) {
