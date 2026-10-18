@@ -25,6 +25,8 @@ object NativeMailbox {
     private const val QUEUE = "reiflix-native-events"
     private const val PREFIX = "event-"
     private const val EVENT_VERSION = 2
+    private const val LEGACY_PYTHON_BUNDLE = "app.zip"
+    @Volatile private var legacyPythonRuntimePresent: Boolean? = null
     private const val BEST_EFFORT_QUEUE_CAPACITY = 128
     private val bestEffortExecutor: ExecutorService = ThreadPoolExecutor(
         1,
@@ -37,6 +39,39 @@ object NativeMailbox {
         },
         ThreadPoolExecutor.AbortPolicy(),
     )
+
+
+    /**
+     * Native-only APKs do not include app.zip and have no Python process to consume
+     * compatibility events. Keep the mailbox for the manually built hybrid APK,
+     * but avoid producing unbounded, unread queue files in native-only installs.
+     *
+     * If assets cannot be inspected, fail closed and retain event publication so
+     * a transient inspection error cannot silently disable a real legacy consumer.
+     */
+    private fun hasLegacyPythonRuntime(context: Context): Boolean {
+        legacyPythonRuntimePresent?.let { return it }
+        return synchronized(this) {
+            legacyPythonRuntimePresent?.let { return@synchronized it }
+            val present = try {
+                val assets = context.applicationContext.assets.list("")
+                if (assets == null) {
+                    Log.w(TAG, "Could not inspect APK assets; retaining compatibility event delivery")
+                    true
+                } else {
+                    assets.any { it == LEGACY_PYTHON_BUNDLE }
+                }
+            } catch (exception: Exception) {
+                Log.w(TAG, "Could not inspect APK assets; retaining compatibility event delivery", exception)
+                true
+            }
+            legacyPythonRuntimePresent = present
+            if (!present) {
+                Log.i(TAG, "Legacy Python runtime absent; compatibility mailbox publication is disabled for this process")
+            }
+            present
+        }
+    }
 
     private fun operationState(event: JSONObject): String {
         val type = event.stringOrDefault("type", "unknown")
@@ -111,8 +146,13 @@ object NativeMailbox {
         check(write(context, event)) { "Could not publish native event to NativeMailbox" }
     }
 
-    fun write(context: Context, event: JSONObject): Boolean =
-        writeInternal(context, event, durable = true)
+    fun write(context: Context, event: JSONObject): Boolean {
+        // A successful return means either the legacy event was durably queued or
+        // no embedded legacy consumer exists; native domain work must never depend
+        // on delivery to a Python-only projection.
+        if (!hasLegacyPythonRuntime(context)) return true
+        return writeInternal(context, event, durable = true)
+    }
 
     /**
      * Player telemetry uses atomic mailbox publication without forcing a
@@ -125,6 +165,7 @@ object NativeMailbox {
      * The event still uses the same temporary-file + atomic-promotion protocol.
      */
     fun writeBestEffort(context: Context, event: JSONObject): Boolean {
+        if (!hasLegacyPythonRuntime(context)) return true
         val snapshot = JSONObject(event.toString())
         return try {
             bestEffortExecutor.execute {
