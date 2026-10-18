@@ -147,7 +147,14 @@ jobs:
           grep -F 'Lcom/reiflix/reiflix_local/MainActivity;' build/native-release/dex-strings.txt
           grep -F 'Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;' build/native-release/dex-strings.txt
           grep -F 'Lcom/reiflix/reiflix_local/NativePlayerActivity;' build/native-release/dex-strings.txt
-          "$build_tools/apksigner" verify --verbose --print-certs "$source_apk" | tee build/native-release/signing-certificate.txt
+          signing_certificate_sha256="$("$build_tools/apksigner" verify --verbose --print-certs "$source_apk" | tee build/native-release/signing-certificate.txt | sed -nE 's/^Signer #1 certificate SHA-256 digest: ([[:xdigit:]]+)$/\1/p' | head -n1)"
+          test -n "$signing_certificate_sha256"
+          native_abis="$(grep -E '^lib/[^/]+/' <<< "$apk_entries" | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u | paste -sd, -)"
+          test -n "$native_abis"
+          {
+            printf 'REIANIX_SIGNING_CERT_SHA256=%s\n' "$signing_certificate_sha256"
+            printf 'REIANIX_NATIVE_ABIS=%s\n' "$native_abis"
+          } >> "$GITHUB_ENV"
 
       - name: Create direct APK, install guide, ZIP, and checksums
         shell: bash
@@ -155,7 +162,9 @@ jobs:
           set -euo pipefail
           mkdir -p build/reianix-release
           cp android/app/build/outputs/apk/release/app-release.apk build/reianix-release/ReiAnix.apk
+          cp build/native-release/signing-certificate.txt build/reianix-release/signing-certificate.txt
           test -s build/reianix-release/ReiAnix.apk
+          test -s build/reianix-release/signing-certificate.txt
           (
             cd build/reianix-release
             sha256sum ReiAnix.apk > ReiAnix.apk.sha256
@@ -166,7 +175,9 @@ jobs:
           1. Toque diretamente em ReiAnix.apk para instalar.
           2. Se o Android bloquear, permita “Instalar apps desconhecidos” para o gerenciador de arquivos e tente novamente.
           3. O arquivo ReiAnix.apk.sha256 serve apenas para verificar a integridade; não instale nem extraia esse arquivo.
-          4. Se o Android recusar uma atualização, verifique se o APK foi assinado com a mesma chave da instalação atual.
+          4. Se o Android recusar uma atualização, compare o SHA-256 do certificado deste APK com o certificado da instalação atual.
+          5. Builds CI marcados como debug-fallback não são garantidos como atualizações compatíveis com instalações assinadas por outra chave; o APK de validação debug também usa outra variante/assinatura.
+          6. Não desinstale um app que contenha dados locais para contornar conflito de assinatura ou versão. Obtenha antes um backup recuperável e a chave correta.
           EOF
           {
             printf '{\n'
@@ -181,12 +192,15 @@ jobs:
             printf '  "fletRuntimePackaged": false,\n'
             printf '  "flutterRuntimePackaged": false,\n'
             printf '  "runtimeIndependenceCertified": false,\n'
+            printf '  "supportedAbis": "%s",\n' "$REIANIX_NATIVE_ABIS"
+            printf '  "signingCertificateSha256": "%s",\n' "$REIANIX_SIGNING_CERT_SHA256"
+            printf '  "updateCompatibility": "Requires the same signing certificate; debug-fallback is not stable across CI runs",\n'
             printf '  "signingMode": "%s"\n' "${REIANIX_SIGNING_MODE:-unknown}"
             printf '}\n'
           } > build/reianix-release/distribution-manifest.json
           (
             cd build/reianix-release
-            zip -j -9 -X ReiAnix-apk.zip ReiAnix.apk ReiAnix.apk.sha256 LEIA-ANTES-DE-INSTALAR.txt distribution-manifest.json
+            zip -j -9 -X ReiAnix-apk.zip ReiAnix.apk ReiAnix.apk.sha256 LEIA-ANTES-DE-INSTALAR.txt distribution-manifest.json signing-certificate.txt
             unzip -tq ReiAnix-apk.zip
             mkdir -p zip-check
             unzip -q -o ReiAnix-apk.zip -d zip-check
@@ -210,6 +224,7 @@ jobs:
             build/reianix-release/ReiAnix.apk.sha256
             build/reianix-release/LEIA-ANTES-DE-INSTALAR.txt
             build/reianix-release/distribution-manifest.json
+            build/reianix-release/signing-certificate.txt
           if-no-files-found: error
           retention-days: 1
 
@@ -233,7 +248,7 @@ jobs:
           release_args=(--repo "$GITHUB_REPOSITORY" --title "ReiAnix CI — latest" --notes "Native Android APK from commit $REIANIX_SOURCE_SHA." --latest=false)
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" "${release_args[@]}"
-            gh release upload "$RELEASE_TAG" build/reianix-release/ReiAnix.apk build/reianix-release/ReiAnix-apk.zip build/reianix-release/ReiAnix.apk.sha256 build/reianix-release/LEIA-ANTES-DE-INSTALAR.txt build/reianix-release/distribution-manifest.json --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$RELEASE_TAG" build/reianix-release/ReiAnix.apk build/reianix-release/ReiAnix-apk.zip build/reianix-release/ReiAnix.apk.sha256 build/reianix-release/LEIA-ANTES-DE-INSTALAR.txt build/reianix-release/distribution-manifest.json build/reianix-release/signing-certificate.txt --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG" build/reianix-release/ReiAnix.apk build/reianix-release/ReiAnix-apk.zip build/reianix-release/ReiAnix.apk.sha256 build/reianix-release/LEIA-ANTES-DE-INSTALAR.txt build/reianix-release/distribution-manifest.json "${release_args[@]}" --target "$REIANIX_SOURCE_SHA"
+            gh release create "$RELEASE_TAG" build/reianix-release/ReiAnix.apk build/reianix-release/ReiAnix-apk.zip build/reianix-release/ReiAnix.apk.sha256 build/reianix-release/LEIA-ANTES-DE-INSTALAR.txt build/reianix-release/distribution-manifest.json build/reianix-release/signing-certificate.txt "${release_args[@]}" --target "$REIANIX_SOURCE_SHA"
           fi
