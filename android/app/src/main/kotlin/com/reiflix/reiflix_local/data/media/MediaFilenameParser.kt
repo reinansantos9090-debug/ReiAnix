@@ -124,7 +124,22 @@ object MediaFilenameParser {
         val absoluteDecimalMatch = absoluteDecimal.find(stem)
         val unsupportedEpisodeDecimalMatch = unsupportedEpisodeDecimal.find(stem)
 
-        if (seasonZero != null) {
+        // Reject malformed decimal identifiers before any marker family can
+        // accept an integer prefix, including S00 and OVA/SP special markers.
+        if (absoluteDecimalMatch != null || unsupportedEpisodeDecimalMatch != null) {
+            marker = absoluteDecimalMatch ?: unsupportedEpisodeDecimalMatch
+            kind = ParsedMediaKind.UNKNOWN
+            confidence = MediaIdentificationConfidence.LOW
+            if (absoluteDecimalMatch != null) {
+                source = "invalid_absolute_decimal_number"
+                evidence += "INVALID_ABSOLUTE_DECIMAL_NUMBER:${absoluteDecimalMatch.value}"
+                unresolved += "absolute_number_must_be_integer"
+            } else {
+                source = "unsupported_episode_decimal_precision"
+                evidence += "UNSUPPORTED_EPISODE_DECIMAL_PRECISION:${unsupportedEpisodeDecimalMatch!!.value}"
+                unresolved += "unsupported_episode_decimal_precision"
+            }
+        } else if (seasonZero != null) {
             marker = seasonZero
             episode = parseEpisodeNumber(seasonZero.groupValues.getOrNull(1))
             kind = ParsedMediaKind.SPECIAL
@@ -156,26 +171,6 @@ object MediaFilenameParser {
             val cross = crossEpisode.find(stem)
             val word = wordEpisode.find(stem)
             when {
-                absoluteDecimalMatch != null -> {
-                    marker = absoluteDecimalMatch
-                    absoluteNumber = null
-                    episode = null
-                    kind = ParsedMediaKind.UNKNOWN
-                    source = "invalid_absolute_decimal_number"
-                    confidence = MediaIdentificationConfidence.LOW
-                    evidence += "INVALID_ABSOLUTE_DECIMAL_NUMBER:${absoluteDecimalMatch.value}"
-                    unresolved += "absolute_number_must_be_integer"
-                }
-                unsupportedEpisodeDecimalMatch != null -> {
-                    marker = unsupportedEpisodeDecimalMatch
-                    absoluteNumber = null
-                    episode = null
-                    kind = ParsedMediaKind.UNKNOWN
-                    source = "unsupported_episode_decimal_precision"
-                    confidence = MediaIdentificationConfidence.LOW
-                    evidence += "UNSUPPORTED_EPISODE_DECIMAL_PRECISION:${unsupportedEpisodeDecimalMatch.value}"
-                    unresolved += "unsupported_episode_decimal_precision"
-                }
                 explicit != null -> {
                     marker = explicit
                     season = explicit.groupValues[1].toInt()
