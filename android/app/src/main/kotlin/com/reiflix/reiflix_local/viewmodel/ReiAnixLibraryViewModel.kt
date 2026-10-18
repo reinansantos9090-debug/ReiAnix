@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
+import com.reiflix.reiflix_local.data.library.ReiAnixLibraryInvalidationBus
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -1350,6 +1351,23 @@ class ReiAnixLibraryViewModel(
 
         // Read the local canonical catalog only after bootstrap allows normal use.
         viewModelScope.launch { refreshNativeCatalog() }
+
+        // Native metadata and artwork writers invalidate the Compose projection directly.
+        // The consumer always rereads canonical SQLite; the mailbox event remains only for
+        // backward compatibility with older/hybrid builds and is not needed to refresh Compose.
+        viewModelScope.launch {
+            ReiAnixLibraryInvalidationBus.events
+                .conflate()
+                .collectLatest { invalidation ->
+                    Log.d(
+                        TAG,
+                        "Native catalog invalidated reason=${invalidation.reason} " +
+                            "animeId=${invalidation.animeId ?: 0L} " +
+                            "entity=${invalidation.entityType ?: "-"}",
+                    )
+                    refreshNativeCatalog()
+                }
+        }
 
         // Opening the app must not schedule missing/stale artwork downloads. Artwork is
         // requested only by explicit details/artwork actions or existing pipeline events.
