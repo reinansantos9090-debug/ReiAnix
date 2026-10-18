@@ -113,8 +113,8 @@ jobs:
         run: |
           set -euo pipefail
           distribution="build/native-gradle-distribution"
-          version_code="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' android/app/build.gradle.kts | head -n1)"
-          version_name="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' android/app/build.gradle.kts | head -n1)"
+          version_code="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionCode='([0-9]+)'.*/\\1/p" | head -n1)"
+          version_name="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionName='([^']+)'.*/\\1/p" | head -n1)"
           test -n "$version_code"
           test -n "$version_name"
           (

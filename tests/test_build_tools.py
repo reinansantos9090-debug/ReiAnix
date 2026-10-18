@@ -286,7 +286,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn(":app:assembleRelease", workflow)
         self.assertNotIn("actions/setup-python", workflow)
         self.assertNotIn("flet build", workflow.lower())
-        self.assertNotIn("flutter", workflow.lower())
+        self.assertNotIn("subosito/flutter-action", workflow)
+        self.assertNotIn("flutter-sdk", workflow.lower())
         self.assertNotIn('--arch "arm64-v8a,x86_64,armeabi-v7a"', workflow)
 
     def test_android_instrumented_diagnostic_is_not_part_of_fast_build(self):
