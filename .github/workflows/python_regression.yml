@@ -1,8 +1,7 @@
 name: ReiAnix Python Regression (legacy compatibility)
 
+# PR regression gate; release_certification.yml repeats the suite and broader audit after changes reach main.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 

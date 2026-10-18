@@ -1,8 +1,7 @@
 name: ReiAnix Native Gradle APK Validation
 
+# Validates the debug variant on PRs/manual runs; only build_apk.yml publishes the installable APK.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -110,84 +109,3 @@ jobs:
           grep -F 'Lcom/reiflix/reiflix_local/MainActivity;' build/native-gradle-distribution/dex-strings.txt
           grep -F 'Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;' build/native-gradle-distribution/dex-strings.txt
           grep -F 'Lcom/reiflix/reiflix_local/NativePlayerActivity;' build/native-gradle-distribution/dex-strings.txt
-          cp "$source_apk" build/native-gradle-distribution/ReiAnix-native-debug.apk
-          test -s build/native-gradle-distribution/ReiAnix-native-debug.apk
-
-      - name: Create ZIP, build manifest, and SHA-256
-        shell: bash
-        run: |
-          set -euo pipefail
-          distribution="build/native-gradle-distribution"
-          build_tools="$ANDROID_HOME/build-tools/36.0.0"
-          "$build_tools/apksigner" verify --verbose --print-certs "$distribution/ReiAnix-native-debug.apk" | tee "$distribution/signing-certificate.txt"
-          signing_certificate_sha256="$(sed -nE 's/^Signer #1 certificate SHA-256 digest: ([[:xdigit:]]+)$/\1/p' "$distribution/signing-certificate.txt" | head -n1)"
-          native_abis="$(unzip -Z1 "$distribution/ReiAnix-native-debug.apk" | sed -nE 's#^lib/([^/]+)/.*#\1#p' | sort -u | paste -sd, -)"
-          version_code="$("$build_tools/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionCode='([0-9]+)'.*/\\1/p" | head -n1)"
-          version_name="$("$build_tools/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionName='([^']+)'.*/\\1/p" | head -n1)"
-          test -n "$signing_certificate_sha256"
-          test -n "$native_abis"
-          test -n "$version_code"
-          test -n "$version_name"
-          (
-            cd "$distribution"
-            sha256sum ReiAnix-native-debug.apk > ReiAnix-native-debug.apk.sha256
-          )
-          {
-            printf '{\n'
-            printf '  "app": "ReiAnix",\n'
-            printf '  "applicationId": "com.reiflix.reiflix_local",\n'
-            printf '  "variant": "debug",\n'
-            printf '  "versionCode": %s,\n' "$version_code"
-            printf '  "versionName": "%s",\n' "$version_name"
-            printf '  "commit": "%s",\n' "$REIANIX_SOURCE_SHA"
-            printf '  "artifactPurpose": "native-gradle-validation",\n'
-            printf '  "pythonRuntimePackaged": false,\n'
-            printf '  "fletRuntimePackaged": false,\n'
-            printf '  "flutterRuntimePackaged": false,\n'
-            printf '  "runtimeIndependenceCertified": false,\n'
-            printf '  "supportedAbis": "%s",\n' "$native_abis"
-            printf '  "signingMode": "debug",\n'
-            printf '  "signingCertificateSha256": "%s",\n' "$signing_certificate_sha256"
-            printf '  "updateCompatibility": "Debug validation only; versionCode may be lower than release and certificate must match for update"\n'
-            printf '}\n'
-          } > "$distribution/distribution-manifest.json"
-          (
-            cd "$distribution"
-            zip -j -9 -X ReiAnix-native-debug.zip \
-              ReiAnix-native-debug.apk \
-              ReiAnix-native-debug.apk.sha256 \
-              distribution-manifest.json \
-              signing-certificate.txt
-          )
-          unzip -tq "$distribution/ReiAnix-native-debug.zip"
-          mkdir -p "$RUNNER_TEMP/reianix-native-zip-check"
-          unzip -q -o "$distribution/ReiAnix-native-debug.zip" -d "$RUNNER_TEMP/reianix-native-zip-check"
-          cmp -s "$distribution/ReiAnix-native-debug.apk" "$RUNNER_TEMP/reianix-native-zip-check/ReiAnix-native-debug.apk"
-          (
-            cd "$RUNNER_TEMP/reianix-native-zip-check"
-            sha256sum -c ReiAnix-native-debug.apk.sha256
-          )
-          test -s "$distribution/ReiAnix-native-debug.zip"
-          test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
-          git diff --check
-          test -z "$(git status --porcelain)"
-
-      - name: Upload native Gradle APK validation artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReiAnix-native-gradle-apk-${{ github.run_number }}
-          path: |
-            build/native-gradle-distribution/ReiAnix-native-debug.apk
-            build/native-gradle-distribution/ReiAnix-native-debug.apk.sha256
-            build/native-gradle-distribution/distribution-manifest.json
-            build/native-gradle-distribution/signing-certificate.txt
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload native Gradle ZIP validation artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReiAnix-native-gradle-ZIP-${{ github.run_number }}
-          path: build/native-gradle-distribution/ReiAnix-native-debug.zip
-          if-no-files-found: error
-          retention-days: 1
