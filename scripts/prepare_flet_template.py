@@ -173,8 +173,7 @@ host_attr = "{" + ANDROID + "}host"
 
 # Use the ReiAnix immersive system-bar host policy. The native player reinforces it
 # with its own immersive theme below.
-# Register the native composition root. Flet remains the build/template renderer; the
-# application entry no longer inherits FlutterApplication or launches a Flutter screen.
+# Register the lazy composition root while retaining FlutterApplication bootstrap.
 application.set(name, "com.reiflix.reiflix_local.ReiAnixApplication")
 application.set(theme_attr, "@style/ReiAnixTheme")
 application.set("{" + ANDROID + "}enableOnBackInvokedCallback", "true")

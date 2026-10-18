@@ -126,8 +126,8 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("activity.finish()", host)
         self.assertNotIn("private fun handleHomeBack()", host)
         self.assertNotIn("activity.finishAndRemoveTask()", host)
-        self.assertNotIn("engine.navigationChannel.popRoute()", source)
-        self.assertIn("BACK_NATIVE_SHELL_RESTORED", source)
+        self.assertIn("engine.navigationChannel.popRoute()", source)
+        self.assertIn("reason=compose_host_hidden_fallback", source)
         self.assertIn("setId(R.id.reianix_compose_app_shell)", host)
 
     def test_home_back_contract_uses_native_double_back_policy(self):
@@ -147,7 +147,7 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("activity.finish()", handler)
         self.assertIn("Toast.makeText", handler)
         self.assertNotIn("Python NavigationController", handler)
-        self.assertNotIn("flutterEngine", dispatch)
+        self.assertEqual(dispatch.count("engine.navigationChannel.popRoute()"), 1)
         self.assertIn("BACK_COMPOSE_SHELL_UNHANDLED", dispatch)
         self.assertIn("if (systemBackDispatchPosted)", dispatch)
         self.assertIn("finally {", dispatch)
@@ -175,14 +175,12 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("LaunchedEffect(focusRequester)", search)
         self.assertNotIn("LaunchedEffect(Unit)", search)
 
-    def test_main_activity_is_a_native_component_activity(self):
+    def test_main_activity_does_not_replace_flutter_host(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        self.assertIn("import androidx.activity.ComponentActivity", source)
-        self.assertIn("class MainActivity : ComponentActivity()", source)
-        self.assertNotIn("FlutterFragmentActivity", source)
-        self.assertNotIn("flutterEngine", source)
+        self.assertIn("class MainActivity : FlutterFragmentActivity()", source)
+        self.assertNotIn("class MainActivity : ComponentActivity()", source)
 
-    def test_compose_root_back_uses_native_exit_policy_without_flutter_fallback(self):
+    def test_compose_root_back_uses_native_exit_policy_and_keeps_hidden_host_fallback(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         host = HOST.read_text(encoding="utf-8")
         root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
@@ -191,8 +189,8 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("activity.finish()", root)
         self.assertIn("Toast.makeText", root)
         self.assertNotIn("Python NavigationController", root)
-        self.assertNotIn("engine.navigationChannel.popRoute()", source)
-        self.assertIn("BACK_NATIVE_SHELL_RESTORED", source)
+        self.assertIn("engine.navigationChannel.popRoute()", source)
+        self.assertIn("reason=compose_host_hidden_fallback", source)
 
     def test_compose_details_back_is_a_single_navcontroller_pop(self):
         details = (
