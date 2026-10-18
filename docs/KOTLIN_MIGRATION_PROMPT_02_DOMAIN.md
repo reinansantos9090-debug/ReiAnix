@@ -39,10 +39,16 @@ Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_i
 - Nenhum teste foi criado, removido ou modificado. Os testes Kotlin/JVM não foram executados manualmente. Os cenários de localização e decimais foram revisados estaticamente contra o parser e os asserts preexistentes; não há prova de execução comportamental desses novos cenários.
 - O workflow oficial de PR já contém regressão Python e compilação/build Android. Isso não prova que os novos casos de parser decimal/classificação de URI tenham asserts próprios nem equivale a executar a suíte Kotlin/JVM. Essa cobertura específica fica pendente até uma fase autorizada de validação.
 
+## Correções do Prompt 02.1
+
+1. A classificação de localização agora retorna `UNRESOLVED` para strings vazias/compostas por espaços e mantém esquemas reconhecíveis como URI mesmo quando o valor é malformado.
+2. Os marcadores `/tree/` e `/document/` deixaram de ser suficientes isoladamente para classificar SAF. A classificação exige uma autoridade DocumentsProvider incluída na lista conservadora e a estrutura exata dos segmentos; URI de provedor não reconhecido permanece genérica `CONTENT_URI`.
+3. A documentação restringe explicitamente a alegação de paridade Unicode: os mapeamentos `ß`/`ss` e `ς`/`σ` são tratados, mas isso não representa uma implementação completa de `str.casefold()`.
+
 ## Integridade e validação
 
-- Não adiciona classes de domínio duplicadas, novas tabelas, banco alternativo ou novos testes.
-- Não altera workflows, configuração de build, `main.py`, bridges ou módulos Python legados.
-- Preserva contratos SQLite e valores de localizações armazenados.
-- O workflow automático anterior `39147868583` passou no SHA anterior a este complemento; não valida as alterações feitas agora. O run automático do SHA final deste complemento ainda deve atingir status terminal.
-- Esta implementação não representa a migração integral concluída: a camada de domínio ainda depende das integrações posteriores e de validação oficial.
+- Não adiciona classes de domínio duplicadas, novas tabelas, banco alternativo, testes, workflows ou scripts.
+- Os três arquivos de teste Kotlin/JVM consultados permanecem inalterados; nenhum teste Kotlin/JVM foi executado manualmente. Os novos comportamentos foram revisados estaticamente, não demonstrados por asserts dedicados.
+- O workflow automático `build_apk.yml` que valida esta correção deve ser lido apenas na execução associada ao SHA final da PR. Runs vinculados a SHAs anteriores não validam este complemento.
+- Schema SQLite v29, mapeadores de leitura, IDs, referências de mídia e consumidores Python foram preservados.
+- Esta implementação não representa a migração integral concluída: a camada de domínio ainda depende de integrações posteriores e validação comportamental autorizada.
