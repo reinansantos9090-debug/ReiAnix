@@ -1,12 +1,124 @@
-# ReiAnix — roadmap executável de migração integral para Kotlin nativo
+# ReiAnix — roadmap canônico da migração Kotlin nativa (reconciliado em 2026-10-18)
 
-## 1. Objetivo e referência
+## 1. Autoridade, baseline e estado atual
+
+**Baseline da `main` confirmada antes desta correção:** `80fd95acd0d569d3013ac2d71fcf4cd166ae7844`.  
+**Branch da PR #198:** `audit/prompt-01-kotlin-migration-20261018`.  
+**HEAD confirmado antes da edição:** `c139aefb4234299140afeb11bb8c210947e03039`.  
+**PR:** [#198](https://github.com/reinansantos9090-debug/ReiAnix/pull/198), aberta e não mesclada na consulta prévia.
+
+Para este ciclo, **o documento canônico de execução é `docs/KOTLIN_MIGRATION_18_PROMPT_PLAN.md`, composto por exatamente os Prompts 02–18**. O Prompt 01/18 e este Prompt 01.1/18 são documentais. Os Prompts 02–18 continuam pendentes de execução e autorização individual. A presença de uma etapa neste roadmap não prova que ela foi executada, compilada ou aceita.
+
+A seção de histórico preservada no final registra a antiga divisão MIG-02 a MIG-22. É material histórico, não a sequência de execução vigente. A tabela de reconciliação abaixo mostra correspondências comprováveis, parciais e lacunas não mapeadas; não cria equivalências automáticas nem amplia a sequência de 18 prompts.
+
+**Fontes canônicas:**
+- `docs/KOTLIN_MIGRATION_FINAL_INVENTORY.md`
+- `docs/KOTLIN_MIGRATION_DEPENDENCY_MATRIX.md`
+- `docs/KOTLIN_MIGRATION_18_PROMPT_PLAN.md`
+- `docs/KOTLIN_MIGRATION_ACCEPTANCE_CRITERIA.md`
+
+## 2. Sequência canônica de execução: Prompts 02–18
+
+| Prompt | Objetivo | Escopo controlado | Gate obrigatório |
+|---|---|---|---|
+| Prompt 02 | Linha de base nativa e fronteira de build | Revalidar Activity/Application, template Flet, Gradle e entrypoints; definir cutover mínimo no código atual, sem arquitetura/workflow paralelo. | Gate: grafo de boot comprovado e runtime híbrido preservado até a substituição. |
+| Prompt 03 | Bootstrap SQLite v29 | Resolver FLET_APP_STORAGE_DATA versus filesDir/data e abrir a mesma DB existente; tratar ausência, corrupção, lock e schema inválido. | Gate: arquivo/caminho canônicos provados, dados preservados e sem DB paralelo. |
+| Prompt 04 | Contratos IPC/bridge | Mapear ações/eventos/payload/requestId/ack/falha/recovery e consumidores em AndroidBridge, Compose bridges e NativeMailbox. | Gate: cada mensagem tem produtor/consumidor/resultado terminal; sem stubs. |
+| Prompt 05 | SAF e permissões | Migrar grants persistidos, URI, identidade SAF/volume, revogação/reseleção e retorno Android Settings. | Gate: pastas/grants persistem; Back/cancel/error deixam estado consistente. |
+| Prompt 06 | Scanner Kotlin único | Unificar SAF/MediaStore/broad storage, ownership/generation, progresso, cancelamento, dedup e recovery. | Gate: um único coordenador operacional; scans terminam com estado correto. |
+| Prompt 07 | LibraryService e merge | Completar regras create/update/merge/dedup no repositório Kotlin, preservando IDs e schema v29. | Gate: resultados equivalentes, sem duplicatas, regras de merge documentadas. |
+| Prompt 08 | Configurações | Migrar defaults, validação, persistência, codec/snapshot, reload e compatibilidade. | Gate: dados de preferências preservados sem reset silencioso. |
+| Prompt 09 | AniList/metadados pt-BR | Migrar client/API, rate limit, cache, association por ID, tradução em chunks, erros e prioridade de metadata manual. | Gate: IDs/campos manuais preservados e falhas offline recuperáveis. |
+| Prompt 10 | Artwork e thumbnails | Migrar cache, modifiedAt, priorização da arte local, eventos e refresh Compose. | Gate: arte local protegida, cache consistente e UI atualizada. |
+| Prompt 11 | Discovery e identidade de episódios | Migrar parser, season/episode/absolute number, missing, observations e matching. | Gate: scans repetidos idempotentes e IDs estáveis. |
+| Prompt 12 | Backup/recovery/diagnósticos | Migrar versões, preview, validação, restore transacional, recovery e logs correlacionados. | Gate: backup inválido não destrói dados; restore preserva biblioteca. |
+| Prompt 13 | Telas principais Compose | Conectar Home/Library/My List/Search/Details ao repositório Kotlin canônico. | Gate: ações/rotas essenciais sem Flet; estados e filtros equivalentes. |
+| Prompt 14 | Organize/Storage/Settings/lifecycle | Fechar fluxos secundários, picker, Back, intents, Settings return, foco e cancelamento. | Gate: sem eventos duplicados/seleções pendentes; estado de navegação preservado. |
+| Prompt 15 | Player Media3/progresso | Conectar URI SAF, handoff, resume/seek, progress/history, autoplay, next/previous e lifecycle a Kotlin. | Gate: progresso durável e comportamento do player preservado. |
+| Prompt 16 | Cutover do entrypoint | Conectar Activity/Application/AppShell nativos após gates P03–P15; retirar entrypoint Flet só com paridade provada. | Gate: cold start e fluxos críticos funcionam sem Python/Flet runtime. |
+| Prompt 17 | Build APK nativo | Trocar pipeline Flet/Flutter por Gradle nativo e adaptar checks/release identity após cutover. | Gate: APK sem runtime/bundle Python/Flet/host Flutter; manifest e assinatura válidos. |
+| Prompt 18 | Auditoria final e poda segura | Reinventariar, validar DB/dados, revisar diff/build e inspecionar artefatos; remover só legado sem consumidores. | Gate: todos os critérios globais e workflows aplicáveis em success no SHA final. |
+
+Ordem estritamente sequencial. Não iniciar um prompt posterior apenas porque o anterior tem documentação ou código presente. Cada prompt exige autorização individual, sua própria revisão de diff e as validações aplicáveis no SHA final.
+
+## 3. Reconciliar os 21 pacotes históricos com o plano vigente
+
+| Pacote histórico (não canônico) | Correspondência no plano de 18 prompts | Tratamento da correspondência ou lacuna |
+|---|---|---|
+| MIG-02 | Contratos de domínio e baseline de paridade | **Sem equivalente único.** Gates transversais dos Prompts 02 e 18; contratos IPC em 04 e semânticas de biblioteca em 07. | A matriz de paridade de domínio não tem um prompt isolado. Os contratos e a comparação de comportamento devem ser explicitamente verificados nos prompts autorizados pertinentes; não declarar equivalência completa sem evidência. |
+| MIG-03 | Ownership SQLite Kotlin e migrações compatíveis | **Parcial:** 03 e 07; corte de runtime condicionado ao 16. | Prompt 03 resolve o mesmo arquivo/caminho e bootstrap; Prompt 07 cobre regras de repositório/merge. Ownership único deve ser provado nos gates 07/16. Schema v29 não muda por este mapeamento. |
+| MIG-04 | Repositório de biblioteca e semânticas de domínio | **Direta:** 07. | Gate de CRUD/merge/deduplicação, identidade persistida e ausência de segunda fonte de escrita. |
+| MIG-05 | Coordenação nativa de varredura e reconciliação | **Direta:** 06. | Gate de coordenação única, ownership/generation, progresso, cancelamento, deduplicação e recovery. |
+| MIG-06 | Storage, permissões SAF e operações de arquivo | **Direta:** 05. | Gate de grants persistidos, URI/identidade e estados de revogação, cancelamento e retorno. |
+| MIG-07 | AniList, matching, metadados e localização pt-BR | **Direta:** 09. | Gate de associação por ID, prioridade de campos manuais, cache, rate limit e falhas offline. |
+| MIG-08 | Artwork, capas, cache e miniaturas | **Direta:** 10. | Gate de arte local, cache/invalidação, eventos e atualização visual. |
+| MIG-09 | Home, Biblioteca e Detalhes | **Direta:** 13. | Gate de telas principais Compose conectadas ao repositório Kotlin canônico, sem snapshots Python no caminho ativo. |
+| MIG-10 | Pesquisa nativa e roteamento de detalhes | **Parcial:** 13 cobre telas principais e pesquisa. | Não é pacote separado na sequência canônica. Validar comportamento e roteamento como parte do Prompt 13; não presumir aceite separado. |
+| MIG-11 | Minha Lista, histórico e consumo | **Parcial:** 13 (Minha Lista/projeções) e 15 (progresso/histórico de player). | Não há prompt exclusivo para todo o domínio de consumo/histórico. Cobrir a paridade restante nos gates 13/15 e reportar lacunas reais. |
+| MIG-12 | Organização, gêneros e coleções | **Parcial:** 14; identidade/discovery relacionados em 11. | O Prompt 14 cobre Organize; regras de discovery/identidade que são dependências ficam no 11. Não presumir que cada regra de gênero/coleção já foi migrada. |
+| MIG-13 | Configurações integralmente Kotlin | **Parcial:** 08 e fluxos de lifecycle do 14. | Persistência/defaults/codec no 08; navegação, retorno do sistema e lifecycle no 14. Critério é paridade real, não só existência de tela Compose. |
+| MIG-14 | Conta e autenticação | **Sem correspondência direta.** | Lacuna explícita do plano de 18 prompts: não inferir que Settings cobre conta/autenticação. Antes de cortar o runtime dependente, o escopo e seus gates devem ser atribuídos a um prompt autorizado por reconciliação explícita; preservar dados/fluxos atuais até lá. |
+| MIG-15 | Backup, recuperação e integridade | **Direta:** 12. | Gate de backup/restore validado e transacional, proteção contra dados inválidos e integridade da biblioteca. |
+| MIG-16 | Diagnósticos, logs e performance | **Parcial:** 12 e auditoria final 18. | Não há prompt dedicado para todo o pacote. Diagnósticos e requisitos de desempenho restantes precisam ser nomeados nos gates aplicáveis, sem declarar cobertura total por simples associação. |
+| MIG-17 | Orquestração nativa do player | **Direta:** 15. | Gate de URI SAF, handoff, resume/seek, progresso/histórico, autoplay, próxima/anterior e lifecycle. |
+| MIG-18 | Composição e lifecycle do aplicativo nativo | **Direta com dependências:** 16; preparação nos Prompts 02 e 14. | O cutover só ocorre depois dos gates anteriores e da prova de cold start nativo sem runtime híbrido. |
+| MIG-19 | Remoção de NativeMailbox e snapshots híbridos | **Sem prompt independente.** Condicional aos Prompts 04, 13–16 e 18. | A sequência atual não autoriza remover bridges antecipadamente. O Prompt 18 só pode considerar remoção se todos os produtores/consumidores e compatibilidades estiverem comprovadamente eliminados; caso contrário, preservar e registrar bloqueio. |
+| MIG-20 | Build Gradle Android standalone e distribuição | **Direta:** 17. | Só substituir o pipeline oficial quando o cutover nativo estiver funcional; provar que APK/package não contém runtime Python/Flet/host Flutter e verificar assinatura/identidade de release. |
+| MIG-21 | Remoção do runtime Python e higiene do repositório | **Parcial:** 16, 17 e 18. | Não há prompt exclusivo de limpeza. Remoção de runtime só após cutover/build native-only; preservar testes e tooling Python que não integrem o runtime Android e manter arquivos com consumidores. |
+| MIG-22 | Certificação final de paridade e dados | **Direta:** 18. | Gate final de dados, paridade, diff, artefatos e workflows oficiais aplicáveis concluídos em success no SHA final. |
+
+**Resultado da reconciliação:** alguns pacotes históricos se alinham diretamente a um prompt; outros se dividem entre vários; MIG-02, MIG-14, MIG-16 e MIG-19 não possuem equivalente individual direto, e MIG-21 foi agregado a gates de cutover/build/limpeza segura. Essas lacunas ficam registradas, não são escondidas por equivalência inventada. Elas devem ser resolvidas dentro do escopo de um prompt autorizado com critério explícito; se a atribuição exigir mudar a sequência aprovada, atualizar este plano antes da implementação e obter autorização. Não adicionar um Prompt 19 implicitamente nem considerar qualquer lacuna resolvida só por esta documentação.
+
+## 4. Dependências e gates transversais
+
+P02–P04 estabelecem boot, DB e IPC. P05–P06 fecham storage/scanner. P07–P12 migram domínio/infra. P13–P14 conectam UI/lifecycle. P15 fecha player. P16 só acontece após paridade; P17 depende do entrypoint nativo; P18 fecha o programa. Não paralelizar mudanças que alterem o dono de DB, scanner, IPC, entrypoint ou build.
+
+## 5. Política de remoção segura
+
+- UI/entrypoint Flet: só após todas as rotas/ações/estados estarem ativos em Compose e cold start nativo comprovado.
+- Serviço Python: só após paridade de regras/efeitos/erros e dados, consumidores rastreados e caminho Kotlin ativo.
+- Bridge/IPC: só após provar ausência de consumidores legados e equivalência de ack/recovery.
+- Scripts de build: manter enquanto usados; remover somente depois de build nativo provar que não precisa deles e dentro do escopo explícito.
+- Testes e scripts operacionais existentes: preservar; a meta é runtime/package Android nativo, não apagar tooling Python.
+
+
+
+## 6. Invariantes técnicos obrigatórios
+
+- Banco canônico `library.sqlite3`, schema v29; não criar DB paralela nem alterar schema sem justificativa e autorização específica.
+- Preservar dados persistidos, IDs, associações, metadados manuais, conta, preferências, progresso, histórico, backups, grants SAF, operações scanner/MediaStore, ArtworkEngine, thumbnails e Media3/ExoPlayer.
+- Não remover bridges, serviços ou runtime legado até verificar produtores, consumidores estáticos e dinâmicos, IPC, estados de erro/terminal e efeitos colaterais.
+- Não criar nem adicionar testes, workflows, scripts, jobs ou infraestrutura de emulador. Preservar a infraestrutura de validação existente. Não executar manualmente a suíte Kotlin/JVM nem workflows instrumentados no Prompt 01.1.
+- Não alterar manifesto, runtime, código de produção, configuração do pipeline ou segredos de assinatura neste prompt documental.
+- Não usar reset, force push, reescrita de histórico ou merge automático; `main` deve permanecer no SHA de baseline.
+- Todo critério deve ser comprovado por evidência no SHA correspondente. Run de SHA anterior não aprova o SHA novo; estado `queued`, `in_progress`, `failure`, `cancelled`, `skipped` ou ausência de run não equivale a `completed / success`.
+
+## 7. Evidência de build e assinatura no HEAD documental anterior
+
+O workflow [Build ReiAnix Android APK #39131423769](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39131423769), run 6101, terminou `completed / success` no HEAD anterior `c139aefb4234299140afeb11bb8c210947e03039`. A etapa explícita de compilação Kotlin Release e a suíte de regressão Python do workflow concluíram com sucesso.
+
+Esse resultado diz respeito ao pipeline híbrido atual: o APK foi construído com o host/template Flet/Flutter e não prova independência de Python/Flet/Flutter. O log registra que os segredos estáveis de assinatura Android não estavam configurados e `REIFLIX_SIGNING_MODE=ephemeral-debug`; por isso, o APK daquela execução **não é compatível como atualização sobre instalações anteriormente assinadas pela CI com a chave estável**. O aviso de assinatura não é uma falha de compilação, mas também não pode ser declarado corrigido nesta tarefa. Nenhum segredo, assinatura ou workflow foi alterado.
+
+A aprovação deste Prompt 01.1 exige outro run automático aplicável que tenha como SHA o commit documental final e atinja `completed / success`. O run 39131423769 não satisfaz esse gate para um SHA posterior.
+
+## 8. Estado das etapas
+
+- Prompt 01/18: documentação de inventário, dependências, plano e critérios.
+- Prompt 01.1/18: reconciliação documental dos documentos históricos.
+- Prompts 02–18: **pendentes; não iniciados nem autorizados por este documento**.
+- Nenhuma migração funcional é realizada ou declarada concluída aqui.
+
+## Registro histórico — roadmap anterior de 21 pacotes MIG-02–MIG-22 e registros de ciclos precedentes
+
+> **Atenção:** o conteúdo abaixo foi preservado como registro histórico. SHAs, contagens, status de execução, gates, recomendações e sequências nele descritos pertencem ao snapshot anterior; não são o estado atual e não autorizam execução. A seção reconciliada no início deste documento e a sequência canônica dos Prompts 02–18 prevalecem.
+
+### Registro histórico — 1. Objetivo e referência
 
 Este plano parte do snapshot auditado em 2026-10-14, SHA 40e8c86be49282774ec45060aea9374155a14ca9, e dos achados de docs/KOTLIN_MIGRATION_AUDIT.md. O objetivo final é um único aplicativo Android Kotlin/Jetpack Compose, cujo build e execução não dependam de Python, Flet, Flutter, serious_python ou main.py.
 
 As etapas são unidades funcionais completas, não prompts artificiais para arquivos individuais. Cada uma só termina quando o comportamento, persistência, integração, estados de erro, cancelamento e critérios de validação estiverem cobertos. A sequência abaixo contém 21 pacotes de implementação possíveis, MIG-02 a MIG-22. Isso é uma decomposição inicial baseada nas dependências encontradas, não uma promessa de prazo ou número imutável: antes de abrir cada PR, confirme que o escopo continua coerente com a main mais recente.
 
-## 2. Regras aplicáveis a todas as etapas
+### Registro histórico — 2. Regras aplicáveis a todas as etapas
 
 1. Preservar o SQLite canônico em filesDir/data/library.sqlite3 e data_dir/library.sqlite3, inicialmente schema v29 e os dados já existentes. Não criar Room, um segundo SQLite ou um repositório concorrente para o mesmo domínio.
 2. Definir um owner lógico por operação. Durante a coexistência, Python e Kotlin podem ter conexões diferentes ao mesmo arquivo, mas a mesma operação não pode executar duas escritas concorrentes nem repetir uma transação cujo resultado é desconhecido.
@@ -19,7 +131,7 @@ As etapas são unidades funcionais completas, não prompts artificiais para arqu
 9. Runtime e build híbridos só podem ser removidos depois que os fluxos essenciais funcionarem no caminho nativo. A porcentagem de linguagens do GitHub não é critério de conclusão.
 10. Cada PR funcional futuro deve ter diff revisado, contagem real de linhas/arquivos/pastas modificados, critérios de aceitação, limitações e artefatos reais quando previstos pelos workflows.
 
-## Estado transversal — Prompt 02/29: fundação de execução nativa
+### Registro histórico — estado transversal histórico — Prompt 02/29: fundação de execução nativa
 
 Este trabalho é uma fundação arquitetural transversal necessária ao corte gradual para Kotlin. Ele não substitui nem marca como concluído o pacote funcional MIG-02 — Contratos de domínio e baseline de paridade, descrito adiante: inventariar as operações concretas de LibraryStore/LibraryService e comprovar paridade continuam sendo trabalho pendente e são a próxima etapa.
 
@@ -40,11 +152,11 @@ Aceitação da etapa: o código e os testes de contrato foram adicionados, mas o
 
 Próximo pacote funcional: MIG-02 — contratos de domínio e baseline de paridade, sem alterar o schema v29. O grafo de dependências agora fornece a estrutura para os consumidores nativos, mas não comprova a paridade funcional de parsing, identidade, metadata ou reconciliação.
 
-## Estado transversal — Prompt 03/29: camada de dados SQLite Kotlin
+### Registro histórico — estado transversal histórico — Prompt 03/29: camada de dados SQLite Kotlin
 
 Referência de execução desta etapa: branch `implementation/prompt-03-sqlite-data-layer-20261015`, criada a partir da `main` observada em `4b42eea36bdeaeea55c4bba3a2f36d4fedc8f1cb`. A implementação está sendo revisada neste PR; somente o SHA final com workflows obrigatórios verdes poderá ser aceito como entrega validada.
 
-### Implementado neste pacote
+#### Registro histórico — Implementado neste pacote
 
 - Mantido o arquivo SQLite canônico `filesDir/data/library.sqlite3` e o schema v29 definido por `core/library_store.py`; sem Room, banco paralelo, mudança de schema ou migração destrutiva.
 - Reutilizados o database, repositório, modelos, serviço de consulta, serviço da lista pessoal, serviço de consumo e repository de configurações que já existiam na fundação nativa.
@@ -54,30 +166,30 @@ Referência de execução desta etapa: branch `implementation/prompt-03-sqlite-d
 - Preservados os serviços de consulta paginada, pesquisa, patch de metadados e indexação de snapshots do scanner nativo; nenhuma lógica de scanner, cliente AniList, artwork, backup ou player foi reescrita.
 - Adicionado teste de runtime isolado ao conjunto Kotlin/JVM já existente e teste Python de contrato para o workflow normal.
 
-### Correção pontual do Prompt 03.1 — resolução de associação AniList pendente
+#### Registro histórico — Correção pontual do Prompt 03.1 — resolução de associação AniList pendente
 
 A resolução nativa agora atualiza a linha local `anime`, escreve o mesmo ID na tabela canônica `associations` e remove a linha correspondente de `pending_matches` na mesma transação. A escolha pendente é persistida como match manual, em linha com `LibraryService.resolve_match`. A resolução falha antes de gravar quando a chave local não existe; testes de regressão cobrem a consulta pública imediatamente após a resolução, a preservação da pendência para anime inexistente e rollback quando a gravação em `associations` falha. Nenhum schema, versão do banco, writer Python, tela ou subsistema externo é alterado por esta correção.
 
-### Correção complementar do Prompt 03.2 — validação do estado de pendência AniList
+#### Registro histórico — Correção complementar do Prompt 03.2 — validação do estado de pendência AniList
 
 A operação Kotlin lê `pending_matches` e `associations` dentro da mesma transação das gravações. Uma pendência correspondente autoriza a resolução; sem pendência, só uma associação anterior positiva e coerente com `anime.anilist_id` autoriza a substituição. Quando nenhuma condição existe, a chamada é rejeitada antes de modificar qualquer linha. Os testes JVM existentes agora incluem a rejeição sem escrita e a troca autorizada sem pendência, preservando também a cobertura anterior de resolução pendente, anime local inexistente e rollback.
 
 A inspeção do código Python revelou uma diferença importante: `LibraryStore.anilist_match(lookup)` consulta a linha em `anime` e retorna um registro mesmo quando `anilist_id` está vazio; portanto, a mera existência da linha local não comprova uma associação efetiva. Para atender à precondição explícita deste prompt e impedir resoluções obsoletas, o Kotlin valida o ID persistido e sua coerência com `associations`. Nenhum código Python foi alterado neste prompt; a semântica legada permanece documentada como uma questão de paridade futura, fora do escopo desta correção.
 A validação automática do commit corretivo e os artefatos correspondentes devem ser registrados apenas depois que o run de PR referente ao SHA final terminar.
 
-### Limite de ownership que permanece explícito
+#### Registro histórico — Limite de ownership que permanece explícito
 
 O adapter `data/library/ReiAnixLibraryRepository.kt` continua responsável pela projeção/IPC de várias ações ainda híbridas. A gravação de favoritos já era nativa antes deste pacote; a alteração real de ownership neste prompt é o estado assistido. As APIs nativas de metadata manual, tags, notas e pin agora existem, mas ainda não significam que todas as telas/ações Flet/Python que as expõem tenham sido migradas para consumidores Kotlin. Também permanecem no fluxo de transição as mutações de fontes de descoberta e reconciliação geral, alguns fluxos de associação/matching, publicação de artwork, backup/restauração e preferências ainda delegadas ao adapter legado. Cada uma depende de migrar seu consumidor/efeito colateral sem replicar writers; não foi fingido que essas responsabilidades desapareceram.
 
 Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas de scanner/SAF/MediaStore, artwork, AniList e player enquanto houver consumidores ativos. Não interprete a existência de métodos Kotlin como evidência de que cada chamada de produção já foi trocada.
 
-### Verificação da entrega
+#### Registro histórico — Verificação da entrega
 
 - O contrato do schema e a ausência de escrita destrutiva são mantidos pelo database existente.
 - A cobertura JVM adicionada não foi executada manualmente e continua no workflow manual `workflow_dispatch`, conforme a regra do projeto.
 - A aceitação aguarda o workflow obrigatório no SHA final do PR, conferência de jobs/status e confirmação real de APK/ZIP quando publicados. Um run de outro SHA não vale para esta etapa.
 
-## 3. Dependências de alto nível
+### Registro histórico — 3. Dependências de alto nível
 
 - **Contratos, SQLite e domínio (MIG-02 a MIG-04)** sustentam os subsistemas posteriores porque definem IDs, transações, schema, modelos, erros e ownership.
 - **Scanner e armazenamento (MIG-05 a MIG-06)** dependem das semânticas de catálogo e persistência; exigem coordenação única e reconciliação conservadora.
@@ -90,9 +202,9 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 - **Remoção de bridges (MIG-19)** depende de todos os produtores e consumidores terem sido migrados. NativeMailbox é global e não deve ser removido no início.
 - **Build standalone, limpeza e certificação (MIG-20 a MIG-22)** dependem do caminho de runtime nativo já funcional. O código Python só é removido depois que deixa de ter consumidores reais.
 
-## 4. Etapas de implementação
+### Registro histórico — 4. Etapas de implementação
 
-### MIG-02 — Contratos de domínio e baseline de paridade
+#### Registro histórico — pacote histórico MIG-02 — Contratos de domínio e baseline de paridade
 
 **Objetivo:** Estabilizar contratos de mídia, URI, IDs, scan generations, campos manuais de metadata, progresso e schema v29 antes de mover ownership.
 
@@ -112,7 +224,7 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
-### MIG-03 — Authority do SQLite Kotlin e migrações compatíveis
+#### Registro histórico — pacote histórico MIG-03 — Authority do SQLite Kotlin e migrações compatíveis
 
 **Objetivo:** Portar bootstrap, criação de schema e migrações para Kotlin sobre o mesmo arquivo existente.
 
@@ -132,7 +244,7 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
-### MIG-04 — Repositório de biblioteca e semânticas de domínio
+#### Registro histórico — pacote histórico MIG-04 — Repositório de biblioteca e semânticas de domínio
 
 **Objetivo:** Completar a paridade entre LibraryStore/LibraryService e os repositórios/casos de uso Kotlin.
 
@@ -152,7 +264,7 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
-### MIG-05 — Coordenação nativa de varredura e reconciliação
+#### Registro histórico — pacote histórico MIG-05 — Coordenação nativa de varredura e reconciliação
 
 **Objetivo:** Migrar ScanCoordinator e os estados de domínio da varredura para Kotlin sem criar outro scanner.
 
@@ -172,11 +284,11 @@ Não remova pontes, LibraryStore, LibraryService, NativeMailbox nem os sistemas 
 
 **Prioridade:** P0.
 
-## Estado transversal — Prompt 05/29: coordenação e indexação de biblioteca
+### Registro histórico — estado transversal histórico — Prompt 05/29: coordenação e indexação de biblioteca
 
 Base efetiva desta implementação: `main` em `e115d69e9d970defb075c812b34663f17cbbefb4`; branch `migration/prompt-05-native-library-indexing-20261015`. A validação final depende do SHA final desta branch e dos workflows obrigatórios da PR.
 
-### Alterações desta etapa
+#### Registro histórico — Alterações desta etapa
 
 - Criado `data/sqlite/ReiAnixLibraryService.kt` como serviço nativo de domínio com consumidores reais; usa o repositório SQLite compartilhado, serializa as próprias mutações e não cria scanner, coordenador, banco ou repositório paralelo.
 - `NativeScanRunner` encaminha indexação SAF, recuperação positiva pós-rollback e registro terminal de `scan_runs` pelo serviço Kotlin.
@@ -187,7 +299,7 @@ Base efetiva desta implementação: `main` em `e115d69e9d970defb075c812b34663f17
 - Adicionados `ReiAnixNativeLibraryCatalogProjector` e `loadLibraryCatalogRows()`: Home/Biblioteca e consumidores derivados do `ReiAnixLibraryViewModel` recebem anime/episódios/artwork/gêneros lidos de um snapshot SQLite consistente no Android 15+; a paginação e filtros da Biblioteca usam `ReiAnixLibraryQueryService.searchAnime(libraryOnly=true)` e `searchAnimeIds()` com ordenação, offset/limit e total correspondentes, sem delegar para `ReiAnixLibraryRepository.loadLibraryPage`.
 - Adicionada `docs/KOTLIN_LIBRARY_INDEXING_MIGRATION.md` e teste de contrato para o ownership e o cutover de projeção Compose.
 
-### Fronteiras que continuam abertas
+#### Registro histórico — Fronteiras que continuam abertas
 
 - `ReiAnixLibraryRepository` e `ComposeLibraryBridge` permanecem para comandos híbridos, onboarding/estado de armazenamento, resultados terminais e outros contratos não migrados; não são a fonte dos registros de anime/episódios usados pela projeção principal.
 - `NativeMailbox` permanece para compatibilidade de eventos/diagnóstico e outros subsistemas com consumidores ativos.
@@ -197,7 +309,7 @@ Base efetiva desta implementação: `main` em `e115d69e9d970defb075c812b34663f17
 
 A migração do escritor normal SAF, recovery positivo, retry do observer MediaStore e projeção principal de registros para Compose foi implementada na branch. A remoção global do runtime híbrido não é parte desta afirmação: ainda há fronteiras de comandos/estado e compatibilidade acima. A conclusão desta PR depende da CI obrigatória no SHA final e da verificação de APK/ZIP desse mesmo run.
 
-### MIG-06 — Storage, permissões SAF e operações de arquivo (EM ANDAMENTO)
+#### Registro histórico — pacote histórico MIG-06 — Storage, permissões SAF e operações de arquivo (EM ANDAMENTO)
 
 **Objetivo:** Migrar armazenamento e descoberta para Kotlin sem criar scanners, bancos ou coordenadores paralelos.
 
@@ -219,7 +331,7 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 **Prioridade:** P0.
 
-## Estado transversal — Prompt 06/29: AniList nativo e localização PT-BR
+### Registro histórico — estado transversal histórico — Prompt 06/29: AniList nativo e localização PT-BR
 
 Após o commit da metadata, ReiAnixArtworkService em Kotlin baixa, valida e persiste posters/backdrops usando a tabela artwork e atualiza anime.cover_cache com proteção para campos manuais. NativeMailbox publica ARTWORK_PUBLISHED após o commit; o caminho Compose não delega materialização ao ArtworkEngine Python.
 
@@ -227,7 +339,7 @@ Após o commit da metadata, ReiAnixArtworkService em Kotlin baixa, valida e pers
 
 **Verificações adicionadas:** testes de regressão do cliente GraphQL e do artwork nativo, incluindo os contratos do pipeline persistente, fronteira Python/Compose e registro canônico de thumbnails. Testes Kotlin/JVM seguem manuais e não são executados automaticamente. O status final do workflow/artefatos deve ser conferido no SHA de conclusão.
 
-### MIG-07 — AniList, matching, metadados e localização PT-BR
+#### Registro histórico — pacote histórico MIG-07 — AniList, matching, metadados e localização PT-BR
 
 **Objetivo:** Consolidar consultas remotas e regras de associação no serviço Kotlin consumido pelo Compose.
 
@@ -247,7 +359,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P1.
 
-### MIG-08 — Artwork, capas, cache e miniaturas
+#### Registro histórico — pacote histórico MIG-08 — Artwork, capas, cache e miniaturas
 
 **Objetivo:** Fornecer o pipeline produtor Kotlin para o caminho Compose e manter compatibilidade com dados/caches existentes; aposentar o writer Python apenas quando os consumidores Flet restantes tiverem sido migrados.
 
@@ -267,7 +379,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P1.
 
-### MIG-09 — Home, Biblioteca e Detalhes a partir de Kotlin
+#### Registro histórico — pacote histórico MIG-09 — Home, Biblioteca e Detalhes a partir de Kotlin
 
 **Objetivo:** Remover snapshots Python das principais telas depois que os repositórios nativos forem equivalentes.
 
@@ -287,7 +399,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P1.
 
-### MIG-10 — Pesquisa nativa e roteamento de detalhes
+#### Registro histórico — pacote histórico MIG-10 — Pesquisa nativa e roteamento de detalhes
 
 **Objetivo:** Unificar pesquisa e navegação para detalhes/player no contrato Kotlin.
 
@@ -307,7 +419,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P2.
 
-### MIG-11 — Minha Lista, histórico e consumo
+#### Registro histórico — pacote histórico MIG-11 — Minha Lista, histórico e consumo
 
 **Objetivo:** Completar o ciclo Kotlin de listas pessoais e projeções de histórico/progresso.
 
@@ -327,7 +439,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P1.
 
-### MIG-12 — Organização, gêneros e coleções
+#### Registro histórico — pacote histórico MIG-12 — Organização, gêneros e coleções
 
 **Objetivo:** Migrar as regras de domínio atualmente atrás da UI de organização.
 
@@ -347,7 +459,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P2.
 
-### MIG-13 — Configurações integralmente Kotlin
+#### Registro histórico — pacote histórico MIG-13 — Configurações integralmente Kotlin
 
 **Objetivo:** Remover snapshots, comandos e mutações de preferências que dependem de Python.
 
@@ -367,7 +479,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P1.
 
-### MIG-14 — Conta e autenticação
+#### Registro histórico — pacote histórico MIG-14 — Conta e autenticação
 
 **Objetivo:** Preservar login/logout e estado de conta sem runtime híbrido.
 
@@ -387,7 +499,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P2.
 
-### MIG-15 — Backup, recuperação e integridade
+#### Registro histórico — pacote histórico MIG-15 — Backup, recuperação e integridade
 
 **Objetivo:** Migrar exportação/importação, manifest/checksum, snapshot de segurança e tela de recovery.
 
@@ -407,7 +519,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P1.
 
-### MIG-16 — Diagnósticos, logs e performance
+#### Registro histórico — pacote histórico MIG-16 — Diagnósticos, logs e performance
 
 **Objetivo:** Consolidar telemetria, relatórios e redaction em Kotlin.
 
@@ -427,7 +539,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P2.
 
-### MIG-17 — Orquestração do player totalmente nativa
+#### Registro histórico — pacote histórico MIG-17 — Orquestração do player totalmente nativa
 
 **Objetivo:** Retirar dependências Python da abertura, transições e consumo, preservando o motor Media3 existente.
 
@@ -447,7 +559,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P1.
 
-### MIG-18 — Composição e lifecycle do aplicativo nativo
+#### Registro histórico — pacote histórico MIG-18 — Composição e lifecycle do aplicativo nativo
 
 **Objetivo:** Trocar a entrada híbrida por Activity/Compose somente depois de toda paridade funcional.
 
@@ -467,7 +579,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P0, gate de cutover.
 
-### MIG-19 — Remoção segura de NativeMailbox e snapshots híbridos
+#### Registro histórico — pacote histórico MIG-19 — Remoção segura de NativeMailbox e snapshots híbridos
 
 **Objetivo:** Remover o transporte somente quando não restar consumidor funcional.
 
@@ -487,7 +599,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P0, gate global.
 
-### MIG-20 — Build Gradle Android standalone e distribuição
+#### Registro histórico — pacote histórico MIG-20 — Build Gradle Android standalone e distribuição
 
 **Objetivo:** Alterar o build oficial para compilar e empacotar diretamente o aplicativo Kotlin pelo Gradle.
 
@@ -507,7 +619,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P0.
 
-### MIG-21 — Remoção do runtime Python e higiene do repositório
+#### Registro histórico — pacote histórico MIG-21 — Remoção do runtime Python e higiene do repositório
 
 **Objetivo:** Remover apenas código, dependências e arquivos gerados comprovadamente sem consumidor no runtime nativo.
 
@@ -527,7 +639,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P0.
 
-### MIG-22 — Certificação final de paridade e dados existentes
+#### Registro histórico — pacote histórico MIG-22 — Certificação final de paridade e dados existentes
 
 **Objetivo:** Verificar a independência nativa em fluxos de uso e no caminho de upgrade dos dados atuais.
 
@@ -547,7 +659,7 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 
 **Prioridade:** P0, gate final.
 
-## 5. Estratégia incremental de ownership do banco
+### Registro histórico — 5. Estratégia incremental de ownership do banco
 
 - Primeiramente, manter o schema e o arquivo canônicos inalterados, medir o comportamento de cada operação e completar o contrato Kotlin.
 - Quando uma operação for migrada, redirecionar o fluxo ativo ao owner novo e desativar a escrita equivalente antiga para essa semântica. Um fallback só é aceitável quando sua condição é explícita e quando não há risco de repetir uma transação com resultado desconhecido.
@@ -556,23 +668,23 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 - O cutover final move bootstrap e migrações para Kotlin. Até lá, não ativar duas inicializações independentes nem deixar uma operação ser executada pelos dois runtimes.
 - Compatibilidade deve ser demonstrada para o schema v29, backups existentes e dados em disco. Qualquer atualização futura de schema deve ser versionada e coberta por migração explícita.
 
-## 6. Política para pontes e código legado
+### Registro histórico — 6. Política para pontes e código legado
 
 NativeMailbox, NativeCommandDispatcher e os Compose bridges possuem múltiplos consumidores e não são candidatos iniciais à remoção. Antes do cutover, produzir uma matriz de tipos de evento/ação com produtor, consumidor, contrato, IDs, estados terminais, erro e persistência. Mover os consumidores funcionais para serviços Kotlin, atualizar os testes por comportamento e procurar referências estáticas/dinâmicas em todo o repositório. Só depois retirar produtor, consumidor, filas, codecs e contratos órfãos.
 
 Eventos de sessão do player e de scan exigem cuidado adicional por causa de generations, revogação, scan parcial e fallback idempotente. Uma classe Kotlin com o mesmo nome, uma tela Compose renderizada ou um teste que apenas verifica a existência do arquivo não prova paridade funcional.
 
-## 7. Requisitos mínimos para cada PR futuro
+### Registro histórico — 7. Requisitos mínimos para cada PR futuro
 
 Cada PR deve conter a implementação completa da unidade funcional, integração com ViewModel/StateFlow/serviço nativo/SQLite canônico, handling de erro/cancelamento/estado vazio, compatibilidade com dados/permissões, testes de regressão permitidos, diff revisado e resultados do CI vinculados ao SHA. Informar no relatório arquivos e pastas adicionados/modificados/removidos e contagem real de linhas do diff. Não remover critérios de teste para fazer a execução ficar verde. O workflow Kotlin/JVM permanece manual; não adicionar nem disparar testes instrumentados/emulador.
 
-## 8. Gate de build native-only
+### Registro histórico — 8. Gate de build native-only
 
 O gate só passa quando o workflow para de instalar Python/Flet/Flutter e deixa de gerar host Flet. Deve compilar com Gradle, Android SDK e JDK; produzir APK instalável (arm64 conforme distribuição atual) e ZIP de distribuição quando previsto; o pacote não pode conter runtime Python/serious_python. O APK precisa ser inspecionado e associado ao SHA exato. Um artefato chamado APK que ainda embute serious_python não prova independência.
 
 O build atual integra Compose, Navigation, Lifecycle, Coil, Media3, Credentials e Robolectric ao host Flet customizado. Reutilizar as dependências Android apropriadas, mas não criar um segundo app Kotlin paralelo só para compilar. A CI nativa deve substituir as responsabilidades atuais preservando applicationId, versioning e assinatura necessários para atualização.
 
-## 9. Gate final de paridade
+### Registro histórico — 9. Gate final de paridade
 
 A migração só pode ser chamada 100% Kotlin quando:
 - Todas as unidades funcionais da auditoria estão NATIVO COMPLETO, ou foram removidas com evidência verificável de que não tinham requisito/consumidor.
@@ -583,6 +695,6 @@ A migração só pode ser chamada 100% Kotlin quando:
 - Testes/regressões existentes são preservados ou substituídos por testes semânticos, não simplesmente apagados.
 - O relatório final contém commits/PRs, diff, validações, artefatos e bloqueios restantes.
 
-## 10. Próxima etapa recomendada
+### Registro histórico — 10. Próxima etapa recomendada (histórico, não executar como instrução vigente)
 
 Começar por MIG-02 e prosseguir para MIG-03/MIG-04 antes de aumentar a quantidade de fluxos Kotlin que escrevem no banco. Parser, identidade, contratos de metadata e transações são dependências comuns de scanner, AniList, artwork, player e UI. Um erro nessa camada tem maior raio de impacto e pode apagar informações locais. Esta recomendação define a ordem técnica, mas não inicia o próximo prompt.
