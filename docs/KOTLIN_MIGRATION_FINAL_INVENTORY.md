@@ -358,7 +358,7 @@ Consumidores são importadores estáticos inferidos dos imports capturados. A ex
 
 ## 9. Inventário completo de Kotlin
 
-Inclui arquivos de produção e testes já existentes. Símbolos são os capturados pelo índice estático; eles não provam paridade funcional. Nenhum teste é criado, excluído ou executado nesta auditoria.
+Inclui arquivos de produção e testes já existentes. Símbolos são os capturados pelo índice estático; eles não provam paridade funcional. Esta PR não adiciona nem exclui testes. O workflow oficial de APK pode executar a suíte Python já existente; nenhum workflow manual de Kotlin/JVM ou de instrumentação foi disparado manualmente nesta auditoria.
 
 | Caminho | LOC | Tipo | Package | Símbolos/declaracões capturados | Relação Python candidata pelo índice |
 |---|---:|---|---|---|---|
