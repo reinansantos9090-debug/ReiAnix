@@ -247,7 +247,7 @@ object MediaFilenameParser {
 
         val titleSource = marker?.let { stem.substring(0, it.range.first) } ?: stem
         var title = MediaTitleNormalizer.cleanMediaTitle(titleSource)
-        if (title.isBlank() || title.matches(Regex("(?i)(?:e|ep|episode)?\\s*\\d+")) || seasonLabel.matches(title)) {
+        if (title.isBlank() || title.matches(Regex("(?i)(?:e|ep|episode)?\\s*\\d+(?:[.,]\\d{1,2})?")) || seasonLabel.matches(title)) {
             title = effectiveFolders.asReversed().firstOrNull(::isProbableTitleFolder)
                 ?.let(MediaTitleNormalizer::cleanMediaTitle).orEmpty()
         }
