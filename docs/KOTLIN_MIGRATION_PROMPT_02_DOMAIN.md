@@ -32,6 +32,13 @@ Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_i
 - Bootstrap nativo, remoção de entrypoint híbrido e build APK 100% nativo.
 - Paridade funcional completa entre os caminhos legado e Kotlin em runtime.
 
+## Testes existentes e limite de cobertura
+
+- Python preexistente: `tests/test_media_identity.py` e `tests/test_genre_registry.py`, além das suítes de biblioteca/discovery no repositório.
+- Kotlin/JVM preexistente: `MediaFilenameParserTest.kt`, `MediaDomainAndIdentityTest.kt`, `ReiAnixGenreClassifierTest.kt` e `ReiAnixSqliteModelsTest.kt`.
+- Nenhum teste foi criado, removido ou modificado. Os testes Kotlin/JVM não foram executados manualmente.
+- O workflow oficial de PR já contém regressão Python e compilação/build Android. Isso não prova que os novos casos de parser decimal/classificação de URI tenham asserts próprios nem equivale a executar a suíte Kotlin/JVM. Essa cobertura específica fica pendente até uma fase autorizada de validação.
+
 ## Integridade e validação
 
 - Não adiciona classes de domínio duplicadas, novas tabelas, banco alternativo ou novos testes.
