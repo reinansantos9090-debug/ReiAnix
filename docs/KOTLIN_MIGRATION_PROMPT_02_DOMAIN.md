@@ -53,3 +53,22 @@ Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_i
 - O workflow automático `build_apk.yml` que valida esta correção deve ser lido apenas na execução associada ao SHA final da PR. Runs vinculados a SHAs anteriores não validam este complemento.
 - Schema SQLite v29, mapeadores de leitura, IDs, referências de mídia e consumidores Python foram preservados.
 - Esta implementação não representa a migração integral concluída: a camada de domínio ainda depende de integrações posteriores e validação comportamental autorizada.
+
+## Prompt 02.2/18 — cobertura de regressão e limites de validação
+
+### Regressões acrescentadas nas suítes existentes
+
+- `MediaFilenameParserTest.kt`: decimais com ponto e vírgula em marcadores SxxExx, temporada/EP, NxM e Episode; S00, OVA e SP; decimais absolutos rejeitados; precisão acima de duas casas; separadores repetidos e decimais encadeados; nomes compostos apenas por números decimais e fallback para o título da pasta; exclusão de anos, resoluções e números técnicos.
+- `MediaDomainAndIdentityTest.kt`: classificação de caminhos e esquemas URI, URI de documentos/árvore SAF de autoridades reconhecidas, autoridades desconhecidas com segmentos parecidos com SAF, caminhos inválidos de provedores reconhecidos e esquema `content:` malformado. Também confirma que `storedLocation` e os acessores derivados preservam a string original.
+- `ReiAnixGenreClassifierTest.kt`: exemplos concretos para `ß → ss`, `ς → σ`, remoção de acentos e normalização de separadores/espaços. A cobertura reflete exemplos específicos compatíveis com `core/genre_registry.py::normalize_genre`; não afirma equivalência Unicode universal com `str.casefold()`.
+
+### Correção estritamente ligada à regressão
+
+O parser agora rejeita separadores decimais repetidos antes de aceitar um prefixo inteiro em marcadores de episódio e sufixos numéricos (por exemplo, `03..5`, `03,,5` e `03.5.2`). A incerteza de precisão excessiva em sufixos numéricos também passa a ser refletida em `ambiguities`, alinhada ao campo `unresolved`. Não foram alteradas as regras de identidade absoluta inteira nem o fallback conservador de nomes numéricos.
+
+### Estado de execução dos testes
+
+Os métodos de regressão foram adicionados aos arquivos de teste existentes e revisados estaticamente; **não foram executados durante este prompt**. A restrição desta etapa proíbe executar manualmente a suíte Kotlin/JVM e despachar o workflow manual. `.github/workflows/kotlin_jvm_tests.yml` tem apenas o gatilho `workflow_dispatch`; o workflow automático `build_apk.yml` executa a suíte Python, produz o APK e compila Kotlin de produção com `:app:compileReleaseKotlin`, mas não executa `:app:testDebugUnitTest`. Portanto, os novos testes Kotlin permanecem pendentes de execução autorizada e não podem ser descritos como aprovados com base no build do APK.
+
+Nenhum workflow, script de build, arquivo de persistência, schema, módulo Python, diretório ou estrutura paralela de testes foi alterado ou criado nesta etapa.
+

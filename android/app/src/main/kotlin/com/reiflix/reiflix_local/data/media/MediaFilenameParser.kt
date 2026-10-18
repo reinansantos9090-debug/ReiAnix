@@ -67,11 +67,11 @@ object MediaFilenameParser {
         RegexOption.IGNORE_CASE,
     )
     private val malformedEpisodeDecimal = Regex(
-        "\\b(?:S\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|(?:temp|temporada)[ ._-]*\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|\\d{1,2}\\s*[xX]|E(?:P(?:ISODE)?)?|EPISODE|Epis[oó]dio|OVA|OAD|ONA|SPECIALS?|SP|EXTRA|S00[ ._-]*E(?:P(?:ISODE)?)?)[ ._-]*\\d{1,4}[.,]\\d{1,2}[.,]\\d+\\b",
+        "\\b(?:S\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|(?:temp|temporada)[ ._-]*\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|\\d{1,2}\\s*[xX]|E(?:P(?:ISODE)?)?|EPISODE|Epis[oó]dio|OVA|OAD|ONA|SPECIALS?|SP|EXTRA|S00[ ._-]*E(?:P(?:ISODE)?)?)[ ._-]*\\d{1,4}(?:(?:[.,]\\d{1,2})?[.,]{2,}\\d+|[.,]\\d{1,2}[.,]\\d+)\\b",
         RegexOption.IGNORE_CASE,
     )
     private val malformedNumericSuffixDecimal = Regex(
-        "(?<!\\d)\\d{1,4}[.,]\\d{1,2}[.,]\\d+\\b",
+        "(?<!\\d)\\d{1,4}(?:(?:[.,]\\d{1,2})?[.,]{2,}\\d+|[.,]\\d{1,2}[.,]\\d+)\\b",
     )
     private val unsupportedEpisodeDecimal = Regex(
         "\\b(?:S\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|(?:temp|temporada)[ ._-]*\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|\\d{1,2}\\s*[xX]|E(?:P(?:ISODE)?)?|EPISODE|Epis[oó]dio|OVA|OAD|ONA|SPECIALS?|SP|EXTRA|S00[ ._-]*E(?:P(?:ISODE)?)?)[ ._-]*\\d{1,4}[.,]\\d{3,}(?:v\\d+)?\\b",
@@ -377,7 +377,8 @@ object MediaFilenameParser {
                 item == "absolute_number_must_be_integer" ||
                 item == "malformed_episode_decimal" ||
                 item == "malformed_numeric_suffix_decimal" ||
-                item == "unsupported_episode_decimal_precision"
+                item == "unsupported_episode_decimal_precision" ||
+                item == "unsupported_numeric_suffix_decimal_precision"
         }
         return ParsedMediaName(
             animeTitle = title,
