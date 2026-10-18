@@ -13,7 +13,9 @@ class NativeLibraryIndexingMigrationContractTests(unittest.TestCase):
         runner = (KOTLIN / "scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
 
         self.assertIn("ReiAnixLibraryService(sqliteLibraryRepository)", dependencies)
-        self.assertIn("repository.indexDiscoveredMedia(snapshot, onTransactionOutcome)", service)
+        self.assertIn("repository.indexDiscoveredMedia(snapshot) { outcome, committedReport ->", service)
+        self.assertIn("runCatching { onTransactionOutcome?.invoke(outcome, committedReport) }", service)
+        self.assertIn("if (commitConfirmed)", service)
         self.assertIn("repository.finishNativeScanRun(", service)
         self.assertIn("scanMutationMutex.lock()", service)
         self.assertIn("scanMutationMutex.unlock()", service)
