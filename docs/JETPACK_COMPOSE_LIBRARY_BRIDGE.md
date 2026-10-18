@@ -8,7 +8,7 @@ As operações que ainda dependem de serviços Python seguem a direção inversa
 
 Compose → NativeMailbox → main.py → LibraryStore/ScanCoordinator/AndroidBridge
 
-A transição é por operação. No caminho Compose/Android, inclusão pessoal/favoritos são gravados por `ReiAnixPersonalListService` no SQLite canônico e o estado de consumo é gravado por `ReiAnixConsumptionService`; a republicação posterior do snapshot não executa novamente a mutação. O antigo comando NativeMailbox `toggle_favorite` foi removido porque nenhum consumidor Compose restante deve escrever esse estado via Python. O handler legado `set_watched` continua temporariamente no canal de comandos enquanto consumidores antigos de consumo ainda existirem. Separadamente, a tela Flet antiga de detalhes ainda tem um callback próprio para `LibraryStore.toggle_favorite`; ele não é o caminho do ViewModel Compose e só deve ser removido quando o consumidor Flet for migrado.
+A transição é por operação. No caminho Compose/Android, favoritos e estado de consumo são gravados por `ReiAnixPersonalListService` e `ReiAnixConsumptionService` no SQLite canônico. As ações Kotlin que emitiam `set_watched`, `select_saf`, `dismiss_storage_onboarding` e `remove_saf` foram retiradas do adapter: Compose grava consumo no serviço nativo e inicia seleção/remoção SAF pela Activity Kotlin; o cancelamento do onboarding também pertence à Activity. Os handlers Python correspondentes são preservados provisoriamente para consumir mensagens duráveis que possam ter sido enfileiradas por versões anteriores; a remoção desses receivers exige encerrar explicitamente a compatibilidade. O antigo comando `toggle_favorite` já tinha sido removido do adapter. Separadamente, a tela Flet antiga de detalhes ainda tem um callback próprio para `LibraryStore.toggle_favorite`; ele não é o caminho do ViewModel Compose e só deve ser removido quando o consumidor Flet for migrado.
 
 ## Responsabilidades
 
@@ -35,12 +35,6 @@ A coleta no Compose deve usar `collectAsStateWithLifecycle()` através de `ReiAn
 
 ## Comandos
 
-Os comandos de projeção/coordenação ainda utilizados pela UI Compose são:
-
-- `publish_catalog`, após uma mutação nativa persistida;
-- `refresh`, encaminhado ao `ScanCoordinator`;
-- `load_library_page`: o método/protocolo compatível ainda está no adapter, mas as consultas paginadas ativas da tela Compose usam `ReiAnixLibraryQueryService` e a pesquisa estática não encontrou chamada de produção a esse método. A remoção integral fica classificada como não conclusiva nesta etapa porque o estado/reader de páginas e de resultados ainda existe no contrato do repositório.
-
-A UI Compose não envia `toggle_favorite` nem `set_watched` para realizar essas mutações: o estado pessoal e o consumo têm owners Kotlin. `toggle_favorite` deixou de fazer parte do protocolo `compose_library_command`; a gravação direta que permanece em `views/details_view.py` pertence ao consumidor Flet legado, não à tela Compose. `set_watched` permanece temporariamente no dispatcher para os consumidores antigos ainda identificados. `publish_catalog` continua sendo somente uma solicitação de republicação/compatibilidade posterior ao commit nativo.
+A UI Compose ainda emite `publish_catalog` como solicitação de republicação da projeção híbrida depois de uma mutação nativa. A ação `refresh` da interface passa pela URI nativa `reiflix://native?action=scan_library`; não delega uma nova varredura ao `ScanCoordinator` Python. O adapter ainda contém o produtor de página legado `load_library_page`, mas as telas Compose ativas usam `ReiAnixLibraryQueryService`; a remoção do protocolo de página permanece não conclusiva porque reader, resultado e estados compatíveis ainda existem. Os handlers Python das quatro ações removidas são mantidos somente para mensagens duráveis antigas, e não como caminho de escrita dos fluxos Compose atuais.
 
 Nenhum objeto de catálogo completo é serializado pela navegação ou pelos comandos.

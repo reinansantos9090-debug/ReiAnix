@@ -1677,8 +1677,6 @@ class ReiAnixLibraryViewModel(
         appContext.startActivity(MainActivity.createNativeStorageActionIntent(appContext, "select_tree"))
     }
 
-    fun dismissStorageOnboarding() = repository.dismissStorageOnboarding()
-
     /**
      * Requests native release first. MainActivity owns the permission -> canonical SQLite
      * removal transaction and calls onSafRemovalTerminal only after the durable result.

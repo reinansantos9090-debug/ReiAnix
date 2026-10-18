@@ -54,6 +54,33 @@ class Prompt29NativeSchemaUpgradeContractTests(unittest.TestCase):
         self.assertIn("SCHEMA_VERSION = 29", store)
         self.assertIn('DATABASE_FILE_NAME = "library.sqlite3"', database)
 
+    def test_compose_domain_and_storage_commands_are_emitted_by_native_owners(self):
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
+        codec = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn("consumptionService.setWatched(episodeId, watched)", view_model)
+        self.assertIn("personalListService.toggle(animeId)", view_model)
+        self.assertIn("fun selectSafTree()", view_model)
+        self.assertIn('createNativeStorageActionIntent(appContext, "release_tree", normalized)', view_model)
+
+        for action in ("set_watched", "select_saf", "dismiss_storage_onboarding", "remove_saf"):
+            self.assertNotIn('"' + action + '"', codec)
+        for method in ("fun setEpisodeWatched(", "fun selectSafTree(", "fun dismissStorageOnboarding(", "fun removeSafTree("):
+            self.assertNotIn(method, repository)
+        self.assertNotIn("fun dismissStorageOnboarding()", view_model)
+
+        # Keep old receivers until messages durably queued by previous versions can be drained.
+        for token in (
+            'if action == "set_watched":',
+            'elif action == "select_saf":',
+            'elif action == "dismiss_storage_onboarding":',
+            'elif action == "remove_saf":',
+        ):
+            self.assertIn(token, main)
+
+
     def test_upgrade_refuses_non_additive_column_contracts(self):
         upgrader = UPGRADER.read_text(encoding="utf-8")
         self.assertIn("isSafeAdditiveColumn", upgrader)

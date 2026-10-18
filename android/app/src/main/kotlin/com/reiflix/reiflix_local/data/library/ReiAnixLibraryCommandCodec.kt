@@ -7,9 +7,6 @@ internal object ReiAnixLibraryCommandCodec {
     fun create(
         requestId: String,
         action: Action,
-        episodeId: Long? = null,
-        watched: Boolean? = null,
-        source: String? = null,
         page: Int? = null,
         pageSize: Int? = null,
         query: String? = null,
@@ -22,9 +19,6 @@ internal object ReiAnixLibraryCommandCodec {
     ): JSONObject {
         require(requestId.isNotBlank()) { "requestId must not be blank" }
         val payload = JSONObject().put("action", action.value)
-        episodeId?.let { payload.put("episodeId", it) }
-        watched?.let { payload.put("watched", it) }
-        source?.takeIf { it.isNotBlank() }?.let { payload.put("source", it) }
         page?.let { payload.put("page", it) }
         pageSize?.let { payload.put("pageSize", it) }
         query?.let { payload.put("query", it) }
@@ -42,12 +36,8 @@ internal object ReiAnixLibraryCommandCodec {
     }
 
     enum class Action(val value: String) {
-        SET_WATCHED("set_watched"),
         REFRESH("refresh"),
         PUBLISH_CATALOG("publish_catalog"),
         LOAD_LIBRARY_PAGE("load_library_page"),
-        SELECT_SAF("select_saf"),
-        DISMISS_STORAGE_ONBOARDING("dismiss_storage_onboarding"),
-        REMOVE_SAF("remove_saf"),
     }
 }

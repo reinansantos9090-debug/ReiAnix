@@ -435,70 +435,20 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         }
     }
 
-    fun selectSafTree() {
-        send(ReiAnixLibraryCommandCodec.Action.SELECT_SAF)
-    }
-
-    fun dismissStorageOnboarding() {
-        send(ReiAnixLibraryCommandCodec.Action.DISMISS_STORAGE_ONBOARDING)
-    }
-
-    fun removeSafTree(reference: String) {
-        val normalized = reference.trim()
-        if (normalized.isBlank()) return
-        send(
-            ReiAnixLibraryCommandCodec.Action.REMOVE_SAF,
-            source = normalized,
-        )
-    }
-
     /**
-     * Ask the existing Python bridge to republish the canonical catalog snapshot
-     * after a native SQLite mutation. Unlike refresh(), this never requests a scan.
+     * Publish the committed native catalog to the compatibility projection only.
+     * Domain and storage mutations are performed by native Kotlin services/Activity.
      */
     fun publishCatalog() {
-        send(ReiAnixLibraryCommandCodec.Action.PUBLISH_CATALOG)
+        sendCatalogPublication()
     }
 
-    fun setEpisodeWatched(episodeId: Long, watched: Boolean) {
-        send(
-            ReiAnixLibraryCommandCodec.Action.SET_WATCHED,
-            episodeId = episodeId,
-            watched = watched,
-        )
-    }
-
-    private fun send(
-        action: ReiAnixLibraryCommandCodec.Action,
-        episodeId: Long? = null,
-        watched: Boolean? = null,
-        source: String? = null,
-        page: Int? = null,
-        pageSize: Int? = null,
-        query: String? = null,
-        genre: String? = null,
-        sort: String? = null,
-        favoritesOnly: Boolean? = null,
-        watchingOnly: Boolean? = null,
-        completedOnly: Boolean? = null,
-        generation: Long? = null,
-    ): String {
+    private fun sendCatalogPublication() {
         val requestId = UUID.randomUUID().toString()
+        val action = ReiAnixLibraryCommandCodec.Action.PUBLISH_CATALOG
         val command = ReiAnixLibraryCommandCodec.create(
             requestId = requestId,
             action = action,
-            episodeId = episodeId,
-            watched = watched,
-            source = source,
-            page = page,
-            pageSize = pageSize,
-            query = query,
-            genre = genre,
-            sort = sort,
-            favoritesOnly = favoritesOnly,
-            watchingOnly = watchingOnly,
-            completedOnly = completedOnly,
-            generation = generation,
         )
         scope.launch {
             val written = runCatching { NativeMailbox.write(appContext, command) }
@@ -509,26 +459,11 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                         lastCommandId = requestId,
                         lastCommandAction = action.value,
                         lastCommandStatus = "FAILED",
-                        lastCommandError = "Não foi possível enviar o comando ao serviço local.",
+                        lastCommandError = "Não foi possível enviar o comando de republicação do catálogo.",
                     )
-                    if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE) {
-                        _pagedLibraryState.value = _pagedLibraryState.value.copy(
-                            isLoading = false,
-                            error = "Não foi possível carregar a biblioteca.",
-                        )
-                    }
-                }
-                if (action == ReiAnixLibraryCommandCodec.Action.REFRESH) {
-                    synchronized(refreshRequestGuard) {
-                        refreshInFlight.set(false)
-                    }
-                }
-                if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE) {
-                    synchronized(pageRequestGuard) { inFlightPage = null }
                 }
             }
         }
-        return requestId
     }
 
     private suspend fun loadSnapshot() {

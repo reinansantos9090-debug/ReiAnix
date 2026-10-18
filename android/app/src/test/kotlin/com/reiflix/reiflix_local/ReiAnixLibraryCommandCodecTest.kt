@@ -4,26 +4,23 @@ import com.reiflix.reiflix_local.data.library.ReiAnixLibraryCommandCodec
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReiAnixLibraryCommandCodecTest {
 
     @Test
-    fun commandContainsOnlySmallStableIdentifiers() {
+    fun catalogPublicationContainsOnlyStableIdentifiers() {
         val command = ReiAnixLibraryCommandCodec.create(
             requestId = "req-1",
-            action = ReiAnixLibraryCommandCodec.Action.SET_WATCHED,
-            episodeId = 71L,
-            watched = true,
+            action = ReiAnixLibraryCommandCodec.Action.PUBLISH_CATALOG,
         )
 
         assertEquals("compose_library_command", command.getString("type"))
         assertEquals("req-1", command.getString("requestId"))
         val payload = command.getJSONObject("payload")
-        assertEquals("set_watched", payload.getString("action"))
-        assertEquals(71L, payload.getLong("episodeId"))
-        assertTrue(payload.getBoolean("watched"))
+        assertEquals("publish_catalog", payload.getString("action"))
+        assertFalse(payload.has("episodeId"))
+        assertFalse(payload.has("watched"))
         assertFalse(payload.has("file"))
         assertFalse(payload.has("episodes"))
     }
@@ -31,24 +28,11 @@ class ReiAnixLibraryCommandCodecTest {
     @Test
     fun actionsAreExactlyTheExistingLibraryOperations() {
         assertEquals(
-            setOf("set_watched", "refresh", "publish_catalog", "load_library_page", "select_saf", "dismiss_storage_onboarding", "remove_saf"),
+            setOf("refresh", "publish_catalog", "load_library_page"),
             ReiAnixLibraryCommandCodec.Action.entries.map { it.value }.toSet(),
         )
     }
     
-    @Test
-    fun onboardingDismissalUsesTheExistingComposeLibraryCommandChannel() {
-        val command = ReiAnixLibraryCommandCodec.create(
-            requestId = "req-dismiss",
-            action = ReiAnixLibraryCommandCodec.Action.DISMISS_STORAGE_ONBOARDING,
-        )
-        assertEquals("compose_library_command", command.getString("type"))
-        assertEquals("req-dismiss", command.getString("requestId"))
-        assertEquals(
-            "dismiss_storage_onboarding",
-            command.getJSONObject("payload").getString("action"),
-        )
-    }
 
     @Test
     fun blankRequestIsRejected() {

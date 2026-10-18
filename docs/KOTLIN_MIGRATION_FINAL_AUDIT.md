@@ -68,6 +68,12 @@ A classe é integrada ao bootstrap nativo antes da decisão final de compatibili
 
 **Código-fonte:** Python está presente tanto em testes/tooling quanto em entrypoint e módulos com consumidores de runtime. Não foi removido em massa porque isso quebraria fluxos ainda ativos e não atenderia ao requisito de preservar funcionalidades.
 
+## Corte adicional de emissores híbridos da UI Compose
+
+A alteração mais recente retirou do adapter Kotlin os emissores de `set_watched`, `select_saf`, `dismiss_storage_onboarding` e `remove_saf`. O ViewModel já persiste o consumo e Minha Lista pelos serviços SQLite Kotlin; seleção, remoção e cancelamento do onboarding passam pela Activity nativa. Os handlers Python correspondentes foram preservados deliberadamente para não abandonar comandos duráveis que uma versão anterior possa ter deixado na fila. Portanto, esta etapa fecha os produtores Kotlin dessas quatro mensagens, mas não declara eliminados seus receivers legados nem as demais dependências Python/Flet.
+
+O teste estático `tests/test_prompt29_native_schema_upgrade_contract.py` verifica que esses emissores não retornam e que os receivers antigos permanecem. Nenhum teste Kotlin/JVM foi executado manualmente, e nenhum teste instrumentado/emulador foi criado ou executado.
+
 ## Verificações e limites
 
 No SHA de implementação auditado `596d5a7e1bf391a02909f4ebcd8a352b15f98348`, os dois workflows obrigatórios terminaram oficialmente com sucesso: Gradle nativo [run 39084060927](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39084060927) e build oficial [run 39084060944](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39084060944). A suíte Python registrou **1.992 testes e 58 subtests aprovados**. O APK oficial publicado foi `ReiAnix-apk-instalacao-direta-6039` (33.073.120 bytes), o ZIP oficial `ReiAnix-ZIP-extraia-primeiro-6039` (33.023.539 bytes), o APK Gradle `ReiAnix-native-gradle-apk-75` (26.960.971 bytes) e o ZIP Gradle `ReiAnix-native-gradle-ZIP-75` (26.904.439 bytes). SHA-256 do APK oficial: `d5e80bd4ef53fee0a658b27052ebf56af377dfaa4cfa6867b85568b9d04507c9`. Isso valida compilação, empacotamento e regressão para o código auditado; não prova runtime exclusivamente Kotlin, execução em dispositivo nem migração comportamental de um banco pessoal existente.
