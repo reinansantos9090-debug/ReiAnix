@@ -153,9 +153,17 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn('partialStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
         self.assertIn("full reconciliation; previous rows were preserved", runner)
         self.assertIn("suspend fun recoverInterruptedSafScans(context: Context)", runner)
-        self.assertIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
+        bootstrap = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt").read_text(encoding="utf-8")
+        self.assertIn("NativeScanRunner.recoverInterruptedSafScans(appContext)", bootstrap)
+        self.assertLess(
+            bootstrap.index("NativeScanRunner.recoverInterruptedSafScans(appContext)"),
+            bootstrap.index("NativeCommandDispatcher.start(appContext)"),
+        )
+        self.assertIn("appDependencies.bootstrap.start()", activity)
+        self.assertIn("appDependencies.bootstrap.validateCanonicalDatabase()", activity)
+        self.assertNotIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
+        self.assertNotIn("NativeCommandDispatcher.start(this@MainActivity)", activity)
         self.assertIn("withContext(Dispatchers.IO)", activity)
-        self.assertIn("NativeCommandDispatcher.start(this@MainActivity)", activity)
         self.assertIn('put("nativeScanRunOwner", nativeScanRunOwner)', runner)
         self.assertIn("COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED", runner)
         self.assertIn("recoveryEventPublished", native_index)

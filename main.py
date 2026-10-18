@@ -41,13 +41,7 @@ from core.library_discovery import format_duration
 from core.settings import SettingsStore
 from core.ui import apply_page_theme
 from core.recovery import RecoveryService
-from views.recovery_view import RecoveryView
 from core.google_account import normalize_google_profile
-from views.home_view import HomeView
-from views.details_view import DetailView
-from views.organize_view import OrganizeView
-from views.settings_view import SettingsView
-from views.collector_view import CollectorView
 
 logger = logging.getLogger("reiflix")
 
@@ -127,6 +121,7 @@ async def main(page: ft.Page):
             if preview_only:
                 return await asyncio.to_thread(BackupService(store).inspect_bytes, raw)
             return await asyncio.to_thread(recovery_service.restore_backup, raw)
+        from views.recovery_view import RecoveryView
         page.views.clear()
         page.views.append(
             ft.View(
@@ -220,14 +215,6 @@ async def main(page: ft.Page):
     # storage, refresh and player handoffs never execute inline in mailbox polling.
     compose_library_tasks: set[asyncio.Task] = set()
     COMPOSE_LIBRARY_MAX_TASKS = 8
-    compose_route_state = {
-        "route": None,
-        "anime_id": None,
-        "episode_id": None,
-        "origin": None,
-        "generation": 0,
-    }
-
     def _track_compose_library_task(task: asyncio.Task) -> bool:
         if len(compose_library_tasks) >= COMPOSE_LIBRARY_MAX_TASKS:
             return False
@@ -1101,6 +1088,9 @@ async def main(page: ft.Page):
             if compose_primary_ui:
                 control = ft.Container(expand=True)
             else:
+                # Keep legacy controls lazy: Android's Compose host must not import
+                # or construct the old Home tree when the native screen owns rendering.
+                from views.home_view import HomeView
                 control = HomeView.build(
                     page, library, navigate_details, navigate_settings, play_episode,
                     navigate_organize, view_state=home_state,
@@ -1123,6 +1113,8 @@ async def main(page: ft.Page):
                 # NavigationController/page.views bookkeeping.
                 control = ft.Container(expand=True)
             else:
+                # OrganizeView is only needed by the non-Compose fallback.
+                from views.organize_view import OrganizeView
                 control = OrganizeView.build(
                     page, library, navigate_details,
                     lambda: navigate_back("visual:organize"), navigate_settings,
@@ -1137,6 +1129,8 @@ async def main(page: ft.Page):
             if compose_primary_ui:
                 control = ft.Container(expand=True)
             else:
+                # Keep the legacy Details tree out of the Android Compose runtime path.
+                from views.details_view import DetailView
                 details_instance_generation[0] += 1
                 detail_instance_token = details_instance_generation[0]
                 detail_anime_id = (current[0] or {}).get("id")
@@ -1159,33 +1153,39 @@ async def main(page: ft.Page):
                     view_state=details_state,
                 )
         elif route == "collector":
-            collector_instance_generation[0] += 1
-            collector_instance_token = collector_instance_generation[0]
-            control = CollectorView.build(
-                page,
-                library,
-                lambda: navigate_back("visual:collector"),
-                is_active=lambda token=collector_instance_token: (
-                    ui_alive[0]
-                    and navigation.current == "collector"
-                    and collector_instance_generation[0] == token
-                ),
-            )
+            if compose_primary_ui:
+                # Android Compose owns Collector Journey and its domain actions.
+                # Keep a compatibility shell here rather than rendering a second UI tree.
+                control = ft.Container(expand=True)
+            else:
+                # Preserve the Flet implementation as a non-Compose fallback only.
+                from views.collector_view import CollectorView
+                collector_instance_generation[0] += 1
+                collector_instance_token = collector_instance_generation[0]
+                control = CollectorView.build(
+                    page,
+                    library,
+                    lambda: navigate_back("visual:collector"),
+                    is_active=lambda token=collector_instance_token: (
+                        ui_alive[0]
+                        and navigation.current == "collector"
+                        and collector_instance_generation[0] == token
+                    ),
+                )
         elif route == "settings":
             fixed_settings_path = (
                 tuple(settings_path_override)
                 if settings_path_override is not None
                 else None
             )
-            if fixed_settings_path == () and bridge.available:
-                # The root Settings surface is fully replaced by Compose on
-                # Android. Keep only the empty Flet shell required by the
-                # existing Python NavigationController/page.views projection.
+            if bridge.available:
+                # Compose owns both the Settings root and its nested categories on
+                # Android. Python page.views is only a compatibility projection;
+                # never build a hidden duplicate Flet Settings tree for a category.
                 control = ft.Container(expand=True)
             else:
-                # Nested Settings pages still belong to the existing Python/Flet
-                # flow, and this also remains the fallback when the native Compose
-                # host is unavailable.
+                # Keep the complete legacy Settings UI for non-Compose fallback only.
+                from views.settings_view import SettingsView
                 control = SettingsView.build(
                     page, store, library,
                     lambda: navigate_back("visual:settings"),
@@ -4478,39 +4478,6 @@ async def main(page: ft.Page):
                 int((performance.now() - started) * 1000),
             )
 
-    async def _hydrate_compose_details_context(anime_id: int, generation: int):
-        """Hydrate compatibility state without taking over Compose navigation."""
-        try:
-            catalog = await asyncio.to_thread(library.catalog)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception(
-                "[COMPOSE_NAV] background details hydration failed animeId=%s generation=%s",
-                anime_id,
-                generation,
-            )
-            return
-
-        if (
-            compose_route_state["generation"] != generation
-            or compose_route_state["route"] != "details"
-            or compose_route_state["anime_id"] != anime_id
-            or not ui_alive[0]
-        ):
-            logger.info(
-                "[COMPOSE_NAV] stale details hydration ignored animeId=%s generation=%s",
-                anime_id,
-                generation,
-            )
-            return
-
-        anime = next(
-            (item for item in (catalog or []) if int(item.get("id") or 0) == anime_id),
-            None,
-        )
-        current[0] = anime if anime is not None else {"id": anime_id}
-
     async def _run_compose_library_command(action, payload, request_id):
         """Execute one Compose Library command outside the mailbox polling loop."""
         command_status = "COMPLETED"
@@ -5070,71 +5037,6 @@ async def main(page: ft.Page):
                                     logger.info("[COMPOSE_ACCOUNT] duplicate request ignored requestId=%s action=%s", request_id, action)
                             else:
                                 logger.warning("[COMPOSE_ACCOUNT] action rejected action=%s requestId=%s", action or "-", request_id or "-")
-                        if event_type == 'compose_navigation_changed':
-                            destination = str(payload.get('route') or '').strip().lower()
-                            anime_id_raw = str(payload.get('animeId') or '').strip()
-                            episode_id_raw = str(payload.get('episodeId') or '').strip()
-                            origin = str(payload.get('origin') or '').strip().lower() or None
-                            compose_route_state["generation"] += 1
-                            route_generation = compose_route_state["generation"]
-                            compose_route_state.update(
-                                route=destination or None,
-                                anime_id=None,
-                                episode_id=episode_id_raw or None,
-                                origin=origin,
-                            )
-
-                            if destination in {'home', 'library', 'my_list', 'search', 'organize', 'settings'}:
-                                current[0] = None
-                                try:
-                                    # Compose is the visible navigation owner on Android;
-                                    # Python only mirrors the logical route for backend
-                                    # compatibility and must not render another stack.
-                                    navigation.sync_top_level(destination)
-                                except ValueError:
-                                    logger.warning(
-                                        "[COMPOSE_NAV] invalid top-level route=%s",
-                                        destination or '-',
-                                    )
-                            elif destination == 'storage':
-                                current[0] = None
-                                navigation.sync_top_level("settings")
-                                if not navigation.settings_path:
-                                    navigation.push_settings("Armazenamento")
-                            elif destination == 'details':
-                                try:
-                                    anime_id = int(anime_id_raw or 0)
-                                except (TypeError, ValueError):
-                                    anime_id = 0
-                                if anime_id <= 0:
-                                    logger.warning(
-                                        "[COMPOSE_NAV] details route rejected; invalid animeId=%s",
-                                        anime_id_raw or '-',
-                                    )
-                                else:
-                                    compose_route_state["anime_id"] = anime_id
-                                    current[0] = {"id": anime_id}
-                                    if navigation.current != "details":
-                                        navigation.push("details")
-                                    task = asyncio.create_task(
-                                        _hydrate_compose_details_context(anime_id, route_generation)
-                                    )
-                                    if not _track_compose_library_task(task):
-                                        task.cancel()
-                                        logger.warning(
-                                            "[COMPOSE_NAV] details hydration skipped; task limit reached animeId=%s",
-                                            anime_id,
-                                        )
-                            elif destination == 'player':
-                                # Media3 owns the actual playback Activity. Do not
-                                # create a second Python playback/navigation authority.
-                                pass
-                            else:
-                                logger.warning(
-                                    "[COMPOSE_NAV] route ignored destination=%s",
-                                    destination or '-',
-                                )
-
                         if event_type == 'compose_settings_bulk_applied':
                             request_id = str(event_request_id or payload.get('requestId') or '').strip()
                             settings_values = payload.get('settings')
@@ -5215,63 +5117,6 @@ async def main(page: ft.Page):
                                         request_id=request_id,
                                         reason="settings_task_limit",
                                     )
-
-                        if event_type == 'compose_settings_navigation':
-                            destination = str(payload.get('destination') or '').strip().lower()
-                            category = str(payload.get('category') or '').strip()
-                            if destination == 'back':
-                                navigate_back('compose_settings_back')
-                            elif destination == 'category':
-                                if compose_primary_ui:
-                                    logger.info(
-                                        "[COMPOSE_SETTINGS] category navigation already owned by Compose category state category=%s",
-                                        category or "-",
-                                    )
-                                    continue
-                                valid_categories = {
-                                    'Conta', 'Geral', 'Aparência', 'Biblioteca', 'Player',
-                                    'Gestos', 'Áudio e Legendas', 'Metadata', 'Artwork',
-                                    'Armazenamento', 'Dados e Cache', 'Backup e Restauração',
-                                    'Privacidade', 'Varredura', 'Diagnóstico', 'Sobre',
-                                }
-                                if category in valid_categories:
-                                    navigate_settings_category(category)
-                                else:
-                                    logger.warning(
-                                        "[COMPOSE_SETTINGS] navigation rejected category=%s",
-                                        category or '-',
-                                    )
-                            else:
-                                logger.warning(
-                                    "[COMPOSE_SETTINGS] navigation ignored destination=%s",
-                                    destination or '-',
-                                )
-
-                        if event_type == 'compose_library_navigation':
-                            destination = str(payload.get('destination') or '').strip().lower()
-                            if destination == 'back':
-                                navigate_back('compose_library_back')
-                            elif destination == 'collector':
-                                if bridge.available:
-                                    try:
-                                        await bridge.hide_library()
-                                    except Exception:
-                                        logger.exception(
-                                            "[COMPOSE_COLLECTOR] failed to hide Compose shell before Collector"
-                                        )
-                                navigate_collector()
-                            elif destination == 'details':
-                                # Compose NavHost already owns the Details transition.
-                                # This event is compatibility-only and must not push
-                                # a second visual destination through Python/Flet.
-                                logger.info(
-                                    "[COMPOSE_LIBRARY] details navigation acknowledged by Compose; no Python visual navigation"
-                                )
-                            else:
-                                logger.warning(
-                                    "[COMPOSE_LIBRARY] navigation event ignored destination=%s",
-                                    destination or '-',
-                                )
 
                         if event_type == 'compose_library_command':
                             action = str(payload.get('action') or '').strip().lower()

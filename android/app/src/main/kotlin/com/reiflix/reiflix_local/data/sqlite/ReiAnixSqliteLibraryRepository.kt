@@ -82,6 +82,109 @@ class ReiAnixSqliteLibraryRepository(
         }
 
 
+
+    /** Same local anime projection as LibraryStore.timeline_items(), read from canonical SQLite. */
+    suspend fun timelineItems(): List<ReiAnixTimelineSourceRecord> = withContext(Dispatchers.IO) {
+        database.read { connection ->
+            connection.rawQuery(
+                """
+                SELECT a.id, a.title, a.year, a.season, a.status, a.media_kind,
+                       a.cover_cache, a.cover_url, a.added_at
+                FROM anime a
+                WHERE EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id)
+                ORDER BY CASE WHEN a.year IS NULL THEN 1 ELSE 0 END,
+                         a.year DESC, a.title COLLATE NOCASE ASC, a.id ASC
+                """.trimIndent(),
+                null,
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(
+                            ReiAnixTimelineSourceRecord(
+                                id = cursor.requiredLong("id"),
+                                title = cursor.requiredString("title"),
+                                year = cursor.optionalInt("year"),
+                                season = cursor.optionalString("season"),
+                                status = cursor.optionalString("status"),
+                                mediaKind = cursor.optionalString("media_kind"),
+                                coverCache = cursor.optionalString("cover_cache"),
+                                coverUrl = cursor.optionalString("cover_url"),
+                                addedAt = cursor.optionalDouble("added_at"),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /** Regular, present episode observations for duration anomaly detection. */
+    suspend fun durationObservations(animeId: Long? = null): List<ReiAnixDurationObservationRecord> =
+        withContext(Dispatchers.IO) {
+            require(animeId == null || animeId > 0L) {
+                "animeId must be a positive persisted ID."
+            }
+            database.read { connection ->
+                connection.rawQuery(
+                    """
+                    SELECT e.id, e.anime_id, e.season, e.number, e.absolute_number,
+                           e.file_name, e.episode_title, e.duration,
+                           a.title AS anime_title
+                    FROM episodes e
+                    JOIN anime a ON a.id=e.anime_id
+                    WHERE e.missing=0
+                      AND LOWER(COALESCE(e.episode_type,'regular')) NOT IN
+                          ('special','ova','oad','ona','extra','movie')
+                      AND (? = 0 OR e.anime_id=?)
+                    ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.id
+                    """.trimIndent(),
+                    arrayOf((animeId ?: 0L).toString(), (animeId ?: 0L).toString()),
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            add(
+                                ReiAnixDurationObservationRecord(
+                                    id = cursor.requiredLong("id"),
+                                    animeId = cursor.requiredLong("anime_id"),
+                                    season = cursor.optionalInt("season"),
+                                    number = cursor.optionalDouble("number"),
+                                    absoluteNumber = cursor.optionalDouble("absolute_number"),
+                                    fileName = cursor.requiredString("file_name"),
+                                    episodeTitle = cursor.optionalString("episode_title"),
+                                    durationSeconds = cursor.optionalDouble("duration"),
+                                    animeTitle = cursor.requiredString("anime_title"),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+    /** Canonical, regular and present episodes used for the local marathon plan. */
+    suspend fun marathonEpisodes(animeId: Long): List<ReiAnixEpisodeRecord> =
+        withContext(Dispatchers.IO) {
+            require(animeId > 0L) { "animeId must be a positive persisted ID." }
+            database.read { connection ->
+                connection.rawQuery(
+                    """
+                    SELECT * FROM episodes
+                    WHERE anime_id=? AND missing=0
+                      AND LOWER(COALESCE(episode_type,'regular')) NOT IN
+                          ('special','ova','oad','ona','extra','movie')
+                    ORDER BY COALESCE(season,1000000), COALESCE(number,1000000),
+                             COALESCE(absolute_number,1000000), id
+                    """.trimIndent(),
+                    arrayOf(animeId.toString()),
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
+                    }
+                }
+            }
+        }
+
+
     /**
      * Searches the canonical LibraryStore SQLite database and returns persisted anime IDs.
      * SQL applies filters and selected sorting; Kotlin verifies normalized text from one
@@ -458,6 +561,61 @@ class ReiAnixSqliteLibraryRepository(
                 ).use { cursor ->
                     buildList {
                         while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
+                    }
+                }
+            }
+        }
+
+    /**
+     * Canonical projection for Collector Journey; one read joins existing episode consumption
+     * and anime metadata. No gamification tables or parallel library storage are introduced.
+     */
+    suspend fun collectorSnapshot(): List<ReiAnixCollectorEpisodeRow> =
+        withContext(Dispatchers.IO) {
+            database.read { connection ->
+                connection.rawQuery(
+                    """
+                    SELECT
+                        e.id,
+                        e.anime_id,
+                        e.progress,
+                        e.duration,
+                        e.watched,
+                        e.missing,
+                        e.last_played_at,
+                        e.episode_type,
+                        a.title AS anime_title,
+                        a.year,
+                        a.genres,
+                        a.format,
+                        a.media_kind
+                    FROM episodes e
+                    JOIN anime a ON a.id = e.anime_id
+                    -- Keep missing rows so collection counts preserve legacy semantics.
+                    ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.id
+                    """.trimIndent(),
+                    null,
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            add(
+                                ReiAnixCollectorEpisodeRow(
+                                    id = cursor.requiredLong("id"),
+                                    animeId = cursor.requiredLong("anime_id"),
+                                    progress = cursor.optionalDouble("progress"),
+                                    duration = cursor.optionalDouble("duration"),
+                                    watched = cursor.optionalBoolean("watched"),
+                                    missing = cursor.optionalBoolean("missing"),
+                                    lastPlayedAt = cursor.optionalDouble("last_played_at"),
+                                    episodeType = cursor.optionalString("episode_type"),
+                                    animeTitle = cursor.optionalString("anime_title"),
+                                    year = cursor.optionalInt("year"),
+                                    genresJson = cursor.optionalString("genres"),
+                                    format = cursor.optionalString("format"),
+                                    mediaKind = cursor.optionalString("media_kind"),
+                                ),
+                            )
+                        }
                     }
                 }
             }

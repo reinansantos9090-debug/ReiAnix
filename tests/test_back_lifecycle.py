@@ -76,18 +76,17 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn("systemUiController.applyNormal(useContextAppearance = false)", player[exit_start:exit_end])
         self.assertIn("systemUiController.applyImmersive()", player)
 
-    def test_compose_root_does_not_bypass_the_canonical_exit_policy(self):
+    def test_compose_root_back_uses_native_exit_policy_with_legacy_hidden_host_fallback(self):
         host = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
         activity = self.read(MAIN_ACTIVITY)
         root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
-        self.assertNotIn("Pressione voltar novamente para sair", host)
-        self.assertNotIn("Toast.makeText", host)
-        self.assertNotIn("finishAndRemoveTask", host)
-        self.assertNotIn("finishAffinity(", host)
-        self.assertNotIn("activity.finish()", root)
-        self.assertIn("ReiAnixRoutes.HOME -> false", root)
-        self.assertIn("Python NavigationController", root)
+        self.assertIn("Pressione voltar novamente para sair", host)
+        self.assertIn("Toast.makeText", host)
+        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", root)
+        self.assertIn("activity.finish()", root)
+        self.assertNotIn("Python NavigationController", root)
         self.assertIn("engine.navigationChannel.popRoute()", activity)
+        self.assertIn("reason=compose_host_hidden_fallback", activity)
         self.assertEqual(activity.count("engine.navigationChannel.popRoute()"), 1)
 
     def test_player_finish_is_idempotent_while_exiting(self):
@@ -184,17 +183,22 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn('navigation.settings_path', source)
         self.assertIn('settings_path_override=path', source)
 
-    def test_main_resume_discovery_is_not_unconditional(self):
+    def test_main_resume_discovery_requires_persisted_saf_tree(self):
         source = self.read(MAIN_ACTIVITY)
         start = source.index("override fun onResume()")
         end = source.index("override fun onPause()", start)
         resume = source[start:end]
         self.assertIn("val shouldDiscover = !startupDiscoveryTriggered", resume)
+        self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
         self.assertIn('publishScanRequest(', resume)
         self.assertIn('"STARTUP"', resume)
+        self.assertIn('"STARTUP_SCAN_SKIPPED"', resume)
+        self.assertIn('result = "no_persisted_saf_tree"', resume)
+        self.assertNotIn('result = "explicit_scan_required"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
         self.assertNotIn("scanTree(tree, null)", resume)
+        self.assertIn("dispatchStartupDiscoveryAfterBootstrap()", source)
 
 
 if __name__ == "__main__":

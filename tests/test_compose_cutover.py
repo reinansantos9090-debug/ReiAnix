@@ -44,32 +44,33 @@ class ComposeCutoverTests(unittest.TestCase):
         ):
             self.assertIn(destination, source)
 
-    def test_compose_routes_project_back_to_the_existing_python_navigation(self):
+    def test_compose_navigation_is_native_without_python_route_mirroring(self):
         main = MAIN.read_text(encoding="utf-8")
         navigation = NAVIGATION.read_text(encoding="utf-8")
         host = COMPOSE_HOST.read_text(encoding="utf-8")
         nav_host = NAV_HOST.read_text(encoding="utf-8")
 
         self.assertIn("compose_primary_ui = bool(bridge.available)", main)
-        self.assertIn("event_type == 'compose_navigation_changed'", main)
-        self.assertIn("navigation.sync_top_level(destination)", main)
-        self.assertIn('navigation.sync_top_level("settings")', main)
-        self.assertIn('navigation.push("details")', main)
-        self.assertIn("Compose is the visible navigation owner", main)
         self.assertIn("if compose_primary_ui:", main)
-        self.assertIn('return\n        _drop_screen_cache', main)
+        self.assertNotIn("event_type == 'compose_navigation_changed'", main)
+        self.assertNotIn("event_type == 'compose_library_navigation'", main)
+        self.assertNotIn("event_type == 'compose_settings_navigation'", main)
+        self.assertNotIn("navigation.sync_top_level", main)
+        self.assertNotIn("def sync_top_level", navigation)
+        self.assertNotIn("compose_navigation_changed", host)
+        self.assertNotIn("compose_library_navigation", host)
+        self.assertNotIn("compose_settings_navigation", host)
+        self.assertNotIn("onRouteChanged", nav_host)
+        self.assertIn("NavHost(", nav_host)
+        self.assertIn("LaunchedEffect(startDestination, effectiveStartDestination)", nav_host)
 
-
-        self.assertIn('"my_list"', navigation)
-        self.assertIn('"search"', navigation)
-        self.assertIn("def sync_top_level", navigation)
-
-        self.assertIn("onRouteChanged = ::publishComposeRouteChanged", host)
-        self.assertIn('"compose_navigation_changed"', host)
-        self.assertIn("LaunchedEffect(composeRoute, animeId, episodeId, routeOrigin)", nav_host)
+        # Flet remains only as guarded fallback for non-Compose runtime paths.
+        self.assertIn("if compose_primary_ui:", main)
+        self.assertIn("HomeView.build(", main)
 
     def test_migrated_screens_do_not_build_parallel_flet_ui_on_android(self):
         source = MAIN.read_text(encoding="utf-8")
+        nav_host = NAV_HOST.read_text(encoding="utf-8")
         start = source.index("    def _build_screen(")
         end = source.index("    def _settings_view_paths()", start)
         block = source[start:end]
@@ -87,22 +88,31 @@ class ComposeCutoverTests(unittest.TestCase):
         self.assertIn("else:", details)
         self.assertIn("DetailView.build(", details)
 
-        # Collector remains a real Flet surface because no Compose equivalent
-        # exists yet.
-        self.assertIn("CollectorView.build(", block)
+        # Android uses a native Compose route; Flet remains guarded for fallback environments.
+        collector = block[block.index('        elif route == "collector":'):block.index('        elif route == "settings":')]
+        self.assertIn("if compose_primary_ui:", collector)
+        self.assertIn("control = ft.Container(expand=True)", collector)
+        self.assertIn("CollectorView.build(", collector)
+        self.assertIn("ReiAnixRoutes.COLLECTOR", nav_host)
+        self.assertIn("navigateToCollector()", nav_host)
 
         # Nested Settings remains the guarded legacy fallback.
         self.assertIn("SettingsView.build(", block)
 
-    def test_recovery_and_collector_keep_real_legacy_surfaces(self):
+    def test_recovery_and_collector_keep_real_fallback_without_compose_delegation(self):
         source = MAIN.read_text(encoding="utf-8")
+        compose_host = (
+            ROOT
+            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+        ).read_text(encoding="utf-8")
         self.assertIn("recovery_bridge = AndroidBridge(data_dir, page)", source)
         self.assertIn('await recovery_bridge.open_library(start_destination="recovery")', source)
         self.assertNotIn("await recovery_bridge.hide_library()", source)
-        self.assertIn("elif destination == 'collector':", source)
-        self.assertIn("await bridge.hide_library()", source)
+        self.assertNotIn("elif destination == 'collector':", source)
         self.assertIn("def navigate_collector():", source)
         self.assertIn("CollectorView.build(", source)
+        self.assertNotIn("publishLegacyNavigation(\"collector\")", compose_host)
+        self.assertIn("navController.navigateToCollector()", compose_host)
 
     def test_canonical_domain_boundaries_remain_intact(self):
         source = MAIN.read_text(encoding="utf-8")

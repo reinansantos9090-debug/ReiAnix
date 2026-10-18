@@ -6,6 +6,8 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
+import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import java.io.File
@@ -30,6 +32,12 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
  */
 class ReiAnixAppDependencies(context: Context) {
     private val appContext = context.applicationContext
+
+    /** Single process-scoped coordinator for native startup ordering and health state. */
+    val bootstrap: ReiAnixAppBootstrap by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixAppBootstrap(appContext, this)
+    }
+
 
     val sqliteDatabase: ReiAnixSqliteDatabase by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixSqliteDatabase(appContext)
@@ -66,6 +74,13 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixLibraryService(sqliteLibraryRepository)
     }
 
+    /** Local discovery algorithms over the shared canonical SQLite repository. */
+    val libraryDiscoveryService: ReiAnixLibraryDiscoveryService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixLibraryDiscoveryService(sqliteLibraryRepository)
+    }
+
     val personalListService: ReiAnixPersonalListService by lazy(
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
@@ -76,6 +91,16 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixConsumptionService(sqliteLibraryRepository)
+    }
+
+    /** Native Collector Journey derives statistics from canonical SQLite consumption rows. */
+    val collectorJourneyService: ReiAnixCollectorJourneyService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixCollectorJourneyService(
+            library = sqliteLibraryRepository,
+            settings = sqliteSettingsRepository,
+        )
     }
 
     /** Local genre identity/classification uses the same canonical SQLite database. */

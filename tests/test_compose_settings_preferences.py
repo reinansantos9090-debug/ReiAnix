@@ -102,7 +102,7 @@ def test_theme_follows_flow_without_activity_restart():
 def test_scope_is_whitelisted_in_python_before_persistence():
     main = read("main.py")
     start = main.index("if event_type == 'compose_settings_set':")
-    end = main.index("if event_type == 'compose_settings_navigation':", start)
+    end = main.index("if event_type == 'compose_settings_bulk_applied':", start)
     block = main[start:end]
 
     for key in (
@@ -339,7 +339,7 @@ def test_compose_artwork_cache_clear_is_native_and_does_not_repeat_python_mutati
     assert "isArtworkPathReferenced" in artwork_service
     assert "native_handled=native_handled" in main
     worker_start = main.index("async def _run_compose_settings_action")
-    worker_end = main.index("async def _hydrate_compose_details_context", worker_start)
+    worker_end = main.index("async def _run_compose_library_command", worker_start)
     worker = main[worker_start:worker_end]
     assert "if native_handled:" in worker
     assert "library.clear_anilist_cache" in worker  # legacy Flet path only
@@ -452,6 +452,6 @@ def test_compose_backup_restore_integrity_and_diagnostics_are_native():
     assert "elif action == 'backup_restore':" in main
     assert "elif action == 'diagnostic_export':" in main
     worker_start = main.index("async def _run_compose_settings_action")
-    worker_end = main.index("async def _hydrate_compose_details_context", worker_start)
+    worker_end = main.index("async def _run_compose_library_command", worker_start)
     worker = main[worker_start:worker_end]
     assert "BackupService" not in worker
