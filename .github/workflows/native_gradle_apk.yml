@@ -72,6 +72,191 @@ jobs:
           source_apk="android/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$source_apk"
           unzip -tq "$source_apk"
+
+          # The native Gradle artifact must not bundle the Flet/Flutter/Python
+          # runtime. Check the actual APK entries instead of inferring this from
+          # the fact that Gradle assembled successfully.
+          apk_entries="$(unzip -Z1 "$source_apk")"
+          if grep -Eiq '(^|/)assets/app\\.zip$|^assets/flutter_assets/|^lib/[^/]+/lib(flutter|app|serious_python|python[0-9.]+)\\.so$|(^|/)[^/]+\\.py[co]?          test -x "$apk_tool"
+          mkdir -p build/native-gradle-distribution
+          "$apk_tool" dump badging "$source_apk" > build/native-gradle-distribution/apk-badging.txt
+          "$apk_tool" dump xmltree "$source_apk" AndroidManifest.xml > build/native-gradle-distribution/effective-manifest.txt
+          grep -F "package: name='com.reiflix.reiflix_local'" build/native-gradle-distribution/apk-badging.txt
+          grep -F "sdkVersion:'24'" build/native-gradle-distribution/apk-badging.txt
+          grep -F "targetSdkVersion:'36'" build/native-gradle-distribution/apk-badging.txt
+          grep -F 'com.reiflix.reiflix_local.MainActivity' build/native-gradle-distribution/effective-manifest.txt
+          grep -F 'com.reiflix.reiflix_local.NativePlayerActivity' build/native-gradle-distribution/effective-manifest.txt
+          if grep -Eiq 'io\\.flutter\\.embedding|Flutter(Activity|FragmentActivity)|com\\.flet' build/native-gradle-distribution/effective-manifest.txt; then
+            echo "::error::The native APK manifest still declares a legacy Flutter/Flet activity."
+            exit 1
+          fi
+          unzip -Z1 "$source_apk" | grep -Fx 'assets/native-sqlite-contract-v29.json'
+          unzip -Z1 "$source_apk" | grep -Fx 'assets/native-sqlite-bootstrap-v29.json'
+          unzip -Z1 "$source_apk" | grep -Eq '^classes([0-9]+)?\.dex$'
+          while IFS= read -r dex; do
+            unzip -p "$source_apk" "$dex"
+          done < <(unzip -Z1 "$source_apk" | grep -E '^classes([0-9]+)?\.dex$') | strings > build/native-gradle-distribution/dex-strings.txt
+          grep -F 'Lcom/reiflix/reiflix_local/MainActivity;' build/native-gradle-distribution/dex-strings.txt
+          grep -F 'Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;' build/native-gradle-distribution/dex-strings.txt
+          grep -F 'Lcom/reiflix/reiflix_local/NativePlayerActivity;' build/native-gradle-distribution/dex-strings.txt
+          cp "$source_apk" build/native-gradle-distribution/ReiAnix-native-debug.apk
+          test -s build/native-gradle-distribution/ReiAnix-native-debug.apk
+
+      - name: Create ZIP, build manifest, and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          distribution="build/native-gradle-distribution"
+          version_code="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' android/app/build.gradle.kts | head -n1)"
+          version_name="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' android/app/build.gradle.kts | head -n1)"
+          test -n "$version_code"
+          test -n "$version_name"
+          (
+            cd "$distribution"
+            sha256sum ReiAnix-native-debug.apk > ReiAnix-native-debug.apk.sha256
+          )
+          {
+            printf '{\n'
+            printf '  "app": "ReiAnix",\n'
+            printf '  "applicationId": "com.reiflix.reiflix_local",\n'
+            printf '  "variant": "debug",\n'
+            printf '  "versionCode": %s,\n' "$version_code"
+            printf '  "versionName": "%s",\n' "$version_name"
+            printf '  "commit": "%s",\n' "$GITHUB_SHA"
+            printf '  "artifactPurpose": "native-gradle-validation",\n'
+            printf '  "pythonRuntimePackaged": false,\n'
+            printf '  "fletRuntimePackaged": false,\n'
+            printf '  "flutterRuntimePackaged": false,\n'
+            printf '  "runtimeIndependenceCertified": false\n'
+            printf '}\n'
+          } > "$distribution/distribution-manifest.json"
+          (
+            cd "$distribution"
+            zip -j -9 -X ReiAnix-native-debug.zip \
+              ReiAnix-native-debug.apk \
+              ReiAnix-native-debug.apk.sha256 \
+              distribution-manifest.json
+          )
+          unzip -tq "$distribution/ReiAnix-native-debug.zip"
+          mkdir -p "$RUNNER_TEMP/reianix-native-zip-check"
+          unzip -q -o "$distribution/ReiAnix-native-debug.zip" -d "$RUNNER_TEMP/reianix-native-zip-check"
+          cmp -s "$distribution/ReiAnix-native-debug.apk" "$RUNNER_TEMP/reianix-native-zip-check/ReiAnix-native-debug.apk"
+          (
+            cd "$RUNNER_TEMP/reianix-native-zip-check"
+            sha256sum -c ReiAnix-native-debug.apk.sha256
+          )
+          test -s "$distribution/ReiAnix-native-debug.zip"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check
+          test -z "$(git status --porcelain)"
+
+      - name: Upload native Gradle APK validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-native-gradle-apk-${{ github.run_number }}
+          path: |
+            build/native-gradle-distribution/ReiAnix-native-debug.apk
+            build/native-gradle-distribution/ReiAnix-native-debug.apk.sha256
+            build/native-gradle-distribution/distribution-manifest.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload native Gradle ZIP validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-native-gradle-ZIP-${{ github.run_number }}
+          path: build/native-gradle-distribution/ReiAnix-native-debug.zip
+          if-no-files-found: error
+          retention-days: 1
+ <<< "$apk_entries"; then
+            echo "::error::Native APK contains a legacy Python/Flet/Flutter runtime payload."
+            grep -Ei '(^|/)assets/app\\.zip$|^assets/flutter_assets/|^lib/[^/]+/lib(flutter|app|serious_python|python[0-9.]+)\\.so$|(^|/)[^/]+\\.py[co]?          test -x "$apk_tool"
+          mkdir -p build/native-gradle-distribution
+          "$apk_tool" dump badging "$source_apk" > build/native-gradle-distribution/apk-badging.txt
+          "$apk_tool" dump xmltree "$source_apk" AndroidManifest.xml > build/native-gradle-distribution/effective-manifest.txt
+          grep -F "package: name='com.reiflix.reiflix_local'" build/native-gradle-distribution/apk-badging.txt
+          grep -F "sdkVersion:'24'" build/native-gradle-distribution/apk-badging.txt
+          grep -F "targetSdkVersion:'36'" build/native-gradle-distribution/apk-badging.txt
+          grep -F 'com.reiflix.reiflix_local.MainActivity' build/native-gradle-distribution/effective-manifest.txt
+          grep -F 'com.reiflix.reiflix_local.NativePlayerActivity' build/native-gradle-distribution/effective-manifest.txt
+          unzip -Z1 "$source_apk" | grep -Fx 'assets/native-sqlite-contract-v29.json'
+          unzip -Z1 "$source_apk" | grep -Fx 'assets/native-sqlite-bootstrap-v29.json'
+          unzip -Z1 "$source_apk" | grep -Eq '^classes([0-9]+)?\.dex$'
+          while IFS= read -r dex; do
+            unzip -p "$source_apk" "$dex"
+          done < <(unzip -Z1 "$source_apk" | grep -E '^classes([0-9]+)?\.dex$') | strings > build/native-gradle-distribution/dex-strings.txt
+          grep -F 'Lcom/reiflix/reiflix_local/MainActivity;' build/native-gradle-distribution/dex-strings.txt
+          grep -F 'Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;' build/native-gradle-distribution/dex-strings.txt
+          grep -F 'Lcom/reiflix/reiflix_local/NativePlayerActivity;' build/native-gradle-distribution/dex-strings.txt
+          cp "$source_apk" build/native-gradle-distribution/ReiAnix-native-debug.apk
+          test -s build/native-gradle-distribution/ReiAnix-native-debug.apk
+
+      - name: Create ZIP, build manifest, and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          distribution="build/native-gradle-distribution"
+          version_code="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' android/app/build.gradle.kts | head -n1)"
+          version_name="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' android/app/build.gradle.kts | head -n1)"
+          test -n "$version_code"
+          test -n "$version_name"
+          (
+            cd "$distribution"
+            sha256sum ReiAnix-native-debug.apk > ReiAnix-native-debug.apk.sha256
+          )
+          {
+            printf '{\n'
+            printf '  "app": "ReiAnix",\n'
+            printf '  "applicationId": "com.reiflix.reiflix_local",\n'
+            printf '  "variant": "debug",\n'
+            printf '  "versionCode": %s,\n' "$version_code"
+            printf '  "versionName": "%s",\n' "$version_name"
+            printf '  "commit": "%s",\n' "$GITHUB_SHA"
+            printf '  "artifactPurpose": "native-gradle-validation",\n'
+            printf '  "runtimeIndependenceCertified": false\n'
+            printf '}\n'
+          } > "$distribution/distribution-manifest.json"
+          (
+            cd "$distribution"
+            zip -j -9 -X ReiAnix-native-debug.zip \
+              ReiAnix-native-debug.apk \
+              ReiAnix-native-debug.apk.sha256 \
+              distribution-manifest.json
+          )
+          unzip -tq "$distribution/ReiAnix-native-debug.zip"
+          mkdir -p "$RUNNER_TEMP/reianix-native-zip-check"
+          unzip -q -o "$distribution/ReiAnix-native-debug.zip" -d "$RUNNER_TEMP/reianix-native-zip-check"
+          cmp -s "$distribution/ReiAnix-native-debug.apk" "$RUNNER_TEMP/reianix-native-zip-check/ReiAnix-native-debug.apk"
+          (
+            cd "$RUNNER_TEMP/reianix-native-zip-check"
+            sha256sum -c ReiAnix-native-debug.apk.sha256
+          )
+          test -s "$distribution/ReiAnix-native-debug.zip"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check
+          test -z "$(git status --porcelain)"
+
+      - name: Upload native Gradle APK validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-native-gradle-apk-${{ github.run_number }}
+          path: |
+            build/native-gradle-distribution/ReiAnix-native-debug.apk
+            build/native-gradle-distribution/ReiAnix-native-debug.apk.sha256
+            build/native-gradle-distribution/distribution-manifest.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload native Gradle ZIP validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-native-gradle-ZIP-${{ github.run_number }}
+          path: build/native-gradle-distribution/ReiAnix-native-debug.zip
+          if-no-files-found: error
+          retention-days: 1
+ <<< "$apk_entries"
+            exit 1
+          fi
           apk_tool="$ANDROID_HOME/build-tools/36.0.0/aapt"
           test -x "$apk_tool"
           mkdir -p build/native-gradle-distribution
