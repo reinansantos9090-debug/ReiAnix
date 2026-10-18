@@ -11,11 +11,12 @@ A main auditada continua híbrida: `main.py` é entrypoint Flet; `MainActivity` 
 
 | Área/contrato | Python/consumidores observados | Kotlin encontrado | Risco/condição de corte | Prompt |
 |---|---|---|---|---|
-| Bootstrap/runtime | main.py, Flet, views, pyproject.toml e prepare_flet_template.py | Compose screens, Activity/Application e app shell existem, mas Activity/Application ainda derivam de Flutter no snapshot | O runtime e o empacotamento continuam híbridos. Só cortar após boot nativo e todos os fluxos essenciais verificados. | 02, 16, 17 |
+| Bootstrap/runtime | main.py, Flet, views, pyproject.toml e prepare_flet_template.py | Compose screens, Activity/Application e app shell existem, mas Activity/Application ainda derivam de Flutter no snapshot | O runtime e o empacotamento continuam híbridos. Só cortar após boot nativo e todos os fluxos essenciais verificados. | 16, 17 |
 | Persistência SQLite | core/library_store.py (schema v29), LibraryService e gravações/merge Python | ReiAnixSqliteDatabase valida contrato v29; ReiAnixSqliteLibraryRepository tem queries e algumas operações | Provar FLET_APP_STORAGE_DATA vs filesDir/data, regras de merge e identidade de arquivo; nunca criar DB paralelo. | 03, 07 |
 | Bridge / IPC | core/android_bridge.py, core/compose_library_bridge.py, core/compose_settings_bridge.py, NativeMailbox legado | NativeMailbox, MainActivity, Compose host/ViewModels e NativeScanPublisher/Runner | Rastrear ações, payloads, requestId, ack, falha, recovery e cada consumidor; não remover bridge com consumidores ativos. | 04 |
 | SAF e permissões | core/storage_access.py, main.py e views | Activity, serviços/helpers SAF e ReiAnixStorageScreen | Preservar URI e persistable grants, identidade de folder/volume, revogação/reseleção e retorno de Android Settings. | 05 |
 | Scanner | core/scan_coordinator.py, LibraryService, bridge Python | NativeScanController, NativeScanRunner, NativeScanPublisher e integrações SAF/MediaStore | Um coordenador operacional; preservar ownership/generation, progress, cancelamento, dedup, recovery e estado terminal. | 06 |
+| Contratos/modelos de domínio | core/library_parser.py, core/media_identity.py, core/genre_registry.py, core/genre_classifier.py e consumidores Python ativos | `data/media/MediaDomainModels.kt`, `MediaFilenameParser.kt`, `MediaIdentity.kt`, `SqliteDomainMappers.kt`, `ReiAnixGenreRegistry.kt`, `ReiAnixGenreClassifier.kt` | Tipos e algoritmos base já existem no Kotlin; P02 fecha a distinção de localização, captura decimal e normalização sem IDs/DB paralelos. Python continua enquanto tiver consumidores. | 02 |
 | Regras da biblioteca | core/library_store.py, core/library_service.py, core/library_discovery.py | ReiAnixSqliteDatabase, ReiAnixSqliteLibraryRepository, modelos/ViewModels | Portar create/update/merge/dedup e observações; mesmos IDs e resultados sem mudar schema. | 07, 11 |
 | Configurações | core/settings.py, bridge e SettingsView Flet | Settings repository/contract/codec/file service e Compose Settings | Preservar defaults, validação, formato, persistência, reload e valores desconhecidos. | 08 |
 | AniList/metadados | core/anilist.py, associations no Store e views | AniList client/localizer/integration/matcher e SQLite associations | Preservar IDs, rate-limit, erros de rede, cache, localização pt-BR e prioridade de metadados manuais. | 09 |
@@ -81,3 +82,13 @@ O build atual instala Python/Flet/Flutter, prepara template, produz APK e compil
 - Fluxo Compose parcial, sem navegação/estado/ação equivalente.
 - APK final ainda empacotando Python/Flet/Flutter.
 - Workflow aplicável ausente ou não concluído em sucesso no SHA final.
+
+## 3. Contratos de domínio — Prompt 02/18
+
+A camada Kotlin pura já contém modelos para Anime, Episode, LogicalEpisodeIdentity, LocalMediaReference, ArtworkReference e PlaybackProgress; IDs de registros existentes (`anime.id`, `episodes.id`) e ID AniList são tipos distintos. `SqliteDomainMappers.kt` é projeção somente de leitura, não um caminho alternativo de escrita.
+
+O parser Kotlin já cobre marcadores explícitos (SxxExx, Temp/Temporada, NxM, EP/Episode/Episódio), especiais, filmes, numeração absoluta, metadados técnicos, extensões suportadas e sinais de ambiguidade. O Prompt 02 completa a captura conservadora de número decimal; a integração de scanner/orquestração de discovery pertence ao Prompt 11.
+
+A identidade física mantém regras conservadoras: tamanho/modificação são metadados de descoberta, nomes normalizados não são IDs e URIs de providers genéricos não são convertidas em caminhos compartilhados presumidos. O contrato de localização distingue filesystem path, file URI, content URI, SAF tree URI, SAF document URI e outros esquemas.
+
+`ReiAnixGenreRegistry.kt` continua o registry de identidade/associações do lado Kotlin sobre o SQLite existente; `ReiAnixGenreClassifier.kt` mantém regras determinísticas locais. `core/library_parser.py`, `core/library_discovery.py`, `core/media_identity.py`, `core/genre_registry.py` e `core/genre_classifier.py` permanecem necessários enquanto houver consumidores Python ativos; nenhum desses módulos é removido nesta etapa.

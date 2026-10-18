@@ -7,6 +7,7 @@
 - `EpisodeRecordId` wraps the existing `episodes.id` primary key. The current schema stores episode identification, playback state, file location and media identity on this record; this change does not assert that a separate persisted file table exists.
 - `LogicalEpisodeIdentity` is a nullable projection derived from the persisted anime ID, season and usable episode/absolute number. A title or filename alone never creates a logical episode identity.
 - `CanonicalMediaIdentity` represents stable location evidence when available. A URI is retained separately because content URIs can change or become unavailable when Android storage permissions change.
+- `MediaLocationKind` distinguishes a raw filesystem path, `file://`, generic `content://`, SAF tree, SAF document, and other URI schemes using only the stored string. Classification neither grants access nor creates a persisted identity.
 
 The existing SQLite records remain the canonical persistence records. `SqliteDomainMappers.kt` provides read-only projections and preserves raw JSON columns (aliases, genres, user tags, and manual metadata ownership) rather than trying to parse and reserialize them. No table, column, primary key, index, database version or migration was changed.
 
@@ -25,7 +26,7 @@ The existing SQLite records remain the canonical persistence records. `SqliteDom
 
 ## Python/Kotlin parity and boundary
 
-The current Python parser and its tests remain in place. The The pure-JVM helpers under the existing `data/media` package cover the core location identity contract and the main deterministic filename patterns (SxxExx, Temp/Temporada + E, NxM, episode markers, specials, movies, absolute markers and conservative numeric suffixes). Explicit season conflicts and multi-episode ranges are marked as unresolved rather than silently treated as unambiguous.
+The current Python parser and its tests remain in place. The pure-JVM helpers under the existing `data/media` package cover the core location identity contract and the main deterministic filename patterns (SxxExx, Temp/Temporada + E, NxM, episode markers, specials, movies, absolute markers and conservative numeric suffixes). Explicit season conflicts and multi-episode ranges are marked as unresolved rather than silently treated as unambiguous.
 
 This step intentionally does not switch the existing scanner, library service, player, or legacy Python bridge to the new Kotlin parser. Their orchestration is outside this prompt's scope. Wiring discovery results to these domain helpers should happen with the scanner/library migration step, with cross-language fixture tests expanded against any remaining edge cases in `core/library_parser.py`; until then the legacy behavior remains available and is not removed.
 
@@ -33,7 +34,7 @@ This step intentionally does not switch the existing scanner, library service, p
 
 The domain projection retains the existing episode row ID, anime foreign reference, progress, duration, watched flag, last-played timestamp, source/confidence/manual override flags, availability state and media identity. The model is a read projection only: it does not create database rows, rewrite IDs, update progress or mutate manual/user-owned metadata. Existing repository update operations continue to own writes to SQLite.
 
-The domain models deliberately allow incomplete optional metadata and nullable logical identities. No schema migration, data deletion, scanner rewrite, AniList integration or player rewrite was performed in this step.
+The domain models deliberately allow incomplete optional metadata and nullable logical identities. Episode numbers remain `Double?` and can preserve fractional values. `SqliteDomainMappers.kt` is read-only and retains persisted primary/foreign IDs, raw JSON, manual metadata ownership, AniList IDs, playback state and availability. No schema migration, data deletion, scanner rewrite, AniList integration or player rewrite was performed in this step.
 
 ## Validation workflow
 

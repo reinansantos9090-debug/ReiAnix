@@ -1,6 +1,6 @@
 # Critérios de aceitação — migração Kotlin nativa do ReiAnix
 
-**Escopo atual:** Prompt 01/18, auditoria documental.  
+**Escopo documental histórico:** Prompt 01/18 (auditoria). A seção 5 registra os critérios específicos do Prompt 02/18.  
 **Baseline:** `80fd95acd0d569d3013ac2d71fcf4cd166ae7844`.  
 **Meta global:** Android Kotlin/Jetpack Compose sem Python/Flet/Flutter no runtime e no pacote final, preservando funções/dados/testes existentes.
 
@@ -57,3 +57,22 @@ Não satisfaz a meta final: Kotlin compilar dentro do host Flet; produzir APK h�
 ## 5. Estado de base
 
 O snapshot auditado continua híbrido. A equivalência do caminho SQLite precisa ser provada e existem regras de merge ainda atribuídas ao LibraryStore. O Prompt 01 documenta inventário, dependências, sequência e critérios; não declara migração funcional concluída.
+
+## 5. Aceitação específica do Prompt 02/18 — domínio de mídia
+
+| ID | Critério | Condição verificável | Evidência exigida |
+|---|---|---|---|
+| P02-01 | Branch e baseline | Branch dedicada parte da `main` oficial; `main` não recebe commits do prompt diretamente. | Branch, parent SHA e compare oficial. |
+| P02-02 | Reaproveitamento | Reutilizar modelos, identificadores, mapeadores e registry Kotlin existentes; não criar classes ou registries concorrentes. | Diff e referências no código. |
+| P02-03 | Localização de mídia | Preservar o valor armazenado e distinguir path filesystem, `file://`, `content://`, SAF tree, SAF document e outros esquemas. | `MediaDomainModels.kt`; nenhuma alteração de persistência. |
+| P02-04 | Parser conservador | Marcadores explícitos/sufixos admitem episódios decimais; filename apenas numérico não cria identidade de episódio. | `MediaFilenameParser.kt` e contrato documental. |
+| P02-05 | Identidade estável | IDs de anime/episódio/AniList distintos; título, tamanho ou `modifiedAt` não são identidade física isoladamente. | Modelos, `MediaIdentity.kt` e mapeadores. |
+| P02-06 | Gêneros | Reutilizar registry/classifier; canonicalização, aliases e metadados AniList/manual preservados. | Registry/classifier e documentação. |
+| P02-07 | SQLite | Schema v29, IDs, tabelas, colunas e arquivo canônico inalterados; mapeadores continuam read-only. | Diff sem mudanças nos arquivos do schema. |
+| P02-08 | Python legado | Manter módulos Python enquanto houver consumidores ativos; registrar zero arquivos/linhas Python removidos se os módulos forem preservados. | Consumidores e relatório. |
+| P02-09 | Testes/workflows | Não adicionar nem alterar testes/workflows; não executar manualmente os testes Kotlin/JVM reservados. | Diff e execuções oficiais reais. |
+| P02-10 | Validação | Build/workflows reportados separadamente; conclusão exige status terminal `success` no SHA final. | SHA final, PR, runs, artefatos e diff. |
+
+### Fronteiras após P02
+
+Esta etapa não migra a orquestração do scanner, LibraryService, discovery/missing/observations, nem desativa o runtime híbrido. A ligação do parser/modelos ao fluxo nativo ativo permanece no Prompt 11; os serviços e consumidores Python continuam até uma troca segura ser implementada e validada. O Prompt 03 não foi iniciado por este registro.

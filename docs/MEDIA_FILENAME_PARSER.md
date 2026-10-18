@@ -2,7 +2,7 @@
 
 ## Ownership and boundaries
 
-`MediaFilenameParser` is the single pure-JVM parser for local filename candidates. It consumes only a supplied path string; it does not open files, rename or move them, access storage, perform network calls, identify an AniList record, or create a persisted identity. `LocalMediaIdentity` and `MediaTitleNormalizer` remain separate APIs. The existing Python `core/library_parser.py` is preserved because `core/library_service.py` still calls it; scanner/library cutover is intentionally outside Prompt 5.
+`MediaFilenameParser` is the single pure-JVM parser for local filename candidates. It consumes only a supplied path string; it does not open files, rename or move them, access storage, perform network calls, identify an AniList record, or create a persisted identity. `LocalMediaIdentity` and `MediaTitleNormalizer` remain separate APIs. The active legacy Python `core/library_service.py` still calls `core/library_parser.py`; Python remains necessary until all runtime consumers have switched and behavioral parity has been validated.
 
 ## Legacy-supported patterns retained
 
@@ -10,7 +10,7 @@ The parser keeps the rules currently present in `core/library_parser.py` and the
 
 Technical tokens are extracted using the normalizer's shared patterns (resolution, codec, HDR, source/container labels, audio and language/dub/sub tokens); they are reported separately from the candidate title. The source title, original leaf filename, base name, and extracted extension remain separate fields. Unknown extensions are reported as unsupported but do not prevent offline parsing of the text.
 
-The allowlist remains identical to Python: `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.m4v`, `.ts`, `.m2ts`, `.flv`, and `.wmv`.
+Episode markers and conservative suffix parsing accept decimal numbers using either a dot or comma. Number-only stems such as `12.5.mkv` are still treated as ambiguous and are not promoted to episode identity; absolute numbers remain integer-based. The allowlist remains identical to Python: `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.m4v`, `.ts`, `.m2ts`, `.flv`, and `.wmv`.
 
 ## Result and ambiguity contract
 
@@ -18,6 +18,6 @@ The allowlist remains identical to Python: `.mp4`, `.mkv`, `.webm`, `.avi`, `.mo
 
 ## Validation and remaining boundary
 
-`MediaFilenameParserTest` contains pure Kotlin/JVM cases for simple titles, episode lengths and marker variants, season context/conflict, release groups and technical tokens, Unicode, supported and unsupported extensions, numeric false positives, specials, movies, absolute numbering, and ambiguous/malformed inputs. The existing Python parser and its tests are unchanged. Kotlin JVM test execution/build must be confirmed by the existing repository workflow or a configured Gradle environment; this change does not add emulator tests or alter workflow triggers.
+`MediaFilenameParserTest` contains the pre-existing pure Kotlin/JVM cases for simple titles, episode lengths and marker variants, season context/conflict, release groups and technical tokens, Unicode, supported and unsupported extensions, numeric false positives, specials, movies, absolute numbering, and ambiguous/malformed inputs. The existing Python parser and its tests are unchanged. Kotlin JVM test execution/build must be confirmed by the existing repository workflow or a configured Gradle environment; this change does not add emulator tests or alter workflow triggers.
 
 The parser is prepared for later scanner/library integration but is not yet the active parser for the Python-driven `LibraryService`. That runtime dependency remains explicit until a later migration prompt switches and validates the consuming flow.

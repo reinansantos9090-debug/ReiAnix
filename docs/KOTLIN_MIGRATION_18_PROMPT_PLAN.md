@@ -1,12 +1,12 @@
 # Plano executável da migração Kotlin nativa do ReiAnix — 18 prompts
 
-**Baseline:** `80fd95acd0d569d3013ac2d71fcf4cd166ae7844`. O Prompt 01 entrega a documentação. Os Prompts 02–18 são plano e exigem autorização do usuário antes da execução.
+**Baseline histórico da auditoria:** `80fd95acd0d569d3013ac2d71fcf4cd166ae7844`. O Prompt 01 entregou a documentação e o Prompt 02 migra os contratos de domínio nesta branch. Os Prompts 03–18 continuam sujeitos à autorização do usuário.
 
 ## Sequência e gates
 
 | Prompt | Objetivo | Escopo controlado | Gate obrigatório |
 |---|---|---|---|
-| 02 | Linha de base nativa e fronteira de build | Revalidar Activity/Application, template Flet, Gradle e entrypoints; definir cutover mínimo no código atual, sem arquitetura/workflow paralelo. | Gate: grafo de boot comprovado e runtime híbrido preservado até a substituição. |
+| 02 | Contratos de domínio, modelos de mídia e identidade | Consolidar os contratos Kotlin existentes para anime, episódio, mídia local, metadados e IDs persistidos; alinhar parsing decimal, tipos de URI/SAF e classificação/normalização de gêneros. | Gate: IDs/schema v29 preservados; identidade não é inferida de títulos ambíguos; Python fica até paridade e troca dos consumidores. |
 | 03 | Bootstrap SQLite v29 | Resolver FLET_APP_STORAGE_DATA versus filesDir/data e abrir a mesma DB existente; tratar ausência, corrupção, lock e schema inválido. | Gate: arquivo/caminho canônicos provados, dados preservados e sem DB paralelo. |
 | 04 | Contratos IPC/bridge | Mapear ações/eventos/payload/requestId/ack/falha/recovery e consumidores em AndroidBridge, Compose bridges e NativeMailbox. | Gate: cada mensagem tem produtor/consumidor/resultado terminal; sem stubs. |
 | 05 | SAF e permissões | Migrar grants persistidos, URI, identidade SAF/volume, revogação/reseleção e retorno Android Settings. | Gate: pastas/grants persistem; Back/cancel/error deixam estado consistente. |
@@ -15,7 +15,7 @@
 | 08 | Configurações | Migrar defaults, validação, persistência, codec/snapshot, reload e compatibilidade. | Gate: dados de preferências preservados sem reset silencioso. |
 | 09 | AniList/metadados pt-BR | Migrar client/API, rate limit, cache, association por ID, tradução em chunks, erros e prioridade de metadata manual. | Gate: IDs/campos manuais preservados e falhas offline recuperáveis. |
 | 10 | Artwork e thumbnails | Migrar cache, modifiedAt, priorização da arte local, eventos e refresh Compose. | Gate: arte local protegida, cache consistente e UI atualizada. |
-| 11 | Discovery e identidade de episódios | Migrar parser, season/episode/absolute number, missing, observations e matching. | Gate: scans repetidos idempotentes e IDs estáveis. |
+| 11 | Integração nativa de discovery e identidade de episódios | Conectar os contratos/parser de domínio já existentes ao scanner e ao fluxo ativo de importação Kotlin; migrar orquestração de observations, missing, matching e deduplicação entre scans. | Gate: fluxo nativo ativo, scans idempotentes e IDs estáveis; Python só sai após não restarem consumidores. |
 | 12 | Backup/recovery/diagnósticos | Migrar versões, preview, validação, restore transacional, recovery e logs correlacionados. | Gate: backup inválido não destrói dados; restore preserva biblioteca. |
 | 13 | Telas principais Compose | Conectar Home/Library/My List/Search/Details ao repositório Kotlin canônico. | Gate: ações/rotas essenciais sem Flet; estados e filtros equivalentes. |
 | 14 | Organize/Storage/Settings/lifecycle | Fechar fluxos secundários, picker, Back, intents, Settings return, foco e cancelamento. | Gate: sem eventos duplicados/seleções pendentes; estado de navegação preservado. |
@@ -39,7 +39,7 @@
 
 ## Dependências sequenciais
 
-P02–P04 estabelecem boot, DB e IPC. P05–P06 fecham storage/scanner. P07–P12 migram domínio/infra. P13–P14 conectam UI/lifecycle. P15 fecha player. P16 só acontece após paridade; P17 depende do entrypoint nativo; P18 fecha o programa. Não paralelizar mudanças que alterem o dono de DB, scanner, IPC, entrypoint ou build.
+P02 estabelece os contratos de domínio e a camada pura de parsing/identidade. P03 estabelece acesso ao SQLite v29; P04 fecha IPC; P05–P06 fecham permissões e scanner; P07–P10 migram serviços e integrações; P11 liga discovery/identidade ao fluxo nativo ativo; P12–P15 cobrem recovery, UI e player. A verificação do grafo boot/runtime, prevista no plano original de base nativa, permanece gate de P16; o build APK nativo permanece no P17. P18 fecha o programa. Não paralelizar mudanças que alterem o dono de DB, scanner, IPC, entrypoint ou build.
 
 ## Política de remoção
 

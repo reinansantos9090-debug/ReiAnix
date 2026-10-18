@@ -8,11 +8,11 @@ Genres may arrive from AniList metadata, the local GenreClassifier, existing loc
 
 ## Identity
 
-Each genre has a stable UUID, canonical name, normalized name, source, and system/custom flags. Aliases resolve to the same UUID. Normalization is for identity matching only; it is not translation and does not use fuzzy matching.
+Each genre has a stable UUID, canonical name, normalized name, source, and system/custom flags. Aliases resolve to the same UUID. Normalization is for identity matching only; it is not translation and does not use fuzzy matching. Kotlin normalization also mirrors Python case-fold behavior for `ß` and Greek final sigma (`ς`) after Unicode decomposition.
 
 ## Persistence
 
-The registry uses the existing library.sqlite3. It adds genres, genre_aliases, and anime_genres tables to the existing database. Existing anime.genres JSON is retained for backward compatibility and migrated idempotently into the registry.
+Both legacy and native code paths use the existing `library.sqlite3` schema v29. The native `ReiAnixGenreRegistry` uses `ReiAnixSqliteDatabase`, does not create a second database or alter the schema, and exposes an explicit `initialize()` for idempotent backfill from legacy JSON. The Python registry remains necessary while Python service/runtime consumers still depend on it; its implementation is not removed by Prompt 02.
 
 ## Associations
 
@@ -29,3 +29,8 @@ The registry is entirely local. Once a genre is persisted, Organize, Details, se
 - Genre is not Organize Category.
 - GenreClassifier infers local genres; GenreRegistry owns genre identity.
 - The existing AniList client remains the only AniList client.
+
+
+## Kotlin migration boundary
+
+`ReiAnixGenreRegistry.kt` and `ReiAnixGenreClassifier.kt` are the existing native registry/classifier; Prompt 02 reuses them instead of creating competitors. Python `core/genre_registry.py` and `core/genre_classifier.py` remain during the hybrid transition because `core/library_service.py` and related consumers still use that path. Do not remove or disable the legacy path until consumers have switched, parity is validated, and the applicable later prompt authorizes the cutover.
