@@ -3,7 +3,10 @@ package com.reiflix.reiflix_local
 import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteBootstrapper
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaUpgrader
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
 import com.reiflix.reiflix_local.storage.NativeIndex
@@ -338,11 +341,22 @@ class ReiAnixAppBootstrap internal constructor(
                 )
             }
             try {
-                NativeCommandDispatcher.start(appContext)
+                val legacyRuntimePresent = NativeMailbox.hasLegacyPythonRuntime(appContext)
+                if (legacyRuntimePresent) {
+                    NativeCommandDispatcher.start(appContext)
+                } else {
+                    // The dispatcher is a Python -> Android compatibility channel. A native-only
+                    // APK has no Python producer; do not start an idle FileObserver or create its queue.
+                    Log.i(TAG, "Legacy command dispatcher skipped: no embedded app.zip runtime.")
+                }
                 completeStage(ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER)
                 recordDiagnostic(
                     name = "APP_BOOTSTRAP_STAGE_COMPLETED",
-                    result = "COMPLETED",
+                    result = if (legacyRuntimePresent) {
+                        "LEGACY_COMMAND_DISPATCHER_STARTED"
+                    } else {
+                        "NATIVE_ONLY_NO_LEGACY_COMMAND_CONSUMER"
+                    },
                     stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
                 )
             } catch (cancelled: CancellationException) {
@@ -400,12 +414,13 @@ class ReiAnixAppBootstrap internal constructor(
         val dataDirectory = File(appContext.filesDir, "data")
         val canonicalFile = File(dataDirectory, ReiAnixBackupService.DATABASE_NAME)
         if (!canonicalFile.exists()) {
-            val interruptedPromotion = dataDirectory.listFiles()
+            // A previous canonical database is durable evidence of an interrupted
+            // promotion. A candidate alone is only a temporary fresh-install schema
+            // file: bootstrap uses unique candidate names and can safely leave stale
+            // candidates untouched while creating a new candidate.
+            val interruptedPreviousDatabase = dataDirectory.listFiles()
                 ?.any { file ->
-                    file.isFile && (
-                        file.name.startsWith(".library.sqlite3.previous-") ||
-                            file.name.startsWith(".library.sqlite3.candidate-")
-                        )
+                    file.isFile && file.name.startsWith(".library.sqlite3.previous-")
                 } == true
             val priorRecoverySnapshots = File(dataDirectory, "backups")
                 .listFiles()
@@ -418,22 +433,46 @@ class ReiAnixAppBootstrap internal constructor(
                 Log.e(TAG, "Could not inspect durable SAF recovery receipts; treating the state as recovery evidence. errorType=" + error::class.java.simpleName)
                 true
             }
-            return if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
-                CanonicalDatabaseCheck(
+            if (interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery) {
+                return CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
                     warning = when {
                         pendingSafRecovery -> SAF_RECEIPT_RECOVERY_WARNING
-                        interruptedPromotion -> PROMOTION_RECOVERY_WARNING
+                        interruptedPreviousDatabase -> PROMOTION_RECOVERY_WARNING
                         else -> INTERRUPTED_RECOVERY_WARNING
                     },
                 )
-            } else {
-                // LibraryStore in the remaining hybrid runtime initializes a fresh install.
-                // Absence without durable recovery evidence is not data corruption.
+            }
+
+            // Only a genuinely fresh install gets a new database. Never repair or replace an
+            // existing/corrupt file through this path, and never bypass recovery evidence.
+            return try {
+                ReiAnixSqliteBootstrapper(appContext, dependencies.sqliteDatabase).bootstrapIfMissing()
+                val schemaCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
+                val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
+                if (schemaCompatible && integrityHealthy) {
+                    CanonicalDatabaseCheck(
+                        status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                        recoveryRequired = false,
+                    )
+                } else {
+                    CanonicalDatabaseCheck(
+                        status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                        recoveryRequired = true,
+                        warning = DATABASE_RECOVERY_WARNING,
+                    )
+                }
+            } catch (error: Exception) {
+                Log.e(
+                    TAG,
+                    "Native fresh-install SQLite bootstrap failed; database-dependent services remain gated. errorType=${error::class.java.simpleName}",
+                    error,
+                )
                 CanonicalDatabaseCheck(
-                    status = ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
-                    recoveryRequired = false,
+                    status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                    recoveryRequired = true,
+                    warning = DATABASE_RECOVERY_WARNING,
                 )
             }
         }
@@ -443,6 +482,19 @@ class ReiAnixAppBootstrap internal constructor(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
                 warning = "O arquivo da base SQLite existe, mas não pode ser validado.",
+            )
+        }
+
+        // Upgrade recognized older schema-v29 databases natively, inside an additive SQLite transaction.
+        // Unsafe or ambiguous legacy states remain gated in Recovery Mode instead of being replaced.
+        try {
+            ReiAnixSqliteSchemaUpgrader(appContext, dependencies.sqliteDatabase).upgradeIfNeeded()
+        } catch (error: Exception) {
+            Log.e(TAG, "Native additive SQLite schema upgrade was refused; Recovery Mode remains required. errorType=" + error::class.java.simpleName, error)
+            return CanonicalDatabaseCheck(
+                status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                recoveryRequired = true,
+                warning = DATABASE_RECOVERY_WARNING,
             )
         }
 

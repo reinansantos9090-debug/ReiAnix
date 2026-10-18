@@ -172,7 +172,12 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("PLAYER_EVENT_CLOCK_MS", self.player)
         self.assertIn("private fun nextPlayerEventCreatedAt()", self.player)
         self.assertIn("max(wallClockMs, previous + 1L)", self.player)
-        self.assertIn('val transitionCreatedAtMs = nextPlayerEventCreatedAt()', self.player)
+        transition_start = self.player.index("private fun requestEpisode")
+        transition_end = self.player.index("private fun seekToSavedPosition", transition_start)
+        transition_block = self.player[transition_start:transition_end]
+        self.assertIn("transitionSourceCreatedAtMs = startedAtMs", transition_block)
+        self.assertIn("sourceCreatedAtMs = startedAtMs", transition_block)
+        self.assertNotIn("val transitionCreatedAtMs = nextPlayerEventCreatedAt()", transition_block)
         self.assertIn('val exitCapturedAt = nextPlayerEventCreatedAt()', self.player)
         progress_start = self.player.index("private fun buildProgressEvent")
         progress_end = self.player.index("private fun saveProgress", progress_start)
@@ -206,9 +211,9 @@ class PlaybackContractTests(unittest.TestCase):
         request_start = source.index("private fun requestEpisode")
         request_end = source.index("private fun seekToSavedPosition", request_start)
         request_block = source[request_start:request_end]
-        self.assertIn("playbackWorker.submit", request_block)
-        self.assertIn("NativeMailbox.write(", request_block)
-        self.assertIn("val published = NativeMailbox.write(", request_block)
+        self.assertIn("dispatchNativeEpisodeTransition(", request_block)
+        self.assertNotIn("NativeMailbox.write(", request_block)
+        self.assertIn("startActivity(successorIntent)", request_block)
         autoplay_idx = source.index('persistCanonicalPlayerSetting("player.autoplay_next"')
         autoplay_block = source[max(0, autoplay_idx - 240):autoplay_idx + 220]
         helper_start = source.index("private fun persistCanonicalPlayerSetting")

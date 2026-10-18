@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Configure Java 17
         uses: actions/setup-java@v5
@@ -38,9 +40,12 @@ jobs:
 
       - name: Validate wrapper and source revision
         shell: bash
+        env:
+          REIANIX_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
+          echo "REIANIX_SOURCE_SHA=$REIANIX_SOURCE_SHA" >> "$GITHUB_ENV"
           test -s gradlew
           test -s gradle/wrapper/gradle-wrapper.jar
           test -s gradle/wrapper/gradle-wrapper.properties
@@ -63,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --stacktrace --max-workers=2
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
 
       - name: Verify APK metadata and native payload
         shell: bash
@@ -72,6 +77,16 @@ jobs:
           source_apk="android/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$source_apk"
           unzip -tq "$source_apk"
+
+          # Verify the actual APK entries; Gradle success alone does not prove
+          # that a native package excludes the legacy runtime payload.
+          apk_entries="$(unzip -Z1 "$source_apk")"
+          legacy_payload_pattern='(^|/)assets/app\.zip$|^assets/flutter_assets/|^lib/[^/]+/lib(app|[^/]*(flutter|python)[^/]*)\.so$|(^|/)[^/]+\.py[co]?$'
+          if grep -Eiq "$legacy_payload_pattern" <<< "$apk_entries"; then
+            echo "::error::Native APK contains a legacy Python/Flet/Flutter runtime payload."
+            grep -Ei "$legacy_payload_pattern" <<< "$apk_entries"
+            exit 1
+          fi
           apk_tool="$ANDROID_HOME/build-tools/36.0.0/aapt"
           test -x "$apk_tool"
           mkdir -p build/native-gradle-distribution
@@ -82,7 +97,12 @@ jobs:
           grep -F "targetSdkVersion:'36'" build/native-gradle-distribution/apk-badging.txt
           grep -F 'com.reiflix.reiflix_local.MainActivity' build/native-gradle-distribution/effective-manifest.txt
           grep -F 'com.reiflix.reiflix_local.NativePlayerActivity' build/native-gradle-distribution/effective-manifest.txt
+          if grep -Eiq 'io\.flutter\.embedding|Flutter(Activity|FragmentActivity)|com\.flet' build/native-gradle-distribution/effective-manifest.txt; then
+            echo "::error::The native APK manifest still declares a legacy Flutter/Flet activity."
+            exit 1
+          fi
           unzip -Z1 "$source_apk" | grep -Fx 'assets/native-sqlite-contract-v29.json'
+          unzip -Z1 "$source_apk" | grep -Fx 'assets/native-sqlite-bootstrap-v29.json'
           unzip -Z1 "$source_apk" | grep -Eq '^classes([0-9]+)?\.dex$'
           while IFS= read -r dex; do
             unzip -p "$source_apk" "$dex"
@@ -98,8 +118,14 @@ jobs:
         run: |
           set -euo pipefail
           distribution="build/native-gradle-distribution"
-          version_code="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' android/app/build.gradle.kts | head -n1)"
-          version_name="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' android/app/build.gradle.kts | head -n1)"
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$build_tools/apksigner" verify --verbose --print-certs "$distribution/ReiAnix-native-debug.apk" | tee "$distribution/signing-certificate.txt"
+          signing_certificate_sha256="$(sed -nE 's/^Signer #1 certificate SHA-256 digest: ([[:xdigit:]]+)$/\1/p' "$distribution/signing-certificate.txt" | head -n1)"
+          native_abis="$(unzip -Z1 "$distribution/ReiAnix-native-debug.apk" | sed -nE 's#^lib/([^/]+)/.*#\1#p' | sort -u | paste -sd, -)"
+          version_code="$("$build_tools/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionCode='([0-9]+)'.*/\\1/p" | head -n1)"
+          version_name="$("$build_tools/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionName='([^']+)'.*/\\1/p" | head -n1)"
+          test -n "$signing_certificate_sha256"
+          test -n "$native_abis"
           test -n "$version_code"
           test -n "$version_name"
           (
@@ -113,9 +139,16 @@ jobs:
             printf '  "variant": "debug",\n'
             printf '  "versionCode": %s,\n' "$version_code"
             printf '  "versionName": "%s",\n' "$version_name"
-            printf '  "commit": "%s",\n' "$GITHUB_SHA"
+            printf '  "commit": "%s",\n' "$REIANIX_SOURCE_SHA"
             printf '  "artifactPurpose": "native-gradle-validation",\n'
-            printf '  "runtimeIndependenceCertified": false\n'
+            printf '  "pythonRuntimePackaged": false,\n'
+            printf '  "fletRuntimePackaged": false,\n'
+            printf '  "flutterRuntimePackaged": false,\n'
+            printf '  "runtimeIndependenceCertified": false,\n'
+            printf '  "supportedAbis": "%s",\n' "$native_abis"
+            printf '  "signingMode": "debug",\n'
+            printf '  "signingCertificateSha256": "%s",\n' "$signing_certificate_sha256"
+            printf '  "updateCompatibility": "Debug validation only; versionCode may be lower than release and certificate must match for update"\n'
             printf '}\n'
           } > "$distribution/distribution-manifest.json"
           (
@@ -123,7 +156,8 @@ jobs:
             zip -j -9 -X ReiAnix-native-debug.zip \
               ReiAnix-native-debug.apk \
               ReiAnix-native-debug.apk.sha256 \
-              distribution-manifest.json
+              distribution-manifest.json \
+              signing-certificate.txt
           )
           unzip -tq "$distribution/ReiAnix-native-debug.zip"
           mkdir -p "$RUNNER_TEMP/reianix-native-zip-check"
@@ -134,7 +168,7 @@ jobs:
             sha256sum -c ReiAnix-native-debug.apk.sha256
           )
           test -s "$distribution/ReiAnix-native-debug.zip"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
           git diff --check
           test -z "$(git status --porcelain)"
 
@@ -146,6 +180,7 @@ jobs:
             build/native-gradle-distribution/ReiAnix-native-debug.apk
             build/native-gradle-distribution/ReiAnix-native-debug.apk.sha256
             build/native-gradle-distribution/distribution-manifest.json
+            build/native-gradle-distribution/signing-certificate.txt
           if-no-files-found: error
           retention-days: 1
 

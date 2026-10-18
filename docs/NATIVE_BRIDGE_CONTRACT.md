@@ -1,5 +1,7 @@
 # ReiAnix — Native Bridge Contract
 
+> **Limite no APK nativo atual — Prompt 30.2:** este documento descreve contratos e call sites que continuam no código-fonte para compatibilidade híbrida; seus diagramas não afirmam que exista um consumidor Python dentro do APK atual. Os workflows oficial e de validação não empacotam `assets/app.zip` nem runtime Flet/Flutter/Python, e `NativeMailbox` desativa a publicação compatível quando não detecta esse runtime. Um fluxo ainda dependente exclusivamente de um consumidor legado precisa de substituto Kotlin efetivamente conectado antes de ser classificado como funcional ou certificado. Consulte [matriz atual de diagnóstico](PROMPT_30_2_APK_DIAGNOSTICS.md).
+
 ## Objetivo
 
 Este documento registra as fronteiras Python/Flet ↔ Android/Kotlin que permanecem após a consolidação da UI em um único shell Jetpack Compose.

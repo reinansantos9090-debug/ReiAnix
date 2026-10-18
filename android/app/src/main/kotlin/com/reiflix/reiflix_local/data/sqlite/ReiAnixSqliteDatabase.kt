@@ -140,6 +140,42 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
         }
 
+    /** Inspect a temporary candidate without mutating either the candidate or canonical database. */
+    internal fun inspectSchemaFile(file: File): ReiAnixSqliteSchemaSnapshot =
+        synchronized(connectionLock) {
+            check(file.isFile && file.length() > 0L) {
+                "SQLite candidate does not exist or is empty: ${file.name}"
+            }
+            val candidate = SQLiteDatabase.openDatabase(
+                file.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            )
+            try {
+                inspectSchema(candidate)
+            } finally {
+                candidate.close()
+            }
+        }
+
+    /** Run quick_check against a temporary candidate using a read-only SQLite handle. */
+    internal fun quickCheckFile(file: File): List<String> =
+        synchronized(connectionLock) {
+            check(file.isFile && file.length() > 0L) {
+                "SQLite candidate does not exist or is empty: ${file.name}"
+            }
+            val candidate = SQLiteDatabase.openDatabase(
+                file.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            )
+            try {
+                runQuickCheck(candidate)
+            } finally {
+                candidate.close()
+            }
+        }
+
     internal fun quickCheck(): List<String> =
         synchronized(connectionLock) {
             val database = openExisting(readOnly = true)
@@ -154,7 +190,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
         }
 
-    private fun inspectSchema(database: SQLiteDatabase): ReiAnixSqliteSchemaSnapshot {
+    internal fun inspectSchema(database: SQLiteDatabase): ReiAnixSqliteSchemaSnapshot {
         val contract = canonicalContract
         val expectedVersion = contract.getInt("schema_version")
         val expectedUserVersion = contract.getInt("sqlite_user_version")

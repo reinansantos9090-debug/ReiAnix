@@ -94,6 +94,31 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         self.assertNotIn(":app:test", workflow)
         self.assertNotIn("connectedDebugAndroidTest", workflow)
 
+    def test_native_bootstrap_archive_matches_schema_v29_and_is_packaged(self):
+        archive_path = ROOT / "build-logic/native-sqlite-bootstrap-v29.json.gz.b64"
+        archive = json.loads(gzip.decompress(__import__("base64").b64decode(
+            archive_path.read_text(encoding="ascii").strip()
+        )))
+        self.assertEqual(29, archive["schema_version"])
+        self.assertEqual(29, archive["initial_migration_version"])
+        self.assertEqual(0, archive["sqlite_user_version"])
+        self.assertIn("schema_migrations", archive["tables"])
+        self.assertGreater(len(archive["statements"]), 10)
+
+        module = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/native_gradle_apk.yml").read_text(encoding="utf-8")
+        self.assertIn("native-sqlite-bootstrap-v29.json.gz.b64", module)
+        self.assertIn("assets/native-sqlite-bootstrap-v29.json", workflow)
+        self.assertIn("grep -Eq '^classes([0-9]+)?\\.dex$'", workflow)
+
+    def test_native_workflow_checks_out_and_stamps_the_exact_pr_head(self):
+        workflow = (ROOT / ".github/workflows/native_gradle_apk.yml").read_text(encoding="utf-8")
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"', workflow)
+        self.assertIn('printf \'  "commit": "%s",\\n\' "$REIANIX_SOURCE_SHA"', workflow)
+        self.assertNotIn('printf \'  "commit": "%s",\\n\' "$GITHUB_SHA"', workflow)
+        self.assertNotIn('= "$GITHUB_SHA"', workflow)
+
     def test_flet_package_excludes_the_separate_build_tooling(self):
         config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         exclude_line = next(line for line in config.splitlines() if line.startswith("exclude = "))
@@ -102,6 +127,15 @@ class NativeGradleBuildContractTests(unittest.TestCase):
             '"build.gradle.kts"', '"gradle.properties"', '"build-logic"',
         ):
             self.assertIn(item, exclude_line)
+
+    def test_native_validation_artifact_publishes_signing_and_abi_diagnostics(self):
+        workflow = (ROOT / ".github/workflows/native_gradle_apk.yml").read_text(encoding="utf-8")
+        self.assertIn("apksigner", workflow)
+        self.assertIn("signing-certificate.txt", workflow)
+        self.assertIn("signingCertificateSha256", workflow)
+        self.assertIn("supportedAbis", workflow)
+        self.assertIn("updateCompatibility", workflow)
+        self.assertIn("runtimeIndependenceCertified", workflow)
 
 
 if __name__ == "__main__":

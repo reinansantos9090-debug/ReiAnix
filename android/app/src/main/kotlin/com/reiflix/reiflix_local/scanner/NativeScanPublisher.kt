@@ -9,28 +9,86 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+/**
+ * Native scan-batch staging boundary.
+ *
+ * The current scanner/indexer and canonical catalog writes are owned by Kotlin.
+ * Batch documents stay in NativeIndex's durable staging area; they are not copied
+ * into NativeMailbox for Python to discard as duplicate observations. The mailbox
+ * remains only for lightweight failure compatibility while other legacy consumers
+ * are being migrated.
+ */
 object NativeScanPublisher {
-    private const val TAG = "[REIFLIX][ANDROID][SCAN]"
-    fun publish(appContext: Context, eventType: String, source: String, scanId: String, requestId: String?, scopeKind: String, scopeRef: String, scopeKey: String, generation: Long, batchEvent: JSONObject) {
+    private const val TAG = "[REIANIX][ANDROID][SCAN]"
+
+    fun publish(
+        appContext: Context,
+        eventType: String,
+        source: String,
+        scanId: String,
+        requestId: String?,
+        scopeKind: String,
+        scopeRef: String,
+        scopeKey: String,
+        generation: Long,
+        batchEvent: JSONObject,
+    ) {
         try {
             val raw = batchEvent.optJSONArray("documents") ?: JSONArray()
             val batchId = batchEvent.optString("batchId").ifBlank { UUID.randomUUID().toString() }
             val batchNumber = batchEvent.optInt("batchNumber", 0)
             val reused = batchEvent.optBoolean("reused", false)
-            val prepared = if (reused && source != NativeIndex.SOURCE_SAF) null else NativeIndex.prepareBatch(appContext, source, scopeKey, raw, generation, batchId, batchNumber,
-                JSONObject().put("scanId", scanId).put("requestId", requestId ?: "").put("source", source).put("scopeKind", scopeKind).put("scopeRef", scopeRef))
-            val documents = prepared?.documents ?: raw
+            val prepared = if (reused && source != NativeIndex.SOURCE_SAF) {
+                null
+            } else {
+                NativeIndex.prepareBatch(
+                    appContext,
+                    source,
+                    scopeKey,
+                    raw,
+                    generation,
+                    batchId,
+                    batchNumber,
+                    JSONObject()
+                        .put("scanId", scanId)
+                        .put("requestId", requestId ?: "")
+                        .put("source", source)
+                        .put("scopeKind", scopeKind)
+                        .put("scopeRef", scopeRef),
+                )
+            }
+
             val effectiveGeneration = prepared?.generation ?: generation
-            val effectiveGenerationId = prepared?.generationId ?: NativeIndex.generationId(source, scopeKey, effectiveGeneration)
-            val payload = JSONObject().put("scanId", if (scopeKind == "volume" && scopeRef.isNotBlank()) scanId + ":" + scopeRef else scanId)
-                .put("scopeScanId", if (scopeKind == "volume" && scopeRef.isNotBlank()) scanId + ":" + scopeRef else scanId)
-                .put("requestId", requestId ?: "").put("source", source).put("scope", scopeRef).put("scopeKind", scopeKind).put("scopeRef", scopeRef)
-                .put("volumeId", batchEvent.optString("volumeId")).put("generationId", effectiveGenerationId).put("scanGeneration", effectiveGeneration)
-                .put("batchId", batchId).put("batchNumber", batchNumber).put("batchSize", documents.length()).put("processed", documents.length())
-                .put("discovered", raw.length()).put("duplicates", prepared?.duplicates ?: 0).put("reused", reused).put("documents", documents)
-                // Native scanner batches are observations only for Python; catalog writes remain Kotlin-owned.
-                .put("nativeLibraryIndexOwner", true)
-            NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", eventType).put("requestId", requestId ?: "").put("payload", payload))
+            val effectiveGenerationId = prepared?.generationId
+                ?: NativeIndex.generationId(source, scopeKey, effectiveGeneration)
+            val stagedCount = prepared?.documents?.length() ?: raw.length()
+            val outcome = if (reused && source != NativeIndex.SOURCE_SAF) "REUSED" else "STAGED"
+
+            // NativeIndex already owns the durable batch contents. Only bounded
+            // metadata enters the in-process timeline; no document array is copied
+            // through the Python polling queue.
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_SCAN_BATCH_STAGED",
+                source = source,
+                result = outcome,
+                requestId = requestId,
+                scanId = scanId,
+                context = mapOf(
+                    "event_type" to eventType,
+                    "scope_kind" to scopeKind,
+                    "batch_id" to batchId,
+                    "batch_number" to batchNumber,
+                    "generation" to effectiveGeneration,
+                    "generation_id" to effectiveGenerationId,
+                    "document_count" to stagedCount,
+                    "duplicates" to (prepared?.duplicates ?: 0),
+                ),
+            )
+            Log.d(
+                TAG,
+                "Batch staged natively eventType=$eventType scanId=$scanId " +
+                    "batchId=$batchId generation=$effectiveGeneration documents=$stagedCount outcome=$outcome",
+            )
         } catch (exception: Exception) {
             if (exception is kotlinx.coroutines.CancellationException) throw exception
             ReiAnixDiagnosticTimeline.record(
@@ -48,12 +106,31 @@ object NativeScanPublisher {
                     "batch_number" to batchEvent.optInt("batchNumber", 0),
                 ),
             )
-            Log.e(TAG, "Native batch publication failed", exception)
-            NativeMailbox.write(appContext, JSONObject().put("type", eventType.replace("_batch", "_error")).put("requestId", requestId ?: "")
-                .put("message", "Não foi possível preparar um lote da biblioteca.").put("payload", JSONObject().put("scanId", scanId).put("requestId", requestId ?: "")
-                    .put("source", source).put("scopeKind", scopeKind).put("scopeRef", scopeRef).put("generationId", NativeIndex.generationId(source, scopeKey, generation))
-                    .put("status", NativeIndex.STATUS_FAILED).put("batchId", batchEvent.optString("batchId")).put("batchNumber", batchEvent.optInt("batchNumber", 0))
-                    .put("error", exception.message ?: "native_batch_failed")))
+            Log.e(TAG, "Native batch staging failed", exception)
+
+            // Error-only compatibility event; successful document batches are
+            // never sent to the embedded Python poller.
+            NativeMailbox.write(
+                appContext,
+                JSONObject()
+                    .put("type", eventType.replace("_batch", "_error"))
+                    .put("requestId", requestId ?: "")
+                    .put("message", "Não foi possível preparar um lote da biblioteca.")
+                    .put(
+                        "payload",
+                        JSONObject()
+                            .put("scanId", scanId)
+                            .put("requestId", requestId ?: "")
+                            .put("source", source)
+                            .put("scopeKind", scopeKind)
+                            .put("scopeRef", scopeRef)
+                            .put("generationId", NativeIndex.generationId(source, scopeKey, generation))
+                            .put("status", NativeIndex.STATUS_FAILED)
+                            .put("batchId", batchEvent.optString("batchId"))
+                            .put("batchNumber", batchEvent.optInt("batchNumber", 0))
+                            .put("error", exception.message ?: "native_batch_failed"),
+                    ),
+            )
             throw exception
         }
     }

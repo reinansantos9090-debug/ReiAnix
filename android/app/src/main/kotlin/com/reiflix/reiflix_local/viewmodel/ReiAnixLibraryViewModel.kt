@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
+import com.reiflix.reiflix_local.data.library.ReiAnixLibraryInvalidationBus
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -79,66 +80,7 @@ import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeMode
 import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
 import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
-
-private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
-private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
-    setOf("movie", "special", "ova", "oad", "ona", "extra")
-
-/**
- * Mirrors LibraryStore._episode_order_key for the native Compose player.
- * Rows with relative episode numbers sort before absolute-number-only rows;
- * stable media identity, filename and local path are the final tie breakers.
- */
-private data class ReiAnixNativePlayerEpisodeOrderKey(
-    val season: Double,
-    val orderGroup: Int,
-    val primaryNumber: Double,
-    val secondaryNumber: Double,
-    val mediaIdentity: String,
-    val fileName: String,
-    val path: String,
-) : Comparable<ReiAnixNativePlayerEpisodeOrderKey> {
-    override fun compareTo(other: ReiAnixNativePlayerEpisodeOrderKey): Int {
-        var result = season.compareTo(other.season)
-        if (result != 0) return result
-        result = orderGroup.compareTo(other.orderGroup)
-        if (result != 0) return result
-        result = primaryNumber.compareTo(other.primaryNumber)
-        if (result != 0) return result
-        if (orderGroup == 1) {
-            result = secondaryNumber.compareTo(other.secondaryNumber)
-            if (result != 0) return result
-        }
-        result = mediaIdentity.compareTo(other.mediaIdentity)
-        if (result != 0) return result
-        result = fileName.compareTo(other.fileName)
-        if (result != 0) return result
-        return path.compareTo(other.path)
-    }
-}
-
-private fun nativePlayerOrderText(value: String): String =
-    value.lowercase(Locale.ROOT).replace("ß", "ss").replace("ς", "σ")
-
-private fun nativePlayerEpisodeOrderKey(
-    episode: ReiAnixEpisodeRecord,
-): ReiAnixNativePlayerEpisodeOrderKey {
-    fun numeric(value: Double?): Double =
-        value?.takeIf { it.isFinite() } ?: REIANIX_PLAYER_ORDER_SENTINEL
-
-    val number = numeric(episode.number)
-    val absolute = numeric(episode.absoluteNumber)
-    val hasRelativeNumber = number < REIANIX_PLAYER_ORDER_SENTINEL
-    return ReiAnixNativePlayerEpisodeOrderKey(
-        season = episode.season.toDouble(),
-        orderGroup = if (hasRelativeNumber) 1 else 0,
-        primaryNumber = if (hasRelativeNumber) number else absolute,
-        secondaryNumber = if (hasRelativeNumber) absolute else 0.0,
-        mediaIdentity = episode.mediaIdentity.orEmpty(),
-        fileName = nativePlayerOrderText(episode.fileName),
-        path = nativePlayerOrderText(episode.path),
-    )
-}
+import com.reiflix.reiflix_local.player.ReiAnixNativePlayerEpisodeOrder
 
 enum class ReiAnixNativeFoldersStatus {
     IDLE,
@@ -470,16 +412,17 @@ class ReiAnixLibraryViewModel(
             else -> catalog.status
         }
 
-        // Current Android scan progress and terminal status come from the native
-        // coordinator. The compatibility snapshot still owns storage/onboarding,
-        // but can no longer leave Compose in "scanning" after Kotlin has finished.
-        val safScans = scans.values.filter { it.source.equals("saf", ignoreCase = true) }
-        val activeSafScan = safScans
+        // Native scan lifecycle is authoritative for SAF, MediaStore, and broad-storage
+        // operations. Do not rely on Python batch events to keep the Compose scan indicator
+        // alive: all current native runners publish their lifecycle through this StateFlow.
+        // The compatibility snapshot remains a fallback only before a native scan has existed.
+        val nativeScans = scans.values
+        val activeNativeScan = nativeScans
             .filter { !it.state.isTerminal }
             .maxByOrNull { it.startedAtMillis }
-        val latestSafScan = safScans
+        val latestNativeScan = nativeScans
             .maxByOrNull { it.finishedAtMillis ?: it.startedAtMillis }
-        val selectedScan = activeSafScan ?: latestSafScan
+        val selectedScan = activeNativeScan ?: latestNativeScan
         val nativeScanState = when (selectedScan?.state) {
             ScanLifecycleState.PREPARING -> "PREPARING"
             ScanLifecycleState.RUNNING -> "RUNNING"
@@ -490,7 +433,7 @@ class ReiAnixLibraryViewModel(
             ScanLifecycleState.FAILED -> "FAILED"
             ScanLifecycleState.IDLE, null -> bridgeState.scanState
         }
-        val nativeLastScanStatus = when (latestSafScan?.state) {
+        val nativeLastScanStatus = when (latestNativeScan?.state) {
             ScanLifecycleState.CANCELLED -> "CANCELLED"
             ScanLifecycleState.SUCCEEDED -> "COMPLETED"
             ScanLifecycleState.PARTIAL -> "PARTIAL"
@@ -498,8 +441,8 @@ class ReiAnixLibraryViewModel(
             else -> bridgeState.lastScanStatus
         }
         val nativeScanInProgress = when {
-            latestSafScan == null -> bridgeState.scanInProgress
-            else -> activeSafScan != null
+            latestNativeScan == null -> bridgeState.scanInProgress
+            else -> activeNativeScan != null
         }
 
         bridgeState.copy(
@@ -1350,6 +1293,23 @@ class ReiAnixLibraryViewModel(
         // Read the local canonical catalog only after bootstrap allows normal use.
         viewModelScope.launch { refreshNativeCatalog() }
 
+        // Native metadata and artwork writers invalidate the Compose projection directly.
+        // The consumer always rereads canonical SQLite; the mailbox event remains only for
+        // backward compatibility with older/hybrid builds and is not needed to refresh Compose.
+        viewModelScope.launch {
+            ReiAnixLibraryInvalidationBus.events
+                .conflate()
+                .collectLatest { invalidation ->
+                    Log.d(
+                        TAG,
+                        "Native catalog invalidated reason=${invalidation.reason} " +
+                            "animeId=${invalidation.animeId ?: 0L} " +
+                            "entity=${invalidation.entityType ?: "-"}",
+                    )
+                    refreshNativeCatalog()
+                }
+        }
+
         // Opening the app must not schedule missing/stale artwork downloads. Artwork is
         // requested only by explicit details/artwork actions or existing pipeline events.
         // Player notifications are emitted only after a successful SQLite commit.
@@ -1676,8 +1636,6 @@ class ReiAnixLibraryViewModel(
         appContext.startActivity(MainActivity.createNativeStorageActionIntent(appContext, "select_tree"))
     }
 
-    fun dismissStorageOnboarding() = repository.dismissStorageOnboarding()
-
     /**
      * Requests native release first. MainActivity owns the permission -> canonical SQLite
      * removal transaction and calls onSafRemovalTerminal only after the durable result.
@@ -1915,20 +1873,11 @@ class ReiAnixLibraryViewModel(
                 // removing the Python OPEN_MEDIA dispatcher.
                 val neighborKeys = nativeLibraryRepository.listEpisodes(episode.animeId)
                     .asSequence()
-                    .filter { it.missing == false }
-                    .filter {
-                        it.availabilityState == null || it.availabilityState == "available"
-                    }
-                    // SQL NOT IN excludes NULL episode_type rows.
-                    .filter {
-                        it.episodeType != null &&
-                            it.episodeType !in REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES
-                    }
-                    .map(::nativePlayerEpisodeOrderKey)
+                    .filter(ReiAnixNativePlayerEpisodeOrder::isAvailableRegularCandidate)
+                    .map(ReiAnixNativePlayerEpisodeOrder::key)
                     .toList()
-                val currentEpisodeKey = nativePlayerEpisodeOrderKey(episode)
-                val currentIsRegularEpisode = episode.episodeType.orEmpty()
-                    .lowercase(Locale.ROOT) !in REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES
+                val currentEpisodeKey = ReiAnixNativePlayerEpisodeOrder.key(episode)
+                val currentIsRegularEpisode = ReiAnixNativePlayerEpisodeOrder.isRegularEpisode(episode)
                 val canPrevious = currentIsRegularEpisode &&
                     neighborKeys.any { it < currentEpisodeKey }
                 val canNext = currentIsRegularEpisode &&

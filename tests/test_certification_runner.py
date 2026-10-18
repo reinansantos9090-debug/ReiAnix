@@ -152,10 +152,13 @@ class CertificationRunnerTests(unittest.TestCase):
 
     def test_fast_apk_workflow_does_not_run_release_certification(self):
         workflow=(ROOT/".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        regression=(ROOT/".github/workflows/python_regression.yml").read_text(encoding="utf-8")
         self.assertNotIn("Run release evidence certification (no emulator)",workflow)
         self.assertNotIn("name: release-certification",workflow)
-        self.assertIn("Run Python regression suite",workflow)
-        self.assertIn("Build APK",workflow)
+        self.assertNotIn("actions/setup-python",workflow)
+        self.assertIn(":app:assembleRelease",workflow)
+        self.assertIn("Run Python regression suite",regression)
+        self.assertIn("Build native Android release APK",workflow)
 
     def test_rendered_gradle_environment_uses_staged_site_packages(self):
         with tempfile.TemporaryDirectory() as tmp:

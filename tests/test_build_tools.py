@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LEGACY_HYBRID_WORKFLOW = ROOT / ".github" / "workflows" / "build_hybrid_legacy.yml"
 VERIFY = ROOT / "scripts" / "verify_android_host.py"
 PREPARE_TEMPLATE = ROOT / "scripts" / "prepare_flet_template.py"
 DESCRIPTORS = (
@@ -141,7 +142,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertNotIn("Dispatchers.Main", source)
 
     def test_workflow_prepares_a_real_template_and_keeps_host_gate(self):
-        workflow = (ROOT / ".github" / "workflows" / "build_apk.yml").read_text(encoding="utf-8")
+        workflow = LEGACY_HYBRID_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("https://github.com/flet-dev/flet/releases/download/v0.86.5/flet-build-template.zip", workflow)
         self.assertIn("--template \"$GITHUB_WORKSPACE/build/flet-build-template\"", workflow)
         self.assertIn("--overlay \"$GITHUB_WORKSPACE/android\"", workflow)
@@ -161,7 +162,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("MANAGE_EXTERNAL_STORAGE", workflow)
 
     def test_workflow_android_build_is_fast_and_emulator_free(self):
-        workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")
         # Builds for the same ref are intentionally deduplicated so a
         # rapid sequence of focused correction commits does not accumulate
         # obsolete APK jobs.
@@ -282,7 +283,11 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn('abiFilters += "arm64-v8a"', android)
         self.assertNotIn('abiFilters += "armeabi-v7a"', android)
         self.assertNotIn('abiFilters += "x86_64"', android)
-        self.assertIn('--arch "arm64-v8a"', workflow)
+        self.assertIn(":app:assembleRelease", workflow)
+        self.assertNotIn("actions/setup-python", workflow)
+        self.assertNotIn("flet build", workflow.lower())
+        self.assertNotIn("subosito/flutter-action", workflow)
+        self.assertNotIn("flutter-sdk", workflow.lower())
         self.assertNotIn('--arch "arm64-v8a,x86_64,armeabi-v7a"', workflow)
 
     def test_android_instrumented_diagnostic_is_not_part_of_fast_build(self):
@@ -342,7 +347,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("Stage.RESUMED", source)
         self.assertIn("MainActivity", source)
     def test_workflow_generated_json_validation_uses_safe_heredoc(self):
-        workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")
         self.assertIn("python - <<'PY'", workflow)
         self.assertIn("Invalid generated JSON {path}: {exc}", workflow)
         self.assertIn("def strip_trailing_commas(raw):", workflow)
@@ -474,7 +479,7 @@ E: manifest
 
     def test_workflow_rejects_development_artifacts_from_apk(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")
         self.assertIn('[tool.flet.app]', pyproject)
         for entry in (
             '"tests"', '"docs"', '".github"', '"android"', '"scripts"',
@@ -490,7 +495,7 @@ E: manifest
         self.assertIn('"Flat .pyc files are allowed because Flet 0.86 compiles the runtime application to bytecode."', workflow)
 
     def test_workflow_validates_effective_manifest_and_hash(self):
-        workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")
         verifier = (ROOT / "scripts/verify_apk_manifest.py").read_text(encoding="utf-8")
         self.assertIn("python scripts/verify_apk_manifest.py", workflow)
         self.assertIn("aapt2", workflow)
@@ -947,7 +952,9 @@ E: manifest
         self.assertIn('saveProgress("player_progress", force = true)', block)
         self.assertNotIn("suppressExitEvent = true", block)
         self.assertIn("episodeChangePending = true", block)
-        self.assertIn("keepActivity=true", player)
+        self.assertIn("dispatchNativeEpisodeTransition(", block)
+        self.assertIn("startActivity(successorIntent)", block)
+        self.assertIn("FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP", player)
         self.assertIn("player_next_request", player)
         self.assertIn("player_previous_request", player)
 
@@ -1095,14 +1102,14 @@ class BuildIdentityContractTests(unittest.TestCase):
 
     def test_project_pins_python_312_for_flet_086(self):
         project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")
         self.assertIn('requires-python = ">=3.12,<3.13"', project)
         self.assertIn('flet==0.86.5', project)
         self.assertIn('--python-version "3.12"', workflow)
         self.assertIn("assert flet.__version__ == '0.86.5'", workflow)
 
     def test_workflow_generates_and_verifies_packaged_python_identity(self):
-        workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")
         self.assertIn("scripts/generate_build_identity.py", workflow)
         self.assertIn("scripts/verify_python_bundle.py", workflow)
         self.assertIn(".reiflix-build-identity.json", workflow)
@@ -1114,18 +1121,14 @@ class BuildIdentityContractTests(unittest.TestCase):
 
     def test_apk_workflow_keeps_kotlin_unit_tests_out_of_the_fast_build(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
-        prepare = (ROOT / "scripts/prepare_flet_template.py").read_text(encoding="utf-8")
         certification = (ROOT / "scripts/release_certification.py").read_text(encoding="utf-8")
-        self.assertIn("flet-build-template.zip", workflow)
-        self.assertIn("assets/app.zip", workflow)
-        self.assertNotIn("flet clear-cache", workflow)
-        self.assertNotIn("Run Kotlin unit tests", workflow)
+        self.assertIn(":app:assembleRelease", workflow)
         self.assertNotIn(":app:testDebugUnitTest", workflow)
         self.assertNotIn(":app:connectedDebugAndroidTest", workflow)
-        self.assertNotIn(":app:testDebugUnitTest", prepare)
+        self.assertNotIn("actions/setup-python", workflow)
+        self.assertNotIn("flet build", workflow.lower())
         self.assertIn(":app:testDebugUnitTest", certification)
         self.assertIn("SERIOUS_PYTHON_SITE_PACKAGES", certification)
-
 
 class NativeMainActivityDecompositionTests(unittest.TestCase):
     def test_main_activity_delegates_scan_batch_publication(self):
@@ -1135,7 +1138,9 @@ class NativeMainActivityDecompositionTests(unittest.TestCase):
         self.assertNotIn("NativeIndex.prepareBatch(", main)
         self.assertIn("NativeScanPublisher.publish(", main)
         self.assertIn("NativeIndex.prepareBatch(", publisher)
-        self.assertIn("NativeMailbox.writeOrThrow(", publisher)
+        self.assertIn("NATIVE_SCAN_BATCH_STAGED", publisher)
+        self.assertNotIn("NativeMailbox.writeOrThrow(", publisher)
+        self.assertNotIn('.put("documents", documents)', publisher)
 
     def test_main_activity_delegates_media_store_retry_scheduling(self):
         main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")

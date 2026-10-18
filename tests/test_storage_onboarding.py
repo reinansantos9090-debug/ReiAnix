@@ -482,12 +482,14 @@ class StorageOnboardingTests(unittest.TestCase):
 
 
 
-    def test_native_scan_publication_uses_failing_mailbox_contract(self):
+    def test_native_scan_staging_is_native_and_errors_keep_compatibility_notification(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun publishNativeScanBatch", source)
         self.assertIn("NativeScanPublisher.publish(", source)
-        self.assertIn("NativeMailbox.writeOrThrow(", publisher)
+        self.assertIn("NativeIndex.prepareBatch(", publisher)
+        self.assertIn("NATIVE_SCAN_BATCH_STAGED", publisher)
+        self.assertNotIn("NativeMailbox.writeOrThrow(", publisher)
         self.assertIn("NativeMailbox.write(", publisher)
         self.assertIn('eventType.replace("_batch", "_error")', publisher)
     def test_native_mailbox_uses_atomic_move_with_non_atomic_fallback(self):
@@ -947,7 +949,7 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
     def test_compose_library_refresh_dispatches_native_scan_and_terminal_result(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
         refresh_start = repository.index("fun refresh(")
-        refresh = repository[refresh_start:repository.index("fun loadLibraryPage(", refresh_start)]
+        refresh = repository[refresh_start:repository.index("fun reportNativePlayerHandoff(", refresh_start)]
         self.assertIn('appendQueryParameter("action", "scan_library")', refresh)
         self.assertIn("MainActivity::class.java", refresh)
         self.assertNotIn("send(ReiAnixLibraryCommandCodec.Action.REFRESH)", refresh)
@@ -1028,7 +1030,7 @@ class TestComposeStorageSnapshotMerge(unittest.TestCase):
             / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
         ).read_text(encoding="utf-8")
         start = source.index("internal fun mergeSnapshotState(")
-        end = source.index("\n        internal fun reconcilePagedState(", start)
+        end = source.index("\n    }\n    private val appContext", start)
         merge = source[start:end]
         # Catalog preservation and storage authorization are independent state
         # domains. A READY onboarding snapshot must not be replaced by stale UI

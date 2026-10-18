@@ -1017,16 +1017,30 @@ object NativeIndex {
         scopes(read(context)).optJSONObject(scopeKey)?.optLong("generation", 0L) ?: 0L
     }
 
-    fun canReuseMediaStoreVolume(context: Context, volumeName: String, accessLevel: String,
-                                 currentVersion: String, currentGeneration: Long): Boolean = synchronized(this) {
+    fun canReuseMediaStoreVolume(
+        context: Context,
+        volumeName: String,
+        accessLevel: String,
+        currentVersion: String,
+        currentGeneration: Long,
+        libraryScopeSignature: String,
+    ): Boolean = synchronized(this) {
         if (Build.VERSION.SDK_INT < 30 || accessLevel != "full" || currentVersion.isBlank() || currentGeneration <= 0L) return@synchronized false
         val scope = scopes(read(context)).optJSONObject("mediastore:" + volumeName) ?: return@synchronized false
+        // Older generations used the display label as the NativeIndex source and did
+        // not record the configured SAF scope. Force one safe rescan rather than reusing
+        // a snapshot that cannot be proven to belong to the current authorized roots.
+        if (scope.optString("source") != SOURCE_MEDIASTORE) return@synchronized false
+        // A physical MediaStore snapshot is reusable only after the matching catalog
+        // transaction was confirmed committed. Otherwise retry indexing from this source.
+        if (scope.optString("nativeCatalogWriteOutcome") != "COMMITTED") return@synchronized false
         val status = scope.optString("status")
         if (!isCompleteStatus(status)) return@synchronized false
         val meta = scope.optJSONObject("metadata") ?: return@synchronized false
         val metadataMatches = meta.optString("mediaStoreVersion") == currentVersion &&
             meta.optLong("mediaStoreGeneration", -1L) == currentGeneration &&
-            meta.optString("accessLevel") == "full"
+            meta.optString("accessLevel") == "full" &&
+            meta.optString("libraryScopeSignature") == libraryScopeSignature
         if (!metadataMatches) return@synchronized false
 
         val committedValid = committedSnapshotCount(context, scope, status, requireCurrentGenerationMatch = true) != null
