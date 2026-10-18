@@ -172,7 +172,12 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("PLAYER_EVENT_CLOCK_MS", self.player)
         self.assertIn("private fun nextPlayerEventCreatedAt()", self.player)
         self.assertIn("max(wallClockMs, previous + 1L)", self.player)
-        self.assertIn('val transitionCreatedAtMs = nextPlayerEventCreatedAt()', self.player)
+        transition_start = self.player.index("private fun requestEpisode")
+        transition_end = self.player.index("private fun seekToSavedPosition", transition_start)
+        transition_block = self.player[transition_start:transition_end]
+        self.assertIn("transitionSourceCreatedAtMs = startedAtMs", transition_block)
+        self.assertIn("sourceCreatedAtMs = startedAtMs", transition_block)
+        self.assertNotIn("val transitionCreatedAtMs = nextPlayerEventCreatedAt()", transition_block)
         self.assertIn('val exitCapturedAt = nextPlayerEventCreatedAt()', self.player)
         progress_start = self.player.index("private fun buildProgressEvent")
         progress_end = self.player.index("private fun saveProgress", progress_start)

@@ -68,14 +68,17 @@ def test_compose_player_handoff_preserves_local_identity_and_player_contract():
         '.appendQueryParameter("can_next", canNext.toString())',
         '.appendQueryParameter("can_previous", canPrevious.toString())',
         "setting_audio_preferred_subtitle_language",
-        "it.missing == false",
-        'it.availabilityState == null || it.availabilityState == "available"',
-        "it.episodeType != null",
+        "ReiAnixNativePlayerEpisodeOrder::isAvailableRegularCandidate",
+        "ReiAnixNativePlayerEpisodeOrder::key",
         "neighborKeys.any { it < currentEpisodeKey }",
         "neighborKeys.any { it > currentEpisodeKey }",
     ):
         assert token in launch
-    assert "private data class ReiAnixNativePlayerEpisodeOrderKey" in view_model
+    order = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/ReiAnixNativeEpisodeNavigation.kt"
+    )
+    assert "internal data class ReiAnixNativePlayerEpisodeOrderKey" in order
+    assert "private data class ReiAnixNativePlayerEpisodeOrderKey" not in view_model
     assert "LibraryStore.player_navigation()" in launch
     assert "NativePlayerRequest.fromBridgeUri(source)" in activity
     assert 'putExtra("episodeId", episodeId)' in player_request

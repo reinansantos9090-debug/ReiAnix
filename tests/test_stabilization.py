@@ -54,14 +54,15 @@ class StabilizationTests(unittest.TestCase):
         self.assertNotIn("systemUiController.applyApplicationPolicy()", bootstrap)
         self.assertIn('if (shouldUseImmersive()) enterImmersiveMode() else restoreSystemUiBeforeExit()', bootstrap)
 
-    def test_native_player_transition_write_failure_clears_pending_state(self):
+    def test_native_player_transition_resolution_failure_clears_pending_state(self):
         start = PLAYER.index("private fun requestEpisode")
         end = PLAYER.index("private fun seekToSavedPosition", start)
         block = PLAYER[start:end]
-        self.assertIn("playbackWorker.submit", block)
-        self.assertIn("val published = NativeMailbox.write(", block)
-        self.assertIn("if (!published)", block)
-        self.assertIn("invalidateTransition(\"mailbox_publish_failed\")", block)
+        self.assertIn("lifecycleScope.launch(Dispatchers.IO)", block)
+        self.assertIn("nativePlayerNavigationService.resolve(sourceEpisodeId)", block)
+        self.assertIn("failNativeEpisodeTransition(", block)
+        self.assertNotIn("val published = NativeMailbox.write(", block)
+        self.assertIn("invalidateTransition(reason)", block)
         self.assertIn("episodeChangePending = false", block)
         self.assertIn("transitionGeneration", block)
         self.assertIn("handler.removeCallbacks(episodeChangeTimeout)", block)

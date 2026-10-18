@@ -947,7 +947,9 @@ E: manifest
         self.assertIn('saveProgress("player_progress", force = true)', block)
         self.assertNotIn("suppressExitEvent = true", block)
         self.assertIn("episodeChangePending = true", block)
-        self.assertIn("keepActivity=true", player)
+        self.assertIn("dispatchNativeEpisodeTransition(", block)
+        self.assertIn("startActivity(successorIntent)", block)
+        self.assertIn("FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP", player)
         self.assertIn("player_next_request", player)
         self.assertIn("player_previous_request", player)
 

@@ -60,7 +60,9 @@ class PlayerForensicTests(unittest.TestCase):
         self.assertIn("episodeChangePending", transition)
         self.assertIn("NEXT_TRANSITION_STARTED", transition)
         self.assertIn("PREVIOUS_TRANSITION_STARTED", transition)
-        self.assertIn("playbackWorker.submit", transition)
+        self.assertIn("lifecycleScope.launch(Dispatchers.IO)", transition)
+        self.assertIn("dispatchNativeEpisodeTransition(", transition)
+        self.assertIn("startActivity(successorIntent)", transition)
 
     def test_watchdog_is_generation_and_session_bound_and_diagnostic_only(self):
         start = self.player.index("private fun armEpisodeChangeTimeout(reason: String)")
