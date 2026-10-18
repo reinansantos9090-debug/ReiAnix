@@ -52,6 +52,27 @@ class NativeProductionBuildContractTests(unittest.TestCase):
         self.assertIn("flet build", legacy.lower())
 
 
+    def test_official_artifact_publishes_its_actual_signing_certificate(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("apksigner", workflow)
+        self.assertIn("signing-certificate.txt", workflow)
+        self.assertIn("signingCertificateSha256", workflow)
+        self.assertIn("supportedAbis", workflow)
+        self.assertIn("runtimeIndependenceCertified", workflow)
+        self.assertIn("debug-fallback", workflow)
+
+    def test_current_docs_do_not_misdescribe_the_official_build_as_hybrid(self):
+        gradle = GRADLE.read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        build_docs = (ROOT / "docs/KOTLIN_NATIVE_GRADLE_BUILD.md").read_text(encoding="utf-8")
+        cutover = (ROOT / "docs/PROMPT_28_RUNTIME_CUTOVER_STATUS.md").read_text(encoding="utf-8")
+        self.assertNotIn("The official APK still uses Flet/Flutter tooling", gradle)
+        self.assertIn("ambos os APKs", readme)
+        self.assertIn("runtimeIndependenceCertified: false", readme)
+        self.assertIn("historical", build_docs.lower())
+        self.assertIn("supersedida", cutover)
+        self.assertIn("PROMPT_30_2_APK_DIAGNOSTICS.md", build_docs)
+
 
 if __name__ == "__main__":
     unittest.main()
