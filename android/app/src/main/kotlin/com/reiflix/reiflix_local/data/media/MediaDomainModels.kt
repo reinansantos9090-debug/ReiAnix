@@ -118,6 +118,19 @@ data class LogicalEpisodeIdentity(
  * Represents a location, not an immutable identity. storedLocation preserves
  * the exact legacy value; SAF/content URIs may be revoked and are not stable IDs.
  */
+enum class MediaLocationKind {
+    FILESYSTEM_PATH,
+    FILE_URI,
+    CONTENT_URI,
+    SAF_TREE_URI,
+    SAF_DOCUMENT_URI,
+    OTHER_URI,
+}
+
+/**
+ * A location is not a persisted identifier. Preserve the exact legacy value;
+ * SAF/content URIs can be revoked independently of the media record.
+ */
 data class LocalMediaReference(
     val episodeRecordId: EpisodeRecordId?,
     val storedLocation: String,
@@ -132,16 +145,56 @@ data class LocalMediaReference(
     val identity: CanonicalMediaIdentity?,
     val availabilityState: String?,
 ) {
+    val locationKind: MediaLocationKind
+        get() = MediaReferenceSyntax.classify(storedLocation)
+
+    /** Any URI-shaped value, retained exactly as supplied by the caller. */
     val uri: String?
         get() = storedLocation.takeIf(MediaReferenceSyntax::hasUriScheme)
 
+    /** Only raw filesystem paths are exposed as filesystem paths. */
     val filesystemPath: String?
-        get() = storedLocation.takeUnless(MediaReferenceSyntax::hasUriScheme)
+        get() = storedLocation.takeIf { locationKind == MediaLocationKind.FILESYSTEM_PATH }
+
+    val contentUri: String?
+        get() = storedLocation.takeIf {
+            locationKind == MediaLocationKind.CONTENT_URI ||
+                locationKind == MediaLocationKind.SAF_TREE_URI ||
+                locationKind == MediaLocationKind.SAF_DOCUMENT_URI
+        }
+
+    val safTreeUri: String?
+        get() = storedLocation.takeIf { locationKind == MediaLocationKind.SAF_TREE_URI }
+
+    val safDocumentUri: String?
+        get() = storedLocation.takeIf { locationKind == MediaLocationKind.SAF_DOCUMENT_URI }
 }
 
 object MediaReferenceSyntax {
     private val uriScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
+    private const val externalStorageDocumentsAuthority = "com.android.externalstorage.documents"
+
     fun hasUriScheme(value: String): Boolean = uriScheme.containsMatchIn(value.trim())
+
+    /** Pure-JVM classification; never resolves, rewrites, or persists a location. */
+    fun classify(value: String): MediaLocationKind {
+        val trimmed = value.trim()
+        if (!hasUriScheme(trimmed)) return MediaLocationKind.FILESYSTEM_PATH
+        val parsed = runCatching { java.net.URI(trimmed) }.getOrNull()
+            ?: return MediaLocationKind.OTHER_URI
+        return when (parsed.scheme?.lowercase(java.util.Locale.ROOT)) {
+            "file" -> MediaLocationKind.FILE_URI
+            "content" -> {
+                val path = parsed.rawPath.orEmpty().lowercase(java.util.Locale.ROOT)
+                when {
+                    path.contains("/document/") -> MediaLocationKind.SAF_DOCUMENT_URI
+                    path.contains("/tree/") -> MediaLocationKind.SAF_TREE_URI
+                    else -> MediaLocationKind.CONTENT_URI
+                }
+            }
+            else -> MediaLocationKind.OTHER_URI
+        }
+    }
 }
 
 data class ArtworkReference(
