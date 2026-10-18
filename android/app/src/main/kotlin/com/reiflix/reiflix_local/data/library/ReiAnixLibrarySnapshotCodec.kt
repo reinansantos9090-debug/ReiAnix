@@ -1,5 +1,17 @@
 package com.reiflix.reiflix_local.data.library
 
+import com.reiflix.reiflix_local.data.contract.arrayOrDefault
+import com.reiflix.reiflix_local.data.contract.booleanOrDefault
+import com.reiflix.reiflix_local.data.contract.booleanRequired
+import com.reiflix.reiflix_local.data.contract.intOrNull
+import com.reiflix.reiflix_local.data.contract.intRequired
+import com.reiflix.reiflix_local.data.contract.longRequired
+import com.reiflix.reiflix_local.data.contract.objectOrDefault
+import com.reiflix.reiflix_local.data.contract.objectOrNull
+import com.reiflix.reiflix_local.data.contract.requiredArray
+import com.reiflix.reiflix_local.data.contract.stringList
+import com.reiflix.reiflix_local.data.contract.stringOrDefault
+import com.reiflix.reiflix_local.data.contract.stringOrNull
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
@@ -12,22 +24,23 @@ internal object ReiAnixLibrarySnapshotCodec {
 
     fun decode(raw: String, previousRevision: Long = 0L): ReiAnixLibraryUiState {
         val root = JSONObject(raw)
-        val schemaVersion = root.optInt("schemaVersion", 0)
+        val schemaVersion = root.intRequired("schemaVersion")
         require(schemaVersion == 1) { "Unsupported Compose library snapshot schema: $schemaVersion" }
 
-        val revision = root.optLong("revision", 0L)
+        val revision = root.longRequired("revision")
+        require(revision >= 0L) { "Compose library snapshot revision must be non-negative." }
         require(previousRevision == 0L || revision > previousRevision) {
             "Stale Compose library snapshot revision=$revision previous=$previousRevision"
         }
 
-        val sourceState = root.optString("sourceState").trim().ifEmpty { "UNKNOWN" }
-        val sourceAvailable = root.optBoolean("sourceAvailable", sourceState == "AVAILABLE")
-        val scanState = root.optString("scanState").trim().uppercase().ifEmpty { "IDLE" }
-        val lastScanStatus = root.optString("lastScanStatus")
-            .trim()
-            .uppercase()
-            .takeIf { it.isNotEmpty() && it != "NULL" }
-        val scanInProgress = root.optBoolean(
+        val sourceState = root.stringOrDefault("sourceState", "UNKNOWN").trim().ifEmpty { "UNKNOWN" }
+        val sourceAvailable = root.booleanOrDefault("sourceAvailable", sourceState == "AVAILABLE")
+        val scanState = root.stringOrDefault("scanState", "IDLE").trim().uppercase().ifEmpty { "IDLE" }
+        val lastScanStatus = root.stringOrNull("lastScanStatus")
+            ?.trim()
+            ?.uppercase()
+            ?.takeIf { it.isNotEmpty() && it != "NULL" }
+        val scanInProgress = root.booleanOrDefault(
             "scanInProgress",
             scanState in setOf(
                 "QUEUED",
@@ -38,10 +51,10 @@ internal object ReiAnixLibrarySnapshotCodec {
                 "WAITING_FOR_MEDIASTORE",
             ),
         )
-        val snapshotStatus = root.optString("status").trim().uppercase()
-        val error = root.optString("error").trim().takeIf { it.isNotEmpty() && it != "null" }
+        val snapshotStatus = root.stringOrDefault("status", "").trim().uppercase()
+        val error = root.stringOrNull("error")?.trim()?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
 
-        val rawAnimes = root.optJSONArray("animes") ?: JSONArray()
+        val rawAnimes = root.requiredArray("animes")
         val animes = buildList(rawAnimes.length()) {
             for (index in 0 until rawAnimes.length()) {
                 val item = rawAnimes.optJSONObject(index)
@@ -51,7 +64,7 @@ internal object ReiAnixLibrarySnapshotCodec {
             }
         }
 
-        val storage = decodeStorage(root.optJSONObject("storage"))
+        val storage = decodeStorage(root.objectOrDefault("storage"))
 
         val validAnimeIds = animes.asSequence()
             .map { it.id }
@@ -61,7 +74,7 @@ internal object ReiAnixLibrarySnapshotCodec {
             .map { it.id }
             .toSet()
 
-        val rawContinueWatching = root.optJSONArray("continue_watching") ?: JSONArray()
+        val rawContinueWatching = root.arrayOrDefault("continue_watching")
         val continueWatching = buildList(rawContinueWatching.length()) {
             for (index in 0 until rawContinueWatching.length()) {
                 val item = rawContinueWatching.optJSONObject(index)
@@ -98,70 +111,70 @@ internal object ReiAnixLibrarySnapshotCodec {
         )
     }
 
-    private fun decodeStorage(raw: JSONObject?): ReiAnixStorageUiState {
-        if (raw == null) return ReiAnixStorageUiState()
-        val capabilities = raw.optJSONObject("capabilities") ?: JSONObject()
-        val configured = raw.optJSONArray("configuredSources") ?: JSONArray()
+    private fun decodeStorage(raw: JSONObject): ReiAnixStorageUiState {
+        val capabilities = raw.objectOrDefault("capabilities")
+        val configured = raw.arrayOrDefault("configuredSources")
         val sources = buildList(configured.length()) {
             for (index in 0 until configured.length()) {
-                val item = configured.optJSONObject(index) ?: continue
+                val item = configured.optJSONObject(index)
+                    ?: error("Malformed configured storage source at snapshot index=$index")
                 add(
                     ReiAnixStorageSourceUiModel(
-                        reference = item.optString("reference").trim(),
-                        name = item.optString("name").trim(),
-                        kind = item.optString("kind").trim(),
-                        authorization = item.optString("authorization").trim(),
-                        status = item.optString("status").trim(),
-                        safIdentity = item.optString("saf_identity").trim().takeIf { it.isNotEmpty() },
-                        safVolumeId = item.optString("saf_volume_id").trim().takeIf { it.isNotEmpty() },
-                        safDocumentId = item.optString("saf_document_id").trim().takeIf { it.isNotEmpty() },
+                        reference = item.stringOrDefault("reference", "").trim(),
+                        name = item.stringOrDefault("name", "").trim(),
+                        kind = item.stringOrDefault("kind", "").trim(),
+                        authorization = item.stringOrDefault("authorization", "").trim(),
+                        status = item.stringOrDefault("status", "").trim(),
+                        safIdentity = item.stringOrNull("saf_identity")?.trim()?.takeIf { it.isNotEmpty() },
+                        safVolumeId = item.stringOrNull("saf_volume_id")?.trim()?.takeIf { it.isNotEmpty() },
+                        safDocumentId = item.stringOrNull("saf_document_id")?.trim()?.takeIf { it.isNotEmpty() },
                     ),
                 )
             }
         }.sortedBy { it.stableKey }
 
         return ReiAnixStorageUiState(
-            mediaReadState = capabilities.optString("mediaReadState", "denied").trim().lowercase(),
-            broadStorageState = capabilities.optString("broadStorageState", "unavailable").trim().lowercase(),
-            onboardingState = raw.optString("onboardingState", "checking").trim().lowercase(),
-            onboardingMessage = raw.optString("onboardingMessage").trim()
-                .takeIf { it.isNotEmpty() && it != "null" },
-            onboardingDismissed = raw.optBoolean("onboardingDismissed", false),
-            onboardingError = raw.optString("onboardingError").trim()
-                .takeIf { it.isNotEmpty() && it != "null" },
+            mediaReadState = capabilities.stringOrDefault("mediaReadState", "denied").trim().lowercase(),
+            broadStorageState = capabilities.stringOrDefault("broadStorageState", "unavailable").trim().lowercase(),
+            onboardingState = raw.stringOrDefault("onboardingState", "checking").trim().lowercase(),
+            onboardingMessage = raw.stringOrNull("onboardingMessage")?.trim()
+                ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) },
+            onboardingDismissed = raw.booleanOrDefault("onboardingDismissed", false),
+            onboardingError = raw.stringOrNull("onboardingError")?.trim()
+                ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) },
             safRoots = capabilities.stringList("safRoots"),
-            safSelectionPending = raw.optBoolean("safSelectionPending", false),
+            safSelectionPending = raw.booleanOrDefault("safSelectionPending", false),
             safRootIdentities = capabilities.stringList("safRootIdentities"),
             removableVolumes = capabilities.stringList("removableVolumes"),
             scannerCapabilities = capabilities.stringList("scannerCapabilities").sorted(),
             reconciliationCapabilities = capabilities.stringList("reconciliationCapabilities").sorted(),
-            lifecycleState = capabilities.optString("lifecycleState", "unknown").trim().lowercase(),
-            api = capabilities.optIntOrNull("api"),
+            lifecycleState = capabilities.stringOrDefault("lifecycleState", "unknown").trim().lowercase(),
+            api = capabilities.intOrNull("api"),
             configuredSources = sources,
         )
     }
 
     fun decodeCommandResult(raw: String): CommandResult {
         val root = JSONObject(raw)
-        require(root.optInt("schemaVersion", 0) == 1) {
+        require(root.intRequired("schemaVersion") == 1) {
             "Unsupported Compose command-result schema"
         }
-        val payload = root.optJSONObject("payload")
+        val payload = root.objectOrNull("payload")
         val libraryPage = payload
-            ?.takeIf { it.optString("kind").trim() == "library_page" }
+            ?.takeIf { it.stringOrNull("kind")?.trim() == "library_page" }
             ?.let { decodeLibraryPage(it) }
         return CommandResult(
-            requestId = root.optString("requestId").trim().takeIf { it.isNotEmpty() },
-            action = root.optString("action").trim().takeIf { it.isNotEmpty() },
-            status = root.optString("status").trim().uppercase().ifEmpty { "UNKNOWN" },
-            error = root.optString("error").trim().takeIf { it.isNotEmpty() && it != "null" },
-            message = root.optString("message").trim().takeIf { it.isNotEmpty() && it != "null" },
+            requestId = root.stringOrNull("requestId")?.trim()?.takeIf { it.isNotEmpty() },
+            action = root.stringOrNull("action")?.trim()?.takeIf { it.isNotEmpty() },
+            status = root.stringOrDefault("status", "UNKNOWN").trim().uppercase().ifEmpty { "UNKNOWN" },
+            error = root.stringOrNull("error")?.trim()?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) },
+            message = root.stringOrNull("message")?.trim()?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) },
             libraryPage = libraryPage,
         )
     }
 
     private fun decodeLibraryPage(payload: JSONObject): LibraryPageResult {
-        val rawItems = payload.optJSONArray("items") ?: JSONArray()
+        val rawItems = payload.requiredArray("items")
         val items = buildList(rawItems.length()) {
             for (index in 0 until rawItems.length()) {
                 val item = rawItems.optJSONObject(index)
@@ -170,12 +183,20 @@ internal object ReiAnixLibrarySnapshotCodec {
                 add(LibraryUiMappers.anime(item.toMap()))
             }
         }
+        val generation = payload.longRequired("generation")
+        val page = payload.intRequired("page")
+        val pageSize = payload.intRequired("page_size")
+        val total = payload.intRequired("total")
+        require(generation >= 0L) { "Library page generation must be non-negative." }
+        require(page >= 0 && pageSize >= 0 && total >= 0) {
+            "Library page pagination values must be non-negative."
+        }
         return LibraryPageResult(
-            generation = payload.optLong("generation", 0L),
-            page = payload.optInt("page", 0),
-            pageSize = payload.optInt("page_size", 0),
-            total = payload.optInt("total", 0),
-            hasMore = payload.optBoolean("has_more", false),
+            generation = generation,
+            page = page,
+            pageSize = pageSize,
+            total = total,
+            hasMore = payload.booleanRequired("has_more"),
             items = items,
         )
     }
@@ -216,15 +237,3 @@ private fun jsonValueToKotlin(value: Any?): Any? = when (value) {
     else -> value
 }
 
-private fun JSONObject.stringList(key: String): List<String> {
-    val array = optJSONArray(key) ?: return emptyList()
-    return buildList(array.length()) {
-        for (index in 0 until array.length()) {
-            val value = array.opt(index)?.toString()?.trim().orEmpty()
-            if (value.isNotEmpty() && value != "null") add(value)
-        }
-    }.distinct()
-}
-
-private fun JSONObject.optIntOrNull(key: String): Int? =
-    if (!has(key) || isNull(key)) null else optInt(key)

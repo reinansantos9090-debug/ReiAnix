@@ -412,6 +412,37 @@ class ComposeLibraryBridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(projected["has_more"])
         self.assertEqual([7], [item["id"] for item in projected["items"]])
 
+    def test_persisted_snapshot_rejects_coerced_schema_and_revision_values(self):
+        malformed_payloads = (
+            {"schemaVersion": "1", "revision": 9, "animes": []},
+            {"schemaVersion": 1, "revision": 2.5, "animes": []},
+            {"schemaVersion": 1, "revision": True, "animes": []},
+            {"schemaVersion": 1, "revision": -1, "animes": []},
+        )
+        for payload in malformed_payloads:
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
+                snapshot_dir = Path(directory) / "reianix-compose"
+                snapshot_dir.mkdir(parents=True)
+                (snapshot_dir / "library.json").write_text(
+                    json.dumps(payload), encoding="utf-8"
+                )
+                bridge = ComposeLibraryBridge(directory, FakeLibrary([]), FakeStore())
+                self.assertEqual(0, bridge._requested_revision)
+                self.assertIsNone(bridge._read_persisted_snapshot())
+
+    def test_incremental_snapshot_rejects_malformed_anime_and_list_shapes(self):
+        malformed_payloads = (
+            {"schemaVersion": 1, "revision": 3, "animes": "[]"},
+            {"schemaVersion": 1, "revision": 3, "animes": [None]},
+            {"schemaVersion": 1, "revision": 3, "animes": [{"id": "7"}]},
+            {"schemaVersion": 1, "revision": 3, "animes": [{"id": 7}], "continue_watching": {}},
+        )
+        for payload in malformed_payloads:
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
+                bridge = ComposeLibraryBridge(directory, FakeLibrary([]), FakeStore())
+                bridge.snapshot_path.write_text(json.dumps(payload), encoding="utf-8")
+                self.assertIsNone(bridge._read_persisted_snapshot())
+
     def test_command_results_are_small_and_atomic(self):
         with tempfile.TemporaryDirectory() as directory:
             bridge = ComposeLibraryBridge(directory, FakeLibrary([]), FakeStore())
