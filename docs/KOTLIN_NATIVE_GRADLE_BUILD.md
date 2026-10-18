@@ -1,45 +1,60 @@
-# Prompt 27/29 — Build Gradle nativo e empacotamento de validação
+# Build Android nativo e diagnóstico dos APKs — Prompt 30.2
 
-## O que foi adicionado
+## Variantes e workflows reais
 
-A raiz do repositório agora possui um Gradle Wrapper independente. O único projeto Android é `:app`, mapeado diretamente para `android/app`; não há um segundo applicationId, outro módulo de produto ou outra base de dados. O build usa AGP 8.9.1, Kotlin/Compose Compiler 2.2.0, Gradle 8.11.1, JDK 17 e Android SDK 36, alinhados com o módulo nativo e a matriz de compatibilidade: o KGP 2.2.0 aceita AGP 8.9.x e Gradle 8.11.x; a versão 2.0.21 do host Flet permanece isolada no workflow híbrido legado. Consulte a [matriz de compatibilidade Kotlin/Gradle](https://kotlinlang.org/docs/gradle-configure-project.html) e a [compatibilidade do AGP](https://developer.android.com/build/releases/about-agp).
+O único módulo Android é `:app`, mapeado para `android/app`. Ambos os APKs do fluxo atual são compilados por Gradle, JDK 17 e Android SDK 36:
 
-Comandos utilizados pelo workflow dedicado:
+- `.github/workflows/build_apk.yml` — **release oficial de produção**. Executa `:app:assembleRelease`, valida o Manifest/DEX/assets e exclui do APK `assets/app.zip`, `flutter_assets`, bytecode Python e bibliotecas de runtime legado. O artefato oficial é `ReiAnix-apk-instalacao-direta-<run>`; o ZIP de instalação contém o APK e os metadados/checksum.
+- `.github/workflows/native_gradle_apk.yml` — **APK debug de validação**, executa `:app:assembleDebug` sem configurar Python, Flet ou Flutter. Produz `ReiAnix-native-gradle-apk-<run>` e ZIP equivalente. Não é uma versão substituta para atualizar o release instalado.
+- `.github/workflows/python_regression.yml` — executa a regressão Python/compatibilidade separadamente. Seu sucesso não comprova o runtime nativo.
+- `.github/workflows/build_hybrid_legacy.yml` — fluxo híbrido legado restrito a disparo manual; não é o workflow automático de APK de produção.
 
-```bash
-./gradlew --version
-./gradlew :app:assembleDebug --no-daemon --stacktrace --max-workers=2
-```
+A documentação histórica anterior ao Prompt 30.1 que diz que `build_apk.yml` ainda instala Flet/Flutter para empacotar o APK foi supersedida. Isso descreve uma configuração antiga, não o workflow corrente. O código-fonte continua a conter módulos Python/Flet, porém não estão incluídos nos dois APKs nativos atuais; qualquer funcionalidade ainda dependente de um consumidor exclusivo desses módulos permanece sem paridade no APK nativo.
 
-O APK nativo é produzido em `android/app/build/outputs/apk/debug/app-debug.apk`. A tarefa Gradle inclui os fontes de `android/app/src/main`, o manifesto nativo, Compose, Media3 e as dependências Android existentes.
+## O que a validação de build cobre — e o que não cobre
 
-## Contrato SQLite v29
+Os workflows verificam checkout/SHA, compilação, integridade do ZIP, Manifest, application ID, entradas DEX, recursos SQLite v29, conteúdo legado proibido, checksums e assinatura do APK. O prompt 30.2 acrescenta ao artefato o relatório do certificado de assinatura e seu digest SHA-256, além dos ABIs empacotados, para permitir diagnóstico independente de conflitos de instalação.
 
-O runtime Kotlin compara a estrutura do banco canônico com o recurso `assets/native-sqlite-contract-v29.json`. Para que o build nativo não precise executar Python para produzir esse arquivo, foi incluída uma cópia compactada do contrato extraído do APK validado no commit `af8c5dd594e1b5e754354dfbd2345967e0dad8da` (o asset original tem 64.305 bytes). O Gradle decodifica e descompacta esse contrato em `build/` apenas quando o asset não está presente. O contrato é metadado de schema, não contém banco de usuário nem registros pessoais. A suíte de regressão Python compara a cópia compactada ao contrato gerado pelo `LibraryStore`.
+Essas verificações comprovam a compilação e a estrutura do pacote. Não comprovam que a Activity inicia com sucesso em aparelho físico, que cada botão tem consumidor Kotlin ativo, que o scanner encontra arquivos, que progresso do player persiste ou que um banco pessoal existente foi validado. O manifesto deve manter `runtimeIndependenceCertified: false` até existir evidência funcional suficiente.
 
-O schema continua em v29. Nenhuma base de usuário, migração destrutiva ou segundo repositório foi criado.
+## Comparação auditada dos artefatos anteriores ao Prompt 30.2
 
-## Workflow nativo de validação
+Os dois artefatos abaixo são do commit anterior `8537ee6f827de2d5b53f9b0ff061f964b2879bd0`; eles são evidência histórica do diagnóstico que motivou esta etapa, não os artefatos gerados pelo HEAD final do Prompt 30.2.
 
-`.github/workflows/native_gradle_apk.yml` configura somente JDK 17 e Android SDK 36 e invoca diretamente `./gradlew :app:assembleDebug`. Não instala Python, Flet ou Flutter, não chama tarefas de testes Kotlin/JVM, não executa testes instrumentados e não exige emulador. Limpa a saída do módulo antes da compilação, confere applicationId, SDKs, manifesto e classes DEX nativas, cria um ZIP real e compara o APK do ZIP byte a byte com o APK distribuído separadamente. Gera SHA-256 e `distribution-manifest.json` a partir da configuração Android e do SHA exato do commit. Os artefatos são publicados como `ReiAnix-native-gradle-apk-<run>` e `ReiAnix-native-gradle-ZIP-<run>`.
+| Propriedade | Release oficial (#6072) | Validação Gradle (#108) |
+|---|---|---|
+| Run | [39104981877](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39104981877) | [39104981822](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39104981822) |
+| Artefato Actions | [12127812080](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39104981877/artifacts/12127812080) | [12128455869](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39104981822/artifacts/12128455869) |
+| Variante | `release` | `debug` |
+| `applicationId` | `com.reiflix.reiflix_local` | `com.reiflix.reiflix_local` |
+| `versionCode` / `versionName` | `2006072` / `0.2.1` | `2` / `0.2.1` |
+| Tamanho do APK interno | 19.876.738 bytes | 28.275.281 bytes |
+| SHA-256 do APK interno | `5dfcadd68c6ee8acd882cd76203b55d4e78fd0043900195f189e8612380b36d1` | `2de50b0db5f9fde392607ef6c871b2660140cfd553c3196dfc70d6b769444aa7` |
+| SHA-256 do certificado de assinatura | `81ebf2b9aa52cd455cb4ec3af87c9c68506d83c347e77a3d5d8cd03d902755ab` | `1a42981251b7e79f5d1f90dc712cb94cc8de60a0c126f1946b5a54a1f942ea3b` |
+| ABI(s) no APK | `arm64-v8a` | `arm64-v8a, armeabi-v7a, x86, x86_64` |
+| Payload Python/Flet/Flutter verificado | Ausente | Ausente |
+| `runtimeIndependenceCertified` | `false` | `false` |
 
-Esse ZIP e APK são **artefatos de validação do build nativo**, não substitutos declarados da distribuição completa atual. O workflow publica somente após todas as verificações passarem.
+Os checksums indicados foram recalculados sobre os APKs extraídos dos artefatos Actions, e os arquivos `.sha256` dentro dos artefatos passaram em `sha256sum -c`. A inspeção das entradas também confirmou os assets `native-sqlite-contract-v29.json` e `native-sqlite-bootstrap-v29.json` e classes DEX nativas. Nenhum destes dados é log de execução em dispositivo.
 
-## Por que a distribuição oficial ainda não foi cortada para Gradle nativo
+## Diagnóstico confirmado sobre a instalação
 
-A auditoria do código real mostra que a compilação nativa pode ser configurada, mas remover imediatamente o empacotamento Flet/Flutter alteraria também o runtime da aplicação. O fluxo oficial atual ainda inclui `assets/app.zip` com o app Python. Os bloqueios que permanecem são funcionais, não apenas YAML:
+Os APKs usam o mesmo `applicationId`, mas os certificados SHA-256 são diferentes. O release tinha sido assinado com `debug-fallback`, porque os segredos para assinatura estável não estavam configurados. Por isso, **um APK não é uma atualização compatível do outro**. Além disso, o APK de validação tem `versionCode=2`, inferior ao release `2006072`, então uma tentativa de substituir o release pelo debug também pode ser recusada por downgrade. A diferença de tamanho decorre, entre outros pontos, do conjunto de ABI: o release empacota apenas arm64; a variante debug empacota quatro ABI.
 
-- Em instalação nova, o `LibraryStore` Python ainda inicializa o banco SQLite v29. `ReiAnixSqliteDatabase` Kotlin valida o banco e o contrato existente, mas não cria o schema canônico.
-- `NativeMailbox` ainda transporta operações consumidas por `ScanCoordinator` e serviços Python; não é apenas uma ferramenta de compilação.
-- As projeções/ações de configurações e parte dos contratos de biblioteca ainda usam `ComposeSettingsBridge`, `ComposeLibraryBridge` e `main.py`.
-- O produtor legado de artwork/capas e parte da integração AniList, backup/restauração e lógica de domínio continua no Python; Pillow também permanece necessário ao código atual.
+Esse conflito explica uma causa concreta possível para falhas ao instalar o segundo artefato por cima do primeiro; **não explica nem prova um crash na inicialização de uma instalação nova**. Não tente resolver isso desinstalando o aplicativo ou limpando dados. É necessária a chave estável correta para compatibilidade de atualização e uma inspeção do erro real para diagnosticar a inicialização.
 
-Por isso, o workflow de distribuição já existente `.github/workflows/build_apk.yml` foi mantido como caminho de APK completo em vez de publicar silenciosamente um APK nativo incompleto ou selecionar um APK antigo se a compilação falhar. Ele ainda usa Flet/Flutter/Python para embalar as funções de runtime remanescentes. A independência **do build Kotlin de validação** agora existe em um workflow separado; a independência **do runtime e da distribuição oficial** não está certificada e ainda depende de migrações reais de domínio e inicialização. Essa distinção precisa continuar explícita até que a inicialização SQLite, as operações da mailbox, as projeções, artwork e os demais consumidores Python sejam substituídos e validados.
+O workflow oficial também reportou ausência de `REIFLIX_GOOGLE_WEB_CLIENT_ID`; isso afeta o login Google e não foi demonstrado como causa de falha de inicialização. Nenhuma credencial foi inventada.
 
-## Distribuição atual e verificações mantidas
+## Estado funcional que permanece aberto
 
-O workflow oficial anterior continua executando a suíte de regressão Python, os gates de empacotamento nativo dentro do host atual e gerando os artefatos convencionais `ReiAnix-apk-instalacao-direta-<run>` e `ReiAnix-ZIP-extraia-primeiro-<run>`. O workflow Kotlin/JVM segue manual por `workflow_dispatch`; esta etapa não o executa, não adiciona gatilho de PR e não adiciona testes de emulador.
+- **Inicialização:** Manifest registra `.ReiAnixApplication` e a launcher `.MainActivity`; a Activity chama o bootstrap nativo e mostra Compose após a decisão sobre a base. Essa inspeção estática não substitui logcat de um crash real.
+- **SQLite:** há uma única base canônica em `filesDir/data/library.sqlite3`, schema v29. Instalação nova usa bootstrapper Kotlin com candidata verificada; banco existente passa por validação/upgrade conservador. Não foi testado um banco pessoal real neste diagnóstico.
+- **SAF, MediaStore e scanner:** componentes nativos existem e são conectados ao fluxo de Compose, mas a operação real no aparelho — permissões, seleção de diretório, varredura, ingestão e persistência — não foi observada nesta execução.
+- **Biblioteca, settings, AniList/arte, backup/restauração e player:** implementações Kotlin existem em diferentes estágios; ainda há compatibilidade e funções de domínio no código Python. `NativeMailbox` devolve sucesso sem publicar evento quando `assets/app.zip` não está presente; isso impede filas órfãs, mas significa que um fluxo que ainda dependa exclusivamente de um consumidor Python não será executado pelo APK nativo. Essas áreas não estão certificadas globalmente.
+- **Dispositivo físico:** não houve acesso autorizado a um dispositivo nem captura de logcat neste workflow. Não afirmamos que os APKs foram instalados, abertos ou que reproduziram vídeo com sucesso.
 
-## Limites da evidência
+Para fechar o diagnóstico de inicialização, é indispensável obter o erro real do aparelho: mensagem exibida ao abrir (fecha imediatamente, tela preta, tela vazia ou erro de instalação) e, se houver ADB, trecho de `adb logcat -d` contendo `AndroidRuntime`, `ReiAnixAppBootstrap`, `ReiAnixApplication` e `[REIFLIX][ANDROID]` na hora da falha. Não apagar dados para coletar esse log.
 
-Um `assembleDebug` bem-sucedido comprova que o módulo nativo compila e empacota suas classes e recursos no APK. Isso não comprova a execução completa do aplicativo em dispositivo físico, nem autoriza afirmar a remoção integral de runtime Python/Flutter, nem substitui os artefatos do workflow oficial. O resultado final do Prompt 27 depende do estado final dos workflows associados ao commit e os bloqueios listados acima permanecem pendentes.
+## Regra de certificação
+
+`runtimeIndependenceCertified` permanece `false`. A migração não pode ser declarada completa somente porque Gradle compila, o Manifest contém uma Activity nativa ou o APK não inclui arquivos Python. Certificação exige execução comprovada dos fluxos reais, compatibilidade com dados existentes e, para validação física, testes autorizados em dispositivo Android real.
