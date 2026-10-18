@@ -67,9 +67,9 @@ class NativeProductionBuildContractTests(unittest.TestCase):
         build_docs = (ROOT / "docs/KOTLIN_NATIVE_GRADLE_BUILD.md").read_text(encoding="utf-8")
         cutover = (ROOT / "docs/PROMPT_28_RUNTIME_CUTOVER_STATUS.md").read_text(encoding="utf-8")
         self.assertNotIn("The official APK still uses Flet/Flutter tooling", gradle)
-        self.assertIn("ambos os APKs", readme)
+        self.assertIn("tanto o workflow oficial", readme)
         self.assertIn("runtimeIndependenceCertified: false", readme)
-        self.assertIn("historical", build_docs.lower())
+        self.assertIn("evidência histórica", build_docs.lower())
         self.assertIn("supersedida", cutover)
         self.assertIn("PROMPT_30_2_APK_DIAGNOSTICS.md", build_docs)
 
