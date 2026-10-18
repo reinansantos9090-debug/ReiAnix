@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.anilist
 
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
+import com.reiflix.reiflix_local.data.library.ReiAnixLibraryInvalidationBus
 
 import android.content.Context
 import android.util.Log
@@ -56,6 +57,12 @@ class ReiAnixAniListIntegrationService(
                 ReiAnixAppDependencies.existingOrNull(context.applicationContext)
                     ?.artworkService?.requestAnimeArtwork(animeId, force = true)
             }
+            ReiAnixLibraryInvalidationBus.publish(
+                reason = "anilist_metadata_committed",
+                animeId = animeId,
+                entityType = "anime",
+                entityId = animeId,
+            )
             NativeMailbox.write(
                 context.applicationContext,
                 JSONObject()
