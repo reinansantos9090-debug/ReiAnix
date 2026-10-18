@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --stacktrace --max-workers=2
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
 
       - name: Verify APK metadata and native payload
         shell: bash
@@ -157,7 +157,7 @@ jobs:
             sha256sum -c ReiAnix-native-debug.apk.sha256
           )
           test -s "$distribution/ReiAnix-native-debug.zip"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"
           git diff --check
           test -z "$(git status --porcelain)"
 

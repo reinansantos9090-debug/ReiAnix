@@ -41,6 +41,7 @@ class NativeProductionBuildContractTests(unittest.TestCase):
         self.assertIn('test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"', workflow)
         self.assertIn('printf \'  "commit": "%s",\\n\' "$REIANIX_SOURCE_SHA"', workflow)
         self.assertNotIn('printf \'  "commit": "%s",\\n\' "$GITHUB_SHA"', workflow)
+        self.assertNotIn('= "$GITHUB_SHA"', workflow)
 
     def test_hybrid_runtime_build_is_not_an_automatic_release_workflow(self):
         legacy = (ROOT / ".github/workflows/build_hybrid_legacy.yml").read_text(encoding="utf-8")

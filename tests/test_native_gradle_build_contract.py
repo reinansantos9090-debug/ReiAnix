@@ -117,6 +117,7 @@ class NativeGradleBuildContractTests(unittest.TestCase):
         self.assertIn('test "$(git rev-parse HEAD)" = "$REIANIX_SOURCE_SHA"', workflow)
         self.assertIn('printf \'  "commit": "%s",\\n\' "$REIANIX_SOURCE_SHA"', workflow)
         self.assertNotIn('printf \'  "commit": "%s",\\n\' "$GITHUB_SHA"', workflow)
+        self.assertNotIn('= "$GITHUB_SHA"', workflow)
 
     def test_flet_package_excludes_the_separate_build_tooling(self):
         config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
