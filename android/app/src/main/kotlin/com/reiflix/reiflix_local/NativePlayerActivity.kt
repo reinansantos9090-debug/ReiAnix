@@ -4622,6 +4622,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
             try {
                 val dependencies = ReiAnixAppDependencies.from(applicationContext)
                 val navigation = nativePlayerNavigationService.resolve(sourceEpisodeId)
+                val expectedAnimeId = intent.getStringExtra("animeId")?.toLongOrNull()
+                val resolvedCurrentUri = normalizeLocalReference(navigation.current.path)?.toString()
+                val expectedCurrentUri = normalizeLocalReference(sourceUri)?.toString()
+                if (
+                    navigation.current.id != sourceEpisodeId ||
+                    (expectedAnimeId != null && navigation.current.animeId != expectedAnimeId) ||
+                    resolvedCurrentUri == null ||
+                    expectedCurrentUri == null ||
+                    resolvedCurrentUri != expectedCurrentUri
+                ) {
+                    throw IllegalStateException(
+                        "The active player identity does not match its canonical SQLite episode."
+                    )
+                }
                 val movingNext = sourceDirection == "NEXT"
                 val target = (if (movingNext) navigation.next else navigation.previous)
                     ?: throw NoSuchElementException("Não existe episódio adjacente disponível.")

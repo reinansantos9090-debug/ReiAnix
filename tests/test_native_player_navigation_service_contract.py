@@ -25,6 +25,10 @@ def test_native_player_resolves_next_previous_from_canonical_sqlite():
     assert "CREATE TABLE" not in rows.upper()
     assert "nextCanNext" in service and "previousCanPrevious" in service
     assert "nativePlayerNavigationService.resolve(sourceEpisodeId)" in request
+    assert "navigation.current.id != sourceEpisodeId" in request
+    assert "navigation.current.animeId != expectedAnimeId" in request
+    assert "resolvedCurrentUri != expectedCurrentUri" in request
+    assert "active player identity does not match its canonical SQLite episode" in request
     assert 'putExtra("episodeTitle", targetTitle)' in request
     assert "startActivity(successorIntent)" in request
     assert 'putExtra("positionMsSpecified", positionMs != null)' in request
