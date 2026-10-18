@@ -2,7 +2,7 @@
 
 Data da atualização: 2026-10-18 (UTC)  
 Pull request de trabalho: #194, branch migration/prompt-28-native-scan-bridge-cutover-20261017  
-Escopo: evidência estática do repositório e definição das verificações exigidas pelo Prompt 29. Os estados de CI finais desta alteração devem ser consultados na PR e não são antecipados neste documento.
+Escopo: auditoria estática do repositório e validação de CI do código alterado pelo Prompt 29. A evidência de CI abaixo corresponde ao SHA de implementação `596d5a7e1bf391a02909f4ebcd8a352b15f98348`; ela comprova compilação/empacotamento e regressão, não paridade funcional completa.
 
 ## Conclusão executiva
 
@@ -40,7 +40,7 @@ A classe é integrada ao bootstrap nativo antes da decisão final de compatibili
 | Área | Evidência disponível nesta auditoria | Estado |
 |---|---|---|
 | Runtime exclusivamente Kotlin | O APK oficial ainda empacota Serious Python/Flet/Flutter e o entrypoint main.py continua ativo | **Pendente — requisito obrigatório não atendido** |
-| Activity e bootstrap Android | Manifest, MainActivity nativa, ReiAnixApplication e coordinator Kotlin presentes; contratos de fonte existentes | **Implementado no código; CI final necessário; dispositivo não verificado** |
+| Activity e bootstrap Android | Manifest, MainActivity nativa, ReiAnixApplication e coordinator Kotlin presentes; contratos de fonte existentes; Gradle nativo e APK oficial passaram no SHA de implementação auditado | **Compilação validada; dispositivo não verificado** |
 | Jetpack Compose e navegação | Shell, NavHost, rotas, telas e ViewModels Compose existem | **Parcial — existem consumidores e telas legadas** |
 | Persistência canônica | Caminho library.sqlite3 e esquema v29 são compartilhados; bootstrap de instalação nova já existia; upgrader aditivo foi conectado nesta etapa | **Parcial — falta execução comportamental com banco legado** |
 | SAF e permissões | Seletor, permissões persistentes, onboarding e scanners Android existem | **Parcial — coordenação/mailbox híbrida ainda presente** |
@@ -52,13 +52,13 @@ A classe é integrada ao bootstrap nativo antes da decisão final de compatibili
 | Organização | UI e serviços Kotlin de classificação/registro existem | **Parcial — ferramentas e consumidores Flet permanecem** |
 | Backup, recuperação e diagnóstico | Serviços Kotlin com schema v29 e rota Recovery existem | **Parcial — contratos auxiliares legados continuam ativos** |
 | Player, histórico e retomada | Media3/ExoPlayer, NativePlayerActivity e serviço de consumo existem | **Parcial — independência de todos os comandos/eventos não foi demonstrada** |
-| Build Gradle nativo | Workflow nativo compila APK e inspeciona manifesto/DEX/ativos, cria ZIP e SHA-256 | **Verificação estrutural do build; não validação de runtime** |
-| Distribuição APK/ZIP | Workflow oficial gera os artefatos convencionais, mas continua usando cadeia Flet/Flutter | **Parcial — ainda não é distribuição exclusivamente nativa** |
-| Regressão Python | Workflow oficial executa pytest uma vez e verifica contratos/build | **Aguardando o resultado do SHA desta etapa** |
+| Build Gradle nativo | Run [39084060927](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39084060927) terminou com sucesso; APK e ZIP de validação gerados e manifesto/DEX/assets verificados | **Sucesso estrutural; não validação de runtime** |
+| Distribuição APK/ZIP | Run [39084060944](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39084060944) terminou com sucesso e publicou APK/ZIP; a cadeia oficial continua usando Python/Flet/Flutter | **Build verde, mas distribuição ainda híbrida** |
+| Regressão Python | Run 39084060944: **1.992 testes passaram e 58 subtests passaram** em 64,22 s, incluindo os contratos de fonte do Prompt 29 | **Sucesso** |
 | Testes Kotlin/JVM | Workflow workflow_dispatch existente; execução manual não permitida nesta tarefa | **Não executado conforme a restrição** |
 | Testes instrumentados/dispositivo | Nenhum teste de emulador foi adicionado/executado | **Não verificado em dispositivo** |
 | Código residual | 219 arquivos Python estavam na árvore examinada antes desta alteração; muitos são testes/tooling, outros são runtime e caminhos Flet reais | **Classificado por função, ainda não eliminado globalmente** |
-| CI do commit final | Deve ser consultado para o SHA resultante depois desta auditoria | **Pendente até término dos workflows** |
+| CI da implementação auditada | SHA `596d5a7e1bf391a02909f4ebcd8a352b15f98348`; runs 39084060927 (Gradle nativo) e 39084060944 (APK oficial) concluídos | **Ambos com conclusão `success`** |
 
 ## Runtime, build e fontes — três resultados diferentes
 
@@ -70,7 +70,7 @@ A classe é integrada ao bootstrap nativo antes da decisão final de compatibili
 
 ## Verificações e limites
 
-Os workflows anteriores ao Prompt 29 tinham execuções bem-sucedidas no SHA anterior da PR #194, inclusive para o APK oficial e o APK nativo de validação. Esses resultados pertencem ao commit anterior e não certificam as alterações do Prompt 29. O resultado final deve ser atribuído exclusivamente ao novo SHA e a workflows terminados.
+No SHA de implementação auditado `596d5a7e1bf391a02909f4ebcd8a352b15f98348`, os dois workflows obrigatórios terminaram oficialmente com sucesso: Gradle nativo [run 39084060927](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39084060927) e build oficial [run 39084060944](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39084060944). A suíte Python registrou **1.992 testes e 58 subtests aprovados**. O APK oficial publicado foi `ReiAnix-apk-instalacao-direta-6039` (33.073.120 bytes), o ZIP oficial `ReiAnix-ZIP-extraia-primeiro-6039` (33.023.539 bytes), o APK Gradle `ReiAnix-native-gradle-apk-75` (26.960.971 bytes) e o ZIP Gradle `ReiAnix-native-gradle-ZIP-75` (26.904.439 bytes). SHA-256 do APK oficial: `d5e80bd4ef53fee0a658b27052ebf56af377dfaa4cfa6867b85568b9d04507c9`. Isso valida compilação, empacotamento e regressão para o código auditado; não prova runtime exclusivamente Kotlin, execução em dispositivo nem migração comportamental de um banco pessoal existente.
 
 Nenhuma base pessoal real foi acessada ou alterada. Nenhum APK foi instalado/executado em dispositivo nesta auditoria. Não foi acionado o workflow Kotlin/JVM, nenhum teste instrumentado foi introduzido e a suíte Kotlin/JVM não foi executada manualmente. O build Gradle é uma validação de compilação/empacotamento; não deve ser descrito como teste de comportamento de usuário.
 
