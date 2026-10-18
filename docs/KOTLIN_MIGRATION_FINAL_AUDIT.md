@@ -5,6 +5,21 @@ Pull request de trabalho: #194, branch `migration/prompt-28-native-scan-bridge-c
 
 Escopo: auditoria estática e histórico de validação do Prompt 29. As seções do baseline abaixo preservam evidências históricas dos SHAs nelas citados; os resultados dos workflows associados ao HEAD de implementação anterior à correção documental estão registrados na seção histórica específica. A evidência de CI comprova compilação/empacotamento e regressão dentro do contexto efetivamente executado, não paridade funcional completa.
 
+## Prompt 30.2 — auditoria do HEAD anterior e diagnóstico dos dois APKs
+
+Este registro audita o HEAD anterior às correções do Prompt 30.2, `8537ee6f827de2d5b53f9b0ff061f964b2879bd0`. Ele documenta a evidência usada para esta correção; não substitui as verificações finais que devem terminar sobre o novo HEAD.
+
+- A PR #194 estava aberta, em rascunho e sem merge, na branch `migration/prompt-28-native-scan-bridge-cutover-20261017`. O SHA consultado na branch era exatamente `8537ee6f827de2d5b53f9b0ff061f964b2879bd0`.
+- Runs do mesmo SHA: [build oficial 39104981877](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39104981877) — success; [Gradle debug 39104981822](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39104981822) — success; [regressão Python 39104981861](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39104981861) — success (2.006 testes e 58 subtests). Isso não constitui validação funcional em aparelho.
+- A inspeção do workflow atual confirmou que `build_apk.yml` compila `:app:assembleRelease` sem instalar Python/Flet/Flutter; `native_gradle_apk.yml` compila `:app:assembleDebug`; `python_regression.yml` está separado; `build_hybrid_legacy.yml` é manual. Declarações nos snapshots mais antigos abaixo que afirmam que o workflow oficial atual empacota o runtime híbrido são históricas e foram supersedidas pelo Prompt 30.1.
+- Os APKs baixados dos artefatos Actions passaram na integridade ZIP e em `sha256sum -c`. Seus hashes internos e certificados foram recalculados independentemente. Ambos têm application ID `com.reiflix.reiflix_local`, mas certificados de assinatura diferentes; o release está em `versionCode=2006072`, o debug em `versionCode=2`. O release contém apenas `arm64-v8a`; o debug contém `arm64-v8a, armeabi-v7a, x86, x86_64`. Portanto, eles não são atualizações compatíveis entre si, e a tentativa de instalar o debug por cima do release também implica downgrade. Isso pode explicar recusa de instalação, mas não demonstra a causa de eventual crash após uma instalação limpa.
+- O release foi assinado com `debug-fallback`, pois os segredos de assinatura estável estavam ausentes no run examinado. A variável pública `REIFLIX_GOOGLE_WEB_CLIENT_ID` também não estava configurada; isso afeta login Google e não foi demonstrado como causa de falha de inicialização.
+- Não havia logs do aparelho nem acesso autorizado a dispositivo nesta auditoria. Nenhuma instalação, inicialização, navegação ou reprodução real foi afirmada. A causa exata do relato “não funciona” permanece não determinada até obter erro de instalação ou logcat.
+
+Matriz de certificação neste estágio: compilação — **demonstrada** para o SHA examinado; empacotamento Gradle e ausência de runtime legado — **demonstrados estruturalmente**; inicialização real, operações essenciais ponta a ponta, paridade funcional sem Python e compatibilidade com uma base pessoal — **não certificadas**; validação em dispositivo real — **não executada**. `runtimeIndependenceCertified` permanece `false`.
+
+Detalhes reproduzíveis, checksums, fingerprints de assinatura, ABI e limites funcionais estão em [`KOTLIN_NATIVE_GRADLE_BUILD.md`](KOTLIN_NATIVE_GRADLE_BUILD.md). A descrição abaixo preserva o histórico de etapas e SHAs anteriores, não uma certificação do HEAD final.
+
 
 ## Registro retrospectivo das evidências do HEAD anterior ao Prompt 29.3 — `e09faab849164480075b6e260c52f203857d8075` (não valida automaticamente o novo HEAD)
 
