@@ -30,7 +30,7 @@ O módulo Android real fica em `android/app`. A configuração Gradle na raiz ap
 
 O APK de validação nativa é gerado em `android/app/build/outputs/apk/debug/app-debug.apk`. O workflow `ReiAnix Native Gradle APK Validation` realiza essa compilação sem configurar Python, Flet ou Flutter; confere o manifesto, classes nativas, recurso do contrato SQLite v29, ZIP, SHA-256 e metadados de distribuição. Consulte [docs/KOTLIN_NATIVE_GRADLE_BUILD.md](docs/KOTLIN_NATIVE_GRADLE_BUILD.md).
 
-**Atenção:** esse artefato valida o build Kotlin/Compose, mas não substitui ainda a distribuição completa. O aplicativo ainda mantém operações reais no runtime Python: consumidores da NativeMailbox/ScanCoordinator, telas Flet remanescentes, algumas projeções e comandos de configurações/biblioteca e o produtor legado de artwork/metadata. O bootstrap de instalação nova e o upgrade aditivo do SQLite v29 possuem implementações Kotlin, mas isso não elimina as demais dependências híbridas. Até essas responsabilidades serem migradas e validadas, o workflow oficial `Build ReiAnix Android APK` continua produzindo o APK completo pelo caminho Flet/Flutter, verifica a integração Android e publica os artefatos convencionais. Não remova esse caminho nem trate o APK nativo de validação como substituto funcional antes do cutover do runtime.
+**Estado atual (Prompt 30.2):** tanto o workflow oficial `Build ReiAnix Android APK` quanto o workflow `ReiAnix Native Gradle APK Validation` compilam APKs diretamente pelo Gradle e não empacotam Python/Flet/Flutter. O primeiro gera o variant `release` de produção; o segundo gera um variant `debug` de validação, não um substituto para atualizar o release instalado. O código-fonte ainda mantém módulos Python/Flet para compatibilidade, e algumas funções de domínio/bridges permanecem dependentes desses consumidores. Como esses runtimes não estão dentro dos APKs atuais, funcionalidades com dependência legada ainda não demonstrada como substituída podem ficar indisponíveis. Por isso a independência funcional continua **não certificada** (`runtimeIndependenceCertified: false`). Consulte [o diagnóstico dos APKs e os limites de certificação](docs/KOTLIN_NATIVE_GRADLE_BUILD.md) e a [auditoria do Prompt 30.2](docs/PROMPT_30_2_APK_DIAGNOSTICS.md).
 
 O APK convencional pode ser validado pela presença no DEX de `MainActivity`, `NativeMailbox`, `SafScanner`, `MediaStoreScanner`, `BroadStorageScanner`, `NativePlayerActivity` e `GoogleIdentity`. O identificador continua `com.reiflix.reiflix_local`; as permissões SAF/MediaStore e o player Media3 são mantidos. Nenhuma chave privada é incluída no repositório.
 
@@ -102,11 +102,14 @@ projeções locais podem filtrar por favorito, pin, progresso, nota, metadata,
 capa e etiqueta. Configurações mostra estatísticas agregadas e o relatório
 real do último scan, sem abrir arquivos nem chamar serviços de metadata.
 
-O player Android usa Media3 1.11.1 para conteúdo autorizado localmente. Ele
-preserva retomada/progresso via `NativeMailbox` e inclui velocidade entre
-0,5x–2x, fit/fill/zoom, reinício, marcar visto/não visto, autoplay do próximo
-episódio e timer de sono de sessão. PiP, codecs e reprodução devem ser
-validados em APK/dispositivo; não há streaming, download ou legenda online.
+O player Android usa Media3 1.11.1 para conteúdo autorizado localmente.
+Ele implementa controles nativos e inclui velocidade entre 0,5x–2x, fit/fill/zoom,
+reinício, autoplay do próximo episódio e timer de sono de sessão. Retomada,
+progresso, transição de episódio e ações como marcar visto precisam ser validadas
+no APK nativo real; não trate publicação em `NativeMailbox` como prova de
+persistência, pois a mailbox não publica quando o pacote não inclui `assets/app.zip`.
+PiP, codecs e reprodução exigem validação em dispositivo; não há streaming,
+download ou legenda online.
 
 ## Permissões
 
@@ -134,4 +137,4 @@ etapa mantém o app aberto e permite tentar de novo em Configurações.
 
 ## Build
 
-O comando nativo e os limites de distribuição estão documentados em [Kotlin native Gradle build](docs/KOTLIN_NATIVE_GRADLE_BUILD.md). O fluxo Android de distribuição completa permanece no workflow oficial enquanto existirem dependências de runtime legadas.
+O comando nativo, as diferenças entre variants e os limites de certificação estão documentados em [Kotlin native Gradle build](docs/KOTLIN_NATIVE_GRADLE_BUILD.md). O APK oficial atual já é produzido por Gradle nativo, mas a migração funcional não está certificada enquanto houver operações legadas sem substituição comprovada.
