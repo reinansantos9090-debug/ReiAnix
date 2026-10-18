@@ -26,7 +26,7 @@ android {
         minSdk = 24
         targetSdk = 36
         resValue("string", "reiflix_google_web_client_id", providers.environmentVariable("REIFLIX_GOOGLE_WEB_CLIENT_ID").orElse("").get())
-        versionCode = 2
+        versionCode = providers.gradleProperty("reianixVersionCode").orElse("2").get().toInt()
         versionName = "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -35,10 +35,36 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // CI release signing uses the same keystore as prior distributable APKs when
+    // configured. A debug-key fallback keeps local builds reproducible, but those
+    // builds are intentionally not update-compatible with a stable-signed install.
+    val stableReleaseSigningConfigured = listOf(
+        providers.environmentVariable("REIFLIX_ANDROID_KEYSTORE_PATH").orNull,
+        providers.environmentVariable("REIFLIX_ANDROID_KEYSTORE_PASSWORD").orNull,
+        providers.environmentVariable("REIFLIX_ANDROID_KEY_PASSWORD").orNull,
+        providers.environmentVariable("REIFLIX_ANDROID_KEY_ALIAS").orNull,
+    ).all { !it.isNullOrBlank() }
+
+    signingConfigs {
+        create("reianixRelease") {
+            if (stableReleaseSigningConfigured) {
+                storeFile = file(providers.environmentVariable("REIFLIX_ANDROID_KEYSTORE_PATH").get())
+                storePassword = providers.environmentVariable("REIFLIX_ANDROID_KEYSTORE_PASSWORD").get()
+                keyPassword = providers.environmentVariable("REIFLIX_ANDROID_KEY_PASSWORD").get()
+                keyAlias = providers.environmentVariable("REIFLIX_ANDROID_KEY_ALIAS").get()
+            }
+        }
+    }
+
     // Personal-device release APK: target the Galaxy A15 arm64 ABI.
-    // Debug builds remain multi-ABI for x86_64/other CI emulators.
+    // Debug builds remain multi-ABI for local validation.
     buildTypes {
         getByName("release") {
+            signingConfig = if (stableReleaseSigningConfigured) {
+                signingConfigs.getByName("reianixRelease")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             ndk {
                 abiFilters += "arm64-v8a"
             }

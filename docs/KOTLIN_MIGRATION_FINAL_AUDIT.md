@@ -156,3 +156,18 @@ A suíte tinha uma asserção antiga que exigia o limite de page size dentro do 
 Esses resultados provam regressão Python, compilação/empacotamento oficial e compilação/estrutura do APK Gradle para o SHA citado. Não provam que o APK oficial seja independente de Python/Flet/Flutter nem que um banco pessoal existente tenha passado por uma migração comportamental em dispositivo. Não foram executados testes Kotlin/JVM manuais, nem testes instrumentados/emulador.
 
 **Estado global:** a migração integral permanece pendente. O entrypoint `main.py`, a distribuição oficial híbrida, consumidores reais de Flet e várias operações de mailbox/projeção permanecem; a PR deve continuar em rascunho e sem merge até que a paridade nativa completa seja demonstrada.
+
+
+## Prompt 30.1 — corte do build oficial para Gradle nativo (implementação sob validação)
+
+Esta seção foi adicionada para registrar o corte do caminho oficial de empacotamento sem reescrever os registros históricos desta auditoria.
+
+- O workflow `.github/workflows/build_apk.yml` foi alterado para compilar o variant `release` diretamente com o Gradle do repositório, usando JDK 17 e Android SDK 36. O job de build não instala Python, Flet, Flutter, Dart nem SeriousPython e não executa `flet build`.
+- A suíte Python de regressão e compatibilidade foi separada em `.github/workflows/python_regression.yml`, para continuar exercitando contratos legados sem fazer parte da toolchain de build do APK.
+- A configuração Gradle agora aceita `reianixVersionCode` como propriedade de build e configura assinatura estável a partir dos mesmos segredos Android usados pelo pipeline anterior. O workflow escolhe um versionCode maior do que a faixa histórica dos builds CI anteriores. Quando os segredos de assinatura não existem, o fallback é explicitamente assinado com a chave debug e não é garantido como atualização compatível.
+- O APK produzido pelo workflow oficial passa a verificar a ausência de `assets/app.zip`, `flutter_assets`, bibliotecas Python/Flutter e bytecode Python; verificar o Manifest, classes DEX, player nativo, host Compose, schema/bootstrap v29, assinatura APK e integridade/comparação do APK extraído do ZIP. O manifesto do artefato mantém `runtimeIndependenceCertified: false` até haver evidência funcional suficiente; ausência de payload no pacote não demonstra paridade de todas as funções.
+- Um contrato de regressão `tests/test_native_production_build_contract.py` protege a separação entre a toolchain de release e os testes Python de compatibilidade.
+
+**Escopo ainda não certificado:** esta alteração muda o build oficial para um APK nativo de release, mas não demonstra por si só paridade funcional em dispositivo físico. `NativeMailbox`, alguns produtores e consumidores de compatibilidade, fallback do player, caminhos Flet no código-fonte, o upgrader do SQLite com banco pessoal real e a ausência de qualquer fallback de negócio Python exigem validação adicional. Nenhum código legado foi apagado em massa, o schema continua v29, nenhum teste Kotlin/JVM foi executado manualmente e nenhum teste de emulador foi adicionado.
+
+A conclusão da migração integral continua condicionada a uma prova suficiente de funcionamento das telas/operações migradas e à confirmação de que nenhum caminho obrigatório do produto precisa do runtime antigo.
