@@ -8,7 +8,7 @@ Genres may arrive from AniList metadata, the local GenreClassifier, existing loc
 
 ## Identity
 
-Each genre has a stable UUID, canonical name, normalized name, source, and system/custom flags. Aliases resolve to the same UUID. Normalization is for identity matching only; it is not translation and does not use fuzzy matching. Kotlin normalization also mirrors Python case-fold behavior for `ß` and Greek final sigma (`ς`) after Unicode decomposition.
+Each genre has a stable UUID, canonical name, normalized name, source, and system/custom flags. Aliases resolve to the same UUID. Normalization is for identity matching only; it is not translation and does not use fuzzy matching. Kotlin normalization explicitly mirrors the Python case-fold results for `ß` and Greek final sigma (`ς`) after Unicode decomposition, but it is not a complete implementation of all Unicode mappings in Python `str.casefold()`.
 
 ## Persistence
 

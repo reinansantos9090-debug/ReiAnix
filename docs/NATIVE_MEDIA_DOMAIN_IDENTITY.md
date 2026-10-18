@@ -7,7 +7,7 @@
 - `EpisodeRecordId` wraps the existing `episodes.id` primary key. The current schema stores episode identification, playback state, file location and media identity on this record; this change does not assert that a separate persisted file table exists.
 - `LogicalEpisodeIdentity` is a nullable projection derived from the persisted anime ID, season and usable episode/absolute number. A title or filename alone never creates a logical episode identity.
 - `CanonicalMediaIdentity` represents stable location evidence when available. A URI is retained separately because content URIs can change or become unavailable when Android storage permissions change.
-- `MediaLocationKind` distinguishes a raw filesystem path, `file://`, generic `content://`, SAF tree, SAF document, and other URI schemes using only the stored string. Classification neither grants access nor creates a persisted identity.
+- `MediaLocationKind` distinguishes a raw filesystem path, an empty/unresolved value, `file://`, generic `content://`, SAF tree, SAF document, and other URI schemes using only the stored string. Empty strings are not filesystem paths. SAF is identified conservatively using known DocumentsProvider authorities and exact path-segment structures; unknown providers remain generic `CONTENT_URI`. A malformed URI with a recognizable scheme is not downgraded to a filesystem path. Classification neither grants access nor creates a persisted identity.
 
 The existing SQLite records remain the canonical persistence records. `SqliteDomainMappers.kt` provides read-only projections and preserves raw JSON columns (aliases, genres, user tags, and manual metadata ownership) rather than trying to parse and reserialize them. No table, column, primary key, index, database version or migration was changed.
 
@@ -22,7 +22,7 @@ The existing SQLite records remain the canonical persistence records. `SqliteDom
 - If no stable location evidence is present, identity remains null. For a non-filesystem content provider, a provider-scoped URI identity is used, not a guessed shared-storage identity.
 - File size and modification time are discovery attributes, not inputs to a stable media identity.
 
-`data/media/MediaTitleNormalizer` keeps title normalization separate from the physical-media identity algorithm. It does not fuzzy-match or promote a normalized title into an identifier. `data/media/MediaFilenameParser` recognizes explicit season/episode markers before considering numeric suffixes and exposes confidence/evidence/uncertainty for callers.
+`data/media/MediaTitleNormalizer` keeps title normalization separate from the physical-media identity algorithm. It does not fuzzy-match or promote a normalized title into an identifier. `data/media/MediaFilenameParser` recognizes explicit season/episode markers before considering numeric suffixes and exposes confidence/evidence/uncertainty for callers. Decimal episode syntax is bounded to 1–4 integer digits and up to 2 fractional digits; absolute episode numbering remains integer-based, and numeric-only decimal filenames remain ambiguous.
 
 ## Python/Kotlin parity and boundary
 
@@ -39,3 +39,8 @@ The domain models deliberately allow incomplete optional metadata and nullable l
 ## Validation workflow
 
 The existing Kotlin/JVM workflow remains manually dispatchable and also runs for pull requests targeting `main`, so these pure-JVM identity/mapping tests are exercised without an emulator. The workflow generates build identity before creating untracked SQLite test fixtures because the identity generator enforces a clean working tree.
+
+
+## Scope of Unicode normalization parity
+
+The Kotlin genre normalizer explicitly handles `ß`/`ss` and Greek final sigma `ς`/`σ` after NFKD, in addition to accent removal, separator normalization and whitespace collapse. This is not a full implementation of every Unicode mapping in Python `str.casefold()`. Existing alias/registry identity is preserved; broader Unicode cases have not been asserted by executed tests in this prompt.

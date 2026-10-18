@@ -174,6 +174,19 @@ data class LocalMediaReference(
 object MediaReferenceSyntax {
     private val uriScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
 
+    /**
+     * Canonical platform DocumentsProvider authorities plus Google Drive's
+     * document provider. Unknown content providers remain generic content URIs:
+     * a path fragment alone cannot prove that a provider implements SAF.
+     */
+    private val knownDocumentsProviderAuthorities = setOf(
+        "com.android.externalstorage.documents",
+        "com.android.providers.downloads.documents",
+        "com.android.providers.media.documents",
+        "com.google.android.apps.docs.storage",
+        "com.google.android.apps.docs.storage.legacy",
+    )
+
     fun hasUriScheme(value: String): Boolean = uriScheme.containsMatchIn(value.trim())
 
     /** Pure-JVM classification; never resolves, rewrites, or persists a location. */
@@ -182,21 +195,44 @@ object MediaReferenceSyntax {
         if (trimmed.isEmpty()) return MediaLocationKind.UNRESOLVED
         if (!hasUriScheme(trimmed)) return MediaLocationKind.FILESYSTEM_PATH
 
-        // Classify by scheme before URI parsing so even a legacy file URI with spaces
-        // is never misreported as a raw filesystem path or an unrelated URI scheme.
+        // Preserve a recognizable scheme even when a legacy URI is malformed:
+        // a broken URI must never silently become a filesystem path.
         val scheme = trimmed.substringBefore(':').lowercase(java.util.Locale.ROOT)
         return when (scheme) {
             "file" -> MediaLocationKind.FILE_URI
-            "content" -> {
-                val parsed = runCatching { java.net.URI(trimmed) }.getOrNull()
-                val path = parsed?.rawPath.orEmpty().lowercase(java.util.Locale.ROOT)
-                when {
-                    path.contains("/document/") -> MediaLocationKind.SAF_DOCUMENT_URI
-                    path.contains("/tree/") -> MediaLocationKind.SAF_TREE_URI
-                    else -> MediaLocationKind.CONTENT_URI
-                }
-            }
+            "content" -> classifyContentUri(trimmed)
             else -> MediaLocationKind.OTHER_URI
+        }
+    }
+
+    private fun classifyContentUri(value: String): MediaLocationKind {
+        val parsed = runCatching { java.net.URI(value) }.getOrNull()
+            ?: return MediaLocationKind.CONTENT_URI
+        if (!parsed.scheme.equals("content", ignoreCase = true)) {
+            return MediaLocationKind.CONTENT_URI
+        }
+
+        val authority = parsed.authority?.lowercase(java.util.Locale.ROOT)
+            ?: return MediaLocationKind.CONTENT_URI
+        if (authority !in knownDocumentsProviderAuthorities) return MediaLocationKind.CONTENT_URI
+
+        // DocumentsContract URI shapes are path-segment based:
+        // /tree/{treeDocumentId}, /document/{documentId}, or
+        // /tree/{treeDocumentId}/document/{documentId}. Do not infer SAF from
+        // arbitrary substrings in a generic provider's path.
+        val segments = parsed.rawPath.orEmpty().split('/').filter(String::isNotEmpty)
+        val hasDocumentId = segments.size == 2 &&
+            segments[0] == "document" && segments[1].isNotEmpty()
+        val hasTreeId = segments.size == 2 &&
+            segments[0] == "tree" && segments[1].isNotEmpty()
+        val documentWithinTree = segments.size == 4 &&
+            segments[0] == "tree" && segments[1].isNotEmpty() &&
+            segments[2] == "document" && segments[3].isNotEmpty()
+
+        return when {
+            hasDocumentId || documentWithinTree -> MediaLocationKind.SAF_DOCUMENT_URI
+            hasTreeId -> MediaLocationKind.SAF_TREE_URI
+            else -> MediaLocationKind.CONTENT_URI
         }
     }
 }

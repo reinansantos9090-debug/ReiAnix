@@ -76,3 +76,10 @@ O snapshot auditado continua híbrido. A equivalência do caminho SQLite precisa
 ### Fronteiras após P02
 
 Esta etapa não migra a orquestração do scanner, LibraryService, discovery/missing/observations, nem desativa o runtime híbrido. A ligação do parser/modelos ao fluxo nativo ativo permanece no Prompt 11; os serviços e consumidores Python continuam até uma troca segura ser implementada e validada. O Prompt 03 não foi iniciado por este registro.
+
+
+## 7. Limites de classificação URI/SAF e Unicode
+
+A classificação de localização é uma projeção sintática pura-JVM, não substitui `DocumentsContract.isDocumentUri(context, uri)` nem prova que o provider existe ou que a aplicação possui grants. `MediaReferenceSyntax` só identifica SAF para autoridades DocumentsProvider explicitamente reconhecidas e segmentos completos `/tree/{id}`, `/document/{id}` ou `/tree/{treeId}/document/{documentId}`. Strings vazias são `UNRESOLVED`; conteúdo malformado com esquema `content:` permanece `CONTENT_URI`; provedor desconhecido não é promovido a SAF.
+
+`normalizeReiAnixGenre` preserva NFKD, remoção de marcas, separadores e compatibilidade explícita para `ß`/`ss` e `ς`/`σ`. Não é uma implementação completa de todo o mapeamento Unicode de `str.casefold()`; não deve ser descrita como equivalência integral.
