@@ -22,10 +22,10 @@ class RuntimeAndroidContractTests(unittest.TestCase):
         library_view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
         scan_runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
 
-        self.assertIn("class ReiAnixApplication : Application()", application)
+        self.assertIn("class ReiAnixApplication : FlutterApplication()", application)
         self.assertIn("super.onCreate()", application)
         self.assertIn('android:name=".ReiAnixApplication"', manifest)
-        self.assertIn("class MainActivity : ComponentActivity()", main)
+        self.assertIn("class MainActivity : FlutterFragmentActivity()", main)
         self.assertIn("ReiAnixAppDependencies.from(applicationContext)", main)
         self.assertIn("class ReiAnixAppDependencies(context: Context)", dependencies)
         self.assertIn("by lazy(LazyThreadSafetyMode.SYNCHRONIZED)", dependencies)
