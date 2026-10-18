@@ -29,8 +29,10 @@ class TransitionHardeningTests(unittest.TestCase):
         block = self.player[start:end]
         self.assertIn("episodeChangePending", block)
         self.assertIn("transitionGeneration", block)
-        self.assertIn("playbackWorker.submit", block)
-        self.assertIn("val published = NativeMailbox.write(", block)
+        self.assertIn("lifecycleScope.launch(Dispatchers.IO)", block)
+        self.assertIn("dispatchNativeEpisodeTransition(", block)
+        self.assertNotIn("val published = NativeMailbox.write(", block)
+        self.assertIn("startActivity(successorIntent)", block)
         self.assertIn("handler.post", block)
         self.assertIn("requestEvent(\"NEXT_TRANSITION_STARTED\", \"PREVIOUS_TRANSITION_STARTED\")", block)
         self.assertNotIn("Thread.sleep(", block)
