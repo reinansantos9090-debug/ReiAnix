@@ -76,7 +76,7 @@ jobs:
           # Verify the actual APK entries; Gradle success alone does not prove
           # that a native package excludes the legacy runtime payload.
           apk_entries="$(unzip -Z1 "$source_apk")"
-          legacy_payload_pattern='(^|/)assets/app\.zip$|^assets/flutter_assets/|^lib/[^/]+/lib(flutter|app|serious_python|python[0-9.]+)\.so$|(^|/)[^/]+\.py[co]?$'
+          legacy_payload_pattern='(^|/)assets/app\.zip$|^assets/flutter_assets/|^lib/[^/]+/lib(app|[^/]*(flutter|python)[^/]*)\.so$|(^|/)[^/]+\.py[co]?$'
           if grep -Eiq "$legacy_payload_pattern" <<< "$apk_entries"; then
             echo "::error::Native APK contains a legacy Python/Flet/Flutter runtime payload."
             grep -Ei "$legacy_payload_pattern" <<< "$apk_entries"
