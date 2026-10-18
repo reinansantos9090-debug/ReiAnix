@@ -66,6 +66,13 @@ object MediaFilenameParser {
         "\\b(?:ABS(?:OLUTE)?|ANIME[- ._]?EP)[ ._-]*\\d{1,4}[.,]\\d+\\b",
         RegexOption.IGNORE_CASE,
     )
+    private val malformedEpisodeDecimal = Regex(
+        "\\b(?:S\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|(?:temp|temporada)[ ._-]*\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|\\d{1,2}\\s*[xX]|E(?:P(?:ISODE)?)?|EPISODE|Epis[oó]dio|OVA|OAD|ONA|SPECIALS?|SP|EXTRA|S00[ ._-]*E(?:P(?:ISODE)?)?)[ ._-]*\\d{1,4}[.,]\\d{1,2}[.,]\\d+\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val malformedNumericSuffixDecimal = Regex(
+        "(?<!\\d)\\d{1,4}[.,]\\d{1,2}[.,]\\d+\\b",
+    )
     private val unsupportedEpisodeDecimal = Regex(
         "\\b(?:S\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|(?:temp|temporada)[ ._-]*\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|\\d{1,2}\\s*[xX]|E(?:P(?:ISODE)?)?|EPISODE|Epis[oó]dio|OVA|OAD|ONA|SPECIALS?|SP|EXTRA|S00[ ._-]*E(?:P(?:ISODE)?)?)[ ._-]*\\d{1,4}[.,]\\d{3,}(?:v\\d+)?\\b",
         RegexOption.IGNORE_CASE,
@@ -125,22 +132,33 @@ object MediaFilenameParser {
         val specialMatch = special.find(stem)
         val absoluteMatch = absolute.find(stem)
         val absoluteDecimalMatch = absoluteDecimal.find(stem)
+        val malformedEpisodeDecimalMatch = malformedEpisodeDecimal.find(stem)
         val unsupportedEpisodeDecimalMatch = unsupportedEpisodeDecimal.find(stem)
 
         // Reject malformed decimal identifiers before any marker family can
         // accept an integer prefix, including S00 and OVA/SP special markers.
-        if (absoluteDecimalMatch != null || unsupportedEpisodeDecimalMatch != null) {
-            marker = absoluteDecimalMatch ?: unsupportedEpisodeDecimalMatch
+        if (absoluteDecimalMatch != null || malformedEpisodeDecimalMatch != null ||
+            unsupportedEpisodeDecimalMatch != null
+        ) {
+            marker = absoluteDecimalMatch ?: malformedEpisodeDecimalMatch ?: unsupportedEpisodeDecimalMatch
             kind = ParsedMediaKind.UNKNOWN
             confidence = MediaIdentificationConfidence.LOW
-            if (absoluteDecimalMatch != null) {
-                source = "invalid_absolute_decimal_number"
-                evidence += "INVALID_ABSOLUTE_DECIMAL_NUMBER:${absoluteDecimalMatch.value}"
-                unresolved += "absolute_number_must_be_integer"
-            } else {
-                source = "unsupported_episode_decimal_precision"
-                evidence += "UNSUPPORTED_EPISODE_DECIMAL_PRECISION:${unsupportedEpisodeDecimalMatch!!.value}"
-                unresolved += "unsupported_episode_decimal_precision"
+            when {
+                absoluteDecimalMatch != null -> {
+                    source = "invalid_absolute_decimal_number"
+                    evidence += "INVALID_ABSOLUTE_DECIMAL_NUMBER:${absoluteDecimalMatch.value}"
+                    unresolved += "absolute_number_must_be_integer"
+                }
+                malformedEpisodeDecimalMatch != null -> {
+                    source = "malformed_episode_decimal"
+                    evidence += "MALFORMED_EPISODE_DECIMAL:${malformedEpisodeDecimalMatch.value}"
+                    unresolved += "malformed_episode_decimal"
+                }
+                else -> {
+                    source = "unsupported_episode_decimal_precision"
+                    evidence += "UNSUPPORTED_EPISODE_DECIMAL_PRECISION:${unsupportedEpisodeDecimalMatch!!.value}"
+                    unresolved += "unsupported_episode_decimal_precision"
+                }
             }
         } else if (seasonZero != null) {
             marker = seasonZero
@@ -218,8 +236,16 @@ object MediaFilenameParser {
                     evidence += "MOVIE_TYPE_TOKEN:${marker?.value.orEmpty()}"
                 }
                 else -> {
+                    val malformedDecimalSuffix = malformedNumericSuffixDecimal.find(stem)
                     val unsupportedDecimalSuffix = unsupportedNumericSuffixDecimal.find(stem)
-                    if (unsupportedDecimalSuffix != null && !isNumericOnlyFilename) {
+                    if (malformedDecimalSuffix != null && !isNumericOnlyFilename) {
+                        marker = malformedDecimalSuffix
+                        kind = ParsedMediaKind.UNKNOWN
+                        source = "malformed_numeric_suffix_decimal"
+                        confidence = MediaIdentificationConfidence.LOW
+                        evidence += "MALFORMED_NUMERIC_SUFFIX_DECIMAL:${malformedDecimalSuffix.value}"
+                        unresolved += "malformed_numeric_suffix_decimal"
+                    } else if (unsupportedDecimalSuffix != null && !isNumericOnlyFilename) {
                         marker = unsupportedDecimalSuffix
                         kind = ParsedMediaKind.UNKNOWN
                         source = "unsupported_numeric_suffix_decimal_precision"
@@ -349,6 +375,8 @@ object MediaFilenameParser {
                 item == "multiple_numeric_candidates" ||
                 item == "multi_episode_range" ||
                 item == "absolute_number_must_be_integer" ||
+                item == "malformed_episode_decimal" ||
+                item == "malformed_numeric_suffix_decimal" ||
                 item == "unsupported_episode_decimal_precision"
         }
         return ParsedMediaName(
