@@ -11,13 +11,12 @@ MainActivity is still a FlutterFragmentActivity supplied by the Flet-generated A
 Compose shell is the visible application surface for the migrated routes, but the app is not yet an
 independent Android runtime: library/settings projections and several domain operations still use
 NativeMailbox and Python services. Prompt 24 must not remove the generated host until those contracts
-have native equivalents. Back ownership is split deliberately during the migration. Navigation Compose removes one native
-back-stack entry for an internal destination; top-level native routes return to Home (Storage returns
-to Settings). At the Home root, `ReiAnixComposeLibraryHost.handleBack()` returns `false`, allowing
-`MainActivity`'s single guarded callback to forward one `flutterEngine.navigationChannel.popRoute()`
-to the existing Flet/Python `NavigationController`. That legacy controller remains responsible for
-the established exit policy while the generated Flet host is active. Compose does not finish the
-Activity or define a second exit-confirmation policy.
+have native equivalents. Navigation Compose owns visible native route changes and Back handling.
+Nested destinations pop one native entry; a secondary route without an origin returns to a safe
+in-app destination; Storage returns to Settings. Home and Recovery use the native double-Back exit
+policy in ReiAnixComposeLibraryHost. MainActivity forwards Back through the legacy
+navigationChannel.popRoute() path only while the Compose host is hidden, preserving compatibility
+for remaining Flet fallback surfaces. This is not proof of a standalone Android runtime.
 
 NativePlayerActivity remains a View-based ComponentActivity using Media3. No player UI migration is
 performed here.
@@ -61,10 +60,11 @@ and selects the originating primary tab when applicable; Player is a full-screen
 the bottom navigation. Details/Player use stable encoded IDs plus origin
 metadata, while Navigation Compose owns tab save/restore semantics.
 
-The existing Flet/Android bridges remain authoritative for capabilities not yet migrated. The native Compose
-shell uses the existing host boundary rather than a second Activity. Back behavior is shared by contract: Compose owns nested native destinations, while the canonical
-Python NavigationController still owns Home-root exit policy until the host migration is complete.
-This does not certify Python/Flet independence.
+The existing Flet/Android bridges remain available for capabilities not yet migrated. The native Compose
+shell uses the existing host boundary rather than a second Activity. Compose owns its route state, arguments,
+back stack and root-exit policy; no route-change notification is sent to Python to mirror this state.
+The Python NavigationController remains for the genuine Flet fallback, not as a second Android navigation
+authority. This does not certify Python/Flet independence.
 
 ## Coroutine/lifecycle boundary
 

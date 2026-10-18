@@ -123,9 +123,9 @@ Distinção essencial: `data/library` e `data/settings` são adapters de projeç
 
 ## Prompt 24 — Native shell boundary status
 
-The Compose shell owns the visible migrated routes. Back pops native nested destinations; at the Home
-root it returns to MainActivity's existing single popRoute dispatch so the canonical Python
-NavigationController retains the established exit policy during the incremental migration.
+The Compose shell owns the visible migrated routes, arguments and back stack. Back pops native nested
+destinations; Home and Recovery use a native double-Back exit policy. MainActivity's single
+navigationChannel.popRoute() remains only as a compatibility fallback when the Compose host is hidden.
 This is a limited navigation cutover, not proof of a standalone Android runtime. The launcher still
 inherits from `FlutterFragmentActivity`, the official APK workflow still renders a Flet template,
 and library/settings projection, scanning coordination, AniList/artwork and backup/restore have

@@ -111,23 +111,26 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("navController.navigateToPlayer(", details)
         self.assertIn("viewModel::toggleFavorite", details)
 
-    def test_main_activity_back_can_pop_nested_compose_destination(self):
+    def test_main_activity_back_is_fully_handled_by_visible_compose_shell(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         host = HOST.read_text(encoding="utf-8")
         self.assertIn("composeLibraryHost.handleBack()", source)
+        self.assertIn("BACK_COMPOSE_SHELL_UNHANDLED", source)
         self.assertIn("fun handleBack(): Boolean", host)
         self.assertIn("controller.previousBackStackEntry != null", host)
         self.assertIn("navigateToRequestedDestination", host)
-        self.assertIn("ReiAnixRoutes.HOME -> false", host)
+        self.assertIn("handleRootBack()", host)
+        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", host)
+        self.assertIn("lastHomeBackAtElapsedRealtimeMs", host)
+        self.assertIn("Toast.makeText", host)
+        self.assertIn("activity.finish()", host)
         self.assertNotIn("private fun handleHomeBack()", host)
         self.assertNotIn("activity.finishAndRemoveTask()", host)
-        self.assertNotIn("HOME_DOUBLE_BACK_WINDOW_MS", host)
-        self.assertNotIn("lastHomeBackAtElapsedRealtimeMs", host)
-        self.assertNotIn("Toast", host)
         self.assertIn("engine.navigationChannel.popRoute()", source)
+        self.assertIn("reason=compose_host_hidden_fallback", source)
         self.assertIn("setId(R.id.reianix_compose_app_shell)", host)
 
-    def test_home_back_contract_delegates_once_without_activity_exit(self):
+    def test_home_back_contract_uses_native_double_back_policy(self):
         host = HOST.read_text(encoding="utf-8")
         activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
         handler_start = host.index("fun handleBack(): Boolean")
@@ -137,24 +140,15 @@ class ComposeHostTests(unittest.TestCase):
         dispatch_end = activity.index("private fun persistedSafTreeUris", dispatch_start)
         dispatch = activity[dispatch_start:dispatch_end]
 
-        self.assertIn("ReiAnixRoutes.HOME -> false", handler)
-        # Normalize comment text so the contract may span Kotlin comment lines;
-        # assert the documented ownership semantically rather than requiring a
-        # brittle, exact phrase.
-        ownership_comment = " ".join(
-            line.split("//", 1)[1].strip()
-            for line in handler.splitlines()
-            if "//" in line
-        )
-        self.assertRegex(
-            ownership_comment,
-            r"Python NavigationController.*root-exit.*policy.*Flet remains the host/runtime",
-        )
-        self.assertNotIn("activity.finish()", handler)
-        self.assertNotIn("finishAndRemoveTask()", handler)
-        self.assertNotIn("finishAffinity()", handler)
-        self.assertNotIn("Toast", handler)
+        self.assertIn("ReiAnixRoutes.HOME,", handler)
+        self.assertIn("handleRootBack()", handler)
+        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", handler)
+        self.assertIn("lastHomeBackAtElapsedRealtimeMs", handler)
+        self.assertIn("activity.finish()", handler)
+        self.assertIn("Toast.makeText", handler)
+        self.assertNotIn("Python NavigationController", handler)
         self.assertEqual(dispatch.count("engine.navigationChannel.popRoute()"), 1)
+        self.assertIn("BACK_COMPOSE_SHELL_UNHANDLED", dispatch)
         self.assertIn("if (systemBackDispatchPosted)", dispatch)
         self.assertIn("finally {", dispatch)
         self.assertIn("window.decorView.post { systemBackDispatchPosted = false }", dispatch)
@@ -186,15 +180,17 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("class MainActivity : FlutterFragmentActivity()", source)
         self.assertNotIn("class MainActivity : ComponentActivity()", source)
 
-    def test_compose_root_back_preserves_canonical_legacy_exit_policy(self):
+    def test_compose_root_back_uses_native_exit_policy_and_keeps_hidden_host_fallback(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         host = HOST.read_text(encoding="utf-8")
         root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
-        self.assertIn("ReiAnixRoutes.HOME -> false", root)
+        self.assertIn("handleRootBack()", root)
+        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", root)
+        self.assertIn("activity.finish()", root)
+        self.assertIn("Toast.makeText", root)
+        self.assertNotIn("Python NavigationController", root)
         self.assertIn("engine.navigationChannel.popRoute()", source)
-        self.assertNotIn("activity.finish()", root)
-        self.assertNotIn("finishAndRemoveTask", root)
-        self.assertNotIn("Toast", root)
+        self.assertIn("reason=compose_host_hidden_fallback", source)
 
     def test_compose_details_back_is_a_single_navcontroller_pop(self):
         details = (

@@ -210,7 +210,7 @@ class StorageOnboardingTests(unittest.TestCase):
 
         settings_worker = source[
             source.index("async def _run_compose_settings_action"):
-            source.index("async def _hydrate_compose_details_context")
+            source.index("async def _run_compose_library_command")
         ]
         self.assertIn(
             'if action == "select_saf":\n                # SAF completes asynchronously',
@@ -435,7 +435,10 @@ class StorageOnboardingTests(unittest.TestCase):
         resume = source[source.index("override fun onResume()"):source.index("override fun onPause")]
         self.assertIn("val hasPersistedSafTree = hasPersistedSafTreeGrant()", resume)
         self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
+        self.assertIn('"STARTUP"', resume)
+        self.assertIn('reason = "first_activity_resume"', resume)
         self.assertIn('"STARTUP_SCAN_SKIPPED"', resume)
+        self.assertIn('result = "no_persisted_saf_tree"', resume)
         self.assertIn("hasPersistedSafTree &&", resume)
         self.assertIn("private fun hasPersistedSafTreeGrant()", source)
         self.assertIn("DocumentsContract.isTreeUri(permission.uri)", source)
@@ -740,9 +743,9 @@ class StorageOnboardingTests(unittest.TestCase):
     def test_on_resume_does_not_publish_intermediate_denied_before_pending_request(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         resume = source[source.index("override fun onResume()"):source.index("override fun onPause()", source.index("override fun onResume()"))]
-        self.assertLess(resume.index("val pending = nativeRequestState.consumeLifecycleAction()"), resume.index("publishStorageStatus()"))
-        self.assertIn("if (pending != null)", resume)
-        self.assertIn("return", resume)
+        self.assertLess(resume.index("consumeAndDispatchPendingLifecycleAction()"), resume.index("publishStorageStatus()"))
+        self.assertIn("if (hadPendingLifecycleAction) return", resume)
+        self.assertIn("consumeLifecycleAction()", source[source.index("private fun consumeAndDispatchPendingLifecycleAction()"):])
 
     def test_broad_scanner_is_guarded_in_python_refresh_flow(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
@@ -964,14 +967,20 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         self.assertIn("await bridge.scan_library()", refresh)
         self.assertIn("Non-Android development fallback only", refresh)
 
-    def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
+    def test_main_activity_scans_startup_only_for_a_persisted_saf_root_and_preserves_permission_flow(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         start = source.index("override fun onResume()")
         resume = source[start:source.index("override fun onPause()", start)]
         self.assertIn("startupDiscoveryTriggered", resume)
-        self.assertIn("publishScanRequest(", resume)
+        self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
         self.assertIn('"STARTUP"', resume)
         self.assertIn('reason = "first_activity_resume"', resume)
+        self.assertIn("STARTUP_SCAN_SKIPPED", resume)
+        self.assertIn('result = "no_persisted_saf_tree"', resume)
+        self.assertIn("hasPersistedSafTree &&", resume)
+        self.assertIn("mediaAccessChangedToUsable || broadBecameAvailable", resume)
+        self.assertIn('publishScanRequest(\n                "PERMISSION_CHANGE"', resume)
+        self.assertNotIn('result = "explicit_scan_required"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
         self.assertNotIn("persistedSafTreeUris().forEach", resume)

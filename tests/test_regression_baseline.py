@@ -37,7 +37,12 @@ class RegressionBaselineTests(unittest.TestCase):
         resume=source[start:end]
         self.assertIn("startupDiscoveryTriggered",resume)
         self.assertIn("publishScanRequest(",resume)
+        self.assertIn("if (shouldDiscover && hasPersistedSafTree)",resume)
         self.assertIn('"STARTUP"',resume)
+        self.assertIn('reason = "first_activity_resume"',resume)
+        self.assertIn('"STARTUP_SCAN_SKIPPED"',resume)
+        self.assertIn('result = "no_persisted_saf_tree"',resume)
+        self.assertNotIn('result = "explicit_scan_required"',resume)
         self.assertNotIn("scanMediaStore(null)",resume)
         self.assertNotIn("scanAllStorage(null)",resume)
 
