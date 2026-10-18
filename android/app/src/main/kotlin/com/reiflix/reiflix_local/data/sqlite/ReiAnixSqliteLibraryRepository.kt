@@ -15,7 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Rows resolved from one SQLite snapshot for native player navigation. */
+/** Rows captured through the repository's coordinated read policy for native player navigation. */
 internal data class ReiAnixPlayerNavigationRows(
     val current: ReiAnixEpisodeRecord?,
     val animeExists: Boolean,
@@ -575,9 +575,10 @@ class ReiAnixSqliteLibraryRepository(
         }
 
     /**
-     * Reads the current episode, parent-anime existence and playable neighbors from
-     * one canonical SQLite snapshot. Keeping these reads together matches the legacy
-     * LibraryStore.player_navigation() consistency boundary during concurrent scans.
+     * Reads the current episode, parent-anime existence and playable neighbors through
+     * one repository read operation. API 35+ pins these queries to a read-only transaction;
+     * older Android versions retain the database's existing read-only connection semantics.
+     * Keeping the reads together narrows the inconsistency window during concurrent scans.
      */
     internal suspend fun playerNavigationRows(episodeId: Long): ReiAnixPlayerNavigationRows =
         withContext(Dispatchers.IO) {
