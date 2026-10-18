@@ -1,6 +1,74 @@
-# ReiAnix — auditoria técnica de migração integral para Kotlin
+# ReiAnix — auditoria técnica da migração Kotlin nativa (reconciliada em 2026-10-18)
 
-## A. Identificação e limites
+## 1. Estado atual reconciliado e precedência das fontes
+
+**Data da reconciliação:** 18 de outubro de 2026.  
+**Repositório:** `reinansantos9090-debug/ReiAnix`.  
+**Baseline atual confirmada da `main` antes desta correção:** `80fd95acd0d569d3013ac2d71fcf4cd166ae7844`.  
+**Branch de trabalho:** `audit/prompt-01-kotlin-migration-20261018`.  
+**HEAD confirmado antes da edição:** `c139aefb4234299140afeb11bb8c210947e03039`.  
+**PR:** [#198](https://github.com/reinansantos9090-debug/ReiAnix/pull/198), aberta e não mesclada na verificação anterior à edição.
+
+Esta seção é a fonte atual deste documento. Os registros detalhados do snapshot de 14/10/2026 estão preservados no final, explicitamente marcados como históricos. Quando números, SHAs, estágios ou status antigos divergirem, não substituem os fatos desta seção nem os documentos canônicos abaixo.
+
+Fontes canônicas entregues pelo Prompt 01/18:
+- `docs/KOTLIN_MIGRATION_FINAL_INVENTORY.md` — inventário estático do snapshot `80fd95acd0d569d3013ac2d71fcf4cd166ae7844`.
+- `docs/KOTLIN_MIGRATION_DEPENDENCY_MATRIX.md` — runtime, contratos, dependências e bloqueios.
+- `docs/KOTLIN_MIGRATION_18_PROMPT_PLAN.md` — sequência canônica dos Prompts 02–18.
+- `docs/KOTLIN_MIGRATION_ACCEPTANCE_CRITERIA.md` — gates de aceite e invariantes de preservação.
+
+O plano de 18 prompts substitui, para execução deste ciclo, a antiga decomposição de 21 pacotes MIG-02–MIG-22. A reconciliação detalhada e as lacunas sem equivalência direta estão em `docs/KOTLIN_MIGRATION_ROADMAP.md`. O Prompt 01 e o Prompt 01.1 são documentais; os Prompts 02–18 continuam pendentes de execução e autorização individual. Estar listado num plano não significa que uma funcionalidade foi migrada ou aceita.
+
+## 2. Inventário vigente e conclusão técnica
+
+O inventário canônico do snapshot confirmado registra **217 arquivos Python / 66.062 linhas de código** e **184 arquivos Kotlin / 68.419 linhas de código**. O recorte informado inclui 164 arquivos sob `tests/` entre os arquivos Python e os testes Kotlin que já existiam; essas contagens não devem ser convertidas em percentual de runtime ou usadas como prova isolada de conclusão.
+
+O snapshot permanece híbrido:
+- `main.py` continua sendo o entrypoint Flet;
+- `MainActivity` deriva de `FlutterFragmentActivity`;
+- `ReiAnixApplication` deriva de `FlutterApplication`;
+- o pipeline de APK usa o template/runtime Flet/Flutter/Serious Python;
+- serviços Kotlin, Jetpack Compose e Media3/ExoPlayer coexistem com caminhos e responsabilidades Python ainda ativos.
+
+Logo, o build Kotlin bem-sucedido dentro do pipeline existente não demonstra independência de Python/Flet/Flutter.
+
+## 3. Bloqueios, dados e critérios de remoção segura
+
+A matriz de dependências é a fonte corrente para consumidores, responsabilidades ainda híbridas e dependências por domínio. Os bloqueios prioritários continuam sendo bootstrap/entrypoint nativo, ownership operacional do SQLite, reconciliação de caminho, coordenação de scanner, contratos IPC/bridges, fluxos de metadados/artwork e dependências de UI/serviços Python.
+
+Invariantes obrigatórios para todas as etapas:
+- manter `library.sqlite3` como banco canônico e schema v29; não criar uma segunda base, nem alterar schema sem justificativa e autorização específica;
+- preservar IDs, associações, metadados manuais, preferências, conta, progresso, histórico, estado de episódios, grants SAF, backups, scanner, MediaStore, ArtworkEngine, thumbnails e Media3/ExoPlayer;
+- não remover bridge, serviço ou runtime legado até provar que seus consumidores e efeitos foram migrados para um caminho Kotlin real;
+- não adicionar testes, workflows, scripts, jobs ou infraestrutura de emulador; não executar manualmente a suíte Kotlin/JVM nem workflows instrumentados nesta etapa;
+- não reduzir métricas eliminando referências Python/Flet/Flutter, nem usar stubs ou equivalências não comprovadas;
+- preservar o histórico Git, manter a `main` intacta e a PR sem merge automático.
+
+A classificação histórica das 40 unidades funcionais e as suas respectivas evidências está preservada no apêndice histórico. Ela descreve aquele inventário e não é uma nova auditoria funcional executada neste prompt.
+
+## 4. Build, compilação Release e aviso de assinatura — evidência vinculada ao SHA
+
+O workflow [Build ReiAnix Android APK #39131423769](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39131423769), run **6101**, concluiu com **`completed / success`** no SHA anterior `c139aefb4234299140afeb11bb8c210947e03039`. O job e as suas etapas de build terminaram em sucesso, incluindo a verificação explícita da compilação Kotlin Release e a suíte de regressão Python executada pelo workflow.
+
+A interpretação correta desse resultado é limitada:
+- o APK pertence ao pipeline híbrido atual, que instala Python e Flutter/Flet e prepara o template de build Flet;
+- o artefato não comprova independência de Python/Flet/Flutter;
+- o log registra o aviso **“Stable Android signing secrets are not configured; this APK is not update-compatible with previous CI-signed installs.”** e o modo `ephemeral-debug`;
+- portanto, o APK daquela execução não é compatível como atualização sobre instalações anteriores assinadas pela CI com a chave estável;
+- esse aviso de assinatura não equivale a falha de compilação: o workflow e a compilação Kotlin Release ainda concluíram com sucesso;
+- não há evidência de que os segredos/configuração de assinatura tenham sido corrigidos; este prompt não os modifica.
+
+**Regra de vinculação por SHA:** o sucesso em `c139aefb4234299140afeb11bb8c210947e03039` é evidência histórica, não aprovação do novo commit documental. A conclusão deste Prompt 01.1 depende do workflow automático aplicável atingir estado terminal `completed / success` no SHA final após as alterações. Workflow pendente, falho, cancelado, ausente ou vinculado a outro SHA não atende ao gate.
+
+## 5. Estado de execução deste ciclo
+
+O Prompt 01/18 entregou documentação de inventário, matriz, sequência e critérios. O Prompt 01.1 atualiza a reconciliação documental dos dois documentos históricos. **Nenhuma migração funcional está autorizada ou realizada neste prompt.** Nenhum dos Prompts 02–18 foi iniciado por este documento. A conclusão de documentação não certifica o produto como Kotlin-only.
+
+## Registro histórico — auditoria detalhada do snapshot de 14/10/2026, SHA histórico 40e8c86be49282774ec45060aea9374155a14ca9
+
+> **Atenção:** o conteúdo abaixo foi preservado como registro histórico. SHAs, contagens, status de execução, gates, recomendações e sequências nele descritos pertencem ao snapshot anterior; não são o estado atual e não autorizam execução. A seção reconciliada no início deste documento e a sequência canônica dos Prompts 02–18 prevalecem.
+
+### Registro histórico — A. Identificação e limites
 
 - Data/hora do snapshot auditado: 2026-10-14 (UTC).
 - Repositório: reinansantos9090-debug/ReiAnix.
@@ -19,11 +87,11 @@
 - Contagens de estrutura usadas como contexto, não como porcentagem de migração: árvore recursiva contém 473 entradas (arquivos e diretórios), 203 arquivos .py, 150 arquivos .kt/.java; 31 módulos Python dentro de core/; 150 arquivos rastreados em tests/; 40 entradas rastreadas sob android/app/src/test/ e 14 sob android/app/src/androidTest/. As duas últimas contagens de pasta incluem recursos/fixtures, portanto não são contagem de classes de teste.
 - Limites: auditoria estática da árvore, metadados de commits/PRs, conteúdo dos arquivos, workflows e artefatos do GitHub. Não foi feito teste manual em dispositivo, não foi acionado workflow Kotlin/JVM, não foi executado workflow instrumentado e não foi feita restauração ou alteração de banco. As evidências de build/CI referem-se ao commit de referência e ao runtime híbrido atualmente presente; não provam independência nativa.
 
-## B. Resumo executivo
+### Registro histórico — B. Resumo executivo
 
 **Conclusão:** o repositório ainda é híbrido, não é operacionalmente independente de Python/Flet/Flutter. Há uma base Kotlin significativa — Compose, Navigation, ViewModels, SQLite access, SAF/MediaStore scanners, AniList client, artwork rendering, operações SAF e Media3/ExoPlayer — mas os fluxos de inicialização, coordenação de varreduras, parte das projeções/mutações, settings/account, metadata localization, artwork producer, backup/recovery e CI continuam apoiados em Python ou na infraestrutura Flet/Flutter.
 
-### Evidências mais fortes
+#### Registro histórico — Evidências mais fortes
 
 1. android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt declara MainActivity : FlutterFragmentActivity. O arquivo explica que a Activity substitui a padrão do template Android gerado por Flet.
 2. main.py importa e constrói AndroidBridge, ComposeLibraryBridge, ComposeSettingsBridge e ScanCoordinator. O arquivo tem 7.640 linhas no snapshot e segue como ponto de entrada do runtime Python.
@@ -33,7 +101,7 @@
 6. core/artwork.py importa PIL.Image e PIL.ImageOps e mantém workers, cache, validação de imagem, registro de arte, miniaturas e publicação. Kotlin contém Coil e VideoThumbnailExtractor, mas o produtor do pipeline ainda é Python.
 7. O motor Media3/ExoPlayer e a persistência de progresso têm operações nativas concretas. Isso não elimina a dependência Python da inicialização da aplicação, da coordenação de episódios e de várias projeções de histórico.
 
-### Principais bloqueadores
+#### Registro histórico — Principais bloqueadores
 
 - Activity/host inicial ainda depende de Flutter; não existe caminho de launcher nativo comprovado sem runtime híbrido.
 - LibraryStore ainda é o proprietário da inicialização e migração do banco v29; Kotlin abre/valida um arquivo existente.
@@ -43,7 +111,7 @@
 - AniList, localização pt-BR, ArtworkEngine, backup, recuperação e módulos de organização continuam no caminho Python.
 - O build obrigatório não é nativo standalone: empacota o host Flet/Flutter/serious_python.
 
-### CI observado no SHA de referência
+#### Registro histórico — CI observado no SHA de referência
 
 - Build ReiAnix Android APK, run 5514, commit 40e8c86be49282774ec45060aea9374155a14ca9: **completed / success**. URL: https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/38525503468.
 - Release Evidence Certification, run 457, mesmo SHA: **completed / success**. URL: https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/38525503474.
@@ -52,7 +120,7 @@
 - Não havia run em andamento ao consultar actions/runs?status=in_progress.
 - Há execuções históricas falhadas/canceladas em commits/branches anteriores, incluindo validações Kotlin/JVM disparadas por pull_request antes do conteúdo atual do workflow. Elas não devem ser confundidas com o estado da configuração atual. Não foi disparado um run Kotlin/JVM nesta auditoria.
 
-## C. Regras de classificação
+### Registro histórico — C. Regras de classificação
 
 Cada linha de AUD-01 a AUD-40 tem exatamente uma classificação principal, baseada em código integrado e não na existência de um arquivo de mesmo nome. “Nativo completo” limita-se à capacidade delimitada explicitamente na linha; não significa que a aplicação inteira ou o fluxo de usuário completo já seja independente. “Parcial” significa que há código Kotlin real, porém a integração, a orquestração, os dados ou a persistência ainda dependem de outras partes. “Dependente de Python” significa que o caminho ativo ou as responsabilidades de domínio identificadas ainda exigem Python/Flet/Flutter. “Não verificado” e “Bloqueado” não foram usados como desculpa para omissões; as limitações são declaradas em cada linha e no registro de problemas.
 
@@ -67,7 +135,7 @@ Cada linha de AUD-01 a AUD-40 tem exatamente uma classificação principal, base
 
 As proporções desta matriz são contagens das unidades funcionais auditadas, não percentuais de arquivos, linhas de código ou progresso de migração.
 
-## D. Matriz central de paridade funcional
+### Registro histórico — D. Matriz central de paridade funcional
 
 A coluna de dependências registra tanto os componentes de entrada quanto o domínio, persistência, contratos Python e evidências/testes conhecidos. Quando a implementação existe mas a prova de uso integral não existe, a classificação continua parcial. Os critérios finais abaixo são requisitos para migração futura, não declarações de trabalho já implementado.
 
@@ -114,16 +182,16 @@ A coluna de dependências registra tanto os componentes de entrada quanto o dom�
 | AUD-39 | **Permissões/manifesto e build config**<br>AndroidManifest.xml; pyproject.toml; scripts/prepare_flet_template.py | O manifesto customizado declara SAF, READ_MEDIA_VIDEO, INTERNET e MANAGE_EXTERNAL_STORAGE; permissões e overlay continuam aplicados via template Flet. | **PARCIAL** | Manifesto Android é customizado, mas o workflow injeta overlay no template gerado em vez de compilar projeto nativo independente.<br>Testes: tests/test_runtime_android_contract.py; tests/test_storage_permission_flow.py | Manifesto de app nativo gerido em Gradle, permissões mínimas por versão e compatibilidade preservada; nenhum gerador Flet.<br>**P0** |
 | AUD-40 | **Outras capacidades e serviços de domínio**<br>core/library_discovery.py; core/library_parser.py; core/settings_focus.py; core/dialogs.py; core/ui.py; core/performance.py; core/diagnostics.py | Módulos de descoberta, parsing, preferências focais, diálogos e UI auxiliar são importados por main.py/views; consumidores indiretos precisam ser rastreados antes de limpeza. | **DEPENDENTE DE PYTHON** | Os módulos existem no pacote core e não há substituição Kotlin fim a fim comprovada para todos eles.<br>Testes: tests/test_runtime_android_contract.py; tests/test_repository_hygiene.py e testes de domínio relevantes | Para cada módulo, localizar todos os consumidores e mover regras úteis para Kotlin ou provar que estão mortos; excluir apenas depois de busca estática/dinâmica e testes.<br>**P2** |
 
-## E. Grafo textual dos fluxos reais
+### Registro histórico — E. Grafo textual dos fluxos reais
 
-### Inicialização e UI
+#### Registro histórico — Inicialização e UI
 
 1. Android Launcher → AndroidManifest.xml → MainActivity : FlutterFragmentActivity → Flutter host preparado pelo template Flet → runtime Python/Flet → main.py.
 2. main.py → settings/configuração e LibraryStore → LibraryService/ScanCoordinator e serviços de domínio → ComposeLibraryBridge/ComposeSettingsBridge → arquivos JSON de snapshot e resultados no diretório reianix-compose → ViewModels/Compose host → Compose Navigation/screens.
 3. MainActivity cria/gerencia ReiAnixComposeLibraryHost e ViewModels Kotlin; isso entrega um shell Compose real, mas o host Flutter segue sendo a base da Activity/processo.
 4. Ação de tela → ViewModel/Repository nativo quando implementado; para comandos legados, a ação é serializada em JSON e publicada por NativeMailbox; AndroidCommandDispatcher/FileObserver processa comandos e publica eventos, que são observados pelo AndroidBridge Python. O evento de retorno pode mudar um snapshot projetado no Compose.
 
-### SQLite e biblioteca
+#### Registro histórico — SQLite e biblioteca
 
 1. main.py → LibraryStore(data_dir) → SQLite connection, schema inicialização/migrações v29 → data_dir/library.sqlite3.
 2. Gradle workflow → generate_native_sqlite_test_fixture.py → contrato nativo em android/app/src/main/assets/native-sqlite-contract-v29.json.
@@ -131,7 +199,7 @@ A coluna de dependências registra tanto os componentes de entrada quanto o dom�
 4. Kotlin ReiAnixSqliteLibraryRepository e serviços LibraryQuery/PersonalList/Consumption/Settings executam queries ou mutações nativas específicas no mesmo arquivo.
 5. Python LibraryStore/LibraryService continuam responsáveis por partes do catálogo, matching, metadados, reconciliação, settings e backup. A única fonte física não significa owner lógico único: atualmente existem conexões e implementações em duas linguagens; a sequência de migração deve fechar semânticas e coordenação antes de retirar Python.
 
-### Scanner e armazenamento
+#### Registro histórico — Scanner e armazenamento
 
 1. Activity/receivers/ContentObserver → StorageAuthorization/SAF/MediaStore/BroadStorageScanner → NativeScanController/NativeScanRunner → batches/progress/terminal result.
 2. MainActivity também publica scan_request via NativeMailbox → core/android_bridge.py → Python ScanCoordinator → LibraryService/LibraryStore.
@@ -139,7 +207,7 @@ A coluna de dependências registra tanto os componentes de entrada quanto o dom�
 4. SAF file operations (list/create/rename/move/delete) usam ContentResolver em Kotlin, mas reconciliação da identidade dos arquivos ainda publica eventos para o runtime Python.
 5. Migração completa precisa tornar a coordenação, ingestão, cancelamento, reconciliação e publicação de estados Kotlin, não duplicar scanners nem simplesmente descartar o fallback.
 
-### AniList, artwork e imagens
+#### Registro histórico — AniList, artwork e imagens
 
 **Atualização do Prompt 06/29:** os fluxos nativos passam pelo cliente GraphQL e serviço Kotlin; a sinopse original/localizada é persistida no repositório canônico e um evento mínimo pós-commit solicita ao ArtworkEngine existente materializar as URLs. Este evento não delega consulta ou matching AniList ao Python. O cliente/LibraryService Python ainda permanece no caminho Flet/legado, e o produtor de artwork ainda é Python; portanto a classificação global permanece PARCIAL, não NATIVO COMPLETO.
 
@@ -147,21 +215,21 @@ A coluna de dependências registra tanto os componentes de entrada quanto o dom�
 2. Há também ReiAnixAniListClient.kt e ReiAnixAniListIntegrationService.kt, que implementam busca, atualização, associação manual e auto-match via serviços nativos. A coexistência não prova que o fluxo de produção migrou todo para Kotlin.
 3. Kotlin Coil/ReiAnixLocalArtwork e VideoThumbnailExtractor cuidam da apresentação e de parte da extração local; core/artwork.py continua responsável por partes centrais do pipeline produtor.
 
-### Player e consumo
+#### Registro histórico — Player e consumo
 
 1. UI ou AndroidBridge solicita player → NativeCommandDispatcher/MainActivity validam a solicitação e a URI → NativePlayerActivity/Media3 ExoPlayer → NativeSubtitleResolver/PlayerMediaPolicy/metadata store.
 2. NativePlayerActivity correlaciona requestId, playerSessionId, playerGeneration e transitionGeneration e grava progresso por ReiAnixConsumptionService no SQLite canônico.
 3. Eventos de transição/resultado/diagnóstico podem ir ao NativeMailbox e ao consumidor Python. A reprodução da URI é nativa, mas a jornada completa de lançamento, episódio seguinte/anterior, estado da Home e histórico precisa ser eliminada da ponte antes do cutover.
 
-### Backup, recuperação e build
+#### Registro histórico — Backup, recuperação e build
 
 1. Backup atual: Flet/settings/recovery views → core/backup.py e core/recovery.py → snapshot/manifest/checksums/SQLite canônico. Kotlin quickCheck/schema inspection não substituem exportação/restauração.
 2. Build atual: workflow → Python 3.12 + requirements/Flet CLI 0.86.5 + Flutter 3.44.8 + Android SDK/JDK17 → gerar identidade e contrato SQLite via scripts Python → baixar/descompactar template Flet → aplicar overlay android/ → verificar serious_python → flet build apk → APK e ZIP de distribuição.
 3. Caminho desejado: Gradle nativo → Kotlin/Compose/services → SQLite existente e APIs/Android SDK; sem Flet, Flutter, serious_python, main.py ou scripts Python no build/distribuição.
 
-## F. Inventário de arquivos por subsistema
+### Registro histórico — F. Inventário de arquivos por subsistema
 
-### Entrada, UI e pontes
+#### Registro histórico — Entrada, UI e pontes
 - main.py: composition root do runtime Python e routing legado; liga scanner/metadata/services/bridges.
 - app_config.py, pyproject.toml, requirements.txt: configuração do pacote híbrido, permissões Flet, dependências e versões.
 - views/home_view.py, views/details_view.py, views/organize_view.py, views/settings_view.py, views/collector_view.py, views/recovery_view.py: telas Flet remanescentes e operações legadas.
@@ -170,35 +238,35 @@ A coluna de dependências registra tanto os componentes de entrada quanto o dom�
 - bridge/NativeMailbox.kt, NativeCommandDispatcher.kt, NativeRequestState.kt: filas JSON e correlação request/event.
 - core/android_bridge.py, core/compose_library_bridge.py, core/compose_settings_bridge.py: consumidor/produtor Python das pontes e snapshots.
 
-### Modelos, persistência e catálogo
+#### Registro histórico — Modelos, persistência e catálogo
 - core/library_store.py, core/library_service.py, core/library_discovery.py, core/library_parser.py, core/media_identity.py: fonte Python do schema v29, catálogo, descoberta, matching/parsing e serviços.
 - data/sqlite/ReiAnixSqliteDatabase.kt, ReiAnixSqliteLibraryRepository.kt, ReiAnixLibraryQueryService.kt, ReiAnixPersonalListService.kt, ReiAnixConsumptionService.kt, ReiAnixSqliteSettingsRepository.kt, ReiAnixSqliteAniListAssociation.kt, SqliteDomainMappers.kt, NativeLibraryIndexing.kt: acesso nativo ao arquivo canônico e operações nativas parciais.
 - data/library/ReiAnixLibrarySnapshotCodec.kt e ReiAnixLibraryCommandCodec.kt, ui/model/*, ui/mapper/LibraryUiMappers.kt: DTOs/codecs/transformações usados pela camada Compose.
 
-### Armazenamento e scanner
+#### Registro histórico — Armazenamento e scanner
 - scanner/SafScanner.kt, MediaStoreScanner.kt, BroadStorageScanner.kt, NativeScanController.kt, NativeScanRunner.kt, NativeScanPublisher.kt, MediaStoreRetryScheduler.kt, ScanOperationState.kt, ScanResultClassifier.kt: descoberta, progress, batches e estados nativos.
 - storage/StorageAuthorization.kt, SafFileOperations.kt, NativeIndex.kt, NativeBatch.kt, VideoThumbnailExtractor.kt: permissões/URIs/índice/arquivos/miniaturas.
 - core/scan_coordinator.py e core/storage_access.py: coordenação e fluxos Python ainda ativos.
 - docs/SCANNER_SCOPE.md, docs/SCAN_COORDINATOR.md, docs/NATIVE_SCAN_COORDINATION.md e docs/STORAGE_PERMISSION_FLOW.md: contratos anteriores a alinhar com a paridade real.
 
-### AniList, arte e player
+#### Registro histórico — AniList, arte e player
 - core/anilist.py, core/artwork.py, core/artwork_palette.py, core/consumption.py: pipeline Python remoto, imagens, cache, paleta e projeções de consumo.
 - data/anilist/ReiAnixAniListClient.kt, ReiAnixAniListIntegrationService.kt; ui/artwork/ReiAnixLocalArtwork.kt; storage/VideoThumbnailExtractor.kt: componentes nativos existentes.
 - NativePlayerActivity.kt, player/NativePlayerRequest.kt, LocalSubtitleResolver.kt, PlayerLocalMetadataStore.kt, PlayerMediaControls.kt, PlayerMediaPolicy.kt, PlayerStartupMetrics.kt, DeviceInteractionProfile.kt, SystemUiController.kt, ui/player/*, data/sqlite/ReiAnixConsumptionService.kt: motor e políticas nativas de reprodução/consumo.
 
-### Serviços de domínio, segurança e recuperação
+#### Registro histórico — Serviços de domínio, segurança e recuperação
 - core/organizer_ai.py, core/genre_classifier.py, core/genre_registry.py, core/collector_journey.py, core/search_engine.py: regras Python de organização/pesquisa.
 - core/settings.py, core/settings_focus.py, core/google_account.py: settings e estado/ação de conta no runtime híbrido.
 - core/backup.py, core/recovery.py, core/diagnostic_service.py, core/diagnostics.py, core/performance.py: backup/restauração/telemetria.
 - bridge/GoogleIdentity.kt, PerformanceDiagnostics.kt e ReiAnixSettingsRepository.kt: integração nativa existente, não substituição integral comprovada.
 
-### Build, docs, testes e workflows
+#### Registro histórico — Build, docs, testes e workflows
 - android/app/build.gradle.kts tem Compose/Navigation/Lifecycle/Coil/Media3/Credentials, JDK17 e Robolectric; comentários descrevem dependências integradas ao host Flet Flutter customizado.
 - scripts/prepare_flet_template.py, scripts/generate_build_identity.py, scripts/generate_native_sqlite_test_fixture.py e scripts/release_certification.py fazem parte do build/certificação.
 - tests/ contém testes de contrato Python, regressão, storage, player, metadata, artwork e Compose bridges. android/app/src/test contém testes JVM/recursos; android/app/src/androidTest contém testes/fixtures instrumentados existentes. Não foram removidos nem executados pelo Prompt 01.
 - .github/workflows/build_apk.yml e release_certification.yml executam no push da main, build APK também em pull_request e workflow_dispatch; kotlin_jvm_tests.yml e android_instrumented.yml estão configurados com workflow_dispatch apenas no snapshot atual; cleanup_old_runs.yml e reianix_auto_repair.yml são workflows auxiliares.
 
-## G. Problemas e riscos registrados
+### Registro histórico — G. Problemas e riscos registrados
 
 | ID | Problema com evidência | Impacto | Mitigação e critério de resolução | Prioridade |
 |---|---|---|---|---|
@@ -217,7 +285,7 @@ A coluna de dependências registra tanto os componentes de entrada quanto o dom�
 | R-13 | docs/PROMPT_25_FUNCTIONAL_AUDIT.md aponta SHA anterior e cobertura resumida. | Risco de usar resultados antigos como estado atual. | Usar esta auditoria datada por SHA e manter docs históricos sem apresentá-los como snapshot atual. | P1 |
 | R-14 | Muitos módulos core/views têm consumidores indiretos e efeitos colaterais. | Limpeza antecipada pode remover classificação, recuperação, scanner ou ações não visíveis na UI principal. | Busca de consumidores + mapeamento de side effects + teste de aceitação antes de deletar cada módulo. | P1 |
 
-## H. Critérios verificáveis para declarar independência 100% Kotlin
+### Registro histórico — H. Critérios verificáveis para declarar independência 100% Kotlin
 
 Nenhum critério abaixo é satisfeito pelo simples fato de uma tela já usar Compose. A migração final deve reunir evidência para cada requisito:
 
@@ -237,7 +305,7 @@ Nenhum critério abaixo é satisfeito pelo simples fato de uma tela já usar Com
 14. Higiene: busca estática por Flet, Flutter, serious_python, main.py, Pillow, imports core/views e diretórios gerados não encontra dependência funcional no runtime/build (referências apenas em docs/fixtures arquivados devem ser justificadas).
 15. Distribuição: artefato APK é o resultado do build native-only, instalação/upgrade sobre dados reais preserva biblioteca, permissões, progresso, conta/configurações e backups.
 
-## I. Correções realizadas nesta auditoria
+### Registro histórico — I. Correções realizadas nesta auditoria
 
 - Nenhuma correção funcional foi aplicada porque não foi comprovado um defeito de implementação que devesse ser corrigido para executar a auditoria.
 - Não foi alterado o gatilho Kotlin/JVM: o YAML atual de .github/workflows/kotlin_jvm_tests.yml contém apenas workflow_dispatch, conforme exigido.
@@ -245,7 +313,7 @@ Nenhum critério abaixo é satisfeito pelo simples fato de uma tela já usar Com
 - Foram preparados este inventário e um roadmap executável com critérios de aceitação e dependências explícitas.
 
 
-## Atualização Prompt 25/29 — estado do grafo de runtime (17/10/2026)
+### Registro histórico — Atualização Prompt 25/29 — estado do grafo de runtime (17/10/2026)
 
 Esta atualização complementa a fotografia inicial e não altera retroativamente as 40 áreas classificadas na auditoria original.
 
@@ -256,7 +324,7 @@ Esta atualização complementa a fotografia inicial e não altera retroativament
 **Dependências preservadas:** `main.py`, `MainActivity : FlutterFragmentActivity`, empacotamento Flet/Flutter/SeriousPython, projeções `ComposeLibraryBridge`/`ComposeSettingsBridge`, mailbox de scanner/storage, eventos de AniList/artwork/settings/account, projeção/diagnóstico e a transição Next/Previous ainda híbrida. O código/protocolo `load_library_page` é mantido como referência não conclusiva: o caminho de UI Compose já usa consultas Kotlin, porém a família de estado/resultado compatível ainda está no adapter.
 
 
-## Prompt 25/29 — matriz rastreável das dependências de runtime
+### Registro histórico — Prompt 25/29 — matriz rastreável das dependências de runtime
 
 **Base verificada para esta etapa:** `main` em `be6452dc4d4e0d0308694c57aef85a2ec5e2a6e3`, alterações do PR #190 e seus caminhos de código associados. A matriz lista **18 famílias de fluxo** (uma linha corresponde a uma cadeia funcional, não a uma ocorrência textual). As classificações A–H são sobrepostas: uma família pode combinar responsabilidade nativa com um evento de compatibilidade ainda usado por Python.
 
