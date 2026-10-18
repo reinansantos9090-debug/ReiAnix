@@ -34,9 +34,9 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 /**
  * Compose navigation boundary for the existing native Media3 player.
  *
- * Compose passes the stable episode identity to the native ViewModel. The ViewModel
- * resolves the canonical SQLite row and requests MainActivity's existing native
- * handoff directly; Media3 ownership stays exclusively in NativePlayerActivity.
+ * Compose owns only the stable route identity. The existing Python/SQLite
+ * command boundary resolves the canonical episode row and launches the native
+ * player Activity; Media3 ownership stays exclusively in that Activity.
  */
 @Composable
 fun ReiAnixPlayerRoute(
@@ -46,7 +46,6 @@ fun ReiAnixPlayerRoute(
 ) {
     val episodeId = args.episodeId.trim().toLongOrNull()
     val animeId = args.animeId.trim()
-    val canonicalAnimeId = animeId.toLongOrNull()
     val lifecycleOwner = LocalLifecycleOwner.current
     val libraryState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -61,16 +60,12 @@ fun ReiAnixPlayerRoute(
         ?.takeIf { it == libraryState.lastCommandId }
         ?.let { libraryState.lastCommandStatus?.trim()?.uppercase() }
     val launchFailed = commandStatus == "FAILED"
-    val canLeave = episodeId == null || canonicalAnimeId == null || launchFailed
+    val canLeave = episodeId == null || animeId.isBlank() || launchFailed
 
     LaunchedEffect(args.episodeId, args.animeId) {
         val canonicalEpisodeId = episodeId ?: return@LaunchedEffect
-        val expectedAnimeId = canonicalAnimeId ?: return@LaunchedEffect
-        if (launchRequestId != null) return@LaunchedEffect
-        launchRequestId = viewModel.openEpisode(
-            canonicalEpisodeId,
-            expectedAnimeId = expectedAnimeId,
-        )
+        if (animeId.isBlank() || launchRequestId != null) return@LaunchedEffect
+        launchRequestId = viewModel.openEpisode(canonicalEpisodeId)
     }
 
     val currentLaunchRequestId by rememberUpdatedState(launchRequestId)
@@ -111,7 +106,7 @@ fun ReiAnixPlayerRoute(
     }
 
     when {
-        episodeId == null || canonicalAnimeId == null -> {
+        episodeId == null || animeId.isBlank() -> {
             PlayerHandoffMessage(
                 title = "Não foi possível abrir o player",
                 message = "A identificação do episódio local é inválida.",
@@ -127,10 +122,7 @@ fun ReiAnixPlayerRoute(
                     ?: "A mídia local não pôde ser enviada ao player.",
                 showProgress = false,
                 onRetry = {
-                    launchRequestId = viewModel.openEpisode(
-                        episodeId,
-                        expectedAnimeId = canonicalAnimeId,
-                    )
+                    launchRequestId = viewModel.openEpisode(episodeId)
                 },
             )
         }

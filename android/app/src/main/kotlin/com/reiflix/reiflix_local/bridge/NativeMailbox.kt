@@ -2,11 +2,6 @@ package com.reiflix.reiflix_local.bridge
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
-import com.reiflix.reiflix_local.data.contract.booleanOrDefault
-import com.reiflix.reiflix_local.data.contract.longOrDefault
-import com.reiflix.reiflix_local.data.contract.objectOrNull
-import com.reiflix.reiflix_local.data.contract.stringOrDefault
-import com.reiflix.reiflix_local.data.contract.stringOrNull
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -25,8 +20,6 @@ object NativeMailbox {
     private const val QUEUE = "reiflix-native-events"
     private const val PREFIX = "event-"
     private const val EVENT_VERSION = 2
-    private const val LEGACY_PYTHON_BUNDLE = "app.zip"
-    @Volatile private var legacyPythonRuntimePresent: Boolean? = null
     private const val BEST_EFFORT_QUEUE_CAPACITY = 128
     private val bestEffortExecutor: ExecutorService = ThreadPoolExecutor(
         1,
@@ -40,44 +33,11 @@ object NativeMailbox {
         ThreadPoolExecutor.AbortPolicy(),
     )
 
-
-    /**
-     * Native-only APKs do not include app.zip and have no Python process to consume
-     * compatibility events. Keep the mailbox for the manually built hybrid APK,
-     * but avoid producing unbounded, unread queue files in native-only installs.
-     *
-     * If assets cannot be inspected, fail closed and retain event publication so
-     * a transient inspection error cannot silently disable a real legacy consumer.
-     */
-    internal fun hasLegacyPythonRuntime(context: Context): Boolean {
-        legacyPythonRuntimePresent?.let { return it }
-        return synchronized(this) {
-            legacyPythonRuntimePresent?.let { return@synchronized it }
-            val present = try {
-                val assets = context.applicationContext.assets.list("")
-                if (assets == null) {
-                    Log.w(TAG, "Could not inspect APK assets; retaining compatibility event delivery")
-                    true
-                } else {
-                    assets.any { it == LEGACY_PYTHON_BUNDLE }
-                }
-            } catch (exception: Exception) {
-                Log.w(TAG, "Could not inspect APK assets; retaining compatibility event delivery", exception)
-                true
-            }
-            legacyPythonRuntimePresent = present
-            if (!present) {
-                Log.i(TAG, "Legacy Python runtime absent; compatibility mailbox publication is disabled for this process")
-            }
-            present
-        }
-    }
-
     private fun operationState(event: JSONObject): String {
-        val type = event.stringOrDefault("type", "unknown")
-        val nested = event.objectOrNull("payload")
+        val type = event.optString("type")
+        val nested = event.optJSONObject("payload")
         if (type == "diagnostic") {
-            return nested?.stringOrNull("state").orEmpty().uppercase()
+            return nested?.optString("state").orEmpty().uppercase()
         }
         return when (type) {
             "saf_permission_request", "mediastore_permission_request", "broad_storage_permission_request" -> "REQUESTED"
@@ -86,7 +46,7 @@ object NativeMailbox {
             "saf_error", "mediastore_error", "broad_storage_error", "google_error", "native_error" -> "FAILED"
             "saf_scan_progress", "mediastore_scan_progress", "broad_storage_scan_progress" -> "RUNNING"
             "saf_scan", "mediastore_scan", "broad_storage_scan" -> {
-                when ((nested?.stringOrNull("status") ?: nested?.stringOrNull("generationStatus")).orEmpty().uppercase()) {
+                when ((nested?.optString("status") ?: nested?.optString("generationStatus")).orEmpty().uppercase()) {
                     "CANCELLED" -> "CANCELLED"
                     "FAILED", "UNAVAILABLE", "REVOKED" -> "FAILED"
                     else -> "COMPLETED"
@@ -97,20 +57,20 @@ object NativeMailbox {
     }
 
     private fun eventType(event: JSONObject): String {
-        val type = event.stringOrDefault("type", "unknown")
-        val payload = event.objectOrNull("payload")
+        val type = event.optString("type")
+        val payload = event.optJSONObject("payload")
         return when {
             type in setOf("mediastore_permission_request","broad_storage_permission_request","saf_permission_request") ->
                 "permission_requested"
             type == "saf_cancelled" -> "permission_cancelled"
             type == "saf_permission" ->
-                if (payload?.booleanOrDefault("granted", false) == true) "saf_granted" else "saf_revoked"
+                if (payload?.optBoolean("granted", false) == true) "saf_granted" else "saf_revoked"
             type == "broad_storage_permission" ->
-                if (payload?.booleanOrDefault("granted", false) == true) "broad_granted" else "broad_denied"
+                if (payload?.optBoolean("granted", false) == true) "broad_granted" else "broad_denied"
             type == "mediastore_permission" || type == "broad_storage_status" -> "permission_changed"
             type in setOf("saf_scan_progress","mediastore_scan_progress","broad_storage_scan_progress") &&
-                payload?.stringOrNull("phase") == "started" -> "scan_started"
-            type == "saf_scan" -> when (payload?.stringOrNull("status")) {
+                payload?.optString("phase") == "started" -> "scan_started"
+            type == "saf_scan" -> when (payload?.optString("status")) {
                 "REVOKED" -> "saf_revoked"
                 "UNAVAILABLE" -> "saf_unavailable"
                 "CANCELLED" -> "scan_cancelled"
@@ -118,7 +78,7 @@ object NativeMailbox {
                 "FAILED" -> "scan_failed"
                 else -> "scan_completed"
             }
-            type in setOf("mediastore_scan","broad_storage_scan") -> when (payload?.stringOrNull("status") ?: payload?.stringOrNull("generationStatus")) {
+            type in setOf("mediastore_scan","broad_storage_scan") -> when (payload?.optString("status") ?: payload?.optString("generationStatus")) {
                 "cancelled","CANCELLED" -> "scan_cancelled"
                 "partial","PARTIAL" -> "scan_partial"
                 "failed","FAILED" -> "scan_failed"
@@ -126,7 +86,7 @@ object NativeMailbox {
             }
             type == "scan_cancelled" -> "scan_cancelled"
             type in setOf("saf_error","mediastore_error","broad_storage_error") ->
-                when (payload?.stringOrNull("status")) {
+                when (payload?.optString("status")) {
                     "REVOKED" -> "saf_revoked"
                     "UNAVAILABLE" -> "saf_unavailable"
                     "PARTIAL" -> "scan_partial"
@@ -146,13 +106,8 @@ object NativeMailbox {
         check(write(context, event)) { "Could not publish native event to NativeMailbox" }
     }
 
-    fun write(context: Context, event: JSONObject): Boolean {
-        // A successful return means either the legacy event was durably queued or
-        // no embedded legacy consumer exists; native domain work must never depend
-        // on delivery to a Python-only projection.
-        if (!hasLegacyPythonRuntime(context)) return true
-        return writeInternal(context, event, durable = true)
-    }
+    fun write(context: Context, event: JSONObject): Boolean =
+        writeInternal(context, event, durable = true)
 
     /**
      * Player telemetry uses atomic mailbox publication without forcing a
@@ -165,7 +120,6 @@ object NativeMailbox {
      * The event still uses the same temporary-file + atomic-promotion protocol.
      */
     fun writeBestEffort(context: Context, event: JSONObject): Boolean {
-        if (!hasLegacyPythonRuntime(context)) return true
         val snapshot = JSONObject(event.toString())
         return try {
             bestEffortExecutor.execute {
@@ -194,9 +148,7 @@ object NativeMailbox {
             temporary = temp
             val writeStartedNs = SystemClock.elapsedRealtimeNanos()
             val now=System.currentTimeMillis()
-            val suppliedCreatedAt = event.longOrDefault("createdAt", 0L)
-            require(suppliedCreatedAt >= 0L) { "Native mailbox createdAt must be non-negative epoch milliseconds." }
-            val capturedAt = suppliedCreatedAt.takeIf { it > 0L } ?: now
+            val capturedAt = event.optLong("createdAt", 0L).takeIf { it > 0L } ?: now
             val payload=JSONObject(event.toString())
                 .put("eventId",id)
                 .put("eventVersion",EVENT_VERSION)
@@ -214,7 +166,9 @@ object NativeMailbox {
                     }
                 }
             }
-            val requestId=(payload.stringOrNull("requestId") ?: nested?.stringOrNull("requestId")).orEmpty().trim()
+            val requestId=payload.optString("requestId").ifBlank{
+                nested?.optString("requestId").orEmpty()
+            }.trim()
             if(requestId.isNotEmpty())payload.put("requestId",requestId)
             promote("scanId", "scanId")
             promote("source", "source")

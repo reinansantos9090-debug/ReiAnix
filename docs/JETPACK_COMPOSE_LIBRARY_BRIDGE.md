@@ -8,7 +8,7 @@ As operações que ainda dependem de serviços Python seguem a direção inversa
 
 Compose → NativeMailbox → main.py → LibraryStore/ScanCoordinator/AndroidBridge
 
-A transição é por operação. No caminho Compose/Android, favoritos e estado de consumo são gravados por `ReiAnixPersonalListService` e `ReiAnixConsumptionService` no SQLite canônico. As ações Kotlin que emitiam `set_watched`, `select_saf`, `dismiss_storage_onboarding` e `remove_saf` foram retiradas do adapter: Compose grava consumo no serviço nativo e inicia seleção/remoção SAF pela Activity Kotlin; o cancelamento do onboarding também pertence à Activity. Os handlers Python correspondentes são preservados provisoriamente para consumir mensagens duráveis que possam ter sido enfileiradas por versões anteriores; a remoção desses receivers exige encerrar explicitamente a compatibilidade. O antigo comando `toggle_favorite` já tinha sido removido do adapter. Separadamente, a tela Flet antiga de detalhes ainda tem um callback próprio para `LibraryStore.toggle_favorite`; ele não é o caminho do ViewModel Compose e só deve ser removido quando o consumidor Flet for migrado.
+A transição é por operação. No caminho Compose/Android, inclusão pessoal/favoritos são gravados por `ReiAnixPersonalListService` no SQLite canônico e o estado de consumo é gravado por `ReiAnixConsumptionService`; a republicação posterior do snapshot não executa novamente a mutação. O antigo comando NativeMailbox `toggle_favorite` foi removido porque nenhum consumidor Compose restante deve escrever esse estado via Python. O handler legado `set_watched` continua temporariamente no canal de comandos enquanto consumidores antigos de consumo ainda existirem. Separadamente, a tela Flet antiga de detalhes ainda tem um callback próprio para `LibraryStore.toggle_favorite`; ele não é o caminho do ViewModel Compose e só deve ser removido quando o consumidor Flet for migrado.
 
 ## Responsabilidades
 
@@ -19,7 +19,7 @@ A transição é por operação. No caminho Compose/Android, favoritos e estado 
 - `NativeMailbox` continua sendo a fronteira Android/Python já existente.
 - `main.py` executa mutações e consultas bloqueantes dos fluxos híbridos que ainda passam pela mailbox, com `asyncio.to_thread`; isso não o torna writer de uma mutação já transferida para Kotlin.
 - `refresh` continua pertencendo ao `ScanCoordinator`; Compose não dispara scanners diretamente.
-- A abertura de mídia do Compose consulta diretamente `ReiAnixSqliteLibraryRepository.getEpisode()`, lê as preferências persistidas e encaminha uma URI `reiflix://native?action=play` para `MainActivity`. Ela não publica mais `open_media` pela `NativeMailbox`. O caminho Python `play_episode`/`AndroidBridge.play` permanece para consumidores Flet legados e para transições que ainda dependem do runtime híbrido; a validação e o player continuam na implementação nativa existente.
+- A abertura de mídia delega ao caminho existente `play_episode`/`AndroidBridge.play`, preservando Media3, sessão, progresso, Next/Previous e todas as validações atuais.
 
 ## Atualização da UI
 
@@ -35,6 +35,13 @@ A coleta no Compose deve usar `collectAsStateWithLifecycle()` através de `ReiAn
 
 ## Comandos
 
-A UI Compose ainda emite `publish_catalog` como solicitação de republicação da projeção híbrida depois de uma mutação nativa. A ação `refresh` passa pela URI nativa `reiflix://native?action=scan_library`. O produtor Kotlin `load_library_page`, seu estado paginado e a aplicação de resultados de página na UI do adapter foram removidos porque nenhuma tela Compose ativa os utiliza: as páginas atuais vêm de `ReiAnixLibraryQueryService` sobre o SQLite canônico. O decoder de resposta ainda entende mensagens de página antigas, que o adapter consome e descarta sem recriar estado obsoleto. Os receivers/projetores Python continuam apenas para drenar comandos duráveis de versões anteriores e superfícies de compatibilidade; isso não certifica a remoção global do runtime Python/Flet.
+Os comandos de projeção/coordenação ainda utilizados pela UI Compose são:
+
+- `publish_catalog`, após uma mutação nativa persistida;
+- `refresh`, encaminhado ao `ScanCoordinator`;
+- `load_library_page`, enquanto a projeção paginada ainda não tiver todos os consumidores cortados para as consultas Kotlin;
+- `open_media` por `episodeId`, resolvido contra a linha canônica do SQLite antes de usar o player existente.
+
+A UI Compose não envia `toggle_favorite` nem `set_watched` para realizar essas mutações: o estado pessoal e o consumo têm owners Kotlin. `toggle_favorite` deixou de fazer parte do protocolo `compose_library_command`; a gravação direta que permanece em `views/details_view.py` pertence ao consumidor Flet legado, não à tela Compose. `set_watched` permanece temporariamente no dispatcher para os consumidores antigos ainda identificados. `publish_catalog` continua sendo somente uma solicitação de republicação/compatibilidade posterior ao commit nativo.
 
 Nenhum objeto de catálogo completo é serializado pela navegação ou pelos comandos.

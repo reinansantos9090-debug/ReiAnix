@@ -9,18 +9,10 @@ import android.provider.DocumentsContract
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
-import com.reiflix.reiflix_local.data.media.LocalMediaIdentity
 import org.json.JSONException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-
-/** Rows captured through the repository's coordinated read policy for native player navigation. */
-internal data class ReiAnixPlayerNavigationRows(
-    val current: ReiAnixEpisodeRecord?,
-    val animeExists: Boolean,
-    val availableCandidates: List<ReiAnixEpisodeRecord>,
-)
 
 /**
  * Native repository against the existing canonical library.sqlite3.
@@ -84,109 +76,6 @@ class ReiAnixSqliteLibraryRepository(
                 ).use { cursor ->
                     buildList {
                         while (cursor.moveToNext()) add(cursor.toAnimeRecord())
-                    }
-                }
-            }
-        }
-
-
-
-    /** Same local anime projection as LibraryStore.timeline_items(), read from canonical SQLite. */
-    suspend fun timelineItems(): List<ReiAnixTimelineSourceRecord> = withContext(Dispatchers.IO) {
-        database.read { connection ->
-            connection.rawQuery(
-                """
-                SELECT a.id, a.title, a.year, a.season, a.status, a.media_kind,
-                       a.cover_cache, a.cover_url, a.added_at
-                FROM anime a
-                WHERE EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id)
-                ORDER BY CASE WHEN a.year IS NULL THEN 1 ELSE 0 END,
-                         a.year DESC, a.title COLLATE NOCASE ASC, a.id ASC
-                """.trimIndent(),
-                null,
-            ).use { cursor ->
-                buildList {
-                    while (cursor.moveToNext()) {
-                        add(
-                            ReiAnixTimelineSourceRecord(
-                                id = cursor.requiredLong("id"),
-                                title = cursor.requiredString("title"),
-                                year = cursor.optionalInt("year"),
-                                season = cursor.optionalString("season"),
-                                status = cursor.optionalString("status"),
-                                mediaKind = cursor.optionalString("media_kind"),
-                                coverCache = cursor.optionalString("cover_cache"),
-                                coverUrl = cursor.optionalString("cover_url"),
-                                addedAt = cursor.optionalDouble("added_at"),
-                            ),
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    /** Regular, present episode observations for duration anomaly detection. */
-    suspend fun durationObservations(animeId: Long? = null): List<ReiAnixDurationObservationRecord> =
-        withContext(Dispatchers.IO) {
-            require(animeId == null || animeId > 0L) {
-                "animeId must be a positive persisted ID."
-            }
-            database.read { connection ->
-                connection.rawQuery(
-                    """
-                    SELECT e.id, e.anime_id, e.season, e.number, e.absolute_number,
-                           e.file_name, e.episode_title, e.duration,
-                           a.title AS anime_title
-                    FROM episodes e
-                    JOIN anime a ON a.id=e.anime_id
-                    WHERE e.missing=0
-                      AND LOWER(COALESCE(e.episode_type,'regular')) NOT IN
-                          ('special','ova','oad','ona','extra','movie')
-                      AND (? = 0 OR e.anime_id=?)
-                    ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.id
-                    """.trimIndent(),
-                    arrayOf((animeId ?: 0L).toString(), (animeId ?: 0L).toString()),
-                ).use { cursor ->
-                    buildList {
-                        while (cursor.moveToNext()) {
-                            add(
-                                ReiAnixDurationObservationRecord(
-                                    id = cursor.requiredLong("id"),
-                                    animeId = cursor.requiredLong("anime_id"),
-                                    season = cursor.optionalInt("season"),
-                                    number = cursor.optionalDouble("number"),
-                                    absoluteNumber = cursor.optionalDouble("absolute_number"),
-                                    fileName = cursor.requiredString("file_name"),
-                                    episodeTitle = cursor.optionalString("episode_title"),
-                                    durationSeconds = cursor.optionalDouble("duration"),
-                                    animeTitle = cursor.requiredString("anime_title"),
-                                ),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-    /** Canonical, regular and present episodes used for the local marathon plan. */
-    suspend fun marathonEpisodes(animeId: Long): List<ReiAnixEpisodeRecord> =
-        withContext(Dispatchers.IO) {
-            require(animeId > 0L) { "animeId must be a positive persisted ID." }
-            database.read { connection ->
-                connection.rawQuery(
-                    """
-                    SELECT * FROM episodes
-                    WHERE anime_id=? AND missing=0
-                      AND LOWER(COALESCE(episode_type,'regular')) NOT IN
-                          ('special','ova','oad','ona','extra','movie')
-                    ORDER BY COALESCE(season,1000000), COALESCE(number,1000000),
-                             COALESCE(absolute_number,1000000), id
-                    """.trimIndent(),
-                    arrayOf(animeId.toString()),
-                ).use { cursor ->
-                    buildList {
-                        while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
                     }
                 }
             }
@@ -569,110 +458,6 @@ class ReiAnixSqliteLibraryRepository(
                 ).use { cursor ->
                     buildList {
                         while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
-                    }
-                }
-            }
-        }
-
-    /**
-     * Reads the current episode, parent-anime existence and playable neighbors through
-     * one repository read operation. API 35+ pins these queries to a read-only transaction;
-     * older Android versions retain the database's existing read-only connection semantics.
-     * Keeping the reads together narrows the inconsistency window during concurrent scans.
-     */
-    internal suspend fun playerNavigationRows(episodeId: Long): ReiAnixPlayerNavigationRows =
-        withContext(Dispatchers.IO) {
-            require(episodeId > 0L) { "Episode ID must be a positive persisted ID." }
-            database.readConsistentSnapshot { connection ->
-                val current = queryEpisode(connection, episodeId)
-                if (current == null) {
-                    return@readConsistentSnapshot ReiAnixPlayerNavigationRows(
-                        current = null,
-                        animeExists = false,
-                        availableCandidates = emptyList(),
-                    )
-                }
-
-                val animeExists = connection.rawQuery(
-                    "SELECT 1 FROM anime WHERE id = ? LIMIT 1",
-                    arrayOf(current.animeId.toString()),
-                ).use { it.moveToFirst() }
-                val candidates = if (!animeExists) {
-                    emptyList()
-                } else {
-                    connection.rawQuery(
-                        "SELECT e.* FROM episodes e " +
-                            "JOIN anime a ON a.id = e.anime_id " +
-                            "WHERE e.anime_id = ? AND e.missing = 0 " +
-                            "AND COALESCE(e.availability_state, 'available') = 'available' " +
-                            "AND e.episode_type NOT IN " +
-                            "('movie','special','ova','oad','ona','extra')",
-                        arrayOf(current.animeId.toString()),
-                    ).use { cursor ->
-                        buildList {
-                            while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
-                        }
-                    }
-                }
-                ReiAnixPlayerNavigationRows(
-                    current = current,
-                    animeExists = animeExists,
-                    availableCandidates = candidates,
-                )
-            }
-        }
-
-
-    /**
-     * Canonical projection for Collector Journey; one read joins existing episode consumption
-     * and anime metadata. No gamification tables or parallel library storage are introduced.
-     */
-    suspend fun collectorSnapshot(): List<ReiAnixCollectorEpisodeRow> =
-        withContext(Dispatchers.IO) {
-            database.read { connection ->
-                connection.rawQuery(
-                    """
-                    SELECT
-                        e.id,
-                        e.anime_id,
-                        e.progress,
-                        e.duration,
-                        e.watched,
-                        e.missing,
-                        e.last_played_at,
-                        e.episode_type,
-                        a.title AS anime_title,
-                        a.year,
-                        a.genres,
-                        a.format,
-                        a.media_kind
-                    FROM episodes e
-                    JOIN anime a ON a.id = e.anime_id
-                    -- Keep missing rows so collection counts preserve legacy semantics.
-                    ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.id
-                    """.trimIndent(),
-                    null,
-                ).use { cursor ->
-                    buildList {
-                        while (cursor.moveToNext()) {
-                            add(
-                                ReiAnixCollectorEpisodeRow(
-                                    id = cursor.requiredLong("id"),
-                                    animeId = cursor.requiredLong("anime_id"),
-                                    progress = cursor.optionalDouble("progress"),
-                                    duration = cursor.optionalDouble("duration"),
-                                    watched = cursor.optionalBoolean("watched"),
-                                    missing = cursor.optionalBoolean("missing"),
-                                    lastPlayedAt = cursor.optionalDouble("last_played_at"),
-                                    episodeType = cursor.optionalString("episode_type"),
-                                    animeTitle = cursor.optionalString("anime_title"),
-                                    year = cursor.optionalInt("year"),
-                                    genresJson = cursor.optionalString("genres"),
-                                    format = cursor.optionalString("format"),
-                                    mediaKind = cursor.optionalString("media_kind"),
-                                ),
-                            )
-                        }
                     }
                 }
             }
@@ -1536,40 +1321,6 @@ class ReiAnixSqliteLibraryRepository(
                 val seenIdentities = linkedSetOf<String>()
                 val inputIdentities = hashSetOf<String>()
 
-                // Legacy schema-v29 rows can legitimately lack media_identity because that
-                // column was introduced after the row existed. Index only provable local
-                // ExternalStorageProvider SAF rows; opaque/cloud providers never share a
-                // guessed identity with MediaStore.
-                val legacySafRowsByPhysicalIdentity = linkedMapOf<String, MutableList<ReiAnixEpisodeRecord>>()
-                if (snapshot.source == "mediastore") {
-                db.rawQuery(
-                    "SELECT * FROM episodes WHERE (media_identity IS NULL OR TRIM(media_identity) = '') " +
-                        "AND source_folder LIKE 'content://com.android.externalstorage.documents/tree/%' " +
-                        "AND relative_path IS NOT NULL AND TRIM(relative_path) != ''",
-                    null,
-                ).use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val legacy = cursor.toEpisodeRecord()
-                        val treeUri = runCatching { Uri.parse(legacy.sourceFolder.orEmpty()) }.getOrNull()
-                            ?: continue
-                        if (!treeUri.scheme.equals("content", ignoreCase = true) ||
-                            !treeUri.authority.equals("com.android.externalstorage.documents", ignoreCase = true) ||
-                            !DocumentsContract.isTreeUri(treeUri)
-                        ) continue
-                        val physicalIdentity = LocalMediaIdentity.identityFromDocument(
-                            legacy.path,
-                            legacy.relativePath,
-                            legacy.volumeId,
-                            legacy.sourceFolder,
-                        ) ?: continue
-                        legacySafRowsByPhysicalIdentity
-                            .getOrPut(physicalIdentity) { mutableListOf() }
-                            .add(legacy)
-                    }
-                }
-
-                }
-
                 for (item in snapshot.items) {
                     db.execSQL("SAVEPOINT native_index_item")
                     try {
@@ -1598,62 +1349,22 @@ class ReiAnixSqliteLibraryRepository(
                         ambiguous++
                         continue
                     }
-                    val incomingIdentity = item.mediaIdentity?.trim()?.takeIf { it.isNotEmpty() }
-                    val legacyCandidates = if (snapshot.source == "mediastore" && incomingIdentity != null) {
-                        legacySafRowsByPhysicalIdentity[incomingIdentity].orEmpty()
-                    } else emptyList()
-                    // Never choose arbitrarily when more than one old SAF row maps to this
-                    // physical path or when legacy identity conflicts with path/ID matches.
-                    if (legacyCandidates.size > 1) {
-                        ambiguous++
-                        continue
-                    }
-                    val legacyCandidate = legacyCandidates.singleOrNull()
-                    val matchedByIdentityOrPath = identityRow ?: pathRow
-                    if (legacyCandidate != null && matchedByIdentityOrPath != null &&
-                        legacyCandidate.id != matchedByIdentityOrPath.id
-                    ) {
-                        ambiguous++
-                        continue
-                    }
-                    val current = matchedByIdentityOrPath ?: legacyCandidate
+                    val current = identityRow ?: pathRow
                     if (current != null) {
-                        val existingIdentity = current.mediaIdentity?.trim().orEmpty()
-                        if (existingIdentity.isNotEmpty() && incomingIdentity != null &&
-                            existingIdentity != incomingIdentity
-                        ) {
-                            // A path match must not overwrite a different nonblank identity.
-                            ambiguous++
-                            continue
-                        }
                         val patch = ContentValues()
-                        // SAF and MediaStore can identify the same physical file. When MediaStore
-                        // observes a row currently owned by a persisted SAF tree, retain that
-                        // URI and tree-relative path: replacing them with a MediaStore URI or a
-                        // volume-relative path would cause playback/permission flapping on each scan.
-                        val currentSourceFolder = current.sourceFolder?.trim().orEmpty()
-                        val preserveSafLocation = snapshot.source == "mediastore" &&
-                            currentSourceFolder.startsWith("content://", ignoreCase = true) &&
-                            currentSourceFolder in snapshot.authorizedSafTreeUris
-                        if (!preserveSafLocation && current.path != item.location) patch.put("path", item.location)
+                        if (current.path != item.location) patch.put("path", item.location)
                         if (current.fileName != item.fileName) patch.put("file_name", item.fileName)
                         item.mimeType?.takeIf { it.isNotBlank() }?.let { if (current.mimeType != it) patch.put("mime_type", it) }
                         item.sizeBytes?.let { if (current.fileSize != it) patch.put("file_size", it) }
                         item.modifiedAtEpochSeconds?.let { if (current.modifiedAt != it) patch.put("modified_at", it) }
-                        if (!preserveSafLocation) {
-                            val folder = item.sourceFolder?.takeIf { it.isNotBlank() }
-                                ?: snapshot.scopeReference.trim().takeIf { it.isNotEmpty() }
-                                ?: snapshot.scopeRoot
-                            if (current.sourceFolder != folder) patch.put("source_folder", folder)
-                            item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
-                            item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
-                            item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
-                        }
-                        // Backfill a missing identity even if an actively granted SAF URI
-                        // stays preferred for playback. Do not replace a nonblank identity.
-                        incomingIdentity?.let {
-                            if (current.mediaIdentity.isNullOrBlank()) patch.put("media_identity", it)
-                        }
+                        val folder = item.sourceFolder?.takeIf { it.isNotBlank() }
+                            ?: snapshot.scopeReference.trim().takeIf { it.isNotEmpty() }
+                            ?: snapshot.scopeRoot
+                        if (current.sourceFolder != folder) patch.put("source_folder", folder)
+                        item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
+                        item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
+                        item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
+                        item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
                         if (current.manualOverride != true) {
                             item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
                             item.episodeTitle?.takeIf { it.isNotBlank() }?.let { if (current.episodeTitle != it) patch.put("episode_title", it) }

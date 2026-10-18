@@ -196,48 +196,4 @@ class ReiAnixLibrarySnapshotCodecTest {
         assertEquals("refresh", result.action)
         assertEquals("QUEUED", result.status)
     }
-
-    @Test
-    fun malformedSnapshotWireTypesAreRejectedInsteadOfCoerced() {
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixLibrarySnapshotCodec.decode(
-                """{"schemaVersion":"1","revision":1,"status":"EMPTY","sourceState":"UNKNOWN","sourceAvailable":false,"animes":[]}"""
-            )
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixLibrarySnapshotCodec.decode(
-                """{"schemaVersion":1,"status":"EMPTY","sourceState":"UNKNOWN","sourceAvailable":false,"animes":[]}"""
-            )
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixLibrarySnapshotCodec.decode(
-                """{"schemaVersion":1,"revision":1,"status":"EMPTY","sourceState":"UNKNOWN","sourceAvailable":"false","animes":[]}"""
-            )
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixLibrarySnapshotCodec.decode(
-                """{"schemaVersion":1,"revision":1,"status":"EMPTY","sourceState":"UNKNOWN","sourceAvailable":false,"animes":"[]"}"""
-            )
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixLibrarySnapshotCodec.decode(
-                """{"schemaVersion":1,"revision":1,"status":"EMPTY","sourceState":42,"sourceAvailable":false,"animes":[]}"""
-            )
-        }
-    }
-
-    @Test
-    fun commandResultRejectsMalformedPaginationAndRequiredPageFields() {
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixLibrarySnapshotCodec.decodeCommandResult(
-                """{"schemaVersion":1,"requestId":"req-1","action":"load_library_page","status":"COMPLETED","payload":{"kind":"library_page","generation":1,"page":0,"page_size":20,"total":3,"has_more":true,"items":"[]"}}"""
-            )
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixLibrarySnapshotCodec.decodeCommandResult(
-                """{"schemaVersion":1,"requestId":"req-1","action":"load_library_page","status":"COMPLETED","payload":{"kind":"library_page","generation":1,"page":-1,"page_size":20,"total":3,"has_more":true,"items":[]}}"""
-            )
-        }
-    }
-
 }

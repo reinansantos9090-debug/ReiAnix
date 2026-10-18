@@ -27,7 +27,6 @@ import androidx.navigation.navArgument
 import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.details.ReiAnixDetailsRoute
 import com.reiflix.reiflix_local.ui.details.ReiAnixAniListDetailsRoute
-import com.reiflix.reiflix_local.ui.collector.ReiAnixCollectorJourneyRoute
 import com.reiflix.reiflix_local.ui.home.ReiAnixHomeRoute
 import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryRoute
 import com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListRoute
@@ -48,7 +47,6 @@ object ReiAnixRoutes {
     const val STORAGE = "storage"
     const val ORGANIZE = "organize"
     const val RECOVERY = "recovery"
-    const val COLLECTOR = "collector"
     const val DETAILS = "details/{animeId}?origin={origin}"
     const val ANILIST_DETAILS = "anilist_details/{anilistId}?origin={origin}"
     const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"
@@ -71,8 +69,7 @@ object ReiAnixRoutes {
             normalized == MY_LIST ||
             normalized == STORAGE ||
             normalized == ORGANIZE ||
-            normalized == RECOVERY ||
-            normalized == COLLECTOR
+            normalized == RECOVERY
     }
 
     /**
@@ -162,13 +159,6 @@ fun NavHostController.navigateToTopLevel(route: String) {
     )
 }
 
-fun NavHostController.navigateToCollector() {
-    navigate(
-        ReiAnixRoutes.COLLECTOR,
-        navOptions { launchSingleTop = true },
-    )
-}
-
 fun NavHostController.navigateToOrganize() {
     navigate(
         ReiAnixRoutes.ORGANIZE,
@@ -212,9 +202,9 @@ fun NavHostController.navigateToPlayer(
 }
 
 /**
- * Production entry point wired to the canonical local-library projections.
- * Settings and Storage remain injectable Compose destinations so callers can
- * reuse Activity-scoped ViewModels and native storage capabilities.
+ * Production entry point wired to the real local-library projections.
+ * Settings and Storage remain injectable secondary surfaces so they can reuse
+ * Activity-scoped ViewModels and the existing Android/Python boundaries.
  */
 @Composable
 fun ReiAnixNavigationHost(
@@ -230,12 +220,6 @@ fun ReiAnixNavigationHost(
         )
     },
     organize: @Composable () -> Unit = {},
-    collector: @Composable () -> Unit = {
-        ReiAnixCollectorJourneyRoute(
-            navController = navController,
-            libraryViewModel = homeViewModel,
-        )
-    },
     search: @Composable () -> Unit = {},
     settings: @Composable () -> Unit = {},
     storage: @Composable () -> Unit = {},
@@ -258,6 +242,7 @@ fun ReiAnixNavigationHost(
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,
+    onRouteChanged: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> },
     onOpenCollector: () -> Unit = {},
 ) {
     ReiAnixNavigationHost(
@@ -284,7 +269,6 @@ fun ReiAnixNavigationHost(
         },
         myList = myList,
         organize = organize,
-        collector = collector,
         search = {
             ReiAnixSearchRoute(
                 navController = navController,
@@ -312,6 +296,7 @@ fun ReiAnixNavigationHost(
         navController = navController,
         startDestination = startDestination,
         showBottomNavigation = showBottomNavigation,
+        onRouteChanged = onRouteChanged,
         onOpenCollector = onOpenCollector,
     )
 }
@@ -322,7 +307,6 @@ fun ReiAnixNavigationHost(
     library: @Composable () -> Unit,
     myList: @Composable () -> Unit = {},
     organize: @Composable () -> Unit = {},
-    collector: @Composable () -> Unit = {},
     search: @Composable () -> Unit,
     settings: @Composable () -> Unit,
     storage: @Composable () -> Unit = {},
@@ -336,6 +320,7 @@ fun ReiAnixNavigationHost(
     navController: NavHostController = rememberNavController(),
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,
+    onRouteChanged: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> },
     onOpenCollector: () -> Unit = {},
 ) {
     val effectiveStartDestination = ReiAnixRoutes.normalizeStartDestination(startDestination)
@@ -372,6 +357,40 @@ fun ReiAnixNavigationHost(
             currentRoute == ReiAnixRoutes.DETAILS ||
             currentRoute == ReiAnixRoutes.ANILIST_DETAILS)
 
+    val composeRoute = when (currentRoute) {
+        ReiAnixRoutes.HOME,
+        ReiAnixRoutes.LIBRARY,
+        ReiAnixRoutes.MY_LIST,
+        ReiAnixRoutes.SEARCH,
+        ReiAnixRoutes.SETTINGS,
+        ReiAnixRoutes.STORAGE,
+        ReiAnixRoutes.ORGANIZE,
+        ReiAnixRoutes.RECOVERY,
+        ReiAnixRoutes.DETAILS,
+        ReiAnixRoutes.ANILIST_DETAILS,
+        ReiAnixRoutes.PLAYER,
+        -> currentRoute
+        else -> null
+    }
+    val animeId = backStackEntry?.arguments
+        ?.getString(ReiAnixRoutes.ARG_ANIME_ID)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+    val episodeId = backStackEntry?.arguments
+        ?.getString(ReiAnixRoutes.ARG_EPISODE_ID)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+    val routeOrigin = backStackEntry?.arguments
+        ?.getString(ReiAnixRoutes.ARG_ORIGIN)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+    LaunchedEffect(composeRoute, animeId, episodeId, routeOrigin) {
+        composeRoute?.let { route ->
+            onRouteChanged(route, animeId, episodeId, routeOrigin)
+        }
+    }
+
     ReiAnixAppShell(
         modifier = modifier,
         selectedRoute = selectedBottomRoute,
@@ -395,7 +414,6 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.SETTINGS) { settings() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }
-            composable(ReiAnixRoutes.COLLECTOR) { collector() }
 
             composable(
                 route = ReiAnixRoutes.DETAILS,

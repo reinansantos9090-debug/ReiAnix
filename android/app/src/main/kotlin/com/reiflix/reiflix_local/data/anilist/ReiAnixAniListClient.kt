@@ -7,10 +7,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.job
-import com.reiflix.reiflix_local.data.contract.arrayOrNull
-import com.reiflix.reiflix_local.data.contract.intOrNull
-import com.reiflix.reiflix_local.data.contract.objectOrNull
-import com.reiflix.reiflix_local.data.contract.stringOrNull
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -55,9 +51,9 @@ class ReiAnixAniListClient(
             .put("search", query)
             .put("page", 1)
             .put("perPage", limit)) { data ->
-            val page = data.objectOrNull("Page")
+            val page = data.optJSONObject("Page")
                 ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing Page object"))
-            val media = page.arrayOrNull("media")
+            val media = page.optJSONArray("media")
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("Missing media array in AniList search response"),
                 )
@@ -91,7 +87,7 @@ class ReiAnixAniListClient(
                 )
             }
             if (data.isNull("Media")) return@execute AniListResult.Success(null)
-            val media = data.objectOrNull("Media")
+            val media = data.optJSONObject("Media")
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("Invalid Media object in AniList detail response"),
                 )
@@ -141,31 +137,18 @@ class ReiAnixAniListClient(
         } catch (_: JSONException) {
             return AniListResult.Failure(AniListError.InvalidResponse("Malformed JSON response"))
         }
-        val errors = try {
-            root.arrayOrNull("errors")
-        } catch (_: Exception) {
-            return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL errors array"))
-        }
+        val errors = root.optJSONArray("errors")
         if (errors != null && errors.length() > 0) {
-            val messages = try {
-                buildList<String> {
-                    for (index in 0 until errors.length()) {
-                        val errorObject = errors.optJSONObject(index)
-                            ?: error("Malformed GraphQL error item at index=$index")
-                        val message = errorObject.stringOrNull("message").orEmpty().trim()
-                        if (message.isNotBlank()) add(message.take(160))
-                    }
+            val messages = buildList {
+                for (index in 0 until errors.length()) {
+                    val message = errors.optJSONObject(index)?.optString("message").orEmpty()
+                    if (message.isNotBlank()) add(message.take(160))
                 }
-            } catch (_: Exception) {
-                return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
             }
             return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
         }
-        val data = try {
-            root.objectOrNull("data")
-        } catch (_: Exception) {
-            return AniListResult.Failure(AniListError.InvalidResponse("Invalid data object"))
-        } ?: return AniListResult.Failure(AniListError.InvalidResponse("Missing data object"))
+        val data = root.optJSONObject("data")
+            ?: return AniListResult.Failure(AniListError.InvalidResponse("Missing data object"))
         return try {
             decode(data)
         } catch (cancelled: CancellationException) {
@@ -176,73 +159,51 @@ class ReiAnixAniListClient(
     }
 
     private fun parseAnime(media: JSONObject): AniListAnime? {
-        val id = media.intOrNull("id")?.takeIf { it > 0 } ?: return null
-        val title = media.objectOrNull("title")
-        val cover = media.objectOrNull("coverImage")
-        val studioObject = media.objectOrNull("studios")
-        val studios = studioObject?.arrayOrNull("nodes")
+        val id = media.optInt("id", 0).takeIf { it > 0 } ?: return null
+        val title = media.optJSONObject("title")
+        val cover = media.optJSONObject("coverImage")
+        val studios = media.optJSONObject("studios")?.optJSONArray("nodes")
         val studioNames = buildList {
             if (studios != null) for (index in 0 until studios.length()) {
-                val studio = studios.optJSONObject(index)
-                    ?: error("Malformed AniList studio at index=$index")
-                studio.stringOrNull("name")?.takeIf { it.isNotBlank() }?.let(::add)
+                studios.optJSONObject(index)?.optString("name")
+                    ?.takeIf { it.isNotBlank() }?.let(::add)
             }
         }
-
-        val synonyms = media.arrayOrNull("synonyms")
-        val genresArray = media.arrayOrNull("genres")
+        val synonyms = media.optJSONArray("synonyms")
         val aliases = buildList {
-            synonyms?.stringValues("synonyms")?.forEach(::add)
-            listOfNotNull(
-                title?.stringOrNull("romaji"),
-                title?.stringOrNull("english"),
-                title?.stringOrNull("native"),
-            ).mapNotNull { it.nonBlankOrNull() }.forEach(::add)
+            if (synonyms != null) for (index in 0 until synonyms.length()) {
+                synonyms.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
+            listOfNotNull(title?.optString("romaji"), title?.optString("english"), title?.optString("native"))
+                .mapNotNull { it.nonBlankOrNull() }.forEach(::add)
         }.distinctBy { it.lowercase(Locale.ROOT) }
-        val genres = genresArray?.stringValues("genres").orEmpty()
-
-        val episodes = media.nonNegativeIntOrNull("episodes")
-        val averageScore = media.intOrNull("averageScore")?.also {
-            require(it in 0..100) { "AniList averageScore must be between 0 and 100." }
+        val genresArray = media.optJSONArray("genres")
+        val genres = buildList {
+            if (genresArray != null) for (index in 0 until genresArray.length()) {
+                genresArray.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
         }
-        val duration = media.nonNegativeIntOrNull("duration")
-        val seasonYear = media.intOrNull("seasonYear")?.also {
-            require(it >= 0) { "AniList seasonYear must be non-negative." }
-        }?.takeIf { it > 0 }
-
         return AniListAnime(
             id = id,
-            titleRomaji = title?.stringOrNull("romaji").nonBlankOrNull(),
-            titleEnglish = title?.stringOrNull("english").nonBlankOrNull(),
-            titleNative = title?.stringOrNull("native").nonBlankOrNull(),
+            titleRomaji = title?.optString("romaji").nonBlankOrNull(),
+            titleEnglish = title?.optString("english").nonBlankOrNull(),
+            titleNative = title?.optString("native").nonBlankOrNull(),
             synonyms = aliases,
-            description = media.stringOrNull("description").nonBlankOrNull(),
-            format = media.stringOrNull("format").nonBlankOrNull(),
-            episodes = episodes,
-            status = media.stringOrNull("status").nonBlankOrNull(),
-            averageScore = averageScore,
-            durationMinutes = duration,
-            season = media.stringOrNull("season").nonBlankOrNull(),
-            seasonYear = seasonYear,
+            description = media.optString("description").nonBlankOrNull(),
+            format = media.optString("format").nonBlankOrNull(),
+            episodes = media.optInt("episodes", -1).takeIf { it >= 0 },
+            status = media.optString("status").nonBlankOrNull(),
+            averageScore = media.optInt("averageScore", -1).takeIf { it >= 0 },
+            durationMinutes = media.optInt("duration", -1).takeIf { it >= 0 },
+            season = media.optString("season").nonBlankOrNull(),
+            seasonYear = media.optInt("seasonYear", -1).takeIf { it > 0 },
             genres = genres,
-            coverLargeUrl = cover?.stringOrNull("large").nonBlankOrNull(),
-            coverExtraLargeUrl = cover?.stringOrNull("extraLarge").nonBlankOrNull(),
-            bannerUrl = media.stringOrNull("bannerImage").nonBlankOrNull(),
+            coverLargeUrl = cover?.optString("large").nonBlankOrNull(),
+            coverExtraLargeUrl = cover?.optString("extraLarge").nonBlankOrNull(),
+            bannerUrl = media.optString("bannerImage").nonBlankOrNull(),
             studios = studioNames,
         )
     }
-
-    private fun JSONObject.nonNegativeIntOrNull(key: String): Int? =
-        intOrNull(key)?.also { require(it >= 0) { "AniList field '$key' must be non-negative." } }
-
-    private fun JSONArray.stringValues(field: String): List<String> =
-        buildList {
-            for (index in 0 until length()) {
-                val value = opt(index) as? String
-                    ?: error("Malformed AniList field '$field[$index]': expected text.")
-                if (value.isNotBlank()) add(value)
-            }
-        }
 
     private fun String?.nonBlankOrNull(): String? =
         this?.takeIf { it.isNotBlank() && it != "null" }

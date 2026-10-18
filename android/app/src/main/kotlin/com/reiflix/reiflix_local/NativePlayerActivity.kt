@@ -10,7 +10,6 @@ import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import com.reiflix.reiflix_local.player.PlayerMediaPolicy
 import com.reiflix.reiflix_local.player.PlayerStartupMetrics
 import com.reiflix.reiflix_local.player.PlayerTimeFormatter
-import com.reiflix.reiflix_local.player.ReiAnixNativePlayerNavigationService
 import com.reiflix.reiflix_local.player.SystemUiController
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
@@ -138,12 +137,6 @@ class NativePlayerActivity : ComponentActivity() {
     private var mediaControls: PlayerMediaControls? = null
     private val consumptionService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAppDependencies.from(applicationContext).consumptionService
-    }
-
-    private val nativePlayerNavigationService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        ReiAnixNativePlayerNavigationService(
-            ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository,
-        )
     }
 
     private var locked = false
@@ -4519,7 +4512,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         publishNavigationTransitionDiagnostic(
             requestEvent("NEXT_TRANSITION_STARTED", "PREVIOUS_TRANSITION_STARTED"),
-            "native_sqlite_resolve",
+            "native_mailbox_publish",
             JSONObject()
                 .put("transitionGeneration", generation)
                 .put("playerGeneration", playerGeneration)
@@ -4540,6 +4533,26 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         playerCommandSequence += 1L
         val commandSequence = playerCommandSequence
+        val payload = JSONObject()
+            .put("uri", uri.toString())
+            .put("requestId", requestId)
+            .put("episodeId", currentEpisodeId())
+            .put("animeId", intent.getStringExtra("animeId").orEmpty())
+            .put("positionMs", player.currentPosition.coerceAtLeast(0L))
+            .put("durationMs", player.duration.coerceAtLeast(0L))
+            .put("createdAt", startedAtMs)
+            .put("buttonPressedAtMs", startedAtMs)
+            .put("monotonicNs", monotonicNs)
+            .put("transitionDirection", transitionSourceDirection)
+            .put("transitionGeneration", generation)
+            .put("playerGeneration", playerGeneration)
+            .put("playerSessionId", playerSessionId)
+            // Carry the effective session settings with the transition. The
+            // SettingsStore remains the durable source of truth, while this
+            // handoff removes the race where Python reads the old value before
+            // the canonical mailbox mutation is consumed.
+            .put("playerSettings", currentPlayerSettingsSnapshot())
+
         if (commandSequence < lastPlayerCommandSequence) {
             NativeMailbox.writeBestEffort(
                 this,
@@ -4583,224 +4596,70 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ),
         )
 
-        dispatchNativeEpisodeTransition(
-            generation = generation,
-            sourceRequestId = requestId,
-            sourceUri = uri.toString(),
-            sourceSessionId = playerSessionId,
-            sourceCreatedAtMs = startedAtMs,
-            sourceMonotonicNs = monotonicNs,
-            sourceDirection = transitionSourceDirection,
-            sourceEpisodeId = currentEpisodeId().toLongOrNull() ?: 0L,
-        )
-    }
+        val transitionCreatedAtMs = nextPlayerEventCreatedAt()
+        val transitionEvent = JSONObject()
+            .put("type", eventType)
+            .put("requestId", requestId)
+            .put("createdAt", transitionCreatedAtMs)
+            .put("payload", payload)
 
-    /**
-     * Resolve Next/Previous on canonical SQLite and hand the successor directly
-     * to this native Activity. The existing session/generation/origin fence in
-     * onNewIntent() remains the final authority for accepting the transition.
-     */
-    private fun dispatchNativeEpisodeTransition(
-        generation: Long,
-        sourceRequestId: String,
-        sourceUri: String,
-        sourceSessionId: String,
-        sourceCreatedAtMs: Long,
-        sourceMonotonicNs: Long,
-        sourceDirection: String,
-        sourceEpisodeId: Long,
-    ) {
-        if (sourceEpisodeId <= 0L) {
-            failNativeEpisodeTransition(
-                generation, sourceRequestId, sourceUri, sourceSessionId, sourceDirection,
-                "invalid_current_episode", "Identificador do episódio inválido.",
-            )
-            return
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val dependencies = ReiAnixAppDependencies.from(applicationContext)
-                val navigation = nativePlayerNavigationService.resolve(sourceEpisodeId)
-                val expectedAnimeId = intent.getStringExtra("animeId")?.toLongOrNull()
-                val resolvedCurrentUri = normalizeLocalReference(navigation.current.path)?.toString()
-                val expectedCurrentUri = normalizeLocalReference(sourceUri)?.toString()
-                if (
-                    navigation.current.id != sourceEpisodeId ||
-                    (expectedAnimeId != null && navigation.current.animeId != expectedAnimeId) ||
-                    resolvedCurrentUri == null ||
-                    expectedCurrentUri == null ||
-                    resolvedCurrentUri != expectedCurrentUri
-                ) {
-                    throw IllegalStateException(
-                        "The active player identity does not match its canonical SQLite episode."
+        try {
+            transitionPublishFuture = playbackWorker.submit {
+                try {
+                    if (!isCurrentTransition(generation)) return@submit
+                    val published = NativeMailbox.write(this@NativePlayerActivity, transitionEvent)
+                    handler.post {
+                        if (!isCurrentTransition(generation) || !episodeChangePending) return@post
+                        transitionPublishFuture = null
+                        if (!published) {
+                            publishNavigationTransitionDiagnostic(
+                                requestEvent("NEXT_TRANSITION_FAILED", "PREVIOUS_TRANSITION_FAILED"),
+                                "mailbox_publish_failed",
+                                JSONObject().put("error", "native_mailbox_write_failed"),
+                            )
+                            showFeedback("Não foi possível mudar de episódio.", 1800L)
+                            episodeChangePending = false
+                            invalidateTransition("mailbox_publish_failed")
+                            return@post
+                        }
+                        setTransitionPhase(TransitionPhase.HANDOFF_DISPATCHED, "native_mailbox_published")
+                        handler.postDelayed(episodeChangeTimeout, 5_000L)
+                        logPlayer(
+                            eventType + " requestId=" + requestId.ifEmpty { "-" } +
+                                " transitionGeneration=" + generation +
+                                " transitionDirection=" + transitionSourceDirection +
+                                " buttonLatencyMs=" + (System.currentTimeMillis() - startedAtMs) +
+                                " keepActivity=true",
+                        )
+                    }
+                } catch (_: java.util.concurrent.CancellationException) {
+                    logPlayer(
+                        eventType + " PUBLISH_CANCELLED requestId=" +
+                            requestId.ifEmpty { "-" } +
+                            " transitionGeneration=" + generation,
                     )
-                }
-                val movingNext = sourceDirection == "NEXT"
-                val target = (if (movingNext) navigation.next else navigation.previous)
-                    ?: throw NoSuchElementException("Não existe episódio adjacente disponível.")
-                val resumeEnabled = dependencies.sqliteSettingsRepository
-                    .getPreference("player.resume", "true")
-                    ?.toBooleanStrictOrNull() ?: true
-                val storedProgress = target.progress
-                    ?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
-                val durationSeconds = target.duration?.takeIf { it.isFinite() && it > 0.0 }
-                val boundedProgress = durationSeconds?.let(storedProgress::coerceAtMost) ?: storedProgress
-                // Match the legacy handoff contract: disabled resume / watched
-                // targets pass an explicit zero; no saved position leaves the
-                // position unspecified so NativePlayerActivity can use its
-                // canonical consumption-service resume lookup.
-                val positionMs: Long? = when {
-                    !resumeEnabled || target.watched == true -> 0L
-                    boundedProgress > 0.0 ->
-                        (boundedProgress * 1_000.0).toLong().coerceAtLeast(0L)
-                    else -> null
-                }
-                val targetTitle = target.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: target.fileName.trim().takeIf { it.isNotEmpty() }
-                    ?: "Episódio"
-
-                handler.post {
-                    if (!isCurrentTransition(
-                            generation,
-                            expectedRequestId = sourceRequestId,
-                            expectedUri = sourceUri,
-                            expectedSessionId = sourceSessionId,
-                        )
-                    ) return@post
-
-                    val targetUri = normalizeLocalReference(target.path)
-                    if (targetUri == null) {
-                        failNativeEpisodeTransition(
-                            generation, sourceRequestId, sourceUri, sourceSessionId, sourceDirection,
-                            "invalid_successor_uri", "A referência local do próximo episódio é inválida.",
-                        )
-                        return@post
-                    }
-
-                    val targetCanNext = if (movingNext) navigation.nextCanNext else navigation.previousCanNext
-                    val targetCanPrevious = if (movingNext) navigation.nextCanPrevious else navigation.previousCanPrevious
-                    val successorRequestId = UUID.randomUUID().toString()
-                    val commandCreatedAtMs = System.currentTimeMillis()
-                    val successorIntent = Intent(intent).apply {
-                        setClass(this@NativePlayerActivity, NativePlayerActivity::class.java)
-                        putExtra("requestId", successorRequestId)
-                        putExtra("commandCreatedAtMs", commandCreatedAtMs)
-                        putExtra("uri", targetUri.toString())
-                        putExtra("mediaId", targetUri.toString())
-                        putExtra("episodeId", target.id.toString())
-                        putExtra("animeId", target.animeId.toString())
-                        putExtra("title", targetTitle)
-                        putExtra("episodeTitle", targetTitle)
-                        putExtra("positionMs", positionMs ?: 0L)
-                        putExtra("positionMsSpecified", positionMs != null)
-                        putExtra("canNext", targetCanNext)
-                        putExtra("canPrevious", targetCanPrevious)
-                        val liveSettings = this@NativePlayerActivity.currentPlayerSettingsSnapshot()
-                        putExtra("autoplay", liveSettings.optBoolean("player.autoplay_next", autoplayNext))
-                        putExtra("setting_player_default_speed", liveSettings.optDouble("player.default_speed", 1.0).toFloat())
-                        putExtra("setting_player_aspect_ratio", liveSettings.optString("player.aspect_ratio", "fit"))
-                        putExtra("setting_player_zoom_enabled", liveSettings.optBoolean("player.zoom_enabled", zoomEnabled))
-                        putExtra("setting_player_immersive", liveSettings.optString("player.immersive", immersiveSetting))
-                        putExtra("setting_player_lock_mode", liveSettings.optBoolean("player.lock_mode", locked))
-                        putExtra("setting_player_auto_hide_seconds", liveSettings.optLong("player.auto_hide_seconds", 5L).toInt().coerceAtLeast(1))
-                        putExtra("setting_player_double_tap_seek_seconds", liveSettings.optLong("player.double_tap_seek_seconds", 10L).coerceAtLeast(1L))
-                        putExtra("setting_player_long_press_speed", liveSettings.optDouble("player.long_press_speed", 2.0).toFloat())
-                        putExtra("setting_player_max_video_resolution", liveSettings.optString("player.max_video_resolution", "auto"))
-                        putExtra("setting_player_max_video_frame_rate", liveSettings.optInt("player.max_video_frame_rate", 0).coerceAtLeast(0))
-                        putExtra("setting_player_max_audio_channels", liveSettings.optInt("player.max_audio_channels", 0).coerceAtLeast(0))
-                        putExtra("setting_player_pip", liveSettings.optBoolean("player.pip", pipEnabled))
-                        putExtra("setting_gestures_volume", liveSettings.optBoolean("gestures.volume", volumeGesturesEnabled))
-                        putExtra("setting_gestures_brightness", liveSettings.optBoolean("gestures.brightness", brightnessGesturesEnabled))
-                        putExtra("setting_gestures_double_tap", liveSettings.optBoolean("gestures.double_tap", doubleTapEnabled))
-                        putExtra("setting_gestures_long_press", liveSettings.optBoolean("gestures.long_press", longPressEnabled))
-                        putExtra("setting_audio_preferred_language", liveSettings.optString("audio.preferred_language", preferredAudioLanguage))
-                        putExtra("setting_audio_preferred_subtitle_language", liveSettings.optString("audio.preferred_subtitle_language", preferredSubtitleLanguage))
-                        putExtra("setting_audio_subtitles", liveSettings.optString("audio.subtitles", subtitleMode))
-                        putExtra("setting_audio_subtitle_scale", liveSettings.optDouble("audio.subtitle_scale", 1.0).toFloat())
-                        putExtra("setting_audio_subtitle_bottom_padding", liveSettings.optInt("audio.subtitle_bottom_padding", 8).coerceIn(0, 50))
-                        putExtra("setting_audio_subtitle_embedded_style", liveSettings.optBoolean("audio.subtitle_embedded_style", subtitleEmbeddedStyle))
-                        putExtra("playerSessionId", sourceSessionId)
-                        putExtra("originRequestId", sourceRequestId)
-                        putExtra("originCreatedAtMs", sourceCreatedAtMs)
-                        putExtra("originTransitionGeneration", generation)
-                        putExtra("originPlayerSessionId", sourceSessionId)
-                        putExtra("originMonotonicNs", sourceMonotonicNs)
-                        putExtra("transitionDirection", sourceDirection)
-                        addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    }
-
-                    handler.removeCallbacks(episodeChangeTimeout)
-                    setTransitionPhase(TransitionPhase.HANDOFF_DISPATCHED, "native_successor_resolved")
-                    handler.postDelayed(episodeChangeTimeout, 5_000L)
-                    try {
-                        startActivity(successorIntent)
+                } catch (error: Exception) {
+                    handler.post {
+                        if (!isCurrentTransition(generation)) return@post
                         publishNavigationTransitionDiagnostic(
-                            if (movingNext) "PLAYER_NEXT_NATIVE_HANDOFF_DISPATCHED"
-                            else "PLAYER_PREVIOUS_NATIVE_HANDOFF_DISPATCHED",
-                            "native_sqlite_successor",
-                            JSONObject()
-                                .put("requestId", successorRequestId)
-                                .put("originRequestId", sourceRequestId)
-                                .put("episodeId", target.id)
-                                .put("animeId", target.animeId)
-                                .put("transitionGeneration", generation)
-                                .put("playerSessionId", sourceSessionId),
+                            requestEvent("NEXT_TRANSITION_FAILED", "PREVIOUS_TRANSITION_FAILED"),
+                            "mailbox_publish_exception",
+                            JSONObject().put("error", error.message ?: error::class.java.simpleName),
                         )
-                    } catch (error: Exception) {
-                        failNativeEpisodeTransition(
-                            generation, sourceRequestId, sourceUri, sourceSessionId, sourceDirection,
-                            "native_start_activity_failed",
-                            error.message ?: error::class.java.simpleName,
-                        )
+                        episodeChangePending = false
+                        invalidateTransition("mailbox_publish_exception")
                     }
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                handler.post {
-                    failNativeEpisodeTransition(
-                        generation, sourceRequestId, sourceUri, sourceSessionId, sourceDirection,
-                        "native_successor_resolution_failed",
-                        error.message ?: error::class.java.simpleName,
-                    )
                 }
             }
-        }
-    }
-
-    private fun failNativeEpisodeTransition(
-        generation: Long,
-        sourceRequestId: String,
-        sourceUri: String,
-        sourceSessionId: String,
-        sourceDirection: String,
-        reason: String,
-        error: String,
-    ) {
-        if (!isCurrentTransition(
-                generation,
-                expectedRequestId = sourceRequestId,
-                expectedUri = sourceUri,
-                expectedSessionId = sourceSessionId,
+        } catch (error: Exception) {
+            publishNavigationTransitionDiagnostic(
+                requestEvent("NEXT_TRANSITION_FAILED", "PREVIOUS_TRANSITION_FAILED"),
+                "executor_submit_failed",
+                JSONObject().put("error", error.message ?: error::class.java.simpleName),
             )
-        ) return
-
-        handler.removeCallbacks(episodeChangeTimeout)
-        transitionPublishFuture?.cancel(true)
-        transitionPublishFuture = null
-        publishNavigationTransitionDiagnostic(
-            if (sourceDirection == "NEXT") "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
-            reason,
-            JSONObject()
-                .put("error", error)
-                .put("transitionGeneration", generation)
-                .put("playerSessionId", sourceSessionId),
-        )
-        episodeChangePending = false
-        invalidateTransition(reason)
-        updateEpisodeNavigationButtons()
-        showFeedback("Não foi possível mudar de episódio.", 1800L)
+            episodeChangePending = false
+            invalidateTransition("executor_submit_failed")
+        }
     }
 
     private fun seekToSavedPosition(savedPositionMs: Long): Long {

@@ -1,7 +1,3 @@
-import java.io.ByteArrayInputStream
-import java.util.Base64
-import java.util.zip.GZIPInputStream
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -25,8 +21,7 @@ android {
         applicationId = "com.reiflix.reiflix_local"
         minSdk = 24
         targetSdk = 36
-        resValue("string", "reiflix_google_web_client_id", providers.environmentVariable("REIFLIX_GOOGLE_WEB_CLIENT_ID").orElse("").get())
-        versionCode = providers.gradleProperty("reianixVersionCode").orElse("2").get().toInt()
+        versionCode = 2
         versionName = "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -35,36 +30,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // CI release signing uses the same keystore as prior distributable APKs when
-    // configured. A debug-key fallback keeps local builds reproducible, but those
-    // builds are intentionally not update-compatible with a stable-signed install.
-    val stableReleaseSigningConfigured = listOf(
-        providers.environmentVariable("REIFLIX_ANDROID_KEYSTORE_PATH").orNull,
-        providers.environmentVariable("REIFLIX_ANDROID_KEYSTORE_PASSWORD").orNull,
-        providers.environmentVariable("REIFLIX_ANDROID_KEY_PASSWORD").orNull,
-        providers.environmentVariable("REIFLIX_ANDROID_KEY_ALIAS").orNull,
-    ).all { !it.isNullOrBlank() }
-
-    signingConfigs {
-        create("reianixRelease") {
-            if (stableReleaseSigningConfigured) {
-                storeFile = file(providers.environmentVariable("REIFLIX_ANDROID_KEYSTORE_PATH").get())
-                storePassword = providers.environmentVariable("REIFLIX_ANDROID_KEYSTORE_PASSWORD").get()
-                keyPassword = providers.environmentVariable("REIFLIX_ANDROID_KEY_PASSWORD").get()
-                keyAlias = providers.environmentVariable("REIFLIX_ANDROID_KEY_ALIAS").get()
-            }
-        }
-    }
-
     // Personal-device release APK: target the Galaxy A15 arm64 ABI.
-    // Debug builds remain multi-ABI for local validation.
+    // Debug builds remain multi-ABI for x86_64/other CI emulators.
     buildTypes {
         getByName("release") {
-            signingConfig = if (stableReleaseSigningConfigured) {
-                signingConfigs.getByName("reianixRelease")
-            } else {
-                signingConfigs.getByName("debug")
-            }
             ndk {
                 abiFilters += "arm64-v8a"
             }
@@ -77,15 +46,13 @@ kotlin { jvmToolchain(17) }
     // earlier validation stage 29: dependencies remain unchanged; the cleanup is structural and reuses
     // the existing Compose/Navigation/Lifecycle/Media3 stack without new abstractions.
 dependencies {
-    // Both official release and native validation APKs compile this module directly with Gradle.
-    // Legacy Python/Flet source remains for migration compatibility, but those runtimes are not
-    // packaged by these workflows; native feature parity is still explicitly uncertified.
+    // These are merged into the Flet Flutter host by the custom Android template.
     implementation("androidx.activity:activity-ktx:1.13.0")
     // Compose line compatible with the existing compileSdk 36 / AGP 8.9.1 toolchain.
     implementation(platform("androidx.compose:compose-bom:2026.06.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
-    // Coil 2.7.0 includes its OkHttp-backed network fetcher transitively through coil-base.
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-okhttp:2.7.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
@@ -116,91 +83,4 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
-}
-
-
-// Native Gradle validation builds must not invoke Python to generate this runtime contract.
-// The checked-in archive is derived from the canonical LibraryStore schema v29. The official
-// legacy packaging path may supply its just-generated asset instead; in that case no duplicate
-// asset is added and this task is not part of the generated host build graph.
-val canonicalContractAsset = layout.projectDirectory
-    .file("src/main/assets/native-sqlite-contract-v29.json")
-    .asFile
-val compressedCanonicalContract = rootProject.file("build-logic/native-sqlite-contract-v29.json.gz.b64")
-val generatedContractAssets = layout.buildDirectory.dir("generated/native-sqlite-contract/assets")
-val generateNativeSqliteContractAsset by tasks.registering {
-    inputs.file(compressedCanonicalContract)
-    outputs.file(generatedContractAssets.map { it.file("native-sqlite-contract-v29.json") })
-
-    doLast {
-        check(compressedCanonicalContract.isFile) {
-            "Canonical SQLite schema v29 contract archive is missing: ${compressedCanonicalContract.absolutePath}"
-        }
-        val encodedArchive = compressedCanonicalContract.readText(Charsets.US_ASCII).trim()
-        val compressedBytes = Base64.getDecoder().decode(encodedArchive)
-        val outputFile = generatedContractAssets.get()
-            .file("native-sqlite-contract-v29.json")
-            .asFile
-        outputFile.parentFile.mkdirs()
-        GZIPInputStream(ByteArrayInputStream(compressedBytes)).use { input ->
-            outputFile.outputStream().buffered().use { output -> input.copyTo(output) }
-        }
-        check(outputFile.isFile && outputFile.length() > 0L) {
-            "Generated canonical SQLite schema v29 contract is empty."
-        }
-        check(Regex("\\\"schema_version\\\"\\s*:\\s*29(?:\\s*[,}])")
-            .containsMatchIn(outputFile.readText(Charsets.UTF_8))) {
-            "Embedded SQLite contract does not declare canonical schema v29."
-        }
-    }
-}
-
-if (!canonicalContractAsset.isFile) {
-    android.sourceSets.getByName("main").assets.srcDir(generatedContractAssets)
-    tasks.named("preBuild").configure {
-        dependsOn(generateNativeSqliteContractAsset)
-    }
-}
-
-// The standalone Gradle APK must ship native fresh-install bootstrap data without Python.
-val canonicalBootstrapAsset = layout.projectDirectory
-    .file("src/main/assets/native-sqlite-bootstrap-v29.json")
-    .asFile
-val compressedCanonicalBootstrap = rootProject.file("build-logic/native-sqlite-bootstrap-v29.json.gz.b64")
-val generatedBootstrapAssets = layout.buildDirectory.dir("generated/native-sqlite-bootstrap/assets")
-val generateNativeSqliteBootstrapAsset by tasks.registering {
-    inputs.file(compressedCanonicalBootstrap)
-    outputs.file(generatedBootstrapAssets.map { it.file("native-sqlite-bootstrap-v29.json") })
-
-    doLast {
-        check(compressedCanonicalBootstrap.isFile) {
-            "Canonical SQLite bootstrap archive is missing: ${compressedCanonicalBootstrap.absolutePath}"
-        }
-        val encodedArchive = compressedCanonicalBootstrap.readText(Charsets.US_ASCII).trim()
-        val compressedBytes = Base64.getDecoder().decode(encodedArchive)
-        val outputFile = generatedBootstrapAssets.get()
-            .file("native-sqlite-bootstrap-v29.json")
-            .asFile
-        outputFile.parentFile.mkdirs()
-        GZIPInputStream(ByteArrayInputStream(compressedBytes)).use { input ->
-            outputFile.outputStream().buffered().use { output -> input.copyTo(output) }
-        }
-        check(outputFile.isFile && outputFile.length() > 0L) {
-            "Generated native SQLite bootstrap is empty."
-        }
-        val generatedJson = outputFile.readText(Charsets.UTF_8)
-        check(generatedJson.contains("\"schema_version\": 29,")) {
-            "Native SQLite bootstrap must declare schema v29."
-        }
-        check(generatedJson.contains("\"initial_migration_version\": 29")) {
-            "Native SQLite bootstrap must seed schema_migrations with version 29."
-        }
-    }
-}
-
-if (!canonicalBootstrapAsset.isFile) {
-    android.sourceSets.getByName("main").assets.srcDir(generatedBootstrapAssets)
-    tasks.named("preBuild").configure {
-        dependsOn(generateNativeSqliteBootstrapAsset)
-    }
 }

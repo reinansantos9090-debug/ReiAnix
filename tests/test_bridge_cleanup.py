@@ -114,32 +114,27 @@ def test_native_settings_preferences_do_not_depend_on_optional_python_projection
     assert "nativePersisted" in settings_repository
 
 
-def test_kotlin_library_adapter_no_longer_emits_legacy_page_commands():
+def test_library_scan_refresh_no_longer_dispatches_a_duplicate_python_page_query():
     repository = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
-    )
-    codec = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt"
     )
     view_model = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
     )
-    legacy_runtime = read("main.py")
-    bridge = read("core/compose_library_bridge.py")
-
-    assert "fun loadLibraryPage(" not in repository
-    assert "pagedLibraryState" not in repository
-    assert "reconcilePagedState" not in repository
-    assert "Action.LOAD_LIBRARY_PAGE" not in repository
-    assert "LOAD_LIBRARY_PAGE" not in codec
+    assert "pendingRefreshPage" not in repository
+    assert "RefreshPageRequest" not in repository
+    refresh_result_start = repository.index(
+        'if (action == ReiAnixLibraryCommandCodec.Action.REFRESH.value'
+    )
+    page_result_start = repository.index(
+        'if (action == ReiAnixLibraryCommandCodec.Action.LOAD_LIBRARY_PAGE.value',
+        refresh_result_start,
+    )
+    assert "loadLibraryPage(" not in repository[refresh_result_start:page_result_start]
     assert "repository.refresh()" in view_model
     native_refresh_start = view_model.index("private suspend fun refreshNativeCatalog()")
     native_refresh_end = view_model.index("\n    }", native_refresh_start)
     assert "loadNativeLibraryPage(" in view_model[native_refresh_start:native_refresh_end]
-
-    # Compatibility receiver remains to drain durable messages written by older app versions.
-    assert 'elif action == "load_library_page":' in legacy_runtime
-    assert '"kind": "library_page"' in bridge
 
 
 def test_prompt_18_bridge_migration_docs_preserve_legacy_boundaries():
@@ -157,50 +152,3 @@ def test_prompt_18_bridge_migration_docs_preserve_legacy_boundaries():
         "not 100% Kotlin",
     ):
         assert token.lower() in doc.lower()
-
-
-def test_prompt18_native_request_states_cannot_regress_after_terminal_acknowledgement():
-    state = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt"
-    )
-    assert "private fun OperationState.isTerminal(): Boolean" in state
-    assert "if (previous.isTerminal()) return false" in state
-    assert "if (!canAdvanceState(previous?.state, state)) return false" in state
-    for terminal in ("COMPLETED", "CANCELLED", "FAILED", "TIMEOUT"):
-        assert "OperationState." + terminal in state
-
-
-def test_prompt18_settings_projection_failure_keeps_canonical_preferences_and_correlations():
-    settings = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
-    )
-    assert "sqliteSettingsRepository.allPreferences()" in settings
-    assert "publishCanonicalPreferencesAfterBridgeFailure(" in settings
-    assert "if (raw == null)" in settings
-    assert "Optional settings projection is invalid; canonical SQLite preferences remain available." in settings
-    assert "snapshotState.settings + persistedPreferences" in settings
-    assert "account = canonicalAccountState ?: snapshotState.account" in settings
-    assert "operations = current.operations" in settings
-    assert "pendingSettings" in settings
-    assert "loadExistingCommandResults()" in settings
-    # settings.json is a bridge projection; the canonical preferences table remains authoritative.
-    assert "snapshotFile = File(bridgeDirectory, \"settings.json\")" in settings
-    assert "settings.json" not in read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSettingsRepository.kt")
-
-
-def test_prompt18_scan_completion_refreshes_the_canonical_catalog_without_python_page_replay():
-    view_model = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
-    )
-    legacy_runtime = read("main.py")
-    library_bridge = read("core/compose_library_bridge.py")
-    assert "collectLatest { refreshNativeCatalog() }" in view_model
-    assert "load_library_page" not in view_model
-    assert "refreshCanonicalCatalogAfterBootstrapValidation()" in view_model
-    # The explicit command remains only in the live Python runtime; the bridge module
-    # projects page models but does not itself dispatch the command.
-    assert 'elif action == "load_library_page":' in legacy_runtime
-    assert '"kind": "library_page"' in library_bridge
-    assert "NativeMailbox" in read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
-    )

@@ -1,17 +1,13 @@
 package com.reiflix.reiflix_local.viewmodel
 
 import android.content.Context
-import android.content.Intent
 import android.util.Log
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import com.reiflix.reiflix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryInvalidationBus
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -21,11 +17,6 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
-import com.reiflix.reiflix_local.data.sqlite.toggleAnimePinned
-import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
-import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
-import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
@@ -34,9 +25,6 @@ import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
 import android.net.Uri
-import java.io.File
-import java.util.Locale
-import java.util.UUID
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState
@@ -80,8 +68,6 @@ import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeMode
 import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
 import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
-import com.reiflix.reiflix_local.player.ReiAnixNativePlayerEpisodeOrder
-
 enum class ReiAnixNativeFoldersStatus {
     IDLE,
     LOADING,
@@ -119,10 +105,6 @@ class ReiAnixLibraryViewModel(
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
     private val appContext = context.applicationContext
     private val appDependencies = dependencies ?: ReiAnixAppDependencies.existingOrNull(appContext)
-
-    /** Process-owned bootstrap state is observable by Compose without transferring lifecycle ownership. */
-    val bootstrapState: StateFlow<ReiAnixBootstrapState> =
-        appDependencies?.bootstrap?.state ?: MutableStateFlow(ReiAnixBootstrapState())
 
     
     companion object {
@@ -198,10 +180,6 @@ class ReiAnixLibraryViewModel(
         )
     private val consumptionService = dependencies?.consumptionService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService(nativeLibraryRepository)
-    /** Native projection-only discovery rules use the same canonical library repository. */
-    private val nativeLibraryDiscovery = dependencies?.libraryDiscoveryService
-        ?: ReiAnixLibraryDiscoveryService(nativeLibraryRepository)
-
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
 
@@ -330,17 +308,6 @@ class ReiAnixLibraryViewModel(
     suspend fun deleteSafItem(uri: Uri): SafFileOperations.Result =
         nativeFileOperations.delete(uri)
 
-    /** Native replacement for legacy local release timeline calculations. */
-    suspend fun queryNativeTimelineGroups() = nativeLibraryDiscovery.timelineGroups()
-
-    /** Native replacement for the local duration anomaly report; does not mutate playback state. */
-    suspend fun queryNativeDurationAnomalies(animeId: Long? = null) =
-        nativeLibraryDiscovery.durationAnomalies(animeId)
-
-    /** Native replacement for the remaining-time marathon projection. */
-    suspend fun queryNativeMarathonPlan(animeId: Long, currentPath: String? = null) =
-        nativeLibraryDiscovery.marathonPlan(animeId, currentPath)
-
     suspend fun queryNativeAnime(id: Long): ReiAnixLibraryQueryResult<ReiAnixAnimeRecord> =
         nativeLibraryQueries.animeById(id)
 
@@ -412,17 +379,16 @@ class ReiAnixLibraryViewModel(
             else -> catalog.status
         }
 
-        // Native scan lifecycle is authoritative for SAF, MediaStore, and broad-storage
-        // operations. Do not rely on Python batch events to keep the Compose scan indicator
-        // alive: all current native runners publish their lifecycle through this StateFlow.
-        // The compatibility snapshot remains a fallback only before a native scan has existed.
-        val nativeScans = scans.values
-        val activeNativeScan = nativeScans
+        // Current Android scan progress and terminal status come from the native
+        // coordinator. The compatibility snapshot still owns storage/onboarding,
+        // but can no longer leave Compose in "scanning" after Kotlin has finished.
+        val safScans = scans.values.filter { it.source.equals("saf", ignoreCase = true) }
+        val activeSafScan = safScans
             .filter { !it.state.isTerminal }
             .maxByOrNull { it.startedAtMillis }
-        val latestNativeScan = nativeScans
+        val latestSafScan = safScans
             .maxByOrNull { it.finishedAtMillis ?: it.startedAtMillis }
-        val selectedScan = activeNativeScan ?: latestNativeScan
+        val selectedScan = activeSafScan ?: latestSafScan
         val nativeScanState = when (selectedScan?.state) {
             ScanLifecycleState.PREPARING -> "PREPARING"
             ScanLifecycleState.RUNNING -> "RUNNING"
@@ -433,7 +399,7 @@ class ReiAnixLibraryViewModel(
             ScanLifecycleState.FAILED -> "FAILED"
             ScanLifecycleState.IDLE, null -> bridgeState.scanState
         }
-        val nativeLastScanStatus = when (latestNativeScan?.state) {
+        val nativeLastScanStatus = when (latestSafScan?.state) {
             ScanLifecycleState.CANCELLED -> "CANCELLED"
             ScanLifecycleState.SUCCEEDED -> "COMPLETED"
             ScanLifecycleState.PARTIAL -> "PARTIAL"
@@ -441,8 +407,8 @@ class ReiAnixLibraryViewModel(
             else -> bridgeState.lastScanStatus
         }
         val nativeScanInProgress = when {
-            latestNativeScan == null -> bridgeState.scanInProgress
-            else -> activeNativeScan != null
+            latestSafScan == null -> bridgeState.scanInProgress
+            else -> activeSafScan != null
         }
 
         bridgeState.copy(
@@ -1263,55 +1229,14 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    private var canonicalConsumersStarted = false
-
     init {
-        val dependencies = appDependencies
-        if (dependencies == null) {
-            // Isolated UI/test construction has no process bootstrap to await.
-            startCanonicalConsumersAfterDatabaseValidation()
-        } else {
-            viewModelScope.launch {
-                dependencies.bootstrap.state.first { state ->
-                    !state.recoveryRequired &&
-                        state.stage == com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY &&
-                        state.persistenceStatus in setOf(
-                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
-                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
-                        )
-                }
-                startCanonicalConsumersAfterDatabaseValidation()
-            }
-        }
-    }
+        // Repair missing/stale artwork asynchronously. The service bounds batches
+        // and HTTP concurrency and is independent of scanner/player progress.
+        appDependencies?.artworkService?.requestPendingArtwork()
 
-    @Synchronized
-    private fun startCanonicalConsumersAfterDatabaseValidation() {
-        if (canonicalConsumersStarted) return
-        canonicalConsumersStarted = true
-
-        // Read the local canonical catalog only after bootstrap allows normal use.
+        // Populate catalog data even when the bridge snapshot does not exist yet.
         viewModelScope.launch { refreshNativeCatalog() }
 
-        // Native metadata and artwork writers invalidate the Compose projection directly.
-        // The consumer always rereads canonical SQLite; the mailbox event remains only for
-        // backward compatibility with older/hybrid builds and is not needed to refresh Compose.
-        viewModelScope.launch {
-            ReiAnixLibraryInvalidationBus.events
-                .conflate()
-                .collectLatest { invalidation ->
-                    Log.d(
-                        TAG,
-                        "Native catalog invalidated reason=${invalidation.reason} " +
-                            "animeId=${invalidation.animeId ?: 0L} " +
-                            "entity=${invalidation.entityType ?: "-"}",
-                    )
-                    refreshNativeCatalog()
-                }
-        }
-
-        // Opening the app must not schedule missing/stale artwork downloads. Artwork is
-        // requested only by explicit details/artwork actions or existing pipeline events.
         // Player notifications are emitted only after a successful SQLite commit.
         // Periodic notifications arrive at the existing 15-second checkpoint, not the
         // 250 ms UI clock, so Compose remains responsive without excessive full queries.
@@ -1340,12 +1265,7 @@ class ReiAnixLibraryViewModel(
                 }
                 .distinctUntilChanged()
                 .drop(1)
-                .collectLatest {
-                    // This collector emits only after a new terminal native-scan snapshot;
-                    // its first saved value is dropped, so process startup alone does not
-                    // trigger network metadata matching or artwork backfill.
-                    refreshNativeCatalog()
-                }
+                .collectLatest { refreshNativeCatalog() }
         }
         // Legacy commands can still mutate unrelated fields; their revision is only an
         // invalidation signal. Actual anime/episode values are always reread from SQLite.
@@ -1376,29 +1296,6 @@ class ReiAnixLibraryViewModel(
                     )
                 }
         }
-
-    }
-
-    /**
-     * Recovery restore uses this path after the process bootstrap has revalidated the
-     * canonical database. Unlike refresh(), this never starts a scan or Python catalog
-     * page request; it reloads the committed SQLite catalog and its local filtered page.
-     */
-    suspend fun refreshCanonicalCatalogAfterBootstrapValidation(): Boolean {
-        val state = appDependencies?.bootstrap?.state?.value ?: return false
-        if (
-            state.recoveryRequired ||
-            state.stage != com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY ||
-            state.persistenceStatus !in setOf(
-                com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
-                com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
-            )
-        ) return false
-
-        startCanonicalConsumersAfterDatabaseValidation()
-        refreshNativeCatalog()
-        return nativeCatalogState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
-            nativePagedLibraryState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
     }
 
     private suspend fun refreshNativeCatalog() {
@@ -1636,6 +1533,8 @@ class ReiAnixLibraryViewModel(
         appContext.startActivity(MainActivity.createNativeStorageActionIntent(appContext, "select_tree"))
     }
 
+    fun dismissStorageOnboarding() = repository.dismissStorageOnboarding()
+
     /**
      * Requests native release first. MainActivity owns the permission -> canonical SQLite
      * removal transaction and calls onSafRemovalTerminal only after the durable result.
@@ -1790,209 +1689,7 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    /** Persist personal pin state in the canonical SQLite store and refresh native projections. */
-    suspend fun toggleAnimePinnedNative(animeId: Long): Boolean {
-        val pinned = nativeLibraryRepository.toggleAnimePinned(animeId)
-        refreshNativeCatalog()
-        repository.publishCatalog()
-        return pinned
-    }
-
-    /** Save the private note without modifying remote editorial metadata or another store. */
-    suspend fun saveAnimePersonalNoteNative(animeId: Long, note: String?): String? {
-        val saved = nativeLibraryRepository.setAnimePersonalNote(animeId, note)
-        refreshNativeCatalog()
-        repository.publishCatalog()
-        return saved
-    }
-
-    /** Persist normalized personal tags in the canonical anime.user_tags field. */
-    suspend fun saveAnimeUserTagsNative(animeId: Long, tags: List<String>): List<String> {
-        val saved = nativeLibraryRepository.setAnimeUserTags(animeId, tags)
-        refreshNativeCatalog()
-        repository.publishCatalog()
-        return saved
-    }
-
-    /** Persist a manual episode identity while preserving its playback progress and file identity. */
-    suspend fun setEpisodeManualIdentificationNative(
-        episodeId: Long,
-        season: Int?,
-        number: Double?,
-        episodeType: String,
-        title: String?,
-    ) {
-        nativeLibraryRepository.setEpisodeManualIdentification(
-            episodeId = episodeId,
-            season = season,
-            number = number,
-            episodeType = episodeType,
-            title = title,
-        )
-        refreshNativeCatalog()
-        repository.publishCatalog()
-    }
-
-    /**
-     * Resolve a Compose playback request from canonical SQLite and request the
-     * existing native MainActivity handoff. This path does not send open_media
-     * through NativeMailbox or invoke the Python worker.
-     */
-    /** Publish native player handoff status into the existing library UI state. */
-    fun reportNativePlayerHandoff(
-        requestId: String,
-        status: String,
-        error: String? = null,
-    ) {
-        repository.reportNativePlayerHandoff(requestId, status, error)
-    }
-
-    fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String {
-        val requestId = UUID.randomUUID().toString()
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                require(episodeId > 0L) { "O identificador do episódio é inválido." }
-                val episode = nativeLibraryRepository.getEpisode(episodeId)
-                    ?: throw IllegalArgumentException("Episódio não encontrado no catálogo local.")
-                require(expectedAnimeId == null || episode.animeId == expectedAnimeId) {
-                    "O episódio não pertence ao anime solicitado."
-                }
-                require(episode.missing != true && episode.path.isNotBlank()) {
-                    "Este episódio não possui uma mídia local disponível."
-                }
-                nativeLibraryRepository.getAnime(episode.animeId)
-                    ?: throw IllegalStateException("O anime associado ao episódio não existe no catálogo.")
-
-                val persistedSettings = appDependencies?.sqliteSettingsRepository?.allPreferences().orEmpty()
-                fun preferenceValue(key: String): String =
-                    persistedSettings[key] ?: ReiAnixSettingsContract.defaultFor(key).orEmpty()
-
-                // Preserve the availability predicate and ordering used by
-                // LibraryStore.player_navigation()/adjacent_episode() for Next/Previous.
-                // The native path must not silently change episode adjacency while
-                // removing the Python OPEN_MEDIA dispatcher.
-                val neighborKeys = nativeLibraryRepository.listEpisodes(episode.animeId)
-                    .asSequence()
-                    .filter(ReiAnixNativePlayerEpisodeOrder::isAvailableRegularCandidate)
-                    .map(ReiAnixNativePlayerEpisodeOrder::key)
-                    .toList()
-                val currentEpisodeKey = ReiAnixNativePlayerEpisodeOrder.key(episode)
-                val currentIsRegularEpisode = ReiAnixNativePlayerEpisodeOrder.isRegularEpisode(episode)
-                val canPrevious = currentIsRegularEpisode &&
-                    neighborKeys.any { it < currentEpisodeKey }
-                val canNext = currentIsRegularEpisode &&
-                    neighborKeys.any { it > currentEpisodeKey }
-
-                val rawReference = episode.path.trim()
-                val parsedReference = Uri.parse(rawReference)
-                val mediaUri = when (parsedReference.scheme?.lowercase(Locale.ROOT)) {
-                    "content", "file" -> parsedReference
-                    null -> {
-                        require(rawReference.startsWith("/")) {
-                            "A referência de mídia local não é um caminho absoluto nem uma URI autorizada."
-                        }
-                        Uri.fromFile(File(rawReference))
-                    }
-                    else -> throw IllegalArgumentException(
-                        "O ReiAnix aceita somente mídias locais autorizadas.",
-                    )
-                }
-
-                val resumeEnabled = preferenceValue("player.resume").toBooleanStrictOrNull() ?: true
-                val progressSeconds = episode.progress
-                    ?.takeIf { it.isFinite() && it >= 0.0 }
-                    ?: 0.0
-                val positionMs = if (resumeEnabled) {
-                    (progressSeconds * 1_000.0).toLong().coerceAtLeast(0L)
-                } else {
-                    0L
-                }
-                val createdAtMs = System.currentTimeMillis()
-                val playerSessionId = UUID.randomUUID().toString()
-                val title = episode.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: episode.fileName.trim().takeIf { it.isNotEmpty() }
-                    ?: "Episódio"
-
-                val commandUri = Uri.parse("reiflix://native").buildUpon()
-                    .appendQueryParameter("action", "play")
-                    .appendQueryParameter("request_id", requestId)
-                    .appendQueryParameter("protocol_version", "2")
-                    .appendQueryParameter("created_at", createdAtMs.toString())
-                    .appendQueryParameter("uri", mediaUri.toString())
-                    .appendQueryParameter("episode_id", episode.id.toString())
-                    .appendQueryParameter("anime_id", episode.animeId.toString())
-                    .appendQueryParameter("player_session_id", playerSessionId)
-                    .appendQueryParameter("title", title)
-                    .appendQueryParameter("position_ms", positionMs.toString())
-                    .appendQueryParameter("can_next", canNext.toString())
-                    .appendQueryParameter("can_previous", canPrevious.toString())
-                    .appendQueryParameter(
-                        "autoplay",
-                        preferenceValue("player.autoplay_next").toBooleanStrictOrNull()?.toString() ?: "true",
-                    )
-                    .appendQueryParameter("native_compose", "true")
-
-                val playerSettings = listOf(
-                    "player.default_speed" to "setting_player_default_speed",
-                    "player.aspect_ratio" to "setting_player_aspect_ratio",
-                    "player.zoom_enabled" to "setting_player_zoom_enabled",
-                    "player.immersive" to "setting_player_immersive",
-                    "player.rotation" to "setting_player_rotation",
-                    "player.pip" to "setting_player_pip",
-                    "player.lock_mode" to "setting_player_lock_mode",
-                    "player.auto_hide_seconds" to "setting_player_auto_hide_seconds",
-                    "player.double_tap_seek_seconds" to "setting_player_double_tap_seek_seconds",
-                    "player.long_press_speed" to "setting_player_long_press_speed",
-                    "player.max_video_resolution" to "setting_player_max_video_resolution",
-                    "player.max_video_frame_rate" to "setting_player_max_video_frame_rate",
-                    "player.max_audio_channels" to "setting_player_max_audio_channels",
-                    "gestures.volume" to "setting_gestures_volume",
-                    "gestures.brightness" to "setting_gestures_brightness",
-                    "gestures.double_tap" to "setting_gestures_double_tap",
-                    "gestures.long_press" to "setting_gestures_long_press",
-                    "audio.preferred_language" to "setting_audio_preferred_language",
-                    "audio.preferred_subtitle_language" to "setting_audio_preferred_subtitle_language",
-                    "audio.subtitles" to "setting_audio_subtitles",
-                    "audio.subtitle_scale" to "setting_audio_subtitle_scale",
-                    "audio.subtitle_bottom_padding" to "setting_audio_subtitle_bottom_padding",
-                    "audio.subtitle_embedded_style" to "setting_audio_subtitle_embedded_style",
-                )
-                playerSettings.forEach { (preferenceKey, queryKey) ->
-                    commandUri.appendQueryParameter(queryKey, preferenceValue(preferenceKey))
-                }
-
-                val intent = Intent(
-                    Intent.ACTION_VIEW,
-                    commandUri.build(),
-                    appContext,
-                    MainActivity::class.java,
-                ).addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP,
-                )
-                withContext(Dispatchers.Main) {
-                    appContext.startActivity(intent)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.e(
-                    TAG,
-                    "Native Compose player handoff failed requestId=$requestId episodeId=$episodeId",
-                    error,
-                )
-                repository.reportNativePlayerHandoff(
-                    requestId = requestId,
-                    status = "FAILED",
-                    error = error.message?.takeIf(String::isNotBlank)
-                        ?: "Não foi possível preparar a reprodução local.",
-                )
-            }
-        }
-        return requestId
-    }
-
+    fun openEpisode(episodeId: Long): String = repository.openEpisode(episodeId)
 
     override fun onCleared() {
         repository.close()

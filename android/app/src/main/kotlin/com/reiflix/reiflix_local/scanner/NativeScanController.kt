@@ -208,14 +208,13 @@ object NativeScanController {
                 failures = failures,
                 directoriesCompleted = directories,
                 partial = partial,
-                message = payload.optString("message").trim().takeIf { it.isNotEmpty() && state != ScanLifecycleState.SUCCEEDED }
-                    ?: when (state) {
-                        ScanLifecycleState.SUCCEEDED -> if (normalized == "EMPTY_COMPLETE") "Varredura concluída: nenhum arquivo compatível" else "Varredura concluída"
-                        ScanLifecycleState.PARTIAL -> "Varredura concluída parcialmente"
-                        ScanLifecycleState.CANCELLED -> "Varredura cancelada"
-                        ScanLifecycleState.FAILED -> "Falha na varredura"
-                        else -> "Varredura finalizada"
-                    },
+                message = when (state) {
+                    ScanLifecycleState.SUCCEEDED -> if (normalized == "EMPTY_COMPLETE") "Varredura concluída: nenhum arquivo compatível" else "Varredura concluída"
+                    ScanLifecycleState.PARTIAL -> "Varredura concluída parcialmente"
+                    ScanLifecycleState.CANCELLED -> "Varredura cancelada"
+                    ScanLifecycleState.FAILED -> "Falha na varredura"
+                    else -> "Varredura finalizada"
+                },
                 finishedAtMillis = now,
                 errorCategory = payload.optString("errorType").takeIf { it.isNotBlank() }
                     ?: normalized.takeIf { state == ScanLifecycleState.FAILED },

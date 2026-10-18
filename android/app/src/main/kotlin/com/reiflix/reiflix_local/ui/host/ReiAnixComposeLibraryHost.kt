@@ -1,10 +1,8 @@
 package com.reiflix.reiflix_local.ui.host
 
-import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
@@ -20,13 +18,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
-import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.R
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
-import com.reiflix.reiflix_local.ui.navigation.navigateToCollector
 import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeRoute
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
@@ -35,22 +33,17 @@ import com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFolderOnboarding
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
 
 /**
- * The single Compose root for the Android application.
+ * Single native Compose root used during the incremental Flet -> Compose cutover.
  *
- * The historical class name is retained to avoid needless churn in callers and
- * packaging contracts. This host mounts the real shell/navigation graph into the
- * native Activity content root; it is not an alternate surface.
+ * The legacy class name is retained because MainActivity, packaging checks and
+ * the existing bridge already depend on it. Runtime-wise this is now the app
+ * shell host rather than a Library-only surface.
  */
 class ReiAnixComposeLibraryHost(
     private val activity: MainActivity,
@@ -61,7 +54,6 @@ class ReiAnixComposeLibraryHost(
 
     @Volatile
     private var composeNavController: NavHostController? = null
-    private var lastHomeBackAtElapsedRealtimeMs: Long = 0L
 
     val isVisible: Boolean
         get() = composeView?.visibility == View.VISIBLE
@@ -88,58 +80,27 @@ class ReiAnixComposeLibraryHost(
             val continueWatchingEnabled by settingsViewModel.continueWatchingEnabled.collectAsStateWithLifecycle()
             val continueWatchingLimit by settingsViewModel.continueWatchingLimit.collectAsStateWithLifecycle()
             val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
-            val bootstrapState by libraryViewModel.bootstrapState.collectAsStateWithLifecycle()
-
-            LaunchedEffect(
-                bootstrapState.phase,
-                bootstrapState.stage,
-                bootstrapState.persistenceStatus,
-            ) {
-                if (bootstrapState.phase == ReiAnixBootstrapPhase.DEGRADED) {
-                    android.util.Log.w(
-                        TAG,
-                        "APP_BOOTSTRAP_DEGRADED stage=${bootstrapState.stage} " +
-                            "persistence=${bootstrapState.persistenceStatus} " +
-                            "warningCount=${bootstrapState.warnings.size}",
-                    )
-                }
-            }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
-            // A route mount must not cause remote reconciliation. Observe scan-state
-            // transitions only; drop the first snapshot so a stored/idle state on process
-            // startup never triggers AniList or artwork work.
-            LaunchedEffect(libraryViewModel) {
-                libraryViewModel.uiState
-                    .map { it.scanInProgress }
-                    .distinctUntilChanged()
-                    .drop(1)
-                    .filter { scanning -> !scanning }
-                    .collectLatest {
-                        if (libraryViewModel.uiState.value.animes.isEmpty()) return@collectLatest
-                        val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                        try {
-                            withContext(Dispatchers.IO) {
-                                dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
-                            }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (error: Exception) {
-                            android.util.Log.w(
-                                TAG,
-                                "Native AniList reconciliation after scan failed. errorType=" +
-                                    error::class.java.simpleName,
-                            )
-                        }
-                        runCatching { dependencies.artworkService.requestPendingArtwork() }
-                            .onFailure { error ->
-                                android.util.Log.w(
-                                    TAG,
-                                    "Native artwork backfill after scan failed. errorType=" +
-                                        error::class.java.simpleName,
-                                )
-                            }
+            // Keep local search/browse ViewModels independent from remote APIs. The
+            // application-level AniList integration owns this separate reconciliation
+            // job; trigger it only when the canonical catalog identity set or scan
+            // lifecycle changes, not on every metadata/artwork snapshot publication.
+            val catalogSize = libraryState.animes.size
+            val scanning = libraryState.scanInProgress
+            LaunchedEffect(catalogSize, scanning) {
+                if (catalogSize == 0 || scanning) return@LaunchedEffect
+                try {
+                    val service = ReiAnixAppDependencies.from(activity.applicationContext)
+                        .aniListIntegrationService
+                    withContext(Dispatchers.IO) {
+                        service.reconcileUnmatchedLibraryMetadata()
                     }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w(TAG, "Native AniList catalog reconciliation failed", error)
+                }
             }
 
             ReiAnixComposeRoot(
@@ -156,12 +117,6 @@ class ReiAnixComposeLibraryHost(
                     }
 
                     val currentRoute by navController.currentBackStackEntryAsState()
-                    LaunchedEffect(currentRoute?.destination?.route) {
-                        val route = currentRoute?.destination?.route
-                        if (route != ReiAnixRoutes.HOME && route != ReiAnixRoutes.RECOVERY) {
-                            lastHomeBackAtElapsedRealtimeMs = 0L
-                        }
-                    }
                     val onboardingAllowed =
                         currentRoute?.destination?.route in setOf(
                             ReiAnixRoutes.HOME,
@@ -185,7 +140,7 @@ class ReiAnixComposeLibraryHost(
                                 viewModel = libraryViewModel,
                                 onBack = {
                                     if (!navController.popBackStack()) {
-                                        handleBack()
+                                        hideAndPublishLegacyBack()
                                     }
                                 },
                                 onOpenStorageAccess = {
@@ -218,7 +173,7 @@ class ReiAnixComposeLibraryHost(
                                 viewModel = settingsViewModel,
                                 onBack = {
                                     if (!navController.popBackStack()) {
-                                        handleBack()
+                                        hideAndPublishSettingsBack()
                                     }
                                 },
                                 onOpenCategory = { label ->
@@ -251,7 +206,7 @@ class ReiAnixComposeLibraryHost(
                                 viewModel = libraryViewModel,
                                 onBack = {
                                     if (!navController.popBackStack()) {
-                                        handleBack()
+                                        hide()
                                     }
                                 },
                                 onRemoveSaf = libraryViewModel::removeSafTree,
@@ -268,8 +223,9 @@ class ReiAnixComposeLibraryHost(
                         },
                         startDestination = startDestination,
                         showBottomNavigation = true,
+                        onRouteChanged = ::publishComposeRouteChanged,
                         onOpenCollector = {
-                            navController.navigateToCollector()
+                            publishLegacyNavigation("collector")
                         },
                     )
                     if (onboardingAllowed && nativeOnboarding.isPromptVisible) {
@@ -296,96 +252,48 @@ class ReiAnixComposeLibraryHost(
         view.visibility = View.VISIBLE
     }
 
-    /**
-     * Legacy callers may still send a hide command while Python/Flet contracts are
-     * being migrated. Hiding the sole application shell would leave the native
-     * launcher blank, so this compatibility boundary keeps the shell visible.
-     */
     fun hide() {
-        val view = composeView ?: return
-        if (view.visibility == View.GONE) {
-            view.visibility = View.VISIBLE
-            android.util.Log.w(TAG, "Ignored legacy hide request; restored native Compose shell")
-        }
+        composeView?.visibility = View.GONE
     }
 
     /**
-     * Handles Back for the visible native Compose navigation graph.
+     * Handles one Back operation for the currently visible Compose destination.
      *
-     * Navigation Compose owns all transitions while this shell is visible:
-     * nested routes pop one entry, secondary roots return to an appropriate
-     * in-app destination, and Home/Recovery use a single native exit policy.
-     * The Flet bridge is not consulted to decide a Compose destination.
+     * Nested native destinations pop exactly one Navigation Compose entry. At a
+     * top-level route other than Home, Back returns to Home (or from Storage to
+     * Settings) using the existing native navigation stack. At the Home root this
+     * returns false so MainActivity can dispatch exactly one popRoute to the
+     * canonical Flet/Python NavigationController, which retains the exit policy
+     * while the generated Flet host remains active. This host does not finish the
+     * Activity or define a competing exit-confirmation policy.
      */
     fun handleBack(): Boolean {
         val controller = composeNavController ?: return false
-        val route = controller.currentBackStackEntry?.destination?.route
-
-        if (route != ReiAnixRoutes.HOME && route != ReiAnixRoutes.RECOVERY) {
-            lastHomeBackAtElapsedRealtimeMs = 0L
-        }
-
         if (controller.previousBackStackEntry != null) {
             return controller.popBackStack()
         }
 
+        val route = controller.currentBackStackEntry?.destination?.route
         return when (route) {
-            ReiAnixRoutes.HOME,
-            ReiAnixRoutes.RECOVERY -> handleRootBack()
-
+            // The Python NavigationController still owns the established root-exit
+            // policy while Flet remains the host/runtime. Let MainActivity dispatch
+            // exactly one popRoute instead of bypassing that policy with finish().
+            ReiAnixRoutes.HOME -> false
             ReiAnixRoutes.LIBRARY,
             ReiAnixRoutes.SEARCH,
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.MY_LIST,
             ReiAnixRoutes.ORGANIZE,
-            ReiAnixRoutes.COLLECTOR -> {
+            -> {
                 controller.navigateToTopLevel(ReiAnixRoutes.HOME)
                 true
             }
-
             ReiAnixRoutes.STORAGE -> {
                 controller.navigateToTopLevel(ReiAnixRoutes.SETTINGS)
                 true
             }
-
-            ReiAnixRoutes.DETAILS,
-            ReiAnixRoutes.ANILIST_DETAILS,
-            ReiAnixRoutes.PLAYER -> {
-                android.util.Log.w(
-                    TAG,
-                    "Native Back had no origin for secondary route=" + route + "; returning Home",
-                )
-                controller.navigateToTopLevel(ReiAnixRoutes.HOME)
-                true
-            }
-
-            else -> {
-                android.util.Log.w(
-                    TAG,
-                    "Native Back received unknown route=" + (route ?: "null") + "; returning Home",
-                )
-                controller.navigateToTopLevel(ReiAnixRoutes.HOME)
-                true
-            }
+            else -> false
         }
-    }
-
-    private fun handleRootBack(): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        val previous = lastHomeBackAtElapsedRealtimeMs
-        if (previous > 0L && now - previous <= HOME_DOUBLE_BACK_WINDOW_MS) {
-            lastHomeBackAtElapsedRealtimeMs = 0L
-            android.util.Log.i(TAG, "NATIVE_ROOT_BACK_EXIT")
-            activity.finish()
-        } else {
-            lastHomeBackAtElapsedRealtimeMs = now
-            Toast.makeText(
-                activity,
-                "Pressione voltar novamente para sair",
-                Toast.LENGTH_SHORT,
-            ).show()
-        }
-        return true
     }
 
     fun dispose() {
@@ -454,6 +362,69 @@ class ReiAnixComposeLibraryHost(
         }
     }
 
+    /**
+     * Compose is the visible navigation owner on Android. Publish only the
+     * stable route identity so Python can keep its existing lifecycle/domain
+     * navigation projection synchronized without rendering a second UI tree.
+     */
+    private fun publishLegacyNavigation(destination: String) {
+        NativeMailbox.writeBestEffort(
+            activity,
+            JSONObject()
+                .put("type", "compose_library_navigation")
+                .put("payload", JSONObject().put("destination", destination)),
+        )
+    }
+
+    private fun publishComposeRouteChanged(
+        route: String,
+        animeId: String?,
+        episodeId: String?,
+        origin: String?,
+    ) {
+        val payload = JSONObject()
+            .put("route", route)
+            .put("animeId", animeId ?: "")
+            .put("episodeId", episodeId ?: "")
+            .put("origin", origin ?: "")
+        NativeMailbox.writeBestEffort(
+            activity,
+            JSONObject()
+                .put("type", "compose_navigation_changed")
+                .put("payload", payload),
+        )
+    }
+
+    private fun hideAndPublishLegacyBack() {
+        hide()
+        NativeMailbox.writeBestEffort(
+            activity,
+            JSONObject()
+                .put("type", "compose_library_navigation")
+                .put("payload", JSONObject().put("destination", "back")),
+        )
+    }
+
+    private fun hideAndPublishSettingsBack() {
+        hide()
+        publishSettingsNavigation("back", null)
+    }
+
+    private fun publishSettingsNavigation(
+        destination: String,
+        category: String? = null,
+    ) {
+        val payload = JSONObject()
+            .put("destination", destination)
+            .put("category", category ?: "")
+        NativeMailbox.writeBestEffort(
+            activity,
+            JSONObject()
+                .put("type", "compose_settings_navigation")
+                .put("payload", payload),
+        )
+    }
+
     private fun ensureAttached(): ComposeView {
         composeView?.let { existing ->
             if (existing.parent != null) return existing
@@ -485,6 +456,5 @@ class ReiAnixComposeLibraryHost(
     private companion object {
         const val CONTENT_TAG = "reianix_compose_app_shell_content"
         const val TAG = "[REIANIX][COMPOSE_SHELL]"
-        const val HOME_DOUBLE_BACK_WINDOW_MS = 2_000L
     }
 }

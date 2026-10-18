@@ -1,7 +1,5 @@
 # Fundação de execução nativa Android — ReiAnix
 
-> **Nota de atualização — Prompt 30.2 (18/10/2026 UTC):** este documento registra a fundação do Prompt 02 e o snapshot-base de 14/10/2026; afirmações abaixo como `MainActivity : FlutterFragmentActivity`, “runtime real híbrido” e build via template Flet descrevem aquele estado histórico. No HEAD atual da PR #194, `MainActivity` herda de `ComponentActivity`, o shell Compose é iniciado pelo fluxo Android e os workflows oficial e de validação compilam via Gradle sem empacotar o runtime Python/Flet/Flutter. Isso não certifica paridade funcional: consumers/bridges Python continuam no código-fonte e não atendem ao APK nativo sem runtime; veja [diagnóstico Prompt 30.2](PROMPT_30_2_APK_DIAGNOSTICS.md) e [guia de build atual](KOTLIN_NATIVE_GRADLE_BUILD.md).
-
 ## Referência e objetivo
 
 - Repositório: reinansantos9090-debug/ReiAnix.

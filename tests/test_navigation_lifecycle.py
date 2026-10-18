@@ -118,7 +118,7 @@ class NavigationLifecycleTests(unittest.TestCase):
     def test_android_back_still_has_single_native_dispatch(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         self.assertEqual(source.count("onBackPressedDispatcher.addCallback"), 1)
-        self.assertNotIn("engine.navigationChannel.popRoute()", source)
+        self.assertIn("engine.navigationChannel.popRoute()", source)
         self.assertNotIn('put("type", "android_back")', source)
 
 

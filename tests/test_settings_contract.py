@@ -38,7 +38,7 @@ class SettingsContractTests(unittest.TestCase):
     def test_mailbox_dispatcher_does_not_await_settings_workers_in_place(self):
         main = self.read(MAIN)
         start = main.index("if event_type == 'compose_settings_set':")
-        end = main.index("if event_type == 'compose_settings_bulk_applied':", start)
+        end = main.index("if event_type == 'compose_navigation_changed':", start)
         block = main[start:end]
         self.assertNotIn("await asyncio.to_thread(settings.set", block)
         self.assertNotIn("await add_folder()", block)

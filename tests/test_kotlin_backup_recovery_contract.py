@@ -73,24 +73,18 @@ def test_database_file_maintenance_shares_the_canonical_sqlite_lock():
 
 def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     activity = read(ACTIVITY)
-    bootstrap = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt")
     repository = read(SETTINGS_REPOSITORY)
     navigation = read(NAVIGATION)
     route = read(RECOVERY_ROUTE)
     host = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
 
-    # Canonical database health checking now belongs to the process bootstrap,
-    # while Activity still routes an explicit recovery requirement to Compose.
     assert "NATIVE_DATABASE_RECOVERY_REQUIRED" in activity
-    assert "if (!canonicalFile.exists())" in bootstrap
-    assert "if (!canonicalFile.isFile || canonicalFile.length() <= 0L)" in bootstrap
-    assert "integrityReport().healthy" in bootstrap
-    assert "if (schemaCompatible && integrityHealthy)" in bootstrap
-    assert "ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED" in bootstrap
-    assert "interruptedPreviousDatabase || priorRecoverySnapshots || pendingSafRecovery" in bootstrap
-    assert "ReiAnixRoutes.RECOVERY" in activity
+    assert "else if (!canonicalFile.isFile || canonicalFile.length() <= 0L)" in activity
+    assert "integrityReport()" in activity
+    assert "!schemaCompatible || !integrity.healthy" in activity
     assert "copyBackupToDocumentAndVerify" in activity
     assert "MessageDigest.isEqual" in activity
+    assert "ReiAnixRoutes.RECOVERY" in activity
     assert "backupService.restoreRecoveryBackup(inputCopy)" in activity
     assert "createRecoverySafetySnapshotForUser()" in activity
     assert '"backup_recovery_snapshot"' in activity
@@ -99,18 +93,6 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "showNativeBackupRestoreConfirmation" in activity
     assert "setPositiveButton(" in activity
     assert "completeNativeBackupRestore(inputCopy, action, requestId)" in activity
-    restore_handler_start = activity.index("private fun completeNativeBackupRestore")
-    restore_handler_end = activity.index("private fun finishNativeDiagnosticExport", restore_handler_start)
-    restore_handler = activity[restore_handler_start:restore_handler_end]
-    promoted_restore = restore_handler.index("backupService.restoreRecoveryBackup(inputCopy)")
-    bootstrap_revalidation = restore_handler.index("appDependencies.bootstrap.validateCanonicalDatabase()", promoted_restore)
-    failed_revalidation_route = restore_handler.index("composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)", bootstrap_revalidation)
-    settings_projection = restore_handler.index("settingsViewModel.refresh()", bootstrap_revalidation)
-    canonical_catalog_projection = restore_handler.index("refreshCanonicalCatalogAfterBootstrapValidation()", settings_projection)
-    restored_home = restore_handler.index("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", canonical_catalog_projection)
-    assert promoted_restore < bootstrap_revalidation < failed_revalidation_route
-    assert bootstrap_revalidation < settings_projection < canonical_catalog_projection < restored_home
-    assert "libraryViewModel.refresh()" in restore_handler  # ordinary restore keeps its existing contract
     assert "Confirmar restauração do backup" in activity
     assert "preview.manifest" in activity
     assert "counts.optLong(\"anime\"" in activity
@@ -123,6 +105,7 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "Criar snapshot bruto de segurança" in route
     assert "Restaurar a biblioteca?" in route or "Recuperar a biblioteca?" in route
     assert "diagnostic_export" in route
+
 
 def test_android_startup_recovery_does_not_invoke_python_restore_writer():
     main = read("main.py")

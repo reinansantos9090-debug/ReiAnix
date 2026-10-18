@@ -21,12 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 object MediaStoreScanner {
     const val SOURCE = "mediastore:external:video"
-    data class LibraryScope(
-        val authority: String,
-        val volumeId: String,
-        val treeDocumentId: String,
-        val treeUri: String = "",
-    )
+    data class LibraryScope(val authority: String, val volumeId: String, val treeDocumentId: String)
     const val DISPLAY_NAME = "Vídeos do dispositivo"
     private const val TAG = "[REIFLIX][MEDIASTORE]"
     // Match Nova's broad local video extension surface; provider MIME values
@@ -118,46 +113,13 @@ object MediaStoreScanner {
         }
         return requested.equals(volumeName, ignoreCase=true) || (volumeUuid.isNotBlank() && requested.equals(volumeUuid, ignoreCase=true))
     }
-    private fun matchingLibraryScope(
-        scopes: Collection<LibraryScope>,
-        volumeName: String,
-        volumeUuid: String,
-        relativePath: String,
-    ): LibraryScope? {
+    private fun isWithinLibraryScope(scope:LibraryScope, volumeName:String, volumeUuid:String, relativePath:String):Boolean {
+        if(scope.authority != "com.android.externalstorage.documents") return false
+        if(!volumeMatches(scope, volumeName, volumeUuid)) return false
+        val root = normalizeScopePath(scope.treeDocumentId)
+        if(root.isBlank()) return false
         val candidate = relativePath.trim().trim('/').replace("\\", "/")
-        if (candidate.isBlank()) return null
-        return scopes.asSequence()
-            .filter { it.authority == "com.android.externalstorage.documents" }
-            .filter { volumeMatches(it, volumeName, volumeUuid) }
-            .mapNotNull { scope ->
-                val root = normalizeScopePath(scope.treeDocumentId)
-                // ExternalStorageProvider uses "volume:" to represent the explicitly
-                // granted root of a volume. An empty ID is not such a grant and stays rejected.
-                val volumeRoot = root.isBlank() && scope.treeDocumentId.trim().endsWith(":")
-                val inside = if (volumeRoot) {
-                    candidate.isNotBlank()
-                } else {
-                    root.isNotBlank() && (candidate == root || candidate.startsWith(root + "/"))
-                }
-                if (!inside) null else scope to root.length
-            }
-            // When configured roots overlap, assign an item to the most specific root only.
-            .maxByOrNull { it.second }
-            ?.first
-    }
-
-    private fun isWithinLibraryScope(scope:LibraryScope, volumeName:String, volumeUuid:String, relativePath:String):Boolean =
-        matchingLibraryScope(listOf(scope), volumeName, volumeUuid, relativePath) != null
-
-    private fun libraryScopeSignature(scopes: Collection<LibraryScope>): String {
-        val canonical = scopes
-            .map { listOf(it.authority, it.volumeId, it.treeDocumentId, it.treeUri).joinToString("\u0000") }
-            .distinct()
-            .sorted()
-            .joinToString("\n")
-        return java.security.MessageDigest.getInstance("SHA-256")
-            .digest(canonical.toByteArray(Charsets.UTF_8))
-            .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+        return candidate == root || candidate.startsWith(root + "/")
     }
     fun scan(context: Context,onProgress:((JSONObject)->Unit)?=null,shouldCancel:()->Boolean={false},scanId:String?=null,onBatch:((JSONObject)->Unit)?=null,libraryScopes:Collection<LibraryScope> = emptyList()):JSONObject {
         check(hasReadPermission(context)){"Permissão de vídeos não concedida."}
@@ -169,23 +131,8 @@ object MediaStoreScanner {
                 .put("stats",JSONObject().put("files",0).put("videos",0).put("errors",JSONArray()).put("access",accessLevel(context)).put("status","BLOCKED").put("rejection","NO_CONFIGURED_LIBRARY_SOURCE"))
                 .put("partial",false).put("cancelled",false)
         }
-        // RELATIVE_PATH and VOLUME_NAME are required to prove that this source is inside a
-        // user-authorized SAF root and to share a physical identity with SAF. Before API 29,
-        // this implementation cannot safely establish that boundary.
-        if (Build.VERSION.SDK_INT < 29) {
-            return JSONObject().put("source", SOURCE).put("name", DISPLAY_NAME)
-                .put("volumeScopes", JSONArray())
-                .put("stats", JSONObject().put("files", 0).put("videos", 0)
-                    .put("errors", JSONArray())
-                    .put("access", accessLevel(context))
-                    .put("canScan", true)
-                    .put("canReconcile", false)
-                    .put("status", "blocked")
-                    .put("rejection", "SAFE_LIBRARY_SCOPE_REQUIRES_API_29"))
-                .put("partial", true).put("cancelled", false)
-        }
         val resolver=context.contentResolver
-        val volumeNames=MediaStore.getExternalVolumeNames(context).ifEmpty{setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)}
+        val volumeNames=if(Build.VERSION.SDK_INT>=29)MediaStore.getExternalVolumeNames(context).ifEmpty{setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)}else setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val projection=mutableListOf(MediaStore.Video.Media._ID,MediaStore.Video.Media.DISPLAY_NAME,MediaStore.Video.Media.MIME_TYPE,MediaStore.Video.Media.SIZE,MediaStore.Video.Media.DATE_MODIFIED)
         if(Build.VERSION.SDK_INT>=29){projection+=MediaStore.Video.Media.RELATIVE_PATH;projection+=MediaStore.MediaColumns.VOLUME_NAME}
         if(Build.VERSION.SDK_INT>=30){projection+=MediaStore.MediaColumns.GENERATION_ADDED;projection+=MediaStore.MediaColumns.GENERATION_MODIFIED}
@@ -196,7 +143,6 @@ object MediaStoreScanner {
         var files=0;var videos=0;var cancelled=false
         var waitingForMediaStore=false
         val volumeUuidCache = HashMap<String, String>()
-        val scopeSignature = libraryScopeSignature(authorizedScopes)
         clearChangeNotification()
         onProgress?.invoke(JSONObject().put("phase","started").put("source",SOURCE).put("files",0).put("videos",0))
         for(volumeName in volumeNames){
@@ -209,7 +155,7 @@ object MediaStoreScanner {
                 var volumeWaitingForMediaStore=false
                 val scopeKey=activeScopeKey
                 val baseVolumeUuid = volumeUuidCache.getOrPut(volumeName) { volumeUuid(context, volumeName) }
-                if(NativeIndex.canReuseMediaStoreVolume(context,volumeName,access,version,generation,scopeSignature)){
+                if(NativeIndex.canReuseMediaStoreVolume(context,volumeName,access,version,generation)){
                     val cachedGeneration=NativeIndex.cachedGeneration(context,scopeKey)
                     val cachedCount=NativeIndex.forEachCachedBatch(context,scopeKey,NativeBatch.DEFAULT_SIZE) { batch,batchNumber ->
                         // Older physical-index generations predate parsedMedia/availability facts.
@@ -254,15 +200,15 @@ object MediaStoreScanner {
                         }
                         onBatch?.invoke(JSONObject()
                             .put("volumeId",volumeName)
-                            .put("batchId","reused:" + NativeIndex.generationId(NativeIndex.SOURCE_MEDIASTORE,scopeKey,cachedGeneration) + ":" + batchNumber)
+                            .put("batchId","reused:" + NativeIndex.generationId(SOURCE,scopeKey,cachedGeneration) + ":" + batchNumber)
                             .put("batchNumber",batchNumber)
                             .put("batchSize",batch.length())
                             .put("reused",true)
                             .put("documents",batch))
                     }
                     files+=cachedCount;videos+=cachedCount
-                    volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",cachedGeneration).put("libraryScopeSignature",scopeSignature).put("complete",true).put("reused",true).put("status",if(cachedCount==0) NativeIndex.STATUS_EMPTY_COMPLETE else NativeIndex.STATUS_COMPLETED)
-                        .put("generationId",NativeIndex.generationId(NativeIndex.SOURCE_MEDIASTORE,scopeKey,cachedGeneration))
+                    volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",cachedGeneration).put("complete",true).put("reused",true).put("status",if(cachedCount==0) NativeIndex.STATUS_EMPTY_COMPLETE else NativeIndex.STATUS_COMPLETED)
+                        .put("generationId",NativeIndex.generationId(SOURCE,scopeKey,cachedGeneration))
                         .put("scanId",(scanId ?: "") + ":" + volumeName)
                         .put("scopeKind","volume").put("scopeRef",volumeName)
                         .put("batchCount",if(cachedCount==0) 0 else (cachedCount + NativeBatch.DEFAULT_SIZE - 1) / NativeBatch.DEFAULT_SIZE)
@@ -272,8 +218,7 @@ object MediaStoreScanner {
                 }
                 val scopeMetadata=JSONObject().put("mediaStoreVersion",version).put("mediaStoreGeneration",generation).put("scanId",scanId ?: "")
                     .put("accessLevel",access).put("volumeId",volumeName)
-                    .put("libraryScopeSignature", scopeSignature)
-                val generationId=NativeIndex.startGeneration(context,NativeIndex.SOURCE_MEDIASTORE,scopeKey,scopeMetadata)
+                val generationId=NativeIndex.startGeneration(context,SOURCE,scopeKey,scopeMetadata)
                 activeGeneration=generationId
                 val localErrors=JSONArray()
                 val batches=NativeBatch.Accumulator(NativeBatch.DEFAULT_SIZE) { batch,batchId,batchNumber ->
@@ -313,19 +258,15 @@ object MediaStoreScanner {
                         } else {
                             volumeUuidCache.getOrPut(actualVol) { volumeUuid(context, actualVol) }
                         }
-                        val matchedScope = matchingLibraryScope(authorizedScopes, actualVol, actualVolumeUuid, rel)
-                        if (matchedScope == null) {
+                        if(!authorizedScopes.any { scope -> isWithinLibraryScope(scope, actualVol, actualVolumeUuid, rel) }){
                             if(Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE volume="+actualVol+" relativePath="+rel)
                             continue
                         }
-                        val uri=MediaStore.Video.Media.getContentUri(actualVol,id)
+                        val uri=if(Build.VERSION.SDK_INT>=29)MediaStore.Video.Media.getContentUri(actualVol,id)else android.content.ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,id)
                         val sizeBytes = if(sizeCol>=0&&!cursor.isNull(sizeCol)) cursor.getLong(sizeCol).takeIf { it >= 0L } else null
                         val modifiedAtMillis = if(modCol>=0&&!cursor.isNull(modCol)) cursor.getLong(modCol)*1000L else null
                         val item=JSONObject().put("uri",uri.toString()).put("name",name).put("relativePath",rel).put("volumeName",actualVol).put("volumeId",actualVol).put("volumeUuid",actualVolumeUuid)
                             .put("mediaId",id).put("mimeType",mime).put("size",sizeBytes ?: JSONObject.NULL).put("modifiedAt",modifiedAtMillis ?: JSONObject.NULL)
-                            .put("scopeVerified", true)
-                            .put("libraryScopeUri", matchedScope.treeUri)
-                            .put("libraryScopeDocumentId", matchedScope.treeDocumentId)
                         if(gaCol>=0&&!cursor.isNull(gaCol))item.put("generationAdded",cursor.getLong(gaCol))
                         if(gmCol>=0&&!cursor.isNull(gmCol))item.put("generationModified",cursor.getLong(gmCol))
                         batches.add(DiscoveredMediaMetadata.attach(
@@ -358,37 +299,8 @@ object MediaStoreScanner {
                         val stableGeneration=if(Build.VERSION.SDK_INT>=30)runCatching{MediaStore.getGeneration(context,volumeName)}.getOrDefault(postGeneration) else postGeneration
                         val changedAfterWait=consumeChangeNotification()
                         val probeHasMedia=if(!localCancelled && !cancelled && localErrors.length()==0){
-                            runCatching {
-                                val probeCursor = resolver.query(collection, projection.toTypedArray(), null, null, null)
-                                if (probeCursor == null) {
-                                    localErrors.put("O MediaStore não conseguiu concluir a verificação de estabilidade do volume " + volumeName + ".")
-                                    false
-                                } else probeCursor.use { probe ->
-                                    val probeIdCol = probe.getColumnIndex(MediaStore.Video.Media._ID)
-                                    val probeNameCol = probe.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
-                                    val probeMimeCol = probe.getColumnIndex(MediaStore.Video.Media.MIME_TYPE)
-                                    val probeRelCol = probe.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
-                                    val probeVolCol = probe.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
-                                    var foundInConfiguredScope = false
-                                    while (probe.moveToNext() && !foundInConfiguredScope) {
-                                        if (shouldCancel()) {
-                                            localCancelled = true
-                                            cancelled = true
-                                            break
-                                        }
-                                        val probeName = if (probeNameCol >= 0 && !probe.isNull(probeNameCol)) probe.getString(probeNameCol).orEmpty() else ""
-                                        val probeMime = if (probeMimeCol >= 0 && !probe.isNull(probeMimeCol)) probe.getString(probeMimeCol).orEmpty() else ""
-                                        val extension = probeName.substringAfterLast('.', "").lowercase()
-                                        if (!probeMime.startsWith("video/") && extension !in videoExtensions) continue
-                                        val directory = if (probeRelCol >= 0 && !probe.isNull(probeRelCol)) probe.getString(probeRelCol).orEmpty().trimEnd('/') else ""
-                                        val relative = if (directory.isBlank()) probeName else "$directory/$probeName"
-                                        val actualVolume = if (probeVolCol >= 0 && !probe.isNull(probeVolCol)) probe.getString(probeVolCol) else volumeName
-                                        val actualUuid = if (actualVolume == volumeName) baseVolumeUuid else
-                                            volumeUuidCache.getOrPut(actualVolume) { volumeUuid(context, actualVolume) }
-                                        foundInConfiguredScope = matchingLibraryScope(authorizedScopes, actualVolume, actualUuid, relative) != null
-                                    }
-                                    foundInConfiguredScope
-                                }
+                            runCatching{
+                                resolver.query(collection,arrayOf(MediaStore.Video.Media._ID),null,null,null)?.use{probe->probe.moveToFirst()} ?: false
                             }.getOrElse{
                                 localErrors.put("O MediaStore não conseguiu concluir a verificação de estabilidade do volume "+volumeName+".")
                                 false
@@ -411,26 +323,26 @@ object MediaStoreScanner {
                     else->NativeIndex.STATUS_COMPLETED
                 }
                 batches.flush()
-                val stagedDocuments=NativeIndex.stagedDocumentCount(context,NativeIndex.SOURCE_MEDIASTORE,scopeKey,generationId)
-                val batchCount=NativeIndex.batchCount(context,NativeIndex.SOURCE_MEDIASTORE,scopeKey,generationId)
+                val stagedDocuments=NativeIndex.stagedDocumentCount(context,SOURCE,scopeKey,generationId)
+                val batchCount=NativeIndex.batchCount(context,SOURCE,scopeKey,generationId)
                 val finished=NativeIndex.finishGeneration(
-                    context,NativeIndex.SOURCE_MEDIASTORE,scopeKey,generationId,status,
+                    context,SOURCE,scopeKey,generationId,status,
                     JSONObject(scopeMetadata.toString()).put("errors",localErrors).put("status",status)
                         .put("batchCount",batchCount).put("processed",stagedDocuments)
                 )
-                volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",generationId).put("libraryScopeSignature",scopeSignature).put("generationId",NativeIndex.generationId(NativeIndex.SOURCE_MEDIASTORE, scopeKey, generationId)).put("status",status)
+                volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",generationId).put("generationId",NativeIndex.generationId(SOURCE, scopeKey, generationId)).put("status",status)
                     .put("complete",complete).put("reused",false).put("batchCount",batchCount).put("processed",stagedDocuments)
                     .put("duplicates",finished.optInt("duplicates",0)).put("removed",0).put("errors",localErrors))
                 if(cancelled)break
             }catch(security:SecurityException){
                 Log.w(TAG,"MediaStore permission/query denied for volume $volumeName",security)
                 errors.put("O acesso ao volume $volumeName foi negado.")
-                if(activeGeneration>0) NativeIndex.finishGeneration(context,NativeIndex.SOURCE_MEDIASTORE,activeScopeKey,activeGeneration,NativeIndex.STATUS_FAILED,JSONObject().put("error",security.message ?: "MediaStore permission/query denied"))
+                if(activeGeneration>0) NativeIndex.finishGeneration(context,SOURCE,activeScopeKey,activeGeneration,NativeIndex.STATUS_FAILED,JSONObject().put("error",security.message ?: "MediaStore permission/query denied"))
             }catch(exception:Exception){
                 if (exception is CancellationException) throw exception
                 Log.w(TAG,"MediaStore query failed for volume $volumeName",exception)
                 errors.put("Não foi possível consultar o volume $volumeName.")
-                if(activeGeneration>0) NativeIndex.finishGeneration(context,NativeIndex.SOURCE_MEDIASTORE,activeScopeKey,activeGeneration,NativeIndex.STATUS_FAILED,JSONObject().put("error",exception.message ?: "MediaStore query failed"))
+                if(activeGeneration>0) NativeIndex.finishGeneration(context,SOURCE,activeScopeKey,activeGeneration,NativeIndex.STATUS_FAILED,JSONObject().put("error",exception.message ?: "MediaStore query failed"))
             }
         }
         onProgress?.invoke(JSONObject().put("phase","finished").put("source",SOURCE).put("files",files).put("videos",videos))

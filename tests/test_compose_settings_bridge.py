@@ -143,7 +143,7 @@ def test_native_settings_integration_contract():
         / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
     ).read_text(encoding="utf-8")
     assert "ComposeSettingsBridge" in main
-    assert "compose_settings_navigation" not in main
+    assert "compose_settings_navigation" in main
     assert "_show_compose_settings" in main
     assert "open_settings" in request_state
     assert "hide_settings" in request_state

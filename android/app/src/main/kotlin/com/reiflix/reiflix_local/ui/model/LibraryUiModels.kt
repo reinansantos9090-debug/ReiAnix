@@ -116,8 +116,6 @@ data class ReiAnixEpisodeUiModel(
     val lastPlayedAt: Double? = null,
     val modifiedAt: Double? = null,
     val fileSizeBytes: Long? = null,
-    val episodeType: String? = null,
-    val manualOverride: Boolean = false,
 ) {
     /**
      * Episode identity is the persisted SQLite primary key. It is global and

@@ -33,18 +33,10 @@ class PlayerRoutingTests(unittest.TestCase):
         self.assertIn('Intent.FLAG_ACTIVITY_SINGLE_TOP', dispatcher)
         self.assertNotIn("url_launcher.launch_url(url", direct_block)
 
-    def test_process_bootstrap_starts_dispatcher_and_keeps_host_route_intact(self):
+    def test_main_activity_only_starts_dispatcher_and_keeps_host_route_intact(self):
         main = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        bootstrap = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt").read_text(encoding="utf-8")
-        self.assertIn("appDependencies.bootstrap.start()", main)
-        self.assertIn("NativeCommandDispatcher.start(appContext)", bootstrap)
-        self.assertIn("NativeScanRunner.recoverInterruptedSafScans(appContext)", bootstrap)
-        self.assertLess(
-            bootstrap.index("NativeScanRunner.recoverInterruptedSafScans(appContext)"),
-            bootstrap.index("NativeCommandDispatcher.start(appContext)"),
-        )
-        self.assertNotIn("NativeCommandDispatcher.start(this@MainActivity)", main)
-        self.assertNotIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", main)
+        self.assertIn("NativeCommandDispatcher.start(this@MainActivity)", main)
+        self.assertIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", main)
         self.assertIn('private fun handleNativeIntent', main)
         self.assertIn('android.intent.action.VIEW', (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"))
 

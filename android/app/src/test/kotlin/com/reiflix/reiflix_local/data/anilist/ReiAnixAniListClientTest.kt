@@ -178,36 +178,4 @@ class ReiAnixAniListClientTest {
             return response
         }
     }
-
-    @Test
-    fun malformedAniListFieldTypesAreReportedAsInvalidResponse() = runBlocking {
-        val malformedId = ReiAnixAniListClient(
-            FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[{"id":1.5,"title":{}}]}}}""")),
-            0,
-        ).searchAnime("anime")
-        assertTrue(malformedId is AniListResult.Failure)
-        assertTrue((malformedId as AniListResult.Failure).error is AniListError.InvalidResponse)
-
-        val malformedGenres = ReiAnixAniListClient(
-            FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":7,"title":{},"genres":"Action"}}}""")),
-            0,
-        ).getAnime(7)
-        assertTrue(malformedGenres is AniListResult.Failure)
-        assertTrue((malformedGenres as AniListResult.Failure).error is AniListError.InvalidResponse)
-
-        val fractionalEpisodes = ReiAnixAniListClient(
-            FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":7,"title":{},"episodes":12.5}}}""")),
-            0,
-        ).getAnime(7)
-        assertTrue(fractionalEpisodes is AniListResult.Failure)
-        assertTrue((fractionalEpisodes as AniListResult.Failure).error is AniListError.InvalidResponse)
-
-        val malformedGenreItem = ReiAnixAniListClient(
-            FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":7,"title":{},"genres":["Action",4]}}}""")),
-            0,
-        ).getAnime(7)
-        assertTrue(malformedGenreItem is AniListResult.Failure)
-        assertTrue((malformedGenreItem as AniListResult.Failure).error is AniListError.InvalidResponse)
-    }
-
 }

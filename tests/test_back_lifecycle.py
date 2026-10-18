@@ -18,22 +18,21 @@ class BackLifecycleTests(unittest.TestCase):
         source = self.read(MAIN_ACTIVITY)
         self.assertIn("import androidx.activity.OnBackPressedCallback", source)
         self.assertEqual(source.count("onBackPressedDispatcher.addCallback("), 1)
-        self.assertNotIn("engine.navigationChannel.popRoute()", source)
+        self.assertIn("engine.navigationChannel.popRoute()", source)
         self.assertIn("BACK_PHYSICAL_RECEIVED", source)
-        self.assertIn("BACK_NATIVE_SHELL_RESTORED", source)
+        self.assertIn("BACK_FLUTTER_POP_SENT", source)
         self.assertNotIn('put("type", "android_back")', source)
         handler = source[source.index("private fun installSystemBackHandler"):source.index("private fun persistedSafTreeUris")]
         self.assertNotIn("finish()", handler)
         self.assertLess(handler.index("systemBackDispatchPosted = true"), handler.index("composeLibraryHost.handleBack()"))
         self.assertIn("if (systemBackDispatchPosted)", handler)
-        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", handler)
+        self.assertEqual(handler.count("engine.navigationChannel.popRoute()"), 1)
         self.assertIn("try {", handler)
         self.assertIn("finally {", handler)
         self.assertIn("window.decorView.post { systemBackDispatchPosted = false }", handler)
-        self.assertLess(handler.index("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)"), handler.index("finally {"))
+        self.assertLess(handler.index("engine.navigationChannel.popRoute()"), handler.index("finally {"))
         self.assertIn("if (composeLibraryHost.handleBack())", handler)
-        self.assertNotIn("flutterEngine", handler)
-        self.assertIn("return", handler[handler.index("if (composeLibraryHost.handleBack())"):handler.index("// Compose is the only Android product surface.")])
+        self.assertIn("return", handler[handler.index("if (composeLibraryHost.handleBack())"):handler.index("val engine = flutterEngine")])
 
     def test_flet_view_pop_dispatches_exactly_one_logical_back_operation(self):
         source = self.read(MAIN)
@@ -77,18 +76,19 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn("systemUiController.applyNormal(useContextAppearance = false)", player[exit_start:exit_end])
         self.assertIn("systemUiController.applyImmersive()", player)
 
-    def test_compose_root_back_restores_the_native_shell_without_flutter_fallback(self):
+    def test_compose_root_does_not_bypass_the_canonical_exit_policy(self):
         host = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
         activity = self.read(MAIN_ACTIVITY)
         root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
-        self.assertIn("Pressione voltar novamente para sair", host)
-        self.assertIn("Toast.makeText", host)
-        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", root)
-        self.assertIn("activity.finish()", root)
-        self.assertNotIn("Python NavigationController", root)
-        self.assertNotIn("engine.navigationChannel.popRoute()", activity)
-        self.assertIn("BACK_NATIVE_SHELL_RESTORED", activity)
-        self.assertNotIn("flutterEngine", activity)
+        self.assertNotIn("Pressione voltar novamente para sair", host)
+        self.assertNotIn("Toast.makeText", host)
+        self.assertNotIn("finishAndRemoveTask", host)
+        self.assertNotIn("finishAffinity(", host)
+        self.assertNotIn("activity.finish()", root)
+        self.assertIn("ReiAnixRoutes.HOME -> false", root)
+        self.assertIn("Python NavigationController", root)
+        self.assertIn("engine.navigationChannel.popRoute()", activity)
+        self.assertEqual(activity.count("engine.navigationChannel.popRoute()"), 1)
 
     def test_player_finish_is_idempotent_while_exiting(self):
         source = self.read(PLAYER_ACTIVITY)
@@ -184,22 +184,17 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn('navigation.settings_path', source)
         self.assertIn('settings_path_override=path', source)
 
-    def test_main_resume_discovery_requires_persisted_saf_tree(self):
+    def test_main_resume_discovery_is_not_unconditional(self):
         source = self.read(MAIN_ACTIVITY)
         start = source.index("override fun onResume()")
         end = source.index("override fun onPause()", start)
         resume = source[start:end]
         self.assertIn("val shouldDiscover = !startupDiscoveryTriggered", resume)
-        self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
         self.assertIn('publishScanRequest(', resume)
         self.assertIn('"STARTUP"', resume)
-        self.assertIn('"STARTUP_SCAN_SKIPPED"', resume)
-        self.assertIn('result = "no_persisted_saf_tree"', resume)
-        self.assertNotIn('result = "explicit_scan_required"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
         self.assertNotIn("scanTree(tree, null)", resume)
-        self.assertIn("dispatchStartupDiscoveryAfterBootstrap()", source)
 
 
 if __name__ == "__main__":

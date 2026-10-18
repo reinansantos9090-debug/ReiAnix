@@ -38,9 +38,7 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("appContext: Context", publisher)
         self.assertNotIn("this@", publisher)
         self.assertIn("TAG", publisher)
-        self.assertIn("NATIVE_SCAN_BATCH_STAGED", publisher)
-        self.assertNotIn("NativeMailbox.writeOrThrow", publisher)
-        self.assertIn("NativeMailbox.write(", publisher)
+        self.assertIn("NativeMailbox.writeOrThrow", publisher)
 
     def test_saf_inventory_is_process_guarded_and_does_not_retain_activity(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
@@ -210,19 +208,12 @@ class LifecycleContractTests(unittest.TestCase):
         ):
             self.assertIn(token, source)
 
-    def test_on_create_and_on_new_intent_share_the_same_native_dispatcher_after_bootstrap(self):
+    def test_on_create_and_on_new_intent_share_the_same_native_dispatcher(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        on_create = source[source.index("override fun onCreate(savedInstanceState: Bundle?)"):
-                           source.index("public override fun onNewIntent(intent: Intent)")]
-        self.assertIn("handleNativeIntent(launchIntent)", on_create)
-        self.assertIn("appDependencies.bootstrap.validateCanonicalDatabase()", on_create)
-        self.assertLess(
-            on_create.index("appDependencies.bootstrap.validateCanonicalDatabase()"),
-            on_create.index("handleNativeIntent(launchIntent)"),
-        )
-        start = source.index("public override fun onNewIntent(intent: Intent)")
+        self.assertIn("handleNativeIntent(intent)", source)
+        self.assertGreaterEqual(source.count("handleNativeIntent(intent)"), 2)
+        start = source.index("override fun onNewIntent(intent: Intent)")
         self.assertIn("handleNativeIntent(intent)", source[start:])
-        self.assertIn("pendingNativeIntentsBeforeBootstrap", source[start:])
 
     def test_native_command_dispatch_has_validation_and_explicit_lifecycle_diagnostics(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")

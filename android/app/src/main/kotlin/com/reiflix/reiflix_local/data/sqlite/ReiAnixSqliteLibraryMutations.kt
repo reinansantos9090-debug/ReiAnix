@@ -198,67 +198,6 @@ suspend fun ReiAnixSqliteLibraryRepository.setAnimePersonalNote(
     }
 }
 
-/**
- * Mirrors LibraryStore.set_episode_identification without touching playback progress.
- * The persisted episode ID is used by Compose rather than a lossy/display filename.
- */
-suspend fun ReiAnixSqliteLibraryRepository.setEpisodeManualIdentification(
-    episodeId: Long,
-    season: Int?,
-    number: Double?,
-    episodeType: String,
-    title: String?,
-): ReiAnixEpisodeRecord = withContext(Dispatchers.IO) {
-    require(episodeId > 0L) { "Episode ID must be a positive persisted ID." }
-    val normalizedSeason = season ?: 0
-    require(normalizedSeason >= 0) { "Temporada inválida." }
-    require(number == null || (number.isFinite() && number >= 0.0)) {
-        "Número do episódio inválido."
-    }
-    val normalizedType = episodeType.trim().lowercase(Locale.ROOT).ifEmpty { "regular" }
-    require(normalizedType in setOf("regular", "special", "ova", "oad", "ona", "extra", "movie", "unknown")) {
-        "Tipo de episódio inválido."
-    }
-    val cleanTitle = title?.trim()?.takeIf { it.isNotEmpty() }
-    database.transaction { connection ->
-        val existing = connection.rawQuery(
-            "SELECT * FROM episodes WHERE id = ? LIMIT 1",
-            arrayOf(episodeId.toString()),
-        ).use { cursor ->
-            if (cursor.moveToFirst()) cursor.toEpisodeRecord()
-            else throw NoSuchElementException("Arquivo local não encontrado.")
-        }
-        val values = ContentValues().apply {
-            put("season", normalizedSeason)
-            if (number == null) putNull("number") else put("number", number)
-            put("episode_type", normalizedType)
-            if (cleanTitle == null) putNull("episode_title") else put("episode_title", cleanTitle)
-            put("identification_source", "manual")
-            put("identification_confidence", "high")
-            put("manual_override", 1)
-            put("missing", 0)
-        }
-        check(connection.update("episodes", values, "id = ?", arrayOf(episodeId.toString())) == 1) {
-            "Não foi possível salvar a identificação do episódio."
-        }
-        if (normalizedType == "movie") {
-            connection.update(
-                "anime",
-                ContentValues().apply { put("media_kind", "movie") },
-                "id = ?",
-                arrayOf(existing.animeId.toString()),
-            )
-        }
-        connection.rawQuery(
-            "SELECT * FROM episodes WHERE id = ? LIMIT 1",
-            arrayOf(episodeId.toString()),
-        ).use { cursor ->
-            if (cursor.moveToFirst()) cursor.toEpisodeRecord()
-            else throw IllegalStateException("O episódio desapareceu após a correção.")
-        }
-    }
-}
-
 /** Mirrors LibraryStore.set_user_tags; tags stay in the existing anime.user_tags field. */
 suspend fun ReiAnixSqliteLibraryRepository.setAnimeUserTags(
     animeId: Long,

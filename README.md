@@ -21,18 +21,32 @@ O banco SQLite e o cache de capas ficam no diretório privado definido por
 
 ## Android e APK
 
-O módulo Android real fica em `android/app`. A configuração Gradle na raiz aponta para esse mesmo módulo (não cria um segundo aplicativo) e permite compilar as fontes Kotlin/Compose diretamente com JDK 17 e Android SDK 36:
+O projeto fixa `flet==0.86.5`. A própria distribuição instalada declara
+**Flutter 3.44.8**; Java 17 e Android SDK 36 são o contrato de build. O código
+em [`android/`](android/README.md) é um overlay do host Flutter gerado pelo
+Flet, não um aplicativo Android independente.
 
 ```bash
-./gradlew --version
-./gradlew :app:assembleDebug
+python -m unittest discover -s tests -v
+python -m compileall -q main.py app_config.py core views
+git diff --check
+flet build apk --yes
+python scripts/verify_android_host.py build/apk/<arquivo>.apk
 ```
 
-O APK de validação nativa é gerado em `android/app/build/outputs/apk/debug/app-debug.apk`. O workflow `ReiAnix Native Gradle APK Validation` realiza essa compilação sem configurar Python, Flet ou Flutter; confere o manifesto, classes nativas, recurso do contrato SQLite v29, ZIP, SHA-256 e metadados de distribuição. Consulte [docs/KOTLIN_NATIVE_GRADLE_BUILD.md](docs/KOTLIN_NATIVE_GRADLE_BUILD.md).
+A última verificação é obrigatória: ela procura no DEX as classes
+`MainActivity`, `NativeMailbox`, `SafScanner`, `MediaStoreScanner`,
+`BroadStorageScanner`, `NativePlayerActivity` e `GoogleIdentity`. Caso elas
+não estejam presentes, o APK é o cliente Flet stock e **não** deve ser
+distribuído, pois a bridge `reiflix://native`, SAF e Media3 não estarão
+integrados. O workflow GitHub Actions reproduz essas etapas, configura Python,
+Java 17, Flutter 3.44.8 e Android SDK 36, e publica apenas o APK verificado.
 
-**Estado atual (Prompt 30.2):** tanto o workflow oficial `Build ReiAnix Android APK` quanto o workflow `ReiAnix Native Gradle APK Validation` compilam APKs diretamente pelo Gradle e não empacotam Python/Flet/Flutter. O primeiro gera o variant `release` de produção; o segundo gera um variant `debug` de validação, não um substituto para atualizar o release instalado. O código-fonte ainda mantém módulos Python/Flet para compatibilidade, e algumas funções de domínio/bridges permanecem dependentes desses consumidores. Como esses runtimes não estão dentro dos APKs atuais, funcionalidades com dependência legada ainda não demonstrada como substituída podem ficar indisponíveis. Por isso a independência funcional continua **não certificada** (`runtimeIndependenceCertified: false`). Consulte [o diagnóstico dos APKs e os limites de certificação](docs/KOTLIN_NATIVE_GRADLE_BUILD.md) e a [auditoria do Prompt 30.2](docs/PROMPT_30_2_APK_DIAGNOSTICS.md).
-
-O APK convencional pode ser validado pela presença no DEX de `MainActivity`, `NativeMailbox`, `SafScanner`, `MediaStoreScanner`, `BroadStorageScanner`, `NativePlayerActivity` e `GoogleIdentity`. O identificador continua `com.reiflix.reiflix_local`; as permissões SAF/MediaStore e o player Media3 são mantidos. Nenhuma chave privada é incluída no repositório.
+Não há APK comitado no repositório e não são incluídos secrets de Google. No
+Android, o usuário pode conceder leitura de vídeos pelo MediaStore e, para a
+biblioteca que procura vídeos em várias pastas, também pode conceder o acesso
+especial de armazenamento amplo. O SAF continua disponível para autorizar uma
+pasta específica. O app não converte URIs content:// em caminhos artificiais.
 
 ## Licença e autoria
 
@@ -102,14 +116,11 @@ projeções locais podem filtrar por favorito, pin, progresso, nota, metadata,
 capa e etiqueta. Configurações mostra estatísticas agregadas e o relatório
 real do último scan, sem abrir arquivos nem chamar serviços de metadata.
 
-O player Android usa Media3 1.11.1 para conteúdo autorizado localmente.
-Ele implementa controles nativos e inclui velocidade entre 0,5x–2x, fit/fill/zoom,
-reinício, autoplay do próximo episódio e timer de sono de sessão. Retomada,
-progresso, transição de episódio e ações como marcar visto precisam ser validadas
-no APK nativo real; não trate publicação em `NativeMailbox` como prova de
-persistência, pois a mailbox não publica quando o pacote não inclui `assets/app.zip`.
-PiP, codecs e reprodução exigem validação em dispositivo; não há streaming,
-download ou legenda online.
+O player Android usa Media3 1.11.1 para conteúdo autorizado localmente. Ele
+preserva retomada/progresso via `NativeMailbox` e inclui velocidade entre
+0,5x–2x, fit/fill/zoom, reinício, marcar visto/não visto, autoplay do próximo
+episódio e timer de sono de sessão. PiP, codecs e reprodução devem ser
+validados em APK/dispositivo; não há streaming, download ou legenda online.
 
 ## Permissões
 
@@ -137,4 +148,10 @@ etapa mantém o app aberto e permite tentar de novo em Configurações.
 
 ## Build
 
-O comando nativo, as diferenças entre variants e os limites de certificação estão documentados em [Kotlin native Gradle build](docs/KOTLIN_NATIVE_GRADLE_BUILD.md). O APK oficial atual já é produzido por Gradle nativo, mas a migração funcional não está certificada enquanto houver operações legadas sem substituição comprovada.
+```bash
+flet build apk --yes
+```
+
+O build requer Java 17, Flutter e dependências Android acessíveis. Depois de
+configurar a mesclagem do overlay, valide em aparelho a seleção SAF, a conta
+Google e arquivos/codec reais, especialmente MKV.

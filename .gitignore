@@ -6,9 +6,3 @@ build/
 # Android/Gradle generated files
 android/.gradle/
 android/app/build/
-
-# Root Gradle wrapper/build and Kotlin incremental state
-.gradle/
-.kotlin/
-local.properties
-/android/app/src/main/assets/native-sqlite-bootstrap-v29.json

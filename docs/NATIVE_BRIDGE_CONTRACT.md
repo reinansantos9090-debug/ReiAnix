@@ -1,7 +1,5 @@
 # ReiAnix — Native Bridge Contract
 
-> **Limite no APK nativo atual — Prompt 30.2:** este documento descreve contratos e call sites que continuam no código-fonte para compatibilidade híbrida; seus diagramas não afirmam que exista um consumidor Python dentro do APK atual. Os workflows oficial e de validação não empacotam `assets/app.zip` nem runtime Flet/Flutter/Python, e `NativeMailbox` desativa a publicação compatível quando não detecta esse runtime. Um fluxo ainda dependente exclusivamente de um consumidor legado precisa de substituto Kotlin efetivamente conectado antes de ser classificado como funcional ou certificado. Consulte [matriz atual de diagnóstico](PROMPT_30_2_APK_DIAGNOSTICS.md).
-
 ## Objetivo
 
 Este documento registra as fronteiras Python/Flet ↔ Android/Kotlin que permanecem após a consolidação da UI em um único shell Jetpack Compose.
@@ -111,7 +109,8 @@ Eventos de domínio/integração mantidos sem renomear:
 - scanner/storage: `scan_request`, `saf_scan`, `broad_storage_scan`, `mediastore_scan`, seus progressos, permissões e erros;
 - player: `player_progress`, `player_paused`, `player_completed`, `player_mark_watched`, `player_mark_unwatched`, `player_autoplay_changed`, `player_exited`, `player_error`;
 - thumbnail: `thumbnail_ready`, `thumbnail_error`;
-- Compose domain commands: `compose_library_command`, `compose_settings_set`. Route changes, Compose Back and settings-category navigation are owned by Navigation Compose and are not sent through the mailbox.
+- Compose navigation: `compose_navigation_changed`, `compose_library_navigation`, `compose_settings_navigation`;
+- Compose commands: `compose_library_command`, `compose_settings_set`;
 - identidade: eventos `google_*` existentes.
 
 Eventos são mensagens transitórias. Estado persistente continua em StateFlow/ViewModel/repository conforme a arquitetura existente.

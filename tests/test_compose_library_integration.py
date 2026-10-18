@@ -27,7 +27,7 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("if event_type == 'compose_library_command':", MAIN)
         self.assertIn("_track_compose_library_task", dispatch)
         self.assertIn('namespace="compose_library"', dispatch)
-        for action in ("set_watched", "refresh", "publish_catalog", "load_library_page"):
+        for action in ("set_watched", "refresh", "publish_catalog", "load_library_page", "open_media"):
             self.assertIn('action == "' + action + '":', worker)
         self.assertIn("'load_library_page'", dispatch)
 
@@ -62,6 +62,7 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         for token in (
             "await asyncio.to_thread(",
             "store.set_watched",
+            "store.episode_by_id",
         ):
             self.assertIn(token, worker)
 
@@ -81,22 +82,18 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("personalListService.remove(animeId)", view_model)
         self.assertIn("def _toggle_favorite_from_details(anime_id):", MAIN)
         self.assertIn("on_toggle_favorite", legacy_details)
-    def test_kotlin_adapter_does_not_maintain_a_second_page_state(self):
+    def test_repository_snapshot_reconciliation_does_not_reset_to_first_page(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
-        codec = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
-        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
-        self.assertNotIn("reconcilePagedState", repository)
-        self.assertNotIn("pagedLibraryState", repository)
-        self.assertNotIn("fun loadLibraryPage(", repository)
-        self.assertNotIn("LOAD_LIBRARY_PAGE", codec)
-        self.assertIn("nativeLibraryQueries.searchAnime(", view_model)
-        # Python can still drain legacy requests from versions before the native query cutover.
-        self.assertIn('elif action == "load_library_page":', MAIN)
+        self.assertIn("reconcilePagedState", repository)
+        self.assertIn("loadedPage = current.loadedPage", repository)
+        self.assertIn("hasMore = current.hasMore ||", repository)
+        self.assertNotIn("animes = firstPage", repository)
+        self.assertNotIn("animes.take(36)", repository)
 
     def test_library_page_worker_is_bounded_and_runs_off_ui_thread(self):
         worker = self._command_worker_block()
         start = worker.index('elif action == "load_library_page":')
-        end = worker.index('\n            else:\n                command_status = "FAILED"', start)
+        end = worker.index('elif action == "open_media":', start)
         page = worker[start:end]
         for token in (
             "library.catalog_page",
@@ -112,36 +109,21 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
     def test_existing_scanner_coordinator_remains_refresh_owner(self):
         block = self._command_worker_block()
         start = block.index('elif action == "refresh":')
-        end = block.index('\n            else:\n                command_status = "FAILED"', start)
+        end = block.index('elif action == "open_media":', start)
         refresh = block[start:end]
         self.assertIn("ScanOrigin.USER_REFRESH", refresh)
         self.assertIn("scan_coordinator.request(", refresh)
         self.assertNotIn("bridge.scan_media_store", refresh)
         self.assertNotIn("bridge.scan_all_storage", refresh)
 
-    def test_compose_player_open_does_not_dispatch_open_media_to_python(self):
-        worker = self._command_worker_block()
-        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
-        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
-        codec = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
-        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        start = view_model.index("fun openEpisode(episodeId: Long, expectedAnimeId: Long?")
-        end = view_model.index("override fun onCleared()", start)
-        launch = view_model[start:end]
-        self.assertNotIn('elif action == "open_media":', worker)
-        self.assertNotIn("fun openEpisode(episodeId: Long): String =", repository)
-        self.assertNotIn('OPEN_MEDIA("open_media")', codec)
-        for token in (
-            "nativeLibraryRepository.getEpisode(episodeId)",
-            "nativeLibraryRepository.listEpisodes(episode.animeId)",
-            "Intent.ACTION_VIEW",
-            '.appendQueryParameter("native_compose", "true")',
-            "ReiAnixSettingsContract.defaultFor",
-        ):
-            self.assertIn(token, launch)
-        self.assertNotIn("NativeMailbox.write", launch)
-        self.assertIn("private fun performOpenPlayer(", activity)
-        self.assertIn("reportNativePlayerHandoff(", activity)
+    def test_existing_player_bridge_owns_compose_media_open(self):
+        block = self._command_worker_block()
+        start = block.index('elif action == "open_media":')
+        end = block.index("else:", start)
+        open_media = block[start:end]
+        self.assertIn("play_episode(", open_media)
+        self.assertIn("store.episode_by_id", open_media)
+        self.assertNotIn("NativePlayerActivity", open_media)
 
     def test_compose_projection_is_derived_and_does_not_define_sqlite_schema(self):
         self.assertIn("self.library.catalog()", BRIDGE)

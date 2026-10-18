@@ -210,7 +210,7 @@ class StorageOnboardingTests(unittest.TestCase):
 
         settings_worker = source[
             source.index("async def _run_compose_settings_action"):
-            source.index("async def _run_compose_library_command")
+            source.index("async def _hydrate_compose_details_context")
         ]
         self.assertIn(
             'if action == "select_saf":\n                # SAF completes asynchronously',
@@ -435,10 +435,7 @@ class StorageOnboardingTests(unittest.TestCase):
         resume = source[source.index("override fun onResume()"):source.index("override fun onPause")]
         self.assertIn("val hasPersistedSafTree = hasPersistedSafTreeGrant()", resume)
         self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
-        self.assertIn('"STARTUP"', resume)
-        self.assertIn('reason = "first_activity_resume"', resume)
         self.assertIn('"STARTUP_SCAN_SKIPPED"', resume)
-        self.assertIn('result = "no_persisted_saf_tree"', resume)
         self.assertIn("hasPersistedSafTree &&", resume)
         self.assertIn("private fun hasPersistedSafTreeGrant()", source)
         self.assertIn("DocumentsContract.isTreeUri(permission.uri)", source)
@@ -482,14 +479,12 @@ class StorageOnboardingTests(unittest.TestCase):
 
 
 
-    def test_native_scan_staging_is_native_and_errors_keep_compatibility_notification(self):
+    def test_native_scan_publication_uses_failing_mailbox_contract(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         self.assertNotIn("private fun publishNativeScanBatch", source)
         self.assertIn("NativeScanPublisher.publish(", source)
-        self.assertIn("NativeIndex.prepareBatch(", publisher)
-        self.assertIn("NATIVE_SCAN_BATCH_STAGED", publisher)
-        self.assertNotIn("NativeMailbox.writeOrThrow(", publisher)
+        self.assertIn("NativeMailbox.writeOrThrow(", publisher)
         self.assertIn("NativeMailbox.write(", publisher)
         self.assertIn('eventType.replace("_batch", "_error")', publisher)
     def test_native_mailbox_uses_atomic_move_with_non_atomic_fallback(self):
@@ -745,9 +740,9 @@ class StorageOnboardingTests(unittest.TestCase):
     def test_on_resume_does_not_publish_intermediate_denied_before_pending_request(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         resume = source[source.index("override fun onResume()"):source.index("override fun onPause()", source.index("override fun onResume()"))]
-        self.assertLess(resume.index("consumeAndDispatchPendingLifecycleAction()"), resume.index("publishStorageStatus()"))
-        self.assertIn("if (hadPendingLifecycleAction) return", resume)
-        self.assertIn("consumeLifecycleAction()", source[source.index("private fun consumeAndDispatchPendingLifecycleAction()"):])
+        self.assertLess(resume.index("val pending = nativeRequestState.consumeLifecycleAction()"), resume.index("publishStorageStatus()"))
+        self.assertIn("if (pending != null)", resume)
+        self.assertIn("return", resume)
 
     def test_broad_scanner_is_guarded_in_python_refresh_flow(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
@@ -949,7 +944,7 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
     def test_compose_library_refresh_dispatches_native_scan_and_terminal_result(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
         refresh_start = repository.index("fun refresh(")
-        refresh = repository[refresh_start:repository.index("fun reportNativePlayerHandoff(", refresh_start)]
+        refresh = repository[refresh_start:repository.index("fun loadLibraryPage(", refresh_start)]
         self.assertIn('appendQueryParameter("action", "scan_library")', refresh)
         self.assertIn("MainActivity::class.java", refresh)
         self.assertNotIn("send(ReiAnixLibraryCommandCodec.Action.REFRESH)", refresh)
@@ -969,20 +964,14 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         self.assertIn("await bridge.scan_library()", refresh)
         self.assertIn("Non-Android development fallback only", refresh)
 
-    def test_main_activity_scans_startup_only_for_a_persisted_saf_root_and_preserves_permission_flow(self):
+    def test_main_activity_auto_discovers_authorized_sources_after_resume(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         start = source.index("override fun onResume()")
         resume = source[start:source.index("override fun onPause()", start)]
         self.assertIn("startupDiscoveryTriggered", resume)
-        self.assertIn("if (shouldDiscover && hasPersistedSafTree)", resume)
+        self.assertIn("publishScanRequest(", resume)
         self.assertIn('"STARTUP"', resume)
         self.assertIn('reason = "first_activity_resume"', resume)
-        self.assertIn("STARTUP_SCAN_SKIPPED", resume)
-        self.assertIn('result = "no_persisted_saf_tree"', resume)
-        self.assertIn("hasPersistedSafTree &&", resume)
-        self.assertIn("mediaAccessChangedToUsable || broadBecameAvailable", resume)
-        self.assertIn('publishScanRequest(\n                "PERMISSION_CHANGE"', resume)
-        self.assertNotIn('result = "explicit_scan_required"', resume)
         self.assertNotIn("scanMediaStore(null)", resume)
         self.assertNotIn("scanAllStorage(null)", resume)
         self.assertNotIn("persistedSafTreeUris().forEach", resume)
@@ -1030,7 +1019,7 @@ class TestComposeStorageSnapshotMerge(unittest.TestCase):
             / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
         ).read_text(encoding="utf-8")
         start = source.index("internal fun mergeSnapshotState(")
-        end = source.index("\n    }\n    private val appContext", start)
+        end = source.index("\n        internal fun reconcilePagedState(", start)
         merge = source[start:end]
         # Catalog preservation and storage authorization are independent state
         # domains. A READY onboarding snapshot must not be replaced by stale UI

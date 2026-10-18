@@ -102,7 +102,7 @@ def test_theme_follows_flow_without_activity_restart():
 def test_scope_is_whitelisted_in_python_before_persistence():
     main = read("main.py")
     start = main.index("if event_type == 'compose_settings_set':")
-    end = main.index("if event_type == 'compose_settings_bulk_applied':", start)
+    end = main.index("if event_type == 'compose_settings_navigation':", start)
     block = main[start:end]
 
     for key in (
@@ -270,6 +270,9 @@ def test_persisted_library_preferences_drive_native_compose_consumers():
     library_vm = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
     )
+    library_repository = read(
+        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
+    )
 
     # All values remain projections from the single persisted SettingsStore snapshot.
     assert "val libraryPageSize: StateFlow<Int>" in settings_vm
@@ -295,7 +298,7 @@ def test_persisted_library_preferences_drive_native_compose_consumers():
     assert "viewModel.applyLibrarySortDefault(defaultSortKey)" in library
     assert "pageSize = configuredLibraryPageSize" in library_vm
     assert "sort = librarySortLabelForSetting(appliedLibrarySortDefault)" in library_vm
-    assert "val normalizedPageSize = pageSize.coerceIn(12, 72)" in library_vm
+    assert "pageSize.coerceIn(12, 72)" in library_repository
     assert "fun setSetting(key: String, value: String)" in read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
     )
@@ -336,7 +339,7 @@ def test_compose_artwork_cache_clear_is_native_and_does_not_repeat_python_mutati
     assert "isArtworkPathReferenced" in artwork_service
     assert "native_handled=native_handled" in main
     worker_start = main.index("async def _run_compose_settings_action")
-    worker_end = main.index("async def _run_compose_library_command", worker_start)
+    worker_end = main.index("async def _hydrate_compose_details_context", worker_start)
     worker = main[worker_start:worker_end]
     assert "if native_handled:" in worker
     assert "library.clear_anilist_cache" in worker  # legacy Flet path only
@@ -449,6 +452,6 @@ def test_compose_backup_restore_integrity_and_diagnostics_are_native():
     assert "elif action == 'backup_restore':" in main
     assert "elif action == 'diagnostic_export':" in main
     worker_start = main.index("async def _run_compose_settings_action")
-    worker_end = main.index("async def _run_compose_library_command", worker_start)
+    worker_end = main.index("async def _hydrate_compose_details_context", worker_start)
     worker = main[worker_start:worker_end]
     assert "BackupService" not in worker

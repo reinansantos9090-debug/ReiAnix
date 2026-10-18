@@ -6,13 +6,6 @@ Este plano parte do snapshot auditado em 2026-10-14, SHA 40e8c86be49282774ec4506
 
 As etapas são unidades funcionais completas, não prompts artificiais para arquivos individuais. Cada uma só termina quando o comportamento, persistência, integração, estados de erro, cancelamento e critérios de validação estiverem cobertos. A sequência abaixo contém 21 pacotes de implementação possíveis, MIG-02 a MIG-22. Isso é uma decomposição inicial baseada nas dependências encontradas, não uma promessa de prazo ou número imutável: antes de abrir cada PR, confirme que o escopo continua coerente com a main mais recente.
 
-## Estado atual — Prompt 30.2 (18/10/2026 UTC)
-
-O workflow oficial de APK foi alterado no Prompt 30.1 para construir o variant release diretamente com Gradle. O workflow separado `native_gradle_apk.yml` compila o variant debug de validação; `python_regression.yml` mantém os contratos Python no pipeline de regressão, e o fluxo híbrido legado é manual. Referências históricas posteriores/anteriores nas etapas abaixo descrevem os respectivos snapshots e não devem substituir a configuração atual confirmada nos workflows.
-
-O release e o APK debug do commit pré-Prompt 30.2 têm o mesmo application ID, mas fingerprints de assinatura distintos e versionCodes incompatíveis para atualização. O diagnóstico e checksums encontram-se em [`docs/PROMPT_30_2_APK_DIAGNOSTICS.md`](PROMPT_30_2_APK_DIAGNOSTICS.md). A assinatura estável depende de segredos externos e a validação física depende de dispositivo/logcat. **O runtime permanece não certificado**: a ausência de Python/Flet/Flutter dentro do pacote não prova que cada operação tenha um consumidor Kotlin. Não declarar concluída a migração, não apagar dados do usuário e não remover bridges/dependências sem equivalência demonstrada.
-
-
 ## 2. Regras aplicáveis a todas as etapas
 
 1. Preservar o SQLite canônico em filesDir/data/library.sqlite3 e data_dir/library.sqlite3, inicialmente schema v29 e os dados já existentes. Não criar Room, um segundo SQLite ou um repositório concorrente para o mesmo domínio.
@@ -199,7 +192,7 @@ Base efetiva desta implementação: `main` em `e115d69e9d970defb075c812b34663f17
 - `ReiAnixLibraryRepository` e `ComposeLibraryBridge` permanecem para comandos híbridos, onboarding/estado de armazenamento, resultados terminais e outros contratos não migrados; não são a fonte dos registros de anime/episódios usados pela projeção principal.
 - `NativeMailbox` permanece para compatibilidade de eventos/diagnóstico e outros subsistemas com consumidores ativos.
 - `core/scan_coordinator.py` e `core/library_service.py` permanecem para consumidores não Android, desenvolvimento e compatibilidade com eventos/versões antigas do APK. O fluxo Android atual de descoberta/indexação/recovery não transfere snapshots positivos ao writer Python.
-- MediaStore foi conectado à escrita canônica de forma delimitada: indexa snapshots por volume apenas dentro das árvores SAF persistidas/legíveis com identidade correlacionável; assinatura do escopo e recibo COMMITTED são necessários para reutilizar cache, e localização SAF existente é preservada. BroadStorage continua diagnóstico-only porque a travessia global não é equivalente ao escopo da biblioteca selecionada.
+- MediaStore/BroadStorage continuam fontes diagnósticas, sem se tornarem fontes canônicas extras que poderiam duplicar arquivos enumerados por SAF.
 - Schema v29 preservado; nenhum banco paralelo foi criado. Nenhum teste Kotlin/JVM foi executado manualmente e nenhum teste instrumentado/emulador foi adicionado.
 
 A migração do escritor normal SAF, recovery positivo, retry do observer MediaStore e projeção principal de registros para Compose foi implementada na branch. A remoção global do runtime híbrido não é parte desta afirmação: ainda há fronteiras de comandos/estado e compatibilidade acima. A conclusão desta PR depende da CI obrigatória no SHA final e da verificação de APK/ZIP desse mesmo run.
@@ -208,7 +201,7 @@ A migração do escritor normal SAF, recovery positivo, retry do observer MediaS
 
 **Objetivo:** Migrar armazenamento e descoberta para Kotlin sem criar scanners, bancos ou coordenadores paralelos.
 
-**Status:** EM ANDAMENTO — seleção, descoberta SAF, indexação/recovery canônicos, retry do observer MediaStore e projeção principal de registros para Compose são nativos. O follow-up Prompt 28.2 acrescenta indexação transacional do MediaStore dentro dos escopos SAF autorizados; BroadStorage segue diagnóstico-only. Ainda há comandos/estados híbridos, fluxos legados de AniList/artwork/backup/recovery e compatibilidade para APKs antigos.
+**Status:** EM ANDAMENTO — seleção, descoberta SAF, indexação/recovery canônicos, retry do observer MediaStore e projeção principal de registros para Compose são nativos; ainda há comandos/estados híbridos e compatibilidade para APKs antigos.
 
 **Implementado nesta correção:** A seleção SAF persiste a fonte e a identidade usando argumentos nomeados no repositório SQLite canônico; a remoção pelo bridge delega a liberação do grant e a remoção/reconciliação de observações ao mesmo repositório Kotlin; o refresh Compose e o refresh Android legado enviam a ação nativa scan_library e aguardam estados terminais; o fluxo normal finaliza scan_runs em Kotlin antes do evento terminal; eventos de volume atualizam preferências/availability via Kotlin e não disparam uma segunda varredura Python; renomeações/movimentações SAF atualizam a URI e as observações na transação Kotlin antes do evento de projeção. Quando nativeLibraryIndexOwner e nativeScanRunOwner confirmam ownership, main.py apenas lê o catálogo para a projeção e não repete a finalização.
 
@@ -413,12 +406,6 @@ core/library_service.py (hidratação/editorial e fallback do ArtworkEngine some
 **Verificações:** tests/test_recovery_mode.py, checks SQLite e casos de arquivo corrompido/path inválido no ambiente permitido.
 
 **Prioridade:** P1.
-
-### Follow-up Prompt 28.2/29 — MediaStore dentro dos escopos de biblioteca
-
-O comportamento de MediaStore passou de staging/diagnóstico para indexação no SQLite canônico, condicionado à árvore SAF persistida e ainda legível. Reutilização do snapshot exige a mesma assinatura de raízes autorizadas, versão/geração do provider e recibo de commit. As linhas MediaStore guardam `source_folder=mediastore:<volume>:roots:<sha256-da-seleção>`; uma seleção de pastas nova não reconcilia registros da seleção antiga, e assinaturas ausentes/inválidas não autorizam inferir ausências. Um arquivo já identificado por SAF conserva sua URI SAF e caminho relativo ao tree; `MediaStore` atualiza fatos físicos e observações sem oscilar a localização. Snapshots incompletos, permissões parciais, cancelamento ou falhas não autorizam reconciliação de ausências. Antes da API 29, o caminho escopado bloqueia MediaStore quando o provider não fornece as colunas necessárias para provar o caminho; SAF continua sendo a opção disponível. Broad Storage não ganha writer global neste passo.
-
-Esta etapa continua parcial quanto à independência total de Python/Flet/Flutter: o pipeline oficial, os consumidores `NativeMailbox`, as migrações de banco existente e parte dos fluxos AniList/artwork/backup/recovery ainda requerem migração e validação específicas.
 
 ### MIG-16 — Diagnósticos, logs e performance
 

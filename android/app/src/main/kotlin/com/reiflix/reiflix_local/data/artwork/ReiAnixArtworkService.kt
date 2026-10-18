@@ -7,7 +7,6 @@ import android.database.sqlite.SQLiteDatabase
 import android.graphics.BitmapFactory
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryInvalidationBus
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import kotlinx.coroutines.CancellationException
@@ -632,13 +631,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             .put("entity_id", id).put("artwork_type", type).put("cache_key", key).put("local_path", path)
             .put("source_ref", ref ?: JSONObject.NULL).put("external_url", url ?: JSONObject.NULL)
             .put("content_type", contentType ?: JSONObject.NULL).put("published_at", System.currentTimeMillis())
-        val persistedEntityId = id.toLongOrNull()
-        ReiAnixLibraryInvalidationBus.publish(
-            reason = eventType,
-            animeId = persistedEntityId?.takeIf { entity == "anime" },
-            entityType = entity,
-            entityId = persistedEntityId,
-        )
         val ok = runCatching {
             NativeMailbox.write(appContext, JSONObject().put("type", eventType)
                 .put("requestId", UUID.randomUUID().toString()).put("payload", body))

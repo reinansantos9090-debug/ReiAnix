@@ -28,4 +28,4 @@ jni = "1.1.0"
 
 [tool.flet.app]
 # Keep development-only tests, docs and CI metadata out of the production app bundle.
-exclude = ["tests", "docs", ".github", "android", "scripts", "gradle", "gradlew", "gradlew.bat", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "build-logic", ".pytest_cache", ".mypy_cache", ".gradle", ".kotlin", "local.properties", "README.md", "BACKUP_RESTORE.md", ".env.example", ".gitignore", "pyproject.toml", "requirements.txt", ".reiflix-build-identity.json", "build-flet-version.txt"]
+exclude = ["tests", "docs", ".github", "android", "scripts", ".pytest_cache", ".mypy_cache", "README.md", "BACKUP_RESTORE.md", ".env.example", ".gitignore", "pyproject.toml", "requirements.txt", ".reiflix-build-identity.json", "build-flet-version.txt"]
