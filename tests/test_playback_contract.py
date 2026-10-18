@@ -40,7 +40,8 @@ class PlaybackContractTests(unittest.TestCase):
             "val wallClockMs = System.currentTimeMillis()",
             "max(wallClockMs, previous + 1L)",
             '.put("createdAt", nextPlayerEventCreatedAt())',
-            'val capturedAt = event.optLong("createdAt", 0L).takeIf { it > 0L } ?: now',
+            'val suppliedCreatedAt = event.longOrDefault("createdAt", 0L)',
+            'val capturedAt = suppliedCreatedAt.takeIf { it > 0L } ?: now',
             '.put("createdAt",capturedAt)',
         ):
             self.assertIn(token, self.player + self.mailbox)

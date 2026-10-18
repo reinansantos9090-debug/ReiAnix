@@ -1,69 +1,84 @@
 package com.reiflix.reiflix_local.data.settings
 
+import com.reiflix.reiflix_local.data.contract.booleanOrDefault
+import com.reiflix.reiflix_local.data.contract.intOrDefault
+import com.reiflix.reiflix_local.data.contract.intOrNull
+import com.reiflix.reiflix_local.data.contract.intRequired
+import com.reiflix.reiflix_local.data.contract.longRequired
+import com.reiflix.reiflix_local.data.contract.objectOrDefault
+import com.reiflix.reiflix_local.data.contract.stringOrDefault
+import com.reiflix.reiflix_local.data.contract.stringOrNull
+import org.json.JSONArray
 import org.json.JSONObject
 
 internal object ReiAnixSettingsSnapshotCodec {
     fun decode(raw: String, previousRevision: Long = 0L): ReiAnixSettingsSnapshot {
         val root = JSONObject(raw)
-        val schemaVersion = root.optInt("schemaVersion", 0)
+        val schemaVersion = root.intRequired("schemaVersion")
         require(schemaVersion == 1) {
             "Unsupported Compose settings snapshot schema: $schemaVersion"
         }
 
-        val revision = root.optLong("revision", 0L)
-        require(revision >= previousRevision) {
+        val revision = root.longRequired("revision")
+        require(revision >= 0L && revision >= previousRevision) {
             "Stale Compose settings snapshot revision=$revision previous=$previousRevision"
         }
 
-        val status = root.optString("status").trim().uppercase().ifEmpty { "ERROR" }
-        val error = root.optString("error").trim()
-            .takeIf { it.isNotEmpty() && it != "null" }
+        val status = root.stringOrDefault("status", "ERROR").trim().uppercase().ifEmpty { "ERROR" }
+        val error = root.stringOrNull("error")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
 
-        val accountObject = root.optJSONObject("account")
+        val accountObject = root.objectOrDefault("account")
         val account = ReiAnixSettingsAccount(
-            integrationAvailable = accountObject?.optBoolean("integrationAvailable", false) ?: false,
-            connected = accountObject?.optBoolean("connected", false) ?: false,
-            name = accountObject?.optString("name").orEmpty().trim(),
-            email = accountObject?.optString("email").orEmpty().trim(),
-            picture = accountObject?.optString("picture").orEmpty().trim(),
-            state = accountObject?.optString("state").orEmpty().trim().lowercase(),
+            integrationAvailable = accountObject.booleanOrDefault("integrationAvailable", false),
+            connected = accountObject.booleanOrDefault("connected", false),
+            name = accountObject.stringOrDefault("name", "").trim(),
+            email = accountObject.stringOrDefault("email", "").trim(),
+            picture = accountObject.stringOrDefault("picture", "").trim(),
+            state = accountObject.stringOrDefault("state", "").trim().lowercase(),
         )
 
-        val categoriesObject = root.optJSONObject("categories") ?: JSONObject()
+        val categoriesObject = root.objectOrDefault("categories")
         val categories = buildMap {
             for (key in categoriesObject.keys()) {
-                put(key, categoriesObject.optBoolean(key, false))
+                put(key, categoriesObject.booleanOrDefault(key, false))
             }
         }
 
-        val storageObject = root.optJSONObject("storage")
+        val storageObject = root.objectOrDefault("storage")
         val storage = ReiAnixSettingsStorage(
-            known = storageObject?.has("mediaReadState") == true || storageObject?.has("lifecycleState") == true,
-            mediaReadState = storageObject?.optString("mediaReadState").orEmpty().trim().lowercase().ifEmpty { "unknown" },
-            broadStorageState = storageObject?.optString("broadStorageState").orEmpty().trim().lowercase().ifEmpty { "unknown" },
-            safRootCount = storageObject?.optInt("safRootCount", 0) ?: 0,
-            removableVolumeCount = storageObject?.optInt("removableVolumeCount", 0) ?: 0,
-            lifecycleState = storageObject?.optString("lifecycleState").orEmpty().trim().lowercase().ifEmpty { "unknown" },
-            api = if (storageObject?.has("api") == true && !storageObject.isNull("api")) {
-                storageObject.optInt("api")
-            } else {
-                null
-            },
-            safSelectionPending = storageObject?.optBoolean("safSelectionPending", false) ?: false,
+            known = storageObject.has("mediaReadState") || storageObject.has("lifecycleState"),
+            mediaReadState = storageObject.stringOrDefault("mediaReadState", "unknown")
+                .trim().lowercase().ifEmpty { "unknown" },
+            broadStorageState = storageObject.stringOrDefault("broadStorageState", "unknown")
+                .trim().lowercase().ifEmpty { "unknown" },
+            safRootCount = storageObject.intOrDefault("safRootCount", 0),
+            removableVolumeCount = storageObject.intOrDefault("removableVolumeCount", 0),
+            lifecycleState = storageObject.stringOrDefault("lifecycleState", "unknown")
+                .trim().lowercase().ifEmpty { "unknown" },
+            api = storageObject.intOrNull("api"),
+            safSelectionPending = storageObject.booleanOrDefault("safSelectionPending", false),
         )
+        require(storage.safRootCount >= 0 && storage.removableVolumeCount >= 0) {
+            "Settings storage counts must be non-negative."
+        }
+        require(storage.api == null || storage.api >= 0) {
+            "Settings storage API level must be non-negative."
+        }
 
-        val settingsObject = root.optJSONObject("settings") ?: JSONObject()
+        val settingsObject = root.objectOrDefault("settings")
         val settings = buildMap {
             for (key in settingsObject.keys()) {
                 val value = settingsObject.opt(key)
-                put(
-                    key,
-                    when (value) {
-                        JSONObject.NULL, null -> ""
-                        is Boolean -> value.toString()
-                        else -> value.toString()
-                    },
-                )
+                val serialized = when (value) {
+                    null, JSONObject.NULL -> error(
+                        "Settings snapshot value '$key' cannot be null; omit an absent setting instead.",
+                    )
+                    is String, is Boolean, is Number, is JSONObject, is JSONArray -> value.toString()
+                    else -> error("Unsupported JSON value for settings key '$key'.")
+                }
+                put(key, serialized)
             }
         }
 

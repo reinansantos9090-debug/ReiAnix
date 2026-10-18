@@ -19,7 +19,7 @@ A transição é por operação. No caminho Compose/Android, inclusão pessoal/f
 - `NativeMailbox` continua sendo a fronteira Android/Python já existente.
 - `main.py` executa mutações e consultas bloqueantes dos fluxos híbridos que ainda passam pela mailbox, com `asyncio.to_thread`; isso não o torna writer de uma mutação já transferida para Kotlin.
 - `refresh` continua pertencendo ao `ScanCoordinator`; Compose não dispara scanners diretamente.
-- A abertura de mídia delega ao caminho existente `play_episode`/`AndroidBridge.play`, preservando Media3, sessão, progresso, Next/Previous e todas as validações atuais.
+- A abertura de mídia do Compose consulta diretamente `ReiAnixSqliteLibraryRepository.getEpisode()`, lê as preferências persistidas e encaminha uma URI `reiflix://native?action=play` para `MainActivity`. Ela não publica mais `open_media` pela `NativeMailbox`. O caminho Python `play_episode`/`AndroidBridge.play` permanece para consumidores Flet legados e para transições que ainda dependem do runtime híbrido; a validação e o player continuam na implementação nativa existente.
 
 ## Atualização da UI
 
@@ -39,8 +39,7 @@ Os comandos de projeção/coordenação ainda utilizados pela UI Compose são:
 
 - `publish_catalog`, após uma mutação nativa persistida;
 - `refresh`, encaminhado ao `ScanCoordinator`;
-- `load_library_page`, enquanto a projeção paginada ainda não tiver todos os consumidores cortados para as consultas Kotlin;
-- `open_media` por `episodeId`, resolvido contra a linha canônica do SQLite antes de usar o player existente.
+- `load_library_page`: o método/protocolo compatível ainda está no adapter, mas as consultas paginadas ativas da tela Compose usam `ReiAnixLibraryQueryService` e a pesquisa estática não encontrou chamada de produção a esse método. A remoção integral fica classificada como não conclusiva nesta etapa porque o estado/reader de páginas e de resultados ainda existe no contrato do repositório.
 
 A UI Compose não envia `toggle_favorite` nem `set_watched` para realizar essas mutações: o estado pessoal e o consumo têm owners Kotlin. `toggle_favorite` deixou de fazer parte do protocolo `compose_library_command`; a gravação direta que permanece em `views/details_view.py` pertence ao consumidor Flet legado, não à tela Compose. `set_watched` permanece temporariamente no dispatcher para os consumidores antigos ainda identificados. `publish_catalog` continua sendo somente uma solicitação de republicação/compatibilidade posterior ao commit nativo.
 

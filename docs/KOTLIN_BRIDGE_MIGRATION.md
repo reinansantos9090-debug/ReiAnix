@@ -64,3 +64,14 @@ The existing Python regression suite remains enabled by the repository workflows
 - The Compose library bridge still publishes a derived snapshot; this prompt retains its contract for storage and legacy state instead of inventing a parallel event system.
 - Native settings still use mailbox notifications after successful SQLite commits so Python consumers can update their derived settings projection. The database remains canonical.
 - These changes do not claim device-level runtime validation. Actual SAF revocation, storage/provider behavior and live hybrid UI interaction require device validation and are not established by compilation alone.
+
+
+## Prompt 25/29 — Auditoria atualizada das dependências de runtime (17/10/2026)
+
+A rastreabilidade específica desta etapa foi atualizada em `docs/KOTLIN_MIGRATION_AUDIT.md` (adendo Prompt 25/29 abaixo), e os contratos funcionais estão cobertos por `tests/test_prompt25_runtime_dependency_audit.py` e pela atualização dos testes de integração existentes.
+
+**Fechamento implementado:** o fluxo da rota Compose Player deixou de emitir o comando `compose_library_command/open_media`. O ViewModel consulta episódio/anime e preferências na base SQLite canônica, mantém a identidade persistida e a retomada, calcula os vizinhos disponíveis e chama a Activity nativa existente com uma URI `reiflix://native?action=play`. `MainActivity` continua aplicando a validação local/autorização já existente e lança o único `NativePlayerActivity`/Media3. O resultado imediato do handoff retorna ao estado observado pela UI via `reportNativePlayerHandoff`; isso é apenas estado de operação, não um writer de domínio.
+
+O branch `open_media` do worker em `main.py`, o item `OPEN_MEDIA` no codec e o adapter `ReiAnixLibraryRepository.openEpisode` foram removidos após a verificação dos consumidores. O caminho Python `play_episode`/`AndroidBridge.play` permanece para superfícies Flet legadas e para transições que ainda têm consumidores reais; portanto, isto **não** representa retirada global de Python/Flet.
+
+O protocolo `load_library_page` permanece como referência não conclusiva: a UI Compose atual usa paginação SQLite Kotlin, mas o estado de página e o reader do contrato de resultados ainda estão presentes no adapter. Sua limpeza exige retirar a família de estado e os leitores de forma coerente, não apagar apenas o branch Python. Pontes de scanner, SAF/storage, artwork, AniList, settings, account, diagnóstico e playback continuam onde há consumidor ou efeito de compatibilidade identificado.
