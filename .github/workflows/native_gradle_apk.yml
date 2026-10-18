@@ -118,8 +118,14 @@ jobs:
         run: |
           set -euo pipefail
           distribution="build/native-gradle-distribution"
-          version_code="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionCode='([0-9]+)'.*/\\1/p" | head -n1)"
-          version_name="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionName='([^']+)'.*/\\1/p" | head -n1)"
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$build_tools/apksigner" verify --verbose --print-certs "$distribution/ReiAnix-native-debug.apk" | tee "$distribution/signing-certificate.txt"
+          signing_certificate_sha256="$(sed -nE 's/^Signer #1 certificate SHA-256 digest: ([[:xdigit:]]+)$/\1/p' "$distribution/signing-certificate.txt" | head -n1)"
+          native_abis="$(unzip -Z1 "$distribution/ReiAnix-native-debug.apk" | sed -nE 's#^lib/([^/]+)/.*#\1#p' | sort -u | paste -sd, -)"
+          version_code="$("$build_tools/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionCode='([0-9]+)'.*/\\1/p" | head -n1)"
+          version_name="$("$build_tools/aapt" dump badging "$distribution/ReiAnix-native-debug.apk" | sed -nE "s/^package:.*versionName='([^']+)'.*/\\1/p" | head -n1)"
+          test -n "$signing_certificate_sha256"
+          test -n "$native_abis"
           test -n "$version_code"
           test -n "$version_name"
           (
@@ -138,7 +144,11 @@ jobs:
             printf '  "pythonRuntimePackaged": false,\n'
             printf '  "fletRuntimePackaged": false,\n'
             printf '  "flutterRuntimePackaged": false,\n'
-            printf '  "runtimeIndependenceCertified": false\n'
+            printf '  "runtimeIndependenceCertified": false,\n'
+            printf '  "supportedAbis": "%s",\n' "$native_abis"
+            printf '  "signingMode": "debug",\n'
+            printf '  "signingCertificateSha256": "%s",\n' "$signing_certificate_sha256"
+            printf '  "updateCompatibility": "Debug validation only; versionCode may be lower than release and certificate must match for update"\n'
             printf '}\n'
           } > "$distribution/distribution-manifest.json"
           (
@@ -146,7 +156,8 @@ jobs:
             zip -j -9 -X ReiAnix-native-debug.zip \
               ReiAnix-native-debug.apk \
               ReiAnix-native-debug.apk.sha256 \
-              distribution-manifest.json
+              distribution-manifest.json \
+              signing-certificate.txt
           )
           unzip -tq "$distribution/ReiAnix-native-debug.zip"
           mkdir -p "$RUNNER_TEMP/reianix-native-zip-check"
@@ -169,6 +180,7 @@ jobs:
             build/native-gradle-distribution/ReiAnix-native-debug.apk
             build/native-gradle-distribution/ReiAnix-native-debug.apk.sha256
             build/native-gradle-distribution/distribution-manifest.json
+            build/native-gradle-distribution/signing-certificate.txt
           if-no-files-found: error
           retention-days: 1
 
