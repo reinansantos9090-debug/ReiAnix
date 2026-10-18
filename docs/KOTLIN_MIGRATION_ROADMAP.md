@@ -6,6 +6,13 @@ Este plano parte do snapshot auditado em 2026-10-14, SHA 40e8c86be49282774ec4506
 
 As etapas são unidades funcionais completas, não prompts artificiais para arquivos individuais. Cada uma só termina quando o comportamento, persistência, integração, estados de erro, cancelamento e critérios de validação estiverem cobertos. A sequência abaixo contém 21 pacotes de implementação possíveis, MIG-02 a MIG-22. Isso é uma decomposição inicial baseada nas dependências encontradas, não uma promessa de prazo ou número imutável: antes de abrir cada PR, confirme que o escopo continua coerente com a main mais recente.
 
+## Estado atual — Prompt 30.2 (18/10/2026 UTC)
+
+O workflow oficial de APK foi alterado no Prompt 30.1 para construir o variant release diretamente com Gradle. O workflow separado `native_gradle_apk.yml` compila o variant debug de validação; `python_regression.yml` mantém os contratos Python no pipeline de regressão, e o fluxo híbrido legado é manual. Referências históricas posteriores/anteriores nas etapas abaixo descrevem os respectivos snapshots e não devem substituir a configuração atual confirmada nos workflows.
+
+O release e o APK debug do commit pré-Prompt 30.2 têm o mesmo application ID, mas fingerprints de assinatura distintos e versionCodes incompatíveis para atualização. O diagnóstico e checksums encontram-se em [`docs/PROMPT_30_2_APK_DIAGNOSTICS.md`](PROMPT_30_2_APK_DIAGNOSTICS.md). A assinatura estável depende de segredos externos e a validação física depende de dispositivo/logcat. **O runtime permanece não certificado**: a ausência de Python/Flet/Flutter dentro do pacote não prova que cada operação tenha um consumidor Kotlin. Não declarar concluída a migração, não apagar dados do usuário e não remover bridges/dependências sem equivalência demonstrada.
+
+
 ## 2. Regras aplicáveis a todas as etapas
 
 1. Preservar o SQLite canônico em filesDir/data/library.sqlite3 e data_dir/library.sqlite3, inicialmente schema v29 e os dados já existentes. Não criar Room, um segundo SQLite ou um repositório concorrente para o mesmo domínio.
