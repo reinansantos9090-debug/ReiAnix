@@ -43,8 +43,8 @@ Ordem estritamente sequencial. Não iniciar um prompt posterior apenas porque o 
 
 ## 3. Reconciliar os 21 pacotes históricos com o plano vigente
 
-| Pacote histórico (não canônico) | Correspondência no plano de 18 prompts | Tratamento da correspondência ou lacuna |
-|---|---|---|
+| Pacote histórico (não canônico) | Escopo histórico | Correspondência no plano de 18 prompts | Tratamento da correspondência ou lacuna |
+|---|---|---|---|
 | MIG-02 | Contratos de domínio e baseline de paridade | **Sem equivalente único.** Gates transversais dos Prompts 02 e 18; contratos IPC em 04 e semânticas de biblioteca em 07. | A matriz de paridade de domínio não tem um prompt isolado. Os contratos e a comparação de comportamento devem ser explicitamente verificados nos prompts autorizados pertinentes; não declarar equivalência completa sem evidência. |
 | MIG-03 | Ownership SQLite Kotlin e migrações compatíveis | **Parcial:** 03 e 07; corte de runtime condicionado ao 16. | Prompt 03 resolve o mesmo arquivo/caminho e bootstrap; Prompt 07 cobre regras de repositório/merge. Ownership único deve ser provado nos gates 07/16. Schema v29 não muda por este mapeamento. |
 | MIG-04 | Repositório de biblioteca e semânticas de domínio | **Direta:** 07. | Gate de CRUD/merge/deduplicação, identidade persistida e ausência de segunda fonte de escrita. |
@@ -93,7 +93,11 @@ P02–P04 estabelecem boot, DB e IPC. P05–P06 fecham storage/scanner. P07–P1
 - Não usar reset, force push, reescrita de histórico ou merge automático; `main` deve permanecer no SHA de baseline.
 - Todo critério deve ser comprovado por evidência no SHA correspondente. Run de SHA anterior não aprova o SHA novo; estado `queued`, `in_progress`, `failure`, `cancelled`, `skipped` ou ausência de run não equivale a `completed / success`.
 
-## 7. Evidência de build e assinatura no HEAD documental anterior
+## 7. Definition of Done do Prompt 18
+
+A migração global só poderá ser declarada concluída quando o entrypoint, Application/Activity e build Android forem realmente nativos; o APK não carregar nem exigir Python/Flet/Flutter; os fluxos de biblioteca, SAF, MediaStore/scanner, AniList/metadados, artwork/thumbnails, configurações, conta/autenticação, backup/recovery/diagnósticos, navegação/lifecycle e Media3/ExoPlayer tiverem paridade comprovada; `library.sqlite3`/schema v29 e todos os dados persistidos forem preservados, sem DB ou writer paralelo; todo consumidor legado relevante estiver rastreado antes de remover bridges; diff e artefatos forem revisados; e os workflows oficiais aplicáveis terminarem em `completed / success` no mesmo SHA final. Qualquer escopo histórico sem mapeamento direto — em especial conta/autenticação, diagnósticos/performance e remoção de bridges — precisa ter sido atribuído explicitamente e comprovado, não presumido.
+
+## 8. Evidência de build e assinatura no HEAD documental anterior
 
 O workflow [Build ReiAnix Android APK #39131423769](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39131423769), run 6101, terminou `completed / success` no HEAD anterior `c139aefb4234299140afeb11bb8c210947e03039`. A etapa explícita de compilação Kotlin Release e a suíte de regressão Python do workflow concluíram com sucesso.
 
@@ -101,7 +105,7 @@ Esse resultado diz respeito ao pipeline híbrido atual: o APK foi construído co
 
 A aprovação deste Prompt 01.1 exige outro run automático aplicável que tenha como SHA o commit documental final e atinja `completed / success`. O run 39131423769 não satisfaz esse gate para um SHA posterior.
 
-## 8. Estado das etapas
+## 9. Estado das etapas
 
 - Prompt 01/18: documentação de inventário, dependências, plano e critérios.
 - Prompt 01.1/18: reconciliação documental dos documentos históricos.
