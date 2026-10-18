@@ -1,10 +1,11 @@
 # ReiAnix — auditoria final de migração para Kotlin
 
 Data da atualização: 2026-10-18 (UTC)  
-Pull request de trabalho: #194, branch `migration/prompt-28-native-scan-bridge-cutover-20261017`  
-Escopo: auditoria estática e histórico de validação do Prompt 29. As seções do baseline abaixo preservam evidências históricas dos SHAs nelas citados; **a evidência mais recente consultada está registrada em “Evidência atual verificada para o HEAD da PR”** e não deve ser confundida com os runs dos SHAs anteriores. A evidência de CI comprova compilação/empacotamento e regressão dentro do contexto efetivamente executado, não paridade funcional completa.
+Pull request de trabalho: #194, branch `migration/prompt-28-native-scan-bridge-cutover-20261017`
 
-## Evidência atual verificada para o HEAD da PR — 2026-10-18 UTC
+Escopo: auditoria estática e histórico de validação do Prompt 29. As seções do baseline abaixo preservam evidências históricas dos SHAs nelas citados; os resultados dos workflows associados ao HEAD de implementação anterior à correção documental estão registrados na seção histórica específica. A evidência de CI comprova compilação/empacotamento e regressão dentro do contexto efetivamente executado, não paridade funcional completa.
+
+## Registro de CI do HEAD de implementação anterior à correção documental — SHA `07e28c2fb6bfeb800b85e95d122ff94f3c07f466`
 
 **Estado do Git verificado antes desta correção documental:** PR [#194](https://github.com/reinansantos9090-debug/ReiAnix/pull/194) aberta, em rascunho e não integrada; base `main`; branch `migration/prompt-28-native-scan-bridge-cutover-20261017`; HEAD da branch/PR `07e28c2fb6bfeb800b85e95d122ff94f3c07f466`; pai direto `d5bec88401ec2c8fc36415bf8580cc39443ca8ef`. O HEAD confirmado é `07e28c2...`, e não `d5bec884...`.
 
