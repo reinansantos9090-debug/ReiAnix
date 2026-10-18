@@ -472,6 +472,19 @@ class ReiAnixAppBootstrap internal constructor(
             )
         }
 
+        // Upgrade recognized older schema-v29 databases natively, inside an additive SQLite transaction.
+        // Unsafe or ambiguous legacy states remain gated in Recovery Mode instead of being replaced.
+        try {
+            ReiAnixSqliteSchemaUpgrader(appContext, dependencies.sqliteDatabase).upgradeIfNeeded()
+        } catch (error: Exception) {
+            Log.e(TAG, "Native additive SQLite schema upgrade was refused; Recovery Mode remains required. errorType=" + error::class.java.simpleName, error)
+            return CanonicalDatabaseCheck(
+                status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                recoveryRequired = true,
+                warning = DATABASE_RECOVERY_WARNING,
+            )
+        }
+
         val schemaCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
         val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
         return if (schemaCompatible && integrityHealthy) {

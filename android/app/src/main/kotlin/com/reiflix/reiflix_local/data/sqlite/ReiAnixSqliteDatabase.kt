@@ -190,7 +190,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
         }
 
-    private fun inspectSchema(database: SQLiteDatabase): ReiAnixSqliteSchemaSnapshot {
+    internal fun inspectSchema(database: SQLiteDatabase): ReiAnixSqliteSchemaSnapshot {
         val contract = canonicalContract
         val expectedVersion = contract.getInt("schema_version")
         val expectedUserVersion = contract.getInt("sqlite_user_version")
