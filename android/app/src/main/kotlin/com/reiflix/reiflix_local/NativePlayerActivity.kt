@@ -4628,17 +4628,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val resumeEnabled = dependencies.sqliteSettingsRepository
                     .getPreference("player.resume", "true")
                     ?.toBooleanStrictOrNull() ?: true
-                val storedProgress = if (target.watched == true) {
-                    0.0
-                } else {
-                    target.progress?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
-                }
+                val storedProgress = target.progress
+                    ?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
                 val durationSeconds = target.duration?.takeIf { it.isFinite() && it > 0.0 }
                 val boundedProgress = durationSeconds?.let(storedProgress::coerceAtMost) ?: storedProgress
-                val positionMs = if (resumeEnabled) {
-                    (boundedProgress * 1_000.0).toLong().coerceAtLeast(0L)
-                } else {
-                    0L
+                // Match the legacy handoff contract: disabled resume / watched
+                // targets pass an explicit zero; no saved position leaves the
+                // position unspecified so NativePlayerActivity can use its
+                // canonical consumption-service resume lookup.
+                val positionMs: Long? = when {
+                    !resumeEnabled || target.watched == true -> 0L
+                    boundedProgress > 0.0 ->
+                        (boundedProgress * 1_000.0).toLong().coerceAtLeast(0L)
+                    else -> null
                 }
                 val targetTitle = target.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
                     ?: target.fileName.trim().takeIf { it.isNotEmpty() }
@@ -4674,35 +4676,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         putExtra("mediaId", targetUri.toString())
                         putExtra("episodeId", target.id.toString())
                         putExtra("animeId", target.animeId.toString())
-                        val liveSettings = this@NativePlayerActivity.currentPlayerSettingsSnapshot()
                         putExtra("title", targetTitle)
-                        putExtra("positionMs", positionMs)
-                        putExtra("positionMsSpecified", true)
+                        putExtra("positionMs", positionMs ?: 0L)
+                        putExtra("positionMsSpecified", positionMs != null)
                         putExtra("canNext", targetCanNext)
                         putExtra("canPrevious", targetCanPrevious)
-                        putExtra("autoplay", liveSettings.optBoolean("player.autoplay_next", autoplayNext))
-                        putExtra("setting_player_default_speed", liveSettings.optDouble("player.default_speed", 1.0).toFloat())
-                        putExtra("setting_player_aspect_ratio", liveSettings.optString("player.aspect_ratio", "fit"))
-                        putExtra("setting_player_zoom_enabled", liveSettings.optBoolean("player.zoom_enabled", zoomEnabled))
-                        putExtra("setting_player_immersive", liveSettings.optString("player.immersive", immersiveSetting))
-                        putExtra("setting_player_lock_mode", liveSettings.optBoolean("player.lock_mode", locked))
-                        putExtra("setting_player_auto_hide_seconds", liveSettings.optLong("player.auto_hide_seconds", 5L).toInt().coerceAtLeast(1))
-                        putExtra("setting_player_double_tap_seek_seconds", liveSettings.optLong("player.double_tap_seek_seconds", 10L).coerceAtLeast(1L))
-                        putExtra("setting_player_long_press_speed", liveSettings.optDouble("player.long_press_speed", 2.0).toFloat())
-                        putExtra("setting_player_max_video_resolution", liveSettings.optString("player.max_video_resolution", "auto"))
-                        putExtra("setting_player_max_video_frame_rate", liveSettings.optInt("player.max_video_frame_rate", 0).coerceAtLeast(0))
-                        putExtra("setting_player_max_audio_channels", liveSettings.optInt("player.max_audio_channels", 0).coerceAtLeast(0))
-                        putExtra("setting_player_pip", liveSettings.optBoolean("player.pip", pipEnabled))
-                        putExtra("setting_gestures_volume", liveSettings.optBoolean("gestures.volume", volumeGesturesEnabled))
-                        putExtra("setting_gestures_brightness", liveSettings.optBoolean("gestures.brightness", brightnessGesturesEnabled))
-                        putExtra("setting_gestures_double_tap", liveSettings.optBoolean("gestures.double_tap", doubleTapEnabled))
-                        putExtra("setting_gestures_long_press", liveSettings.optBoolean("gestures.long_press", longPressEnabled))
-                        putExtra("setting_audio_preferred_language", liveSettings.optString("audio.preferred_language", preferredAudioLanguage))
-                        putExtra("setting_audio_preferred_subtitle_language", liveSettings.optString("audio.preferred_subtitle_language", preferredSubtitleLanguage))
-                        putExtra("setting_audio_subtitles", liveSettings.optString("audio.subtitles", subtitleMode))
-                        putExtra("setting_audio_subtitle_scale", liveSettings.optDouble("audio.subtitle_scale", 1.0).toFloat())
-                        putExtra("setting_audio_subtitle_bottom_padding", liveSettings.optInt("audio.subtitle_bottom_padding", 8).coerceIn(0, 50))
-                        putExtra("setting_audio_subtitle_embedded_style", liveSettings.optBoolean("audio.subtitle_embedded_style", subtitleEmbeddedStyle))
+                        putExtra("autoplay", autoplayNext)
                         putExtra("playerSessionId", sourceSessionId)
                         putExtra("originRequestId", sourceRequestId)
                         putExtra("originCreatedAtMs", sourceCreatedAtMs)

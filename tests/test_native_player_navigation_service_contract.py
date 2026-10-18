@@ -19,36 +19,13 @@ def test_native_player_resolves_next_previous_from_canonical_sqlite():
     assert "nextCanNext" in service and "previousCanPrevious" in service
     assert "nativePlayerNavigationService.resolve(sourceEpisodeId)" in request
     assert "startActivity(successorIntent)" in request
+    assert "positionMsSpecified\", positionMs != null)" in request
+    assert "positionMs ?: 0L" in request
+    assert "disabled resume / watched" in request
     assert "originRequestId" in request
     assert "originTransitionGeneration" in request
     assert "originMonotonicNs" in request
     assert "playerSessionId" in request
-    assert "currentPlayerSettingsSnapshot()" in request
-    for extra in (
-        "setting_player_default_speed",
-        "setting_player_aspect_ratio",
-        "setting_player_zoom_enabled",
-        "setting_player_immersive",
-        "setting_player_lock_mode",
-        "setting_player_auto_hide_seconds",
-        "setting_player_double_tap_seek_seconds",
-        "setting_player_long_press_speed",
-        "setting_player_max_video_resolution",
-        "setting_player_max_video_frame_rate",
-        "setting_player_max_audio_channels",
-        "setting_player_pip",
-        "setting_gestures_volume",
-        "setting_gestures_brightness",
-        "setting_gestures_double_tap",
-        "setting_gestures_long_press",
-        "setting_audio_preferred_language",
-        "setting_audio_preferred_subtitle_language",
-        "setting_audio_subtitles",
-        "setting_audio_subtitle_scale",
-        "setting_audio_subtitle_bottom_padding",
-        "setting_audio_subtitle_embedded_style",
-    ):
-        assert extra in request
     assert "NativeMailbox.write(this@NativePlayerActivity, transitionEvent)" not in request
 
 
