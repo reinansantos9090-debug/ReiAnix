@@ -270,9 +270,6 @@ def test_persisted_library_preferences_drive_native_compose_consumers():
     library_vm = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
     )
-    library_repository = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
-    )
 
     # All values remain projections from the single persisted SettingsStore snapshot.
     assert "val libraryPageSize: StateFlow<Int>" in settings_vm
@@ -298,7 +295,7 @@ def test_persisted_library_preferences_drive_native_compose_consumers():
     assert "viewModel.applyLibrarySortDefault(defaultSortKey)" in library
     assert "pageSize = configuredLibraryPageSize" in library_vm
     assert "sort = librarySortLabelForSetting(appliedLibrarySortDefault)" in library_vm
-    assert "pageSize.coerceIn(12, 72)" in library_repository
+    assert "val normalizedPageSize = pageSize.coerceIn(12, 72)" in library_vm
     assert "fun setSetting(key: String, value: String)" in read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
     )
