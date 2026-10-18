@@ -78,9 +78,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Native Android entry point for ReiAnix.
  *
- * SAF, identity, startup coordination and the existing Compose shell are hosted
- * by Android lifecycle components. Flet remains a build/template dependency while
- * remaining Python-side operation contracts are migrated in later stages.
+ * SAF, identity, startup coordination and the Compose shell are hosted by Android
+ * lifecycle components. The production and validation APK workflows compile this
+ * entry point with Gradle and do not package a Python/Flet/Flutter runtime. Legacy
+ * source contracts still exist in the repository; feature parity remains uncertified
+ * wherever a native action still depends on a legacy-only consumer.
  */
 class MainActivity : ComponentActivity() {
     private val tag = "[REIFLIX][ANDROID]"
