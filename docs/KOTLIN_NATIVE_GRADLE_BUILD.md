@@ -45,6 +45,8 @@ Esse conflito explica uma causa concreta possível para falhas ao instalar o seg
 
 O workflow oficial também reportou ausência de `REIFLIX_GOOGLE_WEB_CLIENT_ID`; isso afeta o login Google e não foi demonstrado como causa de falha de inicialização. Nenhuma credencial foi inventada.
 
+Para o inventário completo do diagnóstico, fingerprints dos certificados, checksums dos APKs e a matriz por área funcional, consulte [`docs/PROMPT_30_2_APK_DIAGNOSTICS.md`](PROMPT_30_2_APK_DIAGNOSTICS.md). Esse documento diferencia a evidência histórica do SHA anterior dos resultados que ainda precisam ser gerados sobre o HEAD final.
+
 ## Estado funcional que permanece aberto
 
 - **Inicialização:** Manifest registra `.ReiAnixApplication` e a launcher `.MainActivity`; a Activity chama o bootstrap nativo e mostra Compose após a decisão sobre a base. Essa inspeção estática não substitui logcat de um crash real.
