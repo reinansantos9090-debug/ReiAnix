@@ -1,5 +1,7 @@
 # Arquitetura Kotlin nativa e migração incremental — ReiAnix
 
+> **Estado atualizado — Prompt 30.2 (18/10/2026 UTC):** as referências a `main`, aos SHAs de outubro 14 e a `MainActivity : FlutterFragmentActivity` nesta arquitetura descrevem snapshots históricos, não o entry point atual nem o workflow oficial atual. O código vigente usa `MainActivity : ComponentActivity`; `.github/workflows/build_apk.yml` produz release por Gradle, `native_gradle_apk.yml` produz debug de validação e o fluxo híbrido permanece manual. Os APKs atuais excluem runtime Python/Flet/Flutter, mas as responsabilidades legadas ainda existentes no código-fonte deixam a independência funcional **não certificada**. Consulte [diagnóstico dos APKs](PROMPT_30_2_APK_DIAGNOSTICS.md) e [guia de build atual](KOTLIN_NATIVE_GRADLE_BUILD.md).
+
 ## 1. Estado verificado desta referência
 
 - Repositório: `reinansantos9090-debug/ReiAnix`.
