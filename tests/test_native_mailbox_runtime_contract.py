@@ -2,6 +2,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BOOTSTRAP = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt"
+MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 MAILBOX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt"
 NATIVE_SCAN_RUNNER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt"
 NATIVE_INDEX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt"
@@ -26,6 +28,16 @@ class NativeMailboxRuntimeContractTests(unittest.TestCase):
         )[0]
         self.assertLess(write.index("if (!hasLegacyPythonRuntime(context)) return true"), write.index("writeInternal"))
         self.assertLess(best_effort.index("if (!hasLegacyPythonRuntime(context)) return true"), best_effort.index("bestEffortExecutor.execute"))
+
+    def test_python_to_android_command_dispatcher_is_only_started_for_hybrid_apks(self):
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        main_activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        self.assertIn("NativeMailbox.hasLegacyPythonRuntime(appContext)", bootstrap)
+        self.assertIn("if (legacyRuntimePresent)", bootstrap)
+        self.assertIn("NativeCommandDispatcher.start(appContext)", bootstrap)
+        self.assertIn("NATIVE_ONLY_NO_LEGACY_COMMAND_CONSUMER", bootstrap)
+        self.assertIn("no embedded app.zip runtime", bootstrap)
+        self.assertNotIn("NativeCommandDispatcher", main_activity)
 
     def test_kotlin_scanner_owns_recovery_even_when_legacy_delivery_is_not_required(self):
         runner = NATIVE_SCAN_RUNNER.read_text(encoding="utf-8")

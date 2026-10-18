@@ -170,6 +170,7 @@ Esta seção foi adicionada para registrar o corte do caminho oficial de empacot
 - Um contrato de regressão `tests/test_native_production_build_contract.py` protege a separação entre a toolchain de release e os testes Python de compatibilidade.
 
 - `NativeMailbox` agora detecta `assets/app.zip`: nos APKs Kotlin-only, onde não há consumidor Python, as publicações de compatibilidade não criam arquivos de fila sem leitor. Os builds híbridos manuais mantêm a mailbox; falhas ao inspecionar assets preservam a publicação como comportamento conservador. O protocolo de recuperação, o estado nativo do scanner e as transações SQLite não foram removidos.
+- `ReiAnixAppBootstrap` também inicia `NativeCommandDispatcher` somente quando o pacote contém `assets/app.zip`. No APK Kotlin-only, o bootstrap conclui a decisão do canal sem criar fila/observador Python → Android sem produtor; se a inspeção de assets não for conclusiva, a detecção conservadora preserva o dispatcher.
 
 **Escopo ainda não certificado:** esta alteração muda o build oficial para um APK nativo de release, mas não demonstra por si só paridade funcional em dispositivo físico. `NativeMailbox`, alguns produtores e consumidores de compatibilidade, fallback do player, caminhos Flet no código-fonte, o upgrader do SQLite com banco pessoal real e a ausência de qualquer fallback de negócio Python exigem validação adicional. Nenhum código legado foi apagado em massa, o schema continua v29, nenhum teste Kotlin/JVM foi executado manualmente e nenhum teste de emulador foi adicionado.
 

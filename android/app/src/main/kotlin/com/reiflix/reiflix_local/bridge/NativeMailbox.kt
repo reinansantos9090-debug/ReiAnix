@@ -49,7 +49,7 @@ object NativeMailbox {
      * If assets cannot be inspected, fail closed and retain event publication so
      * a transient inspection error cannot silently disable a real legacy consumer.
      */
-    private fun hasLegacyPythonRuntime(context: Context): Boolean {
+    internal fun hasLegacyPythonRuntime(context: Context): Boolean {
         legacyPythonRuntimePresent?.let { return it }
         return synchronized(this) {
             legacyPythonRuntimePresent?.let { return@synchronized it }

@@ -108,7 +108,7 @@ class GoogleAndroidIntegrationTests(unittest.TestCase):
     def test_workflow_validates_the_public_web_client_id_shape(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("REIFLIX_GOOGLE_WEB_CLIENT_ID", workflow)
-        self.assertIn("apps\.googleusercontent\.com", workflow)
+        self.assertIn(r"apps\.googleusercontent\.com", workflow)
         self.assertIn("login will show configuration required", workflow)
 
     def test_google_client_id_shape_matches_google_oauth_format(self):

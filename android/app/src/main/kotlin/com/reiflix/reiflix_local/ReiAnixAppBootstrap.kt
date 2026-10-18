@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local
 import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
+import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteBootstrapper
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaUpgrader
@@ -340,11 +341,22 @@ class ReiAnixAppBootstrap internal constructor(
                 )
             }
             try {
-                NativeCommandDispatcher.start(appContext)
+                val legacyRuntimePresent = NativeMailbox.hasLegacyPythonRuntime(appContext)
+                if (legacyRuntimePresent) {
+                    NativeCommandDispatcher.start(appContext)
+                } else {
+                    // The dispatcher is a Python -> Android compatibility channel. A native-only
+                    // APK has no Python producer; do not start an idle FileObserver or create its queue.
+                    Log.i(TAG, "Legacy command dispatcher skipped: no embedded app.zip runtime.")
+                }
                 completeStage(ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER)
                 recordDiagnostic(
                     name = "APP_BOOTSTRAP_STAGE_COMPLETED",
-                    result = "COMPLETED",
+                    result = if (legacyRuntimePresent) {
+                        "LEGACY_COMMAND_DISPATCHER_STARTED"
+                    } else {
+                        "NATIVE_ONLY_NO_LEGACY_COMMAND_CONSUMER"
+                    },
                     stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
                 )
             } catch (cancelled: CancellationException) {
