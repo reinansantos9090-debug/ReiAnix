@@ -1,3 +1,15 @@
+> **Estado e escopo temporal:** este inventário foi escrito para o snapshot de 14/10/2026 (SHA `40e8c86be49282774ec45060aea9374155a14ca9`). Ele preserva evidências e dependências daquele snapshot, mas **não descreve a configuração remota atual** para workflows, entry point Android ou empacotamento. Os textos e tabelas abaixo que atribuem o workflow oficial a Python/Flet/Flutter, ou dizem que a `MainActivity` herda de `FlutterFragmentActivity`, são achados históricos desse SHA. Não os use para identificar o APK produzido pelo HEAD atual da PR #194.
+>
+> ## Atualização de arquitetura — Prompt 30.2 (18/10/2026 UTC)
+>
+> - O Manifest e o código atual usam `ReiAnixApplication`, `MainActivity : ComponentActivity` e o shell Compose; o bootstrap valida o SQLite canônico antes de apresentar Home ou Recovery Mode.
+> - `.github/workflows/build_apk.yml` compila `:app:assembleRelease` diretamente por Gradle. `.github/workflows/native_gradle_apk.yml` compila `:app:assembleDebug` como validação. `.github/workflows/python_regression.yml` executa a regressão Python separadamente e `.github/workflows/build_hybrid_legacy.yml` é manual. Os dois APKs nativos não empacotam o runtime Python/Flet/Flutter.
+> - A independência **funcional** permanece não certificada: o código-fonte preserva consumidores e operações Python legadas, e o fato de não empacotar `app.zip` implica que qualquer operação sem substituto nativo efetivamente conectado não será executada por um consumidor Python no APK. O campo `runtimeIndependenceCertified` permanece `false`.
+> - O diagnóstico de predecessor `8537ee6f827de2d5b53f9b0ff061f964b2879bd0` comprovou diferença de fingerprints de assinatura entre release e debug e versionCodes `2006072` vs `2`, suficiente para explicar incompatibilidade de atualização entre os dois artefatos, mas não um possível crash após nova instalação. A assinatura estável e o Google Web Client ID dependem de configuração externa; não foram inventadas credenciais.
+> - Não há logcat de dispositivo nem execução física disponível nesta auditoria. Inicialização real, funcionamento ponta a ponta do scanner, compatibilidade com um banco pessoal real e reprodução/persistência do player permanecem sem certificação. Consulte [`docs/KOTLIN_NATIVE_GRADLE_BUILD.md`](KOTLIN_NATIVE_GRADLE_BUILD.md), [`docs/PROMPT_30_2_APK_DIAGNOSTICS.md`](PROMPT_30_2_APK_DIAGNOSTICS.md) e a [auditoria final da migração](KOTLIN_MIGRATION_FINAL_AUDIT.md) para o snapshot atual e seus limites.
+>
+> ---
+
 # ReiAnix — auditoria técnica de migração integral para Kotlin
 
 ## A. Identificação e limites
