@@ -38,7 +38,9 @@ The domain models deliberately allow incomplete optional metadata and nullable l
 
 ## Validation workflow
 
-The existing Kotlin/JVM workflow remains manually dispatchable and also runs for pull requests targeting `main`, so these pure-JVM identity/mapping tests are exercised without an emulator. The workflow generates build identity before creating untracked SQLite test fixtures because the identity generator enforces a clean working tree.
+The existing `.github/workflows/kotlin_jvm_tests.yml` workflow is triggered only by `workflow_dispatch`; it is not automatically run by pull requests. It was not dispatched during Prompt 02.1, in accordance with the repository's execution restrictions. The PR workflow `build_apk.yml` ran the Python regression suite, validated the Python application, built the APK, and explicitly verified release Kotlin compilation; it did not run the Kotlin/JVM unit-test suite. Therefore, a successful APK build is not evidence that the JVM parser, URI/SAF, identity, or genre-normalization assertions passed. Those tests remain pending explicit authorization for the designated manual validation stage.
+
+The manual Kotlin/JVM workflow prepares the Flet-rendered Android host and generates the canonical SQLite test fixture before executing `:app:testDebugUnitTest`; do not trigger it from this prompt.
 
 
 ## Scope of Unicode normalization parity
