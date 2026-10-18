@@ -44,11 +44,12 @@ Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_i
 1. A classificação de localização agora retorna `UNRESOLVED` para strings vazias/compostas por espaços e mantém esquemas reconhecíveis como URI mesmo quando o valor é malformado.
 2. Os marcadores `/tree/` e `/document/` deixaram de ser suficientes isoladamente para classificar SAF. A classificação exige uma autoridade DocumentsProvider incluída na lista conservadora e a estrutura exata dos segmentos; URI de provedor não reconhecido permanece genérica `CONTENT_URI`.
 3. A documentação restringe explicitamente a alegação de paridade Unicode: os mapeamentos `ß`/`ss` e `ς`/`σ` são tratados, mas isso não representa uma implementação completa de `str.casefold()`.
+4. O parser também impede truncar `ABS1122.5` para o absoluto `1122`, interpretar um decimal absoluto como episódio regular ou extrair os dígitos fracionários como candidato separado. Nomes somente numéricos continuam sem identidade de episódio, mesmo quando o decimal excede o limite aceito.
 
 ## Integridade e validação
 
 - Não adiciona classes de domínio duplicadas, novas tabelas, banco alternativo, testes, workflows ou scripts.
-- Os três arquivos de teste Kotlin/JVM consultados permanecem inalterados; nenhum teste Kotlin/JVM foi executado manualmente. Os novos comportamentos foram revisados estaticamente, não demonstrados por asserts dedicados.
+- Os três arquivos de teste Kotlin/JVM consultados permanecem inalterados; nenhum teste Kotlin/JVM foi executado manualmente. Os novos comportamentos foram revisados estaticamente, não demonstrados por asserts dedicados. O workflow automático comprova regressão Python e compilação, não execução da suíte Kotlin/JVM nem paridade de cada caso limite.
 - O workflow automático `build_apk.yml` que valida esta correção deve ser lido apenas na execução associada ao SHA final da PR. Runs vinculados a SHAs anteriores não validam este complemento.
 - Schema SQLite v29, mapeadores de leitura, IDs, referências de mídia e consumidores Python foram preservados.
 - Esta implementação não representa a migração integral concluída: a camada de domínio ainda depende de integrações posteriores e validação comportamental autorizada.

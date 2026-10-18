@@ -62,9 +62,18 @@ object MediaFilenameParser {
     private val special = Regex("\\b(OVA|OAD|ONA|SPECIALS?|SP|EXTRA)(?:\\b|(?=\\d))[ ._-]*(\\d{1,4}(?:[.,]\\d{1,2})?)?", RegexOption.IGNORE_CASE)
     private val specialZero = Regex("\\bS00(?:[ ._-]*E(?:P(?:ISODE)?)?[ ._-]*(\\d{1,4}(?:[.,]\\d{1,2})?))?\\b", RegexOption.IGNORE_CASE)
     private val absolute = Regex("\\b(?:ABS(?:OLUTE)?|ANIME[- ._]?EP)[ ._-]*(\\d{1,4})\\b", RegexOption.IGNORE_CASE)
+    private val absoluteDecimal = Regex(
+        "\\b(?:ABS(?:OLUTE)?|ANIME[- ._]?EP)[ ._-]*\\d{1,4}[.,]\\d+\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val unsupportedEpisodeDecimal = Regex(
+        "\\b(?:S\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|(?:temp|temporada)[ ._-]*\\d{1,3}[ ._-]*E(?:P(?:ISODE)?)?|\\d{1,2}\\s*[xX]|E(?:P(?:ISODE)?)?|EPISODE|Epis[oó]dio|OVA|OAD|ONA|SPECIALS?|SP|EXTRA|S00[ ._-]*E(?:P(?:ISODE)?)?)[ ._-]*\\d{1,4}[.,]\\d{3,}(?:v\\d+)?\\b",
+        RegexOption.IGNORE_CASE,
+    )
     private val movie = Regex("\\b(?:MOVIE|FILM)\\b", RegexOption.IGNORE_CASE)
     private val year = Regex("^(?:19\\d{2}|20\\d{2})$")
     private val filenameNumber = Regex("(?<!\\d)(\\d{1,4}(?:[.,]\\d{1,2})?)(?:v\\d+)?\\b")
+    private val numericOnlyFilename = Regex("\\d+(?:[.,]\\d+)?(?:v\\d+)?")
     private val genericFolders = setOf("anime", "videos", "video", "media", "downloads", "download", "complete", "finished", "batch", "dub", "sub")
     private val numericTechnicalFolder = setOf("264", "265", "4320", "2160", "1080", "720", "480", "8", "10", "12")
     private val seasonLabel = Regex("(?i)^(?:s|season|temporada|temp)[ ._-]*\\d{1,3}$")
@@ -89,6 +98,7 @@ object MediaFilenameParser {
         val extensionStart = fileName.lastIndexOf('.').takeIf { it > 0 } ?: -1
         val extension = if (extensionStart >= 0) fileName.substring(extensionStart).lowercase(Locale.ROOT) else ""
         val stem = if (extensionStart >= 0) fileName.substring(0, extensionStart) else fileName
+        val isNumericOnlyFilename = numericOnlyFilename.matches(stem.trim())
         val folders = normalizedPath.substringBeforeLast('/', "")
             .split('/').filter { it.isNotBlank() && it != "." && it != ".." }
         val root = libraryRoot?.replace('\\', '/')?.trimEnd('/')
@@ -111,6 +121,8 @@ object MediaFilenameParser {
         val seasonZero = specialZero.find(stem)
         val specialMatch = special.find(stem)
         val absoluteMatch = absolute.find(stem)
+        val absoluteDecimalMatch = absoluteDecimal.find(stem)
+        val unsupportedEpisodeDecimalMatch = unsupportedEpisodeDecimal.find(stem)
 
         if (seasonZero != null) {
             marker = seasonZero
@@ -144,6 +156,26 @@ object MediaFilenameParser {
             val cross = crossEpisode.find(stem)
             val word = wordEpisode.find(stem)
             when {
+                absoluteDecimalMatch != null -> {
+                    marker = absoluteDecimalMatch
+                    absoluteNumber = null
+                    episode = null
+                    kind = ParsedMediaKind.UNKNOWN
+                    source = "invalid_absolute_decimal_number"
+                    confidence = MediaIdentificationConfidence.LOW
+                    evidence += "INVALID_ABSOLUTE_DECIMAL_NUMBER:${absoluteDecimalMatch.value}"
+                    unresolved += "absolute_number_must_be_integer"
+                }
+                unsupportedEpisodeDecimalMatch != null -> {
+                    marker = unsupportedEpisodeDecimalMatch
+                    absoluteNumber = null
+                    episode = null
+                    kind = ParsedMediaKind.UNKNOWN
+                    source = "unsupported_episode_decimal_precision"
+                    confidence = MediaIdentificationConfidence.LOW
+                    evidence += "UNSUPPORTED_EPISODE_DECIMAL_PRECISION:${unsupportedEpisodeDecimalMatch.value}"
+                    unresolved += "unsupported_episode_decimal_precision"
+                }
                 explicit != null -> {
                     marker = explicit
                     season = explicit.groupValues[1].toInt()
@@ -191,10 +223,13 @@ object MediaFilenameParser {
                     val candidates = filenameNumber.findAll(stem).filter { match ->
                         val value = match.groupValues[1]
                         val before = stem.substring(0, match.range.first)
+                        val decimalContinuation = (before.endsWith(".") || before.endsWith(",")) &&
+                            (before.dropLast(1).lastOrNull()?.isDigit() == true)
                         val technicalNumber = value in setOf("264", "265", "4320", "2160", "1080", "720", "480", "8", "10", "12")
                         val numberFollowsTechnicalMarker =
                             Regex("(?i)(?:x|h\\.?|codec|bit)\\s*${Regex.escape(value)}\\b").containsMatchIn(stem)
-                        !year.matches(value) &&
+                        !decimalContinuation &&
+                            !year.matches(value) &&
                             !Regex("(?i)(?<!\\d)${Regex.escape(value)}p\\b").containsMatchIn(stem) &&
                             !(technicalNumber && numberFollowsTechnicalMarker) &&
                             value !in setOf("264", "265", "1080", "2160", "720", "480") &&
@@ -202,8 +237,8 @@ object MediaFilenameParser {
                             !Regex("(?i)\\b(?:vol(?:ume)?|disc|disk)\\s*$").containsMatchIn(before) &&
                             before.trim(' ', '.', '_', '-', '[', ']', '(', ')', '{', '}').isNotEmpty()
                     }.toList()
-                    if (candidates.isNotEmpty() && absoluteMatch == null &&
-                        !stem.trim().matches(Regex("\\d{1,4}(?:[.,]\\d{1,2})?(?:v\\d+)?"))
+                    if (candidates.isNotEmpty() && absoluteMatch == null && absoluteDecimalMatch == null &&
+                        unsupportedEpisodeDecimalMatch == null && !isNumericOnlyFilename
                     ) {
                         marker = candidates.last()
                         episode = parseEpisodeNumber(marker!!.groupValues[1])
@@ -247,7 +282,10 @@ object MediaFilenameParser {
 
         val titleSource = marker?.let { stem.substring(0, it.range.first) } ?: stem
         var title = MediaTitleNormalizer.cleanMediaTitle(titleSource)
-        if (title.isBlank() || title.matches(Regex("(?i)(?:e|ep|episode)?\\s*\\d+(?:[.,]\\d{1,2})?")) || seasonLabel.matches(title)) {
+        if (title.isBlank() || isNumericOnlyFilename ||
+            title.matches(Regex("(?i)(?:e|ep|episode)?\\s*\\d+(?:[.,]\\d{1,2})?")) ||
+            seasonLabel.matches(title)
+        ) {
             title = effectiveFolders.asReversed().firstOrNull(::isProbableTitleFolder)
                 ?.let(MediaTitleNormalizer::cleanMediaTitle).orEmpty()
         }
@@ -259,7 +297,7 @@ object MediaFilenameParser {
         if (title.isBlank()) title = "Arquivo não identificado"
 
         // A number-only filename is insufficient evidence, even inside a series folder.
-        if (stem.trim().matches(Regex("\\d{1,4}(?:[.,]\\d{1,2})?(?:v\\d+)?"))) {
+        if (isNumericOnlyFilename) {
             if (effectiveFolders.any(::isProbableTitleFolder)) {
                 unresolved += "numeric_filename_without_episode_marker"
             }
@@ -301,7 +339,9 @@ object MediaFilenameParser {
         val ambiguities = unresolved.filter { item ->
             item.startsWith("season_conflict:") ||
                 item == "multiple_numeric_candidates" ||
-                item == "multi_episode_range"
+                item == "multi_episode_range" ||
+                item == "absolute_number_must_be_integer" ||
+                item == "unsupported_episode_decimal_precision"
         }
         return ParsedMediaName(
             animeTitle = title,
@@ -309,7 +349,11 @@ object MediaFilenameParser {
             episodeNumber = episode,
             absoluteNumber = absoluteNumber,
             kind = kind,
-            identificationSource = if (kind == ParsedMediaKind.UNKNOWN && folderSeason != null) "folder_context" else source,
+            identificationSource = if (
+                kind == ParsedMediaKind.UNKNOWN &&
+                folderSeason != null &&
+                source == "unknown"
+            ) "folder_context" else source,
             confidence = if (kind == ParsedMediaKind.UNKNOWN) MediaIdentificationConfidence.LOW else confidence,
             displayTitle = tail.takeIf { it.isNotBlank() && !it.matches(Regex("(?i)v?\\d+")) } ?: title,
             extension = extension,
