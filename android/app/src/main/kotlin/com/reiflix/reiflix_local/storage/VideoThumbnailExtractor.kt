@@ -464,7 +464,10 @@ object VideoThumbnailExtractor {
     }
 
     private fun promoteLegacyCache(legacy: File, target: File): Boolean {
-        if (!legacy.isFile || !isValidCachedThumbnail(legacy) || target.exists()) return false
+        if (!legacy.isFile || !isValidCachedThumbnail(legacy)) return false
+        // A valid destination always wins. An empty/corrupt destination may be
+        // replaced, but only after the legacy image has been copied and validated.
+        if (target.isFile && isValidCachedThumbnail(target)) return true
         val temporary = File(target.parentFile, "." + target.name + "." +
             android.os.SystemClock.elapsedRealtimeNanos() + ".tmp")
         return try {
@@ -476,10 +479,13 @@ object VideoThumbnailExtractor {
                 }
             }
             if (!isValidCachedThumbnail(temporary)) return false
+            // Recheck after the copy in case another request populated the target.
+            if (target.isFile && isValidCachedThumbnail(target)) return true
+            if (target.exists() && !target.delete()) return false
             if (!temporary.renameTo(target)) {
                 target.isFile && isValidCachedThumbnail(target)
             } else {
-                true
+                isValidCachedThumbnail(target)
             }
         } catch (_: Exception) {
             false
