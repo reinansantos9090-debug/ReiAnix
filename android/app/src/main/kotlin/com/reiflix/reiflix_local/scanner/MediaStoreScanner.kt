@@ -17,11 +17,18 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 object MediaStoreScanner {
     const val SOURCE = "mediastore:external:video"
-    data class LibraryScope(val authority: String, val volumeId: String, val treeDocumentId: String)
+    data class LibraryScope(
+        val authority: String,
+        val volumeId: String,
+        val treeDocumentId: String,
+        /** Canonical SAF directory path used only before MediaStore exposes RELATIVE_PATH (API < 29). */
+        val physicalPath: String? = null,
+    )
     const val DISPLAY_NAME = "Vídeos do dispositivo"
     private const val TAG = "[REIFLIX][MEDIASTORE]"
     // Match Nova's broad local video extension surface; provider MIME values
@@ -113,11 +120,31 @@ object MediaStoreScanner {
         }
         return requested.equals(volumeName, ignoreCase=true) || (volumeUuid.isNotBlank() && requested.equals(volumeUuid, ignoreCase=true))
     }
-    private fun isWithinLibraryScope(scope:LibraryScope, volumeName:String, volumeUuid:String, relativePath:String):Boolean {
-        if(scope.authority != "com.android.externalstorage.documents") return false
-        if(!volumeMatches(scope, volumeName, volumeUuid)) return false
+    internal fun isWithinPhysicalLibraryScope(scopePath: String?, candidatePath: String?): Boolean {
+        val rawRoot = scopePath?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val rawCandidate = candidatePath?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val root = runCatching { File(rawRoot).canonicalFile.path }.getOrNull() ?: return false
+        val candidate = runCatching { File(rawCandidate).canonicalFile.path }.getOrNull() ?: return false
+        val prefix = if (root.endsWith(File.separator)) root else root + File.separator
+        return candidate == root || candidate.startsWith(prefix)
+    }
+
+    private fun isWithinLibraryScope(
+        scope: LibraryScope,
+        volumeName: String,
+        volumeUuid: String,
+        relativePath: String,
+        absolutePath: String? = null,
+    ): Boolean {
+        if (scope.authority != "com.android.externalstorage.documents") return false
+        // API 24–28 do not expose RELATIVE_PATH or VOLUME_NAME. Use a canonical
+        // physical path derived from the validated SAF tree; fail closed otherwise.
+        if (Build.VERSION.SDK_INT < 29) {
+            return isWithinPhysicalLibraryScope(scope.physicalPath, absolutePath)
+        }
+        if (!volumeMatches(scope, volumeName, volumeUuid)) return false
         val root = normalizeScopePath(scope.treeDocumentId)
-        if(root.isBlank()) return false
+        if (root.isBlank()) return false
         val candidate = relativePath.trim().trim('/').replace("\\", "/")
         return candidate == root || candidate.startsWith(root + "/")
     }
@@ -135,12 +162,13 @@ object MediaStoreScanner {
         val volumeNames=if(Build.VERSION.SDK_INT>=29)MediaStore.getExternalVolumeNames(context).ifEmpty{setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)}else setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val projection=mutableListOf(MediaStore.Video.Media._ID,MediaStore.Video.Media.DISPLAY_NAME,MediaStore.Video.Media.MIME_TYPE,MediaStore.Video.Media.SIZE,MediaStore.Video.Media.DATE_MODIFIED)
         if(Build.VERSION.SDK_INT>=29){projection+=MediaStore.Video.Media.RELATIVE_PATH;projection+=MediaStore.MediaColumns.VOLUME_NAME}
+        else { projection += MediaStore.MediaColumns.DATA }
         if(Build.VERSION.SDK_INT>=30){projection+=MediaStore.MediaColumns.GENERATION_ADDED;projection+=MediaStore.MediaColumns.GENERATION_MODIFIED}
         val volumeScopes=JSONArray();val errors=JSONArray()
         val visibleVolumeIdentities = volumeNames.associateWith { volumeName ->
             volumeUuid(context, volumeName)
         }
-        if (authorizedScopes.any { scope ->
+        if (Build.VERSION.SDK_INT >= 29 && authorizedScopes.any { scope ->
                 visibleVolumeIdentities.none { (volumeName, volumeUuid) ->
                     volumeMatches(scope, volumeName, volumeUuid)
                 }
@@ -168,7 +196,9 @@ object MediaStoreScanner {
                 var volumeWaitingForMediaStore=false
                 val scopeKey=activeScopeKey
                 val baseVolumeUuid = volumeUuidCache.getOrPut(volumeName) { volumeUuid(context, volumeName) }
-                if(NativeIndex.canReuseMediaStoreVolume(context,volumeName,access,version,generation)){
+                // Before API 29 there is no reliable MediaStore version/generation or
+                // RELATIVE_PATH. Do not reuse legacy snapshots created with unverified scope.
+                if(Build.VERSION.SDK_INT >= 29 && NativeIndex.canReuseMediaStoreVolume(context,volumeName,access,version,generation)){
                     val cachedGeneration=NativeIndex.cachedGeneration(context,scopeKey)
                     val cachedCount=NativeIndex.forEachCachedBatch(context,scopeKey,NativeBatch.DEFAULT_SIZE) { batch,batchNumber ->
                         // Replaying a large cached snapshot must remain cooperatively cancellable,
@@ -254,15 +284,23 @@ object MediaStoreScanner {
                 }
                 var localCancelled=false
                 var volumeVideos=0
+                var legacyPathErrorReported = false
+                fun reportUnverifiableLegacyPath() {
+                    if (!legacyPathErrorReported) {
+                        localErrors.put("O MediaStore retornou um caminho de arquivo ausente ou inválido; o escopo SAF não pode ser verificado com segurança neste Android.")
+                        legacyPathErrorReported = true
+                    }
+                }
                 val collection=if(Build.VERSION.SDK_INT>=29)MediaStore.Video.Media.getContentUri(volumeName)else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
                 resolver.query(collection,projection.toTypedArray(),null,null,MediaStore.Video.Media.DISPLAY_NAME+" COLLATE NOCASE ASC")?.use{cursor->
                     val idCol=cursor.getColumnIndex(MediaStore.Video.Media._ID);val nameCol=cursor.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
                     val mimeCol=cursor.getColumnIndex(MediaStore.Video.Media.MIME_TYPE);val sizeCol=cursor.getColumnIndex(MediaStore.Video.Media.SIZE)
                     val modCol=cursor.getColumnIndex(MediaStore.Video.Media.DATE_MODIFIED);val relCol=if(Build.VERSION.SDK_INT>=29)cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)else -1
                     val volCol=if(Build.VERSION.SDK_INT>=29)cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)else -1
+                    val dataCol=if(Build.VERSION.SDK_INT<29)cursor.getColumnIndex(MediaStore.MediaColumns.DATA)else -1
                     val gaCol=if(Build.VERSION.SDK_INT>=30)cursor.getColumnIndex(MediaStore.MediaColumns.GENERATION_ADDED)else -1
                     val gmCol=if(Build.VERSION.SDK_INT>=30)cursor.getColumnIndex(MediaStore.MediaColumns.GENERATION_MODIFIED)else -1
-                    if(idCol<0||nameCol<0)localErrors.put("O MediaStore não retornou os dados necessários.")else while(cursor.moveToNext()){
+                    if(idCol<0||nameCol<0||(Build.VERSION.SDK_INT<29&&dataCol<0))localErrors.put("O MediaStore não retornou os dados necessários para verificar o escopo da biblioteca.")else while(cursor.moveToNext()){
                         if(shouldCancel()){cancelled=true;localCancelled=true;break}
                         files++
                         val id=cursor.getLong(idCol)
@@ -279,7 +317,19 @@ object MediaStoreScanner {
                         } else {
                             volumeUuidCache.getOrPut(actualVol) { volumeUuid(context, actualVol) }
                         }
-                        if(!authorizedScopes.any { scope -> isWithinLibraryScope(scope, actualVol, actualVolumeUuid, rel) }){
+                        val absolutePath = if (dataCol >= 0 && !cursor.isNull(dataCol)) {
+                            cursor.getString(dataCol)?.trim()?.takeIf { it.isNotEmpty() }
+                        } else null
+                        val canonicalAbsolutePath = absolutePath?.let { path ->
+                            runCatching { File(path).canonicalPath }.getOrNull()
+                        }
+                        if (Build.VERSION.SDK_INT < 29 && canonicalAbsolutePath == null) {
+                            reportUnverifiableLegacyPath()
+                            continue
+                        }
+                        if(!authorizedScopes.any { scope ->
+                                isWithinLibraryScope(scope, actualVol, actualVolumeUuid, rel, canonicalAbsolutePath)
+                            }){
                             if(Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE volume="+actualVol+" relativePath="+rel)
                             continue
                         }
@@ -331,6 +381,8 @@ object MediaStoreScanner {
                                 if (Build.VERSION.SDK_INT >= 29) {
                                     probeProjection += MediaStore.Video.Media.RELATIVE_PATH
                                     probeProjection += MediaStore.MediaColumns.VOLUME_NAME
+                                } else {
+                                    probeProjection += MediaStore.MediaColumns.DATA
                                 }
                                 val probeCursor = resolver.query(
                                     collection,
@@ -348,8 +400,12 @@ object MediaStoreScanner {
                                     val volumeColumn = if (Build.VERSION.SDK_INT >= 29) {
                                         probe.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
                                     } else -1
+                                    val absolutePathColumn = if (Build.VERSION.SDK_INT < 29) {
+                                        probe.getColumnIndex(MediaStore.MediaColumns.DATA)
+                                    } else -1
                                     if (idColumn < 0 || nameColumn < 0 ||
-                                        (Build.VERSION.SDK_INT >= 29 && (relativePathColumn < 0 || volumeColumn < 0))
+                                        (Build.VERSION.SDK_INT >= 29 && (relativePathColumn < 0 || volumeColumn < 0)) ||
+                                        (Build.VERSION.SDK_INT < 29 && absolutePathColumn < 0)
                                     ) {
                                         throw IllegalStateException("MediaStore stability probe is missing required scope columns.")
                                     }
@@ -375,8 +431,17 @@ object MediaStoreScanner {
                                         } else {
                                             volumeUuidCache.getOrPut(actualVolume) { volumeUuid(context, actualVolume) }
                                         }
+                                        val absolutePath = if (absolutePathColumn >= 0 && !probe.isNull(absolutePathColumn)) {
+                                            probe.getString(absolutePathColumn)?.trim()?.takeIf { it.isNotEmpty() }
+                                        } else null
+                                        val canonicalAbsolutePath = absolutePath?.let { path ->
+                                            runCatching { File(path).canonicalPath }.getOrNull()
+                                        }
+                                        if (Build.VERSION.SDK_INT < 29 && canonicalAbsolutePath == null) {
+                                            throw IllegalStateException("MediaStore stability probe returned an unverifiable file path.")
+                                        }
                                         if (authorizedScopes.any { scope ->
-                                                isWithinLibraryScope(scope, actualVolume, actualVolumeUuid, relativePath)
+                                                isWithinLibraryScope(scope, actualVolume, actualVolumeUuid, relativePath, canonicalAbsolutePath)
                                             }
                                         ) {
                                             foundInScope = true
