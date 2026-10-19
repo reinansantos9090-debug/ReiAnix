@@ -88,6 +88,12 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         self.assertIn("SELECT local_path FROM artwork", artwork)
         self.assertIn("UNION SELECT cover_cache FROM anime", artwork)
         self.assertIn("Unknown path/URI semantics protect every candidate", artwork)
+        self.assertIn("Database/reference errors must never authorize destructive cleanup", artwork)
+        artwork_trim_start = artwork.index("private fun trimCache()")
+        artwork_trim_end = artwork.index("private fun validImage(", artwork_trim_start)
+        artwork_trim = artwork[artwork_trim_start:artwork_trim_end]
+        self.assertIn("referencedCanonicalPaths(images.map { it.absolutePath })", artwork_trim)
+        self.assertIn("val used = isPathReferenced(path)", artwork_trim)
         start = extractor.index("private fun trimCache(")
         end = extractor.index("private fun promoteLegacyCache(", start)
         trim = extractor[start:end]
