@@ -127,6 +127,12 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         start = extractor.index("private fun promoteLegacyCache(")
         end = extractor.index("private fun sha256(", start)
         promote = extractor[start:end]
+        validation_start = extractor.index("private fun isValidCachedThumbnail(")
+        validation_end = extractor.index("private fun extractLocked(", validation_start)
+        validation = extractor[validation_start:validation_end]
+        self.assertIn("BitmapFactory.decodeFile(file.absolutePath, decodeOptions)", validation)
+        self.assertIn("sampleSize *= 2", validation)
+        self.assertIn("bitmap.recycle()", validation)
         self.assertIn("if (target.isFile && isValidCachedThumbnail(target)) return true", promote)
         self.assertIn("if (!isValidCachedThumbnail(temporary)) return false", promote)
         self.assertIn("if (target.exists() && !target.delete()) return false", promote)
