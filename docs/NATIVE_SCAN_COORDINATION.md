@@ -23,3 +23,12 @@ O cancelamento define um token cooperativo que os scanners consultam durante a e
 ## Integração legada ainda existente
 
 A publicação de lotes e dos eventos terminais ainda usa `NativeMailbox` para o fluxo Python/Flet existente. Este prompt adiciona coordenação e observabilidade nativas, mas não remove essa ponte nem transfere a autoridade do catálogo SQLite; isso exige substituição e validação em etapas posteriores.
+
+## Correções funcionais do Prompt 06.1/18
+
+- A sonda de estabilidade de `MediaStoreScanner` verifica agora se existem vídeos dentro das mesmas árvores SAF configuradas que a consulta primária utiliza. A existência de vídeos em outras pastas/volumes não deve, isoladamente, adiar uma conclusão vazia válida para o escopo da biblioteca.
+- A reutilização de snapshots MediaStore em cache consulta o token cooperativo de cancelamento entre os lotes e enquanto prepara os documentos de um lote. A solicitação de cancelamento propaga `CancellationException`; não é convertida em resultado vazio nem em sucesso.
+- As correções permanecem em `MediaStoreScanner`, reutilizando `NativeScanController`, `NativeScanRunner`, `NativeIndex` e os contratos de batch existentes. Não criam um segundo scanner, coordenador, cache persistente ou writer do catálogo.
+- MediaStore e Broad Storage continuam fontes diagnósticas conforme o contrato atual; a reconciliação canônica da biblioteca segue pelo fluxo SAF e pelo serviço/repositório SQLite existentes.
+- Esta alteração foi revisada estaticamente. Nenhum teste foi adicionado/alterado ou executado manualmente, e o resultado do workflow oficial no SHA final ainda precisa ser verificado antes de declarar o Prompt 06.1 concluído.
+
