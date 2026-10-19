@@ -80,5 +80,6 @@ A validação definitiva da compilação, testes de regressão e artefatos APK/Z
 
 - `VideoThumbnailExtractor.promoteLegacyCache` agora preserva um destino válido e permite substituir um destino vazio/corrompido somente depois de copiar, sincronizar e validar a imagem legada. O destino é revalidado imediatamente antes da substituição; a imagem legada não é apagada.
 - `ReiAnixArtworkService.isPathReferenced` canonicaliza tanto o caminho consultado quanto cada referência persistida em `artwork.local_path` e `anime.cover_cache`. Referências que não possam ser interpretadas com segurança fazem a consulta falhar de forma conservadora, impedindo a exclusão do arquivo.
+- As verificações de referência são agrupadas por operação de limpeza: `referencedCanonicalPaths` lê os caminhos persistidos uma única vez por lote e compara o conjunto canônico, evitando uma consulta completa ao banco para cada thumbnail. Referências desconhecidas ou URI-like protegem conservadoramente os candidatos do lote.
 - Os contratos de regressão verificam esses dois comportamentos e a ordem da validação antes da substituição.
 - A compilação e regressão do SHA final desta correção devem ser confirmadas pelo workflow oficial. A etapa continua **PARCIAL**; não foram executados testes Kotlin/JVM ou instrumentados manualmente, nem foi feito merge.
