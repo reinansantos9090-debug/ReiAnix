@@ -300,7 +300,14 @@ object MediaStoreScanner {
                         val changedAfterWait=consumeChangeNotification()
                         val probeHasMedia=if(!localCancelled && !cancelled && localErrors.length()==0){
                             runCatching{
-                                resolver.query(collection,arrayOf(MediaStore.Video.Media._ID),null,null,null)?.use{probe->probe.moveToFirst()} ?: false
+                                val probeCursor = resolver.query(
+                                    collection,
+                                    arrayOf(MediaStore.Video.Media._ID),
+                                    null,
+                                    null,
+                                    null,
+                                ) ?: throw IllegalStateException("MediaStore stability probe returned a null cursor.")
+                                probeCursor.use { probe -> probe.moveToFirst() }
                             }.getOrElse{
                                 localErrors.put("O MediaStore não conseguiu concluir a verificação de estabilidade do volume "+volumeName+".")
                                 false
