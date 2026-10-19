@@ -475,7 +475,7 @@ def test_native_player_handoff_applies_canonical_persisted_preferences():
     assert "SELECT key, value FROM preferences" in dispatcher
     assert "FROM preferences \" +" in dispatcher
     assert "WHERE key LIKE 'player.%' OR key LIKE 'gestures.%' OR key LIKE 'audio.%'" in dispatcher
-    assert "return null" in dispatcher  # unreadable SQLite preserves compatible handoff values
+    assert "Canonical player preferences unavailable; keeping compatible handoff values." in dispatcher
     assert "fun withCanonicalSettings(preferences: Map<String, String>?)" in request
     assert "ReiAnixSettingsContract.normalize(key, raw)" in request
     for key in (
