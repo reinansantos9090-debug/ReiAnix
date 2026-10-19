@@ -158,10 +158,18 @@ object MediaStoreScanner {
                 if(NativeIndex.canReuseMediaStoreVolume(context,volumeName,access,version,generation)){
                     val cachedGeneration=NativeIndex.cachedGeneration(context,scopeKey)
                     val cachedCount=NativeIndex.forEachCachedBatch(context,scopeKey,NativeBatch.DEFAULT_SIZE) { batch,batchNumber ->
+                        // Replaying a large cached snapshot must remain cooperatively cancellable,
+                        // just like enumerating the provider cursor on a fresh scan.
+                        if (shouldCancel()) {
+                            throw CancellationException("MediaStore cached scan cancelled")
+                        }
                         // Older physical-index generations predate parsedMedia/availability facts.
                         // Enrich the transient batch before publication without rewriting the
                         // cached snapshot or treating a cache hit as catalogue reconciliation.
                         for (index in 0 until batch.length()) {
+                            if (shouldCancel()) {
+                                throw CancellationException("MediaStore cached scan cancelled")
+                            }
                             val document = batch.optJSONObject(index) ?: continue
                             val rawMediaId = (document.opt("mediaId") as? Number)?.toLong()?.takeIf { it > 0L }
                             val rawName = (document.opt("name") as? String)?.trim()?.takeIf { it.isNotEmpty() }
@@ -298,22 +306,81 @@ object MediaStoreScanner {
                         val stableVersion=if(Build.VERSION.SDK_INT>=29)runCatching{MediaStore.getVersion(context,volumeName)}.getOrDefault(postVersion) else postVersion
                         val stableGeneration=if(Build.VERSION.SDK_INT>=30)runCatching{MediaStore.getGeneration(context,volumeName)}.getOrDefault(postGeneration) else postGeneration
                         val changedAfterWait=consumeChangeNotification()
-                        val probeHasMedia=if(!localCancelled && !cancelled && localErrors.length()==0){
+                        // A stable probe must use the same configured SAF scope as the primary
+                        // query. Videos elsewhere on the device do not mean this library tree is
+                        // still being indexed by MediaStore.
+                        val probeHasMediaInScope=if(!localCancelled && !cancelled && localErrors.length()==0){
                             runCatching{
+                                val probeProjection = mutableListOf(
+                                    MediaStore.Video.Media._ID,
+                                    MediaStore.Video.Media.DISPLAY_NAME,
+                                )
+                                if (Build.VERSION.SDK_INT >= 29) {
+                                    probeProjection += MediaStore.Video.Media.RELATIVE_PATH
+                                    probeProjection += MediaStore.MediaColumns.VOLUME_NAME
+                                }
                                 val probeCursor = resolver.query(
                                     collection,
-                                    arrayOf(MediaStore.Video.Media._ID),
+                                    probeProjection.toTypedArray(),
                                     null,
                                     null,
                                     null,
                                 ) ?: throw IllegalStateException("MediaStore stability probe returned a null cursor.")
-                                probeCursor.use { probe -> probe.moveToFirst() }
+                                probeCursor.use { probe ->
+                                    val idColumn = probe.getColumnIndex(MediaStore.Video.Media._ID)
+                                    val nameColumn = probe.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
+                                    val relativePathColumn = if (Build.VERSION.SDK_INT >= 29) {
+                                        probe.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
+                                    } else -1
+                                    val volumeColumn = if (Build.VERSION.SDK_INT >= 29) {
+                                        probe.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+                                    } else -1
+                                    if (idColumn < 0 || nameColumn < 0 ||
+                                        (Build.VERSION.SDK_INT >= 29 && (relativePathColumn < 0 || volumeColumn < 0))
+                                    ) {
+                                        throw IllegalStateException("MediaStore stability probe is missing required scope columns.")
+                                    }
+                                    var foundInScope = false
+                                    while (probe.moveToNext()) {
+                                        if (shouldCancel()) {
+                                            localCancelled = true
+                                            cancelled = true
+                                            break
+                                        }
+                                        val mediaId = probe.getLong(idColumn)
+                                        val name = probe.getString(nameColumn)?.trim()?.takeIf { it.isNotEmpty() }
+                                            ?: "video-$mediaId"
+                                        val relativeDirectory = if (relativePathColumn >= 0 && !probe.isNull(relativePathColumn)) {
+                                            probe.getString(relativePathColumn).orEmpty().trimEnd('/')
+                                        } else ""
+                                        val relativePath = if (relativeDirectory.isBlank()) name else "$relativeDirectory/$name"
+                                        val actualVolume = if (volumeColumn >= 0 && !probe.isNull(volumeColumn)) {
+                                            probe.getString(volumeColumn)
+                                        } else volumeName
+                                        val actualVolumeUuid = if (actualVolume == volumeName) {
+                                            baseVolumeUuid
+                                        } else {
+                                            volumeUuidCache.getOrPut(actualVolume) { volumeUuid(context, actualVolume) }
+                                        }
+                                        if (authorizedScopes.any { scope ->
+                                                isWithinLibraryScope(scope, actualVolume, actualVolumeUuid, relativePath)
+                                            }
+                                        ) {
+                                            foundInScope = true
+                                            break
+                                        }
+                                    }
+                                    foundInScope
+                                }
                             }.getOrElse{
+                                if (it is CancellationException) throw it
                                 localErrors.put("O MediaStore não conseguiu concluir a verificação de estabilidade do volume "+volumeName+".")
                                 false
                             }
                         } else false
-                        if(changedAfterWait || stableVersion!=postVersion || (Build.VERSION.SDK_INT>=30 && stableGeneration!=postGeneration) || probeHasMedia){
+                        if(changedAfterWait || stableVersion!=postVersion ||
+                            (Build.VERSION.SDK_INT>=30 && stableGeneration!=postGeneration) || probeHasMediaInScope
+                        ){
                             volumeWaitingForMediaStore=true
                         }
                     }
