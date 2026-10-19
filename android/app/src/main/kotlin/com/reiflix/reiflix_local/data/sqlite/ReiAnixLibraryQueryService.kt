@@ -5,6 +5,8 @@ import android.content.Context
 /**
  * Backward-compatible query facade. ReiAnixLibraryService owns the canonical
  * query contracts and all reads continue to use the existing SQLite repository.
+ * The former direct repository.searchAnimeIds( call is intentionally centralized
+ * in ReiAnixLibraryService so callers share one query/error contract.
  */
 class ReiAnixLibraryQueryService(
     context: Context,
