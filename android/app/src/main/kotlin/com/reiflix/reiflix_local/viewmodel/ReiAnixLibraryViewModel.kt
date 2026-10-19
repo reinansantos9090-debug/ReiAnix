@@ -1919,7 +1919,9 @@ class ReiAnixLibraryViewModel(
             try {
                 require(episodeId > 0L) { "O identificador do episódio é inválido." }
                 // Replaces the previous nativeLibraryRepository.getEpisode(episodeId)
-                // call with the single library-service entry point.
+                // call with the single library-service entry point. The old
+                // nativeLibraryRepository.getAnime(episode.animeId) read is also
+                // delegated through animeById below.
                 val episode = when (val result = nativeLibraryService.episodeById(episodeId)) {
                     is ReiAnixLibraryQueryResult.Success -> result.value
                     is ReiAnixLibraryQueryResult.Empty,
@@ -1948,7 +1950,8 @@ class ReiAnixLibraryViewModel(
                 // Preserve the availability predicate and ordering used by
                 // LibraryStore.player_navigation()/adjacent_episode() for Next/Previous.
                 // The native path must not silently change episode adjacency while
-                // removing the Python OPEN_MEDIA dispatcher.
+                // removing the Python OPEN_MEDIA dispatcher. This replaces the prior
+                // nativeLibraryRepository.listEpisodes(episode.animeId) call.
                 val neighborEpisodes = when (val result = nativeLibraryService.episodesForAnime(episode.animeId)) {
                     is ReiAnixLibraryQueryResult.Success -> result.value
                     is ReiAnixLibraryQueryResult.Empty -> emptyList()
