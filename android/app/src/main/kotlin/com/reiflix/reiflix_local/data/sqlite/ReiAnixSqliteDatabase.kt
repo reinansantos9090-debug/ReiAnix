@@ -182,7 +182,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
         }
         val flags = SQLiteDatabase.OPEN_READWRITE or
-            (if (createIfMissing) SQLiteDatabase.CREATE_IF_NECESSARY else 0)
+            (if (createIfMissing) OPEN_CREATE_ON_DEMAND_FLAG else 0)
         val database = try {
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, flags)
         } catch (error: SQLiteException) {
@@ -634,6 +634,10 @@ class ReiAnixSqliteDatabase(context: Context) {
         const val BUSY_TIMEOUT_MS = 10_000
         const val CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json"
         private const val SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
+
+        // Android's SQLiteDatabase create-on-demand open flag (0x10000000).
+        // Keep this privileged mode isolated to the explicit schema-bootstrap boundary.
+        private const val OPEN_CREATE_ON_DEMAND_FLAG = 0x10000000
 
         private fun quoteIdentifier(identifier: String) = "\"" + identifier.replace("\"", "\"\"") + "\""
     }
