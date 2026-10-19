@@ -1,10 +1,7 @@
 package com.reiflix.reiflix_local.data.sqlite
 
-import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 
 /**
  * Initializes and advances the single canonical LibraryStore-compatible SQLite schema.
@@ -17,10 +14,8 @@ import java.io.File
  * already performed by LibraryStore is applied after structural changes.
  */
 internal class ReiAnixSqliteSchemaBootstrap(
-    context: Context,
     private val databaseBoundary: ReiAnixSqliteDatabase,
 ) {
-    private val appContext = context.applicationContext
 
     internal enum class Outcome {
         ALREADY_CURRENT,
@@ -33,7 +28,8 @@ internal class ReiAnixSqliteSchemaBootstrap(
      * evidence. Damaged files and unsupported future contracts fail closed; they are
      * never silently replaced with an empty catalog.
      */
-    fun ensureCurrentSchema(): Outcome = synchronized(PROCESS_LOCK) {
+    fun ensureCurrentSchema(): Outcome {
+        return synchronized(PROCESS_LOCK) {
         val canonicalFile = databaseBoundary.canonicalDatabaseFile
         val existedBefore = canonicalFile.exists()
         if (existedBefore) {
@@ -42,7 +38,7 @@ internal class ReiAnixSqliteSchemaBootstrap(
             }
             val snapshot = databaseBoundary.inspectSchema()
             ensureSafeToMigrate(snapshot)
-            if (snapshot.supportsCurrentContract) return Outcome.ALREADY_CURRENT
+            if (snapshot.supportsCurrentContract) return@synchronized Outcome.ALREADY_CURRENT
             if (snapshot.schemaVersion == ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION) {
                 throw ReiAnixSqliteSchemaMismatchException(snapshot.incompatibilities)
             }
@@ -70,12 +66,6 @@ internal class ReiAnixSqliteSchemaBootstrap(
                 } else {
                     if (current.schemaVersion == expectedVersion) {
                         throw ReiAnixSqliteSchemaMismatchException(current.incompatibilities)
-                    }
-
-                    val existingTables = current.tables
-                    if (existingTables.isEmpty() && existedBefore) {
-                        // A valid but empty SQLite file has no user rows to migrate.
-                        // It is safe to initialize its schema in place, at this path.
                     }
 
                     for (index in 0 until tablesSql.length()) {
@@ -137,6 +127,7 @@ internal class ReiAnixSqliteSchemaBootstrap(
             }
         }
         outcome
+        }
     }
 
     private fun ensureSafeToMigrate(snapshot: ReiAnixSqliteSchemaSnapshot) {
