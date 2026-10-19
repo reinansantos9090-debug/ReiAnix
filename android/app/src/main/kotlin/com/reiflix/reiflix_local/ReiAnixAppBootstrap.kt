@@ -397,8 +397,12 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     private fun inspectCanonicalDatabase(): CanonicalDatabaseCheck {
-        val dataDirectory = File(appContext.filesDir, "data")
-        val canonicalFile = File(dataDirectory, ReiAnixBackupService.DATABASE_NAME)
+        // Use the exact file owned by the SQLite boundary; do not independently
+        // reconstruct a path that could drift from repository reads and writes.
+        val canonicalFile = dependencies.sqliteDatabase.canonicalDatabaseFile
+        val dataDirectory = requireNotNull(canonicalFile.parentFile) {
+            "The canonical SQLite database must be inside the app's data directory."
+        }
         if (!canonicalFile.exists()) {
             val interruptedPromotion = dataDirectory.listFiles()
                 ?.any { file ->
