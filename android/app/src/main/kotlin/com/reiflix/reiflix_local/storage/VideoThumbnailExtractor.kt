@@ -66,7 +66,10 @@ object VideoThumbnailExtractor {
         modifiedAt: Long = 0L,
         mediaIdentity: String? = null,
     ): Result? {
-        val cacheDir = File(context.cacheDir, "reiflix/thumbnails")
+        // Keep database-referenced thumbnails in durable app-private storage under
+        // the existing artwork cache root. Android may delete cacheDir contents at
+        // any time, which would otherwise leave persistent SQLite rows dangling.
+        val cacheDir = File(File(File(context.filesDir, "data/covers"), "artwork"), "thumbnails")
         if (!cacheDir.exists() && !cacheDir.mkdirs()) return null
 
         val identity = mediaIdentity?.trim().takeUnless { it.isNullOrEmpty() } ?: uri.toString()
@@ -76,6 +79,12 @@ object VideoThumbnailExtractor {
             latestKeyByUri.keys.asSequence().filter { it != uri.toString() }.take(1024).forEach(latestKeyByUri::remove)
         }
         val target = File(cacheDir, key + ".jpg")
+        // Preserve already-generated images from older releases before attempting to
+        // decode the source video again. The legacy cache remains read-only here.
+        if (!target.isFile || target.length() <= 0L) {
+            val legacyTarget = File(File(context.cacheDir, "reiflix/thumbnails"), key + ".jpg")
+            promoteLegacyCache(legacyTarget, target)
+        }
         val requestId = "thumb-" + key.take(12)
         NativeMailbox.writeBestEffort(
             context,
@@ -451,6 +460,31 @@ object VideoThumbnailExtractor {
                     val jpg = File(directory, metadata.nameWithoutExtension + ".jpg")
                     if (!jpg.isFile) metadata.delete()
                 }
+        }
+    }
+
+    private fun promoteLegacyCache(legacy: File, target: File): Boolean {
+        if (!legacy.isFile || !isValidCachedThumbnail(legacy) || target.exists()) return false
+        val temporary = File(target.parentFile, "." + target.name + "." +
+            android.os.SystemClock.elapsedRealtimeNanos() + ".tmp")
+        return try {
+            legacy.inputStream().use { input ->
+                FileOutputStream(temporary).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                    output.fd.sync()
+                }
+            }
+            if (!isValidCachedThumbnail(temporary)) return false
+            if (!temporary.renameTo(target)) {
+                target.isFile && isValidCachedThumbnail(target)
+            } else {
+                true
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            temporary.delete()
         }
     }
 
