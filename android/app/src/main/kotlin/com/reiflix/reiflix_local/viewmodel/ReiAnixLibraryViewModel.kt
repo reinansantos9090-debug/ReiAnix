@@ -21,10 +21,6 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
-import com.reiflix.reiflix_local.data.sqlite.toggleAnimePinned
-import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
-import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
-import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
@@ -1387,9 +1383,11 @@ class ReiAnixLibraryViewModel(
                     refreshNativeCatalog()
                 }
         }
-        // Canonical domain mutations publish only after their SQLite write returns.
-        // Scan writes are refreshed by NativeScanController above, preventing a second
-        // catalogue reload per scan batch.
+        // Scan writes are refreshed once by NativeScanController at terminal state.
+        // Personal mutation wrappers also publish repository.state for legacy consumers;
+        // exclude those events here to avoid reloading the same committed catalog twice.
+        // Volume availability and successful SAF re-keying have no guaranteed terminal
+        // scan, so their confirmed service events must refresh native Compose immediately.
         viewModelScope.launch {
             nativeLibraryService.changes
                 .map { change -> change.revision to change.operation }
@@ -1398,8 +1396,10 @@ class ReiAnixLibraryViewModel(
                 .collectLatest { (_, operation) ->
                     if (operation !in setOf(
                             "indexDiscoveredMedia",
-                            "recordNativeVolumeChange",
-                            "reconcileSafDocumentIdentityChange",
+                            "toggleAnimePinned",
+                            "setAnimePersonalNote",
+                            "setAnimeUserTags",
+                            "setEpisodeManualIdentification",
                         )
                     ) {
                         refreshNativeCatalog()
