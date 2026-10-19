@@ -94,6 +94,34 @@ object NativeScanRunner {
                     continue
                 }
 
+                val documentId = Uri.decode(identity.documentId)
+                val separator = documentId.indexOf(':')
+                if (separator <= 0 || documentId.substringBefore(':') != identity.volumeId) {
+                    warnBoth("A identidade do volume de uma pasta SAF local não pôde ser validada.")
+                    continue
+                }
+                val relativePath = documentId.substring(separator + 1).trim('/')
+                val pathSegments = relativePath.split('/').filter { it.isNotEmpty() }
+                if (pathSegments.any { it == "." || it == ".." || it.contains('\\\\') }) {
+                    warnBoth("O caminho relativo de uma pasta SAF local não é seguro para a varredura.")
+                    continue
+                }
+                val normalizedRelativePath = pathSegments.joinToString(File.separator)
+                if (normalizedRelativePath.isEmpty()) {
+                    // MediaStoreScanner intentionally requires a bounded subdirectory;
+                    // a whole-volume URI must not masquerade as a verified empty scope.
+                    mediaStoreWarnings += "Uma raiz SAF cobre o volume inteiro e não pode ser representada como uma subpasta do MediaStore."
+                } else {
+                    val scope = MediaStoreScanner.LibraryScope(
+                        authority = identity.authority,
+                        volumeId = identity.volumeId,
+                        treeDocumentId = identity.documentId,
+                    )
+                    mediaStoreScopes["${scope.authority}|${scope.volumeId}|${scope.treeDocumentId}"] = scope
+                }
+
+                // MediaStore can query its own provider independently of broad filesystem
+                // traversal, so the physical File mapping below is only required by BroadStorage.
                 val requestedVolume = identity.volumeId.trim()
                 val physicalRoot = physicalRoots.firstOrNull { root ->
                     when {
@@ -110,19 +138,6 @@ object NativeScanRunner {
                     continue
                 }
 
-                val documentId = Uri.decode(identity.documentId)
-                val separator = documentId.indexOf(':')
-                if (separator <= 0 || documentId.substringBefore(':') != identity.volumeId) {
-                    warnBoth("A identidade do volume de uma pasta SAF local não pôde ser validada.")
-                    continue
-                }
-                val relativePath = documentId.substring(separator + 1).trim('/')
-                val pathSegments = relativePath.split('/').filter { it.isNotEmpty() }
-                if (pathSegments.any { it == "." || it == ".." || it.contains('\\') }) {
-                    warnBoth("O caminho relativo de uma pasta SAF local não é seguro para a varredura.")
-                    continue
-                }
-                val normalizedRelativePath = pathSegments.joinToString(File.separator)
                 val candidate = runCatching {
                     if (normalizedRelativePath.isEmpty()) physicalRoot.file.canonicalFile
                     else File(physicalRoot.file, normalizedRelativePath).canonicalFile
@@ -137,18 +152,6 @@ object NativeScanRunner {
                 }
 
                 broadStorageRoots[candidate.path] = candidate
-                if (normalizedRelativePath.isEmpty()) {
-                    // MediaStoreScanner intentionally requires a bounded subdirectory;
-                    // a whole-volume URI must not masquerade as a verified empty scope.
-                    mediaStoreWarnings += "Uma raiz SAF cobre o volume inteiro e não pode ser representada como uma subpasta do MediaStore."
-                } else {
-                    val scope = MediaStoreScanner.LibraryScope(
-                        authority = identity.authority,
-                        volumeId = identity.volumeId,
-                        treeDocumentId = identity.documentId,
-                    )
-                    mediaStoreScopes["${scope.authority}|${scope.volumeId}|${scope.treeDocumentId}"] = scope
-                }
             }
 
             ConfiguredLocalScanScopes(
