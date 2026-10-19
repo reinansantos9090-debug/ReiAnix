@@ -75,3 +75,10 @@ A validação definitiva da compilação, testes de regressão e artefatos APK/Z
 - A primeira execução de CI (`Build ReiAnix Android APK`, run 6191) executou `pytest`: 1.972 passaram, 58 subtests passaram e 1 teste falhou porque ainda exigia a limpeza global destrutiva de `cover_cache`. O contrato do teste foi atualizado sem remover cobertura.
 - A execução seguinte (run 6192) estava em andamento no momento desta nota; o resultado final de compilação, testes e workflows deve ser reportado a partir do commit final da PR.
 - A migração do caminho Compose é nativa, mas a migração completa de todos os consumidores Python/Flet permanece pendente; a etapa não será declarada integralmente concluída até essa fronteira ser resolvida e os workflows relevantes terminarem.
+
+### Correções adicionais após revisão do Prompt 07
+
+- `VideoThumbnailExtractor.promoteLegacyCache` agora preserva um destino válido e permite substituir um destino vazio/corrompido somente depois de copiar, sincronizar e validar a imagem legada. O destino é revalidado imediatamente antes da substituição; a imagem legada não é apagada.
+- `ReiAnixArtworkService.isPathReferenced` canonicaliza tanto o caminho consultado quanto cada referência persistida em `artwork.local_path` e `anime.cover_cache`. Referências que não possam ser interpretadas com segurança fazem a consulta falhar de forma conservadora, impedindo a exclusão do arquivo.
+- Os contratos de regressão verificam esses dois comportamentos e a ordem da validação antes da substituição.
+- A compilação e regressão do SHA final desta correção devem ser confirmadas pelo workflow oficial. A etapa continua **PARCIAL**; não foram executados testes Kotlin/JVM ou instrumentados manualmente, nem foi feito merge.
