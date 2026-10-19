@@ -75,7 +75,7 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         )
         self.assertIn('ownsManualField(manualFields, "cover_cache")', source)
         self.assertIn("stillLocallyOwned", source)
-        self.assertIn('"manual=1 OR LOWER(COALESCE(source,\'\')) IN (\'manual\',\'local\')"', source)
+        self.assertIn("manual=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')", source)
 
     def test_thumbnail_cache_eviction_never_deletes_persisted_paths(self):
         artwork = ARTWORK.read_text(encoding="utf-8")
@@ -87,6 +87,9 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         end = extractor.index("private fun sha256(", start)
         trim = extractor[start:end]
         self.assertIn("artworkService.isPathReferenced(file.absolutePath)", trim)
+        self.assertIn('File(File(File(context.filesDir, "data/covers"), "artwork"), "thumbnails")', extractor)
+        self.assertIn("promoteLegacyCache(legacyTarget, target)", extractor)
+        self.assertIn("legacyTarget = File(File(context.cacheDir, \"reiflix/thumbnails\"), key + \".jpg\")", extractor)
         self.assertLess(
             trim.index("artworkService.isPathReferenced(file.absolutePath)"),
             trim.index("if (file.delete())"),
