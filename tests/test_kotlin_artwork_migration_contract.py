@@ -81,18 +81,35 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         artwork = ARTWORK.read_text(encoding="utf-8")
         extractor = EXTRACTOR.read_text(encoding="utf-8")
         self.assertIn("fun isPathReferenced(path: String): Boolean", artwork)
-        self.assertIn("local_path IN (?, ?)", artwork)
-        self.assertIn("cover_cache IN (?, ?)", artwork)
+        self.assertIn("File(path).canonicalFile.path", artwork)
+        self.assertIn("File(persisted).canonicalFile.path", artwork)
+        self.assertIn("SELECT local_path FROM artwork", artwork)
+        self.assertIn("UNION SELECT cover_cache FROM anime", artwork)
+        self.assertIn("Unknown path semantics must fail closed", artwork)
         start = extractor.index("private fun trimCache(")
-        end = extractor.index("private fun sha256(", start)
+        end = extractor.index("private fun promoteLegacyCache(", start)
         trim = extractor[start:end]
         self.assertIn("artworkService.isPathReferenced(file.absolutePath)", trim)
         self.assertIn('File(File(File(context.filesDir, "data/covers"), "artwork"), "thumbnails")', extractor)
         self.assertIn("promoteLegacyCache(legacyTarget, target)", extractor)
-        self.assertIn("legacyTarget = File(File(context.cacheDir, \"reiflix/thumbnails\"), key + \".jpg\")", extractor)
+        self.assertIn('legacyTarget = File(File(context.cacheDir, "reiflix/thumbnails"), key + ".jpg")', extractor)
         self.assertLess(
             trim.index("artworkService.isPathReferenced(file.absolutePath)"),
             trim.index("if (file.delete())"),
+        )
+
+    def test_legacy_thumbnail_recovery_replaces_only_invalid_targets(self):
+        extractor = EXTRACTOR.read_text(encoding="utf-8")
+        start = extractor.index("private fun promoteLegacyCache(")
+        end = extractor.index("private fun sha256(", start)
+        promote = extractor[start:end]
+        self.assertIn("if (target.isFile && isValidCachedThumbnail(target)) return true", promote)
+        self.assertIn("if (!isValidCachedThumbnail(temporary)) return false", promote)
+        self.assertIn("if (target.exists() && !target.delete()) return false", promote)
+        self.assertIn("isValidCachedThumbnail(target)", promote)
+        self.assertLess(
+            promote.index("if (!isValidCachedThumbnail(temporary)) return false"),
+            promote.index("if (target.exists() && !target.delete()) return false"),
         )
 
     def test_event_is_emitted_only_after_native_persistence_path(self):
