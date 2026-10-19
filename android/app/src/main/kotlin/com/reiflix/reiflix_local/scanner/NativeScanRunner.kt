@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.scanner
 import android.content.Context
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.storage.NativeIndex
@@ -113,17 +114,20 @@ object NativeScanRunner {
                     continue
                 }
                 val normalizedRelativePath = pathSegments.joinToString(File.separator)
-                if (normalizedRelativePath.isEmpty()) {
+                val mediaStoreScopeKey = if (normalizedRelativePath.isEmpty()) {
                     // MediaStoreScanner intentionally requires a bounded subdirectory;
                     // a whole-volume URI must not masquerade as a verified empty scope.
                     mediaStoreWarnings += "Uma raiz SAF cobre o volume inteiro e não pode ser representada como uma subpasta do MediaStore."
+                    null
                 } else {
                     val scope = MediaStoreScanner.LibraryScope(
                         authority = identity.authority,
                         volumeId = identity.volumeId,
                         treeDocumentId = identity.documentId,
                     )
-                    mediaStoreScopes["${scope.authority}|${scope.volumeId}|${scope.treeDocumentId}"] = scope
+                    val key = "${scope.authority}|${scope.volumeId}|${scope.treeDocumentId}"
+                    mediaStoreScopes[key] = scope
+                    key
                 }
 
                 // MediaStore can query its own provider independently of broad filesystem
@@ -141,6 +145,9 @@ object NativeScanRunner {
                 }
                 if (physicalRoot == null) {
                     broadStorageWarnings += "O volume de uma pasta SAF local não está montado ou não pôde ser identificado."
+                    if (Build.VERSION.SDK_INT < 29 && mediaStoreScopeKey != null) {
+                        mediaStoreWarnings += "Uma pasta SAF local não pôde ser mapeada para validar caminhos do MediaStore neste Android."
+                    }
                     continue
                 }
 
@@ -154,9 +161,19 @@ object NativeScanRunner {
                     !candidate.exists() || !candidate.isDirectory || isRestrictedRoot(candidate)
                 ) {
                     broadStorageWarnings += "Uma pasta SAF local não pôde ser mapeada com segurança para um diretório montado."
+                    if (Build.VERSION.SDK_INT < 29 && mediaStoreScopeKey != null) {
+                        mediaStoreWarnings += "Uma pasta SAF local não pôde ser validada por caminho físico para o MediaStore neste Android."
+                    }
                     continue
                 }
 
+                // RELATIVE_PATH is unavailable on API 24–28. Bind the legacy
+                // MediaStore matcher to this canonical, SAF-validated directory.
+                if (Build.VERSION.SDK_INT < 29 && mediaStoreScopeKey != null) {
+                    mediaStoreScopes[mediaStoreScopeKey]?.let { scope ->
+                        mediaStoreScopes[mediaStoreScopeKey] = scope.copy(physicalPath = candidate.path)
+                    }
+                }
                 broadStorageRoots[candidate.path] = candidate
             }
 
