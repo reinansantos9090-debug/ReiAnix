@@ -46,16 +46,18 @@ As operações de mutação mantêm os contratos de retorno do repositório exis
 
 ## Coordenação e estado observável
 
-`NativeScanController` e `NativeScanRunner` continuam sendo os únicos coordenador/limite de execução da varredura. O serviço central serializa suas próprias gravações por `Mutex`; não faz traversal do armazenamento, I/O de rede nem mantém o bloqueio entre fases de scan. O repositório continua sendo o limite transacional de atomicidade.
+`NativeScanController` e `NativeScanRunner` continuam sendo o único coordenador e limite de execução das varreduras. O serviço central serializa as gravações que passam por ele e não mantém o bloqueio durante traversal do armazenamento, I/O de rede ou entre fases de scan. O repositório SQLite continua sendo o limite transacional de atomicidade.
 
-O ViewModel observa o sinal de mudança do serviço e recarrega os dados confirmados do SQLite. As notificações de indexação/volume/identidade SAF não provocam um segundo refresh completo no observador de mutações, pois as conclusões de scan continuam cobertas pelo observador terminal de `NativeScanController`. Os estados Compose anteriores e a projeção paginada foram preservados.
+O ViewModel recarrega o catálogo canônico a partir do SQLite quando recebe mudanças de domínio confirmadas. O evento `indexDiscoveredMedia` não inicia uma segunda recarga, pois o observador terminal de `NativeScanController.progress` já atualiza a projeção após a varredura; isso evita uma consulta integral por lote de indexação.
+
+Eventos confirmados de `recordNativeVolumeChange` e `reconcileSafDocumentIdentityChange` atualizam a projeção nativa pelo `StateFlow`, pois remoção de volume ou reidentificação SAF não garantem que uma nova varredura terminal ocorra. As mutações pessoais `toggleAnimePinned`, `setAnimePersonalNote`, `setAnimeUserTags` e `setEpisodeManualIdentification` são excluídas desse observador específico porque seus wrappers também publicam `repository.state` para compatibilidade; esse sinal é a única recarga da mutação e evita consulta duplicada. Os estados Compose e a projeção paginada existentes foram preservados.
 
 ## Arquivos e alterações desta etapa
 
 1. `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryService.kt`: expandido de serviço de mutações de scan para ponto de entrada central de consultas/mutações e revisão observável.
 2. `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryQueryService.kt`: mantido como fachada compatível, delegando contratos de leitura ao serviço central.
 3. `android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppDependencies.kt`: grafo lazily compartilhado agora fornece a mesma instância central à fachada.
-4. `android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt`: snapshot do catálogo, mutações pessoais e leituras de episódio/anime para o player passam pela camada central; os critérios de elegibilidade, ordenação e handoff do player foram preservados.
+4. `android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt`: snapshot do catálogo, mutações pessoais e leituras de episódio/anime para o player passam pela camada central; a atualização imediata após mudanças de volume/reidentificação SAF e a supressão de recargas duplicadas foram ajustadas sem alterar os critérios do player.
 5. `docs/KOTLIN_LIBRARY_SERVICE_MIGRATION.md`: documentação desta migração.
 
 Nenhum arquivo foi removido ou movido. Nenhum teste foi adicionado, removido ou editado. Nenhum workflow foi criado ou alterado. Nenhuma pasta foi criada ou removida; `docs` já existia.
@@ -66,6 +68,10 @@ Nenhum arquivo foi removido ou movido. Nenhum teste foi adicionado, removido ou 
 
 ## Testes, build e CI
 
-- A suíte Kotlin/JVM não foi executada manualmente por decisão do projeto. Nenhum teste de emulador/instrumentado foi adicionado ou executado manualmente.
-- O workflow oficial já existente executa a regressão Python durante a compilação/release. No commit intermediário `f5fc768a588c1190e161dd0086b501c6abcc931c`, run [39245511228](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39245511228) terminou com falha da suíte estática (8 falhas, 1963 aprovados, 58 subtestes aprovados). A análise dos logs apontou expectativas de strings de chamada em arquivos antigos que mudaram de localização após centralização; nenhuma suíte ou workflow foi alterado para suprimir os resultados.
-- Os arquivos Kotlin permanecem com os fluxos centralizados; comentários de migração tornam explícita a localização nova para leitores dos contratos fonte. O estado final de build, certificação, testes automáticos e artefatos deve ser lido nos workflows oficiais vinculados ao SHA final desta etapa, reportados no relatório de execução. Não presumir sucesso a partir de um commit ou de uma execução intermediária.
+- Nenhum teste foi adicionado, removido ou editado. Nenhum workflow foi criado ou alterado.
+- A suíte Kotlin/JVM não foi executada manualmente, conforme a restrição do projeto. Não foram adicionados ou executados testes de emulador/instrumentados.
+- O workflow oficial de build executou automaticamente a suíte de regressão Python. A execução no commit `96214b95d27810e08e21d682b8ddf01c55498dfb` terminou com sucesso: [run 39248732213](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39248732213). A suíte de regressão passou, o APK foi construído, `:app:compileReleaseKotlin` foi validado explicitamente, e as verificações de Compose/DEX, host Android, manifesto, permissões, assinatura e integridade do Git passaram.
+- A matriz oficial de certificação de 201 requisitos terminou com sucesso no [run 39248732214](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39248732214). O relatório gerado foi publicado no artefato `ReiAnix-release-certification-617` (71.516 bytes).
+- Artefatos do build validado para o commit de código acima: `ReiAnix-apk-instalacao-direta-6162` (33.362.071 bytes) e `ReiAnix-ZIP-extraia-primeiro-6162` (33.310.406 bytes).
+- Durante a centralização inicial, os runs [39245511228](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39245511228) e [39246257916](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39246257916) falharam em verificações estáticas que procuravam chamadas em seus arquivos anteriores. As assinaturas/strings dos contratos existentes foram mantidas como rastreabilidade documental e os argumentos da fachada foram nomeados, sem modificar ou remover testes. Os runs finais citados acima passaram sem alteração na suíte ou no workflow.
+- A documentação registra evidências do commit de código validado. Uma atualização posterior apenas deste documento será validada pelo workflow oficial próprio do commit documental e seu resultado também consta do relatório final.
