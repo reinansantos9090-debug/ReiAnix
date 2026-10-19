@@ -284,7 +284,7 @@ object VideoThumbnailExtractor {
                 return null
             }
 
-            trimCache(target.parentFile ?: return null, target)
+            trimCache(context, target.parentFile ?: return null, target)
             val result = Result(
                 path = target.absolutePath,
                 durationMs = durationMs,
@@ -421,21 +421,28 @@ object VideoThumbnailExtractor {
         }
     }
 
-    private fun trimCache(directory: File, protected: File) {
+    private fun trimCache(context: Context, directory: File, protected: File) {
         runCatching {
+            // Generated thumbnails are persisted in SQLite. Never evict a file while
+            // an artwork/cover_cache row still points at it; the budget is soft when
+            // all remaining images are owned by the library.
+            val artworkService = ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.artworkService ?: return@runCatching
             val files = directory.listFiles()
                 ?.filter { it.isFile && it.extension.equals("jpg", ignoreCase = true) }
                 ?.sortedBy { it.lastModified() }
-                ?: return
+                ?: return@runCatching
             var total = files.sumOf { it.length() }
-            if (total <= MAX_CACHE_BYTES) return
-            for (file in files) {
-                if (file == protected) continue
-                if (total <= MAX_CACHE_BYTES) break
-                val length = file.length()
-                if (file.delete()) {
-                    total -= length
-                    cacheMetadataFile(file).delete()
+            if (total > MAX_CACHE_BYTES) {
+                for (file in files) {
+                    if (file == protected) continue
+                    if (total <= MAX_CACHE_BYTES) break
+                    if (artworkService.isPathReferenced(file.absolutePath)) continue
+                    val length = file.length()
+                    if (file.delete()) {
+                        total -= length
+                        cacheMetadataFile(file).delete()
+                    }
                 }
             }
             directory.listFiles()
