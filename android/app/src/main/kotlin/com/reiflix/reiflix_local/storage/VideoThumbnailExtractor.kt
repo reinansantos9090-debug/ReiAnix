@@ -221,9 +221,25 @@ object VideoThumbnailExtractor {
 
     private fun isValidCachedThumbnail(file: File): Boolean = runCatching {
         if (!file.isFile || file.length() <= 0L) return false
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, options)
-        options.outWidth > 0 && options.outHeight > 0
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+
+        // Decode pixels as well as headers so a truncated/corrupt JPEG cannot be
+        // promoted as valid. Sampling keeps validation memory bounded for bad files.
+        var sampleSize = 1
+        while (bounds.outWidth / sampleSize > MAX_FRAME_DIMENSION ||
+            bounds.outHeight / sampleSize > MAX_FRAME_DIMENSION
+        ) {
+            sampleSize *= 2
+        }
+        val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath, decodeOptions) ?: return false
+        try {
+            bitmap.width > 0 && bitmap.height > 0
+        } finally {
+            bitmap.recycle()
+        }
     }.getOrDefault(false)
 
     private fun extractLocked(
