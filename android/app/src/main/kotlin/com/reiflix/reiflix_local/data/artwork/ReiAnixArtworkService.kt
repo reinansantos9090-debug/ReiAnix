@@ -768,7 +768,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         val pendingBackfill = backfillJob
                         pendingBackfill?.cancel()
                         val activeJobs = synchronized(jobs) {
-                            jobs.values.toList().also { active -> active.forEach(Job::cancel) }
+                            jobs.values.toList().also { active -> active.forEach { it.cancel() } }
                         }
                         activeJobs.joinAll()
                         pendingBackfill?.join()
