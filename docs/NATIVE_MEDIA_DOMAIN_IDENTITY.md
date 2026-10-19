@@ -56,3 +56,6 @@ This removes the need for a Python parse fallback in the native scan/recovery fl
 
 
 Recovery parsing validates the serialized numeric fields before trusting a previously stored `parsedMedia` object. Missing, incomplete or malformed numeric values are rebuilt from the stored relative path/file name through `MediaFilenameParser` Kotlin; the saved `NativeIndex` snapshot itself remains untouched.
+
+
+The legacy-compatible Python ingest boundary can now consume the structured `parsedMedia` output produced by the native scanner and avoid reparsing those records in Python. This contract path is accepted only when required strings, kinds, confidence, numeric fields and evidence arrays are valid. Documents from desktop/older producers without a complete valid contract still use the Python parser, so this change does not remove that dependency globally.

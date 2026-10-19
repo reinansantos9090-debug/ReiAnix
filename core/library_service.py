@@ -4,6 +4,7 @@ import os
 import time
 import json
 import logging
+import math
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -13,7 +14,7 @@ from dataclasses import dataclass, field
 from core.anilist import AniListClient
 from core.consumption import consumption_state
 from core.artwork import ArtworkEngine, PRESENTATION_READY
-from core.library_parser import VIDEO_EXTENSIONS, parse_video_path
+from core.library_parser import ParsedEpisode, VIDEO_EXTENSIONS, parse_video_path
 from core.media_identity import identity_from_document
 from core.storage_access import saf_source_identity
 from core.organizer_ai import AnimeOrganizer, MatchContext
@@ -24,6 +25,102 @@ from core.library_discovery import duration_anomalies, format_duration, marathon
 from core.collector_journey import build_collector_journey, set_active_title
 
 logger = logging.getLogger(__name__)
+
+
+_NATIVE_MEDIA_KINDS = {"regular", "special", "ova", "oad", "ona", "extra", "movie", "unknown"}
+_NATIVE_MEDIA_CONFIDENCE = {"high", "medium", "low"}
+
+
+def _parsed_episode_from_native_contract(value):
+    """Use the structured Android/Kotlin parser result when a complete contract is supplied.
+
+    None means no valid complete native result was supplied; callers may then use the
+    conservative legacy parser for old Python/desktop or compatibility payloads.
+    """
+    if not isinstance(value, dict):
+        return None
+
+    string_fields = (
+        "animeTitle", "kind", "identificationSource", "confidence", "displayTitle", "extension",
+    )
+    numeric_fields = ("season", "episodeNumber", "absoluteNumber")
+    if any(field not in value for field in (*string_fields, *numeric_fields)):
+        return None
+    if any(not isinstance(value[field], str) for field in string_fields):
+        return None
+
+    anime_title = value["animeTitle"].strip()
+    kind = value["kind"].strip().lower()
+    source = value["identificationSource"].strip()
+    confidence = value["confidence"].strip().lower()
+    display_title = value["displayTitle"].strip()
+    extension = value["extension"]
+    if (
+        not anime_title
+        or kind not in _NATIVE_MEDIA_KINDS
+        or not source
+        or confidence not in _NATIVE_MEDIA_CONFIDENCE
+        or not display_title
+    ):
+        return None
+
+    def optional_number(field, *, integer_only=False):
+        raw = value[field]
+        if raw is None:
+            return None
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError(f"{field} is not a JSON number or null")
+        number = float(raw)
+        if not math.isfinite(number):
+            raise ValueError(f"{field} is not finite")
+        if integer_only:
+            if not number.is_integer():
+                raise ValueError(f"{field} must be an integer")
+            return int(number)
+        return number
+
+    try:
+        season = optional_number("season", integer_only=True)
+        episode = optional_number("episodeNumber")
+        absolute_number = optional_number("absoluteNumber", integer_only=True)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+    if season is not None and season < 0:
+        return None
+    if episode is not None and episode <= 0:
+        return None
+    if absolute_number is not None and absolute_number <= 0:
+        return None
+    if kind == "regular" and episode is None and absolute_number is None:
+        return None
+
+    def string_tuple(field):
+        items = value.get(field, [])
+        if not isinstance(items, list) or any(not isinstance(item, str) for item in items):
+            return None
+        return tuple(items)
+
+    evidence = string_tuple("evidence")
+    unresolved = string_tuple("unresolved")
+    technical_tokens = string_tuple("technicalTokens")
+    if evidence is None or unresolved is None or technical_tokens is None:
+        return None
+
+    return ParsedEpisode(
+        anime_title=anime_title,
+        season=season,
+        episode=episode,
+        display_title=display_title,
+        extension=extension,
+        episode_type=kind,
+        identification_source=source,
+        confidence=confidence,
+        absolute_number=absolute_number,
+        evidence=evidence,
+        unresolved_parts=unresolved,
+        technical_tokens=technical_tokens,
+    )
 
 @dataclass
 class ScanResult:
@@ -1397,12 +1494,17 @@ class LibraryService:
             result.unchanged += 1
             return uri
 
-        try:
-            item = parse_video_path(relative_path, source_folder)
-        except (OSError, ValueError, UnicodeError) as exc:
-            result.ignored += 1
-            result.errors.append(f"Não foi possível identificar {name}: {exc}")
-            return None
+        # A structured native result is authoritative when valid. This removes the
+        # Python parsing dependency for Kotlin-produced document batches that enter the
+        # compatibility ingest path, while preserving the parser for older/desktop callers.
+        item = _parsed_episode_from_native_contract(document.get("parsedMedia"))
+        if item is None:
+            try:
+                item = parse_video_path(relative_path, source_folder)
+            except (OSError, ValueError, UnicodeError) as exc:
+                result.ignored += 1
+                result.errors.append(f"Não foi possível identificar {name}: {exc}")
+                return None
 
         key = item.anime_title.casefold()
         if item.episode_type == "unknown" or not item.anime_title or item.anime_title == "Arquivo não identificado":

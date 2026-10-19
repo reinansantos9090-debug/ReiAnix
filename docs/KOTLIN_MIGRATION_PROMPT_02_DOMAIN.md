@@ -92,3 +92,8 @@ Não foram adicionados ou modificados testes, workflows, scripts, schemas ou art
 
 
 O reaproveitamento de `parsedMedia` persistido valida também que temporada/numeração absoluta sejam inteiras quando aplicável e que os valores numéricos sejam finitos. Um contrato incompleto ou com números serializados em formato inválido é reconstituído pelo parser Kotlin a partir do nome/caminho, sem coerção silenciosa ou alteração do snapshot durável.
+
+
+## Integração adicional do contrato Kotlin à ingestão compatível
+
+`LibraryService._record_document` agora consome `document["parsedMedia"]` como `ParsedEpisode` quando o objeto estruturado fornecido pelo scanner Kotlin está completo e validado. Nesse caso, não chama `parse_video_path` para aquele registro; o fluxo de identificação usa a saída real de `MediaFilenameParser` Kotlin. A conversão valida números finitos, temporada/número absoluto inteiros, kind/confiança conhecidos e listas de evidências. Contratos ausentes/inválidos continuam seguindo o parser Python conservador para produtores legados/desktop, sem reprocessar resultados Kotlin válidos ou alterar o schema.
