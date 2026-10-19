@@ -34,8 +34,15 @@ class ReiAnixLibraryQueryService(
         libraryOnly: Boolean = false,
     ): ReiAnixLibraryQueryResult<ReiAnixSqliteSearchPage> =
         libraryService.searchAnime(
-            searchText, genreKey, favoritesOnly, watchingOnly, completedOnly,
-            sortLabel, limit, offset, libraryOnly,
+            searchText = searchText,
+            genreKey = genreKey,
+            favoritesOnly = favoritesOnly,
+            watchingOnly = watchingOnly,
+            completedOnly = completedOnly,
+            sortLabel = sortLabel,
+            limit = limit,
+            offset = offset,
+            libraryOnly = libraryOnly,
         )
 
     suspend fun episodesForAnime(
