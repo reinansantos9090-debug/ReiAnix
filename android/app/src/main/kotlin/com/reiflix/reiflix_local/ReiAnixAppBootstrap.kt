@@ -5,6 +5,7 @@ import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaBootstrap
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
 import com.reiflix.reiflix_local.storage.NativeIndex
 import java.io.File
@@ -397,8 +398,16 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     private fun inspectCanonicalDatabase(): CanonicalDatabaseCheck {
-        val dataDirectory = File(appContext.filesDir, "data")
-        val canonicalFile = File(dataDirectory, ReiAnixBackupService.DATABASE_NAME)
+        // Bootstrap, repository reads/writes and backup all resolve this same file.
+        // The schema initializer never copies or replaces an existing canonical DB.
+        val canonicalFile = dependencies.sqliteDatabase.canonicalDatabaseFile
+        check(canonicalFile.name == ReiAnixBackupService.DATABASE_NAME) {
+            "The SQLite repository and backup service disagree on the canonical database filename."
+        }
+        val dataDirectory = requireNotNull(canonicalFile.parentFile) {
+            "The canonical SQLite database must be inside the app's data directory."
+        }
+
         if (!canonicalFile.exists()) {
             val interruptedPromotion = dataDirectory.listFiles()
                 ?.any { file ->
@@ -418,8 +427,8 @@ class ReiAnixAppBootstrap internal constructor(
                 Log.e(TAG, "Could not inspect durable SAF recovery receipts; treating the state as recovery evidence. errorType=" + error::class.java.simpleName)
                 true
             }
-            return if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
-                CanonicalDatabaseCheck(
+            if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
+                return CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
                     warning = when {
@@ -428,21 +437,27 @@ class ReiAnixAppBootstrap internal constructor(
                         else -> INTERRUPTED_RECOVERY_WARNING
                     },
                 )
-            } else {
-                // LibraryStore in the remaining hybrid runtime initializes a fresh install.
-                // Absence without durable recovery evidence is not data corruption.
-                CanonicalDatabaseCheck(
-                    status = ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
-                    recoveryRequired = false,
-                )
             }
+            // A genuinely fresh install has no file and no durable recovery evidence.
+            // Let the native SQLite schema owner initialize v29 at the canonical path;
+            // LibraryStore remains a compatibility service for legacy domain callers.
+        } else if (!canonicalFile.isFile || canonicalFile.length() <= 0L) {
+            return CanonicalDatabaseCheck(
+                status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                recoveryRequired = true,
+                warning = "O arquivo da base SQLite existe, mas não pode ser validado.",
+            )
         }
+
+        val schemaBootstrap = ReiAnixSqliteSchemaBootstrap(dependencies.sqliteDatabase)
+        val outcome = schemaBootstrap.ensureCurrentSchema()
+        Log.i(TAG, "Canonical SQLite schema bootstrap outcome=$outcome")
 
         if (!canonicalFile.isFile || canonicalFile.length() <= 0L) {
             return CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
-                warning = "O arquivo da base SQLite existe, mas não pode ser validado.",
+                warning = DATABASE_RECOVERY_WARNING,
             )
         }
 
