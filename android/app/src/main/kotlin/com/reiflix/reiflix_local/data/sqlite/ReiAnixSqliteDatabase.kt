@@ -173,6 +173,14 @@ class ReiAnixSqliteDatabase(context: Context) {
                 "The canonical SQLite path exists but is not a valid non-empty file."
             }
         }
+        if (createIfMissing && !databaseFile.exists()) {
+            val parent = requireNotNull(databaseFile.parentFile) {
+                "The canonical SQLite database must have a parent directory."
+            }
+            check(parent.isDirectory || parent.mkdirs()) {
+                "Could not create the canonical SQLite data directory."
+            }
+        }
         val flags = SQLiteDatabase.OPEN_READWRITE or
             (if (createIfMissing) SQLiteDatabase.CREATE_IF_NECESSARY else 0)
         val database = try {
