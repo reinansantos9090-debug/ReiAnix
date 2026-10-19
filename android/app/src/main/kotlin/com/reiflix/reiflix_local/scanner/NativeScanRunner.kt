@@ -93,6 +93,12 @@ object NativeScanRunner {
                     warnBoth("Uma pasta SAF local foi ignorada porque sua identidade salva ou permissão persistente não pôde ser confirmada.")
                     continue
                 }
+                val inspectionStatus = SafScanner.inspectTree(appContext, uri, requirePersisted = true)
+                    .optString("status")
+                if (inspectionStatus !in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) {
+                    warnBoth("Uma pasta SAF local não está acessível; seu conteúdo não será tratado como ausência confirmada.")
+                    continue
+                }
 
                 val documentId = Uri.decode(identity.documentId)
                 val separator = documentId.indexOf(':')
