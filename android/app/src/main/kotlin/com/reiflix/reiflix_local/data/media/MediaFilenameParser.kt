@@ -285,7 +285,7 @@ object MediaFilenameParser {
                     }
                 }
             }
-            if ((explicit != null || temporary != null) && folderSeason != null && season != null && folderSeason != season) {
+            if ((explicit != null || temporary != null || cross != null) && folderSeason != null && season != null && folderSeason != season) {
                 confidence = MediaIdentificationConfidence.MEDIUM
                 unresolved += "season_conflict:file=$season,folder=$folderSeason"
                 evidence += "CONFLICT_FILE_SEASON_VS_FOLDER"
@@ -331,12 +331,15 @@ object MediaFilenameParser {
         if (title.isBlank()) title = "Arquivo não identificado"
 
         // A number-only filename is insufficient evidence, even inside a series folder.
+        // Preserve a recognized precision diagnostic instead of hiding it behind "unknown".
         if (isNumericOnlyFilename) {
             if (effectiveFolders.any(::isProbableTitleFolder)) {
                 unresolved += "numeric_filename_without_episode_marker"
             }
             kind = ParsedMediaKind.UNKNOWN
-            source = "unknown"
+            if (source != "unsupported_numeric_suffix_decimal_precision") {
+                source = "unknown"
+            }
             confidence = MediaIdentificationConfidence.LOW
             episode = null
         }

@@ -72,3 +72,12 @@ Os métodos de regressão foram adicionados aos arquivos de teste existentes e r
 
 Nenhum workflow, script de build, arquivo de persistência, schema, módulo Python, diretório ou estrutura paralela de testes foi alterado ou criado nesta etapa.
 
+
+
+## Fechamento definitivo — execução Prompt 02.4/18
+
+- Corrigido o fluxo de nome exclusivamente numérico com precisão não suportada: para `12.125.mkv` e `12,125.mkv`, `kind` continua `UNKNOWN`, confiança `LOW`, números de episódio/absoluto permanecem nulos e a origem `unsupported_numeric_suffix_decimal_precision` não é mais sobrescrita por `unknown`. A evidência, `unresolved` e `ambiguities` permanecem alinhadas.
+- O conflito entre temporada de arquivo e temporada da pasta agora também cobre o marcador `NxM` (ex.: `2x03` dentro de uma pasta `S01`), mantendo a ambiguidade em vez de aceitar a temporada conflitante silenciosamente.
+- Os três arquivos de teste modificados em incrementos anteriores permanecem exatamente como estavam nesta execução; não foram adicionados nem alterados testes, workflows ou infraestrutura. A suíte Kotlin/JVM não foi executada nem despachada.
+- O run `39180837684` foi `success` para o SHA anterior `5feecb570b9e25e8843d04b57fb9c25dc0a7dd0b`, não para este novo HEAD. Ele comprovou o fluxo automático híbrido de regressão Python/build/compilação Kotlin de produção/artefatos, não os asserts Kotlin/JVM. O SHA e run do fechamento final devem ser conferidos no status ao vivo da PR #199; não reutilizar este run histórico como validação final.
+- Nenhuma mudança de SQLite foi feita: `library.sqlite3`, schema v29, IDs e dados persistidos permanecem sob os contratos existentes. Consumidores Python continuam ativos e o Prompt 03 não foi iniciado.

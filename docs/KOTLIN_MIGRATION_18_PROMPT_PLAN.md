@@ -56,3 +56,8 @@ Entry point e Application/Activity nativos; build Gradle e APK sem dependência/
 ## Registro factual da PR #199 — Prompt 02
 
 A regra universal acima continua proibindo adicionar ou alterar testes sem autorização e proíbe despacho manual da suíte Kotlin/JVM. Para não mascarar o histórico, registre-se que o HEAD de partida da PR #199 já contém métodos de regressão acrescidos a três arquivos de teste existentes no incremento Prompt 02.2; nenhum novo arquivo de teste ou workflow foi criado. Essa alteração anterior diverge da regra de preservação estrita dos testes e é reportada como desvio, não como cumprimento da regra. Nesta reconciliação, os arquivos de teste não foram alterados novamente. A suíte JVM permanece pendente de compilação/execução autorizada; build Release de produção não equivale a teste JVM aprovado.
+
+
+## Registro do fechamento do Prompt 02
+
+A inspeção e a correção final do parser ocorreram na PR #199 sem iniciar o Prompt 03. Nomes exclusivamente numéricos com precisão decimal acima do limite conservam a origem diagnóstica `unsupported_numeric_suffix_decimal_precision`, ficam `UNKNOWN`, com confiança baixa e sem número de episódio/absoluto; conflitos de temporada do marcador `NxM` com a pasta também são sinalizados. Não foram modificados testes nem workflows nesta execução. O run `39180837684` concluiu com sucesso somente para o SHA preexistente `5feecb570b9e25e8843d04b57fb9c25dc0a7dd0b`; o resultado final precisa corresponder ao novo HEAD e fica registrado nos metadados atualizados da PR após o término do workflow. Os testes Kotlin/JVM permanecem sem execução autorizada.

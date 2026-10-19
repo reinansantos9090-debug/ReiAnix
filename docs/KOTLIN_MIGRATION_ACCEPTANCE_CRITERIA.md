@@ -87,3 +87,8 @@ Esta etapa não migra a orquestração do scanner, LibraryService, discovery/mis
 A classificação de localização é uma projeção sintática pura-JVM, não substitui `DocumentsContract.isDocumentUri(context, uri)` nem prova que o provider existe ou que a aplicação possui grants. `MediaReferenceSyntax` só identifica SAF para autoridades DocumentsProvider explicitamente reconhecidas e segmentos completos `/tree/{id}`, `/document/{id}` ou `/tree/{treeId}/document/{documentId}`. Strings vazias são `UNRESOLVED`; conteúdo malformado com esquema `content:` permanece `CONTENT_URI`; provedor desconhecido não é promovido a SAF.
 
 `normalizeReiAnixGenre` preserva NFKD, remoção de marcas, separadores e compatibilidade explícita para `ß`/`ss` e `ς`/`σ`. Não é uma implementação completa de todo o mapeamento Unicode de `str.casefold()`; não deve ser descrita como equivalência integral.
+
+
+## Fechamento do Prompt 02 — evidência atual
+
+A regra P02-09 continua com desvio histórico explícito: três arquivos de teste Kotlin/JVM já tinham alterações de regressão antes desta execução. Este fechamento não modificou arquivos de teste ou workflows e não despachou a suíte JVM. O run `39180837684` terminou em sucesso para o SHA anterior `5feecb570b9e25e8843d04b57fb9c25dc0a7dd0b`; não é evidência do novo HEAD. A aceitação final do P02-10 exige o run automático `build_apk.yml` em estado terminal `success` no SHA final efetivo, que deve ser verificado nos checks e metadados da PR #199. Compilação Kotlin de produção não equivale a aprovação dos testes Kotlin/JVM.
