@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.scanner
 import android.content.Context
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.storage.NativeIndex
@@ -13,6 +14,9 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteTransactionOutcome
 import org.json.JSONObject
 import org.json.JSONArray
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -26,6 +30,177 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object NativeScanRunner {
     private const val TAG = "[REIANIX][NATIVE_SCAN]"
+
+    private data class ConfiguredLocalScanScopes(
+        val mediaStore: List<MediaStoreScanner.LibraryScope>,
+        val broadStorage: List<File>,
+        val mediaStoreWarnings: List<String>,
+        val broadStorageWarnings: List<String>,
+    )
+
+    /**
+     * Derive scanner scopes only from persisted SAF entries whose current URI,
+     * saved identity metadata, read grant, mounted volume, and real directory
+     * agree. Only Android's external-storage document provider can be mapped to
+     * MediaStore or a physical broad-storage root; arbitrary content URIs are
+     * never converted to filesystem paths.
+     */
+    private suspend fun configuredLocalScanScopes(context: Context): ConfiguredLocalScanScopes =
+        withContext(Dispatchers.IO) {
+            val appContext = context.applicationContext
+            val folders = ReiAnixAppDependencies.from(appContext).sqliteLibraryRepository
+                .listFolders()
+                .filter { it.kind.equals("saf", ignoreCase = true) && it.path.isNotBlank() }
+            val physicalRoots = BroadStorageScanner.roots(appContext)
+            val mediaStoreScopes = linkedMapOf<String, MediaStoreScanner.LibraryScope>()
+            val broadStorageRoots = linkedMapOf<String, File>()
+            val mediaStoreWarnings = linkedSetOf<String>()
+            val broadStorageWarnings = linkedSetOf<String>()
+
+            fun warnBoth(message: String) {
+                mediaStoreWarnings += message
+                broadStorageWarnings += message
+            }
+
+            fun isWithinRoot(candidate: File, root: File): Boolean =
+                candidate.path == root.path ||
+                    candidate.path.startsWith(root.path.trimEnd(File.separatorChar) + File.separator)
+
+            fun isRestrictedRoot(candidate: File): Boolean {
+                val parts = candidate.path.split(File.separatorChar).filter { it.isNotEmpty() }
+                val androidIndex = parts.indexOfLast { it.equals("Android", ignoreCase = true) }
+                val child = if (androidIndex >= 0) parts.getOrNull(androidIndex + 1)?.lowercase() else null
+                return child == "data" || child == "obb"
+            }
+
+            for (folder in folders) {
+                val uri = runCatching { Uri.parse(folder.path.trim()) }.getOrNull()
+                val identity = uri?.let { runCatching { SafScanner.treeIdentity(it) }.getOrNull() }
+                if (uri == null || identity == null) {
+                    warnBoth("Uma pasta SAF configurada possui URI ou identidade inválida para a varredura local.")
+                    continue
+                }
+
+                // SAF providers backed by cloud/document services have no matching
+                // physical MediaStore path and are intentionally left to SAF.
+                if (identity.authority != "com.android.externalstorage.documents") continue
+
+                val storedIdentityMatches =
+                    (folder.safAuthority.isNullOrBlank() || folder.safAuthority == identity.authority) &&
+                    (folder.safDocumentId.isNullOrBlank() || folder.safDocumentId == identity.documentId) &&
+                    (folder.safVolumeId.isNullOrBlank() || folder.safVolumeId == identity.volumeId) &&
+                    (folder.safIdentity.isNullOrBlank() || folder.safIdentity == identity.identity)
+                if (!storedIdentityMatches || !SafScanner.hasPersistedReadPermission(appContext, uri)) {
+                    warnBoth("Uma pasta SAF local foi ignorada porque sua identidade salva ou permissão persistente não pôde ser confirmada.")
+                    continue
+                }
+                val inspectionStatus = SafScanner.inspectTree(appContext, uri, requirePersisted = true)
+                    .optString("status")
+                if (inspectionStatus !in setOf(SafScanner.STATUS_COMPLETED, SafScanner.STATUS_EMPTY_COMPLETE)) {
+                    warnBoth("Uma pasta SAF local não está acessível; seu conteúdo não será tratado como ausência confirmada.")
+                    continue
+                }
+
+                val documentId = Uri.decode(identity.documentId)
+                val separator = documentId.indexOf(':')
+                if (separator <= 0 || documentId.substringBefore(':') != identity.volumeId) {
+                    warnBoth("A identidade do volume de uma pasta SAF local não pôde ser validada.")
+                    continue
+                }
+                val relativePath = documentId.substring(separator + 1).trim('/')
+                val pathSegments = relativePath.split('/').filter { it.isNotEmpty() }
+                if (pathSegments.any { it == "." || it == ".." || it.contains('\\') }) {
+                    warnBoth("O caminho relativo de uma pasta SAF local não é seguro para a varredura.")
+                    continue
+                }
+                val normalizedRelativePath = pathSegments.joinToString(File.separator)
+                val mediaStoreScopeKey = if (normalizedRelativePath.isEmpty()) {
+                    // MediaStoreScanner intentionally requires a bounded subdirectory;
+                    // a whole-volume URI must not masquerade as a verified empty scope.
+                    mediaStoreWarnings += "Uma raiz SAF cobre o volume inteiro e não pode ser representada como uma subpasta do MediaStore."
+                    null
+                } else {
+                    val scope = MediaStoreScanner.LibraryScope(
+                        authority = identity.authority,
+                        volumeId = identity.volumeId,
+                        treeDocumentId = identity.documentId,
+                    )
+                    val key = "${scope.authority}|${scope.volumeId}|${scope.treeDocumentId}"
+                    mediaStoreScopes[key] = scope
+                    key
+                }
+
+                // MediaStore can query its own provider independently of broad filesystem
+                // traversal, so the physical File mapping below is only required by BroadStorage.
+                val requestedVolume = identity.volumeId.trim()
+                val physicalRoot = physicalRoots.firstOrNull { root ->
+                    when {
+                        requestedVolume.equals("primary", ignoreCase = true) -> root.primary
+                        requestedVolume.equals("external_primary", ignoreCase = true) ->
+                            root.primary || root.volumeId.equals(requestedVolume, ignoreCase = true)
+                        else -> root.volumeId.equals(requestedVolume, ignoreCase = true) ||
+                            root.volumeUuid?.equals(requestedVolume, ignoreCase = true) == true ||
+                            (root.removable && root.file.name.equals(requestedVolume, ignoreCase = true))
+                    }
+                }
+                if (physicalRoot == null) {
+                    broadStorageWarnings += "O volume de uma pasta SAF local não está montado ou não pôde ser identificado."
+                    if (Build.VERSION.SDK_INT < 29 && mediaStoreScopeKey != null) {
+                        mediaStoreWarnings += "Uma pasta SAF local não pôde ser mapeada para validar caminhos do MediaStore neste Android."
+                    }
+                    continue
+                }
+
+                val candidate = runCatching {
+                    if (normalizedRelativePath.isEmpty()) physicalRoot.file.canonicalFile
+                    else File(physicalRoot.file, normalizedRelativePath).canonicalFile
+                }.getOrNull()
+                val canonicalPhysicalRoot = runCatching { physicalRoot.file.canonicalFile }.getOrNull()
+                if (candidate == null || canonicalPhysicalRoot == null ||
+                    !isWithinRoot(candidate, canonicalPhysicalRoot) ||
+                    !candidate.exists() || !candidate.isDirectory || isRestrictedRoot(candidate)
+                ) {
+                    broadStorageWarnings += "Uma pasta SAF local não pôde ser mapeada com segurança para um diretório montado."
+                    if (Build.VERSION.SDK_INT < 29 && mediaStoreScopeKey != null) {
+                        mediaStoreWarnings += "Uma pasta SAF local não pôde ser validada por caminho físico para o MediaStore neste Android."
+                    }
+                    continue
+                }
+
+                // RELATIVE_PATH is unavailable on API 24–28. Bind the legacy
+                // MediaStore matcher to this canonical, SAF-validated directory.
+                if (Build.VERSION.SDK_INT < 29 && mediaStoreScopeKey != null) {
+                    mediaStoreScopes[mediaStoreScopeKey]?.let { scope ->
+                        mediaStoreScopes[mediaStoreScopeKey] = scope.copy(physicalPath = candidate.path)
+                    }
+                }
+                broadStorageRoots[candidate.path] = candidate
+            }
+
+            ConfiguredLocalScanScopes(
+                mediaStore = mediaStoreScopes.values.toList(),
+                broadStorage = broadStorageRoots.values.toList(),
+                mediaStoreWarnings = mediaStoreWarnings.toList(),
+                broadStorageWarnings = broadStorageWarnings.toList(),
+            )
+        }
+
+    /** A skipped configured root makes an otherwise successful enumeration partial, never empty-complete. */
+    private fun applyConfiguredScopeWarnings(result: JSONObject, warnings: List<String>) {
+        if (warnings.isEmpty()) return
+        val stats = result.optJSONObject("stats") ?: JSONObject()
+        val errors = stats.optJSONArray("errors") ?: JSONArray().also { stats.put("errors", it) }
+        warnings.forEach { warning ->
+            if ((0 until errors.length()).none { errors.optString(it) == warning }) errors.put(warning)
+        }
+        val rawStatus = stats.optString("status").trim().uppercase()
+        if (rawStatus in setOf("COMPLETED", "EMPTY_COMPLETE", "SUCCEEDED", "SUCCESS")) {
+            stats.put("status", NativeIndex.STATUS_PARTIAL)
+            result.put("status", NativeIndex.STATUS_PARTIAL)
+        }
+        stats.put("excludedConfiguredScopes", warnings.size)
+        result.put("stats", stats).put("partial", true)
+    }
 
     /**
      * Replays recovery receipts only for generations started by the durable recovery protocol.
@@ -994,6 +1169,7 @@ object NativeScanRunner {
         val appContext = context.applicationContext
 
             try {
+                val configuredScopes = configuredLocalScanScopes(appContext)
                 val result = BroadStorageScanner.scan(
                     appContext,
                     { progress ->
@@ -1017,8 +1193,10 @@ object NativeScanRunner {
                         batch.optLong("generation", 0L),
                         batch,
                     )
-                    }
+                    },
+                    authorizedRoots = configuredScopes.broadStorage,
                 )
+                applyConfiguredScopeWarnings(result, configuredScopes.broadStorageWarnings)
                 val terminalStatus = ScanResultClassifier.classifyBroadStorage(
                     result.optJSONObject("stats")?.optString("status"),
                     cancelled = result.optBoolean("cancelled"),
@@ -1076,6 +1254,7 @@ object NativeScanRunner {
         val appContext = context.applicationContext
 
             try {
+                val configuredScopes = configuredLocalScanScopes(appContext)
                 NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_scan_progress")
                     .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE).put("scanId", scanId)
                         .put("requestId", requestId ?: "").put("phase", "started")))
@@ -1102,8 +1281,10 @@ object NativeScanRunner {
                         batch.optLong("generation", NativeIndex.cachedGeneration(appContext, "mediastore:" + volume)),
                         batch,
                     )
-                    }
+                    },
+                    libraryScopes = configuredScopes.mediaStore,
                 )
+                applyConfiguredScopeWarnings(result, configuredScopes.mediaStoreWarnings)
                 result.put("requestId", requestId ?: "").put("scanId", scanId)
                     .put("scopeKind", "global").put("scopeRef", MediaStoreScanner.SOURCE)
                 val finalStatus = result.optJSONObject("stats")?.optString("status").orEmpty().uppercase()

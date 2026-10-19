@@ -1,5 +1,8 @@
 # Migração de metadados, pesquisa e AniList para Kotlin nativo
 
+> **Classificação de etapa:** este documento descreve AniList, pesquisa remota e metadados PT-BR e pertence ao escopo documental do Prompt 09/18. Foi criado no commit histórico `c563be50f9acd2106af944fd2a57292cc3d53eb9` e não implementou nem concluiu o scanner Kotlin do Prompt 06/18. A sequência histórica permanece preservada; esta nota apenas esclarece o escopo para a migração em andamento.
+
+
 ## Estado e escopo desta etapa
 
 - Repositório: `reinansantos9090-debug/ReiAnix`.
