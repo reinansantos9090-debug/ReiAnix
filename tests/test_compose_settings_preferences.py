@@ -335,7 +335,10 @@ def test_compose_artwork_cache_clear_is_native_and_does_not_repeat_python_mutati
     assert '.put("nativeHandled", true)' in settings_repository
     assert "suspend fun clearManagedCache(): Int" in artwork_service
     assert 'source IN (\'cache\',\'anilist\') AND manual=0' in artwork_service
-    assert 'UPDATE anime SET metadata_updated_at=NULL, cover_cache=\'\'' in artwork_service
+    assert 'UPDATE anime SET metadata_updated_at=NULL' in artwork_service
+    assert 'UPDATE anime SET metadata_updated_at=NULL, cover_cache=\'\'' not in artwork_service
+    assert 'ownsManualField(manualFields, "cover_cache")' in artwork_service
+    assert 'stillLocallyOwned' in artwork_service
     assert "isArtworkPathReferenced" in artwork_service
     assert "native_handled=native_handled" in main
     worker_start = main.index("async def _run_compose_settings_action")

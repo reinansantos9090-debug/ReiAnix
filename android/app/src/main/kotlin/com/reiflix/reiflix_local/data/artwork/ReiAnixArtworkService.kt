@@ -166,37 +166,87 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     }
                 }
                 db.delete("artwork", "source IN ('cache','anilist') AND manual=0", null)
-                // Match Settings' existing cache-clear contract: expire remote metadata
-                // and clear stale cover pointers without deleting the library records.
-                db.execSQL("UPDATE anime SET metadata_updated_at=NULL, cover_cache=''")
+                // Expire remote metadata, but only clear a cover pointer when it points
+                // to a cache row removed above. Preserve user-owned cover_cache values
+                // and paths still owned by local/manual artwork rows.
+                db.execSQL("UPDATE anime SET metadata_updated_at=NULL")
+                paths.distinct().forEach { cachedPath ->
+                    val owners = db.rawQuery(
+                        "SELECT id,metadata_manual_fields FROM anime WHERE cover_cache=?",
+                        arrayOf(cachedPath),
+                    ).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) {
+                                add(
+                                    cursor.getLong(0) to
+                                        (if (cursor.isNull(1)) null else cursor.getString(1)),
+                                )
+                            }
+                        }
+                    }
+                    owners.forEach ownerLoop@{ (animeId, manualFields) ->
+                        if (ownsManualField(manualFields, "cover_cache")) return@ownerLoop
+                        val stillLocallyOwned = db.rawQuery(
+                            "SELECT 1 FROM artwork WHERE entity_type IN ('anime','movie') " +
+                                "AND entity_id=? AND artwork_type='poster' AND local_path=? " +
+                                "AND (manual=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')) LIMIT 1",
+                            arrayOf(animeId.toString(), cachedPath),
+                        ).use { it.moveToFirst() }
+                        if (!stillLocallyOwned) {
+                            db.update(
+                                "anime",
+                                ContentValues().apply { put("cover_cache", "") },
+                                "id=? AND cover_cache=?",
+                                arrayOf(animeId.toString(), cachedPath),
+                            )
+                        }
+                    }
+                }
                 paths
             }
 
             var removed = 0
             val managedRoot = cacheDirectory.canonicalFile
+            // Build one reference snapshot for the files considered by this cleanup.
+            // Re-scanning every SQLite reference for every thumbnail made trimming and
+            // cache clearing quadratic for large libraries.
+            val managedFiles = cacheDirectory.listFiles()
+                ?.filter { it.isFile && !it.name.endsWith(".tmp") }
+                .orEmpty()
+            val legacyRoot = cacheDirectory.parentFile
+            val legacyFiles = legacyRoot?.listFiles()?.filter { it.isFile }.orEmpty()
+            val referenceCandidates = buildList {
+                addAll(removedPaths)
+                addAll(managedFiles.map { it.absolutePath })
+                addAll(legacyFiles.map { it.absolutePath })
+            }
+            val referencedPaths = referencedCanonicalPaths(referenceCandidates)
+            fun isReferenced(file: File): Boolean {
+                val canonical = runCatching { file.canonicalFile.path }.getOrNull() ?: return true
+                return canonical in referencedPaths
+            }
+
             removedPaths.distinct().forEach { path ->
                 val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return@forEach
-                if (isWithin(managedRoot, file) && !isArtworkPathReferenced(file.path) && file.isFile && file.delete()) {
+                if (isWithin(managedRoot, file) && !isReferenced(file) && file.isFile && file.delete()) {
                     removed++
                 }
             }
 
             // Palette metadata and orphan files are disposable cache entries. Temporary
             // files are left alone, matching ArtworkEngine's orphan cleanup contract.
-            cacheDirectory.listFiles()?.forEach { file ->
-                if (!file.isFile || file.name.endsWith(".tmp")) return@forEach
+            managedFiles.forEach { file ->
                 if (file.name.startsWith(".reiflix-palette-")) {
                     if (file.delete()) removed++
-                } else if (!isArtworkPathReferenced(file.absolutePath) && file.delete()) {
+                } else if (!isReferenced(file) && file.delete()) {
                     removed++
                 }
             }
 
             // Remove only legacy files directly under data/covers; never recurse into
             // managed subdirectories or delete a path still owned by a local/manual row.
-            val legacyRoot = cacheDirectory.parentFile
-            legacyRoot?.listFiles()?.forEach { file ->
-                if (file.isFile && !isArtworkPathReferenced(file.absolutePath) && file.delete()) {
+            legacyFiles.forEach { file ->
+                if (!isReferenced(file) && file.delete()) {
                     removed++
                 }
             }
@@ -208,13 +258,56 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
     }
 
-    private fun isArtworkPathReferenced(path: String): Boolean = database.read { db ->
-        db.rawQuery(
-            "SELECT 1 FROM artwork WHERE local_path=? " +
-                "UNION SELECT 1 FROM anime WHERE cover_cache=? LIMIT 1",
-            arrayOf(path, path),
-        ).use { cursor -> cursor.moveToFirst() }
+    private fun canonicalLocalPathOrNull(path: String): String? {
+        val value = path.trim().takeIf { it.isNotEmpty() } ?: return null
+        // These columns are path references, not content/HTTP URIs. If a URI ever
+        // appears here, its storage semantics are unknown and eviction must fail closed.
+        if (Regex("^[A-Za-z][A-Za-z0-9+.-]*://").containsMatchIn(value)) return null
+        return runCatching { File(value).canonicalFile.path }.getOrNull()
     }
+
+    /**
+     * Returns the subset of candidate canonical paths still referenced by SQLite.
+     * Reads and canonicalizes persisted references once per eviction pass rather
+     * than issuing a full-table scan for every candidate file.
+     */
+    fun referencedCanonicalPaths(paths: Collection<String>): Set<String> {
+        val candidates = paths.mapNotNull(::canonicalLocalPathOrNull).toSet()
+        if (candidates.isEmpty()) return emptySet()
+        return runCatching {
+            database.read { db ->
+                val referenced = linkedSetOf<String>()
+                db.rawQuery(
+                    "SELECT local_path FROM artwork WHERE local_path IS NOT NULL AND TRIM(local_path)!='' " +
+                        "UNION SELECT cover_cache FROM anime WHERE cover_cache IS NOT NULL AND TRIM(cover_cache)!=''",
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val persisted = cursor.getString(0)?.trim().orEmpty()
+                        if (persisted.isEmpty()) continue
+                        // Unknown path/URI semantics protect every candidate in this pass.
+                        val persistedCanonical = canonicalLocalPathOrNull(persisted) ?: return@read candidates
+                        if (persistedCanonical in candidates) referenced += persistedCanonical
+                        if (referenced.size == candidates.size) break
+                    }
+                }
+                referenced
+            }
+        }.getOrElse {
+            // Database/reference errors must never authorize destructive cleanup.
+            candidates
+        }
+    }
+
+    /** Conservatively checks aliases as absolute or canonical paths. */
+    fun isPathReferenced(path: String): Boolean {
+        val candidate = canonicalLocalPathOrNull(path) ?: return true
+        return runCatching {
+            candidate in referencedCanonicalPaths(listOf(candidate))
+        }.getOrDefault(true)
+    }
+
+    private fun isArtworkPathReferenced(path: String): Boolean = isPathReferenced(path)
 
     private fun isWithin(root: File, candidate: File): Boolean {
         val rootPath = runCatching { root.canonicalFile.path }.getOrNull() ?: return false
@@ -640,33 +733,22 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     private fun trimCache() {
         if (!cacheDirectory.isDirectory) return
-        val refs = runCatching {
-            database.read { db ->
-                db.rawQuery("SELECT local_path FROM artwork WHERE local_path IS NOT NULL UNION " +
-                    "SELECT cover_cache FROM anime WHERE cover_cache IS NOT NULL", null).use { c ->
-                    buildSet { while (c.moveToNext()) c.getString(0)?.takeIf { it.isNotBlank() }?.let {
-                        add(runCatching { File(it).canonicalPath }.getOrDefault(it))
-                    } }
-                }
-            }
-        }.getOrElse { Log.w(TAG, "Skip cache cleanup because references cannot be read", it); return }
-        val images = cacheDirectory.listFiles()?.filter { it.isFile && it.extension.lowercase(Locale.ROOT) in EXTENSIONS }
+        val images = cacheDirectory.listFiles()
+            ?.filter { it.isFile && it.extension.lowercase(Locale.ROOT) in EXTENSIONS }
             ?.sortedBy { it.lastModified() } ?: return
+        val refs = referencedCanonicalPaths(images.map { it.absolutePath })
         var bytes = images.sumOf { it.length() }
         images.forEach { file ->
             if (bytes <= MAX_CACHE_BYTES) return
-            val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+            val path = runCatching { file.canonicalFile.path }.getOrNull() ?: return@forEach
             if (path in refs) return@forEach
             val size = file.length()
             if (runCatching { file.delete() }.getOrDefault(false)) bytes -= size
         }
     }
     private fun removeIfUnreferenced(file: File) {
-        val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
-        val used = runCatching { database.read { db ->
-            db.rawQuery("SELECT 1 FROM artwork WHERE local_path=? UNION SELECT 1 FROM anime WHERE cover_cache=? LIMIT 1",
-                arrayOf(path, path)).use { it.moveToFirst() }
-        } }.getOrDefault(true)
+        val path = runCatching { file.canonicalPath }.getOrNull() ?: return
+        val used = isPathReferenced(path)
         if (!used && file.absolutePath.startsWith(cacheDirectory.absolutePath + File.separator)) runCatching { file.delete() }
     }
 

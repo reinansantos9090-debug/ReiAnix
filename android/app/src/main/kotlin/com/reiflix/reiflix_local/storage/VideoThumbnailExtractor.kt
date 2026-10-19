@@ -66,7 +66,10 @@ object VideoThumbnailExtractor {
         modifiedAt: Long = 0L,
         mediaIdentity: String? = null,
     ): Result? {
-        val cacheDir = File(context.cacheDir, "reiflix/thumbnails")
+        // Keep database-referenced thumbnails in durable app-private storage under
+        // the existing artwork cache root. Android may delete cacheDir contents at
+        // any time, which would otherwise leave persistent SQLite rows dangling.
+        val cacheDir = File(File(File(context.filesDir, "data/covers"), "artwork"), "thumbnails")
         if (!cacheDir.exists() && !cacheDir.mkdirs()) return null
 
         val identity = mediaIdentity?.trim().takeUnless { it.isNullOrEmpty() } ?: uri.toString()
@@ -76,6 +79,25 @@ object VideoThumbnailExtractor {
             latestKeyByUri.keys.asSequence().filter { it != uri.toString() }.take(1024).forEach(latestKeyByUri::remove)
         }
         val target = File(cacheDir, key + ".jpg")
+        // Preserve already-generated images from older releases before attempting to
+        // decode the source video again. The legacy cache remains read-only here.
+        val legacyDirectory = File(context.cacheDir, "reiflix/thumbnails")
+        val legacyTarget = File(legacyDirectory, key + ".jpg")
+        if (!target.isFile || target.length() <= 0L || !isValidCachedThumbnail(target)) {
+            promoteLegacyCache(legacyTarget, target)
+        }
+        // Keep valid legacy metadata (duration, dimensions, rotation and title) too.
+        // The sidecar is promoted independently so a good image can still be reused
+        // when the old JSON is missing or invalid.
+        if (target.isFile && isValidCachedThumbnail(target)) {
+            promoteLegacyMetadata(
+                cacheMetadataFile(File(legacyDirectory, key + ".jpg")),
+                cacheMetadataFile(target),
+                key,
+                size,
+                modifiedAt,
+            )
+        }
         val requestId = "thumb-" + key.take(12)
         NativeMailbox.writeBestEffort(
             context,
@@ -199,9 +221,25 @@ object VideoThumbnailExtractor {
 
     private fun isValidCachedThumbnail(file: File): Boolean = runCatching {
         if (!file.isFile || file.length() <= 0L) return false
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, options)
-        options.outWidth > 0 && options.outHeight > 0
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+
+        // Decode pixels as well as headers so a truncated/corrupt JPEG cannot be
+        // promoted as valid. Sampling keeps validation memory bounded for bad files.
+        var sampleSize = 1
+        while (bounds.outWidth / sampleSize > MAX_FRAME_DIMENSION ||
+            bounds.outHeight / sampleSize > MAX_FRAME_DIMENSION
+        ) {
+            sampleSize *= 2
+        }
+        val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath, decodeOptions) ?: return false
+        try {
+            bitmap.width > 0 && bitmap.height > 0
+        } finally {
+            bitmap.recycle()
+        }
     }.getOrDefault(false)
 
     private fun extractLocked(
@@ -284,7 +322,7 @@ object VideoThumbnailExtractor {
                 return null
             }
 
-            trimCache(target.parentFile ?: return null, target)
+            trimCache(context, target.parentFile ?: return null, target)
             val result = Result(
                 path = target.absolutePath,
                 durationMs = durationMs,
@@ -421,21 +459,31 @@ object VideoThumbnailExtractor {
         }
     }
 
-    private fun trimCache(directory: File, protected: File) {
+    private fun trimCache(context: Context, directory: File, protected: File) {
         runCatching {
+            // Generated thumbnails are persisted in SQLite. Never evict a file while
+            // an artwork/cover_cache row still points at it; the budget is soft when
+            // all remaining images are owned by the library.
+            val artworkService = ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.artworkService ?: return@runCatching
             val files = directory.listFiles()
                 ?.filter { it.isFile && it.extension.equals("jpg", ignoreCase = true) }
                 ?.sortedBy { it.lastModified() }
-                ?: return
+                ?: return@runCatching
             var total = files.sumOf { it.length() }
-            if (total <= MAX_CACHE_BYTES) return
-            for (file in files) {
-                if (file == protected) continue
-                if (total <= MAX_CACHE_BYTES) break
-                val length = file.length()
-                if (file.delete()) {
-                    total -= length
-                    cacheMetadataFile(file).delete()
+            if (total > MAX_CACHE_BYTES) {
+                // Read SQLite path references once for the whole eviction pass.
+                val referencedPaths = artworkService.referencedCanonicalPaths(files.map { it.absolutePath })
+                for (file in files) {
+                    if (file == protected) continue
+                    if (total <= MAX_CACHE_BYTES) break
+                    val canonical = runCatching { file.canonicalFile.path }.getOrNull() ?: continue
+                    if (canonical in referencedPaths) continue
+                    val length = file.length()
+                    if (file.delete()) {
+                        total -= length
+                        cacheMetadataFile(file).delete()
+                    }
                 }
             }
             directory.listFiles()
@@ -444,6 +492,72 @@ object VideoThumbnailExtractor {
                     val jpg = File(directory, metadata.nameWithoutExtension + ".jpg")
                     if (!jpg.isFile) metadata.delete()
                 }
+        }
+    }
+
+    private fun promoteLegacyCache(legacy: File, target: File): Boolean {
+        if (!legacy.isFile || !isValidCachedThumbnail(legacy)) return false
+        // A valid destination always wins. An empty/corrupt destination may be
+        // replaced, but only after the legacy image has been copied and validated.
+        if (target.isFile && isValidCachedThumbnail(target)) return true
+        val temporary = File(target.parentFile, "." + target.name + "." +
+            android.os.SystemClock.elapsedRealtimeNanos() + ".tmp")
+        return try {
+            legacy.inputStream().use { input ->
+                FileOutputStream(temporary).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                    output.fd.sync()
+                }
+            }
+            if (!isValidCachedThumbnail(temporary)) return false
+            // Recheck after the copy in case another request populated the target.
+            if (target.isFile && isValidCachedThumbnail(target)) return true
+            if (target.exists() && !target.delete()) return false
+            if (!temporary.renameTo(target)) {
+                target.isFile && isValidCachedThumbnail(target)
+            } else {
+                isValidCachedThumbnail(target)
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            temporary.delete()
+        }
+    }
+
+    private fun promoteLegacyMetadata(
+        legacy: File,
+        target: File,
+        key: String,
+        size: Long,
+        modifiedAt: Long,
+    ): Boolean {
+        if (readCacheMetadata(target, key, size, modifiedAt) != null) return true
+        if (readCacheMetadata(legacy, key, size, modifiedAt) == null) return false
+        val temporary = File(target.parentFile, "." + target.name + "." +
+            android.os.SystemClock.elapsedRealtimeNanos() + ".tmp")
+        return try {
+            legacy.inputStream().use { input ->
+                FileOutputStream(temporary).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                    output.fd.sync()
+                }
+            }
+            if (readCacheMetadata(temporary, key, size, modifiedAt) == null) return false
+            // Never replace a sidecar another concurrent request already repaired.
+            if (readCacheMetadata(target, key, size, modifiedAt) != null) return true
+            if (target.exists() && !target.delete()) return false
+            if (!temporary.renameTo(target)) {
+                readCacheMetadata(target, key, size, modifiedAt) != null
+            } else {
+                readCacheMetadata(target, key, size, modifiedAt) != null
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            temporary.delete()
         }
     }
 
