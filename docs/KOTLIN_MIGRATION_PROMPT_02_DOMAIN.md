@@ -81,3 +81,11 @@ Nenhum workflow, script de build, arquivo de persistência, schema, módulo Pyth
 - Os três arquivos de teste modificados em incrementos anteriores permanecem exatamente como estavam nesta execução; não foram adicionados nem alterados testes, workflows ou infraestrutura. A suíte Kotlin/JVM não foi executada nem despachada.
 - O run `39180837684` foi `success` para o SHA anterior `5feecb570b9e25e8843d04b57fb9c25dc0a7dd0b`, não para este novo HEAD. Ele comprovou o fluxo automático híbrido de regressão Python/build/compilação Kotlin de produção/artefatos, não os asserts Kotlin/JVM. O SHA e run do fechamento final devem ser conferidos no status ao vivo da PR #199; não reutilizar este run histórico como validação final.
 - Nenhuma mudança de SQLite foi feita: `library.sqlite3`, schema v29, IDs e dados persistidos permanecem sob os contratos existentes. Consumidores Python continuam ativos e o Prompt 03 não foi iniciado.
+
+## Incremento funcional — Prompt 02.5/18
+
+A recuperação da indexação nativa agora cobre snapshots persistidos por versões anteriores que ainda não continham o contrato `parsedMedia` (ou o continham incompleto). `NativeScanRunner` recupera título candidato, temporada, episódio/numeração absoluta, tipo, título de episódio, origem, confiança e ambiguidades usando o `MediaFilenameParser` Kotlin existente antes de criar `NativeDiscoveredMedia`. O contrato reconstituído é temporário; o JSON salvo no `NativeIndex` não é reescrito.
+
+Caminho comprovado em código: `SafScanner` / `MediaStoreScanner` / `BroadStorageScanner` → `DiscoveredMediaMetadata.attach` → `NativeScanRunner` → `ReiAnixLibraryService.indexDiscoveredMedia` → `ReiAnixSqliteLibraryRepository` → SQLite canônico. Nenhum parser ou writer novo foi criado. A parte Python de `core/library_parser.py` que atende scans filesystem e ingestão de compatibilidade permanece; o corte global dessa dependência não é seguro enquanto esses consumidores existirem.
+
+Não foram adicionados ou modificados testes, workflows, scripts, schemas ou artefatos de persistência nesta execução. A validação de compilação/testes desta alteração depende do workflow automático da PR; a suíte Kotlin/JVM manual permanece fora do escopo autorizado.

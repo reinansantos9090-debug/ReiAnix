@@ -46,3 +46,10 @@ The manual Kotlin/JVM workflow prepares the Flet-rendered Android host and gener
 ## Scope of Unicode normalization parity
 
 The Kotlin genre normalizer explicitly handles `ß`/`ss` and Greek final sigma `ς`/`σ` after NFKD, in addition to accent removal, separator normalization and whitespace collapse. This is not a full implementation of every Unicode mapping in Python `str.casefold()`. Existing alias/registry identity is preserved; broader Unicode cases have not been asserted by executed tests in this prompt.
+
+
+## Native discovery and recovery integration
+
+The Android-native scanners call `DiscoveredMediaMetadata.attach`, which invokes `MediaFilenameParser`. The resulting `parsedMedia` fields flow through `NativeScanRunner` into `NativeDiscoveredMedia` and the existing Kotlin library indexing service. During recovery, older durable snapshots can predate that structured field; the recovery mapper now re-parses their stored relative path/file name in Kotlin when the parser contract is absent or incomplete. It uses a temporary JSON object and does not rewrite the durable discovery snapshot.
+
+This removes the need for a Python parse fallback in the native scan/recovery flow. It does not remove `core/library_parser.py` globally: Python-owned filesystem scans and legacy compatibility ingestion without Kotlin parser metadata still use it until those consumers are migrated.

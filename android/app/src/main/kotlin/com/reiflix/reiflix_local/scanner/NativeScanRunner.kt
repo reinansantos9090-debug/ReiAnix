@@ -1152,44 +1152,87 @@ private fun discoveredMediaFromSnapshot(
     scanDocuments: JSONArray,
     sourceFolder: String,
 ): List<NativeDiscoveredMedia> = buildList {
-                    for (i in 0 until scanDocuments.length()) {
-                        val document = scanDocuments.optJSONObject(i) ?: continue
-                        val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
-                        val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
-                        val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
-                        val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
-                        val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
-                        val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
-                        val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
-                        val size = if (document.has("size") && !document.isNull("size")) document.optLong("size").takeIf { it >= 0L } else null
-                        val modifiedMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt").takeIf { it >= 0L } else null
-                        val ambiguities = parsed.optJSONArray("ambiguities")
-                        add(
-                            NativeDiscoveredMedia(
-                                location = uri,
-                                fileName = name,
-                                scopeLocation = documentId,
-                                scopeVerified = document.optBoolean("scopeVerified", false),
-                                animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
-                                season = season,
-                                episodeNumber = episodeNumber,
-                                absoluteNumber = absoluteNumber,
-                                episodeType = parsed.optString("kind").takeIf { it.isNotBlank() },
-                                episodeTitle = parsed.optString("displayTitle").takeIf { it.isNotBlank() },
-                                identificationSource = parsed.optString("identificationSource").takeIf { it.isNotBlank() },
-                                identificationConfidence = parsed.optString("confidence").takeIf { it.isNotBlank() },
-                                mimeType = document.optString("mimeType").takeIf { it.isNotBlank() && it != "null" },
-                                sizeBytes = size,
-                                modifiedAtEpochSeconds = modifiedMillis?.div(1000.0),
-                                // Persist the same canonical source reference used by LibraryStore;
-                                // the SAF document ID remains separate scan-scope evidence above.
-                                sourceFolder = sourceFolder,
-                                relativePath = document.optString("relativePath").takeIf { it.isNotBlank() },
-                                volumeId = document.optString("volumeId").takeIf { it.isNotBlank() },
-                                volumeUuid = document.optString("volumeUuid").takeIf { it.isNotBlank() },
-                                mediaIdentity = document.optString("stableId").takeIf { it.isNotBlank() },
-                                ambiguous = ambiguities != null && ambiguities.length() > 0,
-                            )
-                        )
-                    }
-                }
+    for (i in 0 until scanDocuments.length()) {
+        val document = scanDocuments.optJSONObject(i) ?: continue
+        val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
+        val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
+        val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
+        // NativeIndex may contain a durable snapshot from before parsedMedia was
+        // added to discovery documents. Recover that contract with the same Kotlin
+        // parser instead of indexing an episode with silently missing identity.
+        val parsed = parsedMediaForSnapshot(document, name)
+        val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
+        val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
+        val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
+        val size = if (document.has("size") && !document.isNull("size")) document.optLong("size").takeIf { it >= 0L } else null
+        val modifiedMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt").takeIf { it >= 0L } else null
+        val ambiguities = parsed.optJSONArray("ambiguities")
+        add(
+            NativeDiscoveredMedia(
+                location = uri,
+                fileName = name,
+                scopeLocation = documentId,
+                scopeVerified = document.optBoolean("scopeVerified", false),
+                animeTitle = parsed.optString("animeTitle").takeIf { it.isNotBlank() },
+                season = season,
+                episodeNumber = episodeNumber,
+                absoluteNumber = absoluteNumber,
+                episodeType = parsed.optString("kind").takeIf { it.isNotBlank() },
+                episodeTitle = parsed.optString("displayTitle").takeIf { it.isNotBlank() },
+                identificationSource = parsed.optString("identificationSource").takeIf { it.isNotBlank() },
+                identificationConfidence = parsed.optString("confidence").takeIf { it.isNotBlank() },
+                mimeType = document.optString("mimeType").takeIf { it.isNotBlank() && it != "null" },
+                sizeBytes = size,
+                modifiedAtEpochSeconds = modifiedMillis?.div(1000.0),
+                // Persist the same canonical source reference used by LibraryStore;
+                // the SAF document ID remains separate scan-scope evidence above.
+                sourceFolder = sourceFolder,
+                relativePath = document.optString("relativePath").takeIf { it.isNotBlank() },
+                volumeId = document.optString("volumeId").takeIf { it.isNotBlank() },
+                volumeUuid = document.optString("volumeUuid").takeIf { it.isNotBlank() },
+                mediaIdentity = document.optString("stableId").takeIf { it.isNotBlank() },
+                ambiguous = ambiguities != null && ambiguities.length() > 0,
+            )
+        )
+    }
+}
+
+private fun parsedMediaForSnapshot(
+    document: JSONObject,
+    fileName: String,
+): JSONObject {
+    val parsed = document.optJSONObject("parsedMedia")
+    val requiredStringFields = listOf(
+        "animeTitle",
+        "kind",
+        "identificationSource",
+        "confidence",
+        "displayTitle",
+        "extension",
+    )
+    val requiredFields = requiredStringFields + listOf(
+        "season",
+        "episodeNumber",
+        "absoluteNumber",
+    )
+    val contractComplete = parsed != null &&
+        requiredFields.all(parsed::has) &&
+        requiredStringFields.none(parsed::isNull)
+
+    if (contractComplete) return parsed!!
+
+    // Use a temporary output object so rehydrating parser fields does not rewrite the
+    // stored discovery snapshot, its metadata availability flags, or provider identifiers.
+    return DiscoveredMediaMetadata.attach(
+        document = JSONObject(),
+        fileName = fileName,
+        relativePath = document.optString("relativePath").trim(),
+        source = document.optString("source").trim().ifBlank { "saf" },
+        mimeType = null,
+        sizeBytes = null,
+        modifiedAtMillis = null,
+        providerId = null,
+        nameAvailable = true,
+        mimeTypeAvailable = false,
+    ).optJSONObject("parsedMedia") ?: JSONObject()
+}
