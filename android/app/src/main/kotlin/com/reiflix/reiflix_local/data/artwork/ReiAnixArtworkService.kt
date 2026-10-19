@@ -274,30 +274,37 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     fun referencedCanonicalPaths(paths: Collection<String>): Set<String> {
         val candidates = paths.mapNotNull(::canonicalLocalPathOrNull).toSet()
         if (candidates.isEmpty()) return emptySet()
-        return database.read { db ->
-            val referenced = linkedSetOf<String>()
-            db.rawQuery(
-                "SELECT local_path FROM artwork WHERE local_path IS NOT NULL AND TRIM(local_path)!='' " +
-                    "UNION SELECT cover_cache FROM anime WHERE cover_cache IS NOT NULL AND TRIM(cover_cache)!=''",
-                null,
-            ).use { cursor ->
-                while (cursor.moveToNext()) {
-                    val persisted = cursor.getString(0)?.trim().orEmpty()
-                    if (persisted.isEmpty()) continue
-                    // Unknown path/URI semantics protect every candidate in this pass.
-                    val persistedCanonical = canonicalLocalPathOrNull(persisted) ?: return@read candidates
-                    if (persistedCanonical in candidates) referenced += persistedCanonical
-                    if (referenced.size == candidates.size) break
+        return runCatching {
+            database.read { db ->
+                val referenced = linkedSetOf<String>()
+                db.rawQuery(
+                    "SELECT local_path FROM artwork WHERE local_path IS NOT NULL AND TRIM(local_path)!='' " +
+                        "UNION SELECT cover_cache FROM anime WHERE cover_cache IS NOT NULL AND TRIM(cover_cache)!=''",
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val persisted = cursor.getString(0)?.trim().orEmpty()
+                        if (persisted.isEmpty()) continue
+                        // Unknown path/URI semantics protect every candidate in this pass.
+                        val persistedCanonical = canonicalLocalPathOrNull(persisted) ?: return@read candidates
+                        if (persistedCanonical in candidates) referenced += persistedCanonical
+                        if (referenced.size == candidates.size) break
+                    }
                 }
+                referenced
             }
-            referenced
+        }.getOrElse {
+            // Database/reference errors must never authorize destructive cleanup.
+            candidates
         }
     }
 
     /** Conservatively checks aliases as absolute or canonical paths. */
     fun isPathReferenced(path: String): Boolean {
         val candidate = canonicalLocalPathOrNull(path) ?: return true
-        return candidate in referencedCanonicalPaths(listOf(candidate))
+        return runCatching {
+            candidate in referencedCanonicalPaths(listOf(candidate))
+        }.getOrDefault(true)
     }
 
     private fun isArtworkPathReferenced(path: String): Boolean = isPathReferenced(path)
@@ -726,33 +733,22 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     private fun trimCache() {
         if (!cacheDirectory.isDirectory) return
-        val refs = runCatching {
-            database.read { db ->
-                db.rawQuery("SELECT local_path FROM artwork WHERE local_path IS NOT NULL UNION " +
-                    "SELECT cover_cache FROM anime WHERE cover_cache IS NOT NULL", null).use { c ->
-                    buildSet { while (c.moveToNext()) c.getString(0)?.takeIf { it.isNotBlank() }?.let {
-                        add(runCatching { File(it).canonicalPath }.getOrDefault(it))
-                    } }
-                }
-            }
-        }.getOrElse { Log.w(TAG, "Skip cache cleanup because references cannot be read", it); return }
-        val images = cacheDirectory.listFiles()?.filter { it.isFile && it.extension.lowercase(Locale.ROOT) in EXTENSIONS }
+        val images = cacheDirectory.listFiles()
+            ?.filter { it.isFile && it.extension.lowercase(Locale.ROOT) in EXTENSIONS }
             ?.sortedBy { it.lastModified() } ?: return
+        val refs = referencedCanonicalPaths(images.map { it.absolutePath })
         var bytes = images.sumOf { it.length() }
         images.forEach { file ->
             if (bytes <= MAX_CACHE_BYTES) return
-            val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+            val path = runCatching { file.canonicalFile.path }.getOrNull() ?: return@forEach
             if (path in refs) return@forEach
             val size = file.length()
             if (runCatching { file.delete() }.getOrDefault(false)) bytes -= size
         }
     }
     private fun removeIfUnreferenced(file: File) {
-        val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
-        val used = runCatching { database.read { db ->
-            db.rawQuery("SELECT 1 FROM artwork WHERE local_path=? UNION SELECT 1 FROM anime WHERE cover_cache=? LIMIT 1",
-                arrayOf(path, path)).use { it.moveToFirst() }
-        } }.getOrDefault(true)
+        val path = runCatching { file.canonicalPath }.getOrNull() ?: return
+        val used = isPathReferenced(path)
         if (!used && file.absolutePath.startsWith(cacheDirectory.absolutePath + File.separator)) runCatching { file.delete() }
     }
 
