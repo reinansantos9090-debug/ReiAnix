@@ -100,6 +100,22 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
             trim.index("if (file.delete())"),
         )
 
+    def test_legacy_thumbnail_metadata_is_promoted_only_when_valid(self):
+        extractor = EXTRACTOR.read_text(encoding="utf-8")
+        self.assertIn("promoteLegacyMetadata(", extractor)
+        self.assertIn("cacheMetadataFile(File(legacyDirectory, key + \".jpg\"))", extractor)
+        start = extractor.index("private fun promoteLegacyMetadata(")
+        end = extractor.index("private fun sha256(", start)
+        promote = extractor[start:end]
+        self.assertIn("readCacheMetadata(legacy, key, size, modifiedAt) == null", promote)
+        self.assertIn("readCacheMetadata(temporary, key, size, modifiedAt) == null", promote)
+        self.assertIn("output.fd.sync()", promote)
+        self.assertIn("readCacheMetadata(target, key, size, modifiedAt) != null", promote)
+        self.assertLess(
+            promote.index("readCacheMetadata(temporary, key, size, modifiedAt) == null"),
+            promote.index("if (target.exists() && !target.delete()) return false"),
+        )
+
     def test_legacy_thumbnail_recovery_replaces_only_invalid_targets(self):
         extractor = EXTRACTOR.read_text(encoding="utf-8")
         start = extractor.index("private fun promoteLegacyCache(")
