@@ -144,7 +144,7 @@ object MediaStoreScanner {
         }
         if (!volumeMatches(scope, volumeName, volumeUuid)) return false
         val root = normalizeScopePath(scope.treeDocumentId)
-        if (root.isBlank()) return false
+        if(root.isBlank()) return false
         val candidate = relativePath.trim().trim('/').replace("\\", "/")
         return candidate == root || candidate.startsWith(root + "/")
     }
