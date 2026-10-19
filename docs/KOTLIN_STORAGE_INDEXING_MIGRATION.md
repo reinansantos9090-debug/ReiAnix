@@ -1,10 +1,12 @@
-# Prompt 04/18 — migração do armazenamento Android e indexação para Kotlin
+# Prompt 04.1/18 — fechamento funcional do armazenamento Android e da indexação nativa
 
 ## Resultado desta etapa
 
-**Status técnico do escopo: os fluxos nativos centrais já estavam implementados e integrados na `main` antes desta PR.** Esta mudança não recria os scanners, não adiciona um coordenador concorrente e não modifica a persistência. Ela registra o estado verificável específico do Prompt 04/18, reúne as evidências de integração e deixa explícitas as fronteiras Python/Flet que ainda permanecem.
+**Foram encontrados e corrigidos dois defeitos funcionais nos scanners existentes.** O SAF podia classificar uma varredura como completa apesar de rejeições de escopo documentadas; agora erros de cobertura fazem o resultado ser parcial ou indisponível, nunca vazio/completo. No MediaStore, um cursor nulo na consulta final de estabilidade era interpretado como ausência de vídeos; agora esse caso é registrado como erro e impede a conclusão de uma geração vazia. As correções reaproveitam as implementações ativas, não criam scanner/coordenador/banco paralelo e não alteram a política de persistência.
 
-Referência da `main` usada ao iniciar esta etapa: merge do Prompt 03/18, commit `d3ed5e3f44a84fd665a6fdee97cecb3d3af5bcc5`. A branch atual foi criada a partir de `main`, sem alterações diretas na branch principal.
+Referência da `main` usada ao iniciar esta etapa: merge do Prompt 03/18, commit `d3ed5e3f44a84fd665a6fdee97cecb3d3af5bcc5`. A PR #201 já existia, estava aberta e tinha apenas a documentação do Prompt 04; esta correção foi anexada à mesma branch por commits novos, sem reescrever histórico. A `main` não foi alterada.
+
+**Discrepância de numeração identificada no plano oficial:** `docs/KOTLIN_MIGRATION_18_PROMPT_PLAN.md` define Prompt 04 como contratos IPC/bridge, Prompt 05 como SAF/permissões e Prompt 06 como scanner. Este trabalho segue o escopo corretivo explícito do Prompt 04.1/18 enviado pelo usuário e não inicia o Prompt 05/18.
 
 PRs do ciclo 01/18–03/18 verificadas no GitHub:
 - [PR #198 — Prompt 01/18](https://github.com/reinansantos9090-debug/ReiAnix/pull/198): fechada e mesclada.
@@ -109,10 +111,12 @@ Os workflows acima comprovam os respectivos commits históricos, não a execuç�
 
 ## 8. Arquivos desta PR e limites
 
-Arquivo criado:
-- `docs/KOTLIN_STORAGE_INDEXING_MIGRATION.md` — consolida o estado real, o fluxo de consumidores, os contratos de armazenamento, os limites Python/Flet e as evidências dos commits/validações existentes.
+Arquivos de código modificados:
+- `android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt`: classifica rejeições de documentos/subpastas, erros de consulta e erros de cobertura como varredura `PARTIAL` ou `UNAVAILABLE`. Somente uma enumeração sem falhas/rejeições pode resultar em `COMPLETED` ou `EMPTY_COMPLETE`.
+- `android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt`: falha se a consulta de estabilidade do MediaStore retornar cursor nulo; a captura de erro existente registra a falha e impede marcar o volume como completo/vazio.
+- `docs/KOTLIN_STORAGE_INDEXING_MIGRATION.md`: registra a auditoria corretiva, os defeitos confirmados e as limitações de validação.
 
-Arquivos de código existentes foram reutilizados, não recriados ou alterados nesta PR. Não houve exclusão ou movimentação de pastas/arquivos, mudança no schema SQLite, alteração de Manifest/Gradle, modificação de testes ou alteração de workflow. O diff da PR fica restrito ao documento obrigatório, pois os fluxos nativos de armazenamento e indexação solicitados já se encontram integrados por etapas mescladas anteriores.
+Não foram criados ou removidos arquivos/pastas de código, bancos, tabelas, scanners, coordenadores, dependências Gradle ou permissões do Manifest. Não foram alterados testes existentes, adicionados testes novos ou alterados workflows. O SQLite canônico permanece `filesDir/data/library.sqlite3`, schema alvo v29. As mudanças funcionais são localizadas aos dois scanners existentes e preservam os contratos de indexação já utilizados pelo runner.
 
 ## 9. Pendências fora deste escopo
 
@@ -122,4 +126,6 @@ Arquivos de código existentes foram reutilizados, não recriados ou alterados n
 
 ## Veredito técnico
 
-Os critérios de armazenamento/indexação descritos neste prompt já estão implementados e conectados no caminho Android nativo do estado-base verificado. Esta PR apenas registra e referencia essas evidências e não deve ser apresentada como uma nova reimplementação dos scanners. A declaração final de status desta PR também depende do workflow oficial do SHA final; o histórico de CI citado nesta documentação não substitui essa validação.
+Dois defeitos funcionais foram reproduzidos por leitura estática do fluxo e corrigidos no código existente. A classificação SAF agora considera falhas/rejeições além da contagem de consultas; a sonda de estabilidade do MediaStore não interpreta cursor nulo como lista vazia. Isso reduz o risco de estado terminal incorreto, preservando a regra de que uma falha parcial nunca autoriza reconciliação destrutiva.
+
+A compilação Release, o build do APK, os checks de empacotamento e os testes automáticos permitidos só serão considerados aprovados para o SHA final depois que o workflow da PR alcançar estado terminal verificável. Nenhuma validação física em dispositivo, teste Kotlin/JVM manual ou teste de emulador é alegado.
