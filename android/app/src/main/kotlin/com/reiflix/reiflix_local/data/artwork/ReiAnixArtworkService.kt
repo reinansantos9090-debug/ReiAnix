@@ -207,29 +207,46 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
             var removed = 0
             val managedRoot = cacheDirectory.canonicalFile
+            // Build one reference snapshot for the files considered by this cleanup.
+            // Re-scanning every SQLite reference for every thumbnail made trimming and
+            // cache clearing quadratic for large libraries.
+            val managedFiles = cacheDirectory.listFiles()
+                ?.filter { it.isFile && !it.name.endsWith(".tmp") }
+                .orEmpty()
+            val legacyRoot = cacheDirectory.parentFile
+            val legacyFiles = legacyRoot?.listFiles()?.filter { it.isFile }.orEmpty()
+            val referenceCandidates = buildList {
+                addAll(removedPaths)
+                addAll(managedFiles.map { it.absolutePath })
+                addAll(legacyFiles.map { it.absolutePath })
+            }
+            val referencedPaths = referencedCanonicalPaths(referenceCandidates)
+            fun isReferenced(file: File): Boolean {
+                val canonical = runCatching { file.canonicalFile.path }.getOrNull() ?: return true
+                return canonical in referencedPaths
+            }
+
             removedPaths.distinct().forEach { path ->
                 val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return@forEach
-                if (isWithin(managedRoot, file) && !isArtworkPathReferenced(file.path) && file.isFile && file.delete()) {
+                if (isWithin(managedRoot, file) && !isReferenced(file) && file.isFile && file.delete()) {
                     removed++
                 }
             }
 
             // Palette metadata and orphan files are disposable cache entries. Temporary
             // files are left alone, matching ArtworkEngine's orphan cleanup contract.
-            cacheDirectory.listFiles()?.forEach { file ->
-                if (!file.isFile || file.name.endsWith(".tmp")) return@forEach
+            managedFiles.forEach { file ->
                 if (file.name.startsWith(".reiflix-palette-")) {
                     if (file.delete()) removed++
-                } else if (!isArtworkPathReferenced(file.absolutePath) && file.delete()) {
+                } else if (!isReferenced(file) && file.delete()) {
                     removed++
                 }
             }
 
             // Remove only legacy files directly under data/covers; never recurse into
             // managed subdirectories or delete a path still owned by a local/manual row.
-            val legacyRoot = cacheDirectory.parentFile
-            legacyRoot?.listFiles()?.forEach { file ->
-                if (file.isFile && !isArtworkPathReferenced(file.absolutePath) && file.delete()) {
+            legacyFiles.forEach { file ->
+                if (!isReferenced(file) && file.delete()) {
                     removed++
                 }
             }
@@ -241,13 +258,24 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
     }
 
+    private fun canonicalLocalPathOrNull(path: String): String? {
+        val value = path.trim().takeIf { it.isNotEmpty() } ?: return null
+        // These columns are path references, not content/HTTP URIs. If a URI ever
+        // appears here, its storage semantics are unknown and eviction must fail closed.
+        if (Regex("^[A-Za-z][A-Za-z0-9+.-]*://").containsMatchIn(value)) return null
+        return runCatching { File(value).canonicalFile.path }.getOrNull()
+    }
+
     /**
-     * Returns true when a persisted row still owns a path. Path aliases are checked
-     * as well, so cache eviction fails closed rather than deleting a referenced file.
+     * Returns the subset of candidate canonical paths still referenced by SQLite.
+     * Reads and canonicalizes persisted references once per eviction pass rather
+     * than issuing a full-table scan for every candidate file.
      */
-    fun isPathReferenced(path: String): Boolean {
-        val candidate = runCatching { File(path).canonicalFile.path }.getOrNull() ?: return true
+    fun referencedCanonicalPaths(paths: Collection<String>): Set<String> {
+        val candidates = paths.mapNotNull(::canonicalLocalPathOrNull).toSet()
+        if (candidates.isEmpty()) return emptySet()
         return database.read { db ->
+            val referenced = linkedSetOf<String>()
             db.rawQuery(
                 "SELECT local_path FROM artwork WHERE local_path IS NOT NULL AND TRIM(local_path)!='' " +
                     "UNION SELECT cover_cache FROM anime WHERE cover_cache IS NOT NULL AND TRIM(cover_cache)!=''",
@@ -256,19 +284,20 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 while (cursor.moveToNext()) {
                     val persisted = cursor.getString(0)?.trim().orEmpty()
                     if (persisted.isEmpty()) continue
-                    // Canonicalize the stored representation too: persisted absolute,
-                    // relative, and path-alias forms must not bypass the eviction guard.
-                    val persistedCanonical = runCatching {
-                        File(persisted).canonicalFile.path
-                    }.getOrElse {
-                        // Unknown path semantics must fail closed; do not evict on uncertainty.
-                        return@read true
-                    }
-                    if (persistedCanonical == candidate) return@read true
+                    // Unknown path/URI semantics protect every candidate in this pass.
+                    val persistedCanonical = canonicalLocalPathOrNull(persisted) ?: return@read candidates
+                    if (persistedCanonical in candidates) referenced += persistedCanonical
+                    if (referenced.size == candidates.size) break
                 }
-                false
             }
+            referenced
         }
+    }
+
+    /** Conservatively checks aliases as absolute or canonical paths. */
+    fun isPathReferenced(path: String): Boolean {
+        val candidate = canonicalLocalPathOrNull(path) ?: return true
+        return candidate in referencedCanonicalPaths(listOf(candidate))
     }
 
     private fun isArtworkPathReferenced(path: String): Boolean = isPathReferenced(path)
