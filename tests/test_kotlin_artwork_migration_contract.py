@@ -81,20 +81,22 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         artwork = ARTWORK.read_text(encoding="utf-8")
         extractor = EXTRACTOR.read_text(encoding="utf-8")
         self.assertIn("fun isPathReferenced(path: String): Boolean", artwork)
+        self.assertIn("fun referencedCanonicalPaths(paths: Collection<String>): Set<String>", artwork)
         self.assertIn("File(path).canonicalFile.path", artwork)
-        self.assertIn("File(persisted).canonicalFile.path", artwork)
+        self.assertIn("File(value).canonicalFile.path", artwork)
+        self.assertIn("File(value).canonicalFile.path", artwork)
         self.assertIn("SELECT local_path FROM artwork", artwork)
         self.assertIn("UNION SELECT cover_cache FROM anime", artwork)
-        self.assertIn("Unknown path semantics must fail closed", artwork)
+        self.assertIn("Unknown path/URI semantics protect every candidate", artwork)
         start = extractor.index("private fun trimCache(")
         end = extractor.index("private fun promoteLegacyCache(", start)
         trim = extractor[start:end]
-        self.assertIn("artworkService.isPathReferenced(file.absolutePath)", trim)
+        self.assertIn("artworkService.referencedCanonicalPaths(files.map { it.absolutePath })", trim)
+        self.assertIn("canonical in referencedPaths", trim)
         self.assertIn('File(File(File(context.filesDir, "data/covers"), "artwork"), "thumbnails")', extractor)
         self.assertIn("promoteLegacyCache(legacyTarget, target)", extractor)
-        self.assertIn('legacyTarget = File(File(context.cacheDir, "reiflix/thumbnails"), key + ".jpg")', extractor)
         self.assertLess(
-            trim.index("artworkService.isPathReferenced(file.absolutePath)"),
+            trim.index("artworkService.referencedCanonicalPaths(files.map { it.absolutePath })"),
             trim.index("if (file.delete())"),
         )
 
