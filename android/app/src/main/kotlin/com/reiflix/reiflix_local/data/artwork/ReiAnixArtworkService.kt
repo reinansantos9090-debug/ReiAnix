@@ -759,23 +759,31 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
      * existing/local/manual images; changing the limit trims only unreferenced files.
      */
     suspend fun applySettingChange(key: String) {
-        when (key) {
-            "artwork.enabled" -> withContext(Dispatchers.IO) {
-                if (isRemoteArtworkEnabled()) {
-                    requestPendingArtwork()
-                } else {
-                    val pendingBackfill = backfillJob
-                    pendingBackfill?.cancel()
-                    val activeJobs = synchronized(jobs) {
-                        jobs.values.toList().also { active -> active.forEach(Job::cancel) }
+        try {
+            when (key) {
+                "artwork.enabled" -> withContext(Dispatchers.IO) {
+                    if (isRemoteArtworkEnabled()) {
+                        requestPendingArtwork()
+                    } else {
+                        val pendingBackfill = backfillJob
+                        pendingBackfill?.cancel()
+                        val activeJobs = synchronized(jobs) {
+                            jobs.values.toList().also { active -> active.forEach(Job::cancel) }
+                        }
+                        activeJobs.joinAll()
+                        pendingBackfill?.join()
                     }
-                    activeJobs.joinAll()
-                    pendingBackfill?.join()
+                }
+                "artwork.cache_limit_mb" -> withContext(Dispatchers.IO) {
+                    trimCache()
                 }
             }
-            "artwork.cache_limit_mb" -> withContext(Dispatchers.IO) {
-                trimCache()
-            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // The preference has already committed. An application/cache failure must
+            // not turn that durable write into a false persistence rollback in Compose.
+            Log.e(TAG, "Could not apply committed setting " + key, error)
         }
     }
 
