@@ -271,6 +271,13 @@ class ReiAnixSettingsRepository(
                     }
 
                     if (shouldNotifyRuntime) {
+                        if (normalizedKey == "artwork.enabled" ||
+                            normalizedKey == "artwork.cache_limit_mb"
+                        ) {
+                            // Apply the already-committed canonical preference to the native
+                            // artwork worker; failures are logged there and never undo SQLite.
+                            scope.launch { nativeArtworkService.applySettingChange(normalizedKey) }
+                        }
                         val published = runCatching {
                             NativeMailbox.write(
                                 appContext,
