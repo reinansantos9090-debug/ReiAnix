@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from core.anilist import AniListClient
 from core.consumption import consumption_state
 from core.artwork import ArtworkEngine, PRESENTATION_READY
-from core.library_parser import ParsedEpisode, VIDEO_EXTENSIONS, parse_video_path
+from core.library_parser import VIDEO_EXTENSIONS, parse_video_path, ParsedEpisode
 from core.media_identity import identity_from_document
 from core.storage_access import saf_source_identity
 from core.organizer_ai import AnimeOrganizer, MatchContext
