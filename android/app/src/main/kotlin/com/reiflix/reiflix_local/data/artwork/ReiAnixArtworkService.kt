@@ -246,14 +246,28 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
      * as well, so cache eviction fails closed rather than deleting a referenced file.
      */
     fun isPathReferenced(path: String): Boolean {
-        val absolute = runCatching { File(path).absolutePath }.getOrNull() ?: return true
-        val canonical = runCatching { File(absolute).canonicalPath }.getOrNull() ?: absolute
+        val candidate = runCatching { File(path).canonicalFile.path }.getOrNull() ?: return true
         return database.read { db ->
             db.rawQuery(
-                "SELECT 1 FROM artwork WHERE local_path IN (?, ?) " +
-                    "UNION SELECT 1 FROM anime WHERE cover_cache IN (?, ?) LIMIT 1",
-                arrayOf(absolute, canonical, absolute, canonical),
-            ).use { cursor -> cursor.moveToFirst() }
+                "SELECT local_path FROM artwork WHERE local_path IS NOT NULL AND TRIM(local_path)!='' " +
+                    "UNION SELECT cover_cache FROM anime WHERE cover_cache IS NOT NULL AND TRIM(cover_cache)!=''",
+                null,
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val persisted = cursor.getString(0)?.trim().orEmpty()
+                    if (persisted.isEmpty()) continue
+                    // Canonicalize the stored representation too: persisted absolute,
+                    // relative, and path-alias forms must not bypass the eviction guard.
+                    val persistedCanonical = runCatching {
+                        File(persisted).canonicalFile.path
+                    }.getOrElse {
+                        // Unknown path semantics must fail closed; do not evict on uncertainty.
+                        return@read true
+                    }
+                    if (persistedCanonical == candidate) return@read true
+                }
+                false
+            }
         }
     }
 
