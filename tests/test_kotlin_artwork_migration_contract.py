@@ -66,6 +66,32 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         self.assertIn("not compose_library_bridge.enabled", handler)
         self.assertNotIn("library.register_generated_thumbnail", handler.split("if not registered", 1)[0])
 
+    def test_cache_clear_preserves_manual_and_local_cover_references(self):
+        source = ARTWORK.read_text(encoding="utf-8")
+        self.assertIn('db.execSQL("UPDATE anime SET metadata_updated_at=NULL")', source)
+        self.assertNotIn(
+            """db.execSQL("UPDATE anime SET metadata_updated_at=NULL, cover_cache=''")""",
+            source,
+        )
+        self.assertIn('ownsManualField(manualFields, "cover_cache")', source)
+        self.assertIn("stillLocallyOwned", source)
+        self.assertIn('"manual=1 OR LOWER(COALESCE(source,\'\')) IN (\'manual\',\'local\')"', source)
+
+    def test_thumbnail_cache_eviction_never_deletes_persisted_paths(self):
+        artwork = ARTWORK.read_text(encoding="utf-8")
+        extractor = EXTRACTOR.read_text(encoding="utf-8")
+        self.assertIn("fun isPathReferenced(path: String): Boolean", artwork)
+        self.assertIn("local_path IN (?, ?)", artwork)
+        self.assertIn("cover_cache IN (?, ?)", artwork)
+        start = extractor.index("private fun trimCache(")
+        end = extractor.index("private fun sha256(", start)
+        trim = extractor[start:end]
+        self.assertIn("artworkService.isPathReferenced(file.absolutePath)", trim)
+        self.assertLess(
+            trim.index("artworkService.isPathReferenced(file.absolutePath)"),
+            trim.index("if (file.delete())"),
+        )
+
     def test_event_is_emitted_only_after_native_persistence_path(self):
         source = ARTWORK.read_text(encoding="utf-8")
         self.assertIn('.put("type", eventType)', source)
