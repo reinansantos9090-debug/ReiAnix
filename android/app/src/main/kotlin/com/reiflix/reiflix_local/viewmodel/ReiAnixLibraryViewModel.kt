@@ -1464,6 +1464,8 @@ class ReiAnixLibraryViewModel(
     private suspend fun refreshNativeCatalog() {
         nativeCatalogReloadMutex.withLock {
             try {
+                // The previous direct nativeLibraryRepository.loadLibraryCatalogRows()
+                // read is now centralized behind the library query facade/service.
                 val rows = when (val result = nativeLibraryQueries.libraryCatalogRows()) {
                     is ReiAnixLibraryQueryResult.Success -> result.value
                     is ReiAnixLibraryQueryResult.Empty -> emptyList()
@@ -1916,6 +1918,8 @@ class ReiAnixLibraryViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 require(episodeId > 0L) { "O identificador do episódio é inválido." }
+                // Replaces the previous nativeLibraryRepository.getEpisode(episodeId)
+                // call with the single library-service entry point.
                 val episode = when (val result = nativeLibraryService.episodeById(episodeId)) {
                     is ReiAnixLibraryQueryResult.Success -> result.value
                     is ReiAnixLibraryQueryResult.Empty,
