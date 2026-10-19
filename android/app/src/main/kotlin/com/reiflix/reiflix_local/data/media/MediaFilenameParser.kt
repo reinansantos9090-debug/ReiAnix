@@ -245,7 +245,7 @@ object MediaFilenameParser {
                         confidence = MediaIdentificationConfidence.LOW
                         evidence += "MALFORMED_NUMERIC_SUFFIX_DECIMAL:${malformedDecimalSuffix.value}"
                         unresolved += "malformed_numeric_suffix_decimal"
-                    } else if (unsupportedDecimalSuffix != null && !isNumericOnlyFilename) {
+                    } else if (unsupportedDecimalSuffix != null) {
                         marker = unsupportedDecimalSuffix
                         kind = ParsedMediaKind.UNKNOWN
                         source = "unsupported_numeric_suffix_decimal_precision"

@@ -64,7 +64,7 @@ Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_i
 
 ### Correção estritamente ligada à regressão
 
-O parser agora rejeita separadores decimais repetidos antes de aceitar um prefixo inteiro em marcadores de episódio e sufixos numéricos (por exemplo, `03..5`, `03,,5` e `03.5.2`). A incerteza de precisão excessiva em sufixos numéricos também passa a ser refletida em `ambiguities`, alinhada ao campo `unresolved`. Não foram alteradas as regras de identidade absoluta inteira nem o fallback conservador de nomes numéricos.
+O parser rejeita separadores decimais repetidos antes de aceitar um prefixo inteiro em marcadores de episódio e sufixos numéricos (por exemplo, `03..5`, `03,,5` e `03.5.2`). A precisão excessiva em sufixos numéricos é refletida em `ambiguities`, alinhada a `unresolved`, inclusive em stems compostos apenas por números, como `12.125.mkv`. Esses casos continuam `UNKNOWN`, sem número de episódio/identidade absoluta; a alteração só adiciona a sinalização de ambiguidade e não promove o nome numérico a episódio. Não foram alteradas as regras de identidade absoluta inteira nem o fallback conservador de nomes numéricos.
 
 ### Estado de execução dos testes
 

@@ -22,7 +22,7 @@ The existing SQLite records remain the canonical persistence records. `SqliteDom
 - If no stable location evidence is present, identity remains null. For a non-filesystem content provider, a provider-scoped URI identity is used, not a guessed shared-storage identity.
 - File size and modification time are discovery attributes, not inputs to a stable media identity.
 
-`data/media/MediaTitleNormalizer` keeps title normalization separate from the physical-media identity algorithm. It does not fuzzy-match or promote a normalized title into an identifier. `data/media/MediaFilenameParser` recognizes explicit season/episode markers before considering numeric suffixes and exposes confidence/evidence/uncertainty for callers. Decimal episode syntax is bounded to 1–4 integer digits and up to 2 fractional digits; absolute episode numbering remains integer-based, and numeric-only decimal filenames remain ambiguous.
+`data/media/MediaTitleNormalizer` keeps title normalization separate from the physical-media identity algorithm. It does not fuzzy-match or promote a normalized title into an identifier. `data/media/MediaFilenameParser` recognizes explicit season/episode markers before considering numeric suffixes and exposes confidence/evidence/uncertainty for callers. Decimal episode syntax is bounded to 1–4 integer digits and up to 2 fractional digits; absolute episode numbering remains integer-based. Numeric-only decimal filenames are never promoted to episode identity; when the fractional precision exceeds two digits, the parser also records the unsupported-precision ambiguity.
 
 ## Python/Kotlin parity and boundary
 
