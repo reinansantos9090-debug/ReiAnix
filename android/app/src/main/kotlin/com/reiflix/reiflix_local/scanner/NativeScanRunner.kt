@@ -1154,10 +1154,13 @@ private fun discoveredMediaFromSnapshot(
 ): List<NativeDiscoveredMedia> = buildList {
                     for (i in 0 until scanDocuments.length()) {
                         val document = scanDocuments.optJSONObject(i) ?: continue
-                        val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
                         val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
                         val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
                         val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
+                        // NativeIndex may contain a durable snapshot from before parsedMedia was
+                        // added to discovery documents. Recover that contract with the same Kotlin
+                        // parser instead of indexing an episode with silently missing identity.
+                        val parsed = parsedMediaForSnapshot(document, name)
                         val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
                         val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
                         val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
@@ -1193,3 +1196,62 @@ private fun discoveredMediaFromSnapshot(
                         )
                     }
                 }
+private fun parsedMediaForSnapshot(
+    document: JSONObject,
+    fileName: String,
+): JSONObject {
+    val parsed = document.optJSONObject("parsedMedia")
+    val requiredStringFields = listOf(
+        "animeTitle",
+        "kind",
+        "identificationSource",
+        "confidence",
+        "displayTitle",
+        "extension",
+    )
+    val requiredFields = requiredStringFields + listOf(
+        "season",
+        "episodeNumber",
+        "absoluteNumber",
+    )
+    val numericFieldsValid = parsed != null &&
+        nullableNumericFieldIsValid(parsed, "season", integerOnly = true) &&
+        nullableNumericFieldIsValid(parsed, "episodeNumber") &&
+        nullableNumericFieldIsValid(parsed, "absoluteNumber", integerOnly = true)
+    val contractComplete = parsed != null &&
+        requiredFields.all(parsed::has) &&
+        requiredStringFields.none(parsed::isNull) &&
+        numericFieldsValid
+
+    if (contractComplete) return parsed!!
+
+    // A malformed partial contract is treated like an old snapshot: re-parse the source text
+    // instead of coercing an invalid value into a season or episode identifier.
+    // Use a temporary output object so rehydrating parser fields does not rewrite the
+    // stored discovery snapshot, its metadata availability flags, or provider identifiers.
+    return DiscoveredMediaMetadata.attach(
+        document = JSONObject(),
+        fileName = fileName,
+        relativePath = document.optString("relativePath").trim(),
+        source = document.optString("source").trim().ifBlank { "saf" },
+        mimeType = null,
+        sizeBytes = null,
+        modifiedAtMillis = null,
+        providerId = null,
+        nameAvailable = true,
+        mimeTypeAvailable = false,
+    ).optJSONObject("parsedMedia") ?: JSONObject()
+}
+
+private fun nullableNumericFieldIsValid(
+    parsed: JSONObject,
+    field: String,
+    integerOnly: Boolean = false,
+): Boolean {
+    if (!parsed.has(field)) return false
+    val value = parsed.opt(field)
+    if (value === JSONObject.NULL) return true
+    if (value !is Number) return false
+    val number = value.toDouble()
+    return number.isFinite() && (!integerOnly || number % 1.0 == 0.0)
+}

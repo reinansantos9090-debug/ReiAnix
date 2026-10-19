@@ -37,4 +37,15 @@ class ReiAnixGenreClassifierTest {
         assertEquals(emptyList<String>(), parseReiAnixGenreNames("null"))
         assertTrue(parseReiAnixGenreNames("not-json").contains("not-json"))
     }
+
+    @Test
+    fun unicodeNormalizationMatchesSelectedPythonRegistryCasefoldExamples() {
+        // These are explicit parity examples, not a claim of full Unicode str.casefold() parity.
+        assertEquals("strasse", normalizeReiAnixGenre("Straße"))
+        assertEquals("σ", normalizeReiAnixGenre("ς"))
+        assertEquals("cafe sao paulo", normalizeReiAnixGenre("CAFÉ---São_Paulo"))
+        assertEquals("sci fi action / drama", normalizeReiAnixGenre("Sci-Fi_Action / Dráma"))
+    }
+
+
 }

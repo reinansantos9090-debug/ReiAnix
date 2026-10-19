@@ -41,6 +41,9 @@ internal fun normalizeReiAnixGenre(value: String?): String {
     }
     return withoutMarks
         .lowercase(Locale.ROOT)
+        // Match Python casefold behavior for sharp-s and Greek final sigma.
+        .replace("ß", "ss")
+        .replace("ς", "σ")
         .trim()
         .replace(Regex("[-_]+"), " ")
         .replace(Regex("[^\\p{L}\\p{N}_\\s/]+"), " ")

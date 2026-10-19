@@ -4,6 +4,7 @@ import os
 import time
 import json
 import logging
+import math
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -13,7 +14,7 @@ from dataclasses import dataclass, field
 from core.anilist import AniListClient
 from core.consumption import consumption_state
 from core.artwork import ArtworkEngine, PRESENTATION_READY
-from core.library_parser import VIDEO_EXTENSIONS, parse_video_path
+from core.library_parser import VIDEO_EXTENSIONS, parse_video_path, ParsedEpisode
 from core.media_identity import identity_from_document
 from core.storage_access import saf_source_identity
 from core.organizer_ai import AnimeOrganizer, MatchContext
@@ -24,6 +25,60 @@ from core.library_discovery import duration_anomalies, format_duration, marathon
 from core.collector_journey import build_collector_journey, set_active_title
 
 logger = logging.getLogger(__name__)
+
+
+_NATIVE_MEDIA_KINDS = {"regular", "special", "ova", "oad", "ona", "extra", "movie", "unknown"}
+_NATIVE_MEDIA_CONFIDENCE = {"high", "medium", "low"}
+
+
+def _native_number(value, *, integer=False):
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("Native media number has an invalid type.")
+    number = float(value)
+    if not math.isfinite(number) or (integer and not number.is_integer()):
+        raise ValueError("Native media number is invalid.")
+    return int(number) if integer else number
+
+
+def _parsed_episode_from_native_contract(value):
+    """Adapt a complete Kotlin parsedMedia object without invoking the Python parser."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        title, kind, source = value["animeTitle"].strip(), value["kind"].strip().lower(), value["identificationSource"].strip()
+        confidence, display_title, extension = value["confidence"].strip().lower(), value["displayTitle"].strip(), value["extension"]
+        if (
+            not all(isinstance(value[field], str) for field in
+                    ("animeTitle", "kind", "identificationSource", "confidence", "displayTitle", "extension"))
+            or not title or not display_title or not source
+            or kind not in _NATIVE_MEDIA_KINDS or confidence not in _NATIVE_MEDIA_CONFIDENCE
+        ):
+            return None
+        season = _native_number(value["season"], integer=True)
+        episode = _native_number(value["episodeNumber"])
+        absolute_number = _native_number(value["absoluteNumber"], integer=True)
+        if ((season is not None and season < 0) or
+                (episode is not None and episode <= 0) or
+                (absolute_number is not None and absolute_number <= 0) or
+                (kind == "regular" and episode is None and absolute_number is None)):
+            return None
+        evidence, unresolved, technical = (
+            value.get("evidence", []), value.get("unresolved", []), value.get("technicalTokens", [])
+        )
+        if any(not isinstance(items, list) or any(not isinstance(item, str) for item in items)
+               for items in (evidence, unresolved, technical)):
+            return None
+        return ParsedEpisode(
+            anime_title=title, season=season, episode=episode, display_title=display_title,
+            extension=extension, episode_type=kind, identification_source=source,
+            confidence=confidence, absolute_number=absolute_number, evidence=tuple(evidence),
+            unresolved_parts=tuple(unresolved), technical_tokens=tuple(technical),
+        )
+    except (KeyError, TypeError, ValueError, OverflowError, AttributeError):
+        return None
+
 
 @dataclass
 class ScanResult:
@@ -1397,12 +1452,17 @@ class LibraryService:
             result.unchanged += 1
             return uri
 
-        try:
-            item = parse_video_path(relative_path, source_folder)
-        except (OSError, ValueError, UnicodeError) as exc:
-            result.ignored += 1
-            result.errors.append(f"Não foi possível identificar {name}: {exc}")
-            return None
+        # A structured native result is authoritative when valid. This removes the
+        # Python parsing dependency for Kotlin-produced document batches that enter the
+        # compatibility ingest path, while preserving the parser for older/desktop callers.
+        item = _parsed_episode_from_native_contract(document.get("parsedMedia"))
+        if item is None:
+            try:
+                item = parse_video_path(relative_path, source_folder)
+            except (OSError, ValueError, UnicodeError) as exc:
+                result.ignored += 1
+                result.errors.append(f"Não foi possível identificar {name}: {exc}")
+                return None
 
         key = item.anime_title.casefold()
         if item.episode_type == "unknown" or not item.anime_title or item.anime_title == "Arquivo não identificado":
