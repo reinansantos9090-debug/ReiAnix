@@ -61,17 +61,18 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixSqliteAccountRepository(sqliteDatabase)
     }
 
-    val libraryQueryService: ReiAnixLibraryQueryService by lazy(
-        LazyThreadSafetyMode.SYNCHRONIZED,
-    ) {
-        ReiAnixLibraryQueryService(appContext, sqliteLibraryRepository)
-    }
-
-    /** Single Kotlin domain entry point for scan-owned canonical library mutations. */
+    /** Single Kotlin domain entry point for canonical library reads and mutations. */
     val libraryService: ReiAnixLibraryService by lazy(
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixLibraryService(sqliteLibraryRepository)
+    }
+
+    /** Compatibility facade; query contracts and change publication belong to the service above. */
+    val libraryQueryService: ReiAnixLibraryQueryService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixLibraryQueryService(appContext, sqliteLibraryRepository, libraryService)
     }
 
     /** Local discovery algorithms over the shared canonical SQLite repository. */
