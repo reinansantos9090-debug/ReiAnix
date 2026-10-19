@@ -18,26 +18,26 @@ Os modelos `Anime`, `Episode`, `LogicalEpisodeIdentity`, `LocalMediaReference`, 
 1. `LocalMediaReference` expõe uma classificação derivada de localização: caminho filesystem, string vazia/não resolvida, `file://`, `content://`, SAF tree URI, SAF document URI ou outro esquema. O valor persistido original continua intacto; a classificação não concede acesso nem transforma URI em caminho. A classificação SAF é deliberadamente conservadora: exige uma autoridade DocumentsProvider conhecida e segmentos estruturais exatos; providers desconhecidos permanecem `CONTENT_URI`, e URI malformada nunca vira caminho de filesystem.
 2. `MediaFilenameParser` reconhece números de episódio decimais com ponto ou vírgula em marcadores explícitos e sufixo numérico. A guarda conservadora permanece: nomes somente numéricos (incluindo `12.5.mkv`) não são promovidos a identidade de episódio; numeração absoluta continua inteira.
 3. `normalizeReiAnixGenre` cobre explicitamente diferenças relevantes para `ß` e sigma final grego após decomposição Unicode. Isto não é uma implementação completa de `str.casefold()` do Python; as diferenças Unicode não cobertas continuam documentadas como limite de paridade.
-4. Documentação e roadmap foram alinhados para que o Prompt 02 cubra a camada de domínio e o Prompt 11 conecte esses contratos ao fluxo nativo ativo de discovery.
+4. O caminho de discovery/recovery nativo e o adaptador de ingestão compatível foram conectados incrementalmente no Prompt 02.5; isso não equivale à migração completa de todos os consumidores Python/Flet. A implementação existente do parser Kotlin e os serviços SQLite canônicos foram reutilizados.
 
 ## Python e consumidores
 
 Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_identity.py`, `core/genre_registry.py` e `core/genre_classifier.py` permanecem. Serviços, bridges e telas Python ainda os consomem; excluí-los agora causaria regressão no runtime híbrido. Arquivos Python removidos: **0**; linhas Python removidas: **0**. Isso não representa eliminação da dependência de runtime.
 
-## Integrações que continuam fora da etapa
+## Limites que permanecem após o incremento funcional 02.5
 
-- Troca do parser do fluxo Python/LibraryService ativo.
-- Cutover integral do coordenador/scanner e observações de episódio.
-- Migração integral de LibraryService e regras de merge.
-- Bootstrap nativo, remoção de entrypoint híbrido e build APK 100% nativo.
-- Paridade funcional completa entre os caminhos legado e Kotlin em runtime.
+- `MediaFilenameParser` Kotlin já é usado pelos scanners Android nativos e pela recuperação de snapshots antigos sem `parsedMedia` completo.
+- O adaptador em `core/library_service.py` aceita um contrato Kotlin completo em documentos de ingestão compatível; isso é uma integração limitada, não uma troca global do parser Python. A evidência revisada não comprova que esse adaptador seja chamado pelo fluxo normal de lotes Android marcados como `nativeLibraryIndexOwner`, pois esses lotes são intencionalmente excluídos da reingestão Python.
+- O parser Python ainda atende scans filesystem/desktop e produtores legados sem contrato Kotlin válido; a migração completa desses consumidores continua pendente.
+- O cutover integral de LibraryService Python, coordenadores/bridges e regras de merge permanece pendente onde esses caminhos ainda são usados. Bootstrap totalmente nativo, remoção completa de entrypoints híbridos e paridade comportamental integral também não são alegados.
+- A suíte Kotlin/JVM continua sem execução comprovada nesta etapa. A compilação de produção APK não substitui `:app:testDebugUnitTest`.
 
 ## Testes existentes e limite de cobertura
 
 - Python preexistente: `tests/test_media_identity.py` e `tests/test_genre_registry.py`, além das suítes de biblioteca/discovery no repositório.
 - Kotlin/JVM preexistente: `MediaFilenameParserTest.kt`, `MediaDomainAndIdentityTest.kt`, `ReiAnixGenreClassifierTest.kt` e `ReiAnixSqliteModelsTest.kt`.
 - Os três arquivos de teste Kotlin/JVM citados no incremento Prompt 02.2 foram modificados para acrescentar cenários de decimais, classificação URI/SAF e exemplos Unicode selecionados. Não foi criado um novo arquivo de teste. Os asserts dedicados estão presentes no código, mas as fontes de teste não foram comprovadamente compiladas nem executadas como suíte JVM; portanto, os resultados comportamentais continuam pendentes.
-- O run automático `39154979582` passou no SHA `69f35f0aa6ac16946b3ff690f0b29e1c7d8eb69c` para regressões Python/build/compilação Kotlin de produção/artefatos. Ele não executou `:app:testDebugUnitTest` e antecede esta reconciliação documental. Nenhum despacho manual de `.github/workflows/kotlin_jvm_tests.yml` foi feito.
+- O run automático `39154979582` passou no SHA `69f35f0aa6ac16946b3ff690f0b29e1c7d8eb69c` para regressões Python/build/compilação Kotlin de produção/artefatos. É evidência histórica e não executou `:app:testDebugUnitTest`; nenhum despacho manual de `.github/workflows/kotlin_jvm_tests.yml` foi feito nessa etapa.
 
 ## Correções do Prompt 02.1
 
@@ -52,7 +52,7 @@ Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_i
 - Os três arquivos de teste Kotlin/JVM consultados estão modificados no HEAD de partida: foram acrescentados asserts de decimais/parser em `MediaFilenameParserTest.kt`, exemplos Unicode em `ReiAnixGenreClassifierTest.kt` e classificações/preservação de URI em `MediaDomainAndIdentityTest.kt`. Não foram acrescentados novos arquivos de teste nesta reconciliação. A suíte JVM permanece pendente: não há evidência de compilação ou execução dos testes; a revisão feita aqui é estática.
 - O run `39154979582` (`build_apk.yml`) concluiu `success` no SHA anterior `69f35f0aa6ac16946b3ff690f0b29e1c7d8eb69c`; não conta como validação do SHA final desta reconciliação. O schema SQLite v29 e o arquivo canônico não foram alterados.
 - Schema SQLite v29, mapeadores de leitura, IDs, referências de mídia e consumidores Python foram preservados.
-- Esta implementação não representa a migração integral concluída: a camada de domínio ainda depende de integrações posteriores e validação comportamental autorizada.
+- Estado correto do Prompt 02 após o incremento 02.5: contratos de domínio, scanner/recovery Android nativos e adaptador de compatibilidade foram implementados de forma incremental; a eliminação global das dependências Python/Flet/Flutter não está concluída. A validação Kotlin/JVM segue pendente e não é inferida a partir do build APK.
 
 ## Prompt 02.2/18 — cobertura de regressão e limites de validação
 
@@ -79,7 +79,7 @@ Nenhum workflow, script de build, arquivo de persistência, schema, módulo Pyth
 - Corrigido o fluxo de nome exclusivamente numérico com precisão não suportada: para `12.125.mkv` e `12,125.mkv`, `kind` continua `UNKNOWN`, confiança `LOW`, números de episódio/absoluto permanecem nulos e a origem `unsupported_numeric_suffix_decimal_precision` não é mais sobrescrita por `unknown`. A evidência, `unresolved` e `ambiguities` permanecem alinhadas.
 - O conflito entre temporada de arquivo e temporada da pasta agora também cobre o marcador `NxM` (ex.: `2x03` dentro de uma pasta `S01`), mantendo a ambiguidade em vez de aceitar a temporada conflitante silenciosamente.
 - Os três arquivos de teste modificados em incrementos anteriores permanecem exatamente como estavam nesta execução; não foram adicionados nem alterados testes, workflows ou infraestrutura. A suíte Kotlin/JVM não foi executada nem despachada.
-- O run `39180837684` foi `success` para o SHA anterior `5feecb570b9e25e8843d04b57fb9c25dc0a7dd0b`, não para este novo HEAD. Ele comprovou o fluxo automático híbrido de regressão Python/build/compilação Kotlin de produção/artefatos, não os asserts Kotlin/JVM. O SHA e run do fechamento final devem ser conferidos no status ao vivo da PR #199; não reutilizar este run histórico como validação final.
+- O run `39180837684` foi `success` para o SHA histórico `5feecb570b9e25e8843d04b57fb9c25dc0a7dd0b`; não é o run final do incremento funcional posterior. O run `39186715263` validou o código no HEAD `4f3612923f3693254c6ab2a9548e92db4ebeece2` com regressões Python/build/compilação Kotlin de produção/artefatos, mas não executou os testes Kotlin/JVM. Como este fechamento documental gera novo HEAD, a validação final de build deve ser lida no run vinculado ao commit mais recente da PR.
 - Nenhuma mudança de SQLite foi feita: `library.sqlite3`, schema v29, IDs e dados persistidos permanecem sob os contratos existentes. Consumidores Python continuam ativos e o Prompt 03 não foi iniciado.
 
 ## Incremento funcional — Prompt 02.5/18
@@ -97,3 +97,8 @@ O reaproveitamento de `parsedMedia` persistido valida também que temporada/nume
 ## Integração adicional do contrato Kotlin à ingestão compatível
 
 `LibraryService._record_document` agora consome `document["parsedMedia"]` como `ParsedEpisode` quando o objeto estruturado fornecido pelo scanner Kotlin está completo e validado. Nesse caso, não chama `parse_video_path` para aquele registro; o fluxo de identificação usa a saída real de `MediaFilenameParser` Kotlin. A conversão valida números finitos, temporada/número absoluto inteiros, kind/confiança conhecidos e listas de evidências. Contratos ausentes/inválidos continuam seguindo o parser Python conservador para produtores legados/desktop, sem reprocessar resultados Kotlin válidos ou alterar o schema.
+
+
+## Fechamento consolidado do Prompt 02
+
+O escopo funcional 02.5 está implementado no código da PR: parser Kotlin no discovery Android nativo, recuperação de snapshots legados em Kotlin, contrato `parsedMedia` validado na borda de ingestão compatível e persistência pelo repositório SQLite existente. Não houve mudança de schema v29, banco paralelo, alterações de arquivos de teste/workflow ou início do Prompt 03. Não se declara concluída a remoção global do parser Python, nem comprovado o exercício de ponta a ponta do adaptador Python no fluxo Android nativo. Para o estado de validação final, conferir o workflow automático do HEAD mais recente da PR #199. A suíte Kotlin/JVM continua pendente, pois o workflow manual não foi despachado.
