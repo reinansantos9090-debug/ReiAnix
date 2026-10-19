@@ -30,103 +30,103 @@ internal class ReiAnixSqliteSchemaBootstrap(
      */
     fun ensureCurrentSchema(): Outcome {
         return synchronized(PROCESS_LOCK) {
-        val canonicalFile = databaseBoundary.canonicalDatabaseFile
-        val existedBefore = canonicalFile.exists()
-        if (existedBefore) {
-            check(canonicalFile.isFile && canonicalFile.length() > 0L) {
-                "The canonical SQLite path exists but is not a valid non-empty file."
-            }
-            val snapshot = databaseBoundary.inspectSchema()
-            ensureSafeToMigrate(snapshot)
-            if (snapshot.supportsCurrentContract) return@synchronized Outcome.ALREADY_CURRENT
-            if (snapshot.schemaVersion == ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION) {
-                throw ReiAnixSqliteSchemaMismatchException(snapshot.incompatibilities)
-            }
-        }
-
-        val contract = databaseBoundary.schemaContractForBootstrap()
-        val expectedVersion = contract.getInt("schema_version")
-        check(expectedVersion == ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION) {
-            "The generated SQLite contract and native bootstrap version disagree."
-        }
-        val expectedUserVersion = contract.getInt("sqlite_user_version")
-        val bootstrapSql = contract.getJSONObject("bootstrap_sql")
-        val tablesSql = bootstrapSql.getJSONArray("tables")
-        val indexesSql = bootstrapSql.getJSONArray("indexes")
-        val triggersSql = bootstrapSql.getJSONArray("triggers")
-        var outcome = if (existedBefore) Outcome.MIGRATED else Outcome.CREATED
-
-        databaseBoundary.withSchemaBootstrap(createIfMissing = !existedBefore) { connection ->
-            connection.beginTransactionNonExclusive()
-            try {
-                val current = databaseBoundary.inspectSchemaForBootstrap(connection)
-                ensureSafeToMigrate(current)
-                if (current.supportsCurrentContract) {
-                    outcome = Outcome.ALREADY_CURRENT
-                } else {
-                    if (current.schemaVersion == expectedVersion) {
-                        throw ReiAnixSqliteSchemaMismatchException(current.incompatibilities)
-                    }
-
-                    for (index in 0 until tablesSql.length()) {
-                        connection.execSQL(asIdempotentCreate(tablesSql.getString(index), ObjectKind.TABLE))
-                    }
-
-                    addMissingColumns(connection, contract)
-
-                    // Rebuild only explicit indexes, never tables or rows. This mirrors
-                    // LibraryStore's idx_artwork_key replacement and ensures old index
-                    // definitions cannot survive under a canonical name. Transaction
-                    // rollback restores these indexes if any later validation fails.
-                    for (index in 0 until indexesSql.length()) {
-                        val sql = indexesSql.getString(index)
-                        val name = createdObjectName(sql, ObjectKind.INDEX)
-                        connection.execSQL("DROP INDEX IF EXISTS ${quoteIdentifier(name)}")
-                    }
-                    for (index in 0 until triggersSql.length()) {
-                        val sql = triggersSql.getString(index)
-                        val name = createdObjectName(sql, ObjectKind.TRIGGER)
-                        connection.execSQL("DROP TRIGGER IF EXISTS ${quoteIdentifier(name)}")
-                    }
-                    for (index in 0 until indexesSql.length()) {
-                        connection.execSQL(asIdempotentCreate(indexesSql.getString(index), ObjectKind.INDEX))
-                    }
-                    for (index in 0 until triggersSql.length()) {
-                        connection.execSQL(asIdempotentCreate(triggersSql.getString(index), ObjectKind.TRIGGER))
-                    }
-
-                    // Keep the metadata-state normalization in parity with the existing
-                    // LibraryStore initializer without overwriting personal/user fields.
-                    connection.execSQL(
-                        """
-                        UPDATE anime
-                        SET anilist_match_status = CASE
-                            WHEN metadata_status = 'manual' AND anilist_id IS NOT NULL THEN 'manual'
-                            WHEN anilist_id IS NOT NULL THEN 'matched'
-                            ELSE COALESCE(NULLIF(anilist_match_status, ''), 'unmatched')
-                        END
-                        WHERE anilist_id IS NOT NULL OR anilist_match_status IS NULL
-                        """.trimIndent(),
-                    )
-                    connection.execSQL(
-                        "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
-                        arrayOf(expectedVersion, System.currentTimeMillis() / 1000.0),
-                    )
-
-                    val migrated = databaseBoundary.inspectSchemaForBootstrap(connection)
-                    if (!migrated.supportsCurrentContract) {
-                        throw ReiAnixSqliteSchemaMismatchException(migrated.incompatibilities)
-                    }
-                    check(migrated.sqliteUserVersion == expectedUserVersion) {
-                        "Native schema bootstrap unexpectedly changed PRAGMA user_version."
-                    }
+            val canonicalFile = databaseBoundary.canonicalDatabaseFile
+            val existedBefore = canonicalFile.exists()
+            if (existedBefore) {
+                check(canonicalFile.isFile && canonicalFile.length() > 0L) {
+                    "The canonical SQLite path exists but is not a valid non-empty file."
                 }
-                connection.setTransactionSuccessful()
-            } finally {
-                connection.endTransaction()
+                val snapshot = databaseBoundary.inspectSchema()
+                ensureSafeToMigrate(snapshot)
+                if (snapshot.supportsCurrentContract) return@synchronized Outcome.ALREADY_CURRENT
+                if (snapshot.schemaVersion == ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION) {
+                    throw ReiAnixSqliteSchemaMismatchException(snapshot.incompatibilities)
+                }
             }
-        }
-        outcome
+
+            val contract = databaseBoundary.schemaContractForBootstrap()
+            val expectedVersion = contract.getInt("schema_version")
+            check(expectedVersion == ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION) {
+                "The generated SQLite contract and native bootstrap version disagree."
+            }
+            val expectedUserVersion = contract.getInt("sqlite_user_version")
+            val bootstrapSql = contract.getJSONObject("bootstrap_sql")
+            val tablesSql = bootstrapSql.getJSONArray("tables")
+            val indexesSql = bootstrapSql.getJSONArray("indexes")
+            val triggersSql = bootstrapSql.getJSONArray("triggers")
+            var outcome = if (existedBefore) Outcome.MIGRATED else Outcome.CREATED
+
+            databaseBoundary.withSchemaBootstrap(createIfMissing = !existedBefore) { connection ->
+                connection.beginTransactionNonExclusive()
+                try {
+                    val current = databaseBoundary.inspectSchemaForBootstrap(connection)
+                    ensureSafeToMigrate(current)
+                    if (current.supportsCurrentContract) {
+                        outcome = Outcome.ALREADY_CURRENT
+                    } else {
+                        if (current.schemaVersion == expectedVersion) {
+                            throw ReiAnixSqliteSchemaMismatchException(current.incompatibilities)
+                        }
+
+                        for (index in 0 until tablesSql.length()) {
+                            connection.execSQL(asIdempotentCreate(tablesSql.getString(index), ObjectKind.TABLE))
+                        }
+
+                        addMissingColumns(connection, contract)
+
+                        // Rebuild only explicit indexes, never tables or rows. This mirrors
+                        // LibraryStore's idx_artwork_key replacement and ensures old index
+                        // definitions cannot survive under a canonical name. Transaction
+                        // rollback restores these indexes if any later validation fails.
+                        for (index in 0 until indexesSql.length()) {
+                            val sql = indexesSql.getString(index)
+                            val name = createdObjectName(sql, ObjectKind.INDEX)
+                            connection.execSQL("DROP INDEX IF EXISTS ${quoteIdentifier(name)}")
+                        }
+                        for (index in 0 until triggersSql.length()) {
+                            val sql = triggersSql.getString(index)
+                            val name = createdObjectName(sql, ObjectKind.TRIGGER)
+                            connection.execSQL("DROP TRIGGER IF EXISTS ${quoteIdentifier(name)}")
+                        }
+                        for (index in 0 until indexesSql.length()) {
+                            connection.execSQL(asIdempotentCreate(indexesSql.getString(index), ObjectKind.INDEX))
+                        }
+                        for (index in 0 until triggersSql.length()) {
+                            connection.execSQL(asIdempotentCreate(triggersSql.getString(index), ObjectKind.TRIGGER))
+                        }
+
+                        // Keep the metadata-state normalization in parity with the existing
+                        // LibraryStore initializer without overwriting personal/user fields.
+                        connection.execSQL(
+                            """
+                            UPDATE anime
+                            SET anilist_match_status = CASE
+                                WHEN metadata_status = 'manual' AND anilist_id IS NOT NULL THEN 'manual'
+                                WHEN anilist_id IS NOT NULL THEN 'matched'
+                                ELSE COALESCE(NULLIF(anilist_match_status, ''), 'unmatched')
+                            END
+                            WHERE anilist_id IS NOT NULL OR anilist_match_status IS NULL
+                            """.trimIndent(),
+                        )
+                        connection.execSQL(
+                            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                            arrayOf(expectedVersion, System.currentTimeMillis() / 1000.0),
+                        )
+
+                        val migrated = databaseBoundary.inspectSchemaForBootstrap(connection)
+                        if (!migrated.supportsCurrentContract) {
+                            throw ReiAnixSqliteSchemaMismatchException(migrated.incompatibilities)
+                        }
+                        check(migrated.sqliteUserVersion == expectedUserVersion) {
+                            "Native schema bootstrap unexpectedly changed PRAGMA user_version."
+                        }
+                    }
+                    connection.setTransactionSuccessful()
+                } finally {
+                    connection.endTransaction()
+                }
+            }
+            outcome
         }
     }
 
