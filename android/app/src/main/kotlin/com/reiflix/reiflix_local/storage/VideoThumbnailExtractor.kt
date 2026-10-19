@@ -443,10 +443,13 @@ object VideoThumbnailExtractor {
                 ?: return@runCatching
             var total = files.sumOf { it.length() }
             if (total > MAX_CACHE_BYTES) {
+                // Read SQLite path references once for the whole eviction pass.
+                val referencedPaths = artworkService.referencedCanonicalPaths(files.map { it.absolutePath })
                 for (file in files) {
                     if (file == protected) continue
                     if (total <= MAX_CACHE_BYTES) break
-                    if (artworkService.isPathReferenced(file.absolutePath)) continue
+                    val canonical = runCatching { file.canonicalFile.path }.getOrNull() ?: continue
+                    if (canonical in referencedPaths) continue
                     val length = file.length()
                     if (file.delete()) {
                         total -= length
