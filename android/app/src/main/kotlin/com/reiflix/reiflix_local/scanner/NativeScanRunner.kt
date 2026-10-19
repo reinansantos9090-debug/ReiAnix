@@ -108,7 +108,7 @@ object NativeScanRunner {
                 }
                 val relativePath = documentId.substring(separator + 1).trim('/')
                 val pathSegments = relativePath.split('/').filter { it.isNotEmpty() }
-                if (pathSegments.any { it == "." || it == ".." || it.contains('\\\\') }) {
+                if (pathSegments.any { it == "." || it == ".." || it.contains('\\') }) {
                     warnBoth("O caminho relativo de uma pasta SAF local não é seguro para a varredura.")
                     continue
                 }
