@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.player
 
 import com.reiflix.reiflix_local.NativePlayerActivity
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -102,6 +103,65 @@ data class NativePlayerRequest(
             .putExtra("setting_audio_subtitle_scale", audioSubtitleScale)
             .putExtra("setting_audio_subtitle_bottom_padding", audioSubtitleBottomPadding)
             .putExtra("setting_audio_subtitle_embedded_style", audioSubtitleEmbeddedStyle)
+
+    /**
+     * The command URI remains a compatibility handoff, but persisted player
+     * preferences come from the canonical SQLite snapshot when the native
+     * dispatcher can read it. A null snapshot means SQLite was unavailable and
+     * preserves the request's existing values rather than replacing them with defaults.
+     */
+    fun withCanonicalSettings(preferences: Map<String, String>?): NativePlayerRequest {
+        if (preferences == null) return this
+
+        fun normalized(key: String): String {
+            val defaultValue = ReiAnixSettingsContract.defaultFor(key)
+                ?: return preferences[key].orEmpty()
+            val raw = preferences[key] ?: defaultValue
+            return runCatching { ReiAnixSettingsContract.normalize(key, raw) }
+                .getOrDefault(defaultValue)
+        }
+
+        fun boolean(key: String): Boolean =
+            normalized(key).toBooleanStrictOrNull()
+                ?: (ReiAnixSettingsContract.defaultFor(key) == "true")
+
+        fun integer(key: String): Int =
+            normalized(key).toIntOrNull()
+                ?: ReiAnixSettingsContract.defaultFor(key)?.toIntOrNull()
+                ?: 0
+
+        fun decimal(key: String): Float =
+            normalized(key).toFloatOrNull()?.takeIf { it.isFinite() }
+                ?: ReiAnixSettingsContract.defaultFor(key)?.toFloatOrNull()
+                ?: 1f
+
+        return copy(
+            autoplay = boolean("player.autoplay_next"),
+            defaultSpeed = decimal("player.default_speed").coerceIn(0.5f, 2f),
+            aspectRatio = normalized("player.aspect_ratio"),
+            zoomEnabled = boolean("player.zoom_enabled"),
+            immersive = normalized("player.immersive"),
+            rotation = normalized("player.rotation"),
+            pip = boolean("player.pip"),
+            lockMode = boolean("player.lock_mode"),
+            autoHideSeconds = integer("player.auto_hide_seconds").coerceIn(0, 300),
+            doubleTapSeekSeconds = integer("player.double_tap_seek_seconds").toLong().coerceIn(1L, 120L),
+            longPressSpeed = decimal("player.long_press_speed").coerceIn(1f, 3f),
+            maxVideoResolution = normalized("player.max_video_resolution"),
+            maxVideoFrameRate = integer("player.max_video_frame_rate").coerceAtLeast(0),
+            maxAudioChannels = integer("player.max_audio_channels").coerceAtLeast(0),
+            gesturesVolume = boolean("gestures.volume"),
+            gesturesBrightness = boolean("gestures.brightness"),
+            gesturesDoubleTap = boolean("gestures.double_tap"),
+            gesturesLongPress = boolean("gestures.long_press"),
+            audioPreferredLanguage = normalized("audio.preferred_language"),
+            audioPreferredSubtitleLanguage = normalized("audio.preferred_subtitle_language"),
+            audioSubtitles = normalized("audio.subtitles"),
+            audioSubtitleScale = decimal("audio.subtitle_scale").coerceIn(0.5f, 2f),
+            audioSubtitleBottomPadding = integer("audio.subtitle_bottom_padding").coerceIn(0, 50),
+            audioSubtitleEmbeddedStyle = boolean("audio.subtitle_embedded_style"),
+        )
+    }
 
     companion object {
         fun fromBridgeUri(source: Uri): NativePlayerRequest =
