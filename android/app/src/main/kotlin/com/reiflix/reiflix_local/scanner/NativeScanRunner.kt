@@ -134,7 +134,7 @@ object NativeScanRunner {
                     }
                 }
                 if (physicalRoot == null) {
-                    warnBoth("O volume de uma pasta SAF local não está montado ou não pôde ser identificado.")
+                    broadStorageWarnings += "O volume de uma pasta SAF local não está montado ou não pôde ser identificado."
                     continue
                 }
 
@@ -147,7 +147,7 @@ object NativeScanRunner {
                     !isWithinRoot(candidate, canonicalPhysicalRoot) ||
                     !candidate.exists() || !candidate.isDirectory || isRestrictedRoot(candidate)
                 ) {
-                    warnBoth("Uma pasta SAF local não pôde ser mapeada com segurança para um diretório montado.")
+                    broadStorageWarnings += "Uma pasta SAF local não pôde ser mapeada com segurança para um diretório montado."
                     continue
                 }
 
