@@ -512,4 +512,5 @@ def test_artwork_settings_apply_after_commit_and_control_native_cache():
     assert 'bool("artwork.enabled", true)' in contract
     assert 'int("artwork.cache_limit_mb", 128, 64, 128, 256, 512)' in contract
     assert "referencedCanonicalPaths(images.map { it.absolutePath })" in artwork
-    assert "source='manual'" not in artwork or "manual" in artwork
+    assert "if (path in refs) return@forEach" in artwork
+    assert "private fun isRemoteArtworkEnabled()" in artwork
