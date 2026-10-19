@@ -460,6 +460,16 @@ object MediaStoreScanner {
                             (Build.VERSION.SDK_INT>=30 && stableGeneration!=postGeneration) || probeHasMediaInScope
                         ){
                             volumeWaitingForMediaStore=true
+                        } else if (
+                            Build.VERSION.SDK_INT < 29 &&
+                            !localCancelled &&
+                            !cancelled &&
+                            localErrors.length() == 0
+                        ) {
+                            // API 24–28 cannot expose the MediaStore version/generation
+                            // needed to prove that an empty scoped query is stable. Keep this
+                            // diagnostic result non-destructive and explicitly incomplete.
+                            localErrors.put("Android 24–28 não disponibiliza versão/geração confiável do MediaStore; a ausência de vídeos no escopo SAF não pode ser confirmada como completa.")
                         }
                     }
                 }
