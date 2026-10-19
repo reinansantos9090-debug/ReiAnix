@@ -137,6 +137,19 @@ object MediaStoreScanner {
         if(Build.VERSION.SDK_INT>=29){projection+=MediaStore.Video.Media.RELATIVE_PATH;projection+=MediaStore.MediaColumns.VOLUME_NAME}
         if(Build.VERSION.SDK_INT>=30){projection+=MediaStore.MediaColumns.GENERATION_ADDED;projection+=MediaStore.MediaColumns.GENERATION_MODIFIED}
         val volumeScopes=JSONArray();val errors=JSONArray()
+        val visibleVolumeIdentities = volumeNames.associateWith { volumeName ->
+            volumeUuid(context, volumeName)
+        }
+        if (authorizedScopes.any { scope ->
+                visibleVolumeIdentities.none { (volumeName, volumeUuid) ->
+                    volumeMatches(scope, volumeName, volumeUuid)
+                }
+            }
+        ) {
+            // A configured removable volume missing from the provider query must not
+            // be reported as a successful empty scan of every configured library scope.
+            errors.put("Um ou mais volumes das pastas SAF configuradas não estão disponíveis no MediaStore.")
+        }
         val access=accessLevel(context)
         val accessState = accessLevelValue(context)
         check(StorageAuthorization.canScanMediaStore(accessState)) { "Permissão de vídeos não concedida." }
