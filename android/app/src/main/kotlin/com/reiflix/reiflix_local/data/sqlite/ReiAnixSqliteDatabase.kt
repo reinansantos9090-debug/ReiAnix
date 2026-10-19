@@ -147,6 +147,57 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
         }
 
+    /**
+     * Returns the build-generated canonical contract to the native schema bootstrap.
+     * The JSON is derived from LibraryStore's real schema in an isolated build fixture;
+     * callers must not mutate it or use it as a second persistence source.
+     */
+    internal fun schemaContractForBootstrap(): JSONObject = canonicalContract
+
+    /**
+     * Runs schema creation/migration against the same canonical file and under the same
+     * process lock as repository operations. CREATE_IF_NECESSARY is permitted only to
+     * the bootstrap caller after startup has excluded interrupted-recovery evidence.
+     * Existing files are never truncated, deleted, copied or replaced.
+     */
+    internal fun <T> withSchemaBootstrap(
+        createIfMissing: Boolean,
+        block: (SQLiteDatabase) -> T,
+    ): T = synchronized(connectionLock) {
+        if (!createIfMissing) {
+            check(databaseFile.isFile && databaseFile.length() > 0L) {
+                "The existing canonical SQLite database is unavailable for schema migration."
+            }
+        } else {
+            check(!databaseFile.exists() || (databaseFile.isFile && databaseFile.length() > 0L)) {
+                "The canonical SQLite path exists but is not a valid non-empty file."
+            }
+        }
+        val flags = SQLiteDatabase.OPEN_READWRITE or
+            (if (createIfMissing) SQLiteDatabase.CREATE_IF_NECESSARY else 0)
+        val database = try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, flags)
+        } catch (error: SQLiteException) {
+            throw ReiAnixSqliteOpenException(
+                "Unable to open the canonical SQLite database for native schema bootstrap.",
+                error,
+            )
+        }
+        try {
+            database.setForeignKeyConstraintsEnabled(true)
+            database.rawQuery("PRAGMA busy_timeout = $BUSY_TIMEOUT_MS", null).use { cursor ->
+                while (cursor.moveToNext()) Unit
+            }
+            block(database)
+        } finally {
+            database.close()
+        }
+    }
+
+    /** Full contract/integrity inspection inside the schema-bootstrap transaction. */
+    internal fun inspectSchemaForBootstrap(database: SQLiteDatabase): ReiAnixSqliteSchemaSnapshot =
+        inspectSchema(database)
+
     internal fun quickCheck(): List<String> =
         synchronized(connectionLock) {
             val database = openExisting(readOnly = true)
