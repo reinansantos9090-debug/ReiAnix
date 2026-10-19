@@ -53,3 +53,6 @@ The Kotlin genre normalizer explicitly handles `ß`/`ss` and Greek final sigma `
 The Android-native scanners call `DiscoveredMediaMetadata.attach`, which invokes `MediaFilenameParser`. The resulting `parsedMedia` fields flow through `NativeScanRunner` into `NativeDiscoveredMedia` and the existing Kotlin library indexing service. During recovery, older durable snapshots can predate that structured field; the recovery mapper now re-parses their stored relative path/file name in Kotlin when the parser contract is absent or incomplete. It uses a temporary JSON object and does not rewrite the durable discovery snapshot.
 
 This removes the need for a Python parse fallback in the native scan/recovery flow. It does not remove `core/library_parser.py` globally: Python-owned filesystem scans and legacy compatibility ingestion without Kotlin parser metadata still use it until those consumers are migrated.
+
+
+Recovery parsing validates the serialized numeric fields before trusting a previously stored `parsedMedia` object. Missing, incomplete or malformed numeric values are rebuilt from the stored relative path/file name through `MediaFilenameParser` Kotlin; the saved `NativeIndex` snapshot itself remains untouched.

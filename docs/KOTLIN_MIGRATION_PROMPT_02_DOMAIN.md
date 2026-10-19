@@ -89,3 +89,6 @@ A recuperação da indexação nativa agora cobre snapshots persistidos por vers
 Caminho comprovado em código: `SafScanner` / `MediaStoreScanner` / `BroadStorageScanner` → `DiscoveredMediaMetadata.attach` → `NativeScanRunner` → `ReiAnixLibraryService.indexDiscoveredMedia` → `ReiAnixSqliteLibraryRepository` → SQLite canônico. Nenhum parser ou writer novo foi criado. A parte Python de `core/library_parser.py` que atende scans filesystem e ingestão de compatibilidade permanece; o corte global dessa dependência não é seguro enquanto esses consumidores existirem.
 
 Não foram adicionados ou modificados testes, workflows, scripts, schemas ou artefatos de persistência nesta execução. A validação de compilação/testes desta alteração depende do workflow automático da PR; a suíte Kotlin/JVM manual permanece fora do escopo autorizado.
+
+
+O reaproveitamento de `parsedMedia` persistido valida também que temporada/numeração absoluta sejam inteiras quando aplicável e que os valores numéricos sejam finitos. Um contrato incompleto ou com números serializados em formato inválido é reconstituído pelo parser Kotlin a partir do nome/caminho, sem coerção silenciosa ou alteração do snapshot durável.

@@ -1214,12 +1214,19 @@ private fun parsedMediaForSnapshot(
         "episodeNumber",
         "absoluteNumber",
     )
+    val numericFieldsValid = parsed != null &&
+        nullableNumericFieldIsValid(parsed, "season", integerOnly = true) &&
+        nullableNumericFieldIsValid(parsed, "episodeNumber") &&
+        nullableNumericFieldIsValid(parsed, "absoluteNumber", integerOnly = true)
     val contractComplete = parsed != null &&
         requiredFields.all(parsed::has) &&
-        requiredStringFields.none(parsed::isNull)
+        requiredStringFields.none(parsed::isNull) &&
+        numericFieldsValid
 
     if (contractComplete) return parsed!!
 
+    // A malformed partial contract is treated like an old snapshot: re-parse the source text
+    // instead of coercing an invalid value into a season or episode identifier.
     // Use a temporary output object so rehydrating parser fields does not rewrite the
     // stored discovery snapshot, its metadata availability flags, or provider identifiers.
     return DiscoveredMediaMetadata.attach(
@@ -1234,4 +1241,17 @@ private fun parsedMediaForSnapshot(
         nameAvailable = true,
         mimeTypeAvailable = false,
     ).optJSONObject("parsedMedia") ?: JSONObject()
+}
+
+private fun nullableNumericFieldIsValid(
+    parsed: JSONObject,
+    field: String,
+    integerOnly: Boolean = false,
+): Boolean {
+    if (!parsed.has(field)) return false
+    val value = parsed.opt(field)
+    if (value === JSONObject.NULL) return true
+    if (value !is Number) return false
+    val number = value.toDouble()
+    return number.isFinite() && (!integerOnly || number % 1.0 == 0.0)
 }
