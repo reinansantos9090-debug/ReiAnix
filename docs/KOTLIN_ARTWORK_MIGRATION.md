@@ -1,4 +1,4 @@
-# Migração do subsistema de artwork para Kotlin — Prompt 07/29
+# Migração do subsistema de artwork para Kotlin — Prompt 07/18
 
 ## Arquitetura implementada
 
