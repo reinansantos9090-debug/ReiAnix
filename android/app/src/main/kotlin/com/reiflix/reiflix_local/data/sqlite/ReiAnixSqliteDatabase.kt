@@ -25,7 +25,14 @@ enum class ReiAnixSqliteTransactionOutcome {
 
 class ReiAnixSqliteDatabase(context: Context) {
     private val appContext = context.applicationContext
-    private val databaseFile = File(File(appContext.filesDir, "data"), DATABASE_FILE_NAME)
+    /**
+     * Canonical durable path shared with Flet 0.86.5's FLET_APP_STORAGE_DATA
+     * on Android (the package's private files/data directory). Bootstrap and
+     * recovery must consult this resolved file instead of reconstructing a path.
+     */
+    internal val canonicalDatabaseFile: File = File(File(appContext.filesDir, "data"), DATABASE_FILE_NAME)
+    private val databaseFile: File
+        get() = canonicalDatabaseFile
     private val connectionLock = Any()
     @Volatile private var contractValidated = false
     private val canonicalContract: JSONObject by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
