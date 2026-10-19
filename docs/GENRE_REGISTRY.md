@@ -34,3 +34,8 @@ The registry is entirely local. Once a genre is persisted, Organize, Details, se
 ## Kotlin migration boundary
 
 `ReiAnixGenreRegistry.kt` and `ReiAnixGenreClassifier.kt` are the existing native registry/classifier; Prompt 02 reuses them instead of creating competitors. Python `core/genre_registry.py` and `core/genre_classifier.py` remain during the hybrid transition because `core/library_service.py` and related consumers still use that path. Do not remove or disable the legacy path until consumers have switched, parity is validated, and the applicable later prompt authorizes the cutover.
+
+
+## Prompt 02 validation evidence
+
+`ReiAnixGenreClassifierTest.kt`, an existing Kotlin/JVM test file, contains selected regression examples for `Straße → strasse`, Greek final sigma `ς → σ`, accent removal and separator normalization as of the current PR. Those assertions have not been confirmed compiled or executed as a JVM suite; the successful APK workflow validates production compilation, not the test assertions. The manual `kotlin_jvm_tests.yml` workflow remains undispatched pending explicit authorization. This selected coverage does not imply full Unicode `str.casefold()` parity.

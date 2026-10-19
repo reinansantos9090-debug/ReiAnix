@@ -92,3 +92,8 @@ O parser Kotlin já cobre marcadores explícitos (SxxExx, Temp/Temporada, NxM, E
 A identidade física mantém regras conservadoras: tamanho/modificação são metadados de descoberta, nomes normalizados não são IDs e URIs de providers genéricos não são convertidas em caminhos compartilhados presumidos. O contrato de localização distingue filesystem path, file URI, content URI, SAF tree URI, SAF document URI e outros esquemas.
 
 `ReiAnixGenreRegistry.kt` continua o registry de identidade/associações do lado Kotlin sobre o SQLite existente; `ReiAnixGenreClassifier.kt` mantém regras determinísticas locais. `core/library_parser.py`, `core/library_discovery.py`, `core/media_identity.py`, `core/genre_registry.py` e `core/genre_classifier.py` permanecem necessários enquanto houver consumidores Python ativos; nenhum desses módulos é removido nesta etapa.
+
+
+### Estado factual de testes — PR #199 / Prompt 02
+
+A contagem de testes JVM no inventário é a linha de base da auditoria, não uma afirmação de que os arquivos de teste atuais permaneceram byte a byte idênticos. O HEAD de partida da PR #199 modifica três arquivos de teste Kotlin/JVM existentes (`MediaFilenameParserTest.kt`, `ReiAnixGenreClassifierTest.kt`, `MediaDomainAndIdentityTest.kt`) e não cria um novo arquivo de teste ou workflow. Isso diverge da regra geral de preservar testes sem alterações e deve permanecer visível no relatório. A suíte JVM não foi confirmada compilada nem executada; o run automático `39154979582` foi `success` apenas para o fluxo de PR associado ao SHA `69f35f0aa6ac16946b3ff690f0b29e1c7d8eb69c` e não executou `:app:testDebugUnitTest`. Não disparar o workflow manual sem autorização explícita.

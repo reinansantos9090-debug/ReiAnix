@@ -73,6 +73,10 @@ O snapshot auditado continua híbrido. A equivalência do caminho SQLite precisa
 | P02-09 | Testes/workflows | Não adicionar nem alterar testes/workflows; não executar manualmente os testes Kotlin/JVM reservados. | Diff e execuções oficiais reais. |
 | P02-10 | Validação | Build/workflows reportados separadamente; conclusão exige status terminal `success` no SHA final. | SHA final, PR, runs, artefatos e diff. |
 
+### Registro factual de conformidade da PR #199
+
+O critério P02-09 permanece a regra de processo: não adicionar ou modificar testes/workflows e não executar manualmente os testes Kotlin/JVM reservados. Entretanto, o diff existente da PR #199 altera três arquivos de teste Kotlin/JVM já existentes no incremento Prompt 02.2; nenhum arquivo de teste novo ou workflow foi criado. Portanto, a parte de “não alterar testes” de P02-09 não foi satisfeita pelo histórico atual da PR e não deve ser marcada como conforme. Nesta reconciliação documental, esses arquivos não foram alterados novamente. Os testes JVM continuam pendentes de compilação/execução autorizada; build Release não significa testes aprovados.
+
 ### Fronteiras após P02
 
 Esta etapa não migra a orquestração do scanner, LibraryService, discovery/missing/observations, nem desativa o runtime híbrido. A ligação do parser/modelos ao fluxo nativo ativo permanece no Prompt 11; os serviços e consumidores Python continuam até uma troca segura ser implementada e validada. O Prompt 03 não foi iniciado por este registro.

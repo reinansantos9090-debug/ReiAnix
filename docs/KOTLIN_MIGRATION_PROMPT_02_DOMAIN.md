@@ -7,7 +7,7 @@
 - Branch: `migration/prompt-02-domain-contracts-20261018`
 - Escopo: modelos de mídia/domínio, classificação de localização, parser decimal, normalização de gênero e reconciliação documental.
 - SQLite: schema v29 preservado; nenhuma tabela, coluna, índice, chave persistida ou banco alternativo foi criado.
-- Testes: nenhum teste foi adicionado ou modificado. Os testes Kotlin/JVM não foram executados manualmente. A validação automática oficial será conferida no SHA final.
+- Testes Kotlin/JVM: o HEAD de partida desta reconciliação já contém alterações em três arquivos de teste existentes (`MediaFilenameParserTest.kt`, `ReiAnixGenreClassifierTest.kt` e `MediaDomainAndIdentityTest.kt`), feitas no incremento Prompt 02.2. Nenhum novo arquivo de teste ou workflow foi criado. A suíte Kotlin/JVM não foi executada e seus testes não foram confirmados como compilados. O workflow automático `build_apk.yml` no SHA `69f35f0aa6ac16946b3ff690f0b29e1c7d8eb69c` terminou em `success`, mas a compilação Kotlin de produção não equivale a compilar/executar `:app:testDebugUnitTest`. Esse run antecede a reconciliação documental e não valida o SHA que resultar dela.
 
 ## Reaproveitado do Kotlin existente
 
@@ -36,8 +36,8 @@ Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_i
 
 - Python preexistente: `tests/test_media_identity.py` e `tests/test_genre_registry.py`, além das suítes de biblioteca/discovery no repositório.
 - Kotlin/JVM preexistente: `MediaFilenameParserTest.kt`, `MediaDomainAndIdentityTest.kt`, `ReiAnixGenreClassifierTest.kt` e `ReiAnixSqliteModelsTest.kt`.
-- Nenhum teste foi criado, removido ou modificado. Os testes Kotlin/JVM não foram executados manualmente. Os cenários de localização e decimais foram revisados estaticamente contra o parser e os asserts preexistentes; não há prova de execução comportamental desses novos cenários.
-- O workflow oficial de PR já contém regressão Python e compilação/build Android. Isso não prova que os novos casos de parser decimal/classificação de URI tenham asserts próprios nem equivale a executar a suíte Kotlin/JVM. Essa cobertura específica fica pendente até uma fase autorizada de validação.
+- Os três arquivos de teste Kotlin/JVM citados no incremento Prompt 02.2 foram modificados para acrescentar cenários de decimais, classificação URI/SAF e exemplos Unicode selecionados. Não foi criado um novo arquivo de teste. Os asserts dedicados estão presentes no código, mas as fontes de teste não foram comprovadamente compiladas nem executadas como suíte JVM; portanto, os resultados comportamentais continuam pendentes.
+- O run automático `39154979582` passou no SHA `69f35f0aa6ac16946b3ff690f0b29e1c7d8eb69c` para regressões Python/build/compilação Kotlin de produção/artefatos. Ele não executou `:app:testDebugUnitTest` e antecede esta reconciliação documental. Nenhum despacho manual de `.github/workflows/kotlin_jvm_tests.yml` foi feito.
 
 ## Correções do Prompt 02.1
 
@@ -48,9 +48,9 @@ Os módulos `core/library_parser.py`, `core/library_discovery.py`, `core/media_i
 
 ## Integridade e validação
 
-- Não adiciona classes de domínio duplicadas, novas tabelas, banco alternativo, testes, workflows ou scripts.
-- Os três arquivos de teste Kotlin/JVM consultados permanecem inalterados; nenhum teste Kotlin/JVM foi executado manualmente. Os novos comportamentos foram revisados estaticamente, não demonstrados por asserts dedicados. O workflow automático comprova regressão Python e compilação, não execução da suíte Kotlin/JVM nem paridade de cada caso limite.
-- O workflow automático `build_apk.yml` que valida esta correção deve ser lido apenas na execução associada ao SHA final da PR. Runs vinculados a SHAs anteriores não validam este complemento.
+- Não foram adicionadas classes de domínio duplicadas, novas tabelas, banco alternativo, arquivos de teste, workflows ou scripts durante esta reconciliação documental. O HEAD de partida já continha métodos de regressão acrescentados a três arquivos de teste existentes no incremento Prompt 02.2.
+- Os três arquivos de teste Kotlin/JVM consultados estão modificados no HEAD de partida: foram acrescentados asserts de decimais/parser em `MediaFilenameParserTest.kt`, exemplos Unicode em `ReiAnixGenreClassifierTest.kt` e classificações/preservação de URI em `MediaDomainAndIdentityTest.kt`. Não foram acrescentados novos arquivos de teste nesta reconciliação. A suíte JVM permanece pendente: não há evidência de compilação ou execução dos testes; a revisão feita aqui é estática.
+- O run `39154979582` (`build_apk.yml`) concluiu `success` no SHA anterior `69f35f0aa6ac16946b3ff690f0b29e1c7d8eb69c`; não conta como validação do SHA final desta reconciliação. O schema SQLite v29 e o arquivo canônico não foram alterados.
 - Schema SQLite v29, mapeadores de leitura, IDs, referências de mídia e consumidores Python foram preservados.
 - Esta implementação não representa a migração integral concluída: a camada de domínio ainda depende de integrações posteriores e validação comportamental autorizada.
 

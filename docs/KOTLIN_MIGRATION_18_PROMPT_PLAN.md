@@ -52,3 +52,7 @@ P02 estabelece os contratos de domínio e a camada pura de parsing/identidade. P
 ## Definition of Done do Prompt 18
 
 Entry point e Application/Activity nativos; build Gradle e APK sem dependência/runtime Python/Flet/Flutter; biblioteca, SAF, MediaStore, scanner, metadados, artwork, settings, backup/recovery, navegação/lifecycle e Media3 equivalentes; SQLite v29/dados preservados; sem DB ou gravador paralelo; diff revisado; artefatos inspecionados; workflows oficiais aplicáveis em success no SHA final.
+
+## Registro factual da PR #199 — Prompt 02
+
+A regra universal acima continua proibindo adicionar ou alterar testes sem autorização e proíbe despacho manual da suíte Kotlin/JVM. Para não mascarar o histórico, registre-se que o HEAD de partida da PR #199 já contém métodos de regressão acrescidos a três arquivos de teste existentes no incremento Prompt 02.2; nenhum novo arquivo de teste ou workflow foi criado. Essa alteração anterior diverge da regra de preservação estrita dos testes e é reportada como desvio, não como cumprimento da regra. Nesta reconciliação, os arquivos de teste não foram alterados novamente. A suíte JVM permanece pendente de compilação/execução autorizada; build Release de produção não equivale a teste JVM aprovado.

@@ -38,7 +38,7 @@ The domain models deliberately allow incomplete optional metadata and nullable l
 
 ## Validation workflow
 
-The existing `.github/workflows/kotlin_jvm_tests.yml` workflow is triggered only by `workflow_dispatch`; it is not automatically run by pull requests. It was not dispatched during Prompt 02.1, in accordance with the repository's execution restrictions. The PR workflow `build_apk.yml` ran the Python regression suite, validated the Python application, built the APK, and explicitly verified release Kotlin compilation; it did not run the Kotlin/JVM unit-test suite. Therefore, a successful APK build is not evidence that the JVM parser, URI/SAF, identity, or genre-normalization assertions passed. Those tests remain pending explicit authorization for the designated manual validation stage.
+The existing `.github/workflows/kotlin_jvm_tests.yml` workflow is triggered only by `workflow_dispatch`; it is not automatically run by pull requests and was not dispatched. Three existing Kotlin/JVM test files in this PR were extended with parser-decimal, URI/SAF and selected Unicode cases, but those test sources are not confirmed compiled or executed. The automatic `build_apk.yml` run `39154979582` succeeded for SHA `69f35f0aa6ac16946b3ff690f0b29e1c7d8eb69c`, running the applicable Python/build/release-compilation flow and publishing APK/ZIP artifacts; it did not run `:app:testDebugUnitTest` and predates this documentation reconciliation. It cannot be used as JVM assertion evidence or as final-SHA validation. JVM validation remains pending explicit authorization.
 
 The manual Kotlin/JVM workflow prepares the Flet-rendered Android host and generates the canonical SQLite test fixture before executing `:app:testDebugUnitTest`; do not trigger it from this prompt.
 
