@@ -65,11 +65,13 @@ A validação definitiva da compilação, testes de regressão e artefatos APK/Z
 - `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt`: limpeza preserva ponteiros manuais/locais e expõe verificação segura de referências a caminhos.
 - `android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt`: armazenamento durável de thumbnails, recuperação por promoção do cache antigo e proteção de arquivos referenciados durante trim.
 - `tests/test_kotlin_artwork_migration_contract.py`: contratos para preservação de referências manuais/locais, caminho durável e prevenção de eviction de arquivos referenciados.
+- `tests/test_compose_settings_preferences.py`: expectativa antiga atualizada para não exigir a limpeza global de `cover_cache`; verifica a nova invalidação segura e a preservação de campos manuais/locais.
 - `docs/KOTLIN_ARTWORK_MIGRATION.md`: esta matriz e registro de escopo.
 
 ### Validação desta revisão
 
 - Não foi executado teste Kotlin/JVM manualmente; esta etapa respeita a restrição de testes do prompt.
 - Não foram adicionados testes instrumentados/de emulador, workflows novos nem execução automática adicional.
-- A existência de teste de contrato no repositório não comprova que ele foi executado nesta revisão. O resultado efetivo de build, testes e Actions deve ser lido da PR/commit desta branch.
+- A primeira execução de CI (`Build ReiAnix Android APK`, run 6191) executou `pytest`: 1.972 passaram, 58 subtests passaram e 1 teste falhou porque ainda exigia a limpeza global destrutiva de `cover_cache`. O contrato do teste foi atualizado sem remover cobertura.
+- A execução seguinte (run 6192) estava em andamento no momento desta nota; o resultado final de compilação, testes e workflows deve ser reportado a partir do commit final da PR.
 - A migração do caminho Compose é nativa, mas a migração completa de todos os consumidores Python/Flet permanece pendente; a etapa não será declarada integralmente concluída até essa fronteira ser resolvida e os workflows relevantes terminarem.
