@@ -156,7 +156,7 @@ class ReiAnixSqliteDatabase(context: Context) {
 
     /**
      * Runs schema creation/migration against the same canonical file and under the same
-     * process lock as repository operations. CREATE_IF_NECESSARY is permitted only to
+     * process lock as repository operations. The create-on-demand open flag is permitted only to
      * the bootstrap caller after startup has excluded interrupted-recovery evidence.
      * Existing files are never truncated, deleted, copied or replaced.
      */
