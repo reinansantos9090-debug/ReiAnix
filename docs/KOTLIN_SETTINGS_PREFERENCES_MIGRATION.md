@@ -124,7 +124,19 @@ Arquivos modificados/criados pela etapa:
 - `tests/test_compose_settings_preferences.py`
 - `docs/KOTLIN_SETTINGS_PREFERENCES_MIGRATION.md`
 
-Não foram removidos nem movidos arquivos; não foi alterado o schema ou adicionada dependência/workflow. Nenhum teste Kotlin/JVM foi executado manualmente, conforme a restrição; a execução automática de Python/CI e a compilação de release serão registradas a partir do workflow real associado ao último commit da PR. O teste JVM adicionado é cobertura futura/CI manual, não uma execução alegada.
+Não foram removidos nem movidos arquivos; não foi alterado o schema ou adicionada dependência/workflow.
+
+### Resultado observado no CI
+
+- Workflow: **Build ReiAnix Android APK**, run **#6209**, ID `39328170141`, commit de código `fd89ca324d2dc912d8fc81b7900df40945be3057`.
+- Estado terminal: **success**. [Execução no GitHub](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39328170141).
+- Suíte Python: **1.977 passed, 58 subtests passed**, em 83,69 s. Inclui os novos contratos em `tests/test_compose_settings_preferences.py`.
+- Build APK: success.
+- Compilação explícita: tarefa `:app:compileReleaseKotlin --no-daemon --console=plain --stacktrace`, resultado `BUILD SUCCESSFUL in 1m 20s`.
+- Verificações finais de classes Compose/DEX, Android host, integridade Git e upload dos artefatos APK/ZIP: success. A etapa de publicar para a release contínua foi ignorada pelo workflow de PR; os artefatos foram enviados à execução do Actions.
+- Testes Kotlin/JVM: os casos foram adicionados a `NativePlayerRequestTest.kt`, mas não foram executados manualmente. O workflow de APK compilou o código principal e não executou a suíte de testes unitários Kotlin. Nenhum teste instrumentado/emulador foi criado ou executado.
+- Nota de rastreabilidade: o run #6209 valida o commit de código acima. Esta atualização é documental; o novo run disparado para o HEAD final da PR deve ser consultado antes do relatório final.
+
 
 ## H. Limitações e pendências
 
@@ -135,4 +147,4 @@ Não foram removidos nem movidos arquivos; não foi alterado o schema ou adicion
 
 ## I. Veredito de referência
 
-**PARCIAL** até que a execução real do CI termine e sejam resolvidos os consumidores/efeitos legados descritos acima. Não há merge automático; a PR é enviada contra `main` e aguarda revisão.
+**PARCIAL** — o workflow #6209 concluiu com sucesso, porém `player.resume` e alguns consumidores de runtime Flet/Python continuam fora da migração completa descrita neste prompt. A PR permanece aberta e não foi mesclada.
