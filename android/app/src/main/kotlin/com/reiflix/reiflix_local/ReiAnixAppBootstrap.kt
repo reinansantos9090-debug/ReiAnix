@@ -448,7 +448,7 @@ class ReiAnixAppBootstrap internal constructor(
             )
         }
 
-        val schemaBootstrap = ReiAnixSqliteSchemaBootstrap(appContext, dependencies.sqliteDatabase)
+        val schemaBootstrap = ReiAnixSqliteSchemaBootstrap(dependencies.sqliteDatabase)
         val outcome = schemaBootstrap.ensureCurrentSchema()
         Log.i(TAG, "Canonical SQLite schema bootstrap outcome=$outcome")
 
