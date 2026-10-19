@@ -400,6 +400,9 @@ class ReiAnixAppBootstrap internal constructor(
         // Use the exact file owned by the SQLite boundary; do not independently
         // reconstruct a path that could drift from repository reads and writes.
         val canonicalFile = dependencies.sqliteDatabase.canonicalDatabaseFile
+        check(canonicalFile.name == ReiAnixBackupService.DATABASE_NAME) {
+            "The SQLite repository and backup service disagree on the canonical database filename."
+        }
         val dataDirectory = requireNotNull(canonicalFile.parentFile) {
             "The canonical SQLite database must be inside the app's data directory."
         }
