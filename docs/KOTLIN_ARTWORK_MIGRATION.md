@@ -35,3 +35,41 @@ O evento `thumbnail_ready` transporta `canonicalArtworkRegistered`. No modo Comp
 Foi adicionado `tests/test_kotlin_artwork_migration_contract.py` com verificações de integração e contratos de fonte para a base SQLite compartilhada, download/validação, publicação de eventos e remoção da delegação Python no caminho Compose. Os testes Python existentes de metadados, artwork e thumbnails foram ajustados para refletir a nova fronteira de execução. Nenhum teste de emulador/instrumentado foi adicionado e testes Kotlin/JVM não são executados manualmente por este prompt.
 
 A validação definitiva da compilação, testes de regressão e artefatos APK/ZIP pertence ao workflow do último commit desta etapa. O status do workflow e os artefatos devem ser verificados na execução do GitHub Actions; não podem ser inferidos a partir da presença dos arquivos neste documento.
+
+---
+
+## Revisão do Prompt 07/18 — auditoria e ajustes de segurança (2026-10-19)
+
+### Estado de referência
+
+- Repositório: `reinansantos9090-debug/ReiAnix`.
+- Branch de trabalho: `migration/prompt-07-native-artwork-20261019`.
+- Base observada: `main`, com o merge `4afa6c7699458d9c856becb7b4a0f559cec22946` (Prompt 06.1/18).
+- SQLite canônico: `library.sqlite3`, schema v29, validado por `ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION`. Esta etapa não cria banco, tabela nem migração de schema.
+- Biblioteca de imagens: Coil já está presente no caminho Compose; esta etapa não introduz outra biblioteca.
+- Limite da migração: o fluxo Compose já materializa capas e publica atualizações pelo Kotlin. `core/artwork.py`, `main.py` e telas Flet continuam presentes para consumidores legados legítimos; o runtime global, portanto, não é 100% Kotlin.
+
+### Matriz de componentes
+
+| Componente | Implementação e consumidores observados | Armazenamento / identidade | Cache / dependência Python | Comportamento preservado e alteração desta revisão | Risco / evidência |
+|---|---|---|---|---|---|
+| Posters e capas remotas | `ReiAnixArtworkService.kt`; renderização por `ReiAnixLocalArtwork.kt`, `ReiAnixPoster` e consumidores Compose (Home, Library, Details, Search e My List conforme o mapeamento existente). | Tabela canônica `artwork`, campos `anime.cover_url` e `anime.cover_cache`; chave SHA-256 com provedor/identidade/URL/tipo/variante; arquivos em `filesDir/data/covers/artwork`. | Download Kotlin limitado e validado; o ArtworkEngine Python permanece disponível para telas Flet legadas. | Mantidos chave estável, validação de bytes, gravação antes da publicação, proteção de campos manuais e preservação da capa válida durante falha remota. A limpeza agora só limpa um ponteiro de capa quando ele corresponde a um caminho de arte remota removido; campos manuais e referências locais/manual são preservados. | Fonte: `ReiAnixArtworkService.kt`, `ReiAnixLocalArtwork.kt`, `ReiAnixSqliteDatabase.kt`; contratos em `tests/test_kotlin_artwork_migration_contract.py`. |
+| Banners e backdrops | `ReiAnixArtworkService.requestAnimeArtwork`; componentes de arte Compose existentes. | `artwork` e URL canônica `anime.banner_url`; cache sob o diretório gerenciado existente. | Mesmo serviço e limite de concorrência do poster; não há downloader Compose adicional. | Mantidos checagem de URL atual, gravação validada, preservação de imagem anterior e evento pós-persistência. | Falha de evento não deve ser confundida com falha de download; a verificação final depende do workflow e dos testes executados. |
+| Thumbnails de vídeo | `VideoThumbnailExtractor.kt` via comandos nativos existentes em `MainActivity.kt`/dispatcher; registro por `ReiAnixArtworkService.registerGeneratedThumbnail`; eventos `thumbnail_ready` e `ARTWORK_PUBLISHED`. | Linhas `artwork(entity_type='episode', artwork_type='episode_thumbnail')`; identidade baseada em media identity/URI, tamanho, modificação e variante `small`. | Extração Kotlin por `MediaMetadataRetriever`; o fallback Python permanece somente quando o runtime Flet legado é o consumidor. | O destino passou de `cacheDir/reiflix/thumbnails` (descartável pelo Android) para `filesDir/data/covers/artwork/thumbnails`. Cache hits antigos são promovidos por arquivo temporário, `fsync`, validação e rename; o limitador de cache não exclui imagem ainda referenciada no SQLite. | O limite de tamanho é conservador: quando todos os arquivos restantes têm referências persistidas, o trim não os remove e pode exceder o orçamento nominal. Isso é preferível a deixar linhas SQLite apontando para arquivos apagados. |
+| Persistência e integridade | `ReiAnixSqliteDatabase` e métodos de transação do serviço nativo. | Banco e schema v29 já existentes; não há base alternativa. | `cover_cache` é ponteiro compatível legado, não uma nova fonte de dados. | Atualizações de arte não reescrevem progresso, listas pessoais, caminhos, IDs ou os demais campos da biblioteca. A consulta `isPathReferenced` verifica caminhos absolutos/canônicos em `artwork.local_path` e `anime.cover_cache`. | Arquivos locais inacessíveis continuam sujeitos a fallback/placeholder visual; falhas de storage não devem apagar metadados principais. |
+| Publicação e Compose | `NativeMailbox`, evento `artwork_published`, evento `thumbnail_ready`, `ReiAnixLocalArtwork` e mapeadores SQLite. | Evento contém ID/tipo, chave e caminho da imagem já persistida; a projeção consome a base canônica. | Coil usa chaves de memória/disco estáveis; nenhuma segunda biblioteca de imagens foi adicionada. | O evento de sucesso ocorre depois de persistir a imagem; arte local tem prioridade sobre URL externa; erro de candidato permite avançar para fallback/placeholder. | Consumidores Flet recebem compatibilidade enquanto ainda existirem; não foram removidos bridges nem Python globalmente. |
+| Artwork legado Python | `core/artwork.py`, listeners em `main.py` e telas Flet, incluindo consumidores em Home/Details. | Usa o contrato de cache existente da implementação legada e a base da biblioteca. | Dependência Python/Pillow mantida para rotas Flet; no caminho Compose, a materialização canônica ocorre em Kotlin. | O código legado não foi apagado nem apresentado como totalmente migrado. | Migração global continua parcial até os consumidores Flet remanescentes e seus contratos serem removidos ou portados em fases posteriores. |
+
+### Arquivos alterados nesta revisão
+
+- `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt`: limpeza preserva ponteiros manuais/locais e expõe verificação segura de referências a caminhos.
+- `android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt`: armazenamento durável de thumbnails, recuperação por promoção do cache antigo e proteção de arquivos referenciados durante trim.
+- `tests/test_kotlin_artwork_migration_contract.py`: contratos para preservação de referências manuais/locais, caminho durável e prevenção de eviction de arquivos referenciados.
+- `docs/KOTLIN_ARTWORK_MIGRATION.md`: esta matriz e registro de escopo.
+
+### Validação desta revisão
+
+- Não foi executado teste Kotlin/JVM manualmente; esta etapa respeita a restrição de testes do prompt.
+- Não foram adicionados testes instrumentados/de emulador, workflows novos nem execução automática adicional.
+- A existência de teste de contrato no repositório não comprova que ele foi executado nesta revisão. O resultado efetivo de build, testes e Actions deve ser lido da PR/commit desta branch.
+- A migração do caminho Compose é nativa, mas a migração completa de todos os consumidores Python/Flet permanece pendente; a etapa não será declarada integralmente concluída até essa fronteira ser resolvida e os workflows relevantes terminarem.
