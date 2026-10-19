@@ -191,6 +191,8 @@ class ReiAnixLibraryService(
         ) -> Unit)? = null,
     ): NativeLibraryIndexReport = serializeMutation {
         var committed = false
+        // Keep the repository.indexDiscoveredMedia(snapshot, onTransactionOutcome)
+        // contract explicit: this wrapper observes the outcome before publishing.
         val report = repository.indexDiscoveredMedia(snapshot) { outcome, committedReport ->
             if (outcome == ReiAnixSqliteTransactionOutcome.COMMITTED && committedReport != null) {
                 committed = true
