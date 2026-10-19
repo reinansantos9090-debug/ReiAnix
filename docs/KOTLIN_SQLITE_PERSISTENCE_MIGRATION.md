@@ -19,7 +19,8 @@ A camada SQLite Kotlin não começou do zero neste prompt. Na base de referênci
 | `ReiAnixSqliteLibraryRepository.kt` e `ReiAnixSqliteLibraryMutations.kt` | Consultas paginadas, leitura por IDs/caminhos/identidade e atualizações transacionais de consumo, metadados e campos pessoais já suportados. | Reutilizados; não foi criado outro repositório nem outro conjunto de modelos. |
 | `ReiAnixSqliteModels.kt` e `SqliteDomainMappers.kt` | Representação dos registros persistidos e conversão para os contratos Kotlin existentes. | Preservados. |
 | `ReiAnixLibraryQueryService.kt`, `ReiAnixLibraryService.kt`, `ReiAnixConsumptionService.kt`, `ReiAnixPersonalListService.kt`, repositórios de conta/configurações e `ReiAnixAppDependencies.kt` | APIs nativas e grafo compartilhado para consumidores já migrados. | Reutilizados; sem arquitetura concorrente. |
-| `ReiAnixSqliteSchemaBootstrap.kt` | Não existia antes desta etapa. | Inicializa instalações novas e aplica alterações aditivas seguras a schemas anteriores a v29 usando DDL exportado do contrato canônico, numa única transação. Recria índices explícitos sem reconstruir tabelas nem copiar registros. |\n| `ReiAnixAppBootstrap.kt` | Decide se a base canônica está saudável antes de recuperar recibos SAF ou iniciar o dispatcher. | Verifica evidências de recuperação primeiro e só então chama o bootstrap de schema nativo; a base é revalidada antes do início dos serviços. |
+| `ReiAnixSqliteSchemaBootstrap.kt` | Não existia antes desta etapa. | Inicializa instalações novas e aplica alterações aditivas seguras a schemas anteriores a v29 usando DDL exportado do contrato canônico, numa única transação. Recria índices explícitos sem reconstruir tabelas nem copiar registros. |
+| `ReiAnixAppBootstrap.kt` | Decide se a base canônica está saudável antes de recuperar recibos SAF ou iniciar o dispatcher. | Verifica evidências de recuperação primeiro e só então chama o bootstrap de schema nativo; a base é revalidada antes do início dos serviços. |
 | `android/app/build.gradle.kts`, scripts de fixture e workflows atuais | Geração do contrato SQLite a partir do `LibraryStore` e validação/build existentes. | Mantidos; nenhum workflow novo foi criado. |
 
 ## Resolução do caminho canônico
@@ -37,15 +38,14 @@ Arquivo:    library.sqlite3 (um único arquivo canônico)
 Schema:     v29
 ```
 
-Essa equivalência é derivada da versão de Flet fixada no repositório e da resolução Android documentada; não depende de copiar ou sincronizar bancos. O bootstrap Kotlin agora usa `ReiAnixSqliteDatabase.canonicalDatabaseFile`, a mesma referência usada pelo limite de persistência, para verificar presença, tamanho, evidências de promoção interrompida e sinais de recuperação.
+Essa equivalência é derivada da versão de Flet fixada no repositório e da resolução Android documentada; não depende de copiar ou sincronizar bancos. O bootstrap Kotlin agora usa `ReiAnixSqliteDatabase.canonicalDatabaseFile`, a mesma referência usada pelo limite de persistência, para verificar presença, tamanho e evidências de recuperação antes de inicializar ou migrar schema.
 
 ## Preservação e integridade dos dados
 
 - Versão-alvo e versão final: **schema v29**, conforme `LibraryStore.SCHEMA_VERSION`; `PRAGMA user_version` permanece em **0**, que é o contrato atual. O bootstrap pode inicializar schema novo ou avançar schema anterior a v29 sem incrementar a versão-alvo.
-- `PRAGMA user_version` permanece conforme o contrato canônico existente.
 - O bootstrap não descarta tabelas nem colunas, nem substitui o arquivo ou copia registros. Para uma base anterior, adiciona apenas colunas compatíveis ausentes e recria índices explícitos/acionadores definidos no contrato dentro de uma transação; se a validação final falhar, a transação é revertida. Novas instalações recebem o mesmo DDL canônico v29.
 - Nenhum segundo arquivo SQLite, cópia ativa, tabela paralela ou fonte de verdade foi introduzido.
-- As operações comuns de leitura/escrita continuam abrindo a base existente. Só o bootstrap nativo pode usar `CREATE_IF_NECESSARY`, e apenas depois de confirmar ausência do arquivo e de todas as evidências duráveis de recuperação; não é usado para sobrescrever arquivo existente. Arquivo vazio/inválido, integridade corrompida, FK inválida, `user_version` não suportada ou schema v29 incompatível mantêm o Recovery Mode bloqueando operações normais.
+- As operações comuns de leitura/escrita continuam abrindo a base existente. Só o bootstrap nativo pode usar a abertura SQLite com criação condicional, e apenas depois de confirmar ausência do arquivo e de todas as evidências duráveis de recuperação; não é usado para sobrescrever arquivo existente. Arquivo vazio/inválido, integridade corrompida, FK inválida, `user_version` não suportada ou schema v29 incompatível mantêm o Recovery Mode bloqueando operações normais.
 - As mutações de domínio usam SQL parametrizado e transações onde o contrato exige atomicidade. O bootstrap nativo executa o DDL gerado pelo contrato dentro de uma transação e valida o resultado antes do commit; se a verificação falhar, a transação é revertida e o fluxo de recuperação é mantido.
 - O bootstrap Kotlin inicializa a base em instalação nova antes de liberar os serviços nativos. `LibraryStore` permanece no runtime híbrido para operações de domínio legadas e continua apontando para o mesmo arquivo; sua presença não cria uma segunda base, mas também significa que o corte completo da persistência Python ainda não foi concluído.
 - A preservação do arquivo e dos registros existentes foi mantida como comportamento de código. Não foi usado nem alterado banco pessoal real neste trabalho.
@@ -69,7 +69,9 @@ O runtime ainda é híbrido. `main.py` cria `LibraryStore(data_dir)` com `FLET_A
 
 1. `scripts/generate_native_sqlite_test_fixture.py`: inclui no contrato gerado as instruções DDL de tabelas, índices e triggers extraídas da base temporária inicializada pelo `LibraryStore`. O fixture e o contrato de runtime continuam gerados pelo único passo já existente no workflow.
 2. `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteDatabase.kt`: expõe a referência interna do arquivo, o contrato gerado e um limite exclusivo para bootstrap, serializado com leituras/escritas nativas.
-3. `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSchemaBootstrap.kt`: inicializa/migra o schema nativamente em uma transação, aplicando somente diferenças aditivas compatíveis e validando novamente a integridade/contrato antes do commit.\n4. `android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt`: impede que a inicialização nativa contorne evidências de recuperação e verifica a base antes do dispatcher.\n5. `docs/KOTLIN_SQLITE_PERSISTENCE_MIGRATION.md`: registra o mecanismo, as garantias e as limitações restantes.
+3. `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteSchemaBootstrap.kt`: inicializa/migra o schema nativamente em uma transação, aplicando somente diferenças aditivas compatíveis e validando novamente a integridade/contrato antes do commit.
+4. `android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt`: impede que a inicialização nativa contorne evidências de recuperação e verifica a base antes do dispatcher.
+5. `docs/KOTLIN_SQLITE_PERSISTENCE_MIGRATION.md`: registra o mecanismo, as garantias e as limitações restantes.
 
 Não foram removidos arquivos ou diretórios. Nenhum arquivo de teste ou workflow foi alterado.
 
