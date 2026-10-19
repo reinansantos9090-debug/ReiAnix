@@ -81,9 +81,22 @@ object VideoThumbnailExtractor {
         val target = File(cacheDir, key + ".jpg")
         // Preserve already-generated images from older releases before attempting to
         // decode the source video again. The legacy cache remains read-only here.
-        if (!target.isFile || target.length() <= 0L) {
-            val legacyTarget = File(File(context.cacheDir, "reiflix/thumbnails"), key + ".jpg")
+        val legacyDirectory = File(context.cacheDir, "reiflix/thumbnails")
+        val legacyTarget = File(legacyDirectory, key + ".jpg")
+        if (!target.isFile || target.length() <= 0L || !isValidCachedThumbnail(target)) {
             promoteLegacyCache(legacyTarget, target)
+        }
+        // Keep valid legacy metadata (duration, dimensions, rotation and title) too.
+        // The sidecar is promoted independently so a good image can still be reused
+        // when the old JSON is missing or invalid.
+        if (target.isFile && isValidCachedThumbnail(target)) {
+            promoteLegacyMetadata(
+                cacheMetadataFile(File(legacyDirectory, key + ".jpg")),
+                cacheMetadataFile(target),
+                key,
+                size,
+                modifiedAt,
+            )
         }
         val requestId = "thumb-" + key.take(12)
         NativeMailbox.writeBestEffort(
@@ -489,6 +502,41 @@ object VideoThumbnailExtractor {
                 target.isFile && isValidCachedThumbnail(target)
             } else {
                 isValidCachedThumbnail(target)
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            temporary.delete()
+        }
+    }
+
+    private fun promoteLegacyMetadata(
+        legacy: File,
+        target: File,
+        key: String,
+        size: Long,
+        modifiedAt: Long,
+    ): Boolean {
+        if (readCacheMetadata(target, key, size, modifiedAt) != null) return true
+        if (readCacheMetadata(legacy, key, size, modifiedAt) == null) return false
+        val temporary = File(target.parentFile, "." + target.name + "." +
+            android.os.SystemClock.elapsedRealtimeNanos() + ".tmp")
+        return try {
+            legacy.inputStream().use { input ->
+                FileOutputStream(temporary).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                    output.fd.sync()
+                }
+            }
+            if (readCacheMetadata(temporary, key, size, modifiedAt) == null) return false
+            // Never replace a sidecar another concurrent request already repaired.
+            if (readCacheMetadata(target, key, size, modifiedAt) != null) return true
+            if (target.exists() && !target.delete()) return false
+            if (!temporary.renameTo(target)) {
+                readCacheMetadata(target, key, size, modifiedAt) != null
+            } else {
+                readCacheMetadata(target, key, size, modifiedAt) != null
             }
         } catch (_: Exception) {
             false
