@@ -166,9 +166,42 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     }
                 }
                 db.delete("artwork", "source IN ('cache','anilist') AND manual=0", null)
-                // Match Settings' existing cache-clear contract: expire remote metadata
-                // and clear stale cover pointers without deleting the library records.
-                db.execSQL("UPDATE anime SET metadata_updated_at=NULL, cover_cache=''")
+                // Expire remote metadata, but only clear a cover pointer when it points
+                // to a cache row removed above. Preserve user-owned cover_cache values
+                // and paths still owned by local/manual artwork rows.
+                db.execSQL("UPDATE anime SET metadata_updated_at=NULL")
+                paths.distinct().forEach { cachedPath ->
+                    val owners = db.rawQuery(
+                        "SELECT id,metadata_manual_fields FROM anime WHERE cover_cache=?",
+                        arrayOf(cachedPath),
+                    ).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) {
+                                add(
+                                    cursor.getLong(0) to
+                                        (if (cursor.isNull(1)) null else cursor.getString(1)),
+                                )
+                            }
+                        }
+                    }
+                    owners.forEach ownerLoop@{ (animeId, manualFields) ->
+                        if (ownsManualField(manualFields, "cover_cache")) return@ownerLoop
+                        val stillLocallyOwned = db.rawQuery(
+                            "SELECT 1 FROM artwork WHERE entity_type IN ('anime','movie') " +
+                                "AND entity_id=? AND artwork_type='poster' AND local_path=? " +
+                                "AND (manual=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')) LIMIT 1",
+                            arrayOf(animeId.toString(), cachedPath),
+                        ).use { it.moveToFirst() }
+                        if (!stillLocallyOwned) {
+                            db.update(
+                                "anime",
+                                ContentValues().apply { put("cover_cache", "") },
+                                "id=? AND cover_cache=?",
+                                arrayOf(animeId.toString(), cachedPath),
+                            )
+                        }
+                    }
+                }
                 paths
             }
 
@@ -208,13 +241,23 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
     }
 
-    private fun isArtworkPathReferenced(path: String): Boolean = database.read { db ->
-        db.rawQuery(
-            "SELECT 1 FROM artwork WHERE local_path=? " +
-                "UNION SELECT 1 FROM anime WHERE cover_cache=? LIMIT 1",
-            arrayOf(path, path),
-        ).use { cursor -> cursor.moveToFirst() }
+    /**
+     * Returns true when a persisted row still owns a path. Path aliases are checked
+     * as well, so cache eviction fails closed rather than deleting a referenced file.
+     */
+    fun isPathReferenced(path: String): Boolean {
+        val absolute = runCatching { File(path).absolutePath }.getOrNull() ?: return true
+        val canonical = runCatching { File(absolute).canonicalPath }.getOrNull() ?: absolute
+        return database.read { db ->
+            db.rawQuery(
+                "SELECT 1 FROM artwork WHERE local_path IN (?, ?) " +
+                    "UNION SELECT 1 FROM anime WHERE cover_cache IN (?, ?) LIMIT 1",
+                arrayOf(absolute, canonical, absolute, canonical),
+            ).use { cursor -> cursor.moveToFirst() }
+        }
     }
+
+    private fun isArtworkPathReferenced(path: String): Boolean = isPathReferenced(path)
 
     private fun isWithin(root: File, candidate: File): Boolean {
         val rootPath = runCatching { root.canonicalFile.path }.getOrNull() ?: return false
