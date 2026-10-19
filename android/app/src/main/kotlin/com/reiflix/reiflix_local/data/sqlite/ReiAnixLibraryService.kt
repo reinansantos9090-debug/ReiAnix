@@ -12,15 +12,15 @@ import org.json.JSONObject
 class ReiAnixLibraryService(
     private val repository: ReiAnixSqliteLibraryRepository,
 ) {
-    private val mutationMutex = Mutex()
+    private val scanMutationMutex = Mutex()
     private val mutableChanges = MutableStateFlow(
         ReiAnixLibraryChange(revision = 0L, operation = "initial", committedAtMillis = 0L),
     )
     val changes: StateFlow<ReiAnixLibraryChange> = mutableChanges.asStateFlow()
 
     private suspend fun <T> serializeMutation(operation: suspend () -> T): T {
-        mutationMutex.lock()
-        return try { operation() } finally { mutationMutex.unlock() }
+        scanMutationMutex.lock()
+        return try { operation() } finally { scanMutationMutex.unlock() }
     }
 
     private fun publishChange(operation: String) {
