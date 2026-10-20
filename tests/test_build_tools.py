@@ -177,7 +177,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("concurrency:", workflow)
         self.assertIn("group: ${{ github.workflow }}-${{ github.ref }}", workflow)
         self.assertIn("cancel-in-progress: true", workflow)
-        self.assertIn("timeout-minutes: 35", workflow)
+        self.assertIn("timeout-minutes: 90", workflow)
         self.assertIn("Run Python regression suite", workflow)
         self.assertIn("python -m pytest -q | tee build/pytest.txt", workflow)
         self.assertIn("gradle -p android --no-daemon", workflow)

@@ -16,7 +16,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 90
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -188,7 +188,7 @@ jobs:
       - name: Build native Android release APK
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=2"
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --console=plain --stacktrace \
@@ -199,7 +199,7 @@ jobs:
       - name: Explicitly verify release Kotlin compilation
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=false"
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --console=plain \

@@ -54,3 +54,23 @@ which does not exist in Coil 2.7.0. The native artwork source directly imports
 `coil.ImageLoader`; this build now depends on the published `coil` 2.7.0
 artifact alongside the existing `coil-compose` 2.7.0. The version stays pinned
 to Coil 2; no Coil 3 API/version migration was made.
+
+
+## Prompt 1.2 — DEX merge timeout investigation
+
+The AndroidX fix and the Coil coordinate repair allowed the native release task
+to advance through manifest/resource processing and reach
+`:app:mergeExtDexRelease`. The run `39401204819` ended with conclusion
+`cancelled` at 10:06:07 UTC. Its job log says `The operation was canceled`
+after that DEX merge task had been running since 09:33:44 UTC; there is no Gradle
+exception, Kotlin compile error, or out-of-memory message in the captured log.
+The run used a 35-minute job timeout and produced no APK artifact, so the failure
+is an execution-time ceiling rather than a proven DEX defect.
+
+The build configuration now gives Gradle a bounded 3 GiB heap and 1 GiB
+metaspace, bounds the Kotlin daemon at 2 GiB, enables the Gradle build cache
+and parallel workers (maximum 4), and raises the Android release job ceiling to
+90 minutes. This does not weaken tests, artifact checks, or security checks.
+The changed existing workflow contract test was updated in place; no test case
+was added or removed. A new SHA's complete run remains required to confirm the
+effect on DEX merge and to validate the resulting APK.
