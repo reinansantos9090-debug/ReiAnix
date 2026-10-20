@@ -31,7 +31,7 @@ Estados: **Integrado nativo** significa regra, dados e consumidor Kotlin conecta
 | Player/lifecycle | bridge e rotas Python | Media3/player nativo em migração | sessões, URIs, progresso | Fora do escopo; nada alterado |
 | Build/remover global Python/Flet/Flutter | `pyproject.toml`, `requirements.txt`, scripts | app híbrido atual | empacotamento/runtime | Fora do escopo; dependências não removidas |
 
-A matriz contém **14 linhas de responsabilidades agrupadas**, e não uma contagem de todas as funções de cada arquivo nem prova de migração integral.
+A matriz contém **16 linhas de responsabilidades agrupadas**, e não uma contagem de todas as funções de cada arquivo nem prova de migração integral.
 
 ## Arquivos alterados
 
