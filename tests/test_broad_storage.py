@@ -58,12 +58,15 @@ class TestBroadStorageArchitecture(unittest.TestCase):
         self.assertIn("Verificar permissão de vídeos", settings)
         self.assertIn("Armazenamento amplo", settings)
 
-    def test_refresh_requests_broad_storage(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("scan_coordinator.request(", source)
-        self.assertIn("ScanOrigin.USER_REFRESH", source)
-        self.assertNotIn("await bridge.scan_all_storage()", source)
-        self.assertIn("event_type == 'broad_storage_scan'", source)
+    def test_refresh_uses_native_scan_controller_and_authorized_scanners(self):
+        scanner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("NativeScanController.begin(", source + scanner)
+        self.assertIn("NativeScanController.complete(", source + scanner)
+        self.assertIn("scanAllStorage(", activity)
+        self.assertIn("scanMediaStore(", activity)
+        self.assertIn("publishScanRequest(", activity)
 
     def test_broad_access_uses_only_android_authoritative_special_permission(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
