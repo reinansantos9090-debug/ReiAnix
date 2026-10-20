@@ -1,10 +1,11 @@
 import tempfile
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
+MAIN = native_main_source()
 
 
 class ContinueWatchingTests(unittest.TestCase):
