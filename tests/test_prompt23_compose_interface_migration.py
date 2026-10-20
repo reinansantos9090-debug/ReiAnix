@@ -201,7 +201,7 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         self.assertIn("drawNativeGacha(", self.library_view_model)
         self.assertIn("consumidor visual Compose integrado", report)
         self.assertIn("fallback Python preservado", report)
-        self.assertIn("validação dinâmica dedicada", report)
+        self.assertIn("Validação dinâmica dedicada", report)
 
     def test_coverage_matrix_records_the_actual_cutover_and_remaining_fallback(self):
         report = COVERAGE.read_text(encoding="utf-8")
