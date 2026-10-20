@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from views.home_view import HOME_PULL_REFRESH_THRESHOLD, _pull_refresh_should_trigger
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,26 +78,23 @@ class HomeRefreshBehaviorTests(unittest.TestCase):
         self.assertNotIn("async def pull_refresh_library", source)
         self.assertNotIn("async def refresh_pull_library", source)
 
-    def test_refresh_pipeline_stays_on_scan_coordinator(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        block = source[source.index("async def request_home_refresh"):source.index("async def refresh_home_library", source.index("async def request_home_refresh"))]
-        self.assertIn("await refresh_library(_home_refresh_context=home_refresh_context)", block)
-        self.assertIn("ScanOrigin.USER_REFRESH", source)
-        self.assertNotIn("bridge.scan_all_storage()", block)
-        self.assertNotIn("bridge.scan_media_store()", block)
-        self.assertNotIn("bridge.rescan_tree(", block)
-    def test_refresh_state_has_navigation_deferred_completion_guard(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn('home_state["_manual_refresh_pending"] = True', source)
-        self.assertIn('elif navigation.current != "home":', source)
-        self.assertIn("durable catalog update", source)
-        self.assertIn('home_state["_manual_refresh_pending"] = True', source)
-
-    def test_sources_remain_valid_python(self):
-        for relative in ("main.py", "views/home_view.py"):
-            source = (ROOT / relative).read_text(encoding="utf-8")
-            ast.parse(source, filename=relative)
-
+    def test_refresh_pipeline_stays_on_native_scan_controller(self):
+        source = native_main_source()
+        self.assertIn("object NativeScanController", source)
+        self.assertIn("object NativeScanRunner", source)
+        self.assertIn("fun begin(scanId: String", source)
+        self.assertIn("fun updateProgress(scanId: String", source)
+        self.assertIn("fun complete(scanId: String", source)
+        self.assertIn("NativeIndex", source)
+    def test_refresh_state_is_projected_from_native_scan_state(self):
+        source = native_main_source()
+        self.assertIn("val isRefreshing: StateFlow<Boolean>", source)
+        self.assertIn("scanInProgress", source)
+        self.assertIn("ReiAnixComposeLibraryHost", source)
+        self.assertIn("collectAsStateWithLifecycle", source)
+    def test_retained_home_source_remains_valid_python(self):
+        source = (ROOT / "views/home_view.py").read_text(encoding="utf-8")
+        ast.parse(source, filename="views/home_view.py")
 
 if __name__ == "__main__":
     unittest.main()
