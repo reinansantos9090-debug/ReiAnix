@@ -1,60 +1,48 @@
 import unittest
-from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 
-ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "main.py"
-
-
-class FletUiRemovalTests(unittest.TestCase):
+class NativeComposeEntrypointTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = MAIN.read_text(encoding="utf-8")
-        start = cls.source.index("    def _build_screen(")
-        end = cls.source.index("    def _settings_view_paths()", start)
-        cls.build_screen = cls.source[start:end]
+        cls.source = native_main_source()
 
-    def test_library_route_has_no_flet_domain_ui(self):
-        block_start = self.build_screen.index('        elif route == "library":')
-        block_end = self.build_screen.index('        elif route == "organize":', block_start)
-        block = self.build_screen[block_start:block_end]
-        self.assertIn("control = ft.Container(expand=True)", block)
-        self.assertNotIn("LibraryView.build(", block)
-
-    def test_root_settings_uses_compose_without_building_flet_ui(self):
-        block_start = self.build_screen.index('        elif route == "settings":')
-        block = self.build_screen[block_start:]
-        self.assertIn("if bridge.available:", block)
-        native_branch = block[:block.index("            else:", block.index("if bridge.available:"))]
-        self.assertIn("control = ft.Container(expand=True)", native_branch)
-        self.assertNotIn("SettingsView.build(", native_branch)
-        self.assertNotIn("fixed_settings_path == ()", native_branch)
-
-    def test_settings_flet_view_is_retained_for_nested_and_unavailable_fallbacks(self):
-        block_start = self.build_screen.index('        elif route == "settings":')
-        block = self.build_screen[block_start:]
-        self.assertIn("else:", block)
-        fallback_block = block[block.index("            else:"):]
-        self.assertIn("from views.settings_view import SettingsView", fallback_block)
-        self.assertIn("control = SettingsView.build(", fallback_block)
-
-    def test_unmigrated_flet_screens_still_have_real_consumers(self):
-        for call in (
-            "HomeView.build(",
-            "OrganizeView.build(",
-            "DetailView.build(",
-            "CollectorView.build(",
+    def test_native_home_library_and_organize_routes_are_registered(self):
+        for token in (
+            "ReiAnixComposeLibraryHost",
+            "ReiAnixRoutes.HOME",
+            "ReiAnixRoutes.LIBRARY",
+            "ReiAnixRoutes.ORGANIZE",
+            "ReiAnixNavigationHost",
         ):
-            self.assertIn(call, self.build_screen)
+            self.assertIn(token, self.source)
 
-    def test_flet_navigation_projection_and_compose_hosts_are_preserved(self):
-        self.assertIn("page.views.extend(views)", self.source)
-        self.assertIn("page.on_view_pop = handle_flet_view_pop", self.source)
-        self.assertIn("async def _show_compose_library():", self.source)
-        self.assertIn("async def _show_compose_settings():", self.source)
-        self.assertIn("ComposeLibraryBridge(", self.source)
-        self.assertIn("ComposeSettingsBridge(", self.source)
+    def test_root_settings_uses_native_compose_route(self):
+        for token in (
+            "ReiAnixSettingsRoute",
+            "ReiAnixSettingsViewModel",
+            "ReiAnixSettingsRepository",
+            "ReiAnixRoutes.SETTINGS",
+        ):
+            self.assertIn(token, self.source)
 
+    def test_nested_details_and_collector_screens_have_native_consumers(self):
+        for token in (
+            "ReiAnixDetailsRoute",
+            "ReiAnixCollectorRoute",
+            "ReiAnixRoutes.DETAILS",
+            "ReiAnixRoutes.COLLECTOR",
+        ):
+            self.assertIn(token, self.source)
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_native_navigation_owns_the_application_shell(self):
+        self.assertIn("ReiAnixNavigationHost", self.source)
+        self.assertIn("NavHostController", self.source)
+        self.assertIn("rememberNavController()", self.source)
+        self.assertIn("ReiAnixComposeRoot", self.source)
+
+    def test_main_entrypoint_delegates_to_the_native_application_graph(self):
+        self.assertIn("internal object MainEntryPoint", self.source)
+        self.assertIn("dependencies.bootstrap.start()", self.source)
+        self.assertIn("ReiAnixAppDependencies", self.source)
+        self.assertIn("ReiAnixApplication", self.source)
