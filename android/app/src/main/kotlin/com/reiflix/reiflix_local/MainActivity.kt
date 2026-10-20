@@ -2174,16 +2174,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun bootstrapAllowsNativeOperations(): Boolean {
-        val state = appDependencies.bootstrap.state.value
-        return nativeBootstrapDecisionComplete &&
-            !state.recoveryRequired &&
-            state.stage == ReiAnixBootstrapStage.READY &&
-            state.persistenceStatus in setOf(
-                ReiAnixBootstrapPersistenceStatus.HEALTHY,
-                ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
-            )
-    }
+    private fun bootstrapAllowsNativeOperations(): Boolean =
+        MainEntryPoint.allowsNativeOperations(
+            activityDecisionComplete = nativeBootstrapDecisionComplete,
+            bootstrapState = appDependencies.bootstrap.state.value,
+        )
 
     /** Process persisted lifecycle work only after the canonical DB decision is healthy. */
     private fun consumeAndDispatchPendingLifecycleAction() {
