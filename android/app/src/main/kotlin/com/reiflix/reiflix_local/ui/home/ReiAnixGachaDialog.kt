@@ -243,8 +243,8 @@ fun ReiAnixGachaDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         ReiAnixPoster(
-                            localPath = projectedAnime?.artwork?.localPath,
-                            externalUrl = projectedAnime?.artwork?.externalUrl,
+                            localPath = projectedAnime?.artwork?.localPath ?: selected.anime.coverCache,
+                            externalUrl = projectedAnime?.artwork?.externalUrl ?: selected.anime.coverUrl,
                             contentDescription = "Capa de " + selected.anime.title,
                             identity = "gacha-anime:" + selected.anime.id,
                             modifier = Modifier.size(width = 140.dp, height = 210.dp),
