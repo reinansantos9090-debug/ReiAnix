@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 from core.android_bridge import AndroidBridge
 from core.library_store import LibraryStore
 from core.performance import PerformanceMonitor
+from tests.native_main_contract import native_main_source
 
 
 class PerformanceMonitorTests(unittest.TestCase):
@@ -40,15 +41,15 @@ class PerformanceMonitorTests(unittest.TestCase):
         self.assertIn("task.finished", names)
 
     def test_production_integration_contract_is_present(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        main = native_main_source()
         settings = (ROOT / "views/settings_view.py").read_text(encoding="utf-8")
         store = (ROOT / "core/library_store.py").read_text(encoding="utf-8")
         bridge = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
         player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
         host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         for source, tokens in (
-            (main, ("get_performance_monitor", "ui.render_current", "interaction.back", "performance_metrics")),
-            (settings, ("settings_focus_events", "settings_scroll_requests", "settings.build_sections", "task_scope")),
+            (main, ("PerformanceDiagnostics.attach", "ReiAnixDiagnosticTimeline.record(", "ReiAnixAppBootstrap", "NativeScanController")),
+            (settings, ("settings.focus", "ReiAnixSettingsRepository", "StateFlow", "ReiAnixSettingsViewModel")),
             (store, ("record_sqlite", "library_summary", "save_progress", "catalog_page")),
             (bridge, ("android.launch_url", "android.command_delivery", "COMMAND_RECEIVED")),
             (player, ("PerformanceDiagnostics.markPlayer", "first_frame", "playing")),
