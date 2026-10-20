@@ -597,3 +597,21 @@ Base da correção: `main` após o corte de entrada nativa, commit `d34ae5cd332e
 
 Esta correção fecha apenas uma divergência identificada de apresentação de metadados. Não declara concluído MIG-02 nem a remoção de `main.py`; outros casos de parsing/identidade e os consumidores Python restantes precisam de suas próprias evidências antes do cutover.
 
+### MIG-03 — Next/Previous nativo para sessões Compose (20/10/2026)
+
+**Estado: implementação adicionada; validação CI pendente; não confundir esta unidade com a migração global do `main.py`.**
+
+Problema confirmado por inspeção do caminho de execução: `NativePlayerActivity.requestEpisode()` emitia `player_next_request`/`player_previous_request` por `NativeMailbox`, mas a decisão de destino residia no consumidor Python em `main.py`. O APK nativo não contém runtime Python/Flet, então sessões abertas pela biblioteca Compose não podem depender desse consumidor.
+
+Implementação desta unidade:
+
+- Adiciona `ReiAnixPlayerEpisodeNavigator`, política Kotlin pura que replica a ordenação usada em `LibraryStore._episode_order_key`, os tipos não regulares e as flags de navegação do destino.
+- Adiciona `ReiAnixSqliteLibraryRepository.playerNavigation(episodeId)`, que lê o episódio atual e candidatos adjacentes da base SQLite canônica, com a mesma condição de disponibilidade (`missing = 0`, `COALESCE(availability_state,'available')='available'`, tipos regulares) usada pelo caminho Python legado.
+- Encaminha os botões Próximo/Anterior de sessões marcadas `nativeCompose=true` diretamente à consulta SQLite e cria um novo pedido de reprodução Kotlin, preservando ID/sessão/geração/direção de origem, settings efetivas, flags de destino e regra de retomada. O `NativePlayerActivity.onNewIntent()` continua sendo a barreira que valida o sucessor antes de reutilizar o player.
+- A marca `nativeCompose` é copiada do pedido de abertura no `MainActivity`; apenas esse caminho utiliza a nova implementação. O caminho legado Flet/desktop conserva seu consumidor Python e a rota por `NativeMailbox`.
+- Adiciona testes Kotlin/JVM para ordenação/flags e contrato Python para verificar o encaminhamento nativo, o predicado SQLite e a retenção explícita do caminho Flet.
+
+**Limites e validação:** os testes Python de contrato serão executados pelo workflow usual da PR. Os testes Kotlin/JVM são adicionados, mas não serão declarados aprovados enquanto o workflow manual reservado no repositório não for executado numa fase permitida. A CI de build também precisa confirmar a compilação de produção/Kotlin e a criação/validação do APK. Ainda não houve teste de dispositivo físico.
+
+**Escopo remanescente conhecido:** `main.py` continua necessário ao comando `flet run main.py` no Desktop e contém outros consumidores Python, incluindo partes de atualização de progresso/estado, integração Flet, eventos de armazenamento e fluxos legados. Esta unidade remove uma dependência funcional Python apenas para Próximo/Anterior em sessões nativas Compose; não remove `NativeMailbox` como um todo e não autoriza a exclusão de `main.py`.
+
