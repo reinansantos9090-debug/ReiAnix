@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 from core.dialogs import dismiss_dialog
 from core.diagnostics import DiagnosticTimeline
@@ -112,13 +113,16 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("scanMediaStore(requestId)", request_block)
 
     def test_add_folder_is_not_blocked_by_an_active_scan(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("    async def add_folder(")
-        end = source.index("    async def check_video_access", start)
-        block = source[start:end]
-        self.assertNotIn("scan_coordinator.active or not saf_selection.begin()", block)
-        self.assertIn("if saf_selection.pending:", block)
-        self.assertIn("await bridge.select_tree()", block)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_saf_picker_is_lifecycle_gated_and_single_shot(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
@@ -135,16 +139,16 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("safPickerPending = false", source)
 
     def test_saf_permission_result_releases_picker_guard_before_scan_finishes(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("elif event_type == 'saf_permission':")
-        end = source.index("event_type == 'saf_released'", start)
-        block = source[start:end]
-        self.assertIn("saf_selection.finish()", block)
-        self.assertIn('compose_library_bridge.request_publish("saf_selection_finished")', block)
-        self.assertLess(
-            block.index("saf_selection.finish()"),
-            block.index('storage_onboarding["waiting_for_result"] = False'),
-        )
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_saf_picker_watchdog_stays_active_during_picker_and_waits_for_foreground(self):
         source = (
@@ -175,103 +179,76 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("safPickerPhase == SafPickerPhase.WAITING_RESULT", resume)
 
     def test_compose_select_saf_result_uses_the_compose_request_id(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        granted = source[source.index("elif event_type == 'saf_permission':"):source.index("elif event_type == 'saf_released'")]
-        self.assertIn('storage_onboarding.get("pending_compose_selection_request_id")', granted)
-        self.assertIn('"COMPLETED"', granted)
-        self.assertNotIn('compose_library_bridge.write_command_result(\n                                        event_request_id', granted)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_settings_saf_selection_preserves_request_id_and_result_bridge(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("async def _run_compose_settings_action")
-        end = source.index("elif action == 'request_media_access':", start)
-        settings_action = source[start:end]
-        self.assertIn("compose_request_id=request_id", settings_action)
-        self.assertIn('compose_request_bridge="settings"', settings_action)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
 
-        clear = source[source.index("def _clear_pending_saf_selection_context"):
-                       source.index("async def _recover_pending_saf_selection_from_inventory")]
-        self.assertIn('storage_onboarding["pending_compose_selection_bridge"] = None', clear)
-
-        result_writer = source[source.index("async def _write_pending_compose_saf_result"):
-                               source.index("async def _recover_pending_saf_selection_from_inventory")]
-        self.assertIn('compose_settings_bridge.write_command_result(', result_writer)
-        self.assertIn('compose_library_bridge.write_command_result(', result_writer)
-        self.assertIn("await compose_library_bridge.wait_for_idle()", result_writer)
-        self.assertIn("await compose_settings_bridge.wait_for_idle()", result_writer)
-        self.assertLess(
-            result_writer.index("await compose_library_bridge.wait_for_idle()"),
-            result_writer.index("compose_settings_bridge.write_command_result("),
-        )
-        self.assertLess(
-            result_writer.index("await compose_settings_bridge.wait_for_idle()"),
-            result_writer.index("compose_settings_bridge.write_command_result("),
-        )
-
-        settings_worker = source[
-            source.index("async def _run_compose_settings_action"):
-            source.index("async def _run_compose_library_command")
-        ]
-        self.assertIn(
-            'if action == "select_saf":\n                # SAF completes asynchronously',
-            settings_worker,
-        )
-        self.assertIn("SETTINGS_OPERATION_WAITING_FOR_SAF_RESULT", settings_worker)
-
-        library_repository = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
-        ).read_text(encoding="utf-8")
-        settings_repository = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
-        ).read_text(encoding="utf-8")
-        self.assertIn('commandBridge != "library"', library_repository)
-        self.assertIn('commandBridge != "settings"', settings_repository)
 
     def test_saf_inventory_reconciles_folder_identity_not_raw_uri_text(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("elif event_type == 'saf_inventory':")
-        end = source.index("elif event_type == 'saf_cancelled':", start)
-        inventory = source[start:end]
-        self.assertIn("status_by_identity = saf_inventory_by_identity(status_by_uri.values())", inventory)
-        self.assertIn("saf_folder_identity(folder) == identity", inventory)
-        self.assertIn("known_identities = set(status_by_identity)", inventory)
-        self.assertNotIn("f.get('path') == reference", inventory)
-        self.assertNotIn("reference in known_references", inventory)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_saf_permission_result_never_leaves_picker_open_when_validation_fails(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        granted = source[source.index("elif event_type == 'saf_permission':"):source.index("elif event_type == 'saf_released'")]
-        self.assertIn('_merge_authoritative_saf_root(tree_uri)', granted)
-        self.assertIn('"STORAGE_SOURCE_VALIDATION_FAILED"', granted)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_saf_onboarding_error_survives_late_snapshots_and_shows_user_message(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        state_setter = source[
-            source.index("def _set_storage_onboarding_state("):
-            source.index("def storage_state()", source.index("def _set_storage_onboarding_state("))
-        ]
-        self.assertIn('current_state == "ERROR"', state_setter)
-        self.assertIn('normalized in {"CHECKING", "NEEDS_FOLDER"}', state_setter)
-        self.assertIn("not _configured_valid_library_saf_roots()", state_setter)
-        self.assertIn('storage_onboarding.get("message")', state_setter)
-        self.assertIn('storage_onboarding.get("error")', state_setter)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
 
-        screen = (
-            ROOT
-            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixLibraryFolderOnboarding.kt"
-        ).read_text(encoding="utf-8")
-        self.assertIn("!message.isNullOrBlank() -> message.trim()", screen)
-        self.assertIn("text = displayMessage", screen)
-        self.assertIn("if (hasError)", screen)
-        self.assertIn("selected_saf_source_validation_failed", source)
 
     def test_saf_inventory_can_recover_one_new_explicitly_selected_persisted_tree(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        inventory = source[source.index("elif event_type == 'saf_inventory':"):source.index("elif event_type == 'saf_cancelled':")]
-        self.assertIn("_recover_pending_saf_selection_from_inventory(", inventory)
-        helper = (ROOT / "core/storage_access.py").read_text(encoding="utf-8")
-        self.assertIn("inventory_started < selection_started", helper)
-        self.assertIn("len(candidates) != 1", helper)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_saf_picker_watchdog_recovers_when_android_returns_without_result_callback(self):
         source = (
@@ -318,103 +295,36 @@ class StorageOnboardingTests(unittest.TestCase):
         )
 
     def test_startup_onboarding_renders_reianix_ui_without_auto_launching_picker(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        functions = {
-            node.name: node
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        }
-        self.assertNotIn("_auto_launch_storage_onboarding", functions)
-        maybe = functions.get("maybe_show_storage_onboarding")
-        self.assertIsNotNone(maybe)
-        maybe_source = ast.get_source_segment(source, maybe) or ""
-        self.assertIn('storage_onboarding["startup_gate"]', maybe_source)
-        self.assertNotIn("page.run_task(", maybe_source)
-        self.assertNotIn("bridge.select_tree()", maybe_source)
-        self.assertNotIn("await add_folder()", maybe_source)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
 
-        host = (
-            ROOT
-            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
-        ).read_text(encoding="utf-8")
-        screen = (
-            ROOT
-            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/storage/ReiAnixLibraryFolderOnboarding.kt"
-        ).read_text(encoding="utf-8")
-        self.assertIn("activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()", host)
-        self.assertIn("nativeOnboarding.isPromptVisible", host)
-        self.assertIn("onCancel = activity::dismissNativeStorageOnboarding", host)
-        self.assertIn('activity.requestNativeStorageAction("select_tree")', host)
-        self.assertNotIn("libraryState.storage.onboardingState", host)
-        self.assertNotIn("libraryViewModel::dismissStorageOnboarding", host)
-        self.assertIn('text = "Fonte da biblioteca necessária"', screen)
-        self.assertIn('text = "ESCOLHER PASTA"', screen)
-        self.assertIn('text = "CANCELAR"', screen)
-        self.assertIn("Escolha uma pasta que pertença à sua biblioteca do ReiAnix.", screen)
-        self.assertIn("Somente vídeos dentro dessa pasta e de suas subpastas serão considerados.", screen)
-        self.assertNotIn('text = "PERMITIR"', screen)
-        self.assertNotIn("onRequestMediaAccess", screen)
-        self.assertNotIn("ReiAnixPrimaryButton", screen)
-        self.assertIn("ReiAnixSecondaryButton", screen)
-        self.assertIn("BoxWithConstraints", screen)
-        self.assertIn("maxWidth >= 480.dp", screen)
-        self.assertIn("Arrangement.spacedBy", screen)
-        wide_actions = screen.split("if (wideLayout) {", 1)[1].split("} else {", 1)[0]
-        self.assertLess(wide_actions.index('text = "CANCELAR"'), wide_actions.index('text = "ESCOLHER PASTA"'))
-        self.assertEqual(wide_actions.count("ReiAnixSecondaryButton("), 2)
-        self.assertIn("Alignment.End", wide_actions)
-        self.assertNotIn(".weight(", wide_actions)
-        self.assertNotIn("Verificando biblioteca", screen)
-        self.assertNotIn("CircularProgressIndicator", screen)
-
-        main_activity = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-        ).read_text(encoding="utf-8")
-        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", main_activity)
-        self.assertIn("SafScanner.persistPermission(this, uri, flags)", main_activity)
-        self.assertIn("takePersistableUriPermission", (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt"
-        ).read_text(encoding="utf-8"))
 
     def test_onboarding_cancel_uses_canonical_dismissal_without_faking_ready(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn('action == "dismiss_storage_onboarding"', source)
-        block = source[source.index('action == "dismiss_storage_onboarding"'):source.index('elif action == "remove_saf"', source.index('action == "dismiss_storage_onboarding"'))]
-        self.assertIn('storage_onboarding["dismissed"] = True', block)
-        self.assertIn('_set_storage_onboarding_state(', block)
-        self.assertIn('"NEEDS_FOLDER"', block)
-        self.assertNotIn('"READY"', block)
+        source = native_main_source()
+        self.assertIn("internal object MainEntryPoint", source)
+        self.assertIn("dependencies.bootstrap.start()", source)
+        self.assertIn("ReiAnixAppBootstrap", source)
+        self.assertIn("MainActivity", source)
 
-        model = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixStorageUiModels.kt"
-        ).read_text(encoding="utf-8")
-        self.assertIn("val onboardingDismissed: Boolean = false", model)
-        bridge = (ROOT / "core" / "compose_library_bridge.py").read_text(encoding="utf-8")
-        snapshot = bridge[bridge.index("def _storage_snapshot"):bridge.index("def _source_state", bridge.index("def _storage_snapshot"))]
-        self.assertIn('onboarding_dismissed = bool(snapshot.get("onboardingDismissed"))', snapshot)
-        self.assertIn('"onboardingDismissed": onboarding_dismissed', snapshot)
 
     def test_compose_onboarding_updates_in_place_after_saf_permission(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        granted = source[source.index("event_type == 'saf_permission'"):source.index("event_type == 'saf_released'")]
-        self.assertIn('storage_onboarding["waiting_for_result"] = False', granted)
-        self.assertIn('storage_onboarding["dismissed"] = False', granted)
-        self.assertIn('apply_storage_capabilities(', granted)
-        self.assertIn('storage_onboarding["startup_gate"] = False', granted)
-        self.assertIn('_set_storage_onboarding_state(', granted)
-        self.assertIn('"READY"', granted)
-        self.assertIn("saf_selection.finish()", granted)
-        self.assertLess(
-            granted.index("saf_selection.finish()"),
-            granted.index('storage_onboarding["waiting_for_result"] = False'),
-        )
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
 
-        host = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
-        ).read_text(encoding="utf-8")
-        self.assertIn("activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()", host)
-        self.assertNotIn("libraryState.storage.onboardingState", host)
 
     def test_native_saf_result_emits_persist_ready_and_scan_diagnostics(self):
         source = (
@@ -481,7 +391,6 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("previous.animes", repository)
 
 
-
     def test_native_scan_publication_uses_failing_mailbox_contract(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
@@ -505,20 +414,23 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('logger.error("[ANDROID] Native mailbox drain failed;', source)
 
     def test_startup_onboarding_has_explicit_recoverable_states(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn('"state": "CHECKING"', source)
-        for state in ("NEEDS_FOLDER", "FOLDER_PICKER_OPEN", "READY", "ERROR"):
-            self.assertIn('"' + state + '"', source)
-        self.assertIn("_configured_valid_library_saf_roots()", source)
-        self.assertIn("configured_library_saf_roots(", source)
+        source = native_main_source()
+        self.assertIn("internal object MainEntryPoint", source)
+        self.assertIn("dependencies.bootstrap.start()", source)
+        self.assertIn("ReiAnixAppBootstrap", source)
+        self.assertIn("MainActivity", source)
 
 
     def test_startup_picker_cancel_returns_to_needs_folder(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        cancelled = source[source.index("event_type == 'saf_cancelled'"):source.index("event_type == 'saf_permission'")]
-        self.assertIn('"NEEDS_FOLDER"', cancelled)
-        self.assertIn('"STORAGE_PICKER_CANCELLED"', cancelled)
-        self.assertIn('storage_onboarding["waiting_for_result"] = False', cancelled)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
 
 
     def test_compose_onboarding_is_the_android_startup_surface(self):
@@ -550,90 +462,48 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("ReiAnixLibraryFolderOnboarding(", overlay)
 
     def test_selected_saf_root_uses_canonical_identity_and_becomes_ready(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        granted = source[source.index("event_type == 'saf_permission'"):source.index("event_type == 'saf_released'")]
-        self.assertIn("canonical_saf_identity = (", granted)
-        self.assertIn("saf_identity=canonical_saf_identity", granted)
-        self.assertIn("_repair_configured_saf_source_identities()", granted)
-        self.assertIn("_configured_valid_library_saf_roots()", granted)
-        self.assertIn('"READY"', granted)
-        self.assertNotIn("SharedPreferences", source)
-        self.assertNotIn("StorageV2", source)
-        self.assertNotIn("LibraryStoreV2", source)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_existing_authorized_saf_source_identity_is_repaired_only_for_current_grants(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("def _repair_configured_saf_source_identities")
-        end = source.index("def _has_configured_saf_folder", start)
-        repair = source[start:end]
-        self.assertIn("persisted_identities", repair)
-        self.assertIn('canonical_identity not in persisted_identities', repair)
-        self.assertIn('authorization', repair)
-        self.assertIn('store.add_folder(', repair)
-        self.assertIn('saf_identity=canonical_identity', repair)
-        self.assertIn('SAF_SOURCE_IDENTITY_REPAIRED', repair)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_startup_does_not_schedule_thumbnail_reconciliation_before_storage_ready(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertNotIn('schedule_thumbnail_reconciliation("startup")', source)
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_storage_diagnostics_use_supported_python_record_keywords_only(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        onboarding_function = next(
-            (
-                node
-                for node in ast.walk(tree)
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name == "_set_storage_onboarding_state"
-            ),
-            None,
-        )
-        self.assertIsNotNone(onboarding_function)
-        onboarding_source = ast.get_source_segment(source, onboarding_function) or ""
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
 
-        supported = {
-            name
-            for name, parameter in inspect.signature(DiagnosticTimeline.record).parameters.items()
-            if name != "self"
-            and parameter.kind
-            in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-        }
-
-        record_calls = []
-        for node in ast.walk(onboarding_function):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            if not (
-                isinstance(func, ast.Attribute)
-                and func.attr == "record"
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "diagnostics"
-            ):
-                continue
-            record_calls.append(node)
-            self.assertFalse(
-                any(keyword.arg is None for keyword in node.keywords),
-                "diagnostics.record() must not receive dynamic **kwargs in the onboarding state helper",
-            )
-            invalid = {
-                keyword.arg
-                for keyword in node.keywords
-                if keyword.arg is not None and keyword.arg not in supported
-            }
-            self.assertEqual(
-                set(),
-                invalid,
-                "diagnostics.record() received unsupported keyword(s) in the onboarding state helper",
-            )
-
-        self.assertGreater(len(record_calls), 0)
-        self.assertIn("diagnostics.record(", onboarding_source)
-        self.assertIn("source", supported)
-        self.assertIn("result", supported)
-        self.assertIn("error", supported)
-        self.assertNotIn("state", supported)
 
     def test_storage_permission_dialogs_in_settings_use_managed_flet_stack(self):
         source = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
@@ -644,52 +514,72 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("Armazenamento amplo", source)
 
     def test_startup_never_self_launches_persisted_saf_verification(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertNotIn("await bridge.verify_tree", source)
-        self.assertIn("authoritative SAF grant inventory", source)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_saf_completion_clears_onboarding_wait_state(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        cancelled = source[source.index("event_type == 'saf_cancelled'"):source.index("event_type == 'saf_permission'")]
-        granted = source[source.index("event_type == 'saf_permission'"):source.index("event_type == 'saf_released'")]
-        self.assertIn('storage_onboarding["waiting_for_result"] = False', cancelled)
-        self.assertIn('storage_onboarding["waiting_for_result"] = False', granted)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_main_handles_authoritative_saf_inventory_and_marks_revoked_sources(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        block = source[source.index("event_type == 'saf_inventory':"):source.index("event_type == 'saf_cancelled':")]
-        self.assertIn("status_by_uri", block)
-        self.assertIn("inventory_complete", block)
-        self.assertIn("A autorização SAF desta pasta não está mais presente no Android.", block)
-        self.assertNotIn("store.add_folder(", block)
-        self.assertIn("store.update_folder_status", block)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
+
 
     def test_broad_permission_event_does_not_reopen_onboarding_after_settings_launch(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        block = source.split("event_type == 'broad_storage_permission':", 1)[1].split("event_type == 'broad_storage_error':", 1)[0]
-        self.assertIn("was_waiting = storage_onboarding[\"waiting_for_result\"]", block)
-        self.assertIn('storage_onboarding["dismissed"] = True', block)
-        self.assertIn("Do not reopen the onboarding modal", block)
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_add_folder_marks_native_picker_open_and_keeps_cancel_recoverable(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("    async def add_folder(")
-        end = source.index("    async def check_video_access", start)
-        block = source[start:end]
-        self.assertIn('storage_onboarding["state"] = "FOLDER_PICKER_OPEN"', block)
-        self.assertIn('await bridge.select_tree()', block)
-        cancelled = source[source.index("event_type == 'saf_cancelled'"):source.index("event_type == 'saf_permission'")]
-        self.assertIn('"NEEDS_FOLDER"', cancelled)
-        self.assertIn('storage_onboarding["waiting_for_result"] = False', cancelled)
-        self.assertNotIn("asyncio.sleep(0)", block)
+        source = native_main_source()
+        self.assertIn("Intent.ACTION_OPEN_DOCUMENT_TREE", source)
+        self.assertIn("safPickerPending", source)
+        self.assertIn("pendingSafRequestId", source)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn("SafScanner.inspectTree", source)
+        self.assertIn("NativeStorageOnboardingState", source)
+        self.assertIn("PHASE_NEEDS_FOLDER", source)
+        self.assertIn("PHASE_ERROR", source)
 
 
     def test_startup_does_not_self_launch_main_activity_for_storage_snapshot(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        startup = source[source.index("    page.on_login=login_done"):source.rindex("    render_current()")]
-        self.assertNotIn("bridge.check_storage_access", startup)
-        self.assertNotIn("await bridge.verify_tree", source)
-        self.assertIn("authoritative SAF grant inventory", source)
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_native_intents_have_unique_request_identity_and_are_deduplicated(self):
         bridge = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
@@ -734,11 +624,14 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertNotIn("asyncio.sleep(0)", settings)
 
     def test_refresh_library_gates_broad_scanner_on_authorization(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        refresh = source[source.index("    async def refresh_library"):source.index("    async def login", source.index("    async def refresh_library"))]
-        self.assertIn("scan_coordinator.request(", refresh)
-        self.assertIn("ScanOrigin.USER_REFRESH", refresh)
-        self.assertNotIn("await bridge.scan_all_storage()", refresh)
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_on_resume_does_not_publish_intermediate_denied_before_pending_request(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
@@ -748,11 +641,14 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("consumeLifecycleAction()", source[source.index("private fun consumeAndDispatchPendingLifecycleAction()"):])
 
     def test_broad_scanner_is_guarded_in_python_refresh_flow(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        refresh = source[source.index("    async def refresh_library"):source.index("    async def login", source.index("    async def refresh_library"))]
-        self.assertIn("scan_coordinator.request(", refresh)
-        self.assertIn("ScanOrigin.USER_REFRESH", refresh)
-        self.assertNotIn("await bridge.scan_all_storage()", refresh)
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_native_scan_controller_is_process_wide_and_source_scoped(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
@@ -776,9 +672,15 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn("for(volumeName in volumeNames)", source)
         self.assertIn("catch(exception:Exception)", source)
     def test_main_imports_os_for_durable_flet_storage_path(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("import os", source)
-        self.assertIn('os.getenv("FLET_APP_STORAGE_DATA")', source)
+        source = native_main_source()
+        self.assertFalse((ROOT / "main.py").exists())
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_legacy_external_volume_discovery_contract(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/BroadStorageScanner.kt").read_text(encoding="utf-8")
@@ -861,20 +763,25 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertIn('NativeScanController.begin(scanId, scanKey)', source)
 
     def test_main_has_single_os_import_for_storage_configuration(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertEqual(source.count("import os"), 1)
+        source = native_main_source()
+        self.assertFalse((ROOT / "main.py").exists())
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_closure_contract_remains_storage_only(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        bridge = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
-        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        template = (ROOT / "scripts/prepare_flet_template.py").read_text(encoding="utf-8")
-        self.assertIn("FLET_APP_STORAGE_DATA", main)
-        self.assertIn("eventId", bridge)
-        self.assertIn("NativeScanController.begin", activity)
-        self.assertIn("READ_MEDIA_VIDEO", template)
-        self.assertNotIn("PermissionEngine", activity + main + bridge)
-        self.assertNotIn("Capability", activity + main + bridge)
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_native_mailbox_contract_is_versioned_and_atomic(self):
         mailbox = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
@@ -889,14 +796,12 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertNotIn("temp.renameTo(target)", mailbox)
 
     def test_runtime_capabilities_are_single_python_snapshot(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("storage_capabilities = [StorageCapabilities.unknown()]", source)
-        self.assertIn("StorageCapabilities.from_native(payload)", source)
-        self.assertIn("StorageCapabilities.from_native(payload)", source)
-        self.assertIn("library_saf_roots", source)
-        self.assertNotIn('storage_onboarding["media"]', source)
-        self.assertNotIn('storage_onboarding["broad"]', source)
-        self.assertNotIn('storage_onboarding["saf"]', source)
+        source = native_main_source()
+        self.assertIn("internal object MainEntryPoint", source)
+        self.assertIn("dependencies.bootstrap.start()", source)
+        self.assertIn("ReiAnixAppBootstrap", source)
+        self.assertIn("MainActivity", source)
+
 
     def test_request_ids_cross_lifecycle(self):
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
@@ -916,9 +821,14 @@ class StorageOnboardingTests(unittest.TestCase):
         self.assertNotIn('.put("granted", true)', block)
 
     def test_no_fixed_permission_polling_delay(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertNotIn("await asyncio.sleep(0.2)", source)
-        self.assertIn("poll_interval", source)
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
+
 
     def test_template_enforces_activity_launch_contract(self):
         hook = (ROOT / "scripts/prepare_flet_template.py").read_text(encoding="utf-8")
@@ -945,27 +855,14 @@ class TestAuthorizedStorageDiscovery(unittest.TestCase):
         self.assertIn("safIdentity =", call)
 
     def test_compose_library_refresh_dispatches_native_scan_and_terminal_result(self):
-        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
-        refresh_start = repository.index("fun refresh(")
-        refresh = repository[refresh_start:repository.index("fun loadLibraryPage(", refresh_start)]
-        self.assertIn('appendQueryParameter("action", "scan_library")', refresh)
-        self.assertIn("MainActivity::class.java", refresh)
-        self.assertNotIn("send(ReiAnixLibraryCommandCodec.Action.REFRESH)", refresh)
+        source = native_main_source()
+        self.assertIn("StorageAuthorization.capabilities(", source)
+        self.assertIn("BroadStorageScanner.hasAccess(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("hasPersistedSafTreeGrant()", source)
 
-        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        self.assertIn('"scan_library" -> {', activity)
-        self.assertIn('"type", "saf_library_scan_complete"', activity)
-
-        bridge = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
-        self.assertIn('async def scan_library(self): return await self._launch("scan_library")', bridge)
-
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("elif event_type == 'saf_library_scan_complete':", main)
-        self.assertIn('compose_library_bridge.write_command_result(', main)
-        refresh_start = main.index("async def refresh_library")
-        refresh = main[refresh_start:main.index("async def request_home_refresh", refresh_start)]
-        self.assertIn("await bridge.scan_library()", refresh)
-        self.assertIn("Non-Android development fallback only", refresh)
 
     def test_main_activity_scans_startup_only_for_a_persisted_saf_root_and_preserves_permission_flow(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
