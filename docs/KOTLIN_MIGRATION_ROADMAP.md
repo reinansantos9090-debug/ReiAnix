@@ -617,13 +617,27 @@ Implementação desta unidade:
 
 ### MIG-04 — checkpoints de progresso do player Compose sem consumidor Python (20/10/2026)
 
-**Estado: implementação adicionada; CI da PR pendente.**
+**Estado: implementada e validada pela CI do PR #214 (run #6305); testes Kotlin/JVM e dispositivo ainda não executados.**
 
 A unidade anterior fez Próximo/Anterior nativo para sessões Compose. Esta continuação retira outra dependência desnecessária do mesmo fluxo: `NativePlayerActivity.saveProgress()` e `reportPlayerExit()` já gravam progresso pela `ReiAnixConsumptionService` e enviam `PlaybackChange` para o `ReiAnixLibraryViewModel`, que atualiza a projeção nativa a partir do SQLite. Apesar disso, os dois métodos ainda publicavam todo checkpoint pela `NativeMailbox`, inclusive durante sessões Compose em que o consumidor Python não existe no APK.
 
 **Alteração:** para sessões marcadas `nativeCompose=true`, checkpoints e saída deixam de escrever uma segunda cópia do evento na fila Python; o fluxo legado conserva exatamente a publicação durável/best-effort. Se a persistência nativa falhar numa sessão Compose, um log local específico torna a perda visível; não há fallback fictício para um consumidor que não está empacotado.
 
-**Validação:** os novos contratos Python cobrem a separação das duas rotas, que a gravação SQLite e o `SharedFlow` continuam no caminho nativo, e que os writes de mailbox ficam apenas no ramo legado. A CI de PR deve confirmar o resultado. Testes Kotlin/JVM e aparelho permanecem não executados nesta etapa.
+**Validação observada:** o run #6305 (commit `b51eaffcc6ce3f84a37b83e8d01958b5661be221`) terminou `success`: regressão Python, verificação de integridade, build de APK Release, compilação Kotlin, inspeção DEX/Manifest e verificação de ausência de runtime Python/Flet/Flutter passaram. Referência: https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39455479714. Testes Kotlin/JVM e aparelho permanecem não executados.
 
 Esta é uma redução de uma ponte de eventos para sessões Compose, não autorização para apagar `NativeMailbox`: outros eventos de storage, diagnostics, scanner e compatibilidade Flet ainda possuem produtores/consumidores reais. `main.py` também continua como entrypoint documentado para Desktop.
+
+### MIG-05 — telemetria do player Compose sem mailbox Python (20/10/2026)
+
+**Estado: implementação adicionada; CI da PR pendente.**
+
+Várias notificações do `NativePlayerActivity` — ciclo de vida, prepare/ready, primeiro frame/timeout, player aberto, alterações de configuração durante reprodução, erros e diagnóstico de transição — eram publicadas em `NativeMailbox`. Para sessões Compose, o APK não contém o consumidor Python que processaria esses arquivos; por isso essas mensagens não eram um canal confiável de observabilidade nativa.
+
+**Implementação:** adiciona `publishLegacyPlayerEvent()` como fronteira explícita. Sessões legadas continuam publicando exatamente pela mailbox (durável/best-effort conforme o evento). Sessões `nativeCompose=true` registram eventos equivalentes em `ReiAnixDiagnosticTimeline`, incluindo tipo de evento, contexto serializado, severidade, request ID e sessão. Os pontos de chamada relevantes foram movidos para esse helper. Logs locais do player continuam disponíveis; os checkpoints de progresso/saída permanecem na rota SQLite + `PlaybackChange` das unidades anteriores.
+
+**Cobertura:** adiciona contrato Python que verifica a separação nativo/legado, exige a timeline Kotlin no ramo nativo e garante que o ramo nativo do helper não grava na mailbox. Nenhum teste existente foi removido.
+
+**Limite de validação:** aguarda CI da PR para validar os contratos Python e a compilação Release do Kotlin/APK. O workflow Kotlin/JVM manual/reservado não foi executado e não houve teste em aparelho físico. O caminho Flet/desktop permanece intocado.
+
+Este corte reduz a dependência de telemetria do Python em sessões Compose, mas não elimina `NativeMailbox` globalmente: comandos duráveis, storage/scanner, eventos incrementais de artwork e outras rotas ainda constam no inventário como híbridas/pendentes. `main.py` segue necessário ao entrypoint Flet Desktop documentado.
 

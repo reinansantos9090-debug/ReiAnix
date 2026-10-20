@@ -394,5 +394,43 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("refreshNativeCatalog()", playback_collector)
         self.assertNotIn("NativeMailbox", playback_collector)
 
+    def test_native_compose_player_telemetry_uses_native_timeline(self):
+        helper_start = self.player.index("    private fun publishLegacyPlayerEvent(")
+        helper_end = self.player.index("    private fun publishPlayerLifecycle(", helper_start)
+        helper = self.player[helper_start:helper_end]
+
+        native_guard = 'if (!intent.getBooleanExtra("nativeCompose", false))'
+        self.assertIn(native_guard, helper)
+        legacy_branch = helper[helper.index(native_guard):helper.index("        val eventType =")]
+        self.assertIn("NativeMailbox.write(this, event)", legacy_branch)
+        self.assertIn("NativeMailbox.writeBestEffort(this, event)", legacy_branch)
+
+        native_branch = helper[helper.index("        val eventType ="):]
+        self.assertIn("ReiAnixDiagnosticTimeline.record(", native_branch)
+        self.assertIn("source = \"NativePlayerActivity\"", native_branch)
+        self.assertIn("toNativeDiagnosticContext()", native_branch)
+        self.assertNotIn("NativeMailbox.write", native_branch)
+
+        for method, next_method in (
+            ("private fun publishPlayerLifecycle(", "override fun onCreate("),
+            ("private fun publishNavigationTransitionDiagnostic(", "private fun publishNextTransitionDiagnostic("),
+            ("private fun publishPlayerError(", "private fun classifyPlayerExit("),
+        ):
+            start = self.player.index(method)
+            end = self.player.index(next_method, start)
+            self.assertIn("publishLegacyPlayerEvent(", self.player[start:end])
+
+        # First-frame/open/settings/error events now use the shared native/legacy
+        # boundary; progress/exit have a separate canonical SQLite + SharedFlow path.
+        for token in (
+            '"FIRST_FRAME_RENDERED"',
+            '"player_opened"',
+            '"compose_settings_set"',
+            '"player_error"',
+            "NATIVE_COMPOSE_PROGRESS_NOT_PERSISTED",
+            "NATIVE_COMPOSE_EXIT_PROGRESS_NOT_PERSISTED",
+        ):
+            self.assertIn(token, self.player)
+
 if __name__ == "__main__":
     unittest.main()
