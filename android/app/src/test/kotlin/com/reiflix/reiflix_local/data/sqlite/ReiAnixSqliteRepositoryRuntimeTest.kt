@@ -1900,6 +1900,26 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                     "anilist",
                 ),
             )
+            db.execSQL(
+                """
+                INSERT INTO episodes (
+                    id, anime_id, path, file_name, season, number, duration,
+                    progress, watched, last_played_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    90_000_018L,
+                    testAnimeId,
+                    "/media/native-integration/episode-01.mkv",
+                    "episode-01.mkv",
+                    1,
+                    1.0,
+                    1200,
+                    11.0,
+                    0,
+                    null,
+                ),
+            )
         }
 
         val remoteResponse = """
@@ -1955,6 +1975,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             },
         )
 
+        assertEquals(
+            "The test anime must own the episode whose progress is checked.",
+            11.0,
+            repository.getEpisode(90_000_018L)!!.progress!!,
+            0.0,
+        )
         val result = service.autoMatch(testAnimeId)
         assertTrue("The exact title/alias candidate should be an auto-match result.", result is AniListResult.Success)
         val outcome = (result as AniListResult.Success).value
@@ -1980,7 +2006,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(ReiAnixAniListClient.ENDPOINT, transport.lastEndpoint)
         assertEquals("Unique Native Integration Title", transport.lastBody!!.getJSONObject("variables").getString("search"))
         assertEquals(listOf(testAnimeId to true), publications)
-        assertEquals(11.0, repository.getEpisode(7L)!!.progress!!, 0.0)
+        assertEquals(
+            "AniList metadata synchronization must preserve this anime's own episode progress.",
+            11.0,
+            repository.getEpisode(90_000_018L)!!.progress!!,
+            0.0,
+        )
         SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
             db.rawQuery(
                 "SELECT COUNT(*) FROM anime_genres WHERE anime_id = ?",
