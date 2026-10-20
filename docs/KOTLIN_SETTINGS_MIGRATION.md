@@ -95,7 +95,7 @@ A validação final de build, regressão e artefatos deve ser lida do workflow G
 
 ### Correção feita neste prompt
 
-`ReiAnixSettingsRepository.setSetting` agora ignora uma chamada se o valor normalizado já for o valor atual confirmado com estado pronto, ou se o mesmo valor já estiver pendente para essa chave. Isso evita gravação SQLite e notificação de compatibilidade desnecessárias. Uma edição pendente com valor diferente não é ignorada, preservando a possibilidade de o usuário reverter uma alteração ainda não confirmada. A validação do contrato, a gravação canônica, a confirmação após commit e a notificação pós-commit continuam no caminho existente.
+`ReiAnixSettingsRepository.setSetting` agora ignora uma chamada se o valor normalizado já for o valor efetivo atual (preferência persistida ou padrão definido no contrato) com estado pronto, ou se o mesmo valor já estiver pendente para essa chave. Isso evita gravação SQLite e notificação de compatibilidade desnecessárias. Uma edição pendente com valor diferente não é ignorada, preservando a possibilidade de o usuário reverter uma alteração ainda não confirmada. A validação do contrato, a gravação canônica, a confirmação após commit e a notificação pós-commit continuam no caminho existente.
 
 ### Dependências legadas preservadas
 
