@@ -183,7 +183,7 @@ internal object ReiAnixSqliteSchemaManager {
         }
 
         val foreignKeys = contract.getJSONObject("foreign_keys").optJSONArray(table)?.objects().orEmpty()
-        for (group in foreignKeys.groupBy { it.getInt("id") }.toSortedMap().values) {
+        for (group in foreignKeys.groupBy { it.getInt("id") }.toSortedMap(compareByDescending<Int> { it }).values) {
             val ordered = group.sortedBy { it.getInt("sequence") }
             val targetTable = ordered.first().getString("table")
             requireSafeIdentifier(targetTable)
