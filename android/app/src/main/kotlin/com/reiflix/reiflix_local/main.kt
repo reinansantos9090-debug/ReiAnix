@@ -4,19 +4,18 @@ import android.app.Activity
 import android.util.Log
 
 /**
- * Native application entrypoint for the Android launcher.
+ * Activity-level startup hook invoked by MainActivity after process bootstrap.
  *
- * MainActivity remains the manifest launcher because Android requires an Activity.
- * This entrypoint coordinates the existing process-owned dependency graph and
- * startup diagnostics without creating a parallel service graph or UI runtime.
+ * The Android Application owns the process dependency graph and MainActivity
+ * preserves its explicit, idempotent bootstrap contract. This hook attaches
+ * window diagnostics at the Activity lifecycle boundary without creating a
+ * second service graph or runtime.
  */
 internal object MainEntryPoint {
-    fun start(activity: Activity) {
-        val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-        dependencies.bootstrap.start()
+    fun onActivityCreated(activity: Activity) {
         PerformanceDiagnostics.attach(activity)
         PerformanceDiagnostics.sampleMemory(activity, "main_on_create")
-        Log.i(TAG, "NATIVE_ENTRYPOINT_STARTED activity=${activity::class.java.simpleName}")
+        Log.i(TAG, "NATIVE_ACTIVITY_ENTRYPOINT_READY activity=${activity::class.java.simpleName}")
     }
 
     private const val TAG = "ReiAnixEntryPoint"

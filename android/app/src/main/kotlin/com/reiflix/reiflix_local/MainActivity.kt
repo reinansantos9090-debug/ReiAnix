@@ -1193,7 +1193,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val launchIntent = intent
-        MainEntryPoint.start(this)
+        appDependencies.bootstrap.start()
+        MainEntryPoint.onActivityCreated(this)
         installSystemBackHandler()
         nativeRequestState.bind(this)
         // The process-scoped application bootstrap owns interrupted-scan recovery and command dispatch.
