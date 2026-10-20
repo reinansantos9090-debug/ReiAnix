@@ -5,6 +5,7 @@ from pathlib import Path
 from core.consumption import consumption_state, progress_ratio
 from core.library_store import LibraryStore
 from core.settings import SettingsStore
+from tests.native_main_contract import native_main_source
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -143,23 +144,24 @@ class ProgressResumeTests(unittest.TestCase):
             self.assertTrue(self.store.save_progress(row["path"], position, 100, episode_id=row["id"], event_created_at=stamp))
         self.assertEqual((10, 30, 50, 40), tuple(self.store.physical_row(row["path"])["progress"] for row in rows))
 
-    def test_legacy_resume_setting_migrates_and_main_uses_canonical_key(self):
+    def test_legacy_resume_setting_migrates_and_native_player_uses_canonical_key(self):
         self.store.set_preference("resume_playback", "false")
         settings = SettingsStore(self.store)
         self.assertFalse(settings.get("player.resume"))
         self.assertEqual("false", self.store.get_preference("player.resume"))
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn('settings.get("player.resume")', main)
-        self.assertNotIn("get_preference('resume_playback'", main)
-
+        source = native_main_source()
+        self.assertIn('"player.resume"', source)
+        self.assertIn("sqliteSettingsRepository", source)
+        self.assertIn("NativePlayerActivity", source)
     def test_next_previous_and_media3_carry_episode_identity(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
-        self.assertIn('episode_id=target.get("id")', main)
-        self.assertIn('anime_id=target.get("anime_id")', main)
+        self.assertIn("ReiAnixPlayerEpisodeNavigator", source)
+        self.assertIn("playerNavigation(episodeId)", source)
+        self.assertIn('putExtra("episodeId", episodeId)', source)
+        self.assertIn('putExtra("animeId", animeId)', source)
         self.assertIn("currentMediaId()", player)
         self.assertIn(".setMediaId(currentMediaId())", player)
-
     def test_explicit_exit_does_not_duplicate_pause_and_stop_saves(self):
         player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
         pause = player[player.index("override fun onPause()"):player.index("override fun onStop()")]
