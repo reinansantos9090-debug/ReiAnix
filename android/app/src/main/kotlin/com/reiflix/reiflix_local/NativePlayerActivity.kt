@@ -836,7 +836,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             applyAdvancedTrackConstraints()
             applySubtitlePreferences()
             autoplayNext = savedInstanceState?.takeIf { it.containsKey("autoplay_next") }?.getBoolean("autoplay_next")
-                ?: intent.getBooleanExtra("autoplay", true)
+                ?: intent.getBooleanExtra("autoplay_next", intent.getBooleanExtra("autoplay", true))
 
             val requestedSpeed = savedInstanceState?.takeIf { it.containsKey("playback_speed") }
                 ?.getFloat("playback_speed")
@@ -1073,7 +1073,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
 
-        autoplayNext = newIntent.getBooleanExtra("autoplay", autoplayNext)
+        autoplayNext = newIntent.getBooleanExtra("autoplay_next", newIntent.getBooleanExtra("autoplay", autoplayNext))
         volumeGesturesEnabled = newIntent.getBooleanExtra("setting_gestures_volume", volumeGesturesEnabled)
         brightnessGesturesEnabled = newIntent.getBooleanExtra("setting_gestures_brightness", brightnessGesturesEnabled)
         doubleTapEnabled = newIntent.getBooleanExtra("setting_gestures_double_tap", doubleTapEnabled)
@@ -1303,6 +1303,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         val requestedStartPositionMs = initialPositionMsForGeneration
         val allowNativeResumeLookup = restoredPositionMs == null &&
+                    intent.getBooleanExtra("setting_player_resume", true) &&
                     !intent.getBooleanExtra("positionMsSpecified", intent.hasExtra("positionMs"))
         pendingPreparation = playbackWorker.submit {
             try {
