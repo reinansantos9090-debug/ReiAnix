@@ -17,7 +17,7 @@ Activity, navigation controller, database, scanner, or player was introduced.
 | Component | Version/configuration |
 | --- | --- |
 | Android Gradle Plugin | `8.9.1` |
-| Kotlin / Compose Compiler plugin | `2.0.21` |
+| Kotlin / Compose Compiler plugin | `2.2.10` |
 | Standalone Gradle | `8.11.1` |
 | Java toolchain | 17 |
 | compile / target SDK | 36 / 36 |
@@ -85,8 +85,7 @@ The project targets compileSdk 36 with AGP 8.9.1. Compose 1.12.x requires API 37
 so the foundation intentionally uses Compose BOM 2026.06.00 instead of forcing a toolchain upgrade
 outside earlier validation stage 01.
 
-Kotlin 2.0+ uses the Compose Compiler Gradle plugin. ReiAnix keeps Kotlin 2.0.21 and applies
-org.jetbrains.kotlin.plugin.compose at the same version.
+Kotlin 2.0+ uses the Compose Compiler Gradle plugin. ReiAnix pins the Kotlin Android and Compose compiler plugins to 2.2.10 to match Kotlin metadata in the current AndroidX dependency graph.
 
 Navigation Compose 2.9.8 and Lifecycle ViewModel Compose 2.10.0 are prepared as dependencies;
 earlier validation stage 01 creates no navigation graph or migrated screen. Existing SQLite, scanner, SAF, MediaStore,

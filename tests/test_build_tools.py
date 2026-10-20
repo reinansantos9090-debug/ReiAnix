@@ -144,6 +144,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
     def test_workflow_prepares_a_standalone_native_android_release(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
         gradle = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        project_gradle = (ROOT / "android/build.gradle.kts").read_text(encoding="utf-8")
         manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         application = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt").read_text(encoding="utf-8")
@@ -159,6 +160,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn('implementation("io.coil-kt:coil:2.7.0")', gradle)
         self.assertNotIn('implementation("io.coil-kt:coil-okhttp:2.7.0")', gradle)
         self.assertIn('providers.gradleProperty("reianixBuildNumber")', gradle)
+        self.assertIn('id("org.jetbrains.kotlin.android") version "2.2.10" apply false', project_gradle)
+        self.assertIn('id("org.jetbrains.kotlin.plugin.compose") version "2.2.10" apply false', project_gradle)
         gradle_properties = (ROOT / "android/gradle.properties").read_text(encoding="utf-8")
         self.assertIn("android.useAndroidX=true", gradle_properties)
         self.assertIn('android:name=".MainActivity"', manifest)

@@ -29,7 +29,7 @@ Manifest, o DEX, a ausência de payloads Python/Flutter e a presença das classe
 nativas e do contrato SQLite.
 
 O contrato de compilação é Java 17, Gradle 8.11.1, Android SDK 36, AGP 8.9.1,
-Kotlin 2.0.21 e Media3 1.11.1. O repositório não inclui APK nem wrapper Gradle.
+Kotlin 2.2.10 e Media3 1.11.1. O repositório não inclui APK nem wrapper Gradle.
 Para compilar localmente, instale esses componentes e gere primeiro o contrato
 SQLite a partir do schema canônico ainda mantido em Python:
 

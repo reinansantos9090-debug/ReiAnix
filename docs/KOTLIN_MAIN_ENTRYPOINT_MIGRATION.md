@@ -74,3 +74,21 @@ and parallel workers (maximum 4), and raises the Android release job ceiling to
 The changed existing workflow contract test was updated in place; no test case
 was added or removed. A new SHA's complete run remains required to confirm the
 effect on DEX merge and to validate the resulting APK.
+
+
+## Prompt 1.2 — Kotlin metadata compatibility
+
+The next release build passed `:app:mergeExtDexRelease` and Android resource
+processing, then failed at `:app:compileReleaseKotlin`. The compiler reported
+that the resolved `kotlin-stdlib-2.2.10.jar` contains metadata version
+`2.2.0`, while the repository's Kotlin 2.0.21 compiler expects `2.0.0`.
+This is a compiler/dependency incompatibility, not a source error and not a
+reason to disable metadata checks.
+
+The project now aligns both `org.jetbrains.kotlin.android` and
+`org.jetbrains.kotlin.plugin.compose` to 2.2.10. The legacy Flet-template
+preparation script also normalizes a generated 2.0.21 Kotlin Android plugin
+before adding the matching Compose compiler plugin, so it does not produce a
+mixed plugin classpath. Existing contract tests and the source audit were
+updated in place; no test cases were added or removed. The next release run
+must confirm compilation and all post-build APK checks.

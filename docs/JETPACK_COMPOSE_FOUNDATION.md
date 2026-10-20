@@ -74,8 +74,8 @@ tasks, and Media3 lifecycle remain unchanged.
 
 ## Toolchain contract
 
-Kotlin: 2.0.21
-Compose Compiler Gradle plugin: 2.0.21
+Kotlin: 2.2.10
+Compose Compiler Gradle plugin: 2.2.10
 Compose BOM: 2026.06.00
 Material 3: managed by the BOM
 Navigation Compose: 2.9.8

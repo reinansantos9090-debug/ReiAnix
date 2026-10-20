@@ -250,6 +250,23 @@ for candidate in (android_root / "settings.gradle.kts", android_root / "settings
         # literal after the plugin id; limit this replacement to the AGP id.
         updated = re.sub(r"(id\s*[\"\']com\.android\.application[\"\']\s+version\s+[\"\'])8\.6\.1([\"\'])",
                          r"\g<1>8.9.1\g<2>", updated)
+        # AndroidX Compose/Lifecycle artifacts use Kotlin 2.2.x metadata;
+        # normalize the existing Kotlin Android plugin before adding its matching
+        # Compose compiler plugin later in the rendered module.
+        updated = re.sub(
+            r"(id\\s*[\\\"\\']org\\.jetbrains\\.kotlin\\.android[\\\"\\']\\s+version\\s+[\\\"\\'])2\\.0\\.21([\\\"\\'])",
+            r"\\g<1>2.2.10\\g<2>",
+            updated,
+        )
+        updated = re.sub(
+            r"((?:ext\\.)?kotlin_version\\s*=\\s*[\\\"\\'])2\\.0\\.21([\\\"\\'])",
+            r"\\g<1>2.2.10\\g<2>",
+            updated,
+        )
+        updated = updated.replace(
+            "org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21",
+            "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10",
+        )
         if updated != source:
             candidate.write_text(updated, encoding="utf-8")
 
@@ -320,11 +337,11 @@ existing = gradle.read_text(encoding="utf-8")
 compose_plugin_marker = "ReiAnix Compose Compiler Gradle plugin"
 if compose_plugin_marker not in existing:
     if gradle.suffix == ".kts":
-        plugin_line = '    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"'
+        plugin_line = '    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"'
         if "plugins {" in existing:
             existing = existing.replace("plugins {", "plugins {\n" + plugin_line, 1)
     else:
-        plugin_line = "    id 'org.jetbrains.kotlin.plugin.compose' version '2.0.21'"
+        plugin_line = "    id 'org.jetbrains.kotlin.plugin.compose' version '2.2.10'"
         if "plugins {" in existing:
             existing = existing.replace("plugins {", "plugins {\n" + plugin_line, 1)
     existing += "\n// ReiAnix Compose Compiler Gradle plugin\n"

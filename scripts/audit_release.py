@@ -185,6 +185,14 @@ def audit_architecture(root: Path, failures: list[str]) -> None:
     if "android.useAndroidX=true" not in android_gradle_properties.replace(" ", ""):
         failures.append("android/gradle.properties must enable android.useAndroidX=true")
 
+    kotlin_gradle = read(root, "android/build.gradle.kts")
+    for plugin_line in (
+        'id("org.jetbrains.kotlin.android") version "2.2.10" apply false',
+        'id("org.jetbrains.kotlin.plugin.compose") version "2.2.10" apply false',
+    ):
+        if plugin_line not in kotlin_gradle:
+            failures.append(f"Kotlin/Compose plugin version alignment missing: {plugin_line}")
+
     manifest = read(root, "android/app/src/main/AndroidManifest.xml")
     main_activity = read(root, "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
     application = read(root, "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt")
