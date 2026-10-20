@@ -1,12 +1,13 @@
 """Regression contracts for focus stability and incremental thumbnail delivery."""
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = (ROOT / "views" / "home_view.py").read_text(encoding="utf-8")
 SETTINGS = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
 UI = (ROOT / "core" / "ui.py").read_text(encoding="utf-8")
-MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
+MAIN = native_main_source()
 DETAILS = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")
 
 
