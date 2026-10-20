@@ -19,7 +19,7 @@ def test_compose_player_uses_the_native_sqlite_to_activity_handoff():
     codec = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt"
     )
-    main = read("main.py")
+    player_entry = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
 
     launch_start = view_model.index(
         "fun openEpisode(episodeId: Long, expectedAnimeId: Long?"
@@ -35,10 +35,11 @@ def test_compose_player_uses_the_native_sqlite_to_activity_handoff():
     assert '.appendQueryParameter("action", "play")' in launch
     assert '.appendQueryParameter("native_compose", "true")' in launch
     assert "NativeMailbox.write" not in launch
+    assert "NativePlayerRequest.fromBridgeUri(source)" in activity
     assert "fun reportNativePlayerHandoff(" in repository
     assert "fun reportNativePlayerHandoff(" in view_model
     assert 'OPEN_MEDIA("open_media")' not in codec
-    assert 'elif action == "open_media":' not in main
+    assert "open_media" not in codec
     assert "private fun performOpenPlayer(" in activity
     assert "reportNativePlayerHandoff(" in activity
 

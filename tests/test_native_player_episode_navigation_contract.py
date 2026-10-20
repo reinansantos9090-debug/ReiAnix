@@ -59,8 +59,10 @@ def test_native_player_navigation_uses_canonical_sqlite_and_legacy_availability_
 
 
 def test_flet_python_player_transition_consumer_is_retained_for_desktop_compatibility():
-    main = read("main.py")
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
 
-    assert "elif event_type in {'player_next_request', 'player_previous_request'}:" in main
-    assert "library.player_navigation" in main
-    assert "start_native_player(" in main
+    assert "dispatchNativeEpisodeTransition(" in activity
+    assert "ReiAnixPlayerEpisodeNavigator" in activity
+    assert "NativeMailbox.write(this@NativePlayerActivity, transitionEvent)" in activity
+    assert "NativePlayerRequest.fromBridgeUri(successorUri.build())" in activity
+    assert "startActivity(successorIntent)" in activity
