@@ -429,12 +429,22 @@ class ReiAnixAppBootstrap internal constructor(
                     },
                 )
             } else {
-                // LibraryStore in the remaining hybrid runtime initializes a fresh install.
-                // Absence without durable recovery evidence is not data corruption.
-                CanonicalDatabaseCheck(
-                    status = ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
-                    recoveryRequired = false,
-                )
+                // No durable recovery evidence exists: initialize the one canonical file
+                // natively. The schema manager is additive and never replaces existing data.
+                val migrated = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = true)
+                val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
+                if (migrated.supportsCurrentContract && integrityHealthy) {
+                    CanonicalDatabaseCheck(
+                        status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                        recoveryRequired = false,
+                    )
+                } else {
+                    CanonicalDatabaseCheck(
+                        status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                        recoveryRequired = true,
+                        warning = DATABASE_RECOVERY_WARNING,
+                    )
+                }
             }
         }
 
@@ -446,7 +456,8 @@ class ReiAnixAppBootstrap internal constructor(
             )
         }
 
-        val schemaCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
+        val schemaCompatible = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
+            .supportsCurrentContract
         val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
         return if (schemaCompatible && integrityHealthy) {
             CanonicalDatabaseCheck(

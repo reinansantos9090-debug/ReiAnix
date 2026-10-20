@@ -130,6 +130,60 @@ class ReiAnixSqliteDatabase(context: Context) {
         runCatching { onOutcome?.invoke(outcome) }
     }
 
+
+    /**
+     * Creates the canonical database only for a confirmed fresh install, or applies
+     * additive, contract-checked migrations to an existing non-empty database.
+     * Existing files are never replaced and schema incompatibility rolls back the DDL.
+     */
+    internal fun initializeOrMigrate(allowCreate: Boolean = false): ReiAnixSqliteSchemaSnapshot =
+        synchronized(connectionLock) {
+            val existed = databaseFile.exists()
+            check(!existed || (databaseFile.isFile && databaseFile.length() > 0L)) {
+                "The canonical SQLite file exists but is empty or is not a regular file. No replacement was created."
+            }
+            check(existed || allowCreate) {
+                "The canonical SQLite database is absent and creation was not authorized."
+            }
+            val parent = databaseFile.parentFile
+            check(parent != null && (parent.isDirectory || parent.mkdirs())) {
+                "The canonical SQLite data directory is unavailable."
+            }
+            val database = try {
+                if (existed) {
+                    SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+                } else {
+                    SQLiteDatabase.openOrCreateDatabase(databaseFile.absolutePath, null)
+                }
+            } catch (error: SQLiteException) {
+                throw ReiAnixSqliteOpenException("Unable to open the canonical SQLite database for a safe schema migration.", error)
+            }
+            try {
+                database.setForeignKeyConstraintsEnabled(true)
+                database.rawQuery("PRAGMA busy_timeout = $BUSY_TIMEOUT_MS", null).use { cursor ->
+                    while (cursor.moveToNext()) Unit
+                }
+                database.beginTransactionNonExclusive()
+                try {
+                    ReiAnixSqliteSchemaManager.migrate(database, canonicalContract)
+                    val snapshot = inspectSchema(database)
+                    check(snapshot.supportsCurrentContract) {
+                        "Canonical SQLite schema migration did not produce a compatible v29 database: " +
+                            snapshot.incompatibilities.joinToString("; ")
+                    }
+                    database.setTransactionSuccessful()
+                    contractValidated = true
+                    snapshot
+                } finally {
+                    database.endTransaction()
+                }
+            } catch (error: SQLiteException) {
+                throw ReiAnixSqliteOpenException("Canonical SQLite schema migration failed; the transaction was rolled back.", error)
+            } finally {
+                database.close()
+            }
+        }
+
     internal fun inspectSchema(): ReiAnixSqliteSchemaSnapshot =
         synchronized(connectionLock) {
             val database = openExisting(readOnly = true, validateContract = false)
