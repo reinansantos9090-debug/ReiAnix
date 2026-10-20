@@ -79,3 +79,32 @@ O formato `rei-flix-backup-v1` é mantido para interoperabilidade. O serviço Ko
 Os testes de contrato existentes em `tests/test_compose_settings_preferences.py` foram atualizados para verificar que a gravação Compose usa o repositório SQLite nativo, envia `nativePersisted` e que o backend distingue o caminho pós-commit do caminho de compatibilidade. Os testes Kotlin/JVM existentes permanecem para execução manual, conforme a política do projeto; não foram adicionados testes instrumentados ou de emulador.
 
 A validação final de build, regressão e artefatos deve ser lida do workflow GitHub Actions associado ao último commit relevante. Esta documentação não presume que testes Kotlin/JVM foram executados nem que APK/ZIP foram produzidos sem evidência do workflow.
+
+## Prompt 12/18 — verificação das configurações, armazenamento e diálogos Compose
+
+**Base:** `main` no commit `e83fb5320187e6f1376b430cb506e46d53d9ec48`; implementação em `migration/prompt-12-compose-settings-20261020`. Esta seção complementa o inventário anterior, sem criar uma segunda documentação ou alterar contratos legados.
+
+### Componentes já nativos e reutilizados
+
+- `ui/settings/ReiAnixSettings.kt` fornece a tela Compose e as 16 categorias já definidas no projeto. Os controles usam o `ReiAnixSettingsViewModel`, o estado `StateFlow` coletado com `collectAsStateWithLifecycle`, e as chaves/validações de `ReiAnixSettingsContract`.
+- `ReiAnixComposeLibraryHost` já integra `ReiAnixSettingsRoute` e `ReiAnixStorageRoute`; nenhuma nova rota paralela foi criada.
+- `ReiAnixSettingsRepository` grava em `ReiAnixSqliteSettingsRepository`, na tabela canônica `preferences` da base existente. O schema SQLite não foi alterado e nenhuma base adicional foi criada.
+- A tela de armazenamento existente exibe fontes SAF, estados de acesso, registros persistidos e falhas; a seleção continua usando o fluxo Android/SAF e os grants persistentes existentes.
+- Os diálogos existentes incluem confirmação de ações destrutivas, escolha de opções e confirmação de remoção de fonte SAF. Cancelar fecha o diálogo sem solicitar a operação correspondente.
+- O design system já contém os tokens de referência: fundo `#050505`, superfície `#0B0B0B`, variante `#111111`, elevada `#171717`, diálogo `#141414` e destaque `#3D8BFF`. Nenhum sistema de cores adicional foi introduzido.
+
+### Correção feita neste prompt
+
+`ReiAnixSettingsRepository.setSetting` agora ignora uma chamada se o valor normalizado já for o valor atual confirmado com estado pronto, ou se o mesmo valor já estiver pendente para essa chave. Isso evita gravação SQLite e notificação de compatibilidade desnecessárias. Uma edição pendente com valor diferente não é ignorada, preservando a possibilidade de o usuário reverter uma alteração ainda não confirmada. A validação do contrato, a gravação canônica, a confirmação após commit e a notificação pós-commit continuam no caminho existente.
+
+### Dependências legadas preservadas
+
+`core/settings.py`, `core/compose_settings_bridge.py`, `views/settings_view.py` e seus consumidores de runtime continuam preservados porque o projeto ainda contém caminhos híbridos Python/Flet. A ponte/mailbox segue sendo notificação de compatibilidade e não uma segunda fonte de persistência. O fluxo de armazenamento continua dependente das APIs Android em `MainActivity`; este prompt não removeu Activity, bridge, Flet ou Flutter.
+
+### Validação deste registro
+
+- Inspeção estática dos componentes, rotas, contratos, tokens, serviços de armazenamento e testes existentes.
+- Nenhum teste Kotlin/JVM foi executado manualmente; nenhum teste instrumentado, emulador, novo workflow ou infraestrutura de teste foi executado/criado.
+- A correção não altera chaves, tipos, defaults, schema SQLite, rotas ou o contrato do player.
+- O estado de compilação/CI deve ser lido nas verificações oficiais da branch deste prompt; esta documentação não trata inspeção estática como prova de build ou funcionamento em dispositivo.
+
