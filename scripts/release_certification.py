@@ -42,15 +42,15 @@ TEST_REFS={
 }
 IMPL_REFS={
 "Database / Library":["core/library_store.py","core/library_service.py","core/backup.py"],
-"Consumption":["core/consumption.py","core/library_service.py","main.py"],
+"Consumption":["core/consumption.py","core/library_service.py","android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt"],
 "Navigation":["core/navigation.py","android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt","android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"],
 "Player":["android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt","android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt","scripts/verify_apk_manifest.py"],
 "Storage":["core/storage_access.py","core/android_bridge.py","android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/StorageAuthorization.kt","android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt","android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt"],
-"Artwork":["core/artwork.py","core/library_service.py","main.py","views/home_view.py"],
+"Artwork":["core/artwork.py","core/library_service.py","android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt","views/home_view.py"],
 "Search":["core/search_engine.py","views/organize_view.py"],
 "Settings / Theme":["core/settings.py","core/ui.py","views/settings_view.py","core/android_bridge.py"],
-"Home":["views/home_view.py","main.py","views/home_view.py"],
-"Performance / Static audit":["core/library_store.py","core/library_service.py","core/artwork.py","main.py","views/home_view.py"],
+"Home":["android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt","android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt"],
+"Performance / Static audit":["core/library_store.py","core/library_service.py","core/artwork.py","android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt","android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"],
 "Certification / CI / APK":["scripts/release_certification.py","scripts/verify_android_host.py","scripts/verify_apk_manifest.py",".github/workflows/build_apk.yml"],
 }
 DEVICE_ONLY={"Android 14 runtime validation remains explicit","Android 15 runtime validation remains explicit","Android 16 runtime validation remains explicit","Physical-device installation remains explicit","Clean-install validation remains explicit","Update/upgrade validation remains explicit"}
