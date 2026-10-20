@@ -32,6 +32,9 @@ internal object MainEntryPoint {
     fun onActivityCreated(activity: ComponentActivity) {
         // Resolve only the Application-owned graph; never instantiate a second graph.
         val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+        // This is the single Kotlin entrypoint for process bootstrap from an Activity.
+        // ReiAnixApplication may already have started it; start() is idempotent.
+        dependencies.bootstrap.start()
         PerformanceDiagnostics.attach(activity)
         PerformanceDiagnostics.sampleMemory(activity, "main_on_create")
         observeBootstrapForActivity(activity, dependencies)
