@@ -52,7 +52,7 @@ def test_storage_and_lifecycle_contracts_are_preserved():
     assert "onBackPressedDispatcher.addCallback(" in main
     assert "composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)" in main
     assert "engine.navigationChannel.popRoute()" not in main
-    assert "flutterEngine" not in main)
+    assert "flutterEngine" not in main
     assert 'put("type", "android_back")' not in main
     assert "override fun onSaveInstanceState(outState: Bundle)" in main
     assert "override fun onResume()" in main
