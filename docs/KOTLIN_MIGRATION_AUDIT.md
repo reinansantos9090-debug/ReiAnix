@@ -1,68 +1,145 @@
-# ReiAnix — auditoria técnica da migração Kotlin nativa (reconciliada em 2026-10-18)
+# ReiAnix — auditoria final da migração Kotlin nativa (Prompt 18/18)
 
-## 1. Estado atual reconciliado e precedência das fontes
+**Veredito final desta auditoria: MIGRAÇÃO PARCIAL.**
 
-**Data da reconciliação:** 18 de outubro de 2026.  
+**Data da consulta:** 2026-10-20 (UTC).  
 **Repositório:** `reinansantos9090-debug/ReiAnix`.  
-**Baseline atual confirmada da `main` antes desta correção:** `80fd95acd0d569d3013ac2d71fcf4cd166ae7844`.  
-**Branch de trabalho:** `audit/prompt-01-kotlin-migration-20261018`.  
-**HEAD confirmado antes da edição:** `c139aefb4234299140afeb11bb8c210947e03039`.  
-**PR:** [#198](https://github.com/reinansantos9090-debug/ReiAnix/pull/198), aberta e não mesclada na verificação anterior à edição.
+**Referência de código auditada:** `main` em `65eced0dd59cfedc36324ddf3846c2dd82b7a204`.  
+**Commit pai dessa referência:** `eab1d5491a3f13602ef080f363763d8f14509e2c`.  
+**Branch desta etapa:** `migration/prompt-18-final-certification-20261020`, criada a partir da referência auditada.  
+**Escopo das alterações desta etapa:** documentação de auditoria; nenhum arquivo de produção, dependência, workflow ou teste foi removido/alterado.  
+**Pull Request:** será ligado a esta auditoria após a publicação da branch. A referência exata do HEAD final e o estado do PR são registrados no resultado da execução do Prompt 18.
 
-Esta seção é a fonte atual deste documento. Os registros detalhados do snapshot de 14/10/2026 estão preservados no final, explicitamente marcados como históricos. Quando números, SHAs, estágios ou status antigos divergirem, não substituem os fatos desta seção nem os documentos canônicos abaixo.
+Esta seção prevalece sobre os registros históricos abaixo. O acesso nesta etapa foi remoto pelo GitHub; não houve checkout local inspecionável, portanto não se declara o estado de `git status` de uma máquina externa. A referência `main` não foi modificada pelo Prompt 18, não houve force push e não houve merge automático.
 
-Fontes canônicas entregues pelo Prompt 01/18:
-- `docs/KOTLIN_MIGRATION_FINAL_INVENTORY.md` — inventário estático do snapshot `80fd95acd0d569d3013ac2d71fcf4cd166ae7844`.
-- `docs/KOTLIN_MIGRATION_DEPENDENCY_MATRIX.md` — runtime, contratos, dependências e bloqueios.
-- `docs/KOTLIN_MIGRATION_18_PROMPT_PLAN.md` — sequência canônica dos Prompts 02–18.
-- `docs/KOTLIN_MIGRATION_ACCEPTANCE_CRITERIA.md` — gates de aceite e invariantes de preservação.
+## A. Veredito fundamentado
 
-O plano de 18 prompts substitui, para execução deste ciclo, a antiga decomposição de 21 pacotes MIG-02–MIG-22. A reconciliação detalhada e as lacunas sem equivalência direta estão em `docs/KOTLIN_MIGRATION_ROADMAP.md`. O Prompt 01 e o Prompt 01.1 são documentais; os Prompts 02–18 continuam pendentes de execução e autorização individual. Estar listado num plano não significa que uma funcionalidade foi migrada ou aceita.
+**MIGRAÇÃO PARCIAL.** Há implementação nativa real de Compose, serviços Kotlin, SQLite, SAF/MediaStore, scanner, settings, AniList, artwork, backup e Media3. Porém, a migração integral não é demonstrável e não é correto remover o runtime legado: `main.py` importa e instancia serviços Python/Flet; `MainActivity` herda de `FlutterFragmentActivity`; `ReiAnixApplication` herda de `FlutterApplication`; e o workflow oficial instala Python, Flet e Flutter e executa `flet build apk` antes da verificação Gradle. Logo, nem o entrypoint nem o caminho de build são independentes de Python/Flet/Flutter.
 
-## 2. Inventário vigente e conclusão técnica
+Nenhum componente legado foi removido. A decisão é intencional: os consumidores e responsabilidades ativos tornam inseguro remover Flet/Flutter/Python, as bridges ou os scripts de build. O número do prompt não é prova de conclusão funcional.
 
-O inventário canônico do snapshot confirmado registra **217 arquivos Python / 66.062 linhas de código** e **184 arquivos Kotlin / 68.419 linhas de código**. O recorte informado inclui 164 arquivos sob `tests/` entre os arquivos Python e os testes Kotlin que já existiam; essas contagens não devem ser convertidas em percentual de runtime ou usadas como prova isolada de conclusão.
+## B. Histórico e referência do repositório
 
-O snapshot permanece híbrido:
-- `main.py` continua sendo o entrypoint Flet;
-- `MainActivity` deriva de `FlutterFragmentActivity`;
-- `ReiAnixApplication` deriva de `FlutterApplication`;
-- o pipeline de APK usa o template/runtime Flet/Flutter/Serious Python;
-- serviços Kotlin, Jetpack Compose e Media3/ExoPlayer coexistem com caminhos e responsabilidades Python ainda ativos.
+- A `main` consultada aponta para `65eced0dd59cfedc36324ddf3846c2dd82b7a204`, commit `Prompt 17: inventory remaining tests and preserve runtime contracts`, cujo pai é `eab1d5491a3f13602ef080f363763d8f14509e2c`.
+- O PR [#206](https://github.com/reinansantos9090-debug/ReiAnix/pull/206) está fechado e integrado; o PR [#207](https://github.com/reinansantos9090-debug/ReiAnix/pull/207) também está fechado e integrado.
+- Na consulta inicial à API, não havia PRs abertos.
+- Os 164 arquivos `tests/test_*.py` foram encontrados na árvore recursiva do SHA auditado. Contagem estática da árvore: 218 arquivos `.py`, 188 arquivos `.kt` e 60 arquivos sob `docs/`. São contagens de arquivos, não métodos, linhas de runtime, cobertura ou testes aprovados.
+- Este procedimento não alterou a `main`, não reescreveu histórico e não integrou qualquer PR automaticamente.
 
-Logo, o build Kotlin bem-sucedido dentro do pipeline existente não demonstra independência de Python/Flet/Flutter.
+## C. Arquivos e diff do Prompt 18
 
-## 3. Bloqueios, dados e critérios de remoção segura
+Alteração planejada e realizada nesta branch: atualizar este documento existente para tornar o estado atual, os resultados de CI, os limites e o veredito consistentes com o código realmente presente. Não foi criado um segundo relatório final.
 
-A matriz de dependências é a fonte corrente para consumidores, responsabilidades ainda híbridas e dependências por domínio. Os bloqueios prioritários continuam sendo bootstrap/entrypoint nativo, ownership operacional do SQLite, reconciliação de caminho, coordenação de scanner, contratos IPC/bridges, fluxos de metadados/artwork e dependências de UI/serviços Python.
+- Arquivo modificado: `docs/KOTLIN_MIGRATION_AUDIT.md`.
+- Arquivos adicionados: nenhum.
+- Arquivos removidos ou movidos: nenhum.
+- Alterações em código de produção, dependências, schema, fixtures, scripts de build ou workflows: nenhuma.
+- Alterações de teste: nenhuma.
+- O diff definitivo em relação à referência de origem deve ser lido na comparação GitHub da branch/PR; os totais finais e o SHA do HEAD são fornecidos no relatório de execução, pois um documento não pode conter seu próprio hash final sem alterar esse mesmo hash.
 
-Invariantes obrigatórios para todas as etapas:
-- manter `library.sqlite3` como banco canônico e schema v29; não criar uma segunda base, nem alterar schema sem justificativa e autorização específica;
-- preservar IDs, associações, metadados manuais, preferências, conta, progresso, histórico, estado de episódios, grants SAF, backups, scanner, MediaStore, ArtworkEngine, thumbnails e Media3/ExoPlayer;
-- não remover bridge, serviço ou runtime legado até provar que seus consumidores e efeitos foram migrados para um caminho Kotlin real;
-- não adicionar testes, workflows, scripts, jobs ou infraestrutura de emulador; não executar manualmente a suíte Kotlin/JVM nem workflows instrumentados nesta etapa;
-- não reduzir métricas eliminando referências Python/Flet/Flutter, nem usar stubs ou equivalências não comprovadas;
-- preservar o histórico Git, manter a `main` intacta e a PR sem merge automático.
+## D. Matriz funcional — estado encontrado
 
-A classificação histórica das 40 unidades funcionais e as suas respectivas evidências está preservada no apêndice histórico. Ela descreve aquele inventário e não é uma nova auditoria funcional executada neste prompt.
+| Área | Implementação real encontrada | Estado e evidência | Pendência / decisão |
+|---|---|---|---|
+| Entrada e bootstrap | `ReiAnixApplication`, `ReiAnixAppBootstrap`, `ReiAnixAppDependencies`, `MainActivity` | **PARCIAL** — composição e bootstrap Kotlin existem, mas Application/Activity herdam classes Flutter. Inspeção estática. | Migrar o host/entrypoint para Activity/Application nativas sem Flutter e comprovar o fluxo inteiro antes de remoção. |
+| Tema, navegação e restauração de estado | Compose root, shell, navegação, ViewModels e Activity | **PARCIAL** — código Kotlin real presente; sem validação em dispositivo nesta etapa. | Comprovar rotas, Back, intents, lifecycle, retomada de estado e tratamento de falhas na aplicação nativa. |
+| Home, Biblioteca, Pesquisa, Detalhes e Minha Lista | Telas Compose e ViewModels; ainda há rotas e lógica em `main.py`/views Flet | **PARCIAL** — presença de UI nativa não prova que Flet deixou de ser consumidor. | Demonstrar que as rotas usadas pelo produto são todas nativas e que os serviços acessados são equivalentes. |
+| Organizar, Armazenamento, Configurações e diálogos | Compose screens, Settings ViewModels e bridges; views Flet continuam no tree | **PARCIAL** — implementação coexistente. | Auditar handlers/consumidores e testar permissões, picker, cancelamento e retorno do sistema em dispositivo. |
+| Modelos, parser e identidade de mídia | Kotlin domain models, parser, identidade e mappers | **NATIVO, VALIDAÇÃO LIMITADA** — código/testes presentes; a suíte Kotlin/JVM não foi executada nesta etapa. | Executar conforme autorização e completar equivalência com os contratos Python mantidos. |
+| SQLite/repositórios | `ReiAnixSqliteDatabase`, repositórios/serviços Kotlin e `core/library_store.py` | **PARCIAL** — schema esperado v29 nos dois lados; os dois runtimes ainda existem. | Provar em execução a resolução do caminho canônico e a ausência de writers concorrentes; preservar todas as transações/merge. |
+| Scanner, SAF, MediaStore e permissões | Serviços Kotlin de scan/storage e `core/scan_coordinator.py` / `core/storage_access.py` | **PARCIAL** — classes nativas presentes e consumidores Python existentes. | Provar ownership, grants persistidos, cancelamento, deduplicação, recuperação, providers e lifecycle Android. |
+| AniList e metadados | Client, matcher, localizer, integration service Kotlin; serviços Python ainda estão no tree/runtime Flet | **PARCIAL** — testes de domínio Kotlin existem, mas associação + efeitos persistidos ponta a ponta não foram certificados. | Teste controlado do serviço completo, matching e persistência; preservar os testes Python até equivalência provada. |
+| Artwork, capas, cache e miniaturas | `ReiAnixArtworkService`, artwork local e thumbnail extractor; pipeline Python ainda ativo | **PARCIAL** — contrapartes existem; equivalência do pipeline total não demonstrada. | Cobrir download/cache/retry/invalidação e atualização visual real. |
+| Settings, conta e preferências | Contratos/repositórios Kotlin e store/bridges legados | **PARCIAL** — ambos coexistem. | Verificar defaults, valores desconhecidos, recarga e persistência cross-runtime. |
+| Minha Lista, progresso e histórico | Serviços de lista/consumo e Activity de player nativos, além dos consumidores Python existentes | **PARCIAL** — fonte de lógica dividida; build não substitui validação de fluxo real. | Provar identidade, progresso, histórico, retomada e ausência de duplicação. |
+| Backup, restore e recovery | `ReiAnixBackupService` e recuperação nativa; serviços Python também permanecem | **PARCIAL** — a guarda adicionada no Prompt 17 cobre apenas inspeção não destrutiva e não foi executada como suíte JVM. | Testar backup ZIP, restore, rollback, sidecars e recuperação de forma controlada. |
+| Player | `NativePlayerActivity`, Media3/ExoPlayer e controles Kotlin; caminho híbrido de handoff permanece | **NATIVO, VALIDAÇÃO LIMITADA** — classes compiladas; não houve teste em dispositivo. | Comprovar SAF URI, áudio/legendas, seek/resume, progresso, next/previous, Back, lifecycle e PiP em aparelho. |
+| Build Android | Gradle/Kotlin compilados dentro do projeto Android gerado pelo template Flet/Flutter | **LEGADO NECESSÁRIO; BUILD INDEPENDENTE NÃO COMPROVADO** — workflow oficial exige Python, Flet e Flutter. | Migrar o empacotamento/host antes de remover as ferramentas. |
+| Scripts, fixtures e CI | Scripts Python geram identidade e contrato SQLite, preparam template Flet, executam pytest e empacotam APK | **LEGADO NECESSÁRIO** — consumidores explícitos no workflow. | Preservar até um build nativo independente substituir comprovadamente cada responsabilidade. |
 
-## 4. Build, compilação Release e aviso de assinatura — evidência vinculada ao SHA
+## E. Auditoria de Python, Flet e Flutter
 
-O workflow [Build ReiAnix Android APK #39131423769](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39131423769), run **6101**, concluiu com **`completed / success`** no SHA anterior `c139aefb4234299140afeb11bb8c210947e03039`. O job e as suas etapas de build terminaram em sucesso, incluindo a verificação explícita da compilação Kotlin Release e a suíte de regressão Python executada pelo workflow.
+| Componente | Uso observado | Classificação |
+|---|---|---|
+| `main.py` / Flet | Importa `flet`, cria `LibraryStore`, `LibraryService`, bridges de biblioteca/configurações, `ScanCoordinator` e rotas/handlers Flet. | **Execução do app híbrido; não remover.** |
+| `core/library_store.py`, `library_service.py`, `android_bridge.py`, `compose_library_bridge.py`, `compose_settings_bridge.py`, `scan_coordinator.py` | Ainda são importados/instanciados pelo runtime Python e por testes. | **Consumidores ativos; não remover.** |
+| Flet 0.86.5 | Dependência de `pyproject.toml`/requirements e CLI usada no build. | **Execução/empacotamento; não remover.** |
+| Flutter / template Flet | `MainActivity` usa `FlutterFragmentActivity`, `ReiAnixApplication` usa `FlutterApplication`; o script `scripts/prepare_flet_template.py` adapta o template usado pela CI. | **Runtime/build ativo; não remover.** |
+| Python 3.12 / pytest | O workflow oficial instala Python e roda a suíte Python. | **Build, regressão e runtime híbrido; manter.** |
+| Pillow / certifi | Declarados em `pyproject.toml` e `requirements.txt`; Pillow tem consumidores no pipeline legado de arte. Não foi demonstrada obsolescência de todas as dependências. | **Manter; nenhuma remoção justificada.** |
+| Gradle, Kotlin, AndroidX, Compose, Media3, Robolectric/JUnit | Compilam serviços e UI Android; JUnit/Robolectric suportam a suíte JVM já existente. | **Manter.** |
+| Scripts de preparação, geração de identidade e fixture SQLite | Chamados pelo workflow oficial. | **Manter até cutover equivalente.** |
 
-A interpretação correta desse resultado é limitada:
-- o APK pertence ao pipeline híbrido atual, que instala Python e Flutter/Flet e prepara o template de build Flet;
-- o artefato não comprova independência de Python/Flet/Flutter;
-- o log registra o aviso **“Stable Android signing secrets are not configured; this APK is not update-compatible with previous CI-signed installs.”** e o modo `ephemeral-debug`;
-- portanto, o APK daquela execução não é compatível como atualização sobre instalações anteriores assinadas pela CI com a chave estável;
-- esse aviso de assinatura não equivale a falha de compilação: o workflow e a compilação Kotlin Release ainda concluíram com sucesso;
-- não há evidência de que os segredos/configuração de assinatura tenham sido corrigidos; este prompt não os modifica.
+Busca textual foi usada como descoberta, não como prova única de obsolescência. Inspeção dos pontos de entrada, inicialização e workflow identifica dependências concretas; nenhuma dependência legada atende aos critérios necessários para remoção segura nesta etapa. Componentes removidos: **0**.
 
-**Regra de vinculação por SHA:** o sucesso em `c139aefb4234299140afeb11bb8c210947e03039` é evidência histórica, não aprovação do novo commit documental. A conclusão deste Prompt 01.1 depende do workflow automático aplicável atingir estado terminal `completed / success` no SHA final após as alterações. Workflow pendente, falho, cancelado, ausente ou vinculado a outro SHA não atende ao gate.
+## F. Dados e persistência
 
-## 5. Estado de execução deste ciclo
+- Fonte histórica/canônica: `library.sqlite3`, schema v29, inicializado por `core/library_store.py` e usado como contrato de referência pela implementação Kotlin.
+- Kotlin declara `ReiAnixSqliteDatabase.DATABASE_FILE_NAME = library.sqlite3`, schema esperado v29 e caminho `filesDir/data/library.sqlite3`.
+- Python resolve o diretório por `FLET_APP_STORAGE_DATA`, com fallback `.reiflix-data` em relação à raiz do app no código inspecionado. A equivalência efetiva desses caminhos em runtime Android não é demonstrada somente pela inspeção; precisa ser provada antes do corte definitivo.
+- O workflow gera fixture/contrato SQLite a partir do `LibraryStore` real por meio de `scripts/generate_native_sqlite_test_fixture.py`. Isso preserva um contrato de referência, mas não prova que todos os consumers usem a mesma instância/caminho durante uma execução real.
+- Nenhuma base foi criada, copiada, migrada, apagada ou alterada no Prompt 18. Schema/versão não foram alterados.
+- A preservação de IDs, associações, caminhos/URIs, preferências, arte, progresso e histórico só é declarada onde sustentada pelo código/contratos existentes; a equivalência ponta a ponta e a preservação em dispositivo permanecem **sem validação prática neste prompt**.
 
-O Prompt 01/18 entregou documentação de inventário, matriz, sequência e critérios. O Prompt 01.1 atualiza a reconciliação documental dos dois documentos históricos. **Nenhuma migração funcional está autorizada ou realizada neste prompt.** Nenhum dos Prompts 02–18 foi iniciado por este documento. A conclusão de documentação não certifica o produto como Kotlin-only.
+## G. Testes e níveis de validação
+
+| Evidência | Resultado | Limite |
+|---|---|---|
+| Inspeção estática do código/configuração | Concluída no SHA de origem especificado acima. | Não comprova que cada caminho funcional opera em dispositivo. |
+| Build APK, run [39375337374](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39375337374) | `completed / success` no SHA `65eced0dd59cfedc36324ddf3846c2dd82b7a204`. | Build pelo template Flet/Flutter; não é um build independente. |
+| Regressão Python dentro do build | Etapa `Run Python regression suite` terminou `success`. | Não demonstra equivalência Kotlin; não registrar número de testes sem relatório parseado. |
+| Validação/compilação Kotlin de produção | `:app:compileReleaseKotlin` terminou com sucesso no workflow de APK. | Compilação de produção, não execução da suíte Kotlin/JVM. |
+| APK gerado | `build/ReiAnix.apk`; 34,476,444 bytes; SHA-256 `862b328c12c3f27ffbc81c447e1fa34625332f52ee16dd66061c8fd00bfc9d51`. | Assinatura `ephemeral-debug`; não deve ser considerada compatível para atualização sobre instalação assinada por chave estável. |
+| Artefatos do APK | `ReiAnix-apk-instalacao-direta-6256` (33,407,092 bytes) e `ReiAnix-ZIP-extraia-primeiro-6256` (33,350,986 bytes), vinculados ao run 39375337374 e ao SHA acima. | Artefatos temporários do Actions, com expiração indicada pelo GitHub; não prova publicação estável. |
+| Release evidence certification, run [39375337419](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39375337419) | `completed / success` no mesmo SHA; artefato `ReiAnix-release-certification-666`. | Certificação de fontes/matriz, sem emulador e sem substituir testes de runtime. |
+| Kotlin/JVM | Não foi executado manualmente nesta etapa; não foi autorizado despacho do workflow manual. | Testes existentes e o teste do Prompt 17 continuam sem resultado de execução atribuído a esta auditoria. |
+| Android instrumentado/emulador | Não executado, conforme restrição. | SAF real, providers, lifecycle, navegação e reprodução prática não estão certificados. |
+
+Não houve execução manual da suíte Kotlin/JVM, de testes instrumentados, de emulador nem de build local. Os resultados acima são exclusivamente os resultados reais fornecidos pelos workflows já acionados no SHA de origem.
+
+## H. Build e artefatos
+
+O comando de empacotamento usado pelo workflow é `flet build apk` contra um template Flet preparado por `scripts/prepare_flet_template.py`; depois o workflow compila/valida o projeto Android gerado e confirma `:app:compileReleaseKotlin`. A ferramenta registra `flet_version=0.86.5`, `flutter_version=3.44.8`, Kotlin `2.0.21`, JDK 17 e `targetSdkVersion=36` no log consultado.
+
+**Independência do build em relação a Python/Flet/Flutter: NÃO COMPROVADA e contrariada pelo pipeline atual.** A existência de APK e o sucesso de `:app:compileReleaseKotlin` demonstram que o código Kotlin compila dentro do host híbrido; não demonstram que Gradle, por si só, produza o APK nativo independente.
+
+## I. Critérios de conclusão
+
+| Critério global | Resultado |
+|---|---|
+| Entry point / Application nativos sem Flutter | **Não atendido** — classes ainda herdam tipos Flutter. |
+| Execução independente de Python/Flet no app | **Não atendido** — `main.py` e serviços Flet são ativos. |
+| Telas e serviços com equivalência ponta a ponta | **Parcial / não comprovado** — implementações Kotlin coexistem com consumers Python. |
+| Persistência única e compatível | **Parcial** — contrato v29 mantido, mas ownership e caminho efetivo entre runtimes exigem confirmação prática. |
+| SAF, indexação, metadados, artwork e player sem regressões | **Parcial** — código e compilação disponíveis; sem teste Android real nesta etapa. |
+| Build Android independente | **Não atendido** — workflow depende de Python/Flet/Flutter/template. |
+| Testes relevantes inventariados | **Parcial** — inventário file-level, equivalência por método incompleta. |
+| CI dos SHAs existentes verificada | **Atendido para o SHA de origem** — build APK e certification em sucesso; não transferir esse status a SHAs posteriores. |
+| Suite Kotlin/JVM executada | **Não executada**, conforme restrição. |
+| Remoções revisadas e justificadas | **Atendido por não remoção** — nenhuma remoção passou pelos critérios de segurança. |
+| Validação em dispositivo real | **Não executada**. |
+
+## J. Pendências concretas para alcançar conclusão integral
+
+1. Migrar o bootstrap/entrypoint e o host Android para Activity/Application nativas independentes de Flutter, com fluxo de execução comprovado.
+2. Migrar ou desativar apenas depois da paridade os consumidores reais de `main.py`, Flet views, `LibraryStore`, `LibraryService`, `ScanCoordinator`, bridges e demais serviços Python.
+3. Provar o caminho canônico único do SQLite v29 em Android, IDs, transações, merge, caminhos/URIs, preferências, metadados, arte, progresso e histórico, sem criar base paralela.
+4. Concluir testes controlados de associação AniList e efeitos persistidos, artwork/download/cache/retry e backup/restore/rollback.
+5. Criar e validar um build independente que não instale/exija Python, Flet, Flutter ou template Flet, antes de remover tais ferramentas do caminho de entrega.
+6. Manter testes Python e scripts que ainda protegem consumers/build híbridos; planejar a migração sem enfraquecer regressões.
+7. Depois de autorização apropriada, executar a suíte Kotlin/JVM manual e validar instrumentação/dispositivo em uma etapa separada; esta auditoria não executou nenhum desses níveis.
+8. Auditar as funcionalidades no dispositivo real: permissões/SAF, indexação, navegação/lifecycle, player, retomada e recovery.
+
+## K. Estado GitHub e conclusão
+
+- Referência-base auditada: `65eced0dd59cfedc36324ddf3846c2dd82b7a204`; branch Prompt 18 criada diretamente desse SHA.
+- `main` permanece inalterada por este Prompt 18. Nenhuma integração ou reescrita de histórico foi realizada.
+- O estado do PR e o SHA final da branch devem ser lidos da referência GitHub da branch de Prompt 18, fornecida com o relatório de execução.
+- **Veredito: MIGRAÇÃO PARCIAL.** CI de build/compilação e certificação de evidências passaram no SHA de origem, mas o produto permanece híbrido, os testes Kotlin/JVM não foram executados e não existe evidência suficiente de paridade funcional completa ou de build nativo independente.
+
+---
+**Nota de precedência:** o restante deste arquivo é um arquivo histórico preservado. Suas baselines e declarações antigas não se sobrepõem a esta auditoria do SHA `65eced0dd59cfedc36324ddf3846c2dd82b7a204`.
+ 
 
 ## Registro histórico — auditoria detalhada do snapshot de 14/10/2026, SHA histórico 40e8c86be49282774ec45060aea9374155a14ca9
 
