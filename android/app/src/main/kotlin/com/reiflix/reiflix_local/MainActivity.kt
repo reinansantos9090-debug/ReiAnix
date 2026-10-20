@@ -1193,7 +1193,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val launchIntent = intent
-        appDependencies.bootstrap.start()
         MainEntryPoint.onActivityCreated(this)
         installSystemBackHandler()
         nativeRequestState.bind(this)
