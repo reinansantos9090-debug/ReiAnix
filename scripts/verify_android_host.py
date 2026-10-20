@@ -83,7 +83,7 @@ def main() -> int:
 
     missing = [descriptor.decode() for descriptor in REQUIRED_CLASSES if descriptor not in dex]
     if missing:
-        print("Native ReiAnix application classes were not packaged; refusing to publish this APK.", file=sys.stderr)
+        print("Native ReiAnix host was not packaged: native application classes are missing; refusing to publish this APK.", file=sys.stderr)
         print("Missing DEX descriptors: " + ", ".join(missing), file=sys.stderr)
         return 1
     print(

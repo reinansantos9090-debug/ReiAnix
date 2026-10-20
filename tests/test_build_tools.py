@@ -241,8 +241,10 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn('abiFilters += "arm64-v8a"', android)
         self.assertNotIn('abiFilters += "armeabi-v7a"', android)
         self.assertNotIn('abiFilters += "x86_64"', android)
-        self.assertIn('--arch "arm64-v8a"', workflow)
-        self.assertNotIn('--arch "arm64-v8a,x86_64,armeabi-v7a"', workflow)
+        self.assertIn("gradle -p android --no-daemon", workflow)
+        self.assertIn(":app:assembleRelease", workflow)
+        self.assertNotIn('--arch "arm64-v8a"', workflow)
+        self.assertNotIn("flet build apk", workflow)
 
     def test_android_instrumented_diagnostic_is_not_part_of_fast_build(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
@@ -1091,7 +1093,8 @@ class BuildIdentityContractTests(unittest.TestCase):
         self.assertNotIn(":app:testDebugUnitTest", workflow)
         self.assertNotIn(":app:connectedDebugAndroidTest", workflow)
         self.assertIn(":app:testDebugUnitTest", certification)
-        self.assertIn("connectedDebugAndroidTest", certification)
+        self.assertNotIn("connectedDebugAndroidTest", certification)
+        self.assertNotIn("android-emulator-runner", certification)
 
     def test_main_activity_delegates_scan_batch_publication(self):
         main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")

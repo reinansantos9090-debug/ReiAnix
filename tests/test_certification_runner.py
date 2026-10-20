@@ -155,7 +155,9 @@ class CertificationRunnerTests(unittest.TestCase):
         self.assertNotIn("Run release evidence certification (no emulator)",workflow)
         self.assertNotIn("name: release-certification",workflow)
         self.assertIn("Run Python regression suite",workflow)
-        self.assertIn("Build APK",workflow)
+        self.assertIn("Build native Android release APK",workflow)
+        self.assertIn("gradle -p android --no-daemon",workflow)
+        self.assertIn(":app:assembleRelease",workflow)
 
     def test_rendered_gradle_environment_uses_staged_site_packages(self):
         with tempfile.TemporaryDirectory() as tmp:
