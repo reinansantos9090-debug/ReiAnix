@@ -432,8 +432,9 @@ class ReiAnixAppBootstrap internal constructor(
                 // No durable recovery evidence exists: initialize the one canonical file
                 // natively. The schema manager is additive and never replaces existing data.
                 val migrated = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = true)
+                val contractStillCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
                 val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
-                if (migrated.supportsCurrentContract && integrityHealthy) {
+                if (migrated.supportsCurrentContract && contractStillCompatible && integrityHealthy) {
                     CanonicalDatabaseCheck(
                         status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
                         recoveryRequired = false,
@@ -456,8 +457,9 @@ class ReiAnixAppBootstrap internal constructor(
             )
         }
 
-        val schemaCompatible = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
+        val migrationCompatible = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
             .supportsCurrentContract
+        val schemaCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
         val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
         return if (schemaCompatible && integrityHealthy) {
             CanonicalDatabaseCheck(
