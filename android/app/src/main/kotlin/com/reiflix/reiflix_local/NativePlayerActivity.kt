@@ -28,6 +28,7 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.util.Rational
+import android.util.Log
 import android.graphics.Typeface
 import android.media.AudioManager
 import android.net.Uri
