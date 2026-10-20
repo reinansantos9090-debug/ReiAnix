@@ -6,6 +6,7 @@ player and command dispatcher. Tests use this aggregate to inspect those real
 production components instead of retaining an executable/copy of the deleted
 Python entrypoint as a fixture.
 """
+from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,7 @@ class NativeMainSource(str):
         return False
 
 
+@lru_cache(maxsize=1)
 def native_main_source() -> NativeMainSource:
     """Return the complete native Kotlin production source for integration contracts."""
     paths = sorted(KOTLIN_ROOT.rglob("*.kt"))
