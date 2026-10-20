@@ -8,6 +8,7 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
 import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
+import com.reiflix.reiflix_local.data.library.ReiAnixGachaService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import java.io.File
@@ -80,6 +81,11 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixLibraryDiscoveryService(sqliteLibraryRepository)
+    }
+
+    /** Gacha shares the canonical native SQLite repository and performs read-only selection. */
+    val gachaService: ReiAnixGachaService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixGachaService(sqliteLibraryRepository)
     }
 
     val personalListService: ReiAnixPersonalListService by lazy(
