@@ -65,7 +65,7 @@ internal object MainEntryPoint {
      * registering callbacks repeatedly or recording every timestamp-only update.
      */
     private fun observeBootstrapForActivity(
-        activity: Activity,
+        activity: ComponentActivity,
         dependencies: ReiAnixAppDependencies,
     ) {
         activity.lifecycleScope.launch {
