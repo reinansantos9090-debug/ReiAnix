@@ -183,3 +183,18 @@ O verificador confirma ausência de Python/Flet/Flutter **dentro deste APK**, n�
 Comparação de `bfa1eb408d9c8245dce421088034e7b324371cc6` para `76262d2f3daa673b1799e1fa1423133324da2521`: 2 arquivos modificados, 104 linhas adicionadas e 18 removidas. `main.py` e o Manifest foram preservados.
 
 **Próxima fronteira obrigatória:** migrar e provar os consumidores legados restantes, atualizar os contratos apenas quando sua finalidade puder ser preservada (nenhum teste foi alterado nesta etapa), confirmar a paridade funcional dos fluxos e só então avaliar a remoção de `main.py`. A certificação verde do APK não encerra esta migração.
+
+## Prompt 1.5 — Contrato executável da política de entrada nativa
+
+**Estado: melhoria incremental; a migração global de `main.py` continua PARCIAL.** Nesta alteração, a política Kotlin que libera comandos nativos foi tornada explícita e coberta por testes JVM focados, sem mover responsabilidades de UI/desktop de forma prematura.
+
+- `MainEntryPoint.allowsNativeOperations` continua exigindo que a decisão inicial da Activity esteja concluída.
+- A decisão do bootstrap exige a etapa `READY`, persistência `HEALTHY` ou `NOT_CREATED` e ausência de Recovery Mode. O estado `DEGRADED` com etapa/persistência prontas ainda pode representar avisos não fatais; a fase nominal sozinha não libera comandos.
+- A verificação de persistência usa comparações explícitas, evitando construir um conjunto temporário em cada verificação do gate.
+- Foi adicionado `android/app/src/test/kotlin/com/reiflix/reiflix_local/MainEntryPointTest.kt` com oito casos: decisão da Activity pendente, estado saudável, instalação sem banco prévio, avisos não fatais, etapa incompleta, Recovery Mode, persistência em recuperação e persistência não verificada.
+- O launcher continua sendo `MainActivity`; `MainEntryPoint` não se torna uma segunda Activity e não cria outro grafo/bootstrap.
+
+**Validação pendente:** o workflow automático de APK compila o código Kotlin de release, mas não executa os testes JVM recém-adicionados. O workflow Kotlin/JVM do repositório é manual e não foi acionado nesta alteração. Portanto, os oito testes estão escritos, mas não são declarados como executados. O build/CI do PR deve ser conferido pelo SHA exato antes de integrar.
+
+Essa alteração não substitui as responsabilidades desktop/legadas de `main.py`, não remove consumidores Python e não prova paridade global. O arquivo fica preservado até que as jornadas que ainda dependem dele tenham uma substituição real.
+
