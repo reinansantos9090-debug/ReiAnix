@@ -352,3 +352,68 @@ Esta atualização complementa a fotografia inicial e não altera retroativament
 **Totais por etiqueta (classificações sobrepostas): 18 famílias rastreadas; A=3, B=3, C=12, D=6, E=2, F=1, G=1, H=2.** A unidade de contagem é família de fluxo; as categorias não são mutuamente exclusivas e suas somas não representam o número de chamadas individuais. G descreve apenas o caminho de abertura inicial do player Compose que foi removido, não a retirada global do runtime Python. RT-06 e RT-07 permanecem H enquanto estado/readers do contrato legado e possíveis comandos persistidos não tiverem sido auditados integralmente.
 
 **Resultado desta etapa:** uma cadeia ativa de produção (abertura inicial do player Compose) deixou de encaminhar a operação ao worker Python. Nenhuma Activity base, plataforma de build, scanner, base de dados ou ponte global foi removida. O runtime continua híbrido e ainda não pode ser chamado de standalone Kotlin.
+
+---
+
+## 2026-10-20 — Adendo do Prompt 16/18: testes de domínio Python → Kotlin
+
+**Base real consultada:** `main` em `3da0357e5100b56cf8d4f9b3917465ec7b6fc680`, com mensagem `Prompt 15: record effective Android build toolchain and hybrid build limits`. O branch do trabalho é `migration/prompt-16-domain-tests-20261020`, criado a partir desse SHA. Este adendo não substitui os snapshots históricos acima; registra o estado observado para o Prompt 16.
+
+### Inventário estrutural da suíte antes das alterações
+
+| Área | Estado observado no snapshot da `main` |
+|---|---|
+| Arquivos `tests/test_*.py` | 164 |
+| Arquivos Kotlin em `android/app/src/test/` | 47 |
+| Arquivos de teste instrumentado em `android/app/src/androidTest/` | 14 |
+| Framework de teste Kotlin | JUnit 4.13.2 já declarado em `android/app/build.gradle.kts` |
+| Workflow de testes Kotlin/JVM | `.github/workflows/kotlin_jvm_tests.yml`, somente `workflow_dispatch`; execução deliberadamente manual |
+| Workflow de build existente | `.github/workflows/build_apk.yml`; seu gatilho de PR executa a suíte Python e build de APK, não o comando de teste Kotlin/JVM |
+| Runtime / migração | Híbrido: `pyproject.toml` ainda exige Python/Flet e a suíte Python segue relevante para o runtime legado |
+
+Os totais acima contam arquivos no Git tree, não métodos de teste, cobertura ou sucesso de execução. A triagem comportamental aprofundada deste prompt prioriza os conjuntos de domínio relacionados a identidade de mídia, parsing, matching AniList, classificação de gêneros, busca e contratos. Os outros conjuntos Python de UI, Android, rede, persistência, lifecycle, scanner, backup, player e harness permanecem fora da migração de testes puros deste prompt; não são considerados removidos nem substituídos por mera semelhança de nome. Esta é uma triagem estática de escopo, não uma declaração de auditoria semântica linha a linha dos 164 arquivos.
+
+### Matriz de rastreabilidade e decisão
+
+| Teste Python / comportamento | Implementação e contraparte Kotlin real | Decisão / estado |
+|---|---|---|
+| `tests/test_media_identity.py::test_file_mediastore_and_primary_saf_share_identity` | `LocalMediaIdentity.identityFromDocument`; `MediaDomainAndIdentityTest.fileMediaStoreAndPrimarySafShareStablePhysicalIdentity` | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_media_identity.py::test_cloud_saf_relative_path_is_not_assumed_to_be_primary_storage` | `LocalMediaIdentity.identityFromDocument`; `MediaDomainAndIdentityTest.cloudDocumentsUriDoesNotMasqueradeAsSharedStorage` | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_media_identity.py::test_insert_from_second_source_reuses_existing_episode_and_preserves_progress` | Python `LibraryStore`/SQLite, observações de origem e progresso; os testes Kotlin de identidade não demonstram paridade de toda essa transação | **MANTIDO EM PYTHON**; sem equivalente nativo comprovado para o contrato completo |
+| `tests/test_media_identity.py::test_schema_adds_media_identity_and_index` | Inspeção do schema e índice SQLite do `LibraryStore` Python | **MANTIDO EM PYTHON**; depende do schema em uso pelo runtime legado |
+| `tests/test_anilist_matching.py::test_normalize_removes_common_filename_tokens` | `ReiAnixAniListMatcher.rank`, `MediaTitleNormalizer` e testes de parsing/remoção de release tags | **MIGRADO, NÃO EXECUTADO**; a entrada completa com `S01 E001 1080p WEB-DL x265` ganhou caso Kotlin explícito |
+| `tests/test_anilist_matching.py::test_exact_alias_beats_a_similar_title` | `ReiAnixAniListMatcher.rank`; teste novo `exactTitleRanksAboveSimilarFranchiseTitle` | **MIGRADO, NÃO EXECUTADO** para ranking; persistência/decisão de associação continuam separados |
+| `tests/test_anilist_matching.py::test_near_tied_candidates_require_manual_confirmation` | `ReiAnixAniListMatcher.rank` agora verifica empate de score e desempate determinístico; a confirmação final por score+margem ocorre em `ReiAnixAniListIntegrationService` | **PENDENTE** para equivalência ponta a ponta da política de confirmação; teste Python preservado |
+| `tests/test_anilist_matching.py::test_explicit_pending_match_fetches_and_persists_selected_metadata`; `test_explicit_resolution_rejects_anilist_id_not_in_remote_response` | Serviço de domínio Python, store e resposta AniList | **MANTIDO EM PYTHON**; combina persistência e serviço, não é teste de domínio puro |
+| `tests/test_anilist_matching_2.py::test_unicode_normalization_preserves_native_script`; `test_japanese_native_title_matches_same_entity` | `ReiAnixAniListMatcher.rank`; novo teste de título japonês nativo e preservação do ID remoto | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_anilist_matching_2.py::test_filename_parser_and_matcher_are_separate_but_composable` | `MediaFilenameParser.parseVideoPath` + `ReiAnixAniListMatcher.rank`; teste novo de composição sem infraestrutura | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_anilist_matching_2.py::test_synonym_match_is_strong` | `ReiAnixAniListMatcher.rank`; novo teste identifica explicitamente `titleKind == "synonym"` | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_anilist_matching_2.py::test_english_and_romaji_are_interchangeable` | `ReiAnixAniListMatcher.rank`; novo teste verifica correspondência pelo título romaji com título inglês diferente | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_anilist_matching_2.py::test_release_noise_does_not_change_exact_title` | `ReiAnixAniListMatcher.rank`; caso existente de release tag e novo caso de ruído completo | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_anilist_matching_2.py::test_season_context_prefers_matching_explicit_remote_season` | O matcher nativo extrai temporada do título recebido e considera a temporada explícita do candidato; teste novo `seasonMarkerRanksMatchingExplicitRemoteSeasonFirst` | **MIGRADO, NÃO EXECUTADO** com adaptação explícita ao contrato nativo (temporada extraída do título, não parâmetro `season_number`) |
+| `tests/test_anilist_matching_2.py::test_movie_format_beats_same_title_tv_candidate` | `ReiAnixAniListMatcher.rank` com contexto de filme; teste novo compara score e posição do candidato | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_anilist_matching_2.py::test_movie_does_not_auto_merge_with_tv_when_scores_are_close` | O matcher nativo cobre penalidade de formato, mas o bloqueio de associação é uma decisão de serviço/persistência, não de `rank` isoladamente | **PENDENTE** para equivalência completa; Python preservado |
+| `tests/test_anilist_matching_2.py::test_near_tie_is_ambiguous`; `test_stable_secondary_sort_makes_ties_deterministic` | Novo teste Kotlin verifica scores iguais e ordenação por ID remoto; integração de confirmação continua no serviço | **MIGRADO, NÃO EXECUTADO** para ranking; **PENDENTE** para a decisão final de associação |
+| `tests/test_anilist_matching_2.py::test_parser_context_marks_movie_without_touching_storage_or_network` | `MediaFilenameParserTest.specialsMoviesAbsoluteNumbersAndMultiEpisodeRangesRemainDistinct` | **MIGRADO, NÃO EXECUTADO** para classificação pura de filme; teste Python preservado para regressão do runtime legado |
+| `tests/test_anilist_matching_2.py` — persistir match, not-found versus network error, rate limit, prioridade manual, unlink, metadados/gêneros e cache offline | `LibraryService`, `LibraryStore`, AniList remoto e estado persistido | **MANTIDO EM PYTHON**; são comportamentos de serviço/integração e persistência, não migrados por estes testes puros |
+| `tests/test_anilist_matching_2.py::test_search_detailed_reports_network_error`; `test_search_detailed_reports_ok_and_candidate_list` | Contrato de cliente de rede AniList | **MANTIDO EM PYTHON**; fora do escopo de rede deste prompt |
+| `tests/test_genre_registry.py::test_classifier_returns_only_real_inferences` | `ReiAnixGenreClassifier.classify`; testes existentes para título desconhecido e classes de regra legadas | **MIGRADO, NÃO EXECUTADO** |
+| `tests/test_genre_registry.py::test_normalization_and_explicit_alias_share_identity`; `test_no_fuzzy_merge_for_similar_genres` | `normalizeReiAnixGenre` cobre normalização; não foi comprovado nesta etapa um registry Kotlin equivalente que preserve todos os contratos de alias/identidade do registry Python | **PARCIAL**: normalização coberta, resolução/identidade de registry permanece em Python |
+| `tests/test_genre_registry.py` — persistir/reabrir gêneros, contagem por anime distinto, interseção de filtros, sync por origem, gêneros customizados, migração de JSON, modo offline e IDs compartilhados entre telas | `GenreRegistry`, SQLite, `LibraryService` e consumidores Python | **MANTIDO EM PYTHON**; não foi criada implementação fictícia nem uma segunda fonte de verdade |
+| `tests/test_search_engine.py::test_exact_partial_case_accent_and_separators`; `test_multiple_terms_and_unicode_alias` | `ReiAnixSearchIndex.search` e `normalizeSearchText`; testes existentes de acentos, pontuação, termos múltiplos, títulos alternativos e aliases Unicode | **MIGRADO, NÃO EXECUTADO** para busca textual; o contrato Python continua ativo |
+| `tests/test_search_engine.py` — ID/campos persistidos, filtros combinados, estados/disponibilidade, tipo de origem, ordenação semântica/numeriça, estabilidade e fachada de serviço | `LibrarySearchEngine`/catálogo e fachada Python são mais amplos que o contrato de busca textual de `ReiAnixSearchIndex` | **MANTIDO EM PYTHON / PENDENTE** para equivalência específica de filtros, ordenação e catálogo; não declarar cobertura integral de busca |
+| `tests/test_prompt24_data_contracts.py` e `tests/test_settings_contract_parity.py` — conversões estritas, snapshots, SQLite, AniList, mailbox, backup e paridade entre linguagens | Contrapartes Kotlin existentes incluem `ReiAnixContractValuesTest`, `ReiAnixSettingsSnapshotCodecTest`, `ReiAnixSqliteModelsTest`, `ReiAnixAniListClientTest` e mappers; os testes Python também inspecionam contratos compartilhados entre runtimes | **MANTIDO EM PYTHON** até a remoção comprovada dos consumidores Python e equivalência de cada contrato |
+
+### Alterações Kotlin deste prompt
+
+O arquivo `android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListMatcherTest.kt` ganhou **10 métodos de teste** de domínio. Eles chamam o matcher de produção e o parser de filename de produção: título exato versus sequência/franquia semelhante; synonym isolado; título japonês nativo; romaji diferente do inglês; marcadores de temporada; formato MOVIE versus TV; empate/ordenação estável; composição parser→matcher; casos explícitos de case-fold Unicode (`ß` e sigma final); e ruído completo de release/episódio (`S01 E001 1080p WEB-DL x265`). Nenhuma função de produção foi criada ou alterada para satisfazer os testes.
+
+### Preservação, configuração e validação
+
+- Nenhum teste Python foi removido, ignorado ou desativado. O runtime continua híbrido e a pipeline oficial ainda executa a suíte Python; os testes de store, rede, registry persistido e política final de matching continuam necessários.
+- Não foram adicionadas dependências: JUnit 4.13.2 já existe no Gradle.
+- Nenhum arquivo Gradle ou workflow foi modificado. `kotlin_jvm_tests.yml` continua manual via `workflow_dispatch`; não foi adicionada execução automática de testes Kotlin/JVM.
+- Não houve execução manual de suíte Kotlin/JVM, teste instrumentado nem emulador. Os novos testes foram inspecionados estaticamente contra as assinaturas de produção e fixtures existentes; isso **não** prova compilação nem sucesso dos testes.
+- Estado da cobertura desta etapa: **PARCIAL**. Há equivalências nativas para ranking/normalização/parsing e busca textual, mas decisões de associação de serviço, registry persistido, filtros/ordenação completos, integrações e persistência continuam com cobertura Python ativa. Não foi medido percentual de cobertura.
+
+O Prompt 17/18 **não foi iniciado** por este adendo.
