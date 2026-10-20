@@ -146,11 +146,14 @@ internal object ReiAnixSqliteSchemaManager {
             ?: error("Canonical SQLite contract omits exact table DDL; regenerate it from LibraryStore.")
         val sql = definitions.optString(table).trim()
         check(sql.isNotEmpty()) { "The canonical contract has no DDL for table $table." }
-        val tablePattern = Regex(
-            "(?is)^CREATE\\\\s+TABLE\\\\s+(?:IF\\\\s+NOT\\\\s+EXISTS\\\\s+)?" +
-                "[\\\\\"\x60\\\\[]?" + Regex.escape(table) + "[\\\\\"\x60\\\\]]?\\\\s*\\\\(",
-        )
-        check(tablePattern.containsMatchIn(sql)) {
+
+        val createPrefix = Regex("(?is)^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?")
+        val prefix = createPrefix.find(sql)
+            ?: error("Canonical DDL for $table is not a CREATE TABLE statement.")
+        val remainder = sql.substring(prefix.value.length).trimStart()
+        val rawName = remainder.takeWhile { !it.isWhitespace() && it != '(' }
+        val declaredName = rawName.trim('"', 96.toChar(), '[', ']')
+        check(declaredName == table && remainder.drop(rawName.length).trimStart().startsWith("(")) {
             "Canonical DDL does not declare the expected table $table."
         }
         return sql
