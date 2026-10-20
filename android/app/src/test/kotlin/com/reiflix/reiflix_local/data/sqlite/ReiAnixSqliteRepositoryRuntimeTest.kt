@@ -1992,6 +1992,87 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
     }
 
+
+    @Test
+    fun nativeAniListAmbiguousCandidatesRequireConfirmationWithoutPersistingAssociation() = runBlocking {
+        createCanonicalFixture()
+        val testAnimeId = 90_000_019L
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO anime (
+                    id, lookup_title, title, added_at, metadata_manual_fields,
+                    favorite, user_tags, is_pinned, personal_note, english, metadata_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    testAnimeId,
+                    "ambiguous-native-integration",
+                    "Ambiguous Integration Title",
+                    1000.0,
+                    "[]",
+                    0,
+                    "[]",
+                    0,
+                    null,
+                    null,
+                    "local",
+                ),
+            )
+        }
+
+        val remoteResponse = """
+            {
+              "data": {"Page": {"media": [
+                {
+                  "id": 16498,
+                  "title": {"romaji": "Ambiguous Integration Title", "english": "Ambiguous Integration Title"}
+                },
+                {
+                  "id": 77777,
+                  "title": {"romaji": "Ambiguous Integration Title", "english": "Ambiguous Integration Title"}
+                }
+              ]}}
+            }
+        """.trimIndent()
+        val transport = object : AniListTransport {
+            var calls = 0
+            override suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse {
+                calls += 1
+                return AniListHttpResponse(statusCode = 200, body = remoteResponse)
+            }
+        }
+        val database = ReiAnixSqliteDatabase(context)
+        val repository = ReiAnixSqliteLibraryRepository(database)
+        val publications = java.util.concurrent.CopyOnWriteArrayList<Pair<Long, Boolean>>()
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(transport = transport, minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = ReiAnixSqliteSettingsRepository(database),
+            metadataCommitPublisher = { animeId, requestArtwork ->
+                publications += animeId to requestArtwork
+                true
+            },
+        )
+
+        val result = service.autoMatch(testAnimeId)
+        assertTrue("A successful lookup with equal candidates should be a domain result.", result is AniListResult.Success)
+        val outcome = (result as AniListResult.Success).value
+        assertTrue("An equal-score tie must require explicit confirmation.", outcome is AniListAutoMatchResult.Ambiguous)
+        assertEquals(2, (outcome as AniListAutoMatchResult.Ambiguous).candidates.size)
+
+        val persisted = repository.getAnime(testAnimeId)!!
+        assertNull("Ambiguous candidates must never create a local association.", persisted.anilistId)
+        assertEquals("ambiguous", persisted.anilistMatchStatus)
+        assertEquals(1.0, persisted.anilistMatchScore!!, 0.0)
+        assertEquals(0.0, persisted.anilistMatchMargin!!, 0.0)
+        assertEquals("Ambiguous Integration Title", persisted.title)
+        assertEquals("local", persisted.metadataSource)
+        assertEquals("ambiguous", persisted.metadataStatus)
+        assertEquals(1, transport.calls)
+        assertEquals(listOf(testAnimeId to false), publications)
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()
