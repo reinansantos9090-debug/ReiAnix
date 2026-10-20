@@ -134,3 +134,15 @@ A primeira inicialização sem raiz SAF usa o mesmo launcher `ACTION_OPEN_DOCUME
 
 **Conclusão:** Prompt 14/18 fica **PARCIAL**. O bootstrap Kotlin e o shell Compose são partes existentes e ativas do fluxo híbrido; não foram reescritos desnecessariamente e nenhuma bridge foi removida sem prova. O Prompt 15/18 não foi iniciado.
 
+## Auditoria do build — Prompt 15/18 (2026-10-20)
+
+**Status: PARCIAL.** A referência anterior (SHA `aa061aad1ddcc9a46d05f6cec21a73770da86778`) tem build Android e certificação oficiais aprovados, mas isso valida somente o empacotamento híbrido. A cadeia oficial prepara Python 3.12, Flet 0.86.5 e Flutter 3.44.8, gera o host Android com `scripts/prepare_flet_template.py`, executa `flet build apk` e então chama o wrapper criado pelo template em `build/flutter/android` para `:app:compileReleaseKotlin`. A APK contém `assets/app.zip` e o runtime `serious_python`; a independência de Python/Flet/Flutter não é satisfeita.
+
+O overlay `android/` não contém wrapper Gradle próprio nem o embedding Flutter; `MainActivity : FlutterFragmentActivity` e `ReiAnixApplication : FlutterApplication` ainda dependem desse host gerado. Nenhum plugin, versão, serviço, módulo ou arquivo de runtime legado foi removido, porque a remoção neste ponto impediria construir o host atual e perderia responsabilidades ainda ativas.
+
+O fluxo Gradle/Kotlin existente não foi alterado de arquitetura. O workflow oficial foi ajustado para registrar o Gradle Wrapper efetivo, JDK, AGP, Kotlin/Compose Compiler, SDK, modo do build e tarefas executadas em `build/android-build-toolchain.txt`, além de publicar esse relatório junto do APK e dos metadados. Isso melhora a auditabilidade de cada SHA, mas não transforma o build em standalone.
+
+A configuração versionada observada é AGP 8.9.1, Kotlin/Compose plugin 2.0.21, Java 17, compileSdk/targetSdk 36, minSdk 24 e Media3 1.11.1. O wrapper Gradle 8.14 foi observado na execução oficial anterior; como é obtido do template gerado, essa versão não está fixada por wrapper versionado no repositório.
+
+O bloqueio restante é migrar as dependências funcionais de Python/Flet, retirar o embedding Flutter com equivalência funcional comprovada e só então versionar/validar um projeto Gradle completo. Não foi criado um segundo projeto, wrapper fictício nem task que apenas copie um APK. O Prompt 16/18 não foi iniciado.
+

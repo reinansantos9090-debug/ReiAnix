@@ -131,3 +131,33 @@ inherits from `FlutterFragmentActivity`, the official APK workflow still renders
 and library/settings projection, scanning coordination, AniList/artwork and backup/restore have
 remaining Python-side responsibilities. Keep those components until native replacements and data
 parity are validated; do not treat this stage as completion of the overall migration.
+
+## Prompt 15/18 — auditoria efetiva do build (2026-10-20)
+
+**Status: PARCIAL — o APK compila pelo pipeline híbrido existente, mas o build não é independente de Python/Flet/Flutter.** Não foi removida nenhuma ferramenta ou bridge: o launcher atual herda de `FlutterFragmentActivity`, `ReiAnixApplication` herda de `FlutterApplication`, e o workflow empacota o runtime `serious_python` e a aplicação Python dentro de `assets/app.zip`.
+
+### Cadeia canônica atualmente usada pelo CI
+
+1. Configura Python 3.12, Java 17 e Android SDK/build-tools 36; instala `requirements.txt` e `flet[cli]==0.86.5`, e instala Flutter 3.44.8.
+2. Gera a identidade do build e o contrato SQLite v29 a partir do `LibraryStore` canônico; baixa/usa o template Android oficial do Flet 0.86.5 e aplica `scripts/prepare_flet_template.py` sobre `android/`.
+3. Executa `flet build apk` com esse template renderizado, `--python-version 3.12` e ABI `arm64-v8a`. Esta é a etapa que gera o APK e empacota o runtime Python/Flet/Flutter.
+4. Usa o wrapper gerado em `build/flutter/android/gradlew` para validar `:app:compileReleaseKotlin`. A tarefa exclui downloads do payload Python/Dart de ABIs que não estão no APK selecionado; ela não converte o host em projeto standalone.
+5. Valida o bundle Python, classes Kotlin/Compose no DEX, manifesto, permissões, assinatura, SHA-256 e a integridade do ZIP de distribuição.
+
+O repositório não versiona `gradlew` nem `gradle/wrapper/gradle-wrapper.properties` na raiz ou em `android/`. O wrapper utilizado vem do projeto Android que o template Flet gera. A configuração versionada declara AGP 8.9.1, Kotlin e Compose Compiler plugin 2.0.21, Java 17, compileSdk/targetSdk 36, minSdk 24 e Media3 1.11.1. O workflow mais recente concluído com sucesso antes desta auditoria registrou Gradle Wrapper 8.14 gerado pelo template; esse número não é ainda um wrapper versionado pelo ReiAnix. O workflow atualizado passa a guardar a versão efetiva do wrapper/JDK/AGP/Kotlin em `build/android-build-toolchain.txt` e anexá-la aos metadados/artefatos do build.
+
+### Evidência de dependência legada
+
+- O workflow contém passos explícitos de setup Python, setup Flutter, instalação de Flet, renderização de template e `flet build apk`.
+- O caminho de compilação Kotlin exige `build/site-packages/arm64-v8a` e o projeto renderizado contém o plugin/host Flutter e o módulo Serious Python.
+- `verify_python_bundle.py` confirma que o APK inclui o bundle Python; `verify_android_host.py` confirma que o DEX contém a Activity host e as bridges necessárias.
+- A Activity e Application Android versionadas dependem das classes de embedding Flutter. Compilar `android/app` isoladamente não é possível com a configuração versionada atual, pois ela é um overlay e não contém o host/embedding gerado.
+
+Por isso, remover as ferramentas agora ou adicionar um `gradlew` que chame a configuração incompleta não produziria um build independente: quebraria a inicialização híbrida e/ou omitiria funcionalidades ainda servidas pelo runtime Python. Um caminho Gradle realmente standalone só pode substituir o atual após migrar os consumidores remanescentes, remover com paridade o embedding legado e versionar/validar a configuração Gradle completa — sem segundo projeto nem artefatos fictícios.
+
+### Artefato de referência anterior à auditoria
+
+O build oficial anterior a esta alteração, run [39369783146](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39369783146), terminou em `success` no SHA `aa061aad1ddcc9a46d05f6cec21a73770da86778`. Gerou `build/ReiAnix.apk` (34.488.076 bytes) com SHA-256 `c3410e4e9b84aaeaf6a0ae58bf8400084e46cdb1839ac2e21713c1caf9fb9caf`, e o artefato `ReiAnix-apk-instalacao-direta-6252` foi carregado pelo Actions. Esse baseline usou assinatura `ephemeral-debug` e o bundle Python 3.12/Flet 0.86.5; não é o APK do commit produzido por esta etapa. O workflow de certificação correspondente, run [39369783150](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39369783150), também terminou em `success`.
+
+**Conclusão da auditoria:** preservar o pipeline híbrido atual é mais seguro do que declarar independência não comprovada. O workflow passa a registrar e publicar a evidência da toolchain que realmente compilou; a independência do build permanece bloqueada pelas dependências host/runtime acima.
+
