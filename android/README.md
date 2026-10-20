@@ -1,51 +1,48 @@
-# ReiAnix native Android host
+# ReiAnix native Android application
 
-This directory is the **native host overlay** for the Flet Android client. It
-is not a standalone Flutter application and, by itself, it is not a complete
-Android project: it intentionally relies on the Flutter embedding supplied by
-the Flet-generated host. The overlay replaces that host's `MainActivity` with
-`com.reiflix.reiflix_local.MainActivity` and adds the classes and dependencies
-that cannot be implemented by Python:
+The `android/` directory is now a standalone Android Gradle application. The
+Manifest launches `com.reiflix.reiflix_local.MainActivity`, a native
+`ComponentActivity` hosting the existing Jetpack Compose navigation shell.
+`ReiAnixApplication` extends Android's `Application` and owns the existing
+process-scoped Kotlin dependency graph/bootstrap. The official release APK is
+built directly by Gradle and does not start a Flutter, Flet, or Python runtime.
 
-* `SafScanner` uses `ACTION_OPEN_DOCUMENT_TREE`, preserves URI grants and
-  enumerates `DocumentFile` objects as `content://` references;
-* `NativeMailbox` transfers small JSON events through the app-private files
-  directory without copying media files;
-* `NativePlayerActivity` plays a persisted document URI through Media3;
-* `GoogleIdentity` invokes Credential Manager and sends only profile fields to
-  the mailbox.
+The Kotlin application reuses the existing SQLite repository, bootstrap and
+recovery coordinator, SAF/MediaStore scanners, NativePlayerActivity/Media3,
+Google Credential Manager integration, and Compose screens. No second
+Activity, navigation controller, database, scanner, or player was introduced.
 
-## Toolchain contract
+## Native toolchain
 
 | Component | Version/configuration |
 | --- | --- |
-| Flet | `0.86.5` (`pyproject.toml`) |
-| Flutter required by installed Flet | `3.44.8` (`flet.version.flutter_version`) |
 | Android Gradle Plugin | `8.9.1` |
-| Kotlin | `2.0.21` |
+| Kotlin / Compose Compiler plugin | `2.0.21` |
+| Standalone Gradle | `8.11.1` |
 | Java toolchain | 17 |
 | compile / target SDK | 36 / 36 |
 | minimum SDK | 24 |
 | Media3 | `1.11.1` for ExoPlayer and UI |
 
-The repository does **not** commit an APK. The workflow builds one and refuses
-to publish it unless DEX contains `MainActivity`, `NativeMailbox`,
-`SafScanner`, `MediaStoreScanner`, `BroadStorageScanner`,
-`NativePlayerActivity`, and `GoogleIdentity`. This prevents accidentally
-releasing the stock Flet client, which would not understand `reiflix://native`.
+The official `.github/workflows/build_apk.yml` assembles
+`:app:assembleRelease`, explicitly compiles `:app:compileReleaseKotlin`,
+checks the packaged native classes and Manifest, and rejects APKs containing
+Python bytecode, `assets/app.zip`, SeriousPython, Flutter assets, or Flutter
+embedding libraries. It publishes the direct APK, checksum and installation ZIP
+only after those checks succeed.
 
-## Required Flet host integration
+A native release needs the canonical SQLite schema contract asset. CI generates
+it from the legacy Python `LibraryStore` schema with
+`scripts/generate_native_sqlite_test_fixture.py` before the Gradle build and
+removes the generated fixture/asset afterward. This is a build-time schema
+generation dependency only; it does not embed Python into the APK.
 
-A build template must merge `android/app` into Flet's generated Android host,
-retain the Flet Flutter embedding, and use this module's manifest/activity and
-dependencies. The standalone `android/` directory deliberately cannot be built
-with `gradle :app:compileDebugKotlin` because `FlutterActivity` is supplied by
-that generated host. Do not replace it with a plain Android app or fabricate a
-filesystem path for a SAF URI.
-
-`flet build apk --yes` is followed by `scripts/verify_android_host.py` in CI.
-If this check reports missing descriptors, the selected Flet template did not
-merge this overlay; the build must be fixed before an APK can be published.
+The repository still retains `main.py`, Flet dependencies, and Python services
+for desktop/legacy flows and subsequent domain migrations. Their source presence
+does not mean the official Android APK launches them. Conversely, a successful
+native build does not prove feature parity for every legacy Python-only route;
+those remaining responsibilities are tracked in
+`docs/KOTLIN_MIGRATION_AUDIT.md` and the migration reports.
 
 ## Validação física e escalabilidade de bibliotecas
 
@@ -80,9 +77,9 @@ atualiza o progresso persistido.
 
 ## Jetpack Compose foundation
 
-earlier validation stage 01 adds the Kotlin Compose compiler plugin and native Compose/Material 3/Navigation
-dependencies without replacing the Flet launcher or migrating an existing screen. MainActivity
-remains the Flet/Flutter entry point, while NativePlayerActivity and Media3 remain untouched.
+The existing Kotlin Compose/Material 3/Navigation dependencies back the native launcher
+and screens already migrated into Compose. MainActivity and the process Application
+are native Android classes; NativePlayerActivity and Media3 remain the single player path.
 
 The project targets compileSdk 36 with AGP 8.9.1. Compose 1.12.x requires API 37 and AGP 9.1.2+,
 so the foundation intentionally uses Compose BOM 2026.06.00 instead of forcing a toolchain upgrade
@@ -97,7 +94,7 @@ artwork, progress, mailbox and Media3 remain the source of truth.
 
 ## Arquitetura Android após o earlier validation stage 29
 
-O módulo Android mantém o host Flet existente e separa apenas responsabilidades que já estavam presentes no código. As atividades de entrada continuam no pacote raiz: `MainActivity` é o host Android/Flet e `NativePlayerActivity` é a Activity de reprodução Media3. `PerformanceDiagnostics` permanece no raiz por ser infraestrutura transversal do host.
+O módulo Android tem entrada nativa Kotlin. As atividades continuam no pacote raiz: `MainActivity` é a launcher Activity e `NativePlayerActivity` é a única Activity de reprodução Media3. `PerformanceDiagnostics` permanece no raiz como infraestrutura transversal do host Android.
 
 A árvore de responsabilidades é:
 
@@ -111,23 +108,26 @@ A árvore de responsabilidades é:
 
 Nenhum pacote `domain/` artificial foi criado: não havia um modelo de domínio independente justificando outra camada. SQLite, scanner, SAF, MediaStore, permissões, artwork/cache, progresso e Media3 continuam sendo as fontes existentes. Também não foram adicionadas dependências Gradle para concluir a reorganização; o earlier validation stage 29 usa as dependências Compose/Navigation/Lifecycle/Media3 já presentes no módulo.
 
-As dependências seguem o sentido operacional host → bridge/ui → scanner/player → storage quando aplicável. As atividades continuam no raiz para preservar o manifesto, o host Flet e a integração Media3. Adapters Compose existentes não foram removidos porque ainda possuem consumidores reais em `MainActivity`.
+As dependências seguem o sentido operacional Application/bootstrap → Activity/Compose → repositórios/serviços → scanner/player/storage quando aplicável. As Activities continuam no raiz para preservar o Manifest e a integração Media3. Adapters Compose foram preservados para compatibilidade com os serviços existentes.
 
 
 ## Referência arquitetural canônica
 
 O mapa atualizado das camadas existentes, do fluxo Python ↔ Kotlin, dos contratos transitórios, da responsabilidade de cada módulo Python e da sequência segura de migração está em [`docs/ARCHITECTURE_NATIVE_KOTLIN.md`](../docs/ARCHITECTURE_NATIVE_KOTLIN.md).
 
-Distinção essencial: `data/library` e `data/settings` são adapters de projeção/IPC; `library.json` e as projeções de configurações não substituem `LibraryStore`/SQLite. `NativeIndex` é staging/indexação do scan, não um segundo catálogo canônico. A Activity de entrada continua herdando de `FlutterFragmentActivity` dentro do host gerado pelo Flet; portanto, o estado atual ainda não é um aplicativo independente de Python/Flet/Flutter.
+Distinção essencial: `data/library` e `data/settings` ainda incluem adapters de projeção/IPC; `library.json` e projeções de configurações não substituem SQLite. `NativeIndex` é staging/indexação do scan, não um segundo catálogo canônico. O APK oficial usa a Activity nativa e a verificação pós-build reprova payload Python/Flet/Flutter; o restante da lógica Python continua preservado para migração posterior.
 
 
-## Prompt 24 — Native shell boundary status
+## Native entrypoint status
 
-The Compose shell owns the visible migrated routes, arguments and back stack. Back pops native nested
-destinations; Home and Recovery use a native double-Back exit policy. MainActivity's single
-navigationChannel.popRoute() remains only as a compatibility fallback when the Compose host is hidden.
-This is a limited navigation cutover, not proof of a standalone Android runtime. The launcher still
-inherits from `FlutterFragmentActivity`, the official APK workflow still renders a Flet template,
-and library/settings projection, scanning coordination, AniList/artwork and backup/restore have
-remaining Python-side responsibilities. Keep those components until native replacements and data
-parity are validated; do not treat this stage as completion of the overall migration.
+The official release build no longer renders a Flet template or launches a
+Flutter engine. The launcher is `MainActivity : ComponentActivity()`, and the
+application class is `ReiAnixApplication : Application()`. Physical Back is
+owned by the existing Compose shell; if that shell is hidden, it is restored to
+Home instead of forwarding Back to a Flutter navigation channel.
+
+This is a native-entrypoint cutover, not proof that every domain feature has
+reached full Kotlin parity. `main.py`, Flet/Python source modules, and some
+event/projection compatibility handlers remain in the source tree for desktop
+and later migration prompts. No physical-device or emulator launch is claimed
+by static APK verification.

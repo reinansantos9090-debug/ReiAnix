@@ -49,11 +49,14 @@ class RuntimeRegressionTests(unittest.TestCase):
         self.assertEqual(nav.back(), "previous")
         self.assertEqual(nav.current, "home")
 
-    def test_back_diagnostics_cover_physical_flutter_and_logical_events(self):
+    def test_back_diagnostics_cover_native_compose_and_legacy_logical_events(self):
         main = self.read(MAIN)
         activity = self.read(MAIN_ACTIVITY)
         self.assertIn("BACK_PHYSICAL_RECEIVED", activity)
-        self.assertIn("BACK_FLUTTER_POP_SENT", activity)
+        self.assertIn("BACK_COMPOSE_SHELL_RESTORED", activity)
+        self.assertNotIn("BACK_FLUTTER_POP_SENT", activity)
+        self.assertNotIn("flutterEngine", activity)
+        self.assertNotIn("engine.navigationChannel.popRoute()", activity)
         self.assertIn("BACK_FLET_VIEW_POP_RECEIVED", main)
         self.assertIn("BACK_NAVIGATION_EXECUTED", main)
         self.assertEqual(main.count("page.on_view_pop = handle_flet_view_pop"), 1)

@@ -284,3 +284,21 @@ Esta atualização complementa a fotografia inicial e não altera retroativament
 **Totais por etiqueta (classificações sobrepostas): 18 famílias rastreadas; A=3, B=3, C=12, D=6, E=2, F=1, G=1, H=2.** A unidade de contagem é família de fluxo; as categorias não são mutuamente exclusivas e suas somas não representam o número de chamadas individuais. G descreve apenas o caminho de abertura inicial do player Compose que foi removido, não a retirada global do runtime Python. RT-06 e RT-07 permanecem H enquanto estado/readers do contrato legado e possíveis comandos persistidos não tiverem sido auditados integralmente.
 
 **Resultado desta etapa:** uma cadeia ativa de produção (abertura inicial do player Compose) deixou de encaminhar a operação ao worker Python. Nenhuma Activity base, plataforma de build, scanner, base de dados ou ponte global foi removida. O runtime continua híbrido e ainda não pode ser chamado de standalone Kotlin.
+
+
+## Addendum — Native Android entrypoint cutover (Prompt 1.1)
+
+The historical observations above describe the hybrid launcher/build path before
+commit c1bae7fc69fa050ad74687c44110f5042c96857a. The current Manifest-launched
+MainActivity now extends ComponentActivity; ReiAnixApplication extends
+Application. The official release workflow builds the Android module directly
+with Gradle rather than rendering a Flet template. The APK workflow verifies
+the actual ZIP/DEX and rejects Python, Flet, SeriousPython and Flutter payloads.
+
+This removes the previous launcher/runtime packaging dependency for the official
+APK, but not all legacy source responsibilities. main.py, Python services and
+projection/IPC compatibility contracts remain present for desktop and later
+migration stages. The workflow still installs Python for its source regression
+suite and for generating the canonical SQLite contract asset from the current
+Python schema implementation. The APK's runtime independence does not establish
+full feature parity or physical-device cold-start validation.

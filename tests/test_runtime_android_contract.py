@@ -13,7 +13,7 @@ PLAYER_LAYOUT = ROOT / "android/app/src/main/res/layout/native_player_view.xml"
 
 
 class RuntimeAndroidContractTests(unittest.TestCase):
-    def test_native_application_composition_is_shared_lazy_and_keeps_hybrid_host(self):
+    def test_native_application_composition_is_shared_lazy_without_flutter_host(self):
         application = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt").read_text(encoding="utf-8")
         dependencies = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
         main = MAIN_ACTIVITY.read_text(encoding="utf-8")
@@ -22,10 +22,14 @@ class RuntimeAndroidContractTests(unittest.TestCase):
         library_view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
         scan_runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
 
-        self.assertIn("class ReiAnixApplication : FlutterApplication()", application)
+        self.assertIn("class ReiAnixApplication : Application()", application)
+        self.assertNotIn("FlutterApplication", application)
         self.assertIn("super.onCreate()", application)
         self.assertIn('android:name=".ReiAnixApplication"', manifest)
-        self.assertIn("class MainActivity : FlutterFragmentActivity()", main)
+        self.assertIn("class MainActivity : ComponentActivity()", main)
+        self.assertNotIn("FlutterFragmentActivity", main)
+        self.assertNotIn("flutterEngine", main)
+        self.assertNotIn("engine.navigationChannel.popRoute()", main)
         self.assertIn("ReiAnixAppDependencies.from(applicationContext)", main)
         self.assertIn("class ReiAnixAppDependencies(context: Context)", dependencies)
         self.assertIn("by lazy(LazyThreadSafetyMode.SYNCHRONIZED)", dependencies)

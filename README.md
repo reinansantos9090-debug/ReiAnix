@@ -21,32 +21,42 @@ O banco SQLite e o cache de capas ficam no diretório privado definido por
 
 ## Android e APK
 
-O projeto fixa `flet==0.86.5`. A própria distribuição instalada declara
-**Flutter 3.44.8**; Java 17 e Android SDK 36 são o contrato de build. O código
-em [`android/`](android/README.md) é um overlay do host Flutter gerado pelo
-Flet, não um aplicativo Android independente.
+O aplicativo Android instalado usa o launcher nativo
+`MainActivity : ComponentActivity()`, a composição process-scoped
+`ReiAnixApplication : Application()`, Jetpack Compose e Gradle diretamente.
+O APK oficial não depende de Python/Flet/Flutter em runtime; CI verifica o
+Manifest, o DEX, a ausência de payloads Python/Flutter e a presença das classes
+nativas e do contrato SQLite.
+
+O contrato de compilação é Java 17, Gradle 8.11.1, Android SDK 36, AGP 8.9.1,
+Kotlin 2.0.21 e Media3 1.11.1. O repositório não inclui APK nem wrapper Gradle.
+Para compilar localmente, instale esses componentes e gere primeiro o contrato
+SQLite a partir do schema canônico ainda mantido em Python:
 
 ```bash
-python -m unittest discover -s tests -v
-python -m compileall -q main.py app_config.py core views
-git diff --check
-flet build apk --yes
-python scripts/verify_android_host.py build/apk/<arquivo>.apk
+python -m pip install -r requirements.txt
+python scripts/generate_native_sqlite_test_fixture.py \
+  --output android/app/src/test/resources/native-sqlite-schema-v29.json \
+  --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
+gradle -p android --no-daemon :app:assembleRelease
+python scripts/verify_android_host.py android/app/build/outputs/apk/release/app-release.apk
+python scripts/verify_native_apk.py android/app/build/outputs/apk/release/app-release.apk
 ```
 
-A última verificação é obrigatória: ela procura no DEX as classes
-`MainActivity`, `NativeMailbox`, `SafScanner`, `MediaStoreScanner`,
-`BroadStorageScanner`, `NativePlayerActivity` e `GoogleIdentity`. Caso elas
-não estejam presentes, o APK é o cliente Flet stock e **não** deve ser
-distribuído, pois a bridge `reiflix://native`, SAF e Media3 não estarão
-integrados. O workflow GitHub Actions reproduz essas etapas, configura Python,
-Java 17, Flutter 3.44.8 e Android SDK 36, e publica apenas o APK verificado.
+O pipeline oficial gera o asset temporário e remove-o depois do build, para não
+versionar artefatos gerados. Essa geração é uma dependência de ferramenta do
+build; o APK produzido não contém nem executa Python.
 
-Não há APK comitado no repositório e não são incluídos secrets de Google. No
-Android, o usuário pode conceder leitura de vídeos pelo MediaStore e, para a
-biblioteca que procura vídeos em várias pastas, também pode conceder o acesso
-especial de armazenamento amplo. O SAF continua disponível para autorizar uma
-pasta específica. O app não converte URIs content:// em caminhos artificiais.
+`main.py`, `core/` e `views/` permanecem no repositório como runtime desktop/
+legado e serão migrados nos prompts seguintes onde ainda houver consumidores
+funcionais. Portanto, esta etapa corta o entrypoint Android e o runtime Python
+do artefato oficial, mas não afirma que todas as funcionalidades históricas
+Flet/Python já tenham paridade Kotlin nem que houve teste de cold start físico.
+
+O Android mantém SAF, MediaStore e acesso amplo opcional para autorizar pastas
+locais. O app não converte URIs `content://` em caminhos artificiais. Não há
+secrets de Google no repositório; o Web Client ID público é injetado como
+recurso de compilação quando configurado.
 
 ## Licença e autoria
 

@@ -109,7 +109,9 @@ class DeviceCompatibilityContractTests(unittest.TestCase):
         main = MAIN_ACTIVITY.read_text(encoding="utf-8")
         manifest = MANIFEST.read_text(encoding="utf-8")
         self.assertIn("onBackPressedDispatcher.addCallback", main)
-        self.assertIn("engine.navigationChannel.popRoute()", main)
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", main)
+        self.assertNotIn("flutterEngine", main)
+        self.assertNotIn("io.flutter.embedding", main)
         self.assertIn('android:enableOnBackInvokedCallback="true"', manifest)
         self.assertNotIn("OnBackInvokedDispatcher.registerOnBackInvokedCallback", main)
 

@@ -126,8 +126,10 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("activity.finish()", host)
         self.assertNotIn("private fun handleHomeBack()", host)
         self.assertNotIn("activity.finishAndRemoveTask()", host)
-        self.assertIn("engine.navigationChannel.popRoute()", source)
-        self.assertIn("reason=compose_host_hidden_fallback", source)
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", source)
+        self.assertIn("BACK_COMPOSE_SHELL_RESTORED", source)
+        self.assertNotIn("engine.navigationChannel.popRoute()", source)
+        self.assertNotIn("flutterEngine", source)
         self.assertIn("setId(R.id.reianix_compose_app_shell)", host)
 
     def test_home_back_contract_uses_native_double_back_policy(self):
@@ -139,7 +141,6 @@ class ComposeHostTests(unittest.TestCase):
         dispatch_start = activity.index("private fun installSystemBackHandler")
         dispatch_end = activity.index("private fun persistedSafTreeUris", dispatch_start)
         dispatch = activity[dispatch_start:dispatch_end]
-
         self.assertIn("ReiAnixRoutes.HOME,", handler)
         self.assertIn("handleRootBack()", handler)
         self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", handler)
@@ -147,11 +148,13 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("activity.finish()", handler)
         self.assertIn("Toast.makeText", handler)
         self.assertNotIn("Python NavigationController", handler)
-        self.assertEqual(dispatch.count("engine.navigationChannel.popRoute()"), 1)
+        self.assertEqual(dispatch.count("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)"), 1)
         self.assertIn("BACK_COMPOSE_SHELL_UNHANDLED", dispatch)
+        self.assertIn("BACK_COMPOSE_SHELL_RESTORED", dispatch)
         self.assertIn("if (systemBackDispatchPosted)", dispatch)
         self.assertIn("finally {", dispatch)
         self.assertIn("window.decorView.post { systemBackDispatchPosted = false }", dispatch)
+        self.assertNotIn("engine.navigationChannel.popRoute()", dispatch)
 
     def test_compose_internal_back_pops_only_one_native_stack_entry(self):
         host = HOST.read_text(encoding="utf-8")
@@ -175,12 +178,22 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("LaunchedEffect(focusRequester)", search)
         self.assertNotIn("LaunchedEffect(Unit)", search)
 
-    def test_main_activity_does_not_replace_flutter_host(self):
+    def test_main_activity_is_the_native_android_launcher(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        self.assertIn("class MainActivity : FlutterFragmentActivity()", source)
-        self.assertNotIn("class MainActivity : ComponentActivity()", source)
+        application = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt").read_text(encoding="utf-8")
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        self.assertIn("class MainActivity : ComponentActivity()", source)
+        self.assertIn("class ReiAnixApplication : Application()", application)
+        self.assertIn('android:name=".MainActivity"', manifest)
+        self.assertIn('android:name=".ReiAnixApplication"', manifest)
+        self.assertIn("android.intent.action.MAIN", manifest)
+        self.assertIn("android.intent.category.LAUNCHER", manifest)
+        self.assertNotIn("FlutterFragmentActivity", source)
+        self.assertNotIn("FlutterApplication", application)
+        self.assertNotIn("flutterEngine", source)
+        self.assertNotIn("engine.navigationChannel.popRoute()", source)
 
-    def test_compose_root_back_uses_native_exit_policy_and_keeps_hidden_host_fallback(self):
+    def test_compose_root_back_uses_native_exit_policy_and_restores_hidden_host(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         host = HOST.read_text(encoding="utf-8")
         root = host[host.index("fun handleBack(): Boolean"):host.index("fun dispose()", host.index("fun handleBack(): Boolean"))]
@@ -189,8 +202,10 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("activity.finish()", root)
         self.assertIn("Toast.makeText", root)
         self.assertNotIn("Python NavigationController", root)
-        self.assertIn("engine.navigationChannel.popRoute()", source)
-        self.assertIn("reason=compose_host_hidden_fallback", source)
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", source)
+        self.assertIn("BACK_COMPOSE_SHELL_RESTORED", source)
+        self.assertNotIn("engine.navigationChannel.popRoute()", source)
+        self.assertNotIn("flutterEngine", source)
 
     def test_compose_details_back_is_a_single_navcontroller_pop(self):
         details = (

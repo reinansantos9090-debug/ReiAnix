@@ -15,7 +15,8 @@ VERIFY = ROOT / "scripts" / "verify_android_host.py"
 PREPARE_TEMPLATE = ROOT / "scripts" / "prepare_flet_template.py"
 DESCRIPTORS = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
-    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;",
+    b"Lcom/reiflix/reiflix_local/ReiAnixApplication;",
+    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;"
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeMailbox;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeRequestState;",
@@ -140,107 +141,65 @@ class AndroidHostVerificationTests(unittest.TestCase):
             self.assertIn(token, source)
         self.assertNotIn("Dispatchers.Main", source)
 
-    def test_workflow_prepares_a_real_template_and_keeps_host_gate(self):
-        workflow = (ROOT / ".github" / "workflows" / "build_apk.yml").read_text(encoding="utf-8")
-        self.assertIn("https://github.com/flet-dev/flet/releases/download/v0.86.5/flet-build-template.zip", workflow)
-        self.assertIn("--template \"$GITHUB_WORKSPACE/build/flet-build-template\"", workflow)
-        self.assertIn("--overlay \"$GITHUB_WORKSPACE/android\"", workflow)
-        self.assertIn('--build-number "$GITHUB_RUN_NUMBER"', workflow)
-        self.assertIn('--build-version "0.2.1"', workflow)
-        self.assertIn("Configure Android release signing", workflow)
-        self.assertIn("FLET_ANDROID_SIGNING_KEY_STORE", workflow)
-        self.assertNotIn("flet build apk --template .", workflow)
-        self.assertIn('python scripts/verify_android_host.py "$apk"', workflow)
-        self.assertIn("Verify Compose compiled classes and APK DEX packaging", workflow)
-        self.assertIn('python scripts/verify_compose_packaging.py "$apk" --classes-root "$classes_root"', workflow)
-        self.assertIn('classes_root="build/flutter"', workflow)
-        self.assertIn("build-tools;36.0.0", workflow)
-        self.assertIn("platforms;android-36", workflow)
-        self.assertIn("Verify final APK permissions and target SDK", workflow)
-        self.assertIn("targetSdkVersion:'36'", workflow)
-        self.assertIn("MANAGE_EXTERNAL_STORAGE", workflow)
-
-    def test_workflow_android_build_is_fast_and_emulator_free(self):
+    def test_workflow_prepares_a_standalone_native_android_release(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
-        # Builds for the same ref are intentionally deduplicated so a
-        # rapid sequence of focused correction commits does not accumulate
-        # obsolete APK jobs.
+        gradle = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        application = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt").read_text(encoding="utf-8")
+        self.assertIn("gradle -p android --no-daemon", workflow)
+        self.assertIn(":app:assembleRelease", workflow)
+        self.assertIn(":app:compileReleaseKotlin", workflow)
+        self.assertIn("scripts/verify_native_apk.py", workflow)
+        self.assertIn("scripts/verify_android_host.py", workflow)
+        self.assertIn("Generate canonical SQLite runtime contract and JVM fixture", workflow)
+        self.assertIn("platforms;android-36", workflow)
+        self.assertIn("build-tools;36.0.0", workflow)
+        self.assertIn('providers.gradleProperty("reianixBuildNumber")', gradle)
+        self.assertIn('android:name=".MainActivity"', manifest)
+        self.assertIn("android.intent.action.MAIN", manifest)
+        self.assertIn("class MainActivity : ComponentActivity()", activity)
+        self.assertIn("class ReiAnixApplication : Application()", application)
+        self.assertNotIn("subosito/flutter-action", workflow)
+        self.assertNotIn("flet build apk", workflow)
+        self.assertNotIn("serious_python_android", workflow)
+        self.assertNotIn("Prepare Flet build template", workflow)
+        self.assertNotIn("io.flutter.embedding.android", activity)
+        self.assertNotIn("FlutterApplication", application)
+
+    def test_workflow_native_release_is_fast_and_does_not_add_emulator_validation(self):
+        workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
         self.assertIn("concurrency:", workflow)
         self.assertIn("group: ${{ github.workflow }}-${{ github.ref }}", workflow)
         self.assertIn("cancel-in-progress: true", workflow)
-        self.assertIn("timeout-minutes: 25", workflow)
+        self.assertIn("timeout-minutes: 35", workflow)
         self.assertIn("Run Python regression suite", workflow)
         self.assertIn("python -m pytest -q | tee build/pytest.txt", workflow)
-        self.assertIn("Clean malformed Gradle download ETag cache", workflow)
-        self.assertIn("json.loads(etag_file.read_text(encoding=\"utf-8\"))", workflow)
-        self.assertIn('Path.home() / ".pub-cache"', workflow)
-        self.assertIn("-Dorg.gradle.parallel=false", workflow)
-        self.assertIn(":app:compileReleaseKotlin --no-daemon --console=plain --stacktrace", workflow)
-        # The Kotlin-only verification must still compile release Kotlin, but it
-        # does not need to run unrelated per-ABI Python/Dart payload downloads.
-        for task in (
-            "downloadDartBridge_arm64-v8a",
-            "downloadDartBridge_armeabi-v7a",
-            "downloadDartBridge_x86_64",
-            "downloadDistArchive_arm64-v8a",
-            "downloadDistArchive_armeabi-v7a",
-            "downloadDistArchive_x86_64",
-            "untarFile_arm64-v8a",
-            "untarFile_armeabi-v7a",
-            "untarFile_x86_64",
-            "splitStdlib_arm64-v8a",
-            "splitStdlib_armeabi-v7a",
-            "splitStdlib_x86_64",
-        ):
-            self.assertIn(f"-x :serious_python_android:{task}", workflow)
-        self.assertNotIn("-x :app:compileReleaseKotlin", workflow)
-        self.assertNotIn("--ignore=tests/test_certification_runner.py", workflow)
-        self.assertNotIn("pytest-first.txt", workflow)
-        self.assertNotIn("pytest-second.txt", workflow)
-        self.assertNotIn("python -m unittest discover -s tests -v", workflow)
-        self.assertNotIn("Run Android unit tests on rendered project", workflow)
-        self.assertIn("Build APK", workflow)
-        self.assertIn("Verify final APK permissions and target SDK", workflow)
-        self.assertIn("Verify Android host packaging", workflow)
+        self.assertIn("gradle -p android --no-daemon", workflow)
+        self.assertIn(":app:assembleRelease", workflow)
+        self.assertIn(":app:compileReleaseKotlin", workflow)
+        self.assertIn("scripts/verify_native_apk.py", workflow)
         self.assertIn("Verify effective APK AndroidManifest", workflow)
-        self.assertIn("Print and publish APK SHA-256", workflow)
         self.assertIn("Final Git integrity check", workflow)
-        self.assertIn('published="build/ReiAnix.apk"', workflow)
         self.assertIn("Create downloadable APK ZIP", workflow)
-        self.assertIn("Write Portuguese install instructions", workflow)
-        self.assertIn("LEIA-ANTES-DE-INSTALAR.txt", workflow)
-        self.assertIn("não use a opção “Extrair”", workflow)
-        self.assertIn("zip -j -9 -X build/ReiAnix-apk.zip", workflow)
-        self.assertIn("APK_SIZE_BYTES", workflow)
-        self.assertIn("ZIP_SIZE_BYTES", workflow)
-        self.assertIn("build/ReiAnix-apk.zip", workflow)
-        self.assertIn("Publish APK and ZIP to rolling GitHub Release", workflow)
         self.assertIn("RELEASE_TAG: reianix-ci-latest", workflow)
-        self.assertIn("if: github.event_name == 'workflow_dispatch'", workflow)
         self.assertIn("Upload APK to Actions run", workflow)
-        self.assertIn("actions/upload-artifact@v4", workflow)
-        self.assertIn("name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}", workflow)
-        self.assertIn("retention-days: 1", workflow)
-        self.assertIn("path: |", workflow)
-        self.assertIn("            build/ReiAnix.apk", workflow)
-        self.assertIn("            build/ReiAnix.apk.sha256", workflow)
         self.assertIn("Upload APK ZIP to Actions run", workflow)
-        self.assertIn("name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}", workflow)
-        self.assertIn("path: build/ReiAnix-apk.zip", workflow)
-        self.assertNotIn("continue-on-error: true", workflow)
-        self.assertNotIn("reactivecircus/android-emulator-runner", workflow)
+        self.assertIn("retention-days: 1", workflow)
+        self.assertNotIn("subosito/flutter-action", workflow)
+        self.assertNotIn("flet build", workflow)
+        self.assertNotIn("serious_python_android", workflow)
+        self.assertNotIn("android-emulator-runner", workflow)
         self.assertNotIn("android_api30", workflow)
         self.assertNotIn("android_api36", workflow)
-        self.assertNotIn("emulator-boot-timeout", workflow)
-        self.assertNotIn("Generate deterministic local player fixture", workflow)
-        self.assertNotIn("build/android30-diagnostics", workflow)
-        self.assertNotIn("build/android36-diagnostics", workflow)
         self.assertNotIn("actions: write", workflow)
-        self.assertNotIn("Cancel legacy Android workflow runs", workflow)
-        self.assertNotIn("gh run cancel", workflow)
-        self.assertNotIn("|| true", workflow)
-        self.assertNotIn('flet build "${build_args[@]}"\n          exit 1', workflow)
-        self.assertNotIn("Run release evidence certification (no emulator)", workflow)
+        self.assertNotIn("continue-on-error: true", workflow)
+        self.assertIn("targetSdkVersion", workflow)
+        self.assertIn("MANAGE_EXTERNAL_STORAGE", workflow)
+        self.assertIn("REIFLIX_GOOGLE_WEB_CLIENT_ID", workflow)
+        self.assertIn('endswith(".apps.googleusercontent.com")', workflow)
+        self.assertIn("login will show configuration required", workflow)
+
     def test_android_certification_is_manual_and_keeps_one_real_emulator(self):
         workflow = (ROOT / ".github/workflows/android_instrumented.yml").read_text(encoding="utf-8")
         self.assertIn("ReiAnix Android Instrumented Runtime Matrix", workflow)
@@ -341,15 +300,16 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("waitForReiAnixMainActivityForeground()", source)
         self.assertIn("Stage.RESUMED", source)
         self.assertIn("MainActivity", source)
-    def test_workflow_generated_json_validation_uses_safe_heredoc(self):
+    def test_workflow_native_google_resource_uses_safe_heredoc_and_validates_configuration(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        resource = (ROOT / "android/app/src/main/res/values/strings.xml").read_text(encoding="utf-8")
+        self.assertIn("Validate public Google configuration for the native Android resource", workflow)
         self.assertIn("python - <<'PY'", workflow)
-        self.assertIn("Invalid generated JSON {path}: {exc}", workflow)
-        self.assertIn("def strip_trailing_commas(raw):", workflow)
-        self.assertIn('if "{{cookiecutter." in raw or "{%" in raw:', workflow)
-        self.assertIn('Unrendered Jinja JSON template (skipped):', workflow)
-        self.assertIn('raw[j] in "}]"', workflow)
-        self.assertNotIn("python -c \\\"", workflow)
+        self.assertIn('re.fullmatch(r"[0-9]+-[a-z0-9-]+\\.apps\\.googleusercontent\\.com", client_id)', workflow)
+        self.assertIn("reiflix_google_web_client_id", resource)
+        self.assertIn("Validate JSON configuration", workflow)
+        self.assertIn("python -m json.tool", workflow)
+        self.assertNotIn("flet build apk", workflow)
         self.assertNotIn("|| true", workflow)
 
     def test_template_preparation_copies_overlay_and_installs_post_generation_hook(self):
@@ -472,22 +432,20 @@ E: manifest
         self.assertNotIn("reconcile_missing", source[start:end])
 
 
-    def test_workflow_rejects_development_artifacts_from_apk(self):
-        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    def test_native_apk_gate_rejects_development_and_python_payloads(self):
+        project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
-        self.assertIn('[tool.flet.app]', pyproject)
-        for entry in (
-            '"tests"', '"docs"', '".github"', '"android"', '"scripts"',
-            '".pytest_cache"', '".mypy_cache"', '"README.md"',
-            '"BACKUP_RESTORE.md"', '".env.example"', '".gitignore"',
-            '"pyproject.toml"', '"requirements.txt"',
-        ):
-            self.assertIn(entry, pyproject)
-        self.assertIn("Remove development caches before Flet packaging", workflow)
-        self.assertIn("Verify APK contains no development test/docs artifacts", workflow)
-        self.assertIn('"tests/", "docs/", ".github/", "android/", "scripts/"', workflow)
-        self.assertIn('".pytest_cache/", ".mypy_cache/", "__pycache__/", ".git/"', workflow)
-        self.assertIn('"Flat .pyc files are allowed because Flet 0.86 compiles the runtime application to bytecode."', workflow)
+        verifier = (ROOT / "scripts/verify_native_apk.py").read_text(encoding="utf-8")
+        self.assertIn('[tool.flet.app]', project)
+        self.assertIn('flet==0.86.5', project)
+        self.assertIn("Verify native APK contains no Python, Flet, or Flutter runtime", workflow)
+        self.assertIn("scripts/verify_native_apk.py", workflow)
+        self.assertIn("main.py", verifier)
+        self.assertIn("libflutter.so", verifier)
+        self.assertIn("serious_python", verifier)
+        self.assertIn("site-packages/", verifier)
+        self.assertIn("is_development_payload", verifier)
+        self.assertNotIn("FLET_RUNTIME=PASS", verifier)
 
     def test_workflow_validates_effective_manifest_and_hash(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
@@ -495,18 +453,18 @@ E: manifest
         self.assertIn("python scripts/verify_apk_manifest.py", workflow)
         self.assertIn("aapt2", workflow)
         self.assertIn("sha256sum", workflow)
-        self.assertIn('(cd "$(dirname "$apk")" && sha256sum "$(basename "$apk")") | tee "${apk}.sha256"', workflow)
+        self.assertIn("(cd build && sha256sum ReiAnix.apk) | tee build/ReiAnix.apk.sha256", workflow)
         self.assertIn('test "$zip_bytes" -le "$((apk_bytes + 1048576))"', workflow)
-        self.assertIn("MAIN_LAUNCH_MODE_ATTRIBUTE = \"android:launchMode\"", verifier)
-        self.assertIn("MAIN_DOCUMENT_LAUNCH_MODE_ATTRIBUTE = \"android:documentLaunchMode\"", verifier)
-        self.assertIn("has_attribute(main_block, \"launchMode\"", verifier)
-        self.assertIn("has_attribute(main_block, \"documentLaunchMode\"", verifier)
+        self.assertIn('MAIN_LAUNCH_MODE_ATTRIBUTE = "android:launchMode"', verifier)
+        self.assertIn('MAIN_DOCUMENT_LAUNCH_MODE_ATTRIBUTE = "android:documentLaunchMode"', verifier)
+        self.assertIn('has_attribute(main_block, "launchMode"', verifier)
+        self.assertIn('has_attribute(main_block, "documentLaunchMode"', verifier)
         self.assertIn("has_package_contract", verifier)
         self.assertIn("has_target_sdk_36", verifier)
         self.assertIn("expected_version_code", verifier)
         self.assertIn("expected-version-code", verifier)
         self.assertIn('expected_version_name: str = "0.2.1"', verifier)
-        self.assertIn('--expected-version-name', verifier)
+        self.assertIn("--expected-version-name", verifier)
 
     def test_packaged_manifest_validator_checks_identity_and_target_sdk(self):
         verifier = (ROOT / "scripts" / "verify_apk_manifest.py").read_text(encoding="utf-8")
@@ -557,11 +515,15 @@ E: manifest
     def test_android_back_is_not_translated_into_a_mailbox_event(self):
         main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         self.assertNotIn('put("type", "android_back")', main)
+        self.assertIn("import androidx.activity.ComponentActivity", main)
         self.assertIn("import androidx.activity.OnBackPressedCallback", main)
         self.assertIn("private fun installSystemBackHandler()", main)
         self.assertIn("onBackPressedDispatcher.addCallback(", main)
-        self.assertIn("engine.navigationChannel.popRoute()", main)
-        self.assertNotIn("finish()", main[main.index("private fun installSystemBackHandler"):main.index("private fun persistedSafTreeUris")])
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", main)
+        self.assertNotIn("engine.navigationChannel.popRoute()", main)
+        self.assertNotIn("flutterEngine", main)
+        handler = main[main.index("private fun installSystemBackHandler"):main.index("private fun persistedSafTreeUris")]
+        self.assertNotIn("finish()", handler)
 
     def test_native_player_back_logs_use_explicit_player_back_marker(self):
         player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
@@ -578,18 +540,22 @@ E: manifest
         self.assertNotIn("finally {\n                externalSettingsKind = null", block)
 
 
-    def test_main_activity_delegates_back_to_flet_and_keeps_activity_result_callbacks(self):
+    def test_main_activity_uses_native_back_and_keeps_activity_result_callbacks(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
+        application = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt").read_text(encoding="utf-8")
+        self.assertIn("import androidx.activity.ComponentActivity", main)
         self.assertIn("import androidx.activity.OnBackPressedCallback", main)
         self.assertIn("onBackPressedDispatcher.addCallback(", main)
-        self.assertIn("engine.navigationChannel.popRoute()", main)
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", main)
+        self.assertNotIn("engine.navigationChannel.popRoute()", main)
+        self.assertNotIn("flutterEngine", main)
         self.assertNotIn("override fun onBackPressed()", main)
         self.assertNotIn("return@registerForActivityResult", main)
         self.assertIn("handleTreePickerResult(result)", main)
-        self.assertIn("import io.flutter.embedding.android.FlutterFragmentActivity", main)
-        self.assertIn("class MainActivity : FlutterFragmentActivity()", main)
-        self.assertNotIn("import io.flutter.embedding.android.FlutterActivity", main)
-
+        self.assertIn("class MainActivity : ComponentActivity()", main)
+        self.assertIn("class ReiAnixApplication : Application()", application)
+        self.assertNotIn("io.flutter.embedding.android.FlutterFragmentActivity", main)
+        self.assertNotIn("FlutterApplication", application)
         python = (ROOT / "main.py").read_text(encoding="utf-8")
         self.assertIn("page.on_view_pop = handle_flet_view_pop", python)
         self.assertIn("page.views.extend(views)", python)
@@ -1092,41 +1058,41 @@ class BuildIdentityContractTests(unittest.TestCase):
         self.assertIn("from core.build_identity import as_dict as build_identity", main)
         self.assertIn('diagnostics.record("BUILD_IDENTITY"', main)
 
-    def test_project_pins_python_312_for_flet_086(self):
+    def test_project_pins_python_312_for_legacy_source_tools(self):
         project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn('requires-python = ">=3.12,<3.13"', project)
-        self.assertIn('flet==0.86.5', project)
-        self.assertIn('--python-version "3.12"', workflow)
-        self.assertIn("assert flet.__version__ == '0.86.5'", workflow)
+        self.assertIn('flet==0.86.5', requirements)
+        self.assertIn('python-version: "3.12"', workflow)
+        self.assertIn("Run Python regression suite", workflow)
+        self.assertIn("android_runtime", workflow)
+        self.assertNotIn("flet build apk", workflow)
 
-    def test_workflow_generates_and_verifies_packaged_python_identity(self):
+    def test_workflow_records_native_apk_identity_without_python_runtime(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
-        self.assertIn("scripts/generate_build_identity.py", workflow)
-        self.assertIn("scripts/verify_python_bundle.py", workflow)
-        self.assertIn(".reiflix-build-identity.json", workflow)
-        self.assertIn("Verify packaged Python identity and Back symbols", workflow)
-        self.assertIn("mkdir -p build", workflow)
-        self.assertIn("git checkout -- core/build_identity.py", workflow)
-        self.assertIn('python-version "3.12"', workflow)
-        self.assertIn('versionName=\'0.2.1\'', workflow)
+        verifier = (ROOT / "scripts/verify_native_apk.py").read_text(encoding="utf-8")
+        self.assertIn("Write native build identity", workflow)
+        self.assertIn("build/reiflix-build-identity.json", workflow)
+        self.assertIn('"python_runtime_packaged": False', workflow)
+        self.assertIn('"flet_runtime_packaged": False', workflow)
+        self.assertIn('"flutter_runtime_packaged": False', workflow)
+        self.assertIn('"main_py_packaged": False', workflow)
+        self.assertIn("PYTHON_FLET_FLUTTER_ABSENT=PASS", verifier)
+        self.assertNotIn("scripts/verify_python_bundle.py", workflow)
+        self.assertNotIn("git checkout -- core/build_identity.py", workflow)
+        self.assertIn("versionName='0.2.1'", workflow)
 
     def test_apk_workflow_keeps_kotlin_unit_tests_out_of_the_fast_build(self):
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
-        prepare = (ROOT / "scripts/prepare_flet_template.py").read_text(encoding="utf-8")
         certification = (ROOT / "scripts/release_certification.py").read_text(encoding="utf-8")
-        self.assertIn("flet-build-template.zip", workflow)
-        self.assertIn("assets/app.zip", workflow)
-        self.assertNotIn("flet clear-cache", workflow)
-        self.assertNotIn("Run Kotlin unit tests", workflow)
+        self.assertIn(":app:assembleRelease", workflow)
+        self.assertIn(":app:compileReleaseKotlin", workflow)
         self.assertNotIn(":app:testDebugUnitTest", workflow)
         self.assertNotIn(":app:connectedDebugAndroidTest", workflow)
-        self.assertNotIn(":app:testDebugUnitTest", prepare)
         self.assertIn(":app:testDebugUnitTest", certification)
-        self.assertIn("SERIOUS_PYTHON_SITE_PACKAGES", certification)
+        self.assertIn("connectedDebugAndroidTest", certification)
 
-
-class NativeMainActivityDecompositionTests(unittest.TestCase):
     def test_main_activity_delegates_scan_batch_publication(self):
         main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")

@@ -186,7 +186,7 @@ jobs:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=false -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
-          gradle --no-daemon --console=plain --stacktrace \
+          gradle -p android --no-daemon --console=plain --stacktrace \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:assembleRelease
@@ -197,7 +197,7 @@ jobs:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=false"
         run: |
           set -euo pipefail
-          gradle --no-daemon --console=plain \
+          gradle -p android --no-daemon --console=plain \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:compileReleaseKotlin
