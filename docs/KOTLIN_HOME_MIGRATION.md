@@ -89,6 +89,14 @@ itens e o progresso apresentados pela Home são relidos da base canônica Kotlin
 A seleção de pasta também usa o seletor SAF nativo. Não foi feita remoção global
 de Python/Flet/Flutter.
 
+## Atualização Prompt 11/18 — Gacha nativo na Home
+
+A ação **Gacha do acervo** agora está disponível no menu de opções da Home Compose e abre `ReiAnixGachaDialog`. O diálogo consome `ReiAnixLibraryViewModel.drawNativeGacha`, registrado no mesmo grafo nativo e encaminhado a `ReiAnixGachaService` / `ReiAnixSqliteLibraryRepository.randomCatalogAnime`. Não cria catálogo, banco, cache ou writer de progresso paralelo; o sorteio consulta a base canônica v29 e a ação Abrir navega para Details pelo ID local persistido.
+
+O formulário Compose permite pesquisa e os filtros de estado, gênero, ordenação, etiqueta, tipo de mídia, temporada, tipo de episódio, disponibilidade, metadata e capa. As opções que variam por acervo (gêneros, etiquetas, temporadas e tipos de episódio) são projetadas a partir do estado real da biblioteca carregada; nenhuma fixture ou lista de obras demonstrativa foi adicionada. Mantém sorteio opcional de episódio, exclusão do item sorteado anteriormente quando há alternativas, estados de carregamento/vazio/erro, nova tentativa, e navegação ao detalhe local. O serviço permanece read-only em relação a consumo e histórico.
+
+`views/home_view.py` e o fluxo Flet foram preservados como fallback não-Compose. A lacuna documentada do consumidor visual Gacha foi fechada no caminho Compose; a validação dinâmica dedicada de filtros contra fixtures SQLite e os testes Kotlin/JVM continuam pendentes e não são declarados executados nesta etapa.
+
 ## Testes e validação
 
 Nenhum teste instrumentado, teste de emulador ou workflow de emulador foi
