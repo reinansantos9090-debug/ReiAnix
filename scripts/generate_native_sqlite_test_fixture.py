@@ -281,6 +281,7 @@ def build_fixture() -> dict[str, object]:
                 "sqlite_user_version": user_version,
                 "tables": tables,
                 "columns": table_columns,
+                "table_sql": table_sql,
                 "table_contract": table_contract,
                 "indexes": indexes,
                 "foreign_keys": foreign_keys,

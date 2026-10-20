@@ -141,74 +141,19 @@ internal object ReiAnixSqliteSchemaManager {
     }
 
     private fun createTableSql(table: String, contract: JSONObject): String {
-        val tableColumns = contract.getJSONObject("columns").getJSONArray(table).objects()
-        check(tableColumns.isNotEmpty()) { "The canonical contract has no columns for $table." }
-        val primary = tableColumns
-            .filter { it.getInt("primary_key_position") > 0 }
-            .sortedBy { it.getInt("primary_key_position") }
-        val primaryInline = primary.size == 1
-        val definitions = mutableListOf<String>()
-
-        for (column in tableColumns) {
-            val name = column.getString("name")
-            requireSafeIdentifier(name)
-            val type = column.getString("type").trim()
-            check(type.matches(Regex("[A-Za-z][A-Za-z0-9 ]{0,31}"))) {
-                "Unsupported SQLite declared type for $table.$name."
-            }
-            val sql = StringBuilder().append(quote(name)).append(' ').append(type)
-            if (primaryInline && column.getInt("primary_key_position") == 1) {
-                sql.append(" PRIMARY KEY")
-            } else if (column.getBoolean("not_null")) {
-                sql.append(" NOT NULL")
-            }
-            if (!column.isNull("default")) sql.append(" DEFAULT ").append(column.getString("default"))
-            check(column.optInt("hidden", 0) == 0) {
-                "Generated/hidden columns cannot be created from a portable additive contract: $table.$name."
-            }
-            definitions += sql.toString()
+        requireSafeIdentifier(table)
+        val definitions = contract.optJSONObject("table_sql")
+            ?: error("Canonical SQLite contract omits exact table DDL; regenerate it from LibraryStore.")
+        val sql = definitions.optString(table).trim()
+        check(sql.isNotEmpty()) { "The canonical contract has no DDL for table $table." }
+        val tablePattern = Regex(
+            "(?is)^CREATE\\\\s+TABLE\\\\s+(?:IF\\\\s+NOT\\\\s+EXISTS\\\\s+)?" +
+                "[\\\\\"\x60\\\\[]?" + Regex.escape(table) + "[\\\\\"\x60\\\\]]?\\\\s*\\\\(",
+        )
+        check(tablePattern.containsMatchIn(sql)) {
+            "Canonical DDL does not declare the expected table $table."
         }
-
-        if (primary.size > 1) {
-            definitions += "PRIMARY KEY (" + primary.joinToString(", ") { quote(it.getString("name")) } + ")"
-        }
-
-        val indexes = contract.getJSONArray("indexes").objects()
-        for (index in indexes.filter { it.getString("table") == table && it.getString("origin") == "u" }) {
-            val indexedColumns = index.getJSONArray("columns").objects().sortedBy { it.getInt("column_id") }
-            check(indexedColumns.isNotEmpty() && indexedColumns.all { !it.isNull("name") && !it.getBoolean("expression") }) {
-                "Cannot safely reconstruct unique constraint ${index.getString("name")}."
-            }
-            definitions += "UNIQUE (" + indexedColumns.joinToString(", ") { quote(it.getString("name")) } + ")"
-        }
-
-        val foreignKeys = contract.getJSONObject("foreign_keys").optJSONArray(table)?.objects().orEmpty()
-        for (group in foreignKeys.groupBy { it.getInt("id") }.toSortedMap(compareByDescending<Int> { it }).values) {
-            val ordered = group.sortedBy { it.getInt("sequence") }
-            val targetTable = ordered.first().getString("table")
-            requireSafeIdentifier(targetTable)
-            check(ordered.all { it.getString("table") == targetTable }) {
-                "Composite foreign key in $table targets multiple tables."
-            }
-            val fromColumns = ordered.joinToString(", ") { quote(it.getString("from")) }
-            val toColumns = ordered.joinToString(", ") { quote(it.getString("to")) }
-            val reference = StringBuilder("FOREIGN KEY ($fromColumns) REFERENCES ${quote(targetTable)} ($toColumns)")
-            appendAction(reference, "ON UPDATE", ordered.first().getString("on_update"))
-            appendAction(reference, "ON DELETE", ordered.first().getString("on_delete"))
-            val match = ordered.first().getString("match")
-            if (match != "NONE" && match != "SIMPLE") reference.append(" MATCH ").append(match)
-            definitions += reference.toString()
-        }
-
-        val tableOptions = contract.getJSONObject("table_contract").getJSONObject(table)
-        for (checkExpression in tableOptions.getJSONArray("checks").strings()) {
-            definitions += "CHECK ($checkExpression)"
-        }
-        val suffix = buildString {
-            if (tableOptions.optBoolean("without_rowid")) append(" WITHOUT ROWID")
-            if (tableOptions.optBoolean("strict")) append(if (isEmpty()) " STRICT" else ", STRICT")
-        }
-        return "CREATE TABLE ${quote(table)} (" + definitions.joinToString(", ") + ")" + suffix
+        return sql
     }
 
     private fun addMissingColumns(database: SQLiteDatabase, table: String, expected: JSONArray) {
