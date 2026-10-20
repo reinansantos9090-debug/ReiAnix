@@ -9,6 +9,8 @@ NAVIGATION = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/na
 COMPOSE_HOST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
 SETTINGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
 HOME = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt"
+GACHA = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixGachaDialog.kt"
+GACHA_SERVICE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixGachaService.kt"
 DETAILS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"
 DISCOVERY_DIALOGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/discovery/ReiAnixDiscoveryDialogs.kt"
 LIBRARY_VIEW_MODEL = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
@@ -24,6 +26,8 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         cls.compose_host = COMPOSE_HOST.read_text(encoding="utf-8")
         cls.settings = SETTINGS.read_text(encoding="utf-8")
         cls.home = HOME.read_text(encoding="utf-8")
+        cls.gacha = GACHA.read_text(encoding="utf-8")
+        cls.gacha_service = GACHA_SERVICE.read_text(encoding="utf-8")
         cls.details = DETAILS.read_text(encoding="utf-8")
         cls.discovery_dialogs = DISCOVERY_DIALOGS.read_text(encoding="utf-8")
         cls.library_view_model = LIBRARY_VIEW_MODEL.read_text(encoding="utf-8")
@@ -160,20 +164,41 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         self.assertIn("refreshNativeCatalog()", self.library_view_model)
         self.assertIn("personalNote = anime.personalNote", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixDetailsUiModels.kt").read_text(encoding="utf-8"))
 
-    def test_gacha_is_explicitly_blocked_until_native_filter_parity_exists(self):
+    def test_gacha_uses_native_compose_and_canonical_sqlite_source(self):
         report = COVERAGE.read_text(encoding="utf-8")
-        self.assertIn("Gacha do acervo", report)
+        self.assertIn('activeDiscoveryDialog = "gacha"', self.home)
+        self.assertIn("onOpenGacha = onOpenGacha", self.home)
+        self.assertIn("ReiAnixGachaDialog(", self.home)
+        self.assertIn("libraryState = state", self.home)
+        self.assertIn("viewModel.drawNativeGacha(", self.gacha)
+        self.assertIn("ReiAnixCatalogFilters(", self.gacha)
+        self.assertIn("CancellationException", self.gacha)
+        self.assertIn("LaunchedEffect(drawRequest)", self.gacha)
+        self.assertIn("libraryState.animes", self.gacha)
+        self.assertIn("ReiAnixPoster(", self.gacha)
+        self.assertIn("Abrir detalhes", self.gacha)
+        self.assertIn("lastDrawnAnimeId", self.gacha)
+        self.assertIn("episodeDrawRequested", self.gacha)
         for filter_name in (
-            "query", "state", "genre", "sort", "tag", "media_type",
-            "season", "episode_type", "availability", "metadata", "artwork",
+            "query = query",
+            "state = selectedState",
+            "genre = selectedGenre",
+            "sort = selectedSort",
+            "tag = selectedTag",
+            "mediaType = selectedMediaType",
+            "season = selectedSeason",
+            "episodeType = selectedEpisodeType",
+            "availability = selectedAvailability",
+            "metadata = selectedMetadata",
+            "artwork = selectedArtwork",
         ):
-            self.assertIn(filter_name, report)
-        # Prompt 10 added the native domain API, but Compose consumer cutover and
-        # dynamic SQLite-fixture parity are still explicit blockers. Keep this
-        # contract aligned with the current, evidence-based migration status.
-        self.assertIn("Parcial: domínio/API nativos adicionados", report)
-        self.assertIn("consumidor visual Compose ainda pendente", report)
-        self.assertIn("validação dinâmica contra fixtures", report)
+            self.assertIn(filter_name, self.gacha)
+        self.assertIn("randomCatalogAnime", self.gacha_service)
+        self.assertIn("ReiAnixGachaService", self.library_view_model)
+        self.assertIn("drawNativeGacha(", self.library_view_model)
+        self.assertIn("consumidor visual Compose integrado", report)
+        self.assertIn("fallback Python preservado", report)
+        self.assertIn("validação dinâmica dedicada", report)
 
     def test_coverage_matrix_records_the_actual_cutover_and_remaining_fallback(self):
         report = COVERAGE.read_text(encoding="utf-8")
