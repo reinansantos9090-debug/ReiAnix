@@ -599,7 +599,7 @@ Esta correção fecha apenas uma divergência identificada de apresentação de 
 
 ### MIG-03 — Next/Previous nativo para sessões Compose (20/10/2026)
 
-**Estado: implementação adicionada; validação CI pendente; não confundir esta unidade com a migração global do `main.py`.**
+**Estado: implementada e validada pela CI do PR #213; o teste Kotlin/JVM continua escrito, mas não executado nesta fase. A migração global do `main.py` permanece parcial.**
 
 Problema confirmado por inspeção do caminho de execução: `NativePlayerActivity.requestEpisode()` emitia `player_next_request`/`player_previous_request` por `NativeMailbox`, mas a decisão de destino residia no consumidor Python em `main.py`. O APK nativo não contém runtime Python/Flet, então sessões abertas pela biblioteca Compose não podem depender desse consumidor.
 
@@ -611,7 +611,19 @@ Implementação desta unidade:
 - A marca `nativeCompose` é copiada do pedido de abertura no `MainActivity`; apenas esse caminho utiliza a nova implementação. O caminho legado Flet/desktop conserva seu consumidor Python e a rota por `NativeMailbox`.
 - Adiciona testes Kotlin/JVM para ordenação/flags e contrato Python para verificar o encaminhamento nativo, o predicado SQLite e a retenção explícita do caminho Flet.
 
-**Limites e validação:** os testes Python de contrato serão executados pelo workflow usual da PR. Os testes Kotlin/JVM são adicionados, mas não serão declarados aprovados enquanto o workflow manual reservado no repositório não for executado numa fase permitida. A CI de build também precisa confirmar a compilação de produção/Kotlin e a criação/validação do APK. Ainda não houve teste de dispositivo físico.
+**Validação observada:** o run de build #6303 (commit `8a8445ad520d6055c4d923a36ecc96fd37d378c2`) terminou `success`. A CI executou a regressão Python e validação de integridade, compilou o APK Release e Kotlin de produção, verificou o APK/DEX/Manifest, ausência de payload Python/Flet/Flutter e publicação de APK/ZIP. Artefatos: `ReiAnix-apk-instalacao-direta-6303` e `ReiAnix-ZIP-extraia-primeiro-6303`. Referência: https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39453966709. Os testes Kotlin/JVM foram adicionados, mas não executados porque o workflow correspondente é manual/reservado. Não houve teste em aparelho físico.
 
 **Escopo remanescente conhecido:** `main.py` continua necessário ao comando `flet run main.py` no Desktop e contém outros consumidores Python, incluindo partes de atualização de progresso/estado, integração Flet, eventos de armazenamento e fluxos legados. Esta unidade remove uma dependência funcional Python apenas para Próximo/Anterior em sessões nativas Compose; não remove `NativeMailbox` como um todo e não autoriza a exclusão de `main.py`.
+
+### MIG-04 — checkpoints de progresso do player Compose sem consumidor Python (20/10/2026)
+
+**Estado: implementação adicionada; CI da PR pendente.**
+
+A unidade anterior fez Próximo/Anterior nativo para sessões Compose. Esta continuação retira outra dependência desnecessária do mesmo fluxo: `NativePlayerActivity.saveProgress()` e `reportPlayerExit()` já gravam progresso pela `ReiAnixConsumptionService` e enviam `PlaybackChange` para o `ReiAnixLibraryViewModel`, que atualiza a projeção nativa a partir do SQLite. Apesar disso, os dois métodos ainda publicavam todo checkpoint pela `NativeMailbox`, inclusive durante sessões Compose em que o consumidor Python não existe no APK.
+
+**Alteração:** para sessões marcadas `nativeCompose=true`, checkpoints e saída deixam de escrever uma segunda cópia do evento na fila Python; o fluxo legado conserva exatamente a publicação durável/best-effort. Se a persistência nativa falhar numa sessão Compose, um log local específico torna a perda visível; não há fallback fictício para um consumidor que não está empacotado.
+
+**Validação:** os novos contratos Python cobrem a separação das duas rotas, que a gravação SQLite e o `SharedFlow` continuam no caminho nativo, e que os writes de mailbox ficam apenas no ramo legado. A CI de PR deve confirmar o resultado. Testes Kotlin/JVM e aparelho permanecem não executados nesta etapa.
+
+Esta é uma redução de uma ponte de eventos para sessões Compose, não autorização para apagar `NativeMailbox`: outros eventos de storage, diagnostics, scanner e compatibilidade Flet ainda possuem produtores/consumidores reais. `main.py` também continua como entrypoint documentado para Desktop.
 
