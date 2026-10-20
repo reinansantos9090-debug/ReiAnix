@@ -35,7 +35,7 @@ Alteração planejada e realizada nesta branch: atualizar este documento existen
 - Arquivos removidos ou movidos: nenhum.
 - Alterações em código de produção, dependências, schema, fixtures, scripts de build ou workflows: nenhuma.
 - Alterações de teste: nenhuma.
-- Comparação da branch com a origem: [diff GitHub](https://github.com/reinansantos9090-debug/ReiAnix/compare/65eced0dd59cfedc36324ddf3846c2dd82b7a204...9139b88d1a7201daa663570ade2b9995d7d743c0), 1 arquivo, +127 inserções e −50 exclusões. O SHA final vivo da branch é reportado na resposta e no PR; não é gravado como auto-referência porque qualquer edição do próprio documento altera o SHA.
+- Comparação da branch com a origem: [diff GitHub](https://github.com/reinansantos9090-debug/ReiAnix/compare/65eced0dd59cfedc36324ddf3846c2dd82b7a204...migration/prompt-18-final-certification-20261020), 1 arquivo, +127 inserções e −50 exclusões. O SHA final vivo da branch é reportado na resposta e no PR; não é gravado como auto-referência porque qualquer edição do próprio documento altera o SHA.
 
 ## D. Matriz funcional — estado encontrado
 
