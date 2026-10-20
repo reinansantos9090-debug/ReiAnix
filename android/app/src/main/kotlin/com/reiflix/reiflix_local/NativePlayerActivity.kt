@@ -185,7 +185,10 @@ class NativePlayerActivity : ComponentActivity() {
     private var subtitleEmbeddedStyle = true
 
     private val handler = Handler(Looper.getMainLooper())
+    // Position confirmed by the canonical SQLite write; never advance when a save merely gets queued.
     private var lastSavedPosition = -1L
+    // Separate throttle for snapshots already submitted to the progress executor.
+    private var lastProgressEventPosition = -1L
     private var lastProgressPersistAt = 0L
     private var suppressExitEvent = false
     private var exitReported = false
@@ -1012,6 +1015,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         activityStartedAtMs = System.currentTimeMillis()
         sessionState = SessionState.ACTIVE
         lastSavedPosition = -1L
+        lastProgressEventPosition = -1L
         errorPublishedForGeneration = false
         restoredPositionMs = null
         initialSeekApplied = false
@@ -4717,13 +4721,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val duration = if (rawDuration > 0L) rawDuration else 0L
         val rawPosition = player.currentPosition.coerceAtLeast(0L)
         val position = if (duration > 0L) rawPosition.coerceAtMost(duration) else rawPosition
-        if (!force && lastSavedPosition >= 0L && abs(position - lastSavedPosition) < PROGRESS_INTERVAL_MS) return null
+        if (!force && lastProgressEventPosition >= 0L &&
+            abs(position - lastProgressEventPosition) < PROGRESS_INTERVAL_MS
+        ) return null
         if (force && position == lastSavedPosition &&
             eventType != "player_completed" && eventType != "player_exited"
         ) {
             return null
         }
-        lastSavedPosition = position
+        // This is an attempted snapshot only. lastSavedPosition is updated after the
+        // canonical SQLite checkpoint is confirmed by the progress worker.
+        lastProgressEventPosition = position
         return JSONObject()
             .put("type", eventType)
             .put("requestId", requestId)
@@ -4821,6 +4829,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         "FAILED_TO_PUBLISH " + eventType +
                             " requestId=" + requestId.ifEmpty { "-" },
                     )
+                }
+                if (persistedNatively && episodeId != null) {
+                    val committedPositionMs = positionMs
+                    val committedPlayerGeneration = payload?.optLong("playerGeneration", -1L) ?: -1L
+                    val committedPlayerSessionId = payload?.optString("playerSessionId").orEmpty()
+                    val committedMediaUri = payload?.optString("uri").orEmpty()
+                    handler.post {
+                        // A queued completion from an old episode/session must not become
+                        // the duplicate-suppression baseline for a newer media item.
+                        if (
+                            sessionState == SessionState.ACTIVE &&
+                            playerGeneration == committedPlayerGeneration &&
+                            playerSessionId == committedPlayerSessionId &&
+                            currentEpisodeId() == episodeId.toString() &&
+                            ::uri.isInitialized && uri.toString() == committedMediaUri
+                        ) {
+                            lastSavedPosition = committedPositionMs
+                        }
+                    }
                 }
             }
         } catch (error: java.util.concurrent.RejectedExecutionException) {
