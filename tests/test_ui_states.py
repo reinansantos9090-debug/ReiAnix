@@ -1,6 +1,7 @@
 import ast
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 from core.storage_access import StorageCapabilities
 from tests.test_flet_page_harness import AsyncRunTaskMixin
@@ -84,18 +85,18 @@ class UiStateTests(unittest.TestCase):
             self.assertIn(token, source)
 
     def test_main_passes_authoritative_snapshots_to_settings(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         self.assertIn("storage_snapshot=storage_capabilities[0]", source)
         self.assertIn("scan_snapshot=scan_state[0]", source)
 
     def test_main_has_lifecycle_safe_page_update(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         self.assertIn("def safe_update():", source)
         self.assertIn("ui_alive", source)
         self.assertIn("stale lifecycle callback", source)
 
     def test_main_does_not_treat_library_rows_as_permission_authority(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         refresh = source[source.index("async def refresh_library"):source.index("async def login")]
         self.assertIn("caps.known", refresh)
         self.assertIn("scan_coordinator.request(", refresh)
