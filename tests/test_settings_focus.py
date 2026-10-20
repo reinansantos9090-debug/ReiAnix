@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 from core.settings_focus import SettingsFocusState, SettingsTaskRegistry
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,12 +87,14 @@ class SettingsFocusIntegrationTests(unittest.TestCase):
         self.assertNotIn("page.run_task(restore_scroll)", settings)
         self.assertNotIn('scroll_to(offset=float(stored)', settings)
 
-    def test_main_binds_settings_tasks_to_navigation_generation(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("SettingsTaskRegistry", main)
-        self.assertIn("settings_generation_provider=lambda: settings_tasks.generation", main)
-        self.assertIn("register_settings_task=settings_tasks.register", main)
-        self.assertIn("settings_tasks.invalidate()", main)
+    def test_native_settings_operations_are_lifecycle_scoped(self):
+        source = native_main_source()
+        self.assertIn("ReiAnixSettingsViewModel", source)
+        self.assertIn("ReiAnixSettingsRepository", source)
+        self.assertIn("viewModelScope", source)
+        self.assertIn("lifecycleScope", source)
+        self.assertIn("CancellationException", source)
+
 
 
 if __name__ == "__main__":
