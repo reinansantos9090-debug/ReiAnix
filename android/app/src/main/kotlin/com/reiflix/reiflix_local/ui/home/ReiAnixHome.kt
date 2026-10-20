@@ -106,6 +106,7 @@ fun ReiAnixHomeRoute(
     onOpenCollector: () -> Unit = {},
 ) {
     val state by viewModel.homeState.collectAsStateWithLifecycle()
+    val libraryState by viewModel.uiState.collectAsStateWithLifecycle()
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
     val personalListMutationError by viewModel.personalListMutationError.collectAsStateWithLifecycle()
     var activeDiscoveryDialog by rememberSaveable { mutableStateOf<String?>(null) }
@@ -165,7 +166,7 @@ fun ReiAnixHomeRoute(
         )
         "gacha" -> ReiAnixGachaDialog(
             viewModel = viewModel,
-            libraryState = state,
+            libraryState = libraryState,
             onDismiss = { activeDiscoveryDialog = null },
             onOpenAnime = { animeId ->
                 activeDiscoveryDialog = null
