@@ -128,3 +128,58 @@ below.
 The exact remaining `.py` inventory is maintained in
 `docs/PYTHON_MIGRATION_INVENTORY_PROMPT_1_2.md`. None of those 218 files was
 deleted because their full functional replacement has not yet been proven.
+
+
+## Prompt 1.4 corretivo — Orquestração nativa funcional parcial
+
+**Estado em 20/10/2026: PARCIAL. A migração global de `main.py` não foi concluída e o arquivo foi preservado.** Esta seção complementa os registros históricos acima e descreve o código validado no HEAD `76262d2f3daa673b1799e1fa1423133324da2521`.
+
+### Mapa de responsabilidades auditado
+
+| Responsabilidade / componente | Estado atual | Evidência e limite |
+| --- | --- | --- |
+| Launcher Android | Já nativo | O Manifest efetivo aponta para `com.reiflix.reiflix_local.MainActivity`; não foi criada outra Activity launcher. |
+| Grafo de dependências process-scoped | Já nativo | `ReiAnixApplication` cria a única `ReiAnixAppDependencies`; Application e Activity chamam o mesmo bootstrap idempotente existente. |
+| Validação do SQLite canônico e decisão de Recovery Mode | Já nativo | `ReiAnixAppBootstrap` valida a base antes de recuperar receipts SAF e iniciar `NativeCommandDispatcher`; o estado é publicado por `StateFlow`. |
+| Política de liberação de operações nativas | Migrada parcialmente para `main.kt` | `MainEntryPoint.allowsNativeOperations` centraliza a decisão que exige decisão da Activity concluída, fase `READY`, persistência `HEALTHY` ou `NOT_CREATED` e ausência de Recovery Mode. `MainActivity` delega essa política. |
+| Observação do bootstrap e correlação diagnóstica na vida da Activity | Migrada parcialmente para `main.kt` | Coleta o estado já existente com `lifecycleScope` e `distinctUntilChanged`; a coleta termina com o ciclo de vida da Activity. Não inicia um segundo bootstrap nem registra observadores por recomposição. |
+| Seleção da rota inicial, replay de intents e gating do ciclo de vida da Activity | Já nativo, permanece na Activity | A Activity só monta o host Compose após `validateCanonicalDatabase()` e escolhe Home ou Recovery. Essa responsabilidade é dependente do ciclo de vida Android e não foi duplicada em `main.kt`. |
+| Consultas/mutações de biblioteca, settings, scanner, recuperação e player no app Android | Já nativo em componentes especializados, com compatibilidade restante | Os serviços Kotlin, repositórios SQLite, ViewModels, scanners, bridges e player existentes continuam sendo a fonte nativa. A presença do componente, por si só, não certifica paridade integral com todos os fluxos Python. |
+| `LibraryStore`, `SettingsStore`, `AndroidBridge`, `ComposeLibraryBridge`, `ComposeSettingsBridge`, `ScanCoordinator`, navegação/projeção Flet, consumidores Flet residuais e `ft.run(main)` | Pendente / legado intencional | O código Python ainda tem consumidores de desktop e de compatibilidade; as telas legadas de Home/Organize/Details/Collector e os fallbacks de Settings não foram provados como substituídos integralmente. |
+| Remoção global de `main.py` e de contratos Python | Não segura nesta etapa | Os testes contratuais existentes leem `main.py` diretamente e verificam consumidores/bridges legados. Apagar o arquivo agora quebraria contratos válidos e removeria funcionalidade sem substituição demonstrada. |
+
+### Alteração funcional desta etapa
+
+`android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt` já não é apenas um gancho de log: `MainEntryPoint` observa o bootstrap process-owned, registra transições de estado de forma limitada e contém a política central de liberação das operações nativas. `MainActivity.kt` delega a decisão a esse ponto de entrada. A chamada explícita `appDependencies.bootstrap.start()` permanece intacta, pois a Application é a dona do bootstrap e a operação é idempotente.
+
+Não foram criados serviços de domínio duplicados. Não houve alteração do Manifest, do banco/schema SQLite, de scanners, player, testes ou workflows. Os quatro testes contratuais auditados permaneceram sem alterações:
+
+- `tests/test_main_startup_contract.py` — SHA `c66c872bfca973635025bc88029fd22d35a6009d`.
+- `tests/test_flet_ui_removal.py` — SHA `c804dd2a949a1aa213ed02ec1ee3313b49f65f4d`.
+- `tests/test_flet_launch_compat.py` — SHA `40568bd853f4290f114500ab6d4dd933c5eb9af8`.
+- `tests/test_prompt19_app_bootstrap.py` — SHA `9ff2bdc5493bd537de417409d33631c63e113c01`.
+
+### Validação oficial do código Kotlin
+
+Para o commit de código `76262d2f3daa673b1799e1fa1423133324da2521`:
+
+- [Build ReiAnix Android APK — run 39436193631](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39436193631): **success**.
+- [ReiAnix Release Evidence Certification — run 39436193473](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39436193473): **success**, incluindo a matriz de evidências de 201 linhas.
+- Testes de regressão Python: `1,971 passed, 58 subtests passed`.
+- `:app:assembleRelease` e verificação explícita de compilação Kotlin: **BUILD SUCCESSFUL**.
+- Verificações pós-build: `NATIVE_RUNTIME=PASS`, `PYTHON_FLET_FLUTTER_ABSENT=PASS`, `ANDROID_ENTRYPOINT=PASS com.reiflix.reiflix_local.MainActivity`, `COMPOSE_APK_DEX=PASS`; Manifest efetivo e integridade final do Git verificados.
+- APK build 6296: 19,859,229 bytes; SHA-256 `0f63933235912b007fe12b04c7fcedd1ed20298f74c73c23f1114186771a6e14`. Certificado de assinatura SHA-256 `cf1dbfcc5ac35c39d36695ec5f9822ec8fef1a595c8fff962917c2339fdb24d3` (debug signing; chave de release estável não configurada).
+- APK e ZIP de instalação foram publicados como artefatos do Actions. A publicação no rolling GitHub Release foi ignorada pela condição existente do workflow.
+
+O verificador confirma ausência de Python/Flet/Flutter **dentro deste APK**, não a remoção dessas dependências do repositório. Nenhum teste em dispositivo físico foi realizado, e nenhum teste de emulador foi adicionado ou executado.
+
+### Commits corretivos de código
+
+- `914dda4a00d60066eeeceed3481ed6f9eabedbe1` — coordenação do estado de inicialização em `main.kt`.
+- `aaf472e1e397133424d9a9c1ddddf923adc08328` — delegação da política de liberação de operações.
+- `4fcc5cb81f0cc9092c17b72eafa4a92d08e10e5f` — observação ligada ao ciclo de vida da Activity.
+- `76262d2f3daa673b1799e1fa1423133324da2521` — correção do tipo de Activity lifecycle-aware.
+
+Comparação de `bfa1eb408d9c8245dce421088034e7b324371cc6` para `76262d2f3daa673b1799e1fa1423133324da2521`: 2 arquivos modificados, 104 linhas adicionadas e 18 removidas. `main.py` e o Manifest foram preservados.
+
+**Próxima fronteira obrigatória:** migrar e provar os consumidores legados restantes, atualizar os contratos apenas quando sua finalidade puder ser preservada (nenhum teste foi alterado nesta etapa), confirmar a paridade funcional dos fluxos e só então avaliar a remoção de `main.py`. A certificação verde do APK não encerra esta migração.
