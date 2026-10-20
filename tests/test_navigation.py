@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 from core.navigation import NavigationController, SafSelectionState
 
@@ -130,7 +131,7 @@ class NavigationControllerTests(unittest.TestCase):
         self.assertEqual(self.navigation.current, "home")
 
     def test_main_has_single_logical_back_router_with_duplicate_suppression(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         self.assertIn('def navigate_back(source="unknown")', source)
         self.assertIn("BACK_DEBOUNCE_SECONDS = 0.30", source)
         self.assertIn("duplicate BACK suppressed", source)
@@ -141,14 +142,14 @@ class NavigationControllerTests(unittest.TestCase):
         self.assertIn('"[NAV] SEARCH_BACK consumed on Home"', source)
 
     def test_visual_back_callbacks_identify_their_origin_screen(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         self.assertIn('lambda: navigate_back("visual:organize")', source)
         self.assertIn('lambda: navigate_back("visual:details")', source)
         self.assertIn('lambda: navigate_back("visual:settings")', source)
 
 
     def test_main_uses_flet_views_as_the_system_navigation_surface(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         self.assertIn("page.views.clear()", source)
         self.assertIn("page.views.extend(views)", source)
         self.assertIn("page.on_view_pop = handle_flet_view_pop", source)
@@ -156,13 +157,13 @@ class NavigationControllerTests(unittest.TestCase):
         self.assertNotIn("page.clean()", source)
 
     def test_home_exit_uses_navigation_policy_instead_of_process_exit(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         self.assertNotIn("exitProcess(", source)
         self.assertIn('elif action == "exit":', source)
         self.assertIn("page.window.close()", source)
 
     def test_main_does_not_route_android_back_through_native_mailbox(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         self.assertNotIn("event_type == 'android_back'", source)
         self.assertNotIn('navigate_back("android_back")', source)
 
