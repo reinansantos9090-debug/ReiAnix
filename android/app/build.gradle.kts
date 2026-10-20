@@ -21,8 +21,8 @@ android {
         applicationId = "com.reiflix.reiflix_local"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.1"
+        versionCode = providers.gradleProperty("reianixBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2
+        versionName = providers.gradleProperty("reianixBuildVersion").orNull?.takeIf { it.isNotBlank() } ?: "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -30,10 +30,25 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // Personal-device release APK: target the Galaxy A15 arm64 ABI.
-    // Debug builds remain multi-ABI for x86_64/other CI emulators.
+    signingConfigs {
+        create("ciRelease") {
+            val keystorePath = System.getenv("REIFLIX_ANDROID_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("REIFLIX_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("REIFLIX_ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("REIFLIX_ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         getByName("release") {
+            signingConfig = if (System.getenv("REIFLIX_ANDROID_KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfigs.getByName("debug")
+            } else {
+                signingConfigs.getByName("ciRelease")
+            }
             ndk {
                 abiFilters += "arm64-v8a"
             }

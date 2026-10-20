@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Fail a release build unless the ReiAnix native Android host is in its APK.
+"""Fail a release build unless the real Kotlin ReiAnix Android host is in its APK.
 
-A successful Flet/Flutter build alone is insufficient: a stock Flet client does
-not contain the SAF, mailbox, and Media3 classes maintained in this repository.
-This check is deliberately dependency-free so it can run in GitHub Actions.
+The gate checks the native Activity, Application, Compose, scanner, mailbox,
+Media3 player classes and canonical SQLite contract asset.
 """
 from __future__ import annotations
 
@@ -19,7 +18,8 @@ CONTRACT_SQLITE_USER_VERSION = 0
 
 REQUIRED_CLASSES = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
-    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;",
+    b"Lcom/reiflix/reiflix_local/ReiAnixApplication;",
+    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;"
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeMailbox;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeRequestState;",
@@ -83,7 +83,7 @@ def main() -> int:
 
     missing = [descriptor.decode() for descriptor in REQUIRED_CLASSES if descriptor not in dex]
     if missing:
-        print("Native ReiAnix host was not packaged; refusing to publish a stock Flet APK.", file=sys.stderr)
+        print("Native ReiAnix application classes were not packaged; refusing to publish this APK.", file=sys.stderr)
         print("Missing DEX descriptors: " + ", ".join(missing), file=sys.stderr)
         return 1
     print(

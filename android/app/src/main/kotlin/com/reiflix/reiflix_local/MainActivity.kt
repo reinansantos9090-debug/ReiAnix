@@ -40,6 +40,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.activity.result.ActivityResult
@@ -51,7 +52,6 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
-import io.flutter.embedding.android.FlutterFragmentActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
@@ -76,11 +76,11 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Flet's generated Android template must use this activity instead of its default
- * FlutterActivity. It owns SAF and Google identity because only Android has a
- * ContentResolver/Credential Manager.
+ * Native Android launcher for the ReiAnix Jetpack Compose application.
+ * Android-specific SAF, Credential Manager, lifecycle, and Media3 player
+ * integration remain owned by this single Activity without a Flutter host.
  */
-class MainActivity : FlutterFragmentActivity() {
+class MainActivity : ComponentActivity() {
     private val tag = "[REIFLIX][ANDROID]"
     private val MAX_SETTINGS_FILE_BYTES = 1024 * 1024
     private val SETTINGS_FILE_REQUEST_ID_REGEX = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -2435,15 +2435,15 @@ class MainActivity : FlutterFragmentActivity() {
                             return
                         }
 
-                        // Keep the old host route only for legacy Flet surfaces while
-                        // the Compose shell is hidden, not as a second navigation owner.
-                        val engine = flutterEngine
-                        if (engine == null) {
-                            Log.w(tag, "SYSTEM_BACK ignored reason=flutter_engine_unavailable")
-                            return
+                        // Compose remains the only Android navigation authority.
+                        // If a route temporarily hid the shell, restore Home instead
+                        // of dispatching Back through a removed Flutter engine.
+                        if (::composeLibraryHost.isInitialized) {
+                            Log.i(tag, "BACK_COMPOSE_SHELL_RESTORED id=" + backId + " reason=host_hidden")
+                            composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+                        } else {
+                            Log.w(tag, "SYSTEM_BACK ignored reason=native_compose_host_not_ready")
                         }
-                        Log.i(tag, "BACK_FLUTTER_POP_SENT id=" + backId + " reason=compose_host_hidden_fallback")
-                        engine.navigationChannel.popRoute()
                     } finally {
                         // Reset only after the current dispatcher turn has returned so
                         // the same Android Back event cannot enter the handler twice.

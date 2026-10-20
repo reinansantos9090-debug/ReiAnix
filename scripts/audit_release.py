@@ -15,6 +15,7 @@ from pathlib import Path
 
 REQUIRED_CLASSES = (
     "MainActivity",
+    "ReiAnixApplication",
     "ReiAnixComposeLibraryHost",
     "NativeMailbox",
     "NativeRequestState",
@@ -181,6 +182,31 @@ def audit_architecture(root: Path, failures: list[str]) -> None:
             failures.append(f"critical file missing: {relative}")
 
     manifest = read(root, "android/app/src/main/AndroidManifest.xml")
+    main_activity = read(root, "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    application = read(root, "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt")
+    for token in (
+        'android:name=".MainActivity"',
+        'android:name=".ReiAnixApplication"',
+        "android.intent.action.MAIN",
+        "android.intent.category.LAUNCHER",
+    ):
+        if token not in manifest:
+            failures.append(f"native launcher manifest contract missing: {token}")
+    if "class MainActivity : ComponentActivity()" not in main_activity:
+        failures.append("MainActivity must use the native ComponentActivity base")
+    if any(token in main_activity for token in ("FlutterFragmentActivity", "flutterEngine", "io.flutter.embedding")):
+        failures.append("MainActivity still depends on a Flutter host/engine")
+    if "class ReiAnixApplication : Application()" not in application:
+        failures.append("ReiAnixApplication must use android.app.Application")
+    if "FlutterApplication" in application:
+        failures.append("ReiAnixApplication still depends on the Flutter runtime")
+    build_workflow = read(root, ".github/workflows/build_apk.yml")
+    for token in (":app:assembleRelease", "scripts/verify_native_apk.py", "scripts/verify_android_host.py"):
+        if token not in build_workflow:
+            failures.append(f"native Android release workflow contract missing: {token}")
+    for token in ("flet build apk", "subosito/flutter-action", "serious_python_android", "Prepare Flet build template"):
+        if token in build_workflow:
+            failures.append(f"native Android release workflow still uses hybrid build component: {token}")
     for token in (
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
@@ -269,8 +295,18 @@ def main() -> int:
     version_code = None
     version_name = None
     import re
-    m = re.search(r"versionCode\s*=\s*(\d+)", build_gradle)
-    n = re.search(r'versionName\s*=\s*"([^"]+)"', build_gradle)
+    m = re.search(
+        r'versionCode\s*=\s*providers\.gradleProperty\("reianixBuildNumber"\).*?\?:\s*(\d+)',
+        build_gradle,
+    )
+    if not m:
+        m = re.search(r"versionCode\s*=\s*(\d+)", build_gradle)
+    n = re.search(
+        r'versionName\s*=\s*providers\.gradleProperty\("reianixBuildVersion"\).*?\?:\s*"([^"]+)"',
+        build_gradle,
+    )
+    if not n:
+        n = re.search(r'versionName\s*=\s*"([^"]+)"', build_gradle)
     if not m or not n:
         failures.append("version contract is incomplete")
     else:

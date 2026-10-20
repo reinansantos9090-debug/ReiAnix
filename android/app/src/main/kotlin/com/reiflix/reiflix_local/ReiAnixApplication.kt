@@ -1,16 +1,14 @@
 package com.reiflix.reiflix_local
 
 import android.util.Log
-import io.flutter.app.FlutterApplication
+import android.app.Application
 
 /**
- * Preserves Flutter/Flet's Application bootstrap during the hybrid migration
- * while exposing one lazy Kotlin composition root to Android components.
- *
- * onCreate deliberately performs no database open, scan, artwork work, or
- * remote request. Those operations remain demand-driven by their current owners.
+ * Native process Application and single owner of the existing Kotlin dependency
+ * graph. The idempotent bootstrap keeps recovery and native service startup
+ * asynchronous and independent of Activity recreation.
  */
-class ReiAnixApplication : FlutterApplication() {
+class ReiAnixApplication : Application() {
     lateinit var dependencies: ReiAnixAppDependencies
         private set
 
