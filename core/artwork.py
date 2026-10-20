@@ -722,29 +722,15 @@ class ArtworkEngine:
                 )
             key = self._make_key("anilist" if anilist_id else "url",
                                  f"{anilist_id or cover_url}|{cover_url}", "poster", "large")
-            # Re-materializing unchanged AniList metadata must not erase a
-            # persisted download failure/backoff. Otherwise every catalog
-            # hydration resets RETRY_WAIT to NOT_REQUESTED and immediately
-            # starts the same failing request again.
-            preserved_status = STATUS_NOT_REQUESTED
-            with self.store._conn() as con:
-                previous = con.execute(
-                    """SELECT status,next_retry_at FROM artwork
-                       WHERE entity_type=? AND entity_id=? AND artwork_type='poster'
-                         AND artwork_key=?""",
-                    (entity_type, str(anime_id), key),
-                ).fetchone()
-            if previous:
-                previous_status = str(previous["status"] or "").casefold()
-                retry_at = float(previous["next_retry_at"] or 0)
-                if previous_status == STATUS_FAILED:
-                    preserved_status = STATUS_FAILED
-                elif previous_status == STATUS_RETRY_WAIT and retry_at > time.time():
-                    preserved_status = STATUS_RETRY_WAIT
+            # Let _upsert preserve an existing QUEUED/DOWNLOADING/FAILED/
+            # RETRY_WAIT state, including failure_count and next_retry_at.
+            # Passing RETRY_WAIT or FAILED directly bypasses that preservation
+            # rule and clears next_retry_at, so every hydration can immediately
+            # retry a request that should still be in backoff.
             self._upsert(
                 entity_type=entity_type, entity_id=anime_id, artwork_type="poster",
                 source="anilist", source_ref=cover_url, external_url=cover_url,
-                status=preserved_status, artwork_key=key, variant="large",
+                status=STATUS_NOT_REQUESTED, artwork_key=key, variant="large",
             )
             if request_download and not trusted_cover_cache:
                 self.request(entity_type, anime_id, "poster", priority=400, blocking=False)
