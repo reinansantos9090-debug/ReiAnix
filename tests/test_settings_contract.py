@@ -2,157 +2,133 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+KOTLIN = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local"
 SETTINGS_VIEW = ROOT / "views/settings_view.py"
 SETTINGS = ROOT / "core/settings.py"
-MAIN = ROOT / "main.py"
 BRIDGE = ROOT / "core/android_bridge.py"
-MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-PLAYER_REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
-HOME = ROOT / "views/home_view.py"
+ACTIVITY = KOTLIN / "MainActivity.kt"
+PLAYER = KOTLIN / "NativePlayerActivity.kt"
+PLAYER_REQUEST = KOTLIN / "player/NativePlayerRequest.kt"
+SETTINGS_CONTRACT = KOTLIN / "data/settings/ReiAnixSettingsContract.kt"
+SETTINGS_REPO = KOTLIN / "data/settings/ReiAnixSettingsRepository.kt"
+SETTINGS_VM = KOTLIN / "viewmodel/ReiAnixSettingsViewModel.kt"
+SQLITE_SETTINGS = KOTLIN / "data/sqlite/ReiAnixSqliteSettingsRepository.kt"
+HOST = KOTLIN / "ui/host/ReiAnixComposeLibraryHost.kt"
+
+
+def read(path):
+    return path.read_text(encoding="utf-8")
 
 
 class SettingsContractTests(unittest.TestCase):
-    def read(self, path):
-        return path.read_text(encoding="utf-8")
+    def test_native_settings_commands_are_correlated_and_lifecycle_scoped(self):
+        repo = read(SETTINGS_REPO)
+        vm = read(SETTINGS_VM)
+        activity = read(ACTIVITY)
+        self.assertIn("fun setSetting(key: String, value: String)", repo)
+        self.assertIn("scope.launch", repo)
+        self.assertIn("settingLocks.computeIfAbsent", repo)
+        self.assertIn("Mutex()", repo)
+        self.assertIn("withLock", repo)
+        self.assertIn("setPreference(normalizedKey, normalizedValue)", repo)
+        self.assertIn("requestId", repo)
+        self.assertIn("commandResultObserver", repo)
+        self.assertIn("fun setSetting(key: String, value: String)", vm)
+        self.assertIn("fun requestAction(action: String)", vm)
+        self.assertIn("completeComposeSettingsStorageAction", activity)
 
-    def test_compose_settings_commands_are_async_and_correlated(self):
-        main = self.read(MAIN)
-        bridge = self.read(ROOT / "core/compose_settings_bridge.py")
-        repository = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt")
-        self.assertIn("async def _run_compose_settings_set", main)
-        self.assertIn("async def _run_compose_settings_action", main)
-        self.assertIn("_track_compose_settings_task", main)
-        self.assertIn("COMPOSE_SETTINGS_MAX_TASKS = 8", main)
-        self.assertIn("task = asyncio.create_task(", main)
-        self.assertIn("_run_compose_settings_set(", main)
-        self.assertIn("native_persisted=native_persisted", main)
-        self.assertIn("asyncio.create_task(_run_compose_settings_action", main)
-        self.assertIn("claim_native_request(request_id, namespace=\"compose_settings\")", main)
-        self.assertIn('write_command_result(', main)
-        self.assertIn("COMMAND_RESULT_DIR_NAME", bridge)
-        self.assertIn("SETTINGS_SNAPSHOT_PUBLISHED", bridge)
-        self.assertIn("commandResultObserver", repository)
-        self.assertIn("SETTINGS_SNAPSHOT_CONSUMED", repository)
+    def test_native_settings_use_canonical_sqlite_and_post_commit_notification(self):
+        repo = read(SETTINGS_REPO)
+        sqlite = read(SQLITE_SETTINGS)
+        self.assertIn("ReiAnixSqliteSettingsRepository(appContext)", repo)
+        self.assertIn("setPreference(normalizedKey, normalizedValue)", repo)
+        self.assertIn("setPreferencesAtomically(defaults)", repo)
+        self.assertIn('"compose_settings_set"', repo)
+        self.assertIn('"nativePersisted"', repo)
+        self.assertIn("SELECT key, value FROM preferences ORDER BY key COLLATE NOCASE ASC", sqlite)
+        self.assertIn("database.transaction", sqlite)
 
-    def test_mailbox_dispatcher_does_not_await_settings_workers_in_place(self):
-        main = self.read(MAIN)
-        start = main.index("if event_type == 'compose_settings_set':")
-        end = main.index("if event_type == 'compose_settings_bulk_applied':", start)
-        block = main[start:end]
-        self.assertNotIn("await asyncio.to_thread(settings.set", block)
-        self.assertNotIn("await add_folder()", block)
-        self.assertNotIn("await create_backup()", block)
-        self.assertNotIn("await restore_backup(", block)
-        self.assertIn("task = asyncio.create_task(", block)
-        self.assertIn("_run_compose_settings_set(", block)
-        self.assertIn("native_persisted=native_persisted", block)
-        self.assertIn("asyncio.create_task(_run_compose_settings_action", block)
+    def test_native_setting_whitelist_and_normalization_are_centralized(self):
+        settings = read(SETTINGS)
+        contract = read(SETTINGS_CONTRACT)
+        for key in (
+            "app.confirm_destructive", "appearance.theme", "appearance.card_size",
+            "appearance.show_thumbnails", "player.resume", "player.default_speed",
+            "audio.preferred_language", "library.page_size",
+        ):
+            self.assertIn(f'"{key}"', settings + contract)
+        self.assertIn("definitions: Map<String, ReiAnixSettingDefinition>", contract)
+        self.assertIn("fun normalize(key: String, value: String): String", contract)
+        self.assertIn("fun defaultFor(key: String): String?", contract)
 
-    def test_settings_export_import_contract_exists(self):
-        settings = self.read(SETTINGS)
-        view = self.read(SETTINGS_VIEW)
-        self.assertIn('EXPORT_FORMAT = "reiflix-settings"', settings)
-        self.assertIn("def export_json", settings)
-        self.assertIn("def import_json", settings)
-        self.assertIn("schema_version", settings)
-        self.assertIn("Exportar configurações", view)
-        self.assertIn("Importar configurações", view)
-        self.assertIn("with_data=True", view)
-        self.assertIn("src_bytes=raw", view)
+    def test_settings_export_import_use_native_document_contract_and_sqlite_transaction(self):
+        repository = read(SETTINGS_REPO)
+        service = read(KOTLIN / "data/settings/ReiAnixSettingsFileService.kt")
+        activity = read(ACTIVITY)
+        self.assertIn('const val EXPORT_FORMAT = "reiflix-settings"', service)
+        self.assertIn("SUPPORTED_SCHEMA_VERSIONS", service)
+        self.assertIn("setPreferencesAtomically(valuesToCommit)", service)
+        self.assertIn('CreateDocument("application/json")', activity)
+        self.assertIn("ActivityResultContracts.OpenDocument()", activity)
+        self.assertIn("writeSettingsFileActionResult", activity)
+        self.assertIn("launchNativeSettingsFileAction", repository)
 
-    def test_audio_subtitle_preferences_reach_media3(self):
-        settings = self.read(SETTINGS)
-        main = self.read(MAIN)
-        bridge = self.read(BRIDGE)
-        main_activity = self.read(MAIN_ACTIVITY)
-        player_request = self.read(PLAYER_REQUEST)
-        player = self.read(PLAYER)
-        self.assertIn('"audio.preferred_language"', settings)
-        self.assertIn('"audio.preferred_subtitle_language"', settings)
-        self.assertIn('"audio.subtitles"', settings)
-        self.assertIn('"audio.preferred_language": settings.get("audio.preferred_language")', main)
-        self.assertIn('"audio.preferred_subtitle_language": settings.get("audio.preferred_subtitle_language")', main)
-        self.assertIn('"audio.subtitles": settings.get("audio.subtitles")', main)
-        self.assertIn("player_settings", bridge)
-        self.assertIn('setting_audio_preferred_language', player_request)
-        self.assertIn('setting_audio_preferred_subtitle_language', player_request)
-        self.assertIn('setting_audio_subtitles', player_request)
-        self.assertIn('setting_player_max_video_resolution', player_request)
-        self.assertIn('setting_player_max_video_frame_rate', player_request)
-        self.assertIn('setting_player_max_audio_channels', player_request)
-        self.assertIn('setting_audio_subtitle_scale', player_request)
-        self.assertIn('setting_audio_subtitle_bottom_padding', player_request)
-        self.assertIn('setting_audio_subtitle_embedded_style', player_request)
+    def test_player_preferences_reach_media3_through_typed_native_handoff(self):
+        settings = read(SETTINGS)
+        request = read(PLAYER_REQUEST)
+        player = read(PLAYER)
+        for key in (
+            "player.zoom_enabled", "player.double_tap_seek_seconds", "player.long_press_speed",
+            "player.max_video_resolution", "player.max_video_frame_rate", "player.max_audio_channels",
+            "audio.subtitle_scale", "audio.subtitle_bottom_padding", "audio.subtitle_embedded_style",
+        ):
+            self.assertIn(f'"{key}"', settings)
+        for extra in (
+            "setting_audio_preferred_language", "setting_audio_preferred_subtitle_language",
+            "setting_audio_subtitles", "setting_player_max_video_resolution",
+            "setting_player_max_video_frame_rate", "setting_player_max_audio_channels",
+            "setting_audio_subtitle_scale", "setting_audio_subtitle_bottom_padding",
+            "setting_audio_subtitle_embedded_style",
+        ):
+            self.assertIn(extra, request)
+            self.assertIn(extra, player)
         self.assertIn("applyGlobalTrackPreferences()", player)
         self.assertIn("applyAdvancedTrackConstraints()", player)
         self.assertIn("applySubtitlePreferences()", player)
-        self.assertIn("setPreferredAudioLanguage", player)
-        self.assertIn("setPreferredTextLanguage", player)
-        self.assertIn("setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)", player)
 
-    def test_player_contracts_stay_intact(self):
-        player = self.read(PLAYER)
+    def test_native_player_gesture_and_media3_contracts_remain_present(self):
+        player = read(PLAYER)
         self.assertIn("GestureMode.HORIZONTAL_SEEK", player)
         self.assertIn("PlayerGesturePolicy.horizontalSeekTarget", player)
         self.assertIn("ExoPlayer.Builder(this).build()", player)
         self.assertIn("MediaItem.Builder()", player)
         self.assertIn("restoreSystemUiBeforeExit", player)
         self.assertIn("canEnterPictureInPicture", player)
-        self.assertIn("pipEnabled", player)
 
-    def test_continue_watching_and_theme_contracts(self):
-        home = self.read(HOME)
-        main = self.read(MAIN)
-        self.assertIn('settings.get("library.continue_watching")', home)
-        self.assertIn('settings.get("library.continue_watching_limit")', home)
-        self.assertIn('settings.get("appearance.theme")', main)
+    def test_continue_watching_and_theme_are_projected_from_native_settings_state(self):
+        home = read(KOTLIN / "ui/home/ReiAnixHome.kt")
+        vm = read(SETTINGS_VM)
+        host = read(HOST)
+        self.assertIn("continueWatchingEnabled", vm)
+        self.assertIn("continueWatchingLimit", vm)
+        self.assertIn("themeMode", vm)
+        self.assertIn("settingsViewModel.themeMode.collectAsStateWithLifecycle()", host)
+        self.assertIn("continueWatchingLimit", home)
+        self.assertIn("continueWatching", home)
 
-
-    def test_advanced_settings_are_real_and_exported(self):
-        settings = self.read(SETTINGS)
-        view = self.read(SETTINGS_VIEW)
-        main = self.read(MAIN)
-        main_activity = self.read(MAIN_ACTIVITY)
-        player_request = self.read(PLAYER_REQUEST)
-        home = self.read(HOME)
-        for key in (
-            "player.zoom_enabled",
-            "player.double_tap_seek_seconds",
-            "player.long_press_speed",
-            "player.max_video_resolution",
-            "player.max_video_frame_rate",
-            "player.max_audio_channels",
-            "audio.subtitle_scale",
-            "audio.subtitle_bottom_padding",
-            "audio.subtitle_embedded_style",
-            "metadata.anilist_enabled",
-            "metadata.auto_match",
-            "artwork.enabled",
-            "artwork.cache_limit_mb",
-            "library.page_size",
-        ):
-            self.assertIn(f'"{key}"', settings)
-            self.assertIn(key, view)
-        self.assertIn('"player.zoom_enabled": settings.get("player.zoom_enabled")', main)
-        self.assertIn('"player.double_tap_seek_seconds": settings.get("player.double_tap_seek_seconds")', main)
-        self.assertIn('"player.long_press_speed": settings.get("player.long_press_speed")', main)
-        self.assertIn('"player.max_video_resolution": settings.get("player.max_video_resolution")', main)
-        self.assertIn("setting_player_double_tap_seek_seconds", player_request)
-        self.assertIn("setting_player_long_press_speed", player_request)
-        self.assertIn("setting_player_max_video_resolution", player_request)
-        self.assertIn("NativePlayerRequest.fromBridgeUri", main_activity)
-        self.assertIn("playerRequest.toIntent(this, localUri)", main_activity)
-        self.assertIn("settings.get(\"library.page_size\")", home)
+    def test_advanced_categories_have_native_actions_and_persisted_preferences(self):
+        settings = read(SETTINGS)
+        compose = read(KOTLIN / "ui/settings/ReiAnixSettings.kt")
+        repository = read(SETTINGS_REPO)
+        activity = read(ACTIVITY)
+        for category in ("Player", "Gestos", "Áudio e Legendas", "Backup e Restauração", "Diagnóstico"):
+            self.assertIn(category, compose)
+        for action in ("clear_anilist_cache", "settings_export", "settings_import", "select_saf",
+                       "request_media_access", "check_storage_access", "backup_create",
+                       "backup_restore", "backup_integrity", "backup_reconcile", "diagnostic_export"):
+            self.assertIn(action, repository + activity)
         self.assertNotIn('"privacy.external_sync"', settings)
-        self.assertNotIn("gestures.horizontal_swipe_seek", settings + view + main + player_request)
-        self.assertNotIn('"artwork.offline_cache"', settings)
-        self.assertNotIn('"metadata.keep_local"', settings)
-
-    def test_settings_search_indexes_descriptions(self):
-        view = self.read(SETTINGS_VIEW)
-        self.assertIn('container.data = f"{key} {label} {description}".casefold()', view)
-        self.assertIn('item_terms = " ".join(str(getattr(item, "data", "")) for item in items)', view)
+        self.assertNotIn('"gestures.horizontal_swipe_seek"', settings + compose)
 
 
 if __name__ == "__main__":
