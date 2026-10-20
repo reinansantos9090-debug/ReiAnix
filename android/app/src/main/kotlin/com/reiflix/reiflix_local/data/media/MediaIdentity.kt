@@ -162,6 +162,24 @@ object MediaTitleNormalizer {
     /** Comparison form of the cleaned title; never proves identity on its own. */
     fun normalizeMediaTitle(value: String?): String = normalizeTitle(cleanMediaTitle(value))
 
+    /**
+     * Mirrors core.library_parser._episode_title_after exactly.
+     *
+     * This is deliberately narrower than cleanMediaTitle: the legacy parser keeps
+     * ordinary words in an episode suffix (for example "Complete Batch") and only
+     * strips bracket annotations and technical release tokens from that suffix.
+     */
+    internal fun episodeTitleAfter(stem: String, marker: MatchResult?): String? {
+        if (marker == null) return null
+        var tail = stem.substring(marker.range.last + 1)
+            .replace(Regex("^[ ._\\-–—]+"), "")
+            .replace(Regex("\\[[^]]*]"), " ")
+        technicalPatterns.forEach { pattern -> tail = pattern.replace(tail, " ") }
+        tail = tail.replace(Regex("\\s+"), " ").trim(' ', '-', '_')
+        if (tail.isBlank() || Regex("(?i)v?\\d+").matches(tail)) return null
+        return tail
+    }
+
     /** Returns recognized release/technical tokens in their original spelling and order by pattern. */
     fun extractTechnicalTokens(value: String?): List<String> {
         if (value.isNullOrBlank()) return emptyList()
