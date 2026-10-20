@@ -44,7 +44,7 @@ Criados:
 Modificados:
 - `ReiAnixSqliteLibraryRepository.kt`: seletor Gacha nativo com filtros combinados e consulta read-only.
 - `ReiAnixAppDependencies.kt`: serviço registrado, compartilhando a instância do repositório canônico.
-- `ReiAnixLibraryViewModel.kt`: integração nativa ao consumidor ainda precisa ser confirmada no commit final se a alteração de API não for aceita pelo write path.
+- `ReiAnixLibraryViewModel.kt`: adiciona `drawNativeGacha`, com filtros, ID a excluir e escolha opcional de episódio, reutilizando o serviço compartilhado.
 
 Removidos/movidos: nenhum.
 
