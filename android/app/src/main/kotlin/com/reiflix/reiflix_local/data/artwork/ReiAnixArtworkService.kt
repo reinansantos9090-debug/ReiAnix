@@ -9,6 +9,7 @@ import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +21,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
@@ -69,6 +71,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (cacheClearInProgress.get() || jobs[animeId]?.isActive == true) return false
             val task = scope.launch(start = CoroutineStart.LAZY) {
                 try {
+                    if (!isRemoteArtworkEnabled()) {
+                        Log.i(TAG, "Remote artwork request skipped because artwork.enabled=false or canonical settings are unavailable.")
+                        return@launch
+                    }
                     val anime = loadAnime(animeId) ?: return@launch
                     val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
                     anime.coverUrl?.trim()?.takeIf { it.isNotEmpty() }?.let {
@@ -96,7 +102,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         if (cacheClearInProgress.get() || !backfillRunning.compareAndSet(false, true)) return false
         backfillJob = scope.launch {
             try {
-                if (cacheClearInProgress.get()) return@launch
+                if (cacheClearInProgress.get() || !isRemoteArtworkEnabled()) return@launch
                 var afterId = 0L
                 while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
                     val ids = database.read { db ->
@@ -737,15 +743,95 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             ?.filter { it.isFile && it.extension.lowercase(Locale.ROOT) in EXTENSIONS }
             ?.sortedBy { it.lastModified() } ?: return
         val refs = referencedCanonicalPaths(images.map { it.absolutePath })
+        val cacheLimitBytes = configuredCacheLimitBytes()
         var bytes = images.sumOf { it.length() }
         images.forEach { file ->
-            if (bytes <= MAX_CACHE_BYTES) return
+            if (bytes <= cacheLimitBytes) return
             val path = runCatching { file.canonicalFile.path }.getOrNull() ?: return@forEach
             if (path in refs) return@forEach
             val size = file.length()
             if (runCatching { file.delete() }.getOrDefault(false)) bytes -= size
         }
     }
+    /**
+     * Apply changes to the artwork-specific preferences after the canonical SQLite
+     * write has committed. Disabling cancels in-flight remote work but retains all
+     * existing/local/manual images; changing the limit trims only unreferenced files.
+     */
+    suspend fun applySettingChange(key: String) {
+        try {
+            when (key) {
+                "artwork.enabled" -> withContext(Dispatchers.IO) {
+                    if (isRemoteArtworkEnabled()) {
+                        requestPendingArtwork()
+                    } else {
+                        val pendingBackfill = backfillJob
+                        pendingBackfill?.cancel()
+                        val activeJobs = synchronized(jobs) {
+                            jobs.values.toList().also { active -> active.forEach { it.cancel() } }
+                        }
+                        activeJobs.joinAll()
+                        pendingBackfill?.join()
+                    }
+                }
+                "artwork.cache_limit_mb" -> withContext(Dispatchers.IO) {
+                    trimCache()
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // The preference has already committed. An application/cache failure must
+            // not turn that durable write into a false persistence rollback in Compose.
+            Log.e(TAG, "Could not apply committed setting " + key, error)
+        }
+    }
+
+    private fun readCanonicalPreference(key: String): String? =
+        database.read { db ->
+            db.rawQuery(
+                "SELECT value FROM preferences WHERE key=? LIMIT 1",
+                arrayOf(key),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }
+
+    /** DB read failures fail closed for new remote requests, without erasing stored art. */
+    private fun isRemoteArtworkEnabled(): Boolean {
+        val raw = try {
+            readCanonicalPreference("artwork.enabled")
+        } catch (error: Exception) {
+            Log.w(TAG, "Cannot read canonical artwork.enabled; remote downloads are paused.", error)
+            return false
+        }
+        val defaultValue = ReiAnixSettingsContract.defaultFor("artwork.enabled") ?: "true"
+        val normalized = raw?.let {
+            runCatching { ReiAnixSettingsContract.normalize("artwork.enabled", it) }
+                .getOrElse { error ->
+                    Log.w(TAG, "Invalid stored artwork.enabled; using its documented default.", error)
+                    defaultValue
+                }
+        } ?: defaultValue
+        return normalized == "true"
+    }
+
+    private fun configuredCacheLimitBytes(): Long {
+        val defaultMb = ReiAnixSettingsContract.defaultFor("artwork.cache_limit_mb")
+            ?.toLongOrNull() ?: 128L
+        val raw = runCatching { readCanonicalPreference("artwork.cache_limit_mb") }
+            .onFailure { Log.w(TAG, "Cannot read artwork.cache_limit_mb; using 128 MB for cache trimming.", it) }
+            .getOrNull()
+        val megabytes = raw?.let {
+            runCatching { ReiAnixSettingsContract.normalize("artwork.cache_limit_mb", it).toLong() }
+                .getOrElse { error ->
+                    Log.w(TAG, "Invalid stored artwork.cache_limit_mb; using its documented default.", error)
+                    defaultMb
+                }
+        } ?: defaultMb
+        return megabytes.coerceIn(64L, 512L) * 1024L * 1024L
+    }
+
     private fun removeIfUnreferenced(file: File) {
         val path = runCatching { file.canonicalPath }.getOrNull() ?: return
         val used = isPathReferenced(path)
