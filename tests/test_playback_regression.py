@@ -1,8 +1,9 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
+MAIN = native_main_source()
 DETAILS = (ROOT / "views/details_view.py").read_text(encoding="utf-8")
 HOME = (ROOT / "views/home_view.py").read_text(encoding="utf-8")
 BRIDGE = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
