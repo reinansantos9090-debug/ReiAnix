@@ -204,14 +204,13 @@ internal object ReiAnixSqliteSchemaManager {
     }
 
     private fun createTriggers(database: SQLiteDatabase, contract: JSONObject) {
-        val triggers = contract.optJSONObject("triggers") ?: return
-        val iterator = triggers.keys()
-        while (iterator.hasNext()) {
-            val name = iterator.next()
-            val trigger = triggers.getJSONObject(name)
+        val triggers = contract.optJSONArray("triggers")?.objects().orEmpty()
+        for (trigger in triggers) {
+            val name = trigger.getString("name")
+            requireSafeIdentifier(name)
             val sql = trigger.optString("sql").trim()
             check(sql.isNotEmpty()) { "Canonical trigger $name has no SQL definition." }
-            val pattern = Regex("(?i)^CREATE\\s+TRIGGER\\s+")
+            val pattern = Regex("(?is)^CREATE\\s+TRIGGER\\s+")
             check(pattern.containsMatchIn(sql) || sql.startsWith("CREATE TRIGGER IF NOT EXISTS", ignoreCase = true)) {
                 "Unsupported DDL for canonical trigger $name."
             }
