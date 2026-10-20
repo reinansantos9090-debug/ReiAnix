@@ -3,6 +3,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 from unittest.mock import patch
 
 from core.library_store import LibraryStore
@@ -10,7 +11,7 @@ from core.settings import SettingsStore
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
+MAIN = native_main_source()
 DETAILS = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")
 ANILIST = (ROOT / "core" / "anilist.py").read_text(encoding="utf-8")
 STORE = (ROOT / "core" / "library_store.py").read_text(encoding="utf-8")
