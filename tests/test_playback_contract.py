@@ -427,8 +427,8 @@ class PlaybackContractTests(unittest.TestCase):
             '"player_opened"',
             '"compose_settings_set"',
             '"player_error"',
-            '"NATIVE_COMPOSE_PROGRESS_NOT_PERSISTED"',
-            '"NATIVE_COMPOSE_EXIT_PROGRESS_NOT_PERSISTED"',
+            "NATIVE_COMPOSE_PROGRESS_NOT_PERSISTED",
+            "NATIVE_COMPOSE_EXIT_PROGRESS_NOT_PERSISTED",
         ):
             self.assertIn(token, self.player)
 
