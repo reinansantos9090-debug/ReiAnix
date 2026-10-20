@@ -19,7 +19,7 @@ from pathlib import Path
 
 
 EXCLUDED = {"core/build_identity.py", "app_config.py"}
-SOURCE_ROOTS = ("main.py", "core", "views")
+SOURCE_ROOTS = ("core", "views")
 
 
 def run_git(root: Path, *args: str) -> str:
@@ -34,7 +34,7 @@ def run_git(root: Path, *args: str) -> str:
 
 
 def tracked_python_files(root: Path) -> list[Path]:
-    names = run_git(root, "ls-files", "-z", "--", "main.py", "core", "views").split("\0")
+    names = run_git(root, "ls-files", "-z", "--", "core", "views").split("\0")
     files: list[Path] = []
     for name in names:
         if not name or name in EXCLUDED or not name.endswith(".py"):
