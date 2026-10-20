@@ -487,8 +487,7 @@ class NativePlayerActivity : ComponentActivity() {
                     " orientation=" + resources.configuration.orientation +
                     " surfaceType=texture_view",
             )
-            val written = NativeMailbox.writeBestEffort(
-                this@NativePlayerActivity,
+            val written = publishLegacyPlayerEvent(
                 JSONObject()
                     .put("type", "player_diagnostic")
                     .put("requestId", requestId)
@@ -532,9 +531,84 @@ class NativePlayerActivity : ComponentActivity() {
         firstFrameWatchGeneration = -1L
     }
 
-        private fun publishPlayerLifecycle(event: String) {
-        NativeMailbox.writeBestEffort(
-            this,
+    /**
+     * Publish telemetry to the legacy Python consumer only for legacy player sessions.
+     * Native Compose sessions have no Python runtime in the APK, so their equivalent
+     * observability is recorded in the Kotlin diagnostic timeline instead of a mailbox
+     * file that can never be consumed.
+     */
+    private fun publishLegacyPlayerEvent(
+        event: JSONObject,
+        durable: Boolean = false,
+    ): Boolean {
+        if (!intent.getBooleanExtra("nativeCompose", false)) {
+            return if (durable) {
+                NativeMailbox.write(this, event)
+            } else {
+                NativeMailbox.writeBestEffort(this, event)
+            }
+        }
+
+        val eventType = event.optString("type", "unknown")
+        val payload = event.optJSONObject("payload") ?: JSONObject()
+        val payloadEvent = payload.optString("event").ifBlank {
+            payload.optString("lifecycle").ifBlank {
+                payload.optString("failureStage").ifBlank { payload.optString("stage") }
+            }
+        }
+        val name = when (eventType) {
+            "diagnostic", "player_diagnostic" ->
+                payloadEvent.ifBlank { "NATIVE_PLAYER_DIAGNOSTIC" }
+            "player_opened" -> "NATIVE_PLAYER_OPENED"
+            "player_error" -> "NATIVE_PLAYER_ERROR_PUBLISHED"
+            "compose_settings_set" -> "NATIVE_PLAYER_SETTING_PERSISTED"
+            else -> "NATIVE_PLAYER_EVENT"
+        }
+        val context = payload.toNativeDiagnosticContext().toMutableMap()
+        context["event_type"] = eventType
+        event.optString("message").trim().takeIf { it.isNotEmpty() }?.let {
+            context["message"] = it
+        }
+        val severity = when {
+            eventType == "player_error" -> "ERROR"
+            payload.optString("failureStage").isNotBlank() -> "WARN"
+            else -> "INFO"
+        }
+        val result = when (eventType) {
+            "player_opened" -> payload.optString("state").ifBlank { "READY" }
+            "compose_settings_set" -> "COMMITTED"
+            "player_error" -> "FAILED"
+            else -> payloadEvent.takeIf { it.isNotBlank() }
+        }
+        ReiAnixDiagnosticTimeline.record(
+            name = name,
+            severity = severity,
+            source = "NativePlayerActivity",
+            result = result,
+            requestId = event.optString("requestId").takeIf { it.isNotBlank() },
+            sessionId = payload.optString("playerSessionId").takeIf { it.isNotBlank() },
+            context = context,
+        )
+        return true
+    }
+
+    private fun JSONObject.toNativeDiagnosticContext(): Map<String, Any?> {
+        val context = linkedMapOf<String, Any?>()
+        val keys = keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = opt(key)
+            context[key] = when (value) {
+                JSONObject.NULL -> null
+                is JSONObject, is org.json.JSONArray -> value.toString()
+                else -> value
+            }
+        }
+        return context
+    }
+
+    private fun publishPlayerLifecycle(event: String) {
+        publishLegacyPlayerEvent(
             JSONObject().put("type", "diagnostic")
                 .put("requestId", requestId)
                 .put("payload", JSONObject()
@@ -1445,8 +1519,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     )
 
                     try {
-                        NativeMailbox.writeBestEffort(
-                            this@NativePlayerActivity,
+                        publishLegacyPlayerEvent(
                             JSONObject()
                                 .put("type", "diagnostic")
                                 .put("requestId", requestId)
@@ -1621,8 +1694,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     .put("originMonotonicNs", originMonotonicNs)
                     .put("transitionDirection", transitionSourceDirection)
                     .put("timing", timing)
-                if (!NativeMailbox.writeBestEffort(
-                        this@NativePlayerActivity,
+                if (!publishLegacyPlayerEvent(
                         JSONObject()
                             .put("type", "player_diagnostic")
                             .put("requestId", requestId)
@@ -1795,8 +1867,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     // measured by EVENT_RENDERED_FIRST_FRAME.
                     if (!openedReported) {
                         openedReported = true
-                        val opened = NativeMailbox.writeBestEffort(
-                            this@NativePlayerActivity,
+                        val opened = publishLegacyPlayerEvent(
                             JSONObject().put("type", "player_opened")
                                 .put("requestId", requestId)
                                 .put("payload", JSONObject()
@@ -1813,8 +1884,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         if (!opened) {
                             logPlayer("FAILED_TO_PUBLISH player_opened requestId=" + requestId.ifEmpty { "-" })
                         }
-                        NativeMailbox.writeBestEffort(
-                            this@NativePlayerActivity,
+                        publishLegacyPlayerEvent(
                             JSONObject()
                                 .put("type", "diagnostic")
                                 .put("requestId", requestId)
@@ -3816,8 +3886,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             " requestId=" + mutationRequestId +
                             " confirmed=true",
                     )
-                    val published = NativeMailbox.writeBestEffort(
-                        applicationContext,
+                    val published = publishLegacyPlayerEvent(
                         JSONObject()
                             .put("type", "compose_settings_set")
                             .put("requestId", mutationRequestId)
@@ -4120,8 +4189,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun publishPlayerError(message: String, payload: JSONObject = JSONObject()) {
         if (errorPublishedForGeneration) return
         errorPublishedForGeneration = true
-        val ok = NativeMailbox.writeBestEffort(
-            this,
+        val ok = publishLegacyPlayerEvent(
             JSONObject()
                 .put("type", "player_error")
                 .put("requestId", requestId)
@@ -4339,8 +4407,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             val key = keys.next()
             payload.put(key, extra.opt(key))
         }
-        NativeMailbox.writeBestEffort(
-            this,
+        publishLegacyPlayerEvent(
             JSONObject()
                 .put("type", "diagnostic")
                 .put("requestId", requestId)
@@ -4568,8 +4635,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("playerSettings", currentPlayerSettingsSnapshot())
 
         if (commandSequence < lastPlayerCommandSequence) {
-            NativeMailbox.writeBestEffort(
-                this,
+            publishLegacyPlayerEvent(
                 JSONObject()
                     .put("type", "diagnostic")
                     .put("requestId", requestId)
