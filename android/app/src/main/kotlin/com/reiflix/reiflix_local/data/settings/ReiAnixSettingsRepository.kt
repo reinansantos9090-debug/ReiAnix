@@ -202,7 +202,8 @@ class ReiAnixSettingsRepository(
             pending?.value == normalizedValue ||
                 (pending == null &&
                     current.status == ReiAnixSettingsLoadStatus.READY &&
-                    current.settings[normalizedKey] == normalizedValue)
+                    (current.settings[normalizedKey]
+                        ?: ReiAnixSettingsContract.defaultFor(normalizedKey)) == normalizedValue)
         }
         if (alreadySatisfied) return
 
