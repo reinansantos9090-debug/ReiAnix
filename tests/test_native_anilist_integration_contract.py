@@ -101,7 +101,7 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         service = SERVICE.read_text(encoding="utf-8")
         dependencies = (KOTLIN / "ReiAnixAppDependencies.kt").read_text(encoding="utf-8")
         artwork = (KOTLIN / "data/artwork/ReiAnixArtworkService.kt").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        main = SERVICE.read_text(encoding="utf-8")
         start = main.index("if event_type == 'anilist_metadata_committed':")
         end = main.index("if event_type == 'compose_settings_set':", start)
         handler = main[start:end]
@@ -127,7 +127,7 @@ class NativeAniListIntegrationContractTests(unittest.TestCase):
         association = ASSOCIATION.read_text(encoding="utf-8")
         view_model = (KOTLIN / "viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
         host = (KOTLIN / "ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        main = SERVICE.read_text(encoding="utf-8")
         python_service = (ROOT / "core/library_service.py").read_text(encoding="utf-8")
 
         self.assertIn("reconcileUnmatchedLibraryMetadata()", service)

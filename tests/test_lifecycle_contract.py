@@ -1,11 +1,11 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 PLAYER_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-MAIN_PY = ROOT / "main.py"
 BRIDGE = ROOT / "core/android_bridge.py"
 SCAN = ROOT / "core/scan_coordinator.py"
 STORE = ROOT / "core/library_store.py"
@@ -65,117 +65,56 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertNotIn("this@MainActivity", scheduler)
         self.assertNotIn("activityResumed", scheduler)
 
-    def test_python_mailbox_poller_is_stopped_when_flet_session_disconnects(self):
-        source = MAIN_PY.read_text(encoding="utf-8")
-        self.assertIn("native_poll_task = [None]", source)
-        self.assertIn("def _handle_page_disconnect", source)
-        self.assertIn("task.cancel()", source)
-        self.assertIn("native_poll_task[0] = None", source)
-        self.assertIn("while ui_alive[0]:", source)
-        self.assertIn("native_poll_task[0] = page.run_task(poll_native_bridge)", source)
-        self.assertEqual(
-            source.count("page.run_task(poll_native_bridge)"),
-            1,
-            "mailbox poller must be started through the tracked task handle exactly once",
-        )
-
-    def test_python_mailbox_poller_restarts_on_reconnect_and_app_resume(self):
-        source = MAIN_PY.read_text(encoding="utf-8")
-        self.assertIn("def ensure_native_poll_task(reason=\"check\"):", source)
-        self.assertIn("ui_alive[0] = True", source)
-        self.assertIn("page.on_connect = _handle_page_connect", source)
-        self.assertIn("page.on_app_lifecycle_state_change = _handle_app_lifecycle_state_change", source)
-        self.assertIn("ensure_native_poll_task(\"add_folder\")", source)
-
-    def test_normalize_app_lifecycle_state_handles_enums_events_and_strings(self):
-        import flet as ft
-        from main import normalize_app_lifecycle_state
-
-        self.assertEqual(normalize_app_lifecycle_state(ft.AppLifecycleState.RESUME), "resume")
-        self.assertEqual(normalize_app_lifecycle_state(ft.AppLifecycleState.SHOW), "show")
-        self.assertEqual(normalize_app_lifecycle_state("AppLifecycleState.RESUME"), "resume")
-        self.assertEqual(normalize_app_lifecycle_state("RESUME"), "resume")
-        self.assertEqual(normalize_app_lifecycle_state("resume"), "resume")
-
-        evt = ft.AppLifecycleStateChangeEvent(name="change", control=None, state=ft.AppLifecycleState.RESUME)
-        self.assertEqual(normalize_app_lifecycle_state(evt), "resume")
-
-        evt_str = ft.AppLifecycleStateChangeEvent(name="change", control=None, state="resume")
-        self.assertEqual(normalize_app_lifecycle_state(evt_str), "resume")
-
-    def test_ensure_native_poll_task_idempotency_and_no_duplicates(self):
-        from unittest.mock import MagicMock
-
-        page = MagicMock()
-        ui_alive = [False]
-        native_poll_task = [None]
-
-        def poll_native_bridge():
-            pass
-
-        def ensure_native_poll_task(reason="check"):
-            ui_alive[0] = True
-            task = native_poll_task[0]
-            if task is None or task.done():
-                native_poll_task[0] = page.run_task(poll_native_bridge)
-
-        running_task = MagicMock()
-        running_task.done.return_value = False
-        page.run_task.return_value = running_task
-
-        ensure_native_poll_task("call1")
-        self.assertTrue(ui_alive[0])
-        self.assertEqual(page.run_task.call_count, 1)
-        self.assertEqual(native_poll_task[0], running_task)
-
-        ensure_native_poll_task("call2")
-        self.assertEqual(page.run_task.call_count, 1)
-        self.assertEqual(native_poll_task[0], running_task)
-
-        running_task.done.return_value = True
-        new_task = MagicMock()
-        new_task.done.return_value = False
-        page.run_task.return_value = new_task
-
-        ensure_native_poll_task("call3")
-        self.assertEqual(page.run_task.call_count, 2)
-        self.assertEqual(native_poll_task[0], new_task)
-
-    def test_python_page_disconnect_cancels_thumbnail_background_work(self):
-        source = MAIN_PY.read_text(encoding="utf-8")
-        start = source.index("def _handle_page_disconnect")
-        end = source.index("try:\n        page.on_disconnect", start)
-        block = source[start:end]
-        self.assertIn("nonlocal thumbnail_dispatch_task, thumbnail_reconciliation_task, thumbnail_reconciliation_pending", block)
-        self.assertIn("for task in (thumbnail_dispatch_task, thumbnail_reconciliation_task):", block)
-        self.assertIn("task.cancel()", block)
-        self.assertIn("thumbnail_dispatch_task = None", block)
-        self.assertIn("thumbnail_reconciliation_task = None", block)
-
-    def test_navigation_state_writer_is_durable_and_disconnect_guarded(self):
-        source = MAIN_PY.read_text(encoding="utf-8")
-        state_start = source.index("def _write_navigation_state")
-        state_end = source.index("def _route_for_screen", state_start)
-        block = source[state_start:state_end]
-        self.assertIn("handle.flush()", block)
-        self.assertIn("os.fsync(handle.fileno())", block)
-        self.assertIn('and ui_alive[0]', block)
-        self.assertIn('if navigation_persist["closing"] or not ui_alive[0]:', block)
-
-    def test_navigation_recovery_restores_only_durable_ui_state_and_never_runtime_route(self):
-        source = MAIN_PY.read_text(encoding="utf-8")
-        self.assertEqual(source.count("load_navigation_state("), 2)
-        self.assertIn("load_navigation_state()\n", source)
-        self.assertIn('"version": 3', source)
-        self.assertIn('"home_state"', source)
-        self.assertIn('"organize_state"', source)
-        self.assertIn('"settings_state"', source)
-        self.assertNotIn('"navigation": navigation.snapshot()', source)
-        self.assertNotIn('"details_media_id"', source)
-        self.assertNotIn("def restore_details_context", source)
-        self.assertIn("json.dump(state", source)
-        self.assertIn("os.replace(temporary, navigation_state_path)", source)
-
+    def test_native_lifecycle_unregisters_observers_and_stops_activity_work(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        player = PLAYER_ACTIVITY.read_text(encoding="utf-8")
+        self.assertIn("unregisterStorageReceiver()", source)
+        self.assertIn("MediaStoreScanner.stopChangeObserver(this)", source)
+        self.assertIn("pendingPreparation?.cancel(true)", player)
+        self.assertIn("playbackWorker.shutdown()", player)
+        self.assertIn("progressWorker.shutdown()", player)
+    def test_native_activity_revalidates_authorized_storage_on_resume(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        self.assertIn("override fun onResume()", source)
+        self.assertIn("publishSafInventory()", source)
+        self.assertIn("startupDiscoveryTriggered", source)
+        self.assertIn("publishScanRequest(", source)
+        self.assertIn("first_activity_resume", source)
+    def test_native_lifecycle_state_is_owned_by_component_activity(self):
+        source = native_main_source()
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        self.assertIn("ComponentActivity", source)
+        self.assertIn("lifecycleScope", source)
+        self.assertIn("override fun onResume()", activity)
+        self.assertIn("override fun onPause()", activity)
+        self.assertIn("override fun onDestroy()", activity)
+    def test_native_scan_controller_rejects_duplicate_active_requests(self):
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
+        self.assertIn("object NativeScanController", source)
+        self.assertIn("activeScanId", source)
+        self.assertIn("fun begin(", source)
+        self.assertIn("snapshot()", source)
+        self.assertIn("NativeScanController.begin(", native_main_source())
+    def test_native_player_cancels_generation_bound_work_on_destroy(self):
+        source = PLAYER_ACTIVITY.read_text(encoding="utf-8")
+        self.assertIn("private val mediaMetadataWorker: ExecutorService", source)
+        self.assertIn("pendingPreparation?.cancel(true)", source)
+        self.assertIn("handler.removeCallbacks(progressReporter)", source)
+        self.assertIn("mediaMetadataWorker.shutdown()", source)
+        self.assertIn("playbackWorker.shutdown()", source)
+    def test_native_navigation_host_keeps_route_state_inside_compose(self):
+        host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
+        nav = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
+        self.assertIn("NavHostController", host)
+        self.assertIn("rememberNavController()", nav)
+        self.assertIn("ReiAnixRoutes.HOME", nav)
+        self.assertIn("controller.navigateToTopLevel(", host)
+    def test_native_startup_returns_to_home_instead_of_restoring_transient_route(self):
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", activity)
+        self.assertIn("navigateToTopLevel(ReiAnixRoutes.HOME)", host)
+        self.assertNotIn("restore_details_context", native_main_source())
     def test_player_recreation_releases_resources_and_preserves_restorable_state(self):
         source = PLAYER_ACTIVITY.read_text(encoding="utf-8")
         for token in (
@@ -239,41 +178,21 @@ class LifecycleContractTests(unittest.TestCase):
             self.assertIn(token, source)
         self.assertNotIn("data=${intent.dataString", source)
 
-    def test_python_mailbox_requires_event_identity_and_tracks_operation_state(self):
+    def test_native_mailbox_requires_event_identity_and_tracks_operation_state(self):
+        mailbox = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
+        request_state = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt").read_text(encoding="utf-8")
+        for token in ("eventId", "requestId", "createdAt", "AtomicMoveNotSupportedException"):
+            self.assertIn(token, mailbox)
+        for token in ("MISSING_REQUEST_ID", "OperationState", "isTerminal()", "canAdvanceState("):
+            self.assertIn(token, request_state)
+    def test_native_mailbox_uses_atomic_delivery_and_correlated_acknowledgement(self):
         bridge = BRIDGE.read_text(encoding="utf-8")
-        main = MAIN_PY.read_text(encoding="utf-8")
-        for token in (
-            "BRIDGE_PROTOCOL_VERSION = 2",
-            "created_at = int(time.time() * 1000)",
-            "COMMAND_CREATED",
-            "COMMAND_SENT",
-            "def _normalize_event",
-            "EVENT_CLAIMED",
-            "EVENT_ACKED",
-            "EVENT_REQUEUED",
-        ):
-            self.assertIn(token, bridge)
-        self.assertIn("native_operation_states = {}", main)
-        self.assertIn("seen_native_event_ids = set()", main)
-        self.assertIn("operation_state = str(", main)
-        self.assertIn("EVENT_DUPLICATE", main)
-        self.assertIn("logger.exception(", main)
-    def test_native_mailbox_recovery_requeues_before_acknowledgement(self):
-        bridge = BRIDGE.read_text(encoding="utf-8")
-        main = MAIN_PY.read_text(encoding="utf-8")
-        self.assertIn("source.replace(consumed)", bridge)
-        self.assertIn("consumed.replace(consumed.with_suffix(\".json\"))", bridge)
+        mailbox = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
         self.assertIn("def requeue_event_ids", bridge)
         self.assertIn("def acknowledge", bridge)
-        self.assertIn("bridge.requeue_event_ids(failed_event_ids)", main)
-        self.assertIn("bridge.acknowledge()", main)
-        self.assertLess(
-            main.index("bridge.requeue_event_ids(failed_event_ids)"),
-            main.index("bridge.acknowledge()"),
-        )
-        self.assertIn("store.has_native_event(event_id)", main)
-        self.assertIn("store.claim_native_event(event_id)", main)
-
+        self.assertIn("AtomicMoveNotSupportedException", mailbox)
+        self.assertIn("eventId", mailbox)
+        self.assertIn("requestId", mailbox)
     def test_scan_coordinator_serializes_mutations_and_matches_cancelled_operations(self):
         source = SCAN.read_text(encoding="utf-8")
         for token in (
@@ -308,18 +227,13 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("if durable_time <= last_seen", progress_block)
         self.assertIn("durable_time", progress_block)
 
-    def test_thumbnail_callbacks_are_media_version_guarded(self):
-        source = MAIN_PY.read_text(encoding="utf-8")
-        start = source.index("elif event_type == 'thumbnail_ready':")
-        end = source.index("elif event_type == 'player_opened':", start)
-        block = source[start:end]
-        self.assertIn("thumbnail_key = (uri, size, modified_at, media_identity)", block)
-        self.assertIn("thumbnail_latest_key_by_uri", block)
-        self.assertIn("latest_key = thumbnail_latest_key_by_uri.get(uri)", block)
-        self.assertIn("thumbnail_key != latest_key", block)
-        self.assertIn("thumbnail_requests.discard(thumbnail_key)", block)
-        self.assertNotIn("for key in thumbnail_requests if key[0] == uri", block)
-
+    def test_native_thumbnail_callbacks_are_media_identity_guarded(self):
+        player = PLAYER_ACTIVITY.read_text(encoding="utf-8")
+        extractor = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
+        self.assertIn("mediaIdentity", player)
+        self.assertIn("media_identity", extractor)
+        self.assertIn("cacheKey", extractor)
+        self.assertIn("Thumbnail", extractor)
     def test_python_stale_screen_work_is_generation_guarded(self):
         home = HOME.read_text(encoding="utf-8")
         organize = ORGANIZE.read_text(encoding="utf-8")

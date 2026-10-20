@@ -1,9 +1,10 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "main.py"
+MAIN = native_main_source()
 BRIDGE = ROOT / "core/android_bridge.py"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
@@ -13,7 +14,7 @@ REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/N
 class NextTransitionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.main = MAIN.read_text(encoding="utf-8")
+        cls.main = native_main_source()
         cls.bridge = BRIDGE.read_text(encoding="utf-8")
         cls.main_activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
         cls.player = PLAYER.read_text(encoding="utf-8")
@@ -110,17 +111,12 @@ class NextTransitionTests(unittest.TestCase):
         self.assertIn("PREVIOUS_TRANSITION_COMMITTED", first)
 
     def test_duplicate_command_rejects_both_next_and_previous_before_transition(self):
-        transition = self.main[
-            self.main.index("duplicate_request = bool("):
-            self.main.index("elif event_request_id:", self.main.index("duplicate_request = bool("))
-        ]
-        self.assertIn('"NEXT_REQUEST_DUPLICATE" if is_next else "PREVIOUS_REQUEST_DUPLICATE"', transition)
-        self.assertEqual(
-            transition.count("continue"),
-            1,
-            "duplicate player commands must exit before transition acceptance",
-        )
-
+        start = self.player.index("private fun requestEpisode(")
+        end = self.player.index("private fun dispatchNativeEpisodeTransition(", start)
+        transition = self.player[start:end]
+        self.assertIn("PLAYER_COMMAND_DUPLICATE", transition)
+        self.assertIn('requestEvent("NEXT_REQUEST_DUPLICATE", "PREVIOUS_REQUEST_DUPLICATE")', transition)
+        self.assertIn("episodeChangePending", transition)
     def test_handoff_diagnostic_preserves_transition_direction(self):
         open_player = self.main_activity[
             self.main_activity.index("private fun openPlayer"):
@@ -130,44 +126,35 @@ class NextTransitionTests(unittest.TestCase):
         self.assertIn('payload.put("transitionDirection", transitionDirection.uppercase())', self.main_activity)
 
     def test_stale_handoff_cannot_mutate_player_session_state(self):
-        handoff = self.main[
-            self.main.index('elif diagnostic_event == "PLAYER_HANDOFF_DISPATCHED"'):
-            self.main.index('elif diagnostic_event == "PLAYER_ACTIVITY_RESULT"', self.main.index('elif diagnostic_event == "PLAYER_HANDOFF_DISPATCHED"'))
+        create = self.player[
+            self.player.index("override fun onCreate(savedInstanceState"):
+            self.player.index("val traceEpisodeId")
         ]
-        self.assertIn('current_session_id = player_active_session_id["value"]', handoff)
-        self.assertIn("not session_id", handoff)
-        self.assertIn('not player_session_active["value"]', handoff)
-        self.assertIn('current_session_id != session_id', handoff)
-        self.assertIn('continue', handoff)
-        self.assertLess(
-            handoff.index('current_session_id = player_active_session_id["value"]'),
-            handoff.index('player_active_request_id["value"] = event_request_id'),
-        )
-        self.assertIn('"PLAYER_NEXT_STALE_REJECTED"', handoff)
-        self.assertIn('"PLAYER_PREVIOUS_STALE_REJECTED"', handoff)
-
-    def test_python_next_has_pre_sqlite_post_sqlite_and_pre_bridge_guards(self):
-        transition = self.main[
-            self.main.index("elif event_type in {'player_next_request', 'player_previous_request'}:"):
-            self.main.index("elif event_type == 'player_error':")
+        self.assertIn("MainActivity.isCurrentPlayerHandoff(", create)
+        self.assertIn("if (originRequestId.isNotBlank() && !isEpisodeSuccessor && !recreatedPlayer)", create)
+        stale = create[create.index("if (originRequestId.isNotBlank() && !isEpisodeSuccessor && !recreatedPlayer)"):]
+        self.assertIn("PLAYER_NEXT_STALE_REJECTED", stale)
+        self.assertIn("PLAYER_PREVIOUS_STALE_REJECTED", stale)
+        self.assertIn("finish()", stale)
+        self.assertIn("suppressExitEvent = true", stale)
+    def test_native_next_has_pre_sqlite_post_sqlite_and_pre_handoff_guards(self):
+        transition = self.player[
+            self.player.index("private fun dispatchNativeEpisodeTransition("):
+            self.player.index("private fun seekToSavedPosition(", self.player.index("private fun dispatchNativeEpisodeTransition("))
         ]
-        self.assertIn("source_player_session_id", transition)
-        self.assertIn("await asyncio.to_thread(", transition)
-        self.assertIn("library.player_navigation", transition)
-        self.assertIn("current_row_id", transition)
-        self.assertIn("transition_guard=current_is_valid", transition)
-        self.assertIn("target_request_id = await start_native_player", transition)
-
-    def test_python_cancellation_invalidates_pending_next_without_canceling_itself(self):
-        start = self.main.index("def cancel_player_transition")
-        end = self.main.index("async def start_native_player", start)
-        block = self.main[start:end]
-        self.assertIn("current_task = asyncio.current_task()", block)
-        self.assertIn("task is not current_task", block)
-        self.assertIn("pending_next_transition", block)
+        self.assertIn("dependencies.sqliteLibraryRepository.playerNavigation(episodeId)", transition)
+        self.assertIn("isCurrentTransition(", transition)
+        self.assertIn("navigation.current.id != episodeId", transition)
+        self.assertIn("target.animeId == animeId", transition)
+        self.assertIn("startActivity(successorIntent)", transition)
+    def test_native_cancellation_invalidates_pending_next_without_stale_handoff(self):
+        start = self.player.index("private fun invalidateTransition(")
+        end = self.player.index("private fun publishNextTransitionDiagnostic(", start)
+        block = self.player[start:end]
         self.assertIn("NEXT_TRANSITION_INVALIDATED", block)
         self.assertIn("NEXT_REQUEST_CANCELLED", block)
-
+        self.assertIn("transitionGeneration++", block)
+        self.assertIn("episodeChangePending = false", block)
     def test_new_activity_authorizes_valid_episode_successor_without_forcing_player_exit(self):
         create = self.player[
             self.player.index("override fun onCreate(savedInstanceState"):
@@ -207,16 +194,11 @@ class NextTransitionTests(unittest.TestCase):
         self.assertIn("activePlayerActivityInstanceId", self.main_activity)
         self.assertIn("activePlayerTransitionGeneration = 0L", self.main_activity)
 
-    def test_python_player_callbacks_are_activity_instance_scoped(self):
-        for token in (
-            "player_active_activity_instance_id",
-            "stale_activity_instance",
-            "activityInstanceId",
-            "stale_activity_instance_lifecycle",
-            "current_activity_instance_id",
-        ):
-            self.assertIn(token, self.main)
-
+    def test_native_player_callbacks_are_activity_instance_scoped(self):
+        for token in ("activityInstanceId", "stale_activity_instance", "stale_activity_instance_lifecycle"):
+            self.assertIn(token, self.main + self.player)
+        self.assertIn("MainActivity.notePlayerActivityCreated", self.player)
+        self.assertIn("MainActivity.notePlayerActivityDestroyed", self.player)
     def test_recreation_restores_transition_state_before_origin_fencing(self):
         create = self.player[
             self.player.index("override fun onCreate(savedInstanceState"):
@@ -277,19 +259,18 @@ class NextTransitionTests(unittest.TestCase):
         self.assertIn('"cancel_player_transition"', self.native_request_state)
 
     def test_no_time_based_stale_rejection_for_active_slow_transition(self):
-        transition = self.main[
-            self.main.index("elif event_type in {'player_next_request', 'player_previous_request'}:"):
-            self.main.index("elif event_type == 'player_error':")
-        ]
-        self.assertIn("mailbox_latency_ms", transition)
-        self.assertNotIn("mailbox_latency_ms > 5000", transition)
-        self.assertNotIn("mailbox_latency_ms >= 5000", transition)
-
+        start = self.player.index("private val episodeChangeTimeout")
+        end = self.player.index("private var retryCount", start)
+        watchdog = self.player[start:end]
+        self.assertIn("NEXT_TRANSITION_STALLED", watchdog)
+        self.assertIn("PREVIOUS_TRANSITION_STALLED", watchdog)
+        self.assertIn("diagnostic", watchdog.lower())
+        self.assertNotIn("episodeChangePending = false", watchdog)
     def test_next_stale_logs_carry_origin_and_current_generation(self):
-        self.assertIn("PLAYER_NEXT_STALE_REJECTED", self.main + self.player + self.main_activity)
-        self.assertTrue("origin_generation" in self.main or "originGeneration" in self.player or "originGeneration" in self.main_activity)
-        self.assertTrue("current_generation" in self.main or "currentGeneration" in self.player or "currentGeneration" in self.main_activity)
-
+        combined = self.main + self.player + self.main_activity
+        self.assertIn("PLAYER_NEXT_STALE_REJECTED", combined)
+        self.assertTrue("originGeneration" in combined or "originTransitionGeneration" in combined)
+        self.assertTrue("currentGeneration" in combined or "transitionGeneration" in combined)
     def test_tests_are_sleep_free(self):
         source = Path(__file__).read_text(encoding="utf-8")
         executable_source = "\n".join(

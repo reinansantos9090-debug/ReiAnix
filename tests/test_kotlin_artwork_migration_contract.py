@@ -8,7 +8,7 @@ DEPENDENCIES = KOTLIN / "ReiAnixAppDependencies.kt"
 EXTRACTOR = KOTLIN / "storage/VideoThumbnailExtractor.kt"
 MAIN_ACTIVITY = KOTLIN / "MainActivity.kt"
 DISPATCHER = KOTLIN / "bridge/NativeCommandDispatcher.kt"
-MAIN = ROOT / "main.py"
+MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 
 
 class KotlinArtworkMigrationContractTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
     def test_native_anilist_flow_does_not_delegate_artwork_to_python(self):
         dependencies = DEPENDENCIES.read_text(encoding="utf-8")
         artwork = ARTWORK.read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
+        main = MAIN_ACTIVITY.read_text(encoding="utf-8")
         start = main.index("if event_type == 'anilist_metadata_committed':")
         end = main.index("if event_type == 'compose_settings_set':", start)
         handler = main[start:end]
@@ -53,7 +53,7 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         extractor = EXTRACTOR.read_text(encoding="utf-8")
         activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
         dispatcher = DISPATCHER.read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
+        main = MAIN_ACTIVITY.read_text(encoding="utf-8")
         self.assertIn("registerGeneratedThumbnail(", ARTWORK.read_text(encoding="utf-8"))
         self.assertIn("registerGeneratedArtwork", extractor)
         self.assertIn("canonicalArtworkRegistered", extractor)
