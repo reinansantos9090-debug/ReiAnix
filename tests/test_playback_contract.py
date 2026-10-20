@@ -352,5 +352,47 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("if updated:", progress_block)
         self.assertIn('if payload.get("nativeProgressPersisted") is not True:', progress_block)
 
+    def test_native_compose_progress_and_exit_do_not_enqueue_python_mailbox_events(self):
+        save_start = self.player.index("    private fun saveProgress(")
+        save_end = self.player.index("    override fun onStart()", save_start)
+        save_block = self.player[save_start:save_end]
+
+        exit_start = self.player.index("    private fun reportPlayerExit(")
+        exit_end = self.player.index("    private fun finishPlayer(", exit_start)
+        exit_block = self.player[exit_start:exit_end]
+
+        native_guard = 'if (!intent.getBooleanExtra("nativeCompose", false))'
+        self.assertIn(native_guard, save_block)
+        self.assertIn(native_guard, exit_block)
+        self.assertIn("consumptionService.saveProgress(", save_block)
+        self.assertIn("ReiAnixConsumptionService.publishCommittedProgress(", save_block)
+        self.assertIn("NATIVE_COMPOSE_PROGRESS_NOT_PERSISTED", save_block)
+        self.assertIn("NATIVE_COMPOSE_EXIT_PROGRESS_NOT_PERSISTED", exit_block)
+
+        # Mailbox delivery remains available for legacy sessions, but it is nested
+        # under the negative nativeCompose branch, not invoked for native sessions.
+        save_mailbox_guard = save_block[save_block.index(native_guard):save_block.index("else if (!persistedNatively)")]
+        exit_mailbox_guard = exit_block[exit_block.index(native_guard):exit_block.index("else if (!persistedNatively)")]
+        self.assertIn("NativeMailbox.write(this@NativePlayerActivity, event)", save_mailbox_guard)
+        self.assertIn("NativeMailbox.writeBestEffort(this@NativePlayerActivity, event)", save_mailbox_guard)
+        self.assertIn("NativeMailbox.write(this@NativePlayerActivity, exitEvent)", exit_mailbox_guard)
+
+    def test_compose_progress_refresh_is_delivered_from_committed_native_state(self):
+        view_model = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+        ).read_text(encoding="utf-8")
+        consumer = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt"
+        ).read_text(encoding="utf-8")
+        start = view_model.index("ReiAnixConsumptionService.playbackChanges")
+        end = view_model.index("NativeScanController.progress", start)
+        playback_collector = view_model[start:end]
+
+        self.assertIn("mutablePlaybackChanges.tryEmit(", consumer)
+        self.assertIn("ReiAnixConsumptionService.playbackChanges", playback_collector)
+        self.assertIn(".conflate()", playback_collector)
+        self.assertIn("refreshNativeCatalog()", playback_collector)
+        self.assertNotIn("NativeMailbox", playback_collector)
+
 if __name__ == "__main__":
     unittest.main()
