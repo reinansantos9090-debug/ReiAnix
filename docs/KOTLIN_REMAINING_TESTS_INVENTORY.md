@@ -259,14 +259,14 @@ A tabela abaixo lista todas as suites tests/test_*.py da árvore de referência.
 - Nenhuma fixture utiliza banco do usuário: novo teste usa RuntimeEnvironment.getApplication().filesDir, bytes sintéticos e cleanup já existente no teste Robolectric.
 - Nenhuma suíte Python foi removida, ignorada ou enfraquecida.
 
-## 7. Pendências para Prompt 18/18
+## 7. Pendências após a auditoria final e durante a continuação da migração
 
 1. Comparar métodos/call sites individualmente para os 164 módulos, não somente pelo nome.
-2. Completar os cenários de ReiAnixAniListIntegrationService (ambiguidade, falha remota, associação manual, refresh e rede/persistência), sem marcar o teste novo como aprovado antes de execução autorizada; adicionar cobertura JVM controlada para download/cache do ReiAnixArtworkService e ciclo completo backup/restore apenas quando exercitarem implementações reais e fixtures seguras.
+2. Completar os cenários restantes de ReiAnixAniListIntegrationService (falha remota, associação manual, refresh e rede/persistência). A branch de continuação acrescenta casos de match único e ambiguidade, ainda não executados. Depois, adicionar cobertura JVM controlada para download/cache do ReiAnixArtworkService e backup/restore/rollback com implementações reais e fixtures seguras.
 3. Provar o caminho canônico do SQLite v29 e rastrear todos os writers/consumers Python remanescentes.
 4. Preservar tooling de build/release que workflows chamem; investigar call sites antes de remover qualquer script/dependência.
-5. Consultar build_apk.yml e release_certification.yml no SHA final; status do SHA-base não valida este diff.
+5. Registrar resultados somente para o SHA exato: Prompt 18 (#208) tem build APK e release certification aprovados no SHA c01efdddec0f207106f5bf1fc3e0799eab115a26; o PR #209 tem seu próprio build automático. O workflow APK compila produção e executa pytest, mas não executa :app:testDebugUnitTest.
 6. Manter JVM/instrumentation manual até autorização explícita; nenhum teste ou build local foi executado nesta tarefa.
-7. Não remover Python/Flet/Flutter neste prompt. A retirada final pertence ao Prompt 18 e depende de cutover/consumer-zero, build nativo e equivalência comprovada.
+7. Não remover Python/Flet/Flutter enquanto houver consumers, bootstrap Flutter ou build flet build apk. A remoção depende de cutover/consumer-zero, build nativo independente e equivalência comprovada.
 
-Nota de sequência: o plano histórico KOTLIN_MIGRATION_18_PROMPT_PLAN.md atribui outro objetivo ao Prompt 17; este inventário documenta o Prompt 17 enviado pelo usuário nesta conversa e não inicia o Prompt 18.
+Nota de sequência: o plano histórico KOTLIN_MIGRATION_18_PROMPT_PLAN.md atribui outro objetivo ao Prompt 17; este inventário preserva o registro dessa etapa. A auditoria final do Prompt 18 está no PR #208. Esta continuação acrescenta dois testes ao arquivo SQLite já existente no PR #209; eles permanecem adicionados, não executados, até autorização explícita para rodar a suíte Kotlin/JVM.
