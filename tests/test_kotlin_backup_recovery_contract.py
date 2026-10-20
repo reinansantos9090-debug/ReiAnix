@@ -136,3 +136,17 @@ def test_android_startup_recovery_does_not_invoke_python_restore_writer():
     assert "await recovery_bridge.hide_library()" not in main
     # The desktop-only fallback remains available; this prompt does not remove Flet globally.
     assert "recovery_service.restore_backup" in main[end:]
+
+
+def test_backup_size_limits_allow_database_up_to_archive_cap_without_weakening_artwork_caps():
+    service = read(BACKUP)
+
+    assert "const val MAX_DATABASE_BYTES = MAX_ARCHIVE_BYTES" in service
+    assert "entry.size <= maxBytesForMember(name)" in service
+    assert "digestStream(it, maxBytesForMember(name))" in service
+    assert "copyBounded(input, output, MAX_DATABASE_BYTES)" in service
+    assert "declaredTotal <= MAX_ARCHIVE_BYTES" in service
+    # Portable manual artwork remains individually bounded; a larger database
+    # must not widen the cap for every ZIP member.
+    assert "candidate.length() <= MAX_MEMBER_BYTES" in service
+    assert "if (name == DATABASE_NAME) MAX_DATABASE_BYTES else MAX_MEMBER_BYTES" in service
