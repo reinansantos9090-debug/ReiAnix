@@ -11,6 +11,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
+import com.reiflix.reiflix_local.data.library.ReiAnixGachaService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixCatalogFilters
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -255,6 +257,8 @@ class ReiAnixLibraryViewModel(
     /** Native projection-only discovery rules use the same canonical library repository. */
     private val nativeLibraryDiscovery = dependencies?.libraryDiscoveryService
         ?: ReiAnixLibraryDiscoveryService(nativeLibraryRepository)
+    private val nativeGachaService = appDependencies?.gachaService
+        ?: ReiAnixGachaService(nativeLibraryRepository)
 
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
@@ -390,6 +394,14 @@ class ReiAnixLibraryViewModel(
     /** Native replacement for the local duration anomaly report; does not mutate playback state. */
     suspend fun queryNativeDurationAnomalies(animeId: Long? = null) =
         nativeLibraryDiscovery.durationAnomalies(animeId)
+
+    /** Native read-only counterpart to LibraryService.gacha_pick. */
+    suspend fun drawNativeGacha(
+        filters: ReiAnixCatalogFilters = ReiAnixCatalogFilters(),
+        excludeAnimeId: Long? = null,
+        includeEpisode: Boolean = false,
+    ): ReiAnixGachaService.Result? =
+        nativeGachaService.draw(filters, excludeAnimeId, includeEpisode)
 
     /** Native replacement for the remaining-time marathon projection. */
     suspend fun queryNativeMarathonPlan(animeId: Long, currentPath: String? = null) =
