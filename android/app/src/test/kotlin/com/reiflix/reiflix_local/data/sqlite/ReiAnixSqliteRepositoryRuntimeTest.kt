@@ -18,6 +18,12 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
+import com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult
+import com.reiflix.reiflix_local.data.anilist.AniListHttpResponse
+import com.reiflix.reiflix_local.data.anilist.AniListResult
+import com.reiflix.reiflix_local.data.anilist.AniListTransport
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import org.robolectric.annotation.Config
@@ -1863,6 +1869,127 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             "Integrity inspection must preserve a corrupt pre-existing file byte-for-byte.",
             bytesBeforeInspection.contentEquals(databaseFile.readBytes()),
         )
+    }
+
+
+    @Test
+    fun nativeAniListAutoMatchPersistsOnlyRemoteAssociationAndPreservesLocallyOwnedFields() = runBlocking {
+        createCanonicalFixture()
+        val testAnimeId = 90_000_018L
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO anime (
+                    id, lookup_title, title, added_at, metadata_manual_fields,
+                    favorite, user_tags, is_pinned, personal_note, cover_url,
+                    english, metadata_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    testAnimeId,
+                    "unique-native-integration",
+                    "Unique Native Integration Title",
+                    1000.0,
+                    """["title","cover_url"]""",
+                    1,
+                    """["local-tag"]""",
+                    1,
+                    "keep this note",
+                    "https://example.invalid/old-cover.jpg",
+                    "Old English Title",
+                    "anilist",
+                ),
+            )
+        }
+
+        val remoteResponse = """
+            {
+              "data": {"Page": {"media": [{
+                "id": 16498,
+                "title": {
+                  "romaji": "Unique Native Integration Title",
+                  "english": "Remote English Title",
+                  "native": "ネイティブ連携テスト"
+                },
+                "synonyms": ["Unique Native Integration Title"],
+                "description": "Remote description",
+                "format": "TV",
+                "episodes": 13,
+                "status": "FINISHED",
+                "averageScore": 85,
+                "duration": 24,
+                "season": "SPRING",
+                "seasonYear": 2020,
+                "genres": ["Action", "Drama"],
+                "coverImage": {
+                  "large": "https://img.example/new-cover.jpg",
+                  "extraLarge": "https://img.example/new-cover-large.jpg"
+                },
+                "bannerImage": "https://img.example/new-banner.jpg",
+                "studios": {"nodes": [{"name": "Native Test Studio"}]}
+              }]}}
+            }
+        """.trimIndent()
+        val transport = object : AniListTransport {
+            var calls = 0
+            var lastEndpoint: String? = null
+            var lastBody: JSONObject? = null
+
+            override suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse {
+                calls += 1
+                lastEndpoint = endpoint
+                lastBody = JSONObject(body.toString())
+                return AniListHttpResponse(statusCode = 200, body = remoteResponse)
+            }
+        }
+        val database = ReiAnixSqliteDatabase(context)
+        val repository = ReiAnixSqliteLibraryRepository(database)
+        val publications = java.util.concurrent.CopyOnWriteArrayList<Pair<Long, Boolean>>()
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(transport = transport, minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = ReiAnixSqliteSettingsRepository(database),
+            metadataCommitPublisher = { animeId, requestArtwork ->
+                publications += animeId to requestArtwork
+                true
+            },
+        )
+
+        val result = service.autoMatch(testAnimeId)
+        assertTrue("The exact title/alias candidate should be an auto-match result.", result is AniListResult.Success)
+        val outcome = (result as AniListResult.Success).value
+        assertTrue("The integration service must confirm the exact match.", outcome is AniListAutoMatchResult.Matched)
+        val match = outcome as AniListAutoMatchResult.Matched
+        assertEquals(16498, match.remote.id)
+
+        val persisted = repository.getAnime(testAnimeId)!!
+        assertEquals(16498L, persisted.anilistId)
+        assertEquals("matched", persisted.anilistMatchStatus)
+        assertEquals(false, persisted.anilistMatchManual)
+        assertTrue("The manually owned title must remain unchanged.", persisted.title == "Unique Native Integration Title")
+        assertEquals("Remote English Title", persisted.english)
+        assertEquals("https://example.invalid/old-cover.jpg", persisted.coverUrl)
+        assertEquals("Remote description", persisted.description)
+        assertEquals("""["Action","Drama"]""", persisted.genresJson)
+        assertEquals(true, persisted.favorite)
+        assertEquals(true, persisted.isPinned)
+        assertEquals("keep this note", persisted.personalNote)
+        assertEquals("""["local-tag"]""", persisted.userTagsJson)
+
+        assertEquals(1, transport.calls)
+        assertEquals(ReiAnixAniListClient.ENDPOINT, transport.lastEndpoint)
+        assertEquals("Unique Native Integration Title", transport.lastBody!!.getJSONObject("variables").getString("search"))
+        assertEquals(listOf(testAnimeId to true), publications)
+        assertEquals(11.0, repository.getEpisode(7L)!!.progress!!, 0.0)
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                "SELECT COUNT(*) FROM anime_genres WHERE anime_id = ?",
+                arrayOf(testAnimeId.toString()),
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertTrue("Remote genres should be synchronized to canonical relations.", cursor.getInt(0) > 0)
+            }
+        }
     }
 
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
