@@ -34,7 +34,12 @@ data class NativePlayerRequest(
     val positionParameterInvalid: Boolean = false,
     val canNext: Boolean,
     val canPrevious: Boolean,
+    /** Whether this handoff should start the current media immediately. */
     val autoplay: Boolean,
+    /** Whether the player should advance automatically after the current episode ends. */
+    val autoplayNext: Boolean = true,
+    /** Whether saved playback progress may be restored when no position was explicitly supplied. */
+    val resumeEnabled: Boolean = true,
     val defaultSpeed: Float,
     val aspectRatio: String,
     val zoomEnabled: Boolean,
@@ -80,6 +85,8 @@ data class NativePlayerRequest(
             .putExtra("canNext", canNext)
             .putExtra("canPrevious", canPrevious)
             .putExtra("autoplay", autoplay)
+            .putExtra("autoplay_next", autoplayNext)
+            .putExtra("setting_player_resume", resumeEnabled)
             .putExtra("setting_player_default_speed", defaultSpeed)
             .putExtra("setting_player_aspect_ratio", aspectRatio)
             .putExtra("setting_player_zoom_enabled", zoomEnabled)
@@ -136,7 +143,10 @@ data class NativePlayerRequest(
                 ?: 1f
 
         return copy(
-            autoplay = boolean("player.autoplay_next"),
+            // Keep current-media startup behavior from the handoff. The persisted
+            // autoplay-next preference controls only what happens at episode completion.
+            autoplayNext = boolean("player.autoplay_next"),
+            resumeEnabled = boolean("player.resume"),
             defaultSpeed = decimal("player.default_speed").coerceIn(0.5f, 2f),
             aspectRatio = normalized("player.aspect_ratio"),
             zoomEnabled = boolean("player.zoom_enabled"),
@@ -198,6 +208,10 @@ data class NativePlayerRequest(
                 canNext = get("can_next")?.toBooleanStrictOrNull() ?: false,
                 canPrevious = get("can_previous")?.toBooleanStrictOrNull() ?: false,
                 autoplay = get("autoplay")?.toBooleanStrictOrNull() ?: true,
+                autoplayNext = get("autoplay_next")?.toBooleanStrictOrNull()
+                    ?: get("autoplay")?.toBooleanStrictOrNull()
+                    ?: true,
+                resumeEnabled = get("setting_player_resume")?.toBooleanStrictOrNull() ?: true,
                 defaultSpeed = get("setting_player_default_speed")?.toFloatOrNull()?.takeIf { it > 0f } ?: 1f,
                 aspectRatio = get("setting_player_aspect_ratio") ?: "fit",
                 zoomEnabled = get("setting_player_zoom_enabled")?.toBooleanStrictOrNull() ?: false,
