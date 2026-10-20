@@ -266,10 +266,7 @@ object MediaFilenameParser {
             episode = null
         }
 
-        val tail = marker?.let { stem.substring(it.range.last + 1) }.orEmpty()
-            .replace(Regex("^[ ._\\-–—]+"), "")
-            .replace(Regex("\\[[^]]*]"), " ")
-            .let(MediaTitleNormalizer::cleanMediaTitle)
+        val tail = MediaTitleNormalizer.episodeTitleAfter(stem, marker).orEmpty()
         val technicalTokens = MediaTitleNormalizer.extractTechnicalTokens(stem)
         val fieldConfidence = linkedMapOf<ParsedMediaField, MediaIdentificationConfidence>()
         if (fileName.isNotEmpty()) fieldConfidence[ParsedMediaField.ORIGINAL_FILE_NAME] = MediaIdentificationConfidence.HIGH

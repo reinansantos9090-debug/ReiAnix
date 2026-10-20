@@ -586,3 +586,14 @@ A migração só pode ser chamada 100% Kotlin quando:
 ## 10. Próxima etapa recomendada
 
 Começar por MIG-02 e prosseguir para MIG-03/MIG-04 antes de aumentar a quantidade de fluxos Kotlin que escrevem no banco. Parser, identidade, contratos de metadata e transações são dependências comuns de scanner, AniList, artwork, player e UI. Um erro nessa camada tem maior raio de impacto e pode apagar informações locais. Esta recomendação define a ordem técnica, mas não inicia o próximo prompt.
+
+### MIG-02 — paridade do título após o marcador de episódio (20/10/2026)
+
+Base da correção: `main` após o corte de entrada nativa, commit `d34ae5cd332e0974f836c53b9b1f0563332427bd`. O parser Python em `core/library_parser.py` já tinha regra conservadora para `_episode_title_after`: remove anotações entre colchetes e tokens técnicos, mas não remove palavras comuns no título do episódio. O parser Kotlin aplicava `MediaTitleNormalizer.cleanMediaTitle` ao sufixo inteiro, que também remove palavras como `complete` e `batch`; isso pode transformar um display title válido no título da série.
+
+**Implementação desta unidade:** `MediaTitleNormalizer.episodeTitleAfter` agora replica a limpeza específica do sufixo e `MediaFilenameParser` a utiliza. Os testes Kotlin/JVM cobrem tanto a preservação de `Complete Batch` após remover `1080p WEB-DL` quanto o fallback quando o sufixo contém apenas uma versão (`v2`). Um contrato Python adicional verifica a expectativa da implementação de referência e o encaminhamento para o helper nativo.
+
+**Limite de validação:** a suíte Python da CI pode verificar a implementação de referência e o contrato de fonte. O teste Kotlin/JVM foi adicionado, mas não é declarado executado nesta etapa: o workflow JVM é manual e permanece reservado conforme `AGENTS.md`. A CI de APK deve compilar o código Kotlin de produção e executar os contratos Python; a equivalência em runtime do teste JVM permanece não validada até a fase de testes autorizada.
+
+Esta correção fecha apenas uma divergência identificada de apresentação de metadados. Não declara concluído MIG-02 nem a remoção de `main.py`; outros casos de parsing/identidade e os consumidores Python restantes precisam de suas próprias evidências antes do cutover.
+

@@ -88,6 +88,24 @@ class MediaFilenameParserTest {
     }
 
     @Test
+    fun episodeDisplayTitlePreservesOrdinaryWordsWhileRemovingTechnicalTokens() {
+        val parsed = MediaFilenameParser.parseVideoPath(
+            "Show Episode 03 - Complete Batch 1080p WEB-DL.mkv"
+        )
+
+        // core.library_parser._episode_title_after removes release tokens, not
+        // words such as "Complete" or "Batch" that happen to also be title text.
+        assertEquals("Complete Batch", parsed.displayTitle)
+    }
+
+    @Test
+    fun episodeDisplayTitleFallsBackWhenSuffixHasOnlyVersionNumber() {
+        val parsed = MediaFilenameParser.parseVideoPath("Show Episode 03 - v2.mkv")
+
+        assertEquals("Show", parsed.displayTitle)
+    }
+
+    @Test
     fun titleAndTechnicalNormalizationPreserveUnicodeText() {
         val accented = MediaFilenameParser.parseVideoPath("Café des Étoiles Episode 02.mkv")
         val japanese = MediaFilenameParser.parseVideoPath("/library/進撃の巨人/Season 01/teaser_日本.mkv", "/library")
