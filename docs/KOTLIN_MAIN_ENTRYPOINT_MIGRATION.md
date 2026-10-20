@@ -31,3 +31,18 @@ O arquivo `main.py` continua sendo necessário às jornadas desktop/legadas e ai
 - Confirmação dos estados finais dos workflows associados ao SHA exato do commit.
 
 Mesmo com CI verde, o status global desta etapa é **PARCIAL** enquanto a migração das responsabilidades de domínio Python restantes e a validação física de cold start não estiverem completas.
+
+
+## Prompt 1.2 — Build audit
+
+The release workflow on `e057a10b160366d3c02ccb86b728ab21bcfabbb0` passed the
+existing source regression suite (1,971 tests and 58 subtests) and source audit,
+but `:app:assembleRelease` stopped at `:app:mergeReleaseNativeLibs` because
+`android.useAndroidX` was not enabled. The fix is an Android-project
+`gradle.properties` file with `android.useAndroidX=true`, and the source audit
+now enforces this property. The APK native-host verifier also had adjacent
+byte-string literals concatenated accidentally for ComposeHost and SettingsViewModel;
+that requirement is now represented by two separate descriptors.
+
+These changes have not yet been certified until the new SHA's build workflow
+finishes and the produced APK passes all post-build checks.

@@ -156,6 +156,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("platforms;android-36", workflow)
         self.assertIn("build-tools;36.0.0", workflow)
         self.assertIn('providers.gradleProperty("reianixBuildNumber")', gradle)
+        gradle_properties = (ROOT / "android/gradle.properties").read_text(encoding="utf-8")
+        self.assertIn("android.useAndroidX=true", gradle_properties)
         self.assertIn('android:name=".MainActivity"', manifest)
         self.assertIn("android.intent.action.MAIN", manifest)
         self.assertIn("class MainActivity : ComponentActivity()", activity)

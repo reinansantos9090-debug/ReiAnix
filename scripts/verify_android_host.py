@@ -19,7 +19,7 @@ CONTRACT_SQLITE_USER_VERSION = 0
 REQUIRED_CLASSES = (
     b"Lcom/reiflix/reiflix_local/MainActivity;",
     b"Lcom/reiflix/reiflix_local/ReiAnixApplication;",
-    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;"
+    b"Lcom/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost;",
     b"Lcom/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeMailbox;",
     b"Lcom/reiflix/reiflix_local/bridge/NativeRequestState;",

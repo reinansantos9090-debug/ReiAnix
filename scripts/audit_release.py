@@ -181,6 +181,10 @@ def audit_architecture(root: Path, failures: list[str]) -> None:
         if not (root / relative).is_file():
             failures.append(f"critical file missing: {relative}")
 
+    android_gradle_properties = read(root, "android/gradle.properties")
+    if "android.useAndroidX=true" not in android_gradle_properties.replace(" ", ""):
+        failures.append("android/gradle.properties must enable android.useAndroidX=true")
+
     manifest = read(root, "android/app/src/main/AndroidManifest.xml")
     main_activity = read(root, "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
     application = read(root, "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt")
