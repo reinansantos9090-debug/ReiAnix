@@ -69,7 +69,7 @@ def main() -> int:
                     f"found {contract.get('sqlite_user_version')!r}"
                 )
             required_contract_keys = {
-                "tables", "columns", "table_contract", "indexes", "foreign_keys", "triggers",
+                "tables", "columns", "table_sql", "table_contract", "indexes", "foreign_keys", "triggers",
             }
             missing_contract_keys = required_contract_keys - contract.keys()
             if missing_contract_keys:

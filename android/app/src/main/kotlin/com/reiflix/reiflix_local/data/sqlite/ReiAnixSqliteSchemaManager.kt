@@ -47,6 +47,13 @@ internal object ReiAnixSqliteSchemaManager {
             database.beginTransactionNonExclusive()
             val snapshot: ReiAnixSqliteSchemaSnapshot
             try {
+                val hasUserTables = database.rawQuery(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT 1",
+                    null,
+                ).use { it.moveToFirst() }
+                check(!existed || hasUserTables) {
+                    "An existing canonical SQLite file contains no user tables; automatic initialization is forbidden. Recovery is required."
+                }
                 migrate(database, contract)
                 snapshot = inspectSchema(database)
                 check(snapshot.supportsCurrentContract) {
