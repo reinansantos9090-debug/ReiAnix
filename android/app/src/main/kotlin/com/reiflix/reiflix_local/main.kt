@@ -1,6 +1,6 @@
 package com.reiflix.reiflix_local
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
@@ -29,7 +29,7 @@ internal object MainEntryPoint {
         val normalOperationsReady: Boolean,
     )
 
-    fun onActivityCreated(activity: Activity) {
+    fun onActivityCreated(activity: ComponentActivity) {
         // Resolve only the Application-owned graph; never instantiate a second graph.
         val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
         PerformanceDiagnostics.attach(activity)
