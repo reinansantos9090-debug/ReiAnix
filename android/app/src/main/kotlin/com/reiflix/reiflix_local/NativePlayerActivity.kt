@@ -6,6 +6,7 @@ import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import com.reiflix.reiflix_local.player.DeviceInteractionProfile
 import com.reiflix.reiflix_local.player.LocalSubtitleResolver
+import com.reiflix.reiflix_local.player.NativePlayerRequest
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import com.reiflix.reiflix_local.player.PlayerMediaPolicy
 import com.reiflix.reiflix_local.player.PlayerStartupMetrics
@@ -27,6 +28,7 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.util.Rational
+import android.util.Log
 import android.graphics.Typeface
 import android.media.AudioManager
 import android.net.Uri
@@ -75,6 +77,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import androidx.core.view.ViewCompat
@@ -1148,6 +1151,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("player.aspect_ratio", if (aspectModeLabel == "Preencher") "fill" else "fit")
             .put("player.zoom_enabled", zoomEnabled)
             .put("player.immersive", immersiveSetting)
+            .put("player.rotation", intent.getStringExtra("setting_player_rotation") ?: "auto")
             .put("player.lock_mode", locked)
             .put("player.auto_hide_seconds", (autoHideTimeoutMs / 1000L).coerceAtLeast(1L))
             .put("player.double_tap_seek_seconds", (doubleTapSeekMs / 1000L).coerceAtLeast(1L))
@@ -4574,6 +4578,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         lastPlayerCommandSequence = commandSequence
 
+        // The Compose/native library has no embedded Python mailbox consumer.
+        // Resolve its adjacent episode directly through the canonical SQLite
+        // repository; keep the mailbox bridge untouched for the desktop/Flet path.
+        if (intent.getBooleanExtra("nativeCompose", false)) {
+            dispatchNativeEpisodeTransition(
+                isNextRequest = isNextRequest,
+                generation = generation,
+                sourceRequestId = requestId,
+                sourceUri = uri.toString(),
+                sourcePlayerSessionId = playerSessionId,
+                startedAtMs = startedAtMs,
+                monotonicNs = monotonicNs,
+                playerSettings = payload.getJSONObject("playerSettings"),
+            )
+            return
+        }
+
         NativeMailbox.writeBestEffort(
             this,
             JSONObject()
@@ -4659,6 +4680,225 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             episodeChangePending = false
             invalidateTransition("executor_submit_failed")
+        }
+    }
+
+    /**
+     * Native Compose Next/Previous implementation. All catalog reads use the existing
+     * canonical SQLite repository; the Activity remains the same player session and
+     * its onNewIntent() transition-origin gate still validates the successor request.
+     *
+     * The legacy Flet/Desktop path deliberately continues through NativeMailbox below.
+     */
+    private fun dispatchNativeEpisodeTransition(
+        isNextRequest: Boolean,
+        generation: Long,
+        sourceRequestId: String,
+        sourceUri: String,
+        sourcePlayerSessionId: String,
+        startedAtMs: Long,
+        monotonicNs: Long,
+        playerSettings: JSONObject,
+    ) {
+        val direction = if (isNextRequest) "NEXT" else "PREVIOUS"
+        lifecycleScope.launch {
+            try {
+                if (!isCurrentTransition(
+                        generation = generation,
+                        expectedRequestId = sourceRequestId,
+                        expectedUri = sourceUri,
+                        expectedSessionId = sourcePlayerSessionId,
+                    )
+                ) return@launch
+
+                val episodeId = currentEpisodeId().toLongOrNull()
+                    ?: throw IllegalStateException("O episódio atual não possui um ID local válido.")
+                val animeId = intent.getStringExtra("animeId")?.trim()?.toLongOrNull()
+                    ?: throw IllegalStateException("O anime atual não possui um ID local válido.")
+                val dependencies = ReiAnixAppDependencies.from(applicationContext)
+                val navigation = withContext(Dispatchers.IO) {
+                    dependencies.sqliteLibraryRepository.playerNavigation(episodeId)
+                } ?: throw NoSuchElementException("O episódio atual não existe no catálogo local.")
+
+                if (navigation.current.id != episodeId || navigation.current.animeId != animeId) {
+                    throw IllegalStateException("O catálogo local mudou durante a transição do player.")
+                }
+                if (!isCurrentTransition(
+                        generation = generation,
+                        expectedRequestId = sourceRequestId,
+                        expectedUri = sourceUri,
+                        expectedSessionId = sourcePlayerSessionId,
+                    )
+                ) return@launch
+
+                val target = if (isNextRequest) navigation.next else navigation.previous
+                if (target == null) {
+                    invalidateTransition("no_adjacent_episode")
+                    showFeedback("Não existe outro episódio local disponível nesta direção.", 2_200L)
+                    return@launch
+                }
+                require(target.id > 0L && target.animeId == animeId) {
+                    "O episódio vizinho não pertence à série atual."
+                }
+                require(target.missing != true && target.path.isNotBlank()) {
+                    "O episódio vizinho não possui uma mídia local disponível."
+                }
+
+                val persistedPreferences = withContext(Dispatchers.IO) {
+                    dependencies.sqliteSettingsRepository.allPreferences()
+                }
+                fun preferenceValue(key: String): String =
+                    persistedPreferences[key] ?: ReiAnixSettingsContract.defaultFor(key).orEmpty()
+
+                val resumeEnabled = preferenceValue("player.resume")
+                    .toBooleanStrictOrNull() ?: true
+                val targetProgress = target.progress
+                    ?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+                val targetPositionMs: Long? = when {
+                    !resumeEnabled || target.watched == true -> 0L
+                    targetProgress > 0.0 ->
+                        (targetProgress * 1_000.0).toLong().coerceAtLeast(0L)
+                    else -> null
+                }
+
+                val rawTarget = target.path.trim()
+                val parsedTarget = Uri.parse(rawTarget)
+                val targetUri = when (parsedTarget.scheme?.lowercase(Locale.ROOT)) {
+                    "content", "file" -> parsedTarget
+                    null -> {
+                        require(rawTarget.startsWith("/")) {
+                            "A referência do episódio vizinho não é uma URI local autorizada."
+                        }
+                        Uri.fromFile(File(rawTarget))
+                    }
+                    else -> throw IllegalArgumentException(
+                        "O ReiAnix aceita somente mídias locais autorizadas.",
+                    )
+                }
+                val targetTitle = target.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: target.fileName.trim().takeIf { it.isNotEmpty() }
+                    ?: "Episódio local"
+                val destinationCanNext = if (isNextRequest) {
+                    navigation.nextCanNext
+                } else {
+                    navigation.previousCanNext
+                }
+                val destinationCanPrevious = if (isNextRequest) {
+                    navigation.nextCanPrevious
+                } else {
+                    navigation.previousCanPrevious
+                }
+                val createdAtMs = System.currentTimeMillis()
+                val successorRequestId = UUID.randomUUID().toString()
+                val successorUri = Uri.parse("reiflix://native").buildUpon()
+                    .appendQueryParameter("action", "play")
+                    .appendQueryParameter("request_id", successorRequestId)
+                    .appendQueryParameter("protocol_version", "2")
+                    .appendQueryParameter("created_at", createdAtMs.toString())
+                    .appendQueryParameter("uri", targetUri.toString())
+                    .appendQueryParameter("episode_id", target.id.toString())
+                    .appendQueryParameter("anime_id", target.animeId.toString())
+                    .appendQueryParameter("player_session_id", sourcePlayerSessionId)
+                    .appendQueryParameter("title", targetTitle)
+                    .appendQueryParameter("can_next", destinationCanNext.toString())
+                    .appendQueryParameter("can_previous", destinationCanPrevious.toString())
+                    .appendQueryParameter(
+                        "autoplay",
+                        playerSettings.opt("player.autoplay_next")?.toString()?.takeIf { it.isNotBlank() }
+                            ?: "true",
+                    )
+                    .appendQueryParameter("native_compose", "true")
+                    .appendQueryParameter("origin_request_id", sourceRequestId)
+                    .appendQueryParameter("origin_created_at", startedAtMs.toString())
+                    .appendQueryParameter("origin_transition_generation", generation.toString())
+                    .appendQueryParameter("origin_player_session_id", sourcePlayerSessionId)
+                    .appendQueryParameter("origin_monotonic_ns", monotonicNs.toString())
+                    .appendQueryParameter("transition_direction", direction)
+                if (targetPositionMs != null) {
+                    successorUri.appendQueryParameter("position_ms", targetPositionMs.toString())
+                }
+
+                val settingsParameters = listOf(
+                    "player.default_speed" to "setting_player_default_speed",
+                    "player.aspect_ratio" to "setting_player_aspect_ratio",
+                    "player.zoom_enabled" to "setting_player_zoom_enabled",
+                    "player.immersive" to "setting_player_immersive",
+                    "player.rotation" to "setting_player_rotation",
+                    "player.lock_mode" to "setting_player_lock_mode",
+                    "player.auto_hide_seconds" to "setting_player_auto_hide_seconds",
+                    "player.double_tap_seek_seconds" to "setting_player_double_tap_seek_seconds",
+                    "player.long_press_speed" to "setting_player_long_press_speed",
+                    "player.max_video_resolution" to "setting_player_max_video_resolution",
+                    "player.max_video_frame_rate" to "setting_player_max_video_frame_rate",
+                    "player.max_audio_channels" to "setting_player_max_audio_channels",
+                    "player.pip" to "setting_player_pip",
+                    "gestures.volume" to "setting_gestures_volume",
+                    "gestures.brightness" to "setting_gestures_brightness",
+                    "gestures.double_tap" to "setting_gestures_double_tap",
+                    "gestures.long_press" to "setting_gestures_long_press",
+                    "audio.preferred_language" to "setting_audio_preferred_language",
+                    "audio.preferred_subtitle_language" to "setting_audio_preferred_subtitle_language",
+                    "audio.subtitles" to "setting_audio_subtitles",
+                    "audio.subtitle_scale" to "setting_audio_subtitle_scale",
+                    "audio.subtitle_bottom_padding" to "setting_audio_subtitle_bottom_padding",
+                    "audio.subtitle_embedded_style" to "setting_audio_subtitle_embedded_style",
+                )
+                settingsParameters.forEach { (key, parameter) ->
+                    val value = playerSettings.opt(key)
+                    if (value != null && value != JSONObject.NULL) {
+                        successorUri.appendQueryParameter(parameter, value.toString())
+                    }
+                }
+
+                val request = NativePlayerRequest.fromBridgeUri(successorUri.build())
+                val handoffDispatchedAtMs = System.currentTimeMillis()
+                val successorIntent = request.toIntent(this@NativePlayerActivity, targetUri)
+                    .putExtra("nativeCompose", true)
+                    .putExtra("episodeTitle", targetTitle)
+                    .putExtra("commandReceivedAtMs", startedAtMs)
+                    .putExtra("handoffDispatchedAtMs", handoffDispatchedAtMs)
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                target.number?.takeIf { it.isFinite() }?.let { number ->
+                    val label = if (number % 1.0 == 0.0) number.toLong().toString() else number.toString()
+                    successorIntent.putExtra("episodeNumber", label)
+                }
+
+                if (!isCurrentTransition(
+                        generation = generation,
+                        expectedRequestId = sourceRequestId,
+                        expectedUri = sourceUri,
+                        expectedSessionId = sourcePlayerSessionId,
+                    )
+                ) return@launch
+
+                logPlayer(
+                    "NATIVE_PLAYER_TRANSITION_DISPATCH direction=$direction" +
+                        " requestId=$successorRequestId originRequestId=$sourceRequestId" +
+                        " episodeId=${target.id} transitionGeneration=$generation",
+                )
+                startActivity(successorIntent)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(
+                    "NativePlayerActivity",
+                    "Native adjacent episode transition failed requestId=$sourceRequestId direction=$direction",
+                    error,
+                )
+                if (isCurrentTransition(
+                        generation = generation,
+                        expectedRequestId = sourceRequestId,
+                        expectedUri = sourceUri,
+                        expectedSessionId = sourcePlayerSessionId,
+                    )
+                ) {
+                    invalidateTransition("native_adjacent_transition_failed")
+                    showFeedback(
+                        "Não foi possível abrir o episódio local.",
+                        2_600L,
+                    )
+                }
+            }
         }
     }
 

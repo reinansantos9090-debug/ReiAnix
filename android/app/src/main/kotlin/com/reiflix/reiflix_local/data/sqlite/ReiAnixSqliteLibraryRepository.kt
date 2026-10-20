@@ -567,6 +567,36 @@ class ReiAnixSqliteLibraryRepository(
         }
 
     /**
+     * Resolve Next/Previous from one canonical SQLite read. The candidate SQL
+     * predicate matches LibraryStore.player_navigation: only available, non-missing
+     * regular episodes participate, and the existing native total order determines
+     * adjacency and destination edge flags.
+     */
+    internal suspend fun playerNavigation(
+        episodeId: Long,
+    ): ReiAnixPlayerEpisodeNavigationSnapshot? = withContext(Dispatchers.IO) {
+        require(episodeId > 0L) { "Episode ID must be a positive persisted ID." }
+        database.read { connection ->
+            val current = queryEpisode(connection, episodeId) ?: return@read null
+            val availableEpisodes = connection.rawQuery(
+                """
+                SELECT * FROM episodes
+                WHERE anime_id = ?
+                  AND missing = 0
+                  AND COALESCE(availability_state, 'available') = 'available'
+                  AND episode_type NOT IN ('movie', 'special', 'ova', 'oad', 'ona', 'extra')
+                """.trimIndent(),
+                arrayOf(current.animeId.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.toEpisodeRecord())
+                }
+            }
+            ReiAnixPlayerEpisodeNavigator.resolve(current, availableEpisodes)
+        }
+    }
+
+    /**
      * Canonical projection for Collector Journey; one read joins existing episode consumption
      * and anime metadata. No gamification tables or parallel library storage are introduced.
      */

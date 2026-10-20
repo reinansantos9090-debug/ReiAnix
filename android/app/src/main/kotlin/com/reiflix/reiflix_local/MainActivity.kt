@@ -4759,6 +4759,7 @@ class MainActivity : ComponentActivity() {
                 .putExtra("originPlayerSessionId", playerRequest.originPlayerSessionId)
                 .putExtra("originMonotonicNs", playerRequest.originMonotonicNs)
                 .putExtra("transitionDirection", playerRequest.transitionDirection)
+                .putExtra("nativeCompose", source.getQueryParameter("native_compose") == "true")
 
             val resolvedActivity = intent.resolveActivity(packageManager)
             if (resolvedActivity == null) {
