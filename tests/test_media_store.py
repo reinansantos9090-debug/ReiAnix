@@ -4,6 +4,7 @@ from pathlib import Path
 
 from core.library_service import LibraryService
 from core.library_store import LibraryStore
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,16 +53,13 @@ class TestMediaStoreAndroidHost(unittest.TestCase):
         self.assertIn("access == MediaAccessLevel.FULL || access == MediaAccessLevel.PARTIAL", source)
         self.assertIn("access == MediaAccessLevel.FULL", source)
 
-    def test_partial_media_store_results_are_rejected_from_library_ingest(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = main.index("                        elif event_type == 'mediastore_scan':")
-        end = main.index("                        elif event_type == 'mediastore_permission':", start)
-        block = main[start:end]
-        self.assertIn("SCAN_SOURCE_REJECTED", block)
-        self.assertIn("mediastore_not_library_source", block)
-        self.assertNotIn("library.finish_ingest_documents", block)
-        self.assertNotIn("library.ingest_documents", block)
-
+    def test_partial_media_store_results_are_rejected_from_native_reconciliation(self):
+        source = native_main_source()
+        self.assertIn("canReconcileMediaStore", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("NativeIndex.finishGeneration", source)
+        self.assertIn('access!="full"', source)
+        self.assertIn("NativeScanController.complete", source)
     def test_player_accepts_saf_or_media_store_without_path_conversion(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
         player = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt").read_text(encoding="utf-8")
@@ -131,20 +129,14 @@ class TestMediaStorePersistence(unittest.TestCase):
             self.assertEqual(episode["source_folder"], source)
             self.assertFalse(episode["missing"])
 
-    def test_native_bridge_exposes_media_store_scan_without_making_it_a_library_source(self):
+    def test_native_media_store_scan_uses_kotlin_scan_pipeline(self):
         bridge = (ROOT / "core" / "android_bridge.py").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         self.assertIn("async def scan_media_store(self)", bridge)
-        self.assertIn('scan_coordinator.request(', main)
-        self.assertIn("ScanOrigin.USER_REFRESH", main)
-        self.assertNotIn('await bridge.scan_media_store()', main)
-        self.assertNotIn("pending_native_scans", main)
-        start = main.index("                        elif event_type == 'mediastore_scan':")
-        end = main.index("                        elif event_type == 'mediastore_permission':", start)
-        block = main[start:end]
-        self.assertIn("mediastore_not_library_source", block)
-        self.assertNotIn("source_kind='mediastore'", block)
-
+        self.assertIn("suspend fun runMediaStoreScan(", source)
+        self.assertIn("NativeScanController.begin(", source)
+        self.assertIn("NativeIndex", source)
+        self.assertIn("canReconcileMediaStore", source)
     def test_android_35_36_states(self):
         source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/StorageAuthorization.kt").read_text(encoding="utf-8")
         self.assertIn("enum class StorageLifecycleState", source)
