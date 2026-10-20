@@ -8,11 +8,10 @@ somente para metadados/capas.
 
 O projeto configura `target_sdk_version = 36` e prepara o build para o Android 16 (API 36). O teste final de permissões e descoberta deve ser feito em um dispositivo Android 16 real, porque a suíte Python não consegue provar o comportamento das Configurações do sistema, MediaStore ou provedores SAF.
 
-## Execução Python
+## Validação do repositório
 
 ```bash
 python -m pip install -r requirements.txt
-flet run main.py
 python -m unittest discover -s tests -v
 ```
 
@@ -47,11 +46,7 @@ O pipeline oficial gera o asset temporário e remove-o depois do build, para nã
 versionar artefatos gerados. Essa geração é uma dependência de ferramenta do
 build; o APK produzido não contém nem executa Python.
 
-`main.py`, `core/` e `views/` permanecem no repositório como runtime desktop/
-legado e serão migrados nos prompts seguintes onde ainda houver consumidores
-funcionais. Portanto, esta etapa corta o entrypoint Android e o runtime Python
-do artefato oficial, mas não afirma que todas as funcionalidades históricas
-Flet/Python já tenham paridade Kotlin nem que houve teste de cold start físico.
+O entrypoint Flet da raiz foi removido. O launcher Android usa `MainActivity`, com a coordenação nativa em `main.kt`, serviços Kotlin e telas Compose. Os módulos Python restantes ainda atendem a ferramentas e regressões históricas do repositório; a remoção do entrypoint não significa que todos esses módulos já tenham sido migrados nem substitui a validação em dispositivo.
 
 O Android mantém SAF, MediaStore e acesso amplo opcional para autorizar pastas
 locais. O app não converte URIs `content://` em caminhos artificiais. Não há
