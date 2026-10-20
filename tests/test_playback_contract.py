@@ -175,6 +175,10 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("lastProgressEventPosition", builder)
         self.assertIn("lastProgressEventPosition = position", builder)
         self.assertNotIn("lastSavedPosition = position", builder)
+        generation_start = source.index("private fun beginPlayerGeneration")
+        generation_end = source.index("private fun applyGlobalTrackPreferences", generation_start)
+        generation = source[generation_start:generation_end]
+        self.assertIn("lastProgressEventPosition = -1L", generation)
 
         save_start = source.index("    private fun saveProgress(")
         save_end = source.index("    override fun onStart()", save_start)
