@@ -4,6 +4,7 @@ from pathlib import Path
 
 from core.library_service import LibraryService
 from core.library_store import LibraryStore
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,28 +63,24 @@ class SearchDetailsOrganizeTests(unittest.TestCase):
             self.assertEqual(["Alpha Show"], [item["main_title"] for item in page["items"]])
             self.assertEqual(1, page["total"])
 
-    def test_startup_does_not_restore_transient_details_context(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("navigation = NavigationController()", source)
-        self.assertIn("navigation.reset_to_root()", source)
-        self.assertNotIn("restore_details_context", source)
-        self.assertNotIn('"details_media_id"', source)
-        self.assertNotIn("catalog = library.catalog()", source)
-
-    def test_details_mutations_invalidate_only_cached_library_projections(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("def _invalidate_catalog_views()", source)
-        self.assertIn('_invalidate_cached_view(home_state, "home")', source)
-        self.assertIn('_invalidate_cached_view(organize_state, "organize")', source)
-        for callback in (
-            "_toggle_favorite_from_details",
-            "_toggle_pin_from_details",
-            "_set_tags_from_details",
-            "_set_note_from_details",
-            "_set_episode_identification_from_details",
+    def test_startup_opens_home_without_restoring_transient_details(self):
+        source = native_main_source()
+        self.assertIn("ReiAnixRoutes.HOME", source)
+        self.assertIn("resetBackStack = true", source)
+        self.assertIn("ReiAnixComposeLibraryHost", source)
+        self.assertIn("ReiAnixRoutes.DETAILS", source)
+    def test_details_mutations_are_owned_by_native_viewmodel_and_repository(self):
+        source = native_main_source()
+        for operation in (
+            "fun toggleFavorite(animeId: Long)",
+            "suspend fun toggleAnimePinnedNative(animeId: Long)",
+            "suspend fun saveAnimePersonalNoteNative",
+            "suspend fun saveAnimeUserTagsNative",
+            "suspend fun setEpisodeManualIdentificationNative",
         ):
-            self.assertIn(callback, source)
-
+            self.assertIn(operation, source)
+        self.assertIn("refreshNativeCatalog()", source)
+        self.assertIn("ReiAnixSqliteLibraryRepository", source)
     def test_details_manual_identification_dialog_has_real_lifecycle(self):
         source = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")
         target = source[source.index("def edit_identification"):source.index("def episode_item")]
@@ -94,16 +91,12 @@ class SearchDetailsOrganizeTests(unittest.TestCase):
             target.index("dialog = ft.AlertDialog("),
         )
 
-    def test_home_search_uses_the_existing_transient_search_state(self):
-        home = (ROOT / "views" / "home_view.py").read_text(encoding="utf-8")
-        navigation = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("search_generation[0] += 1", home)
-        self.assertIn("await asyncio.sleep(0.18)", home)
-        self.assertNotIn("autofocus", home)
-        self.assertIn('def close_home_search():', navigation)
-        self.assertIn('"[NAV] SEARCH_BACK consumed on Home"', navigation)
-        self.assertNotIn('navigation.push("search")', navigation)
-
+    def test_home_search_uses_native_debounced_search_state(self):
+        source = native_main_source()
+        self.assertIn("SEARCH_DEBOUNCE_MS = 180L", source)
+        self.assertIn("ReiAnixRoutes.SEARCH", source)
+        self.assertIn("searchGeneration", source)
+        self.assertIn("StateFlow", source)
     def test_home_exposes_only_domain_supported_state_filters(self):
         home = (ROOT / "views/home_view.py").read_text(encoding="utf-8")
         self.assertIn('states = [str(value) for value in (options.get("states") or []) if value]', home)
