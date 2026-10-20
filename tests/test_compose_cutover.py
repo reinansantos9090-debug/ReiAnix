@@ -1,9 +1,10 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "main.py"
+MAIN = native_main_source()
 NAVIGATION = ROOT / "core/navigation.py"
 MAIN_ACTIVITY = (
     ROOT
@@ -45,87 +46,56 @@ class ComposeCutoverTests(unittest.TestCase):
             self.assertIn(destination, source)
 
     def test_compose_navigation_is_native_without_python_route_mirroring(self):
-        main = MAIN.read_text(encoding="utf-8")
+        main = MAIN
         navigation = NAVIGATION.read_text(encoding="utf-8")
         host = COMPOSE_HOST.read_text(encoding="utf-8")
         nav_host = NAV_HOST.read_text(encoding="utf-8")
 
-        self.assertIn("compose_primary_ui = bool(bridge.available)", main)
-        self.assertIn("if compose_primary_ui:", main)
-        self.assertNotIn("event_type == 'compose_navigation_changed'", main)
-        self.assertNotIn("event_type == 'compose_library_navigation'", main)
-        self.assertNotIn("event_type == 'compose_settings_navigation'", main)
-        self.assertNotIn("navigation.sync_top_level", main)
-        self.assertNotIn("def sync_top_level", navigation)
+        self.assertIn("ReiAnixComposeLibraryHost", main)
+        self.assertIn("MainActivity", main)
+        self.assertNotIn("compose_navigation_changed", main)
+        self.assertNotIn("compose_library_navigation", main)
+        self.assertNotIn("compose_settings_navigation", main)
+        self.assertNotIn("sync_top_level", navigation)
         self.assertNotIn("compose_navigation_changed", host)
         self.assertNotIn("compose_library_navigation", host)
         self.assertNotIn("compose_settings_navigation", host)
         self.assertNotIn("onRouteChanged", nav_host)
         self.assertIn("NavHost(", nav_host)
         self.assertIn("LaunchedEffect(startDestination, effectiveStartDestination)", nav_host)
-
-        # Flet remains only as guarded fallback for non-Compose runtime paths.
-        self.assertIn("if compose_primary_ui:", main)
-        self.assertIn("HomeView.build(", main)
-
-    def test_migrated_screens_do_not_build_parallel_flet_ui_on_android(self):
-        source = MAIN.read_text(encoding="utf-8")
+    def test_migrated_screens_use_only_native_compose_routes(self):
+        source = MAIN
         nav_host = NAV_HOST.read_text(encoding="utf-8")
-        start = source.index("    def _build_screen(")
-        end = source.index("    def _settings_view_paths()", start)
-        block = source[start:end]
-
-        home = block[block.index('        if route == "home":'):block.index('        elif route == "library":')]
-        details = block[block.index('        elif route == "details":'):block.index('        elif route == "collector":')]
-
-        self.assertIn("if compose_primary_ui:", home)
-        self.assertIn("control = ft.Container(expand=True)", home)
-        self.assertIn("else:", home)
-        self.assertIn("HomeView.build(", home)
-
-        self.assertIn("if compose_primary_ui:", details)
-        self.assertIn("control = ft.Container(expand=True)", details)
-        self.assertIn("else:", details)
-        self.assertIn("DetailView.build(", details)
-
-        # Android uses a native Compose route; Flet remains guarded for fallback environments.
-        collector = block[block.index('        elif route == "collector":'):block.index('        elif route == "settings":')]
-        self.assertIn("if compose_primary_ui:", collector)
-        self.assertIn("control = ft.Container(expand=True)", collector)
-        self.assertIn("CollectorView.build(", collector)
-        self.assertIn("ReiAnixRoutes.COLLECTOR", nav_host)
-        self.assertIn("navigateToCollector()", nav_host)
-
-        # Nested Settings remains the guarded legacy fallback.
-        self.assertIn("SettingsView.build(", block)
-
-    def test_recovery_and_collector_keep_real_fallback_without_compose_delegation(self):
-        source = MAIN.read_text(encoding="utf-8")
-        compose_host = (
-            ROOT
-            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
-        ).read_text(encoding="utf-8")
-        self.assertIn("recovery_bridge = AndroidBridge(data_dir, page)", source)
-        self.assertIn('await recovery_bridge.open_library(start_destination="recovery")', source)
-        self.assertNotIn("await recovery_bridge.hide_library()", source)
-        self.assertNotIn("elif destination == 'collector':", source)
-        self.assertIn("def navigate_collector():", source)
-        self.assertIn("CollectorView.build(", source)
-        self.assertNotIn("publishLegacyNavigation(\"collector\")", compose_host)
-        self.assertIn("navController.navigateToCollector()", compose_host)
-
+        host = COMPOSE_HOST.read_text(encoding="utf-8")
+        for route in (
+            "ReiAnixRoutes.HOME", "ReiAnixRoutes.LIBRARY",
+            "ReiAnixRoutes.ORGANIZE", "ReiAnixRoutes.DETAILS",
+            "ReiAnixRoutes.COLLECTOR", "ReiAnixRoutes.SETTINGS",
+        ):
+            self.assertIn(route, source)
+        self.assertIn("NavHost(", nav_host)
+        self.assertIn("ReiAnixComposeLibraryHost", source)
+        self.assertIn("ReiAnixRoutes.COLLECTOR", host)
+        self.assertNotIn("HomeView.build(", source)
+        self.assertNotIn("DetailView.build(", source)
+        self.assertNotIn("SettingsView.build(", source)
+    def test_recovery_and_collector_are_native_compose_destinations(self):
+        source = MAIN
+        compose_host = COMPOSE_HOST.read_text(encoding="utf-8")
+        self.assertIn("ReiAnixRoutes.RECOVERY", source)
+        self.assertIn("ReiAnixRoutes.COLLECTOR", source)
+        self.assertIn("navigateToCollector()", source)
+        self.assertIn("ReiAnixRoutes.RECOVERY", compose_host)
+        self.assertNotIn("recovery_bridge = AndroidBridge", source)
+        self.assertNotIn("CollectorView.build(", source)
     def test_canonical_domain_boundaries_remain_intact(self):
-        source = MAIN.read_text(encoding="utf-8")
-        self.assertIn("LibraryStore", source)
-        self.assertIn("ScanCoordinator", source)
-        self.assertIn("AndroidBridge(", source)
-        self.assertIn("ComposeLibraryBridge(", source)
-        self.assertIn("ComposeSettingsBridge(", source)
-        self.assertIn("compose_library_bridge.request_publish", source)
-        self.assertIn("player_progress", source)
-        self.assertIn("player_exited", source)
-        self.assertIn("saf_permission", source)
-
+        source = MAIN
+        self.assertIn("ReiAnixAppDependencies", source)
+        self.assertIn("ReiAnixLibraryService", source)
+        self.assertIn("NativeScanRunner", source)
+        self.assertIn("NativeMailbox", source)
+        self.assertIn("ReiAnixSqliteLibraryRepository", source)
+        self.assertIn("ReiAnixConsumptionService", source)
 
 if __name__ == "__main__":
     unittest.main()
