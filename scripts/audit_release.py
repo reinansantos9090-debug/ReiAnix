@@ -41,7 +41,6 @@ REQUIRED_STORAGE_STATES = (
 )
 
 TRACKED_RUNTIME_ROOTS = (
-    "main.py",
     "core",
     "views",
     "scripts",
@@ -88,8 +87,7 @@ def shell_sources(root: Path) -> list[Path]:
 
 
 def python_sources(root: Path) -> list[Path]:
-    paths = [root / "main.py"]
-    paths.extend(sorted((root / "core").glob("*.py")))
+    paths = sorted((root / "core").glob("*.py"))
     paths.extend(sorted((root / "views").glob("*.py")))
     paths.extend(sorted((root / "scripts").glob("*.py")))
     paths.extend(sorted((root / "tests").glob("*.py")))
