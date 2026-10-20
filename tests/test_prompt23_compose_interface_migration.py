@@ -177,6 +177,8 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         self.assertIn("LaunchedEffect(drawRequest)", self.gacha)
         self.assertIn("libraryState.animes", self.gacha)
         self.assertIn("ReiAnixPoster(", self.gacha)
+        self.assertIn("selected.anime.coverCache", self.gacha)
+        self.assertIn("selected.anime.coverUrl", self.gacha)
         self.assertIn("Abrir detalhes", self.gacha)
         self.assertIn("lastDrawnAnimeId", self.gacha)
         self.assertIn("episodeDrawRequested", self.gacha)
