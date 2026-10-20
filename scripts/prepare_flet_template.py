@@ -254,7 +254,7 @@ for candidate in (android_root / "settings.gradle.kts", android_root / "settings
         # normalize the existing Kotlin Android plugin before adding its matching
         # Compose compiler plugin later in the rendered module.
         updated = re.sub(
-            r"(id\s*[\"']org\.jetbrains\.kotlin\.android[\"']\s+version\s+[\"'])2\.0\.21([\"'])",
+            r"(id\s*\(?\s*[\"']org\.jetbrains\.kotlin\.android[\"']\s*\)?\s+version\s+[\"'])2\.0\.21([\"'])",
             r"\g<1>2.2.10\g<2>",
             updated,
         )
