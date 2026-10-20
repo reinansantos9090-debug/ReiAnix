@@ -24,8 +24,8 @@ class GlobalVisualConsolidationTests(unittest.TestCase):
         tokens = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt")
         theme = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt")
         for token in (
-            "val background = Color(0xFF000000)",
-            "val primary = Color(0xFF2579FF)",
+            "val background = Color(0xFF050505)",
+            "val primary = Color(0xFF3D8BFF)",
             "val onBackground = text",
             "val onSurface = text",
             "val muted = textMuted",

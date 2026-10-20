@@ -95,6 +95,8 @@ A ação **Gacha do acervo** agora está disponível no menu de opções da Home
 
 O formulário Compose permite pesquisa e os filtros de estado, gênero, ordenação, etiqueta, tipo de mídia, temporada, tipo de episódio, disponibilidade, metadata e capa. As opções que variam por acervo (gêneros, etiquetas, temporadas e tipos de episódio) são projetadas a partir do estado real da biblioteca carregada; nenhuma fixture ou lista de obras demonstrativa foi adicionada. Mantém sorteio opcional de episódio, exclusão do item sorteado anteriormente quando há alternativas, estados de carregamento/vazio/erro, nova tentativa, e navegação ao detalhe local. O serviço permanece read-only em relação a consumo e histórico.
 
+A mesma atualização mantém o design system centralizado nos tokens Compose existentes: fundo `#050505`, superfície `#0B0B0B`, variante `#111111`, superfície elevada `#171717`, diálogos `#141414` e destaque azul `#3D8BFF`. O tema e os testes estáticos foram alinhados a esses valores sem modificar os tokens específicos do player ou introduzir paleta paralela.
+
 `views/home_view.py` e o fluxo Flet foram preservados como fallback não-Compose. A lacuna documentada do consumidor visual Gacha foi fechada no caminho Compose; a validação dinâmica dedicada de filtros contra fixtures SQLite e os testes Kotlin/JVM continuam pendentes e não são declarados executados nesta etapa.
 
 ## Testes e validação
