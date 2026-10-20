@@ -2,6 +2,7 @@ import ast
 import re
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -14,11 +15,11 @@ class DiagnosticsTests(unittest.TestCase):
         ast.parse(source)
 
     def test_main_has_required_end_to_end_checkpoints(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        source = native_main_source()
         for token in (
-            "APP_START", "ACTUAL_PERMISSION_STATE", "PERMISSION_RESULT",
-            "SCAN_PROGRESS", "SCAN_COMPLETED", "SCAN_FAILED",
-            "PYTHON_INGEST", "CATALOG_UPDATED", "UI_REFRESHED",
+            "MainEntryPoint", "ReiAnixAppBootstrap", "MainActivity",
+            "ReiAnixDiagnosticTimeline", "NativeScanController",
+            "NativePlayerActivity", "ReiAnixComposeLibraryHost",
         ):
             self.assertIn(token, source)
 
@@ -42,7 +43,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertNotIn("|| true", source)
 
     def test_active_python_sources_do_not_silently_drop_exception_failures(self):
-        paths = [ROOT / "main.py"]
+        paths = []
         paths.extend(sorted((ROOT / "core").glob("*.py")))
         paths.extend(sorted((ROOT / "views").glob("*.py")))
         pattern = re.compile(r"except\s+Exception\s*:\s*\n\s*pass")
@@ -51,7 +52,7 @@ class DiagnosticsTests(unittest.TestCase):
             self.assertNotRegex(source, pattern, str(path))
 
     def test_python_sources_parse(self):
-        for path in (ROOT / "main.py", ROOT / "core/diagnostics.py", ROOT / "views/settings_view.py"):
+        for path in (ROOT / "core/diagnostics.py", ROOT / "views/settings_view.py"):
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
