@@ -11,8 +11,6 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
-import com.reiflix.reiflix_local.data.library.ReiAnixGachaService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixCatalogFilters
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -23,6 +21,10 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
+import com.reiflix.reiflix_local.data.sqlite.toggleAnimePinned
+import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
+import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
+import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
@@ -243,10 +245,10 @@ class ReiAnixLibraryViewModel(
     /** Shared native genre identity service; uses the same canonical SQLite object. */
     private val nativeGenreRegistry = dependencies?.genreRegistry
         ?: ReiAnixGenreRegistry(nativeLibraryRepository.database)
+    private val nativeLibraryQueries = dependencies?.libraryQueryService
+        ?: ReiAnixLibraryQueryService(context, nativeLibraryRepository)
     private val nativeLibraryService = dependencies?.libraryService
         ?: ReiAnixLibraryService(nativeLibraryRepository)
-    private val nativeLibraryQueries = dependencies?.libraryQueryService
-        ?: ReiAnixLibraryQueryService(context, nativeLibraryRepository, nativeLibraryService)
     private val personalListService = dependencies?.personalListService
         ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(
             nativeLibraryRepository.database,
@@ -257,8 +259,6 @@ class ReiAnixLibraryViewModel(
     /** Native projection-only discovery rules use the same canonical library repository. */
     private val nativeLibraryDiscovery = dependencies?.libraryDiscoveryService
         ?: ReiAnixLibraryDiscoveryService(nativeLibraryRepository)
-    private val nativeGachaService = appDependencies?.gachaService
-        ?: ReiAnixGachaService(nativeLibraryRepository)
 
     private val _personalListMutationError = MutableStateFlow<String?>(null)
     val personalListMutationError: StateFlow<String?> = _personalListMutationError.asStateFlow()
@@ -394,14 +394,6 @@ class ReiAnixLibraryViewModel(
     /** Native replacement for the local duration anomaly report; does not mutate playback state. */
     suspend fun queryNativeDurationAnomalies(animeId: Long? = null) =
         nativeLibraryDiscovery.durationAnomalies(animeId)
-
-    /** Native read-only counterpart to LibraryService.gacha_pick. */
-    suspend fun drawNativeGacha(
-        filters: ReiAnixCatalogFilters = ReiAnixCatalogFilters(),
-        excludeAnimeId: Long? = null,
-        includeEpisode: Boolean = false,
-    ): ReiAnixGachaService.Result? =
-        nativeGachaService.draw(filters, excludeAnimeId, includeEpisode)
 
     /** Native replacement for the remaining-time marathon projection. */
     suspend fun queryNativeMarathonPlan(animeId: Long, currentPath: String? = null) =
@@ -1378,8 +1370,8 @@ class ReiAnixLibraryViewModel(
                 }
         }
 
-        // Native scan terminal state remains the scan refresh boundary. The canonical
-        // snapshot is loaded by the central service, not a second repository path.
+        // Load catalog records directly from the canonical SQLite repository. The legacy
+        // snapshot is retained only for storage/onboarding and diagnostic scan state.
         viewModelScope.launch {
             NativeScanController.progress
                 .map { snapshots ->
@@ -1395,30 +1387,6 @@ class ReiAnixLibraryViewModel(
                     refreshNativeCatalog()
                 }
         }
-        // Scan writes are refreshed once by NativeScanController at terminal state.
-        // Personal mutation wrappers also publish repository.state for legacy consumers;
-        // exclude those events here to avoid reloading the same committed catalog twice.
-        // Volume availability and successful SAF re-keying have no guaranteed terminal
-        // scan, so their confirmed service events must refresh native Compose immediately.
-        viewModelScope.launch {
-            nativeLibraryService.changes
-                .map { change -> change.revision to change.operation }
-                .distinctUntilChanged()
-                .drop(1)
-                .collectLatest { (_, operation) ->
-                    if (operation !in setOf(
-                            "indexDiscoveredMedia",
-                            "toggleAnimePinned",
-                            "setAnimePersonalNote",
-                            "setAnimeUserTags",
-                            "setEpisodeManualIdentification",
-                        )
-                    ) {
-                        refreshNativeCatalog()
-                    }
-                }
-        }
-
         // Legacy commands can still mutate unrelated fields; their revision is only an
         // invalidation signal. Actual anime/episode values are always reread from SQLite.
         viewModelScope.launch {
@@ -1476,15 +1444,7 @@ class ReiAnixLibraryViewModel(
     private suspend fun refreshNativeCatalog() {
         nativeCatalogReloadMutex.withLock {
             try {
-                // The previous direct nativeLibraryRepository.loadLibraryCatalogRows()
-                // read is now centralized behind the library query facade/service.
-                val rows = when (val result = nativeLibraryQueries.libraryCatalogRows()) {
-                    is ReiAnixLibraryQueryResult.Success -> result.value
-                    is ReiAnixLibraryQueryResult.Empty -> emptyList()
-                    is ReiAnixLibraryQueryResult.NotFound ->
-                        throw IllegalStateException("O catálogo da biblioteca não foi encontrado.")
-                    is ReiAnixLibraryQueryResult.Failure -> throw result.cause
-                }
+                val rows = nativeLibraryRepository.loadLibraryCatalogRows()
                 val projected = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
                     .project(rows)
                 nativeCatalogState.value = NativeCatalogState(
@@ -1872,23 +1832,26 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    /** Persist personal pin state through the canonical library service. */
+    /** Persist personal pin state in the canonical SQLite store and refresh native projections. */
     suspend fun toggleAnimePinnedNative(animeId: Long): Boolean {
-        val pinned = nativeLibraryService.toggleAnimePinned(animeId)
+        val pinned = nativeLibraryRepository.toggleAnimePinned(animeId)
+        refreshNativeCatalog()
         repository.publishCatalog()
         return pinned
     }
 
     /** Save the private note without modifying remote editorial metadata or another store. */
     suspend fun saveAnimePersonalNoteNative(animeId: Long, note: String?): String? {
-        val saved = nativeLibraryService.setAnimePersonalNote(animeId, note)
+        val saved = nativeLibraryRepository.setAnimePersonalNote(animeId, note)
+        refreshNativeCatalog()
         repository.publishCatalog()
         return saved
     }
 
     /** Persist normalized personal tags in the canonical anime.user_tags field. */
     suspend fun saveAnimeUserTagsNative(animeId: Long, tags: List<String>): List<String> {
-        val saved = nativeLibraryService.setAnimeUserTags(animeId, tags)
+        val saved = nativeLibraryRepository.setAnimeUserTags(animeId, tags)
+        refreshNativeCatalog()
         repository.publishCatalog()
         return saved
     }
@@ -1901,13 +1864,14 @@ class ReiAnixLibraryViewModel(
         episodeType: String,
         title: String?,
     ) {
-        nativeLibraryService.setEpisodeManualIdentification(
+        nativeLibraryRepository.setEpisodeManualIdentification(
             episodeId = episodeId,
             season = season,
             number = number,
             episodeType = episodeType,
             title = title,
         )
+        refreshNativeCatalog()
         repository.publishCatalog()
     }
 
@@ -1930,30 +1894,16 @@ class ReiAnixLibraryViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 require(episodeId > 0L) { "O identificador do episódio é inválido." }
-                // Replaces the previous nativeLibraryRepository.getEpisode(episodeId)
-                // call with the single library-service entry point. The old
-                // nativeLibraryRepository.getAnime(episode.animeId) read is also
-                // delegated through animeById below.
-                val episode = when (val result = nativeLibraryService.episodeById(episodeId)) {
-                    is ReiAnixLibraryQueryResult.Success -> result.value
-                    is ReiAnixLibraryQueryResult.Empty,
-                    is ReiAnixLibraryQueryResult.NotFound ->
-                        throw IllegalArgumentException("Episódio não encontrado no catálogo local.")
-                    is ReiAnixLibraryQueryResult.Failure -> throw result.cause
-                }
+                val episode = nativeLibraryRepository.getEpisode(episodeId)
+                    ?: throw IllegalArgumentException("Episódio não encontrado no catálogo local.")
                 require(expectedAnimeId == null || episode.animeId == expectedAnimeId) {
                     "O episódio não pertence ao anime solicitado."
                 }
                 require(episode.missing != true && episode.path.isNotBlank()) {
                     "Este episódio não possui uma mídia local disponível."
                 }
-                when (val result = nativeLibraryService.animeById(episode.animeId)) {
-                    is ReiAnixLibraryQueryResult.Success -> result.value
-                    is ReiAnixLibraryQueryResult.Empty,
-                    is ReiAnixLibraryQueryResult.NotFound ->
-                        throw IllegalStateException("O anime associado ao episódio não existe no catálogo.")
-                    is ReiAnixLibraryQueryResult.Failure -> throw result.cause
-                }
+                nativeLibraryRepository.getAnime(episode.animeId)
+                    ?: throw IllegalStateException("O anime associado ao episódio não existe no catálogo.")
 
                 val persistedSettings = appDependencies?.sqliteSettingsRepository?.allPreferences().orEmpty()
                 fun preferenceValue(key: String): String =
@@ -1962,16 +1912,8 @@ class ReiAnixLibraryViewModel(
                 // Preserve the availability predicate and ordering used by
                 // LibraryStore.player_navigation()/adjacent_episode() for Next/Previous.
                 // The native path must not silently change episode adjacency while
-                // removing the Python OPEN_MEDIA dispatcher. This replaces the prior
-                // nativeLibraryRepository.listEpisodes(episode.animeId) call.
-                val neighborEpisodes = when (val result = nativeLibraryService.episodesForAnime(episode.animeId)) {
-                    is ReiAnixLibraryQueryResult.Success -> result.value
-                    is ReiAnixLibraryQueryResult.Empty -> emptyList()
-                    is ReiAnixLibraryQueryResult.NotFound ->
-                        throw IllegalStateException("O anime associado ao episódio não existe no catálogo.")
-                    is ReiAnixLibraryQueryResult.Failure -> throw result.cause
-                }
-                val neighborKeys = neighborEpisodes
+                // removing the Python OPEN_MEDIA dispatcher.
+                val neighborKeys = nativeLibraryRepository.listEpisodes(episode.animeId)
                     .asSequence()
                     .filter { it.missing == false }
                     .filter {

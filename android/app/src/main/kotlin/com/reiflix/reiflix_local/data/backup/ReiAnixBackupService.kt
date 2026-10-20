@@ -178,7 +178,7 @@ class ReiAnixBackupService(context: Context) {
                     require(name == "manifest.json" || name == "library.sqlite3" || name.startsWith(MANUAL_ARTWORK_PREFIX)) {
                         "O backup contém uma entrada não permitida."
                     }
-                    require(entry.size <= maxBytesForMember(name)) { "Uma entrada do backup excede o tamanho permitido." }
+                    require(entry.size <= MAX_MEMBER_BYTES) { "Uma entrada do backup excede o tamanho permitido." }
                     declaredTotal += entry.size.coerceAtLeast(0)
                     require(declaredTotal <= MAX_ARCHIVE_BYTES) { "O backup excede o tamanho total permitido." }
                 }
@@ -198,7 +198,7 @@ class ReiAnixBackupService(context: Context) {
                 val snapshot = File(dataDirectory, ".reiflix-inspect-" + UUID.randomUUID() + ".sqlite3")
                 try {
                     zip.getInputStream(entries.getValue("library.sqlite3")).use { input ->
-                        FileOutputStream(snapshot).use { output -> copyBounded(input, output, MAX_DATABASE_BYTES) }
+                        FileOutputStream(snapshot).use { output -> copyBounded(input, output, MAX_MEMBER_BYTES) }
                     }
                     validateSnapshot(snapshot, sanitizeUnknownPreferences = false)
                     val counts = databaseCounts(snapshot)
@@ -258,7 +258,7 @@ class ReiAnixBackupService(context: Context) {
             ZipFile(file).use { zip ->
                 zip.getInputStream(zip.getEntry("library.sqlite3")
                     ?: throw BackupValidationException("Backup sem library.sqlite3.")).use { input ->
-                    FileOutputStream(snapshot).use { output -> copyBounded(input, output, MAX_DATABASE_BYTES) }
+                    FileOutputStream(snapshot).use { output -> copyBounded(input, output, MAX_MEMBER_BYTES) }
                 }
                 validateSnapshot(snapshot, sanitizeUnknownPreferences = true)
                 val artwork = preview.manifest.optJSONArray("artwork") ?: JSONArray()
@@ -425,7 +425,7 @@ class ReiAnixBackupService(context: Context) {
                     ?: throw BackupValidationException("Backup sem library.sqlite3.")
                 zip.getInputStream(databaseEntry).use { input ->
                     FileOutputStream(stagedDatabase).use { output ->
-                        copyBounded(input, output, MAX_DATABASE_BYTES)
+                        copyBounded(input, output, MAX_MEMBER_BYTES)
                         output.fd.sync()
                     }
                 }
@@ -485,7 +485,7 @@ class ReiAnixBackupService(context: Context) {
             validateSnapshot(stagedDatabase, sanitizeUnknownPreferences = false)
             FileInputStream(stagedDatabase).use { input ->
                 FileOutputStream(candidate).use { output ->
-                    copyBounded(input, output, MAX_DATABASE_BYTES)
+                    copyBounded(input, output, MAX_MEMBER_BYTES)
                     output.fd.sync()
                 }
             }
@@ -1168,7 +1168,7 @@ class ReiAnixBackupService(context: Context) {
         val actual = JSONObject()
         val invalidOptional = linkedSetOf<String>()
         actualEntries.filterKeys { it != "manifest.json" }.toSortedMap().forEach { (name, entry) ->
-            val measured = zip.getInputStream(entry).use { digestStream(it, maxBytesForMember(name)) }
+            val measured = zip.getInputStream(entry).use { digestStream(it, MAX_MEMBER_BYTES) }
             actual.put(name, JSONObject().put("size", measured.second).put("sha256", measured.first))
             val expected = stored.optJSONObject(name)
             if (expected == null ||
@@ -1334,9 +1334,6 @@ class ReiAnixBackupService(context: Context) {
         }
     }
 
-    private fun maxBytesForMember(name: String): Long =
-        if (name == DATABASE_NAME) MAX_DATABASE_BYTES else MAX_MEMBER_BYTES
-
     private fun safeMemberName(raw: String): String {
         val normalized = raw.replace('\\', '/')
         require(normalized.isNotBlank() && !normalized.startsWith("/") &&
@@ -1401,7 +1398,6 @@ class ReiAnixBackupService(context: Context) {
         const val APP_NAME = "ReiAnix"
         const val MANUAL_ARTWORK_PREFIX = "artwork/manual/"
         const val MAX_ARCHIVE_BYTES = 512L * 1024 * 1024
-        const val MAX_DATABASE_BYTES = MAX_ARCHIVE_BYTES
         const val MAX_MEMBER_BYTES = 64L * 1024 * 1024
         const val MAX_MEMBER_COUNT = 2048
         const val MAX_MANIFEST_BYTES = 8L * 1024 * 1024

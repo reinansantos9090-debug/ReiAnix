@@ -335,10 +335,7 @@ def test_compose_artwork_cache_clear_is_native_and_does_not_repeat_python_mutati
     assert '.put("nativeHandled", true)' in settings_repository
     assert "suspend fun clearManagedCache(): Int" in artwork_service
     assert 'source IN (\'cache\',\'anilist\') AND manual=0' in artwork_service
-    assert 'UPDATE anime SET metadata_updated_at=NULL' in artwork_service
-    assert 'UPDATE anime SET metadata_updated_at=NULL, cover_cache=\'\'' not in artwork_service
-    assert 'ownsManualField(manualFields, "cover_cache")' in artwork_service
-    assert 'stillLocallyOwned' in artwork_service
+    assert 'UPDATE anime SET metadata_updated_at=NULL, cover_cache=\'\'' in artwork_service
     assert "isArtworkPathReferenced" in artwork_service
     assert "native_handled=native_handled" in main
     worker_start = main.index("async def _run_compose_settings_action")
@@ -458,59 +455,3 @@ def test_compose_backup_restore_integrity_and_diagnostics_are_native():
     worker_end = main.index("async def _run_compose_library_command", worker_start)
     worker = main[worker_start:worker_end]
     assert "BackupService" not in worker
-
-
-def test_native_player_handoff_applies_canonical_persisted_preferences():
-    dispatcher = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeCommandDispatcher.kt"
-    )
-    request = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
-    )
-    contract = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsContract.kt"
-    )
-
-    assert "request.withCanonicalSettings(readCanonicalPlayerSettings())" in dispatcher
-    assert "SELECT key, value FROM preferences" in dispatcher
-    assert "FROM preferences \" +" in dispatcher
-    assert "WHERE key LIKE 'player.%' OR key LIKE 'gestures.%' OR key LIKE 'audio.%'" in dispatcher
-    assert "Canonical player preferences unavailable; keeping compatible handoff values." in dispatcher
-    assert "fun withCanonicalSettings(preferences: Map<String, String>?)" in request
-    assert "ReiAnixSettingsContract.normalize(key, raw)" in request
-    for key in (
-        "player.autoplay_next",
-        "player.default_speed",
-        "player.aspect_ratio",
-        "gestures.volume",
-        "audio.preferred_language",
-        "audio.subtitles",
-    ):
-        assert f'"{key}"' in request
-        assert f'"{key}"' in contract
-
-
-def test_artwork_settings_apply_after_commit_and_control_native_cache():
-    settings_repository = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"
-    )
-    artwork = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt"
-    )
-    contract = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsContract.kt"
-    )
-
-    committed = settings_repository.index("setPreference(normalizedKey, normalizedValue)")
-    applied = settings_repository.index("nativeArtworkService.applySettingChange(normalizedKey)")
-    assert committed < applied
-    assert "if (!isRemoteArtworkEnabled())" in artwork
-    assert "fun isRemoteArtworkEnabled()" in artwork
-    assert "configuredCacheLimitBytes()" in artwork
-    assert 'ReiAnixSettingsContract.normalize("artwork.enabled", it)' in artwork
-    assert 'ReiAnixSettingsContract.normalize("artwork.cache_limit_mb", it)' in artwork
-    assert 'bool("artwork.enabled", true)' in contract
-    assert 'int("artwork.cache_limit_mb", 128, 64, 128, 256, 512)' in contract
-    assert "referencedCanonicalPaths(images.map { it.absolutePath })" in artwork
-    assert "if (path in refs) return@forEach" in artwork
-    assert "private fun isRemoteArtworkEnabled()" in artwork

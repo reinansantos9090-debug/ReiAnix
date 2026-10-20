@@ -325,23 +325,9 @@ object SafScanner {
         }
         if(shouldCancel())cancelled=true
         batches.flush()
-        val failed = stats.getInt("failedQueries")
-        val successful = stats.getInt("successfulQueries")
-        val fileCount = stats.getInt("files")
-        val rejectedOutsideSource = stats.getInt("rejectedOutsideSource")
-        // A cursor may be readable while individual documents/subtrees fail the
-        // provider-backed scope check. Those exclusions are incomplete coverage,
-        // not proof that the authorized tree was fully enumerated or is empty.
-        val hasCoverageErrors = failed > 0 || rejectedOutsideSource > 0 || errors.length() > 0
-        val status = when {
-            revokedDuringScan -> STATUS_REVOKED
-            cancelled -> STATUS_CANCELLED
-            successful == 0 && hasCoverageErrors -> STATUS_UNAVAILABLE
-            hasCoverageErrors -> STATUS_PARTIAL
-            stats.getInt("videos") == 0 -> STATUS_EMPTY_COMPLETE
-            else -> STATUS_COMPLETED
-        }
-        val partial = status in setOf(STATUS_PARTIAL, STATUS_UNAVAILABLE, STATUS_REVOKED, STATUS_CANCELLED)
+        val failed=stats.getInt("failedQueries"); val successful=stats.getInt("successfulQueries"); val fileCount=stats.getInt("files")
+        val status=when{revokedDuringScan->STATUS_REVOKED;cancelled->STATUS_CANCELLED;successful==0&&failed>0->STATUS_UNAVAILABLE;failed>0->STATUS_PARTIAL;stats.getInt("videos")==0->STATUS_EMPTY_COMPLETE;else->STATUS_COMPLETED}
+        val partial=status in setOf(STATUS_PARTIAL,STATUS_UNAVAILABLE,STATUS_REVOKED,STATUS_CANCELLED)
         stats.put("status",status).put("emptyComplete",status==STATUS_EMPTY_COMPLETE)
         onProgress?.invoke(identityPayload(treeUri).put("phase","finished").put("source","saf").put("status",status).put("directories",stats.getInt("directories")).put("files",fileCount).put("videos",stats.getInt("videos")).put("cancelled",cancelled))
         Log.i(TAG,"SCAN_SOURCE_COMPLETED identity=" + identity.identity + " status=" + status +

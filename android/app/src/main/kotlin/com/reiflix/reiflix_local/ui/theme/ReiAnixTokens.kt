@@ -16,24 +16,24 @@ import androidx.compose.ui.unit.sp
  */
 object ReiAnixTokens {
     object Colors {
-        // ReiAnix visual language: near-black canvas, layered dark surfaces,
-        // and the specified electric-blue interaction accent. Keep semantic aliases here
+        // ReiAnix visual language: true AMOLED black canvas, minimal near-black surfaces,
+        // and one controlled electric-blue interaction accent. Keep semantic aliases here
         // so Compose screens never need ad-hoc hex/RGB values.
-        val background = Color(0xFF050505)
-        val backgroundSecondary = Color(0xFF080808)
-        val surface = Color(0xFF0B0B0B)
-        val surfaceVariant = Color(0xFF111111)
-        val surfaceRaised = Color(0xFF171717)
-        val surfaceCard = surface
-        val surfaceDialog = Color(0xFF141414)
-        val surfaceSheet = surfaceVariant
+        val background = Color(0xFF000000)
+        val backgroundSecondary = Color(0xFF030303)
+        val surface = Color(0xFF050505)
+        val surfaceVariant = Color(0xFF080808)
+        val surfaceRaised = Color(0xFF0A0A0A)
+        val surfaceCard = Color(0xFF050505)
+        val surfaceDialog = Color(0xFF0A0A0A)
+        val surfaceSheet = Color(0xFF080808)
         val surfacePlayer = Color(0xFF000000)
-        val surfaceSelected = surfaceRaised
-        val surfaceNavigation = background
+        val surfaceSelected = Color(0xFF080808)
+        val surfaceNavigation = Color(0xFF000000)
         val playerControl = Color(0xFFFFFFFF)
         val playerScrim = Color(0xFF000000)
 
-        val primary = Color(0xFF3D8BFF)
+        val primary = Color(0xFF2579FF)
         val primaryContainer = surfaceRaised
         val onPrimary = Color(0xFFFFFFFF)
         val onPrimaryContainer = Color(0xFFFFFFFF)
@@ -96,7 +96,7 @@ object ReiAnixTokens {
 
         val inverseSurface = Color(0xFFECECEC)
         val inverseOnSurface = Color(0xFF1A1A1A)
-        val inversePrimary = primary
+        val inversePrimary = Color(0xFF2579FF)
         val lightPrimary = Color(0xFF2563C7)
         val lightOnPrimary = Color(0xFFFFFFFF)
         val lightPrimaryContainer = Color(0xFFE8E8EA)

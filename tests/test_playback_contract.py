@@ -167,28 +167,6 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("progressWorker.shutdown()", source)
         self.assertIn("lastProgressPersistAt = System.currentTimeMillis()", source)
 
-    def test_checkpoint_deduplication_advances_only_after_native_commit(self):
-        source = self.player
-        builder_start = source.index("private fun buildProgressEvent")
-        builder_end = source.index("private fun saveProgress", builder_start)
-        builder = source[builder_start:builder_end]
-        self.assertIn("lastProgressEventPosition", builder)
-        self.assertIn("lastProgressEventPosition = position", builder)
-        self.assertNotIn("lastSavedPosition = position", builder)
-        generation_start = source.index("private fun beginPlayerGeneration")
-        generation_end = source.index("private fun applyGlobalTrackPreferences", generation_start)
-        generation = source[generation_start:generation_end]
-        self.assertIn("lastProgressEventPosition = -1L", generation)
-
-        save_start = source.index("    private fun saveProgress(")
-        save_end = source.index("    override fun onStart()", save_start)
-        save_block = source[save_start:save_end]
-        commit_baseline = save_block.index("lastSavedPosition = committedPositionMs")
-        self.assertLess(save_block.index("val ok = if (durable)"), commit_baseline)
-        self.assertIn("if (persistedNatively && episodeId != null)", save_block)
-        self.assertIn("playerGeneration == committedPlayerGeneration", save_block)
-        self.assertIn("currentEpisodeId() == episodeId.toString()", save_block)
-
     def test_player_event_timestamps_are_monotonic_within_activity(self):
         self.assertIn("AtomicLong", self.player)
         self.assertIn("PLAYER_EVENT_CLOCK_MS", self.player)

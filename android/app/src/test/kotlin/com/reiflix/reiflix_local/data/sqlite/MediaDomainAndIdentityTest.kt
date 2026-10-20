@@ -3,9 +3,6 @@ package com.reiflix.reiflix_local.data.sqlite
 import com.reiflix.reiflix_local.data.media.AnimeRecordId
 import com.reiflix.reiflix_local.data.media.EpisodeRecordId
 import com.reiflix.reiflix_local.data.media.LocalMediaIdentity
-import com.reiflix.reiflix_local.data.media.LocalMediaReference
-import com.reiflix.reiflix_local.data.media.MediaLocationKind
-import com.reiflix.reiflix_local.data.media.MediaReferenceSyntax
 import com.reiflix.reiflix_local.data.media.MediaFilenameParser
 import com.reiflix.reiflix_local.data.media.MediaIdentificationConfidence
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
@@ -191,57 +188,6 @@ class MediaDomainAndIdentityTest {
         assertNull(mapped.media.sizeBytes)
         assertNull(mapped.watched)
     }
-
-
-    @Test
-    fun mediaReferenceSyntaxClassifiesSafConservativelyAndPreservesStoredLocation() {
-        val cases = listOf(
-            "" to MediaLocationKind.UNRESOLVED,
-            "  \t  " to MediaLocationKind.UNRESOLVED,
-            "/storage/emulated/0/Movies/Show/E01.mkv" to MediaLocationKind.FILESYSTEM_PATH,
-            "relative/Show/E01.mkv" to MediaLocationKind.FILESYSTEM_PATH,
-            "file://" to MediaLocationKind.FILE_URI,
-            "file:///storage/emulated/0/Movies/Show/E01.mkv" to MediaLocationKind.FILE_URI,
-            "content://com.android.externalstorage.documents/document/primary%3AMovies%2FShow%2FE01.mkv" to MediaLocationKind.SAF_DOCUMENT_URI,
-            "content://com.android.externalstorage.documents/tree/primary%3AMovies" to MediaLocationKind.SAF_TREE_URI,
-            "content://com.android.externalstorage.documents/tree/primary%3AMovies/document/primary%3AMovies%2FShow%2FE01.mkv" to MediaLocationKind.SAF_DOCUMENT_URI,
-            "content://unknown.example.provider/tree/primary%3AMovies" to MediaLocationKind.CONTENT_URI,
-            "content://unknown.example.provider/document/primary%3AMovies%2FShow%2FE01.mkv" to MediaLocationKind.CONTENT_URI,
-            "content://com.android.externalstorage.documents/tree/primary%3AMovies/metadata/id" to MediaLocationKind.CONTENT_URI,
-            "content://com.android.providers.downloads.documents/document/" to MediaLocationKind.CONTENT_URI,
-            "content:malformed value" to MediaLocationKind.CONTENT_URI,
-            "https://example.invalid/Show/E01.mkv" to MediaLocationKind.OTHER_URI,
-            "ftp://example.invalid/Show/E01.mkv" to MediaLocationKind.OTHER_URI,
-        )
-
-        cases.forEach { (value, expected) ->
-            assertEquals("Unexpected syntax classification for '$value'", expected, MediaReferenceSyntax.classify(value))
-        }
-
-        val stored = " content://unknown.example.provider/tree/primary%3AMovies "
-        val reference = localMediaReference(stored)
-        assertEquals(MediaLocationKind.CONTENT_URI, reference.locationKind)
-        assertEquals(stored, reference.storedLocation)
-        assertEquals(stored, reference.uri)
-        assertEquals(stored, reference.contentUri)
-        assertNull(reference.safTreeUri)
-        assertNull(reference.safDocumentUri)
-    }
-
-    private fun localMediaReference(storedLocation: String) = LocalMediaReference(
-        episodeRecordId = null,
-        storedLocation = storedLocation,
-        fileName = "E01.mkv",
-        mimeType = null,
-        sizeBytes = null,
-        modifiedAtEpochSeconds = null,
-        sourceFolder = null,
-        relativePath = null,
-        volumeId = null,
-        volumeUuid = null,
-        identity = null,
-        availabilityState = null,
-    )
 
     private fun animeRecord() = ReiAnixAnimeRecord(
         id = 12L,

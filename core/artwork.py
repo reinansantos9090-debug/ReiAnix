@@ -722,11 +722,6 @@ class ArtworkEngine:
                 )
             key = self._make_key("anilist" if anilist_id else "url",
                                  f"{anilist_id or cover_url}|{cover_url}", "poster", "large")
-            # Let _upsert preserve an existing QUEUED/DOWNLOADING/FAILED/
-            # RETRY_WAIT state, including failure_count and next_retry_at.
-            # Passing RETRY_WAIT or FAILED directly bypasses that preservation
-            # rule and clears next_retry_at, so every hydration can immediately
-            # retry a request that should still be in backoff.
             self._upsert(
                 entity_type=entity_type, entity_id=anime_id, artwork_type="poster",
                 source="anilist", source_ref=cover_url, external_url=cover_url,

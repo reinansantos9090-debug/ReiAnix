@@ -516,37 +516,6 @@ class ArtworkEngineTests(unittest.TestCase):
         self.assertEqual(second["status"], STATUS_RETRY_WAIT)
         self.assertEqual(len(calls), 1)
 
-    def test_metadata_sync_preserves_retry_backoff(self):
-        anime = self._media("Metadata retry backoff")
-        url = "https://example/retry-sync.jpg"
-        self._remote(anime, url)
-        calls = []
-
-        def downloader(request_url):
-            calls.append(request_url)
-            raise TimeoutError("timeout")
-
-        self.engine._downloader = downloader
-        self.assertIsNone(self.engine.request("anime", anime, "poster", blocking=True))
-        before = self.engine.list_for("anime", anime, "poster")[0]
-        self.assertEqual(before["status"], STATUS_RETRY_WAIT)
-        self.assertGreater(before["next_retry_at"], time.time())
-
-        # A repeated metadata sync must not reset the persisted cooldown.
-        self.engine.sync_anime_metadata(
-            anime,
-            {"anilist_id": 16498, "cover_url": url},
-            request_download=False,
-        )
-        after = self.engine.list_for("anime", anime, "poster")[0]
-        self.assertEqual(after["status"], STATUS_RETRY_WAIT)
-        self.assertEqual(after["failure_count"], before["failure_count"])
-        self.assertEqual(after["next_retry_at"], before["next_retry_at"])
-
-        second = self.engine.request("anime", anime, "poster", blocking=True)
-        self.assertEqual(second["status"], STATUS_RETRY_WAIT)
-        self.assertEqual(len(calls), 1)
-
     def test_404_enters_failed_without_retry_loop(self):
         anime = self._media()
         self._remote(anime, "https://example/missing.jpg")

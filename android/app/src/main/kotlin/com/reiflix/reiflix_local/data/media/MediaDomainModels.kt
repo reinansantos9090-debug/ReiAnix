@@ -118,20 +118,6 @@ data class LogicalEpisodeIdentity(
  * Represents a location, not an immutable identity. storedLocation preserves
  * the exact legacy value; SAF/content URIs may be revoked and are not stable IDs.
  */
-enum class MediaLocationKind {
-    FILESYSTEM_PATH,
-    FILE_URI,
-    CONTENT_URI,
-    SAF_TREE_URI,
-    SAF_DOCUMENT_URI,
-    OTHER_URI,
-    UNRESOLVED,
-}
-
-/**
- * A location is not a persisted identifier. Preserve the exact legacy value;
- * SAF/content URIs can be revoked independently of the media record.
- */
 data class LocalMediaReference(
     val episodeRecordId: EpisodeRecordId?,
     val storedLocation: String,
@@ -146,95 +132,16 @@ data class LocalMediaReference(
     val identity: CanonicalMediaIdentity?,
     val availabilityState: String?,
 ) {
-    val locationKind: MediaLocationKind
-        get() = MediaReferenceSyntax.classify(storedLocation)
-
-    /** Any URI-shaped value, retained exactly as supplied by the caller. */
     val uri: String?
         get() = storedLocation.takeIf(MediaReferenceSyntax::hasUriScheme)
 
-    /** Only raw filesystem paths are exposed as filesystem paths. */
     val filesystemPath: String?
-        get() = storedLocation.takeIf { locationKind == MediaLocationKind.FILESYSTEM_PATH }
-
-    val contentUri: String?
-        get() = storedLocation.takeIf {
-            locationKind == MediaLocationKind.CONTENT_URI ||
-                locationKind == MediaLocationKind.SAF_TREE_URI ||
-                locationKind == MediaLocationKind.SAF_DOCUMENT_URI
-        }
-
-    val safTreeUri: String?
-        get() = storedLocation.takeIf { locationKind == MediaLocationKind.SAF_TREE_URI }
-
-    val safDocumentUri: String?
-        get() = storedLocation.takeIf { locationKind == MediaLocationKind.SAF_DOCUMENT_URI }
+        get() = storedLocation.takeUnless(MediaReferenceSyntax::hasUriScheme)
 }
 
 object MediaReferenceSyntax {
     private val uriScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
-
-    /**
-     * Canonical platform DocumentsProvider authorities plus Google Drive's
-     * document provider. Unknown content providers remain generic content URIs:
-     * a path fragment alone cannot prove that a provider implements SAF.
-     */
-    private val knownDocumentsProviderAuthorities = setOf(
-        "com.android.externalstorage.documents",
-        "com.android.providers.downloads.documents",
-        "com.android.providers.media.documents",
-        "com.google.android.apps.docs.storage",
-        "com.google.android.apps.docs.storage.legacy",
-    )
-
     fun hasUriScheme(value: String): Boolean = uriScheme.containsMatchIn(value.trim())
-
-    /** Pure-JVM classification; never resolves, rewrites, or persists a location. */
-    fun classify(value: String): MediaLocationKind {
-        val trimmed = value.trim()
-        if (trimmed.isEmpty()) return MediaLocationKind.UNRESOLVED
-        if (!hasUriScheme(trimmed)) return MediaLocationKind.FILESYSTEM_PATH
-
-        // Preserve a recognizable scheme even when a legacy URI is malformed:
-        // a broken URI must never silently become a filesystem path.
-        val scheme = trimmed.substringBefore(':').lowercase(java.util.Locale.ROOT)
-        return when (scheme) {
-            "file" -> MediaLocationKind.FILE_URI
-            "content" -> classifyContentUri(trimmed)
-            else -> MediaLocationKind.OTHER_URI
-        }
-    }
-
-    private fun classifyContentUri(value: String): MediaLocationKind {
-        val parsed = runCatching { java.net.URI(value) }.getOrNull()
-            ?: return MediaLocationKind.CONTENT_URI
-        if (!parsed.scheme.equals("content", ignoreCase = true)) {
-            return MediaLocationKind.CONTENT_URI
-        }
-
-        val authority = parsed.authority?.lowercase(java.util.Locale.ROOT)
-            ?: return MediaLocationKind.CONTENT_URI
-        if (authority !in knownDocumentsProviderAuthorities) return MediaLocationKind.CONTENT_URI
-
-        // DocumentsContract URI shapes are path-segment based:
-        // /tree/{treeDocumentId}, /document/{documentId}, or
-        // /tree/{treeDocumentId}/document/{documentId}. Do not infer SAF from
-        // arbitrary substrings in a generic provider's path.
-        val segments = parsed.rawPath.orEmpty().split('/').filter(String::isNotEmpty)
-        val hasDocumentId = segments.size == 2 &&
-            segments[0] == "document" && segments[1].isNotEmpty()
-        val hasTreeId = segments.size == 2 &&
-            segments[0] == "tree" && segments[1].isNotEmpty()
-        val documentWithinTree = segments.size == 4 &&
-            segments[0] == "tree" && segments[1].isNotEmpty() &&
-            segments[2] == "document" && segments[3].isNotEmpty()
-
-        return when {
-            hasDocumentId || documentWithinTree -> MediaLocationKind.SAF_DOCUMENT_URI
-            hasTreeId -> MediaLocationKind.SAF_TREE_URI
-            else -> MediaLocationKind.CONTENT_URI
-        }
-    }
 }
 
 data class ArtworkReference(

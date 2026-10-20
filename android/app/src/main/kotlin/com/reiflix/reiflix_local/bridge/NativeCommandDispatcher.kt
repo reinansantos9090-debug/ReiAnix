@@ -1,14 +1,12 @@
 package com.reiflix.reiflix_local.bridge
 
 import com.reiflix.reiflix_local.MainActivity
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
 
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.SafScanner
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.player.NativePlayerRequest
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -206,11 +204,7 @@ object NativeCommandDispatcher {
             return
         }
 
-        // Resolve persisted player settings inside the command executor, never on the
-        // main thread. Query failure preserves the compatible handoff values.
-        val effectiveRequest = request.withCanonicalSettings(readCanonicalPlayerSettings())
-
-        val localUri = runCatching { Uri.parse(effectiveRequest.episodeUri) }.getOrNull()
+        val localUri = runCatching { Uri.parse(request.episodeUri) }.getOrNull()
         if (localUri == null || localUri.scheme?.lowercase() !in setOf("content", "file")) {
             publishFailure(command, "UNSUPPORTED_MEDIA_URI", "O player aceita somente mídias locais autorizadas.")
             return
@@ -218,7 +212,7 @@ object NativeCommandDispatcher {
 
         try {
             val receivedAtMs = System.currentTimeMillis()
-            val intent = effectiveRequest.toIntent(appContext, localUri).apply {
+            val intent = request.toIntent(appContext, localUri).apply {
                 putExtra("commandReceivedAtMs", receivedAtMs)
                 putExtra("handoffDispatchedAtMs", System.currentTimeMillis())
                 addFlags(
@@ -242,8 +236,8 @@ object NativeCommandDispatcher {
             Log.i(
                 TAG,
                 "PLAYER_HANDOFF_DISPATCHED requestId=${command.requestId} " +
-                    "playerSessionId=${effectiveRequest.playerSessionId.ifBlank { "-" }} " +
-                    "originRequestId=${effectiveRequest.originRequestId.ifBlank { "-" }}",
+                    "playerSessionId=${request.playerSessionId.ifBlank { "-" }} " +
+                    "originRequestId=${request.originRequestId.ifBlank { "-" }}",
             )
         } catch (error: Exception) {
             requestState.markOperationState(
@@ -258,33 +252,6 @@ object NativeCommandDispatcher {
                 error.message,
             )
         }
-    }
-
-    /**
-     * Read only persisted player-related preferences from LibraryStore's canonical
-     * SQLite table. This dispatcher runs on its dedicated command executor.
-     */
-    private fun readCanonicalPlayerSettings(): Map<String, String>? = try {
-        val dependencies = ReiAnixAppDependencies.existingOrNull(appContext)
-        val database = dependencies?.sqliteDatabase ?: ReiAnixSqliteDatabase(appContext)
-        database.read { connection ->
-            connection.rawQuery(
-                "SELECT key, value FROM preferences " +
-                    "WHERE key LIKE 'player.%' OR key LIKE 'gestures.%' OR key LIKE 'audio.%'",
-                null,
-            ).use { cursor ->
-                buildMap {
-                    val keyIndex = cursor.getColumnIndexOrThrow("key")
-                    val valueIndex = cursor.getColumnIndexOrThrow("value")
-                    while (cursor.moveToNext()) {
-                        put(cursor.getString(keyIndex), cursor.getString(valueIndex))
-                    }
-                }
-            }
-        }
-    } catch (error: Exception) {
-        Log.w(TAG, "Canonical player preferences unavailable; keeping compatible handoff values.", error)
-        null
     }
 
     private fun dispatchThumbnail(command: Command) {

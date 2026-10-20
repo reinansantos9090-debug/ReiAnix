@@ -25,14 +25,7 @@ enum class ReiAnixSqliteTransactionOutcome {
 
 class ReiAnixSqliteDatabase(context: Context) {
     private val appContext = context.applicationContext
-    /**
-     * Canonical durable path shared with Flet 0.86.5's FLET_APP_STORAGE_DATA
-     * on Android (the package's private files/data directory). Bootstrap and
-     * recovery must consult this resolved file instead of reconstructing a path.
-     */
-    internal val canonicalDatabaseFile: File = File(File(appContext.filesDir, "data"), DATABASE_FILE_NAME)
-    private val databaseFile: File
-        get() = canonicalDatabaseFile
+    private val databaseFile = File(File(appContext.filesDir, "data"), DATABASE_FILE_NAME)
     private val connectionLock = Any()
     @Volatile private var contractValidated = false
     private val canonicalContract: JSONObject by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -146,65 +139,6 @@ class ReiAnixSqliteDatabase(context: Context) {
                 database.close()
             }
         }
-
-    /**
-     * Returns the build-generated canonical contract to the native schema bootstrap.
-     * The JSON is derived from LibraryStore's real schema in an isolated build fixture;
-     * callers must not mutate it or use it as a second persistence source.
-     */
-    internal fun schemaContractForBootstrap(): JSONObject = canonicalContract
-
-    /**
-     * Runs schema creation/migration against the same canonical file and under the same
-     * process lock as repository operations. The create-on-demand open flag is permitted only to
-     * the bootstrap caller after startup has excluded interrupted-recovery evidence.
-     * Existing files are never truncated, deleted, copied or replaced.
-     */
-    internal fun <T> withSchemaBootstrap(
-        createIfMissing: Boolean,
-        block: (SQLiteDatabase) -> T,
-    ): T = synchronized(connectionLock) {
-        if (!createIfMissing) {
-            check(databaseFile.isFile && databaseFile.length() > 0L) {
-                "The existing canonical SQLite database is unavailable for schema migration."
-            }
-        } else {
-            check(!databaseFile.exists() || (databaseFile.isFile && databaseFile.length() > 0L)) {
-                "The canonical SQLite path exists but is not a valid non-empty file."
-            }
-        }
-        if (createIfMissing && !databaseFile.exists()) {
-            val parent = requireNotNull(databaseFile.parentFile) {
-                "The canonical SQLite database must have a parent directory."
-            }
-            check(parent.isDirectory || parent.mkdirs()) {
-                "Could not create the canonical SQLite data directory."
-            }
-        }
-        val flags = SQLiteDatabase.OPEN_READWRITE or
-            (if (createIfMissing) OPEN_CREATE_ON_DEMAND_FLAG else 0)
-        val database = try {
-            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, flags)
-        } catch (error: SQLiteException) {
-            throw ReiAnixSqliteOpenException(
-                "Unable to open the canonical SQLite database for native schema bootstrap.",
-                error,
-            )
-        }
-        try {
-            database.setForeignKeyConstraintsEnabled(true)
-            database.rawQuery("PRAGMA busy_timeout = $BUSY_TIMEOUT_MS", null).use { cursor ->
-                while (cursor.moveToNext()) Unit
-            }
-            block(database)
-        } finally {
-            database.close()
-        }
-    }
-
-    /** Full contract/integrity inspection inside the schema-bootstrap transaction. */
-    internal fun inspectSchemaForBootstrap(database: SQLiteDatabase): ReiAnixSqliteSchemaSnapshot =
-        inspectSchema(database)
 
     internal fun quickCheck(): List<String> =
         synchronized(connectionLock) {
@@ -634,10 +568,6 @@ class ReiAnixSqliteDatabase(context: Context) {
         const val BUSY_TIMEOUT_MS = 10_000
         const val CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json"
         private const val SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
-
-        // Android's SQLiteDatabase create-on-demand open flag (0x10000000).
-        // Keep this privileged mode isolated to the explicit schema-bootstrap boundary.
-        private const val OPEN_CREATE_ON_DEMAND_FLAG = 0x10000000
 
         private fun quoteIdentifier(identifier: String) = "\"" + identifier.replace("\"", "\"\"") + "\""
     }

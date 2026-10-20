@@ -185,10 +185,7 @@ class NativePlayerActivity : ComponentActivity() {
     private var subtitleEmbeddedStyle = true
 
     private val handler = Handler(Looper.getMainLooper())
-    // Position confirmed by the canonical SQLite write; never advance when a save merely gets queued.
     private var lastSavedPosition = -1L
-    // Separate throttle for snapshots already submitted to the progress executor.
-    private var lastProgressEventPosition = -1L
     private var lastProgressPersistAt = 0L
     private var suppressExitEvent = false
     private var exitReported = false
@@ -839,7 +836,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             applyAdvancedTrackConstraints()
             applySubtitlePreferences()
             autoplayNext = savedInstanceState?.takeIf { it.containsKey("autoplay_next") }?.getBoolean("autoplay_next")
-                ?: intent.getBooleanExtra("autoplay_next", intent.getBooleanExtra("autoplay", true))
+                ?: intent.getBooleanExtra("autoplay", true)
 
             val requestedSpeed = savedInstanceState?.takeIf { it.containsKey("playback_speed") }
                 ?.getFloat("playback_speed")
@@ -1015,7 +1012,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         activityStartedAtMs = System.currentTimeMillis()
         sessionState = SessionState.ACTIVE
         lastSavedPosition = -1L
-        lastProgressEventPosition = -1L
         errorPublishedForGeneration = false
         restoredPositionMs = null
         initialSeekApplied = false
@@ -1077,7 +1073,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
 
-        autoplayNext = newIntent.getBooleanExtra("autoplay_next", newIntent.getBooleanExtra("autoplay", autoplayNext))
+        autoplayNext = newIntent.getBooleanExtra("autoplay", autoplayNext)
         volumeGesturesEnabled = newIntent.getBooleanExtra("setting_gestures_volume", volumeGesturesEnabled)
         brightnessGesturesEnabled = newIntent.getBooleanExtra("setting_gestures_brightness", brightnessGesturesEnabled)
         doubleTapEnabled = newIntent.getBooleanExtra("setting_gestures_double_tap", doubleTapEnabled)
@@ -1307,7 +1303,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         val requestedStartPositionMs = initialPositionMsForGeneration
         val allowNativeResumeLookup = restoredPositionMs == null &&
-                    intent.getBooleanExtra("setting_player_resume", true) &&
                     !intent.getBooleanExtra("positionMsSpecified", intent.hasExtra("positionMs"))
         pendingPreparation = playbackWorker.submit {
             try {
@@ -2251,7 +2246,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         openedReported = false
         playerReadyAtMs = 0L
         lastSavedPosition = -1L
-        lastProgressEventPosition = -1L
         lastProgressPersistAt = System.currentTimeMillis()
         val generation = playerGeneration
         activePlayerListener = createPlayerListener(generation)
@@ -4722,17 +4716,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val duration = if (rawDuration > 0L) rawDuration else 0L
         val rawPosition = player.currentPosition.coerceAtLeast(0L)
         val position = if (duration > 0L) rawPosition.coerceAtMost(duration) else rawPosition
-        if (!force && lastProgressEventPosition >= 0L &&
-            abs(position - lastProgressEventPosition) < PROGRESS_INTERVAL_MS
-        ) return null
+        if (!force && lastSavedPosition >= 0L && abs(position - lastSavedPosition) < PROGRESS_INTERVAL_MS) return null
         if (force && position == lastSavedPosition &&
             eventType != "player_completed" && eventType != "player_exited"
         ) {
             return null
         }
-        // This is an attempted snapshot only. lastSavedPosition is updated after the
-        // canonical SQLite checkpoint is confirmed by the progress worker.
-        lastProgressEventPosition = position
+        lastSavedPosition = position
         return JSONObject()
             .put("type", eventType)
             .put("requestId", requestId)
@@ -4830,25 +4820,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         "FAILED_TO_PUBLISH " + eventType +
                             " requestId=" + requestId.ifEmpty { "-" },
                     )
-                }
-                if (persistedNatively && episodeId != null) {
-                    val committedPositionMs = positionMs
-                    val committedPlayerGeneration = payload?.optLong("playerGeneration", -1L) ?: -1L
-                    val committedPlayerSessionId = payload?.optString("playerSessionId").orEmpty()
-                    val committedMediaUri = payload?.optString("uri").orEmpty()
-                    handler.post {
-                        // A queued completion from an old episode/session must not become
-                        // the duplicate-suppression baseline for a newer media item.
-                        if (
-                            sessionState == SessionState.ACTIVE &&
-                            playerGeneration == committedPlayerGeneration &&
-                            playerSessionId == committedPlayerSessionId &&
-                            currentEpisodeId() == episodeId.toString() &&
-                            ::uri.isInitialized && uri.toString() == committedMediaUri
-                        ) {
-                            lastSavedPosition = committedPositionMs
-                        }
-                    }
                 }
             }
         } catch (error: java.util.concurrent.RejectedExecutionException) {

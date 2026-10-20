@@ -56,13 +56,13 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         expected_tokens = {
-            "val background = Color(0xFF050505)",
-            "val surface = Color(0xFF0B0B0B)",
-            "val surfaceVariant = Color(0xFF111111)",
-            "val surfaceRaised = Color(0xFF171717)",
-            "val surfaceDialog = Color(0xFF141414)",
-            "val surfaceSheet = surfaceVariant",
-            "val surfaceNavigation = background",
+            "val background = Color(0xFF000000)",
+            "val surface = Color(0xFF050505)",
+            "val surfaceVariant = Color(0xFF080808)",
+            "val surfaceRaised = Color(0xFF0A0A0A)",
+            "val surfaceDialog = Color(0xFF0A0A0A)",
+            "val surfaceSheet = Color(0xFF080808)",
+            "val surfaceNavigation = Color(0xFF000000)",
             "val divider = Color(0xFF202020)",
             "val border = Color(0xFF202020)",
             "val outline = Color(0xFF757575)",
@@ -71,7 +71,7 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
             "val textMuted = Color(0xFFB3B3B3)",
             "val textTertiary = Color(0xFF9E9E9E)",
             "val textDisabled = Color(0xFF888888)",
-            "val primary = Color(0xFF3D8BFF)",
+            "val primary = Color(0xFF2579FF)",
         }
         for token in expected_tokens:
             self.assertIn(token, tokens)
@@ -116,7 +116,7 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
     def test_legacy_gray_surface_palette_is_absent_from_compose_design_tokens(self):
         tokens = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt").read_text(encoding="utf-8")
         theme = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt").read_text(encoding="utf-8")
-        for legacy in ("0xFF151515",):
+        for legacy in ("0xFF151515", "0xFF111111"):
             self.assertNotIn(legacy, tokens)
             self.assertNotIn(legacy, theme)
         self.assertIn("surfaceContainerLowest = ReiAnixTokens.Colors.background", theme)

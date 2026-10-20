@@ -192,21 +192,6 @@ class ReiAnixSettingsRepository(
             }
             return
         }
-        // Avoid duplicate SQLite writes and legacy notifications when Compose
-        // emits the value already persisted or repeats the same in-flight edit.
-        // A pending different value is intentionally not skipped: the user may be
-        // reverting an edit that has not committed yet.
-        val alreadySatisfied = synchronized(stateLock) {
-            val current = _state.value
-            val pending = pendingSettings[normalizedKey]
-            pending?.value == normalizedValue ||
-                (pending == null &&
-                    current.status == ReiAnixSettingsLoadStatus.READY &&
-                    (current.settings[normalizedKey]
-                        ?: ReiAnixSettingsContract.defaultFor(normalizedKey)) == normalizedValue)
-        }
-        if (alreadySatisfied) return
-
         val requestId = UUID.randomUUID().toString()
         synchronized(stateLock) {
             val current = _state.value
@@ -286,13 +271,6 @@ class ReiAnixSettingsRepository(
                     }
 
                     if (shouldNotifyRuntime) {
-                        if (normalizedKey == "artwork.enabled" ||
-                            normalizedKey == "artwork.cache_limit_mb"
-                        ) {
-                            // Apply the already-committed canonical preference to the native
-                            // artwork worker; failures are logged there and never undo SQLite.
-                            scope.launch { nativeArtworkService.applySettingChange(normalizedKey) }
-                        }
                         val published = runCatching {
                             NativeMailbox.write(
                                 appContext,

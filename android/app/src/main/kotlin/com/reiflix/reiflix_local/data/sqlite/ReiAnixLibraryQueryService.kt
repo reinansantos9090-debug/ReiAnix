@@ -1,26 +1,50 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 
 /**
- * Backward-compatible query facade. ReiAnixLibraryService owns the canonical
- * query contracts and all reads continue to use the existing SQLite repository.
- * The former direct repository.searchAnimeIds( call is intentionally centralized
- * in ReiAnixLibraryService so callers share one query/error contract.
+ * Read-oriented library service over the existing canonical SQLite repository.
+ *
+ * The Compose snapshot/NativeMailbox adapter remains responsible for commands
+ * and features whose mutation semantics still belong to LibraryStore. This
+ * service deliberately performs no writes and never treats an unavailable or
+ * incompatible database as an empty library.
  */
 class ReiAnixLibraryQueryService(
     context: Context,
     private val repository: ReiAnixSqliteLibraryRepository = ReiAnixSqliteLibraryRepository(context),
-    private val libraryService: ReiAnixLibraryService = ReiAnixLibraryService(repository),
 ) {
     suspend fun animeById(id: Long): ReiAnixLibraryQueryResult<ReiAnixAnimeRecord> =
-        libraryService.animeById(id)
+        query("animeById") {
+            repository.getAnime(id)?.let { ReiAnixLibraryQueryResult.Success(it) }
+                ?: ReiAnixLibraryQueryResult.NotFound("anime", id)
+        }
 
     suspend fun animePage(
         limit: Int = DEFAULT_PAGE_SIZE,
         offset: Int = 0,
     ): ReiAnixLibraryQueryResult<ReiAnixLibraryPage<ReiAnixAnimeRecord>> =
-        libraryService.animePage(limit, offset)
+        query("animePage") {
+            require(limit in 1..MAX_PAGE_SIZE) {
+                "Page size must be between 1 and $MAX_PAGE_SIZE."
+            }
+            require(offset >= 0) { "Offset cannot be negative." }
+            val rows = repository.listAnime(limit = limit + 1, offset = offset)
+            if (rows.isEmpty()) {
+                ReiAnixLibraryQueryResult.Empty("animePage")
+            } else {
+                ReiAnixLibraryQueryResult.Success(
+                    ReiAnixLibraryPage(
+                        items = rows.take(limit),
+                        offset = offset,
+                        limit = limit,
+                        hasMore = rows.size > limit,
+                    ),
+                )
+            }
+        }
 
     suspend fun searchAnime(
         searchText: String,
@@ -33,45 +57,94 @@ class ReiAnixLibraryQueryService(
         offset: Int = 0,
         libraryOnly: Boolean = false,
     ): ReiAnixLibraryQueryResult<ReiAnixSqliteSearchPage> =
-        libraryService.searchAnime(
-            searchText = searchText,
-            genreKey = genreKey,
-            favoritesOnly = favoritesOnly,
-            watchingOnly = watchingOnly,
-            completedOnly = completedOnly,
-            sortLabel = sortLabel,
-            limit = limit,
-            offset = offset,
-            libraryOnly = libraryOnly,
-        )
+        this.query("searchAnime") {
+            require(limit in 1..MAX_PAGE_SIZE) {
+                "Search page size must be between 1 and $MAX_PAGE_SIZE."
+            }
+            require(offset >= 0) { "Search offset cannot be negative." }
+            val page = repository.searchAnimeIds(
+                query = searchText,
+                genreKey = genreKey,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                sortLabel = sortLabel,
+                limit = limit,
+                offset = offset,
+                libraryOnly = libraryOnly,
+            )
+            if (page.animeIds.isEmpty()) ReiAnixLibraryQueryResult.Empty("searchAnime")
+            else ReiAnixLibraryQueryResult.Success(page)
+        }
 
     suspend fun episodesForAnime(
         animeId: Long,
     ): ReiAnixLibraryQueryResult<List<ReiAnixEpisodeRecord>> =
-        libraryService.episodesForAnime(animeId)
+        query("episodesForAnime") {
+            // Keep the explicit parent lookup so a missing anime differs from an
+            // existing anime that legitimately has no episodes.
+            if (repository.getAnime(animeId) == null) {
+                return@query ReiAnixLibraryQueryResult.NotFound("anime", animeId)
+            }
+            val episodes = repository.listEpisodes(animeId)
+            if (episodes.isEmpty()) ReiAnixLibraryQueryResult.Empty("episodesForAnime")
+            else ReiAnixLibraryQueryResult.Success(episodes)
+        }
 
     suspend fun episodeById(id: Long): ReiAnixLibraryQueryResult<ReiAnixEpisodeRecord> =
-        libraryService.episodeById(id)
+        query("episodeById") {
+            repository.getEpisode(id)?.let { ReiAnixLibraryQueryResult.Success(it) }
+                ?: ReiAnixLibraryQueryResult.NotFound("episode", id)
+        }
 
     suspend fun recentlyPlayed(
         limit: Int = DEFAULT_PAGE_SIZE,
     ): ReiAnixLibraryQueryResult<List<ReiAnixEpisodeRecord>> =
-        libraryService.recentlyPlayed(limit)
+        query("recentlyPlayed") {
+            require(limit in 1..MAX_PAGE_SIZE) {
+                "Page size must be between 1 and $MAX_PAGE_SIZE."
+            }
+            val episodes = repository.listRecentlyPlayed(limit)
+            if (episodes.isEmpty()) ReiAnixLibraryQueryResult.Empty("recentlyPlayed")
+            else ReiAnixLibraryQueryResult.Success(episodes)
+        }
 
     suspend fun folders(): ReiAnixLibraryQueryResult<List<ReiAnixFolderRecord>> =
-        libraryService.folders()
+        query("folders") {
+            val rows = repository.listFolders()
+            if (rows.isEmpty()) ReiAnixLibraryQueryResult.Empty("folders")
+            else ReiAnixLibraryQueryResult.Success(rows)
+        }
 
     suspend fun artworkForAnime(
         animeId: Long,
     ): ReiAnixLibraryQueryResult<List<ReiAnixArtworkRecord>> =
-        libraryService.artworkForAnime(animeId)
+        query("artworkForAnime") {
+            if (repository.getAnime(animeId) == null) {
+                return@query ReiAnixLibraryQueryResult.NotFound("anime", animeId)
+            }
+            val artwork = repository.artworkForAnime(animeId)
+            if (artwork.isEmpty()) ReiAnixLibraryQueryResult.Empty("artworkForAnime")
+            else ReiAnixLibraryQueryResult.Success(artwork)
+        }
 
-    suspend fun libraryCatalogRows(): ReiAnixLibraryQueryResult<List<ReiAnixLibraryCatalogRow>> =
-        libraryService.libraryCatalogRows()
+    private suspend fun <T> query(
+        operation: String,
+        block: suspend () -> ReiAnixLibraryQueryResult<T>,
+    ): ReiAnixLibraryQueryResult<T> =
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.e(TAG, "Native library query failed: $operation", error)
+            ReiAnixLibraryQueryResult.Failure(operation, error)
+        }
 
     companion object {
         const val DEFAULT_PAGE_SIZE = 36
         const val MAX_PAGE_SIZE = 199
+        private const val TAG = "ReiAnixLibraryQueries"
     }
 }
 

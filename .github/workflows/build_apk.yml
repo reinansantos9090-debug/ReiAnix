@@ -372,40 +372,6 @@ jobs:
           set -euo pipefail
           test -x ./gradlew
           test -d "$SERIOUS_PYTHON_SITE_PACKAGES"
-
-          # Record the exact wrapper/runtime toolchain provided by the rendered Flet template.
-          # This does not imply an independent build: Flet generated the host and Python runtime above.
-          ./gradlew --version | tee "$GITHUB_WORKSPACE/build/gradle-wrapper-version.txt"
-          gradle_version="$(grep -E '^Gradle [0-9.]+$' "$GITHUB_WORKSPACE/build/gradle-wrapper-version.txt" | head -n1 | cut -d' ' -f2)"
-          agp_version="$(grep -F 'id("com.android.application") version ' "$GITHUB_WORKSPACE/android/build.gradle.kts" | head -n1 | cut -d '"' -f4)"
-          kotlin_version="$(grep -F 'id("org.jetbrains.kotlin.android") version ' "$GITHUB_WORKSPACE/android/build.gradle.kts" | head -n1 | cut -d '"' -f4)"
-          compose_plugin_version="$(grep -F 'id("org.jetbrains.kotlin.plugin.compose") version ' "$GITHUB_WORKSPACE/android/build.gradle.kts" | head -n1 | cut -d '"' -f4)"
-          compile_sdk="$(grep -E '^    compileSdk = ' "$GITHUB_WORKSPACE/android/app/build.gradle.kts" | head -n1 | cut -d '=' -f2 | tr -d ' ')"
-          java_version="$(java -version 2>&1 | head -n1)"
-          test -n "$gradle_version"
-          test -n "$agp_version"
-          test -n "$kotlin_version"
-          test -n "$compose_plugin_version"
-          test -n "$compile_sdk"
-          {
-            echo "build_mode=FLET_FLUTTER_HYBRID_HOST"
-            echo "apk_task=flet build apk"
-            echo "kotlin_verification_task=:app:compileReleaseKotlin"
-            echo "flet_version=0.86.5"
-            echo "flutter_version=3.44.8"
-            echo "gradle_wrapper_version=$gradle_version"
-            echo "android_gradle_plugin_version=$agp_version"
-            echo "kotlin_version=$kotlin_version"
-            echo "compose_compiler_plugin_version=$compose_plugin_version"
-            echo "compile_sdk=$compile_sdk"
-            echo "java_version=$java_version"
-            echo "standalone_gradle_build=BLOCKED_BY_GENERATED_FLUTTER_EMBEDDING"
-            echo "gradle_wrapper_output_begin"
-            cat "$GITHUB_WORKSPACE/build/gradle-wrapper-version.txt"
-            echo "gradle_wrapper_output_end"
-          } | tee "$GITHUB_WORKSPACE/build/android-build-toolchain.txt"
-          test -s "$GITHUB_WORKSPACE/build/android-build-toolchain.txt"
-
           # The APK build above already downloads/packages the selected arm64 runtime.
           # This verification checks Kotlin sources only; don't trigger background
           # Python/Dart payload downloads for every ABI from the Kotlin-only task graph.
@@ -576,9 +542,6 @@ jobs:
             echo "commit_sha=${GITHUB_SHA}"
             echo "apk_path=${apk}"
             echo "apk_sha256=${sha256}"
-            test -s build/android-build-toolchain.txt
-            echo "toolchain_report=build/android-build-toolchain.txt"
-            grep -E '^(build_mode|apk_task|kotlin_verification_task|flet_version|flutter_version|gradle_wrapper_version|android_gradle_plugin_version|kotlin_version|compose_compiler_plugin_version|compile_sdk|java_version|standalone_gradle_build)=' build/android-build-toolchain.txt
             python -c 'import json; from pathlib import Path; x=json.loads(Path("build/reiflix-build-identity.json").read_text(encoding="utf-8")); print("python_bundle_fingerprint="+x["python_bundle_fingerprint"]); print("bundled_python_runtime="+x["python_runtime"]); print("flet_version="+x["flet_version"])'
             echo "signing_mode=${REIFLIX_SIGNING_MODE:-unknown}"
             echo "$badging" | grep -E "package: name=|versionCode=|versionName=|targetSdkVersion"
@@ -673,9 +636,9 @@ jobs:
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" "${release_args[@]}"
-            gh release upload "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/LEIA-ANTES-DE-INSTALAR.txt               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               build/android-build-toolchain.txt               --clobber               --repo "$GITHUB_REPOSITORY"
+            gh release upload "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/LEIA-ANTES-DE-INSTALAR.txt               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               --clobber               --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/LEIA-ANTES-DE-INSTALAR.txt               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               build/android-build-toolchain.txt               "${release_args[@]}"               --target "$GITHUB_SHA"
+            gh release create "$RELEASE_TAG"               build/ReiAnix.apk               build/ReiAnix-apk.zip               build/ReiAnix.apk.sha256               build/LEIA-ANTES-DE-INSTALAR.txt               build/reiflix-release-metadata.txt               build/reiflix-build-identity.json               "${release_args[@]}"               --target "$GITHUB_SHA"
           fi
 
       # Publish short-lived APK/ZIP artifacts for pull_request builds and pushes to main.
@@ -690,8 +653,6 @@ jobs:
             build/ReiAnix.apk
             build/ReiAnix.apk.sha256
             build/LEIA-ANTES-DE-INSTALAR.txt
-            build/reiflix-release-metadata.txt
-            build/android-build-toolchain.txt
           retention-days: 1
           if-no-files-found: error
 

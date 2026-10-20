@@ -276,21 +276,6 @@ def build_fixture() -> dict[str, object]:
                 ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
                 """
             ).fetchall()
-            bootstrap_sql = {
-                "tables": [sql for object_type, _, sql in objects if object_type == "table"],
-                "indexes": [sql for object_type, _, sql in objects if object_type == "index"],
-                "triggers": [
-                    str(row[0]) for row in connection.execute(
-                        """
-                        SELECT sql FROM sqlite_master
-                        WHERE type = 'trigger'
-                          AND sql IS NOT NULL
-                          AND name NOT LIKE 'sqlite_%'
-                        ORDER BY name
-                        """
-                    ).fetchall()
-                ],
-            }
             return {
                 "schema_version": schema_version,
                 "sqlite_user_version": user_version,
@@ -300,7 +285,6 @@ def build_fixture() -> dict[str, object]:
                 "indexes": indexes,
                 "foreign_keys": foreign_keys,
                 "triggers": triggers,
-                "bootstrap_sql": bootstrap_sql,
                 "statements": [sql for _, _, sql in objects],
             }
 

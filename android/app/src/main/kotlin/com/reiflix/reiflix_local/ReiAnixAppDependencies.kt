@@ -8,7 +8,6 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
 import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
-import com.reiflix.reiflix_local.data.library.ReiAnixGachaService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import java.io.File
@@ -62,18 +61,17 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixSqliteAccountRepository(sqliteDatabase)
     }
 
-    /** Single Kotlin domain entry point for canonical library reads and mutations. */
+    val libraryQueryService: ReiAnixLibraryQueryService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixLibraryQueryService(appContext, sqliteLibraryRepository)
+    }
+
+    /** Single Kotlin domain entry point for scan-owned canonical library mutations. */
     val libraryService: ReiAnixLibraryService by lazy(
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixLibraryService(sqliteLibraryRepository)
-    }
-
-    /** Compatibility facade; query contracts and change publication belong to the service above. */
-    val libraryQueryService: ReiAnixLibraryQueryService by lazy(
-        LazyThreadSafetyMode.SYNCHRONIZED,
-    ) {
-        ReiAnixLibraryQueryService(appContext, sqliteLibraryRepository, libraryService)
     }
 
     /** Local discovery algorithms over the shared canonical SQLite repository. */
@@ -81,11 +79,6 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixLibraryDiscoveryService(sqliteLibraryRepository)
-    }
-
-    /** Gacha shares the canonical native SQLite repository and performs read-only selection. */
-    val gachaService: ReiAnixGachaService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        ReiAnixGachaService(sqliteLibraryRepository)
     }
 
     val personalListService: ReiAnixPersonalListService by lazy(

@@ -180,7 +180,7 @@ class StabilizationTests(unittest.TestCase):
         start = PLAYER.index("override fun onNewIntent")
         end = PLAYER.index("private fun buildMediaItem", start)
         block = PLAYER[start:end]
-        self.assertIn('autoplayNext = newIntent.getBooleanExtra("autoplay_next", newIntent.getBooleanExtra("autoplay", autoplayNext))', block)
+        self.assertIn('autoplayNext = newIntent.getBooleanExtra("autoplay", autoplayNext)', block)
         self.assertIn("updateEpisodeNavigationButtons()", block)
         button_start = PLAYER.index("private fun updateEpisodeNavigationButtons")
         button_end = PLAYER.index("private fun requestEpisode", button_start)
