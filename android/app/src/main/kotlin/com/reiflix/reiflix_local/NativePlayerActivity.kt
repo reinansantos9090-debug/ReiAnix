@@ -2251,6 +2251,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         openedReported = false
         playerReadyAtMs = 0L
         lastSavedPosition = -1L
+        lastProgressEventPosition = -1L
         lastProgressPersistAt = System.currentTimeMillis()
         val generation = playerGeneration
         activePlayerListener = createPlayerListener(generation)
