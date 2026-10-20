@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.database.sqlite.SQLiteDatabase
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -12,6 +13,58 @@ import org.json.JSONObject
  * changes PRAGMA user_version. Incompatible legacy states fail closed for Recovery Mode.
  */
 internal object ReiAnixSqliteSchemaManager {
+    fun initialize(
+        databaseFile: File,
+        allowCreate: Boolean,
+        contract: JSONObject,
+        inspectSchema: (SQLiteDatabase) -> ReiAnixSqliteSchemaSnapshot,
+    ): ReiAnixSqliteSchemaSnapshot {
+        val existed = databaseFile.exists()
+        check(!existed || (databaseFile.isFile && databaseFile.length() > 0L)) {
+            "The canonical SQLite file exists but is empty or is not a regular file. No replacement was created."
+        }
+        check(existed || allowCreate) {
+            "The canonical SQLite database is absent and creation was not authorized."
+        }
+        val parent = databaseFile.parentFile
+        check(parent != null && (parent.isDirectory || parent.mkdirs())) {
+            "The canonical SQLite data directory is unavailable."
+        }
+        val database = try {
+            if (existed) {
+                SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+            } else {
+                SQLiteDatabase.openOrCreateDatabase(databaseFile.absolutePath, null)
+            }
+        } catch (error: android.database.sqlite.SQLiteException) {
+            throw ReiAnixSqliteOpenException("Unable to open the canonical SQLite database for a safe schema migration.", error)
+        }
+        try {
+            database.setForeignKeyConstraintsEnabled(true)
+            database.rawQuery("PRAGMA busy_timeout = ${ReiAnixSqliteDatabase.BUSY_TIMEOUT_MS}", null).use { cursor ->
+                while (cursor.moveToNext()) Unit
+            }
+            database.beginTransactionNonExclusive()
+            val snapshot: ReiAnixSqliteSchemaSnapshot
+            try {
+                migrate(database, contract)
+                snapshot = inspectSchema(database)
+                check(snapshot.supportsCurrentContract) {
+                    "Canonical SQLite schema migration did not produce a compatible v29 database: " +
+                        snapshot.incompatibilities.joinToString("; ")
+                }
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
+            return snapshot
+        } catch (error: android.database.sqlite.SQLiteException) {
+            throw ReiAnixSqliteOpenException("Canonical SQLite schema migration failed; the transaction was rolled back.", error)
+        } finally {
+            database.close()
+        }
+    }
+
     fun migrate(database: SQLiteDatabase, contract: JSONObject) {
         val expectedVersion = contract.getInt("schema_version")
         require(expectedVersion == ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION) {
@@ -24,6 +77,18 @@ internal object ReiAnixSqliteSchemaManager {
         }
 
         val tables = contract.getJSONArray("tables").strings()
+        val existingTables = database.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            null,
+        ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+        // On a non-empty database these long-standing tables are canonical data owners.
+        // Their disappearance is data-loss evidence, not an instruction to create an empty replacement.
+        if (existingTables.isNotEmpty()) {
+            val missingCoreTables = setOf("anime", "episodes", "folders") - existingTables
+            check(missingCoreTables.isEmpty()) {
+                "Canonical database is missing existing core tables: ${missingCoreTables.sorted().joinToString()}. Recovery is required."
+            }
+        }
         val columns = contract.getJSONObject("columns")
         for (table in tables) {
             requireSafeIdentifier(table)
