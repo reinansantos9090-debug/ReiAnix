@@ -2,21 +2,112 @@ package com.reiflix.reiflix_local
 
 import android.app.Activity
 import android.util.Log
+import androidx.lifecycle.lifecycleScope
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
- * Activity-level startup hook invoked by MainActivity after process bootstrap.
+ * Native Android entry-point orchestration shared by the launcher Activity.
  *
- * The Android Application owns the process dependency graph and MainActivity
- * preserves its explicit, idempotent bootstrap contract. This hook attaches
- * window diagnostics at the Activity lifecycle boundary without creating a
- * second service graph or runtime.
+ * ReiAnixApplication remains the single owner of the process dependency graph.
+ * MainActivity keeps the explicit, idempotent bootstrap request and its routing
+ * contract; this object observes that existing bootstrap and owns the policy
+ * deciding when normal native operations may run.
  */
 internal object MainEntryPoint {
+    private const val TAG = "ReiAnixEntryPoint"
+
+    private data class BootstrapObservation(
+        val phase: ReiAnixBootstrapPhase,
+        val stage: ReiAnixBootstrapStage,
+        val persistenceStatus: ReiAnixBootstrapPersistenceStatus,
+        val recoveryRequired: Boolean,
+        val warningsCount: Int,
+        val normalOperationsReady: Boolean,
+    )
+
     fun onActivityCreated(activity: Activity) {
+        // Resolve only the Application-owned graph; never instantiate a second graph.
+        val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
         PerformanceDiagnostics.attach(activity)
         PerformanceDiagnostics.sampleMemory(activity, "main_on_create")
+        observeBootstrapForActivity(activity, dependencies)
+
         Log.i(TAG, "NATIVE_ACTIVITY_ENTRYPOINT_READY activity=${activity::class.java.simpleName}")
     }
 
-    private const val TAG = "ReiAnixEntryPoint"
+    /**
+     * Single policy for the Activity's native-command/lifecycle gates.
+     *
+     * The Activity decision is kept separate from process bootstrap state: an
+     * individually healthy process must not release commands before the Activity
+     * has completed its own database validation and selected a safe initial route.
+     */
+    internal fun allowsNativeOperations(
+        activityDecisionComplete: Boolean,
+        bootstrapState: ReiAnixBootstrapState,
+    ): Boolean = activityDecisionComplete && bootstrapStateAllowsNativeOperations(bootstrapState)
+
+    private fun bootstrapStateAllowsNativeOperations(state: ReiAnixBootstrapState): Boolean =
+        !state.recoveryRequired &&
+            state.stage == ReiAnixBootstrapStage.READY &&
+            state.persistenceStatus in setOf(
+                ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+            )
+
+    /**
+     * Observe the existing process state for this Activity's lifetime. The
+     * lifecycleScope cancels collection on destruction; distinct snapshots avoid
+     * registering callbacks repeatedly or recording every timestamp-only update.
+     */
+    private fun observeBootstrapForActivity(
+        activity: Activity,
+        dependencies: ReiAnixAppDependencies,
+    ) {
+        activity.lifecycleScope.launch {
+            dependencies.bootstrap.state
+                .map { state ->
+                    BootstrapObservation(
+                        phase = state.phase,
+                        stage = state.stage,
+                        persistenceStatus = state.persistenceStatus,
+                        recoveryRequired = state.recoveryRequired,
+                        warningsCount = state.warnings.size,
+                        normalOperationsReady = bootstrapStateAllowsNativeOperations(state),
+                    )
+                }
+                .distinctUntilChanged()
+                .collect { observation ->
+                    val result = when {
+                        observation.recoveryRequired -> "RECOVERY_REQUIRED"
+                        observation.normalOperationsReady && observation.phase == ReiAnixBootstrapPhase.READY -> "READY"
+                        observation.normalOperationsReady -> "READY_WITH_WARNINGS"
+                        else -> observation.phase.name
+                    }
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "APP_NATIVE_ENTRYPOINT_BOOTSTRAP_STATE",
+                        severity = if (observation.recoveryRequired) "WARN" else "INFO",
+                        source = "MainEntryPoint",
+                        result = result,
+                        context = mapOf(
+                            "phase" to observation.phase.name,
+                            "stage" to observation.stage.name,
+                            "persistence_status" to observation.persistenceStatus.name,
+                            "recovery_required" to observation.recoveryRequired,
+                            "normal_operations_ready" to observation.normalOperationsReady,
+                            "warnings_count" to observation.warningsCount,
+                        ),
+                    )
+                    if (observation.recoveryRequired) {
+                        Log.w(TAG, "Native startup remains gated: canonical database recovery is required.")
+                    } else {
+                        Log.i(TAG, "Native bootstrap observed stage=${observation.stage} result=$result")
+                    }
+                }
+        }
+    }
 }
