@@ -8,7 +8,7 @@
 **Commit pai dessa referência:** `eab1d5491a3f13602ef080f363763d8f14509e2c`.  
 **Branch desta etapa:** `migration/prompt-18-final-certification-20261020`, criada a partir da referência auditada.  
 **Escopo das alterações desta etapa:** documentação de auditoria; nenhum arquivo de produção, dependência, workflow ou teste foi removido/alterado.  
-**Pull Request:** será ligado a esta auditoria após a publicação da branch. A referência exata do HEAD final e o estado do PR são registrados no resultado da execução do Prompt 18.
+**Pull Request:** [#208 — auditoria final Prompt 18/18](https://github.com/reinansantos9090-debug/ReiAnix/pull/208), aberto contra `main`, sem merge. O HEAD vivo da branch e o resultado de CI da PR devem ser consultados no link porque a documentação continua recebendo este fechamento.
 
 Esta seção prevalece sobre os registros históricos abaixo. O acesso nesta etapa foi remoto pelo GitHub; não houve checkout local inspecionável, portanto não se declara o estado de `git status` de uma máquina externa. A referência `main` não foi modificada pelo Prompt 18, não houve force push e não houve merge automático.
 
@@ -35,7 +35,7 @@ Alteração planejada e realizada nesta branch: atualizar este documento existen
 - Arquivos removidos ou movidos: nenhum.
 - Alterações em código de produção, dependências, schema, fixtures, scripts de build ou workflows: nenhuma.
 - Alterações de teste: nenhuma.
-- O diff definitivo em relação à referência de origem deve ser lido na comparação GitHub da branch/PR; os totais finais e o SHA do HEAD são fornecidos no relatório de execução, pois um documento não pode conter seu próprio hash final sem alterar esse mesmo hash.
+- Comparação da branch com a origem: [diff GitHub](https://github.com/reinansantos9090-debug/ReiAnix/compare/65eced0dd59cfedc36324ddf3846c2dd82b7a204...9139b88d1a7201daa663570ade2b9995d7d743c0), 1 arquivo, +127 inserções e −50 exclusões. O SHA final vivo da branch é reportado na resposta e no PR; não é gravado como auto-referência porque qualquer edição do próprio documento altera o SHA.
 
 ## D. Matriz funcional — estado encontrado
 
@@ -134,7 +134,7 @@ O comando de empacotamento usado pelo workflow é `flet build apk` contra um tem
 
 - Referência-base auditada: `65eced0dd59cfedc36324ddf3846c2dd82b7a204`; branch Prompt 18 criada diretamente desse SHA.
 - `main` permanece inalterada por este Prompt 18. Nenhuma integração ou reescrita de histórico foi realizada.
-- O estado do PR e o SHA final da branch devem ser lidos da referência GitHub da branch de Prompt 18, fornecida com o relatório de execução.
+- PR #208 está aberto e não integrado; [consultar o estado e o HEAD atual no GitHub](https://github.com/reinansantos9090-debug/ReiAnix/pull/208). A `main` permanece na referência de origem; não foi alterada pelo Prompt 18.
 - **Veredito: MIGRAÇÃO PARCIAL.** CI de build/compilação e certificação de evidências passaram no SHA de origem, mas o produto permanece híbrido, os testes Kotlin/JVM não foram executados e não existe evidência suficiente de paridade funcional completa ou de build nativo independente.
 
 ---
