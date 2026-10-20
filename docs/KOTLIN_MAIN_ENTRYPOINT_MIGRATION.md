@@ -46,3 +46,11 @@ that requirement is now represented by two separate descriptors.
 
 These changes have not yet been certified until the new SHA's build workflow
 finishes and the produced APK passes all post-build checks.
+
+
+The first retry after enabling AndroidX got past `mergeReleaseNativeLibs` but
+then exposed an invalid Maven coordinate, `io.coil-kt:coil-okhttp:2.7.0`,
+which does not exist in Coil 2.7.0. The native artwork source directly imports
+`coil.ImageLoader`; this build now depends on the published `coil` 2.7.0
+artifact alongside the existing `coil-compose` 2.7.0. The version stays pinned
+to Coil 2; no Coil 3 API/version migration was made.
