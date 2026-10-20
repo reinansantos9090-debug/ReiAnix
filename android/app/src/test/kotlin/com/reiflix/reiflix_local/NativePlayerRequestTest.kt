@@ -258,6 +258,7 @@ class NativePlayerRequestTest {
         val effective = request.withCanonicalSettings(
             mapOf(
                 "player.autoplay_next" to "false",
+                "player.resume" to "false",
                 "player.default_speed" to "1.25",
                 "player.aspect_ratio" to "fill",
                 "player.auto_hide_seconds" to "0",
@@ -267,7 +268,11 @@ class NativePlayerRequestTest {
             ),
         )
 
-        assertFalse(effective.autoplay)
+        // Persisted autoplay-next must not override the handoff instruction
+        // to start (or not start) the current media.
+        assertTrue(effective.autoplay)
+        assertFalse(effective.autoplayNext)
+        assertFalse(effective.resumeEnabled)
         assertEquals(1.25f, effective.defaultSpeed)
         assertEquals("fill", effective.aspectRatio)
         assertEquals(0, effective.autoHideSeconds)
@@ -296,7 +301,9 @@ class NativePlayerRequestTest {
         assertTrue(unchanged.gesturesVolume)
 
         val defaults = request.withCanonicalSettings(emptyMap())
-        assertTrue(defaults.autoplay)
+        assertFalse(defaults.autoplay)
+        assertTrue(defaults.autoplayNext)
+        assertTrue(defaults.resumeEnabled)
         assertEquals(1f, defaults.defaultSpeed)
         assertFalse(defaults.gesturesVolume)
         assertEquals("fit", defaults.aspectRatio)
