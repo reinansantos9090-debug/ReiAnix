@@ -1150,6 +1150,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("player.aspect_ratio", if (aspectModeLabel == "Preencher") "fill" else "fit")
             .put("player.zoom_enabled", zoomEnabled)
             .put("player.immersive", immersiveSetting)
+            .put("player.rotation", intent.getStringExtra("setting_player_rotation") ?: "auto")
             .put("player.lock_mode", locked)
             .put("player.auto_hide_seconds", (autoHideTimeoutMs / 1000L).coerceAtLeast(1L))
             .put("player.double_tap_seek_seconds", (doubleTapSeekMs / 1000L).coerceAtLeast(1L))
@@ -4821,6 +4822,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     "player.aspect_ratio" to "setting_player_aspect_ratio",
                     "player.zoom_enabled" to "setting_player_zoom_enabled",
                     "player.immersive" to "setting_player_immersive",
+                    "player.rotation" to "setting_player_rotation",
                     "player.lock_mode" to "setting_player_lock_mode",
                     "player.auto_hide_seconds" to "setting_player_auto_hide_seconds",
                     "player.double_tap_seek_seconds" to "setting_player_double_tap_seek_seconds",
