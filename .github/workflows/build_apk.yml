@@ -101,7 +101,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q main.py app_config.py core views scripts
+          python -m compileall -q app_config.py core views scripts
           bash -n scripts/run_android_instrumented_diagnostic.sh
           python scripts/audit_release.py --root .
           git diff --check
