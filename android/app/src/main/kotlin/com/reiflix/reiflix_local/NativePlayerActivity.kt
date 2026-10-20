@@ -4234,11 +4234,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         )
                     }
                 }
-                val ok = NativeMailbox.write(this@NativePlayerActivity, exitEvent)
-                if (!ok) {
+                // Compose observes the committed progress through PlaybackChange and
+                // rereads canonical SQLite. The durable Python mailbox is legacy-only here.
+                if (!intent.getBooleanExtra("nativeCompose", false)) {
+                    val ok = NativeMailbox.write(this@NativePlayerActivity, exitEvent)
+                    if (!ok) {
+                        logPlayer(
+                            "FAILED_TO_PUBLISH player_exited requestId=" + requestId.ifEmpty { "-" } +
+                                " nativeProgressPersisted=" + persistedNatively,
+                        )
+                    }
+                } else if (!persistedNatively) {
                     logPlayer(
-                        "FAILED_TO_PUBLISH player_exited requestId=" + requestId.ifEmpty { "-" } +
-                            " nativeProgressPersisted=" + persistedNatively,
+                        "NATIVE_COMPOSE_EXIT_PROGRESS_NOT_PERSISTED episodeId=" +
+                            (canonicalEpisodeId?.toString() ?: "-") +
+                            " requestId=" + requestId.ifEmpty { "-" },
                     )
                 }
             }
@@ -5050,14 +5060,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         )
                     }
                 }
-                val ok = if (durable) {
-                    NativeMailbox.write(this@NativePlayerActivity, event)
-                } else {
-                    NativeMailbox.writeBestEffort(this@NativePlayerActivity, event)
-                }
-                if (!ok) {
+                // Compose sessions persist and notify the native ViewModel directly.
+                // Do not enqueue the same checkpoint for a Python consumer that is absent
+                // from the native APK. Preserve the mailbox contract for legacy sessions.
+                if (!intent.getBooleanExtra("nativeCompose", false)) {
+                    val ok = if (durable) {
+                        NativeMailbox.write(this@NativePlayerActivity, event)
+                    } else {
+                        NativeMailbox.writeBestEffort(this@NativePlayerActivity, event)
+                    }
+                    if (!ok) {
+                        logPlayer(
+                            "FAILED_TO_PUBLISH " + eventType +
+                                " requestId=" + requestId.ifEmpty { "-" },
+                        )
+                    }
+                } else if (!persistedNatively) {
                     logPlayer(
-                        "FAILED_TO_PUBLISH " + eventType +
+                        "NATIVE_COMPOSE_PROGRESS_NOT_PERSISTED event=" + eventType +
+                            " episodeId=" + (episodeId?.toString() ?: "-") +
                             " requestId=" + requestId.ifEmpty { "-" },
                     )
                 }
