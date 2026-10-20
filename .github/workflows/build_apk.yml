@@ -105,8 +105,13 @@ jobs:
           bash -n scripts/run_android_instrumented_diagnostic.sh
           python scripts/audit_release.py --root .
           git diff --check
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain)"
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$GITHUB_SHA" ]]; then
+            echo "Checkout SHA mismatch: expected=$GITHUB_SHA actual=$actual_sha"
+            exit 1
+          fi
+          # strings.xml has a temporary CI-injected public Google client ID
+          # until Final Git integrity check restores it after APK packaging.
 
       - name: Generate canonical SQLite runtime contract and JVM fixture
         shell: bash
