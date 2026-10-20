@@ -90,7 +90,7 @@ class MediaFilenameParserTest {
     @Test
     fun episodeDisplayTitlePreservesOrdinaryWordsWhileRemovingTechnicalTokens() {
         val parsed = MediaFilenameParser.parseVideoPath(
-            "Show Episode 03 - Complete Batch 1080p.WEB-DL.mkv"
+            "Show Episode 03 - Complete Batch 1080p WEB-DL.mkv"
         )
 
         // core.library_parser._episode_title_after removes release tokens, not
