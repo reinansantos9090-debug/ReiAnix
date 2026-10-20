@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 ROOT = Path(__file__).resolve().parents[1]
 ANDROID = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local"
@@ -8,7 +9,7 @@ VIEW_MODEL = (ANDROID / "viewmodel/ReiAnixLibraryViewModel.kt").read_text(encodi
 MY_LIST = (ANDROID / "ui/mylist/ReiAnixMyList.kt").read_text(encoding="utf-8")
 REPOSITORY = (ANDROID / "data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
 CODEC = (ANDROID / "data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
-MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
+MAIN = native_main_source()
 DETAILS_FLET = (ROOT / "views/details_view.py").read_text(encoding="utf-8")
 STORE = (ROOT / "core/library_store.py").read_text(encoding="utf-8")
 
