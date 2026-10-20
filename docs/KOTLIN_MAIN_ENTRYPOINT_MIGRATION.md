@@ -90,5 +90,41 @@ The project now aligns both `org.jetbrains.kotlin.android` and
 preparation script also normalizes a generated 2.0.21 Kotlin Android plugin
 before adding the matching Compose compiler plugin, so it does not produce a
 mixed plugin classpath. Existing contract tests and the source audit were
-updated in place; no test cases were added or removed. The next release run
-must confirm compilation and all post-build APK checks.
+updated in place; no test cases were added or removed. This confirmation was completed by the official Build ReiAnix Android APK run
+[39407009008](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39407009008),
+on source commit `566521ed45f0534bc318cb2fa38adc8d8c6ad12d`. The release Kotlin
+compilation and `:app:assembleRelease` succeeded, and the APK passed all
+post-build runtime, DEX, manifest, signature, hash, and repository-integrity
+checks. The terminal run results and remaining source inventory are recorded
+below.
+
+
+## Prompt 1.2 — Final verified outcome
+
+- Source commit built: `566521ed45f0534bc318cb2fa38adc8d8c6ad12d`.
+- APK workflow: [run 39407009008](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39407009008), conclusion **success**.
+- Source/evidence certification: [run 39407009040](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39407009040), conclusion **success**.
+- Regression suite: `1,971 passed, 58 subtests passed`.
+- Gradle tasks `:app:assembleRelease` and `:app:compileReleaseKotlin`: **BUILD SUCCESSFUL**.
+- Packaged APK: `build/ReiAnix.apk`, 19,858,093 bytes, SHA-256
+  `579a680e3b1d123834e44fbb0cd0030711c5cbb78801d913eef51dcc762b99a9`.
+- APK verifier output: `NATIVE_RUNTIME=PASS`,
+  `PYTHON_FLET_FLUTTER_ABSENT=PASS`,
+  `ANDROID_ENTRYPOINT=PASS com.reiflix.reiflix_local.MainActivity`,
+  `COMPOSE_APK_DEX=PASS`.
+- Effective manifest: package `com.reiflix.reiflix_local`, build number
+  `6280`, version `0.2.1`, target SDK `36`; required storage permissions
+  and native launcher contracts passed.
+- Signature: APK Signature Scheme v2 passed; signer is the Android **debug**
+  certificate because stable signing secrets were not configured. This build
+  is not update-compatible with an installation signed with a different key.
+- No device launch test is claimed. CI validated compile/package/manifest/
+  signature/runtime contents, not a physical-device cold start.
+- Global Python elimination remains **pending**. The APK contains no
+  Python/Flet/Flutter runtime, but the repo/build still uses Python for legacy
+  source tests, source audits, SQLite contract generation and retained desktop
+  functionality.
+
+The exact remaining `.py` inventory is maintained in
+`docs/PYTHON_MIGRATION_INVENTORY_PROMPT_1_2.md`. None of those 218 files was
+deleted because their full functional replacement has not yet been proven.
