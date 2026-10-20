@@ -168,7 +168,12 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
             "season", "episode_type", "availability", "metadata", "artwork",
         ):
             self.assertIn(filter_name, report)
-        self.assertIn("Bloqueado por dependência concreta", report)
+        # Prompt 10 added the native domain API, but Compose consumer cutover and
+        # dynamic SQLite-fixture parity are still explicit blockers. Keep this
+        # contract aligned with the current, evidence-based migration status.
+        self.assertIn("Parcial: domínio/API nativos adicionados", report)
+        self.assertIn("consumidor visual Compose ainda pendente", report)
+        self.assertIn("validação dinâmica contra fixtures", report)
 
     def test_coverage_matrix_records_the_actual_cutover_and_remaining_fallback(self):
         report = COVERAGE.read_text(encoding="utf-8")
