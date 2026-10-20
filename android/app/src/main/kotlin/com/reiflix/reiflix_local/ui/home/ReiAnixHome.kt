@@ -144,6 +144,7 @@ fun ReiAnixHomeRoute(
         onSelectSource = viewModel::selectSafTree,
         onOpenTimeline = { activeDiscoveryDialog = "timeline" },
         onOpenDurationAnomalies = { activeDiscoveryDialog = "duration" },
+        onOpenGacha = { activeDiscoveryDialog = "gacha" },
     )
 
     when (activeDiscoveryDialog) {
@@ -161,6 +162,18 @@ fun ReiAnixHomeRoute(
         "duration" -> ReiAnixDurationAnomalyDialog(
             viewModel = viewModel,
             onDismiss = { activeDiscoveryDialog = null },
+        )
+        "gacha" -> ReiAnixGachaDialog(
+            viewModel = viewModel,
+            libraryState = state,
+            onDismiss = { activeDiscoveryDialog = null },
+            onOpenAnime = { animeId ->
+                activeDiscoveryDialog = null
+                navController.navigateToDetails(
+                    animeId = animeId.toString(),
+                    origin = ReiAnixRoutes.HOME,
+                )
+            },
         )
     }
 }
@@ -185,6 +198,7 @@ private fun ReiAnixHomeObservedScreen(
     onSelectSource: () -> Unit,
     onOpenTimeline: () -> Unit,
     onOpenDurationAnomalies: () -> Unit,
+    onOpenGacha: () -> Unit,
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -197,6 +211,7 @@ private fun ReiAnixHomeObservedScreen(
             onOpenCollector = onOpenCollector,
             onSearch = onSearch,
             onRefresh = onRefresh,
+            onOpenGacha = onOpenGacha,
         )
 
         Row(
@@ -564,6 +579,7 @@ private fun HomeHeader(
     onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenGacha: () -> Unit = {},
 ) {
     val menuExpanded = rememberSaveable { mutableStateOf(false) }
 
@@ -599,6 +615,13 @@ private fun HomeHeader(
                         onClick = {
                             menuExpanded.value = false
                             onOpenCollector()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("🎲 Gacha do acervo") },
+                        onClick = {
+                            menuExpanded.value = false
+                            onOpenGacha()
                         },
                     )
                 }
