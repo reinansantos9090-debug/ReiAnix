@@ -201,6 +201,18 @@ class ReiAnixAniListMatcherTest {
         assertEquals(1.0, finalSigma.single().score, 0.0)
     }
 
+
+    @Test
+    fun completeLegacyReleaseNoiseDoesNotChangeExactTitleMatch() {
+        val ranked = ReiAnixAniListMatcher.rank(
+            localTitle = "[SubsPlease] Naruto Shippuden S01 E001 1080p WEB-DL x265",
+            candidates = listOf(anime(id = 1, english = "Naruto Shippuden")),
+        )
+
+        assertEquals(1, ranked.single().anime.id)
+        assertEquals(1.0, ranked.single().score, 0.0)
+    }
+
     private fun anime(
         id: Int,
         english: String? = null,
