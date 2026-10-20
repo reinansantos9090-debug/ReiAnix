@@ -74,3 +74,10 @@ O serviço está registrado em `ReiAnixAppDependencies.gachaService`. A Home Fle
 ## Veredito
 
 **PARCIAL** — o domínio Gacha está portado, mas a interface Compose consumidora e a validação terminal do workflow ainda não foram comprovadas.
+
+## Atualização posterior — integração da interface Gacha no Prompt 11/18
+
+A lacuna de apresentação descrita no fechamento histórico desta etapa foi abordada depois, no escopo de telas Compose: `ReiAnixGachaDialog` agora consome `ReiAnixLibraryViewModel.drawNativeGacha` pela Home Android, com filtros encaminhados a `ReiAnixCatalogFilters` e ao serviço nativo já registrado. A consulta continua read-only sobre a base SQLite canônica v29. O texto do resultado e as opções de gênero, etiqueta, temporada e tipo de episódio usam dados locais efetivamente projetados; Abrir Details encaminha o ID local persistido. A tela Flet e seus consumidores legados foram preservados para fallback.
+
+A integração de UI está registrada no diff do Prompt 11. Isso não altera a evidência histórica de que, no commit original do Prompt 10, a API de domínio existia sem consumidor visual Compose. A validação dinâmica dedicada das combinações de filtro e a execução manual dos testes Kotlin/JVM continuam pendentes; não foram declaradas como aprovadas.
+
