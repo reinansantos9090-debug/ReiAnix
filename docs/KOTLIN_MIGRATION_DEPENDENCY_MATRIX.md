@@ -28,7 +28,7 @@ A main auditada continua híbrida: `main.py` é entrypoint Flet; `MainActivity` 
 | Organize/Storage/Settings/lifecycle | views Flet e estado/nav em main.py | Compose Organize/Storage/Settings, Navigation e Activity | Preservar Back, intents, picker, foco, cancelamento, estados e retorno de settings. | 14 |
 | Player | main.py/AndroidBridge para consumidores legados | NativePlayerActivity e Media3/ExoPlayer | Preservar URI SAF, resume/seek, progresso/histórico, autoplay, next/previous, lifecycle/Back/PiP. | 15 |
 | Build/release | pyproject, requirements, scripts e workflow Flet/Flutter | Gradle e fontes Kotlin dentro do host gerado Flet | Kotlin compila dentro de pacote híbrido hoje; retirar template/Serious Python só após cutover nativo. | 02, 16, 17 |
-| Testes/tooling | 164 arquivos Python em tests/ e scripts operacionais existentes | 47 testes JVM e 14 testes instrumentados já existentes | Não adicionar/remover testes nem criar workflows/scripts/jobs/emuladores; não disparar Kotlin/JVM manual. | 17, 18 |
+| Testes/tooling | 164 módulos tests/test_*.py enumerados por arquivo; scripts oficiais ativos | 47 arquivos JVM e 14 instrumentados no snapshot base; um método de integridade SQLite foi acrescido a arquivo existente | Manter testes Python que protegem runtime/CI híbridos; JVM manual-only; sem novos workflows/scripts/jobs/emuladores. Ver docs/KOTLIN_REMAINING_TESTS_INVENTORY.md. | Prompt 17 desta conversa; Prompt 18 |
 
 ## 3. SQLite v29 e caminho canônico
 
@@ -102,3 +102,27 @@ A contagem de testes JVM no inventário é a linha de base da auditoria, não um
 ## Registro de fechamento — Prompt 02/18
 
 Os contratos Kotlin continuam sendo projeções do domínio existente, sem banco/registry/parser concorrente. O fechamento corrige a preservação da origem diagnóstica de decimais numéricos acima da precisão suportada e inclui o marcador `NxM` na verificação de conflito de temporada com o contexto da pasta. SQLite `library.sqlite3`, schema v29 e dados persistidos não foram alterados. A execução não modificou testes/workflows; a suíte Kotlin/JVM segue não executada por restrição de autorização. O run `39180837684` foi sucesso no SHA anterior `5feecb570b9e25e8843d04b57fb9c25dc0a7dd0b` e não serve como validação do HEAD criado por este fechamento. Consultar o status de `build_apk.yml` associado ao SHA final na PR #199. Python/Flet/Flutter continuam necessários no runtime híbrido enquanto restarem consumidores; isto não conclui a migração global.
+
+## 7. Prompt 17/18 — matriz dos testes restantes e dependências
+
+O inventário file-by-file está em docs/KOTLIN_REMAINING_TESTS_INVENTORY.md. A presença de uma classe Kotlin não prova paridade de todas as asserções, erros, efeitos persistidos ou consumers.
+
+| Categoria | Kotlin existente | Decisão sobre Python | Pendência |
+|---|---|---|---|
+| Serviços/coordenação | NativeScanController, NativeIndex, ReiAnixAniListIntegrationService, ReiAnixLibraryDiscovery | Testes Python mantidos enquanto consumers legados existem | Matching por score/margem, status persistido e scanner híbrido requerem parity end-to-end. |
+| Repositório/persistência | ReiAnixSqliteRepositoryRuntimeTest, mappers e testes de repositório | Guardas de schema/contrato Python mantidas; novo teste cobre inspeção sem destruição | SQLite v29 canônico; writer Python e caminho operacional híbrido permanecem riscos. |
+| Indexação/organização | NativeScanControllerTest, NativeIndexTest, NativeLibraryIndexingPolicyTest, ScanResultClassifierTest | Python mantido para consumer legado/provider e guardas de fonte | SAF real, permissão e lifecycle não são substituídos por teste unitário puro. |
+| Metadados/AniList | Client, matcher, localizer e integração Kotlin | Migrado parcialmente; contratos de associação persistida permanecem Python | Falta teste JVM controlado do serviço inteiro com banco/transport real de teste. |
+| Arte/miniaturas | ReiAnixArtworkService e VideoThumbnailExtractor | Contratos Python mantidos | Falta teste de serviço de download/cache/retry completo. |
+| Backup/recovery | ReiAnixBackupService e guardas de recovery Python | Python preservado; nova guarda estreita de integrity report | Restore ZIP, rollback, sidecars e recovery ainda pendentes. |
+| Scripts/build | Scripts e workflows oficiais existentes | Python mantido porque é tooling do build | Flet/Flutter/Serious Python ainda são parte do pacote híbrido. |
+| UI/player/regressão | Testes de políticas JVM e androidTest | Guardas de integração Python preservadas; instrumentação não executada | Back/lifecycle/SAF/player em ambiente Android permanecem pendentes. |
+
+Dependências:
+- Necessárias em tests: pytest, Python/unittest, JUnit 4.13.2, Robolectric 4.14.1, AndroidX Test/UI testing para testes existentes.
+- Necessárias no build/runtime: Python 3.12, Flet 0.86.5, Flutter/template Flet/Serious Python; Pillow continua usado em artwork legado; certifi segue declarado sem prova de obsolescência.
+- Tooling/CI: geradores de fixture SQLite, build identity, preparation/verification de APK e release certification preservados enquanto workflows os chamarem.
+- Dependências comprovadamente obsoletas removidas: 0. Nenhuma dependência, script, fixture ou workflow excluído.
+- Não foram executados manualmente testes Python, Kotlin/JVM, instrumentados, Gradle test ou emulador.
+
+Estado da matriz: PARCIAL até a auditoria semântica individual, a equivalência completa de serviços e os workflows oficiais no SHA final.

@@ -17,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import org.robolectric.annotation.Config
@@ -1834,6 +1835,34 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val result = ReiAnixPersonalListService(context).list()
         assertTrue(result is ReiAnixPersonalListService.Result.Failure)
         assertFalse(databaseFile.exists())
+    }
+
+    @Test
+    fun backupIntegrityReportNeverCreatesOrReplacesCanonicalDatabase() {
+        val service = ReiAnixBackupService(context)
+
+        assertFalse(databaseFile.exists())
+        val missingReport = service.integrityReport()
+        assertFalse(missingReport.healthy)
+        assertNull(missingReport.schemaVersion)
+        assertFalse(
+            "Integrity inspection must not create a missing canonical database.",
+            databaseFile.exists(),
+        )
+
+        databaseFile.parentFile?.mkdirs()
+        val syntheticCorruptBytes = "REIANIX_TEST_CORRUPT_SQLITE_V29".toByteArray(Charsets.UTF_8)
+        databaseFile.writeBytes(syntheticCorruptBytes)
+        val bytesBeforeInspection = databaseFile.readBytes()
+
+        val corruptReport = service.integrityReport()
+        assertFalse(corruptReport.healthy)
+        assertNull(corruptReport.schemaVersion)
+        assertTrue(corruptReport.error.orEmpty().isNotBlank())
+        assertTrue(
+            "Integrity inspection must preserve a corrupt pre-existing file byte-for-byte.",
+            bytesBeforeInspection.contentEquals(databaseFile.readBytes()),
+        )
     }
 
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {

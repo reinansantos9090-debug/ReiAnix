@@ -417,3 +417,27 @@ O arquivo `android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/Re
 - Estado da cobertura desta etapa: **PARCIAL**. Há equivalências nativas para ranking/normalização/parsing e busca textual, mas decisões de associação de serviço, registry persistido, filtros/ordenação completos, integrações e persistência continuam com cobertura Python ativa. Não foi medido percentual de cobertura.
 
 O Prompt 17/18 **não foi iniciado** por este adendo.
+
+
+---
+
+## 2026-10-20 — Prompt 17/18: inventário dos testes restantes e auditoria de dependências
+
+Baseline consultado: main em eab1d5491a3f13602ef080f363763d8f14509e2c, merge do Prompt 16. Ver docs/KOTLIN_REMAINING_TESTS_INVENTORY.md para a enumeração dos 164 módulos Python e a rastreabilidade dos contratos prioritários.
+
+### Inventário e estado
+- 164 arquivos tests/test_*.py, 47 testes Kotlin/JVM e 14 arquivos androidTest no snapshot base.
+- JUnit 4.13.2 e Robolectric 4.14.1 já estavam no Gradle; nenhuma dependência nova.
+- kotlin_jvm_tests.yml permaneceu apenas manual (workflow_dispatch); não acionado. Nenhum teste instrumentado, emulador, pytest, Gradle test ou build local foi executado manualmente.
+- Prompt 16 deixou parsing/identidade/ranking e busca textual no estado MIGRADO, NÃO EXECUTADO; políticas de matching/associação, registry persistido, filtros/fachadas, artwork e backup/recovery continuam parciais ou dependentes de Python.
+
+### Alteração de teste
+Foi acrescentado ao arquivo existente android/app/src/test/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt o método backupIntegrityReportNeverCreatesOrReplacesCanonicalDatabase. Ele chama ReiAnixBackupService.integrityReport() real via sandbox Robolectric: verifica que inspeção de DB ausente não cria library.sqlite3 e que bytes sintéticos inválidos permanecem idênticos após a inspeção. Estado MIGRADO, NÃO EXECUTADO. É um guard estreito, não valida restore ZIP completo nem recuperação transacional.
+
+### Preservação
+Nenhum teste Python foi excluído, ignorado ou desativado. Nenhuma dependência Python/Gradle, fixture, script, schema v29 ou workflow foi removido/modificado. Não foi criada infraestrutura de CI, execução automática JVM ou emulador. Python/Flet/Flutter permanecem por consumidores e build híbrido ativos.
+
+### CI anterior ao diff
+Antes da alteração, release certification run 39374234595 estava em success e build APK run 39374234586 estava in progress no SHA-base eab1d5491a3f13602ef080f363763d8f14509e2c. Esses resultados não validam o commit deste prompt. O resultado precisa ser consultado no SHA final após push.
+
+**Estado: PARCIAL.** Inventário file-level concluído e uma guarda real acrescentada; continua pendente a comparação semântica individual de cada método, equivalência completa de serviços e o resultado final dos workflows. O Prompt 18/18 não foi iniciado.
