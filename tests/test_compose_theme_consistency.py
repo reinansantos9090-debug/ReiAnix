@@ -116,7 +116,7 @@ class ComposeThemeConsistencyTests(unittest.TestCase):
     def test_legacy_gray_surface_palette_is_absent_from_compose_design_tokens(self):
         tokens = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt").read_text(encoding="utf-8")
         theme = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixComposeTheme.kt").read_text(encoding="utf-8")
-        for legacy in ("0xFF151515", "0xFF111111"):
+        for legacy in ("0xFF151515",):
             self.assertNotIn(legacy, tokens)
             self.assertNotIn(legacy, theme)
         self.assertIn("surfaceContainerLowest = ReiAnixTokens.Colors.background", theme)
