@@ -42,9 +42,13 @@ internal object MainEntryPoint {
     /**
      * Single policy for the Activity's native-command/lifecycle gates.
      *
-     * The Activity decision is kept separate from process bootstrap state: an
-     * individually healthy process must not release commands before the Activity
-     * has completed its own database validation and selected a safe initial route.
+     * This gate intentionally depends on the completed bootstrap stage and the
+     * canonical persistence decision, not on [ReiAnixBootstrapPhase] alone:
+     * DEGRADED may mean that the app is usable with non-fatal warnings. Recovery,
+     * a pending stage, or unchecked persistence must always keep native work blocked.
+     *
+     * Activity routing/validation is a separate required gate and must be complete
+     * before process readiness can release native commands.
      */
     internal fun allowsNativeOperations(
         activityDecisionComplete: Boolean,
@@ -54,10 +58,8 @@ internal object MainEntryPoint {
     private fun bootstrapStateAllowsNativeOperations(state: ReiAnixBootstrapState): Boolean =
         !state.recoveryRequired &&
             state.stage == ReiAnixBootstrapStage.READY &&
-            state.persistenceStatus in setOf(
-                ReiAnixBootstrapPersistenceStatus.HEALTHY,
-                ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
-            )
+            (state.persistenceStatus == ReiAnixBootstrapPersistenceStatus.HEALTHY ||
+                state.persistenceStatus == ReiAnixBootstrapPersistenceStatus.NOT_CREATED)
 
     /**
      * Observe the existing process state for this Activity's lifetime. The
