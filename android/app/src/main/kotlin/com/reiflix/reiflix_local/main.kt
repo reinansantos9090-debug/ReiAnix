@@ -163,6 +163,55 @@ internal object MainEntryPoint {
 }
 
 
+
+internal data class NativeLifecycleSnapshot(
+    val state: String = "unknown",
+    val resumed: Boolean = false,
+    val generation: Long = 0L,
+    val changedAtMillis: Long = 0L,
+)
+
+/** App-lifecycle state formerly normalized inside the Flet main(page) callback. */
+internal object NativeLifecycleCoordinator {
+    private val lock = Any()
+    private val mutableState = MutableStateFlow(NativeLifecycleSnapshot())
+    val state: StateFlow<NativeLifecycleSnapshot> = mutableState.asStateFlow()
+
+    fun onEvent(eventOrState: Any?) {
+        val normalized = normalizeAppLifecycleState(eventOrState)
+        val nextState = when (normalized) {
+            "create", "created" -> "created"
+            "start", "started", "restart" -> "started"
+            "resume", "show" -> "resumed"
+            "pause", "hide" -> "paused"
+            "stop", "stopped" -> "stopped"
+            "destroy", "destroyed" -> "destroyed"
+            else -> return
+        }
+        val updated = synchronized(lock) {
+            val previous = mutableState.value
+            if (previous.state == nextState) return
+            NativeLifecycleSnapshot(
+                state = nextState,
+                resumed = nextState == "resumed",
+                generation = previous.generation + 1L,
+                changedAtMillis = System.currentTimeMillis(),
+            ).also { mutableState.value = it }
+        }
+        ReiAnixDiagnosticTimeline.record(
+            name = "APP_NATIVE_LIFECYCLE_STATE_CHANGED",
+            severity = if (updated.state == "destroyed") "DEBUG" else "INFO",
+            source = "MainEntryPoint",
+            result = updated.state,
+            context = mapOf(
+                "resumed" to updated.resumed,
+                "generation" to updated.generation,
+                "changed_at_ms" to updated.changedAtMillis,
+            ),
+        )
+    }
+}
+
 /**
  * Typed Kotlin port of the legacy main.py Home-refresh state machine.
  *
