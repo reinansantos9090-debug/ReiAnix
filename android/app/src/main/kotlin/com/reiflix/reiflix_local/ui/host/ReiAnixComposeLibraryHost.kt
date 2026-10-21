@@ -20,6 +20,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
+import com.reiflix.reiflix_local.HomeRefreshCoordinator
 import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
 import com.reiflix.reiflix_local.R
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
@@ -37,6 +38,7 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
@@ -106,39 +108,67 @@ class ReiAnixComposeLibraryHost(
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
-            // A route mount must not cause remote reconciliation. Observe scan-state
-            // transitions only; drop the first snapshot so a stored/idle state on process
-            // startup never triggers AniList or artwork work.
+            // Port of main.py's Home refresh lifecycle. The native scan remains the
+            // sole scanner and SQLite owner; this state machine only tracks REQUESTED ->
+            // RUNNING -> CATALOG_UPDATING -> UI_COMMIT -> SUCCESS for diagnostics.
+            // Dropping the first snapshot prevents a route mount from fabricating a scan.
             LaunchedEffect(libraryViewModel) {
+                var activeRefreshRequestId: String? = null
                 libraryViewModel.uiState
                     .map { it.scanInProgress }
                     .distinctUntilChanged()
                     .drop(1)
-                    .filter { scanning -> !scanning }
-                    .collectLatest {
-                        if (libraryViewModel.uiState.value.animes.isEmpty()) return@collectLatest
-                        val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                        try {
-                            withContext(Dispatchers.IO) {
-                                dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                    .collectLatest { scanning ->
+                        if (scanning) {
+                            activeRefreshRequestId?.let { previousRequest ->
+                                HomeRefreshCoordinator.cancel(previousRequest, "superseded_by_new_scan")
                             }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (error: Exception) {
-                            android.util.Log.w(
-                                TAG,
-                                "Native AniList reconciliation after scan failed. errorType=" +
-                                    error::class.java.simpleName,
-                            )
+                            val requestId = UUID.randomUUID().toString()
+                            activeRefreshRequestId = if (
+                                HomeRefreshCoordinator.begin(
+                                    requestId = requestId,
+                                    refreshId = requestId,
+                                    source = "native_compose_scan",
+                                ) && HomeRefreshCoordinator.markScanStarted(requestId)
+                            ) requestId else null
+                            return@collectLatest
                         }
-                        runCatching { dependencies.artworkService.requestPendingArtwork() }
-                            .onFailure { error ->
+
+                        val requestId = activeRefreshRequestId ?: return@collectLatest
+                        if (!HomeRefreshCoordinator.markScanTerminal(requestId)) {
+                            activeRefreshRequestId = null
+                            return@collectLatest
+                        }
+                        if (libraryViewModel.uiState.value.animes.isNotEmpty()) {
+                            val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                                }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
                                 android.util.Log.w(
                                     TAG,
-                                    "Native artwork backfill after scan failed. errorType=" +
+                                    "Native AniList reconciliation after scan failed. errorType=" +
                                         error::class.java.simpleName,
                                 )
                             }
+                            runCatching { dependencies.artworkService.requestPendingArtwork() }
+                                .onFailure { error ->
+                                    android.util.Log.w(
+                                        TAG,
+                                        "Native artwork backfill after scan failed. errorType=" +
+                                            error::class.java.simpleName,
+                                    )
+                                }
+                        }
+                        if (HomeRefreshCoordinator.markCatalogUpdated(requestId)) {
+                            HomeRefreshCoordinator.complete(requestId)
+                        } else {
+                            HomeRefreshCoordinator.fail(requestId, "catalog_projection_not_committed")
+                        }
+                        activeRefreshRequestId = null
                     }
             }
 
