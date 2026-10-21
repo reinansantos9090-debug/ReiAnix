@@ -1826,12 +1826,23 @@ internal class NativeMainRuntimePort(
     fun cancelThumbnailRequest(reference: String, size: Long = 0L, modifiedAt: Long = 0L, mediaIdentity: String? = null): Boolean {
         val raw = reference.trim()
         if (raw.isEmpty()) return false
-        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        val parsed = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        val uri = when (parsed.scheme?.lowercase(Locale.ROOT)) {
+            "content", "file" -> parsed
+            null -> if (raw.startsWith("/")) Uri.fromFile(File(raw)) else return false
+            else -> return false
+        }
         val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
         val key = thumbnailRequestKey(uri, size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L), identity)
         synchronized(thumbnailQueueLock) {
             val request = thumbnailRequests.remove(key) ?: return false
             thumbnailQueue.remove(request)
+            thumbnailRetryCounts.remove(key)
+            thumbnailRetryPendingKeys.remove(key)
+            val uriKey = uri.toString()
+            if (thumbnailLatestKeyByUri.remove(uriKey, key)) {
+                thumbnailLatestAtMillis.remove(uriKey)
+            }
             request.completion.cancel()
             updateThumbnailQueueSnapshot()
             return true
