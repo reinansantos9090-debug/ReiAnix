@@ -6247,6 +6247,9 @@ internal class NativeMainRuntimePort(
                             },
                         ),
                     )
+                    if (type == "google_error") {
+                        publish(action = "google_error", error = accountMessage)
+                    }
                     true
                 }
             }
@@ -6497,15 +6500,19 @@ internal class NativeMainRuntimePort(
                     )
                     return false
                 }
+                val playerErrorMessage = stringValue("message", "error")
+                    ?: "Não foi possível reproduzir este arquivo localmente."
                 recordDiagnostic(
                     name = "PLAYER_RUNTIME_ERROR",
                     severity = "ERROR",
                     requestId = eventRequestId ?: stringValue("requestId"),
                     sessionId = stringValue("playerSessionId", "sessionId"),
                     result = stringValue("errorCode", "code", "reason"),
-                    error = IllegalStateException(stringValue("message", "error") ?: "Native player error"),
+                    error = IllegalStateException(playerErrorMessage),
                     context = mapOf("episode_id" to longValue("episodeId", "episode_id")),
                 )
+                // Preserve the old runtime's user-visible error state alongside the diagnostic.
+                publish(action = "player_error", error = playerErrorMessage)
                 true
             }
             "player_next_request", "player_previous_request" -> {
