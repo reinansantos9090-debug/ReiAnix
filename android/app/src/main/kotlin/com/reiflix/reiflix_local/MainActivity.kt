@@ -1192,6 +1192,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        MainEntryPoint.onActivityLifecycleEvent("create")
         val launchIntent = intent
         appDependencies.bootstrap.start()
         MainEntryPoint.onActivityCreated(this)
@@ -2033,6 +2034,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        MainEntryPoint.onActivityLifecycleEvent("start")
         registerStorageReceiver()
         MediaStoreScanner.startChangeObserver(this) { scheduleMediaStoreIncrementalRescan() }
         logLifecycle("onStart")
@@ -2041,6 +2043,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        MainEntryPoint.onActivityLifecycleEvent("resume")
         PerformanceDiagnostics.attach(this)
         PerformanceDiagnostics.sampleMemory(this, "main_on_resume")
         activityResumed = true
@@ -2322,6 +2325,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        MainEntryPoint.onActivityLifecycleEvent("pause")
         activityResumed = false
         if (safPickerPending) {
             // Keep the watchdog polling while DocumentsUI owns the foreground.
@@ -2334,6 +2338,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        MainEntryPoint.onActivityLifecycleEvent("stop")
         logLifecycle("onStop")
         unregisterStorageReceiver()
         MediaStoreScanner.stopChangeObserver(this)
@@ -2350,6 +2355,7 @@ class MainActivity : ComponentActivity() {
         googleSignOutJob?.cancel()
         googleSignOutJob = null
         logLifecycle("onDestroy")
+        MainEntryPoint.onActivityLifecycleEvent("destroy")
         if (isFinishing) NativeScanController.cancelAll()
         unregisterStorageReceiver()
         super.onDestroy()
