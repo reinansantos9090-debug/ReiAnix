@@ -1698,7 +1698,8 @@ internal class NativeMainRuntimePort(
             return false
         }
 
-        val launchError = try {
+        var launchError: String? = null
+        val accepted = try {
             if (correlatedRequestId == null) {
                 activity.requestNativeStorageAction(normalizedAction)
             } else {
@@ -1709,12 +1710,16 @@ internal class NativeMainRuntimePort(
                         requestId = correlatedRequestId,
                     )
                 )
+                true
             }
-            null
         } catch (failure: Exception) {
-            failure.message?.takeIf { it.isNotBlank() } ?: "Native storage action was rejected."
+            launchError = failure.message?.takeIf { it.isNotBlank() }
+                ?: "Native storage action was rejected."
+            false
         }
-        val accepted = launchError == null
+        if (!accepted && launchError == null) {
+            launchError = "Native storage action was rejected."
+        }
         if (correlatedRequestId != null) {
             if (accepted) {
                 publishOperationResult(
@@ -1775,6 +1780,7 @@ internal class NativeMainRuntimePort(
         resultAction: String = "scan_library",
     ): Boolean {
         if (!canStartLibraryScan("saf")) {
+            val message = "Não há uma pasta SAF autorizada para atualizar a biblioteca."
             recordDiagnostic(
                 name = "LIBRARY_SCAN_REJECTED",
                 severity = "WARN",
@@ -1782,6 +1788,16 @@ internal class NativeMainRuntimePort(
                 result = "no_authorized_library_saf_source",
                 context = mapOf("configured_saf_root_count" to authorizedScanTargets("saf").size),
             )
+            requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "BLOCKED",
+                    operationState = "BLOCKED",
+                    message = message,
+                    error = "no_authorized_library_saf_source",
+                )
+            }
             return false
         }
         return requestStorageAction("scan_library", requestId, resultAction)
