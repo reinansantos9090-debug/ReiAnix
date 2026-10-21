@@ -4527,7 +4527,7 @@ internal class NativeMainRuntimePort(
                 val action = stringValue("action")?.lowercase(Locale.ROOT) ?: return false
                 val requestId = eventRequestId ?: stringValue("requestId")
                 if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_settings")) return false
-                val accepted = dispatchSettingsAction(action, payload)
+                val accepted = dispatchSettingsAction(action, payload, requestId)
                 recordDiagnostic("SETTINGS_ACTION_DISPATCH", requestId = eventRequestId ?: stringValue("requestId"),
                     result = if (accepted) "accepted" else "rejected", context = mapOf("action" to action))
                 accepted
@@ -5336,31 +5336,113 @@ internal class NativeMainRuntimePort(
         }
     }
 
-    fun dispatchSettingsAction(action: String, payload: org.json.JSONObject = org.json.JSONObject()): Boolean {
+    private fun launchNativeSettingsFileAction(
+        action: String,
+        requestId: String? = null,
+    ): Boolean {
+        val normalizedAction = action.trim().lowercase(Locale.ROOT)
+        val allowedActions = setOf(
+            "settings_export", "settings_import",
+            "backup_create", "backup_restore",
+            "backup_recovery_restore", "backup_recovery_snapshot",
+            "backup_integrity", "backup_reconcile", "diagnostic_export",
+        )
+        if (normalizedAction !in allowedActions) return false
+        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
+        if (!publishOperationResult(
+                requestId = resolvedRequestId,
+                action = normalizedAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Operação nativa de arquivo enfileirada.",
+            )
+        ) return false
+
+        return try {
+            activity.startActivity(
+                android.content.Intent(activity, MainActivity::class.java).apply {
+                    flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    putExtra(ReiAnixSettingsFileService.EXTRA_ACTION, normalizedAction)
+                    putExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID, resolvedRequestId)
+                }
+            )
+            true
+        } catch (failure: Exception) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = normalizedAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = failure.message ?: "Não foi possível iniciar a operação nativa de arquivo.",
+                error = failure.javaClass.simpleName,
+            )
+            recordDiagnostic(
+                name = "NATIVE_SETTINGS_FILE_ACTION_LAUNCH_FAILED",
+                severity = "WARN",
+                requestId = resolvedRequestId,
+                result = normalizedAction,
+                error = failure,
+            )
+            false
+        }
+    }
+
+    fun dispatchSettingsAction(
+        action: String,
+        payload: org.json.JSONObject = org.json.JSONObject(),
+        requestId: String? = null,
+    ): Boolean {
         val normalized = action.trim().lowercase(Locale.ROOT)
+        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: stringValueFromPayload(payload, "requestId", "request_id")
         return when (normalized) {
             "reset_player" -> resetSettingsByPrefixes(setOf("player.", "gestures.", "audio."))
             "reset_all_settings" -> resetSettingsByPrefixes(emptySet())
             "clear_anilist_cache", "clear_artwork_cache" -> clearManagedArtworkCache()
-            "settings_export" -> exportSettingsToPrivateFile()
-            "settings_import" -> stringValueFromPayload(payload, "path", "filePath", "file_path")
-                ?.let { importSettingsFromPrivateFile(File(it)) } ?: false
-            "select_saf" -> requestSafFolderSelection(bridge = "settings")
-            "request_media_access" -> requestMediaAccess()
-            "check_storage_access" -> checkStorageAccess()
-            "open_broad_storage_settings" -> openBroadStorageSettings()
-            "backup_create" -> createBackup()
-            "backup_restore" -> stringValueFromPayload(payload, "archivePath", "path", "filePath")
-                ?.let(::resolvePrivateBackupFile)?.let(::restoreBackup) ?: false
-            "backup_integrity" -> checkDatabaseIntegrity()
-            "backup_reconcile" -> reconcileRestoredFileAvailability()
-            "diagnostic_export" -> exportDiagnosticsJson()
+            "settings_export" -> launchNativeSettingsFileAction(normalized, resolvedRequestId)
+            "settings_import" -> {
+                val reference = stringValueFromPayload(payload, "path", "filePath", "file_path")
+                if (reference != null) {
+                    importSettingsFromPrivateFile(File(reference))
+                } else {
+                    launchNativeSettingsFileAction(normalized, resolvedRequestId)
+                }
+            }
+            "select_saf" -> requestSafFolderSelection(
+                requestId = resolvedRequestId,
+                bridge = "settings",
+            )
+            "request_media_access" -> requestMediaAccess(
+                requestId = resolvedRequestId,
+                resultAction = normalized,
+            )
+            "check_storage_access" -> checkStorageAccess(
+                requestId = resolvedRequestId,
+                resultAction = normalized,
+            )
+            "open_broad_storage_settings" -> openBroadStorageSettings(
+                requestId = resolvedRequestId,
+                resultAction = normalized,
+            )
+            "backup_create", "backup_integrity", "backup_reconcile", "diagnostic_export",
+            "backup_recovery_restore", "backup_recovery_snapshot" ->
+                launchNativeSettingsFileAction(normalized, resolvedRequestId)
+            "backup_restore" -> {
+                val reference = stringValueFromPayload(payload, "archivePath", "path", "filePath")
+                if (reference != null) {
+                    resolvePrivateBackupFile(reference)?.let(::restoreBackup) ?: false
+                } else {
+                    launchNativeSettingsFileAction(normalized, resolvedRequestId)
+                }
+            }
             "dismiss_storage_onboarding" -> {
                 dismissNativeStorageOnboarding()
-                val commandRequestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id")
-                if (!commandRequestId.isNullOrBlank()) {
+                if (!resolvedRequestId.isNullOrBlank()) {
                     publishOperationResult(
-                        requestId = commandRequestId,
+                        requestId = resolvedRequestId,
                         action = normalized,
                         status = "COMPLETED",
                         operationState = "COMPLETED",
