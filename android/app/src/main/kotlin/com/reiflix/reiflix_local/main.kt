@@ -3199,9 +3199,6 @@ internal class NativeMainRuntimePort(
         events: List<NativeMailboxQueueItem>,
     ): List<NativeMailboxQueueItem> {
         val compacted = mutableListOf<NativeMailboxQueueItem>()
-        fun eventType(item: NativeMailboxQueueItem): String =
-            item.envelope.optString("eventType", item.envelope.optString("type", "")).trim()
-
         fun pythonTruthy(value: Any?): Boolean = when (value) {
             null, org.json.JSONObject.NULL -> false
             is Boolean -> value
@@ -3227,6 +3224,9 @@ internal class NativeMainRuntimePort(
                 else -> selected.toString()
             }.trim()
         }
+
+        fun eventType(item: NativeMailboxQueueItem): String =
+            truthyText(item.envelope, "eventType", "type")
 
         fun identity(item: NativeMailboxQueueItem): List<String> {
             val envelope = item.envelope
