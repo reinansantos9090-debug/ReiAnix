@@ -1894,12 +1894,21 @@ internal class NativeMainRuntimePort(
         result: String? = null,
         error: Throwable? = null,
         context: Map<String, Any?> = emptyMap(),
+        requestId: String? = null,
+        scanId: String? = null,
+        refreshId: String? = null,
+        sessionId: String? = null,
+        source: String = "NativeMainRuntimePort",
     ) {
         ReiAnixDiagnosticTimeline.record(
             name = name,
             severity = severity,
-            source = "NativeMainRuntimePort",
+            source = source,
             result = result,
+            requestId = requestId,
+            scanId = scanId,
+            refreshId = refreshId,
+            sessionId = sessionId,
             error = error,
             context = context,
         )
