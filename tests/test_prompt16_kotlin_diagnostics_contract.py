@@ -105,7 +105,8 @@ def test_native_diagnostics_are_the_android_runtime_authority():
     diagnostics_service = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/backup/ReiAnixDiagnosticsService.kt")
     assert "ReiAnixDiagnosticTimeline" in entrypoint
     assert "PerformanceDiagnostics" in entrypoint
-    assert "ReiAnixDiagnosticTimeline.record(" in activity
+    assert "ReiAnixDiagnosticTimeline.record(" in entrypoint
+    assert "MainEntryPoint.onActivityCreated(" in activity
     assert "PerformanceDiagnostics.snapshotJson()" in diagnostics_service
     assert "DiagnosticTimeline" not in entrypoint
     assert "get_performance_monitor" not in entrypoint

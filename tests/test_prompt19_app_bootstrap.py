@@ -43,17 +43,17 @@ def test_application_owns_and_starts_one_process_bootstrap():
 
 
 def test_activity_delegates_process_startup_and_database_health_to_bootstrap():
-    activity = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-    )
-    assert "appDependencies.bootstrap.start()" in activity
-    assert "appDependencies.bootstrap.validateCanonicalDatabase()" in activity
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    entrypoint = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
+    bootstrap = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt")
+    assert "MainEntryPoint.onActivityCreated(this)" in activity
+    assert "dependencies.bootstrap.start()" in entrypoint
+    assert "appDependencies.bootstrap.start()" not in activity
+    assert "validateCanonicalDatabase()" in bootstrap
     assert "NativeScanRunner.recoverInterruptedSafScans(applicationContext)" not in activity
     assert "NativeCommandDispatcher.start(" not in activity
-    # The Activity still calls the existing runner for explicitly authorized scans.
     assert "NativeScanRunner.runSafScan(" in activity
     assert "NativeScanRunner.runMediaStoreScan(" in activity
-
 
 def test_bootstrap_preserves_canonical_sqlite_and_recovery_contract():
     bootstrap = read(

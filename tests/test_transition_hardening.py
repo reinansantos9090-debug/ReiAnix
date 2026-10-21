@@ -94,9 +94,10 @@ class TransitionHardeningTests(unittest.TestCase):
         self.assertIn("NativePlayerActivity", self.main_activity)
 
     def test_exit_and_activity_result_invalidate_only_the_current_player_session(self):
-        for token in ("activityInstanceId", "playerSessionId", "stale_activity_instance", "notePlayerActivityDestroyed", "PLAYER_EXIT_CLASSIFICATION"):
+        for token in ("activityInstanceId", "playerSessionId", "notePlayerActivityDestroyed", "PLAYER_EXIT_CLASSIFICATION"):
             self.assertIn(token, self.player + self.main_activity)
         self.assertIn("activePlayerActivityInstanceId", self.main_activity)
+        self.assertIn("activePlayerSessionId", self.main_activity)
         self.assertIn("isCurrentPlayerHandoff", self.main_activity)
         self.assertIn("isFinishing", self.player)
         self.assertIn("isChangingConfigurations", self.player)
@@ -114,11 +115,14 @@ class TransitionHardeningTests(unittest.TestCase):
         transition_end = self.player.index("private fun seekToSavedPosition", transition_start)
         transition = self.player[transition_start:transition_end]
         self.assertEqual(1, transition.count("playerNavigation(episodeId)"))
-        self.assertIn("navigationSnapshot", transition)
-        self.assertIn("NEXT_TRANSITION", transition)
-        self.assertIn("PREVIOUS_TRANSITION", transition)
+        self.assertIn("val navigation = withContext(Dispatchers.IO)", transition)
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(current, availableEpisodes)", repository)
+        self.assertIn("navigation.next", transition)
+        self.assertIn("navigation.previous", transition)
         self.assertNotIn("nextEpisode(", transition)
         self.assertNotIn("previousEpisode(", transition)
+
     def test_reuse_metadata_read_is_off_ui_thread_and_generation_guarded(self):
         self.assertIn("loadLocalMetadataAsync(transitionGeneration, resolvedUri)", self.player)
         self.assertIn("loadLocalMetadataAsync(transitionGeneration, uri)", self.player)
@@ -157,7 +161,7 @@ class TransitionHardeningTests(unittest.TestCase):
         combined = self.player + self.main_activity
         scenario_tokens = (
             "episodeChangePending", "canNext", "canPrevious", "transitionGeneration",
-            "episodeChangeTimeout", "PLAYER_TRANSITION_INVALIDATED", "PLAYER_CALLBACK_STALE",
+            "episodeChangeTimeout", "PLAYER_TRANSITION_INVALIDATED", "PLAYER_ERROR_STALE_IGNORED",
             "PLAYER_OPENED_IGNORED", "PLAYER_HANDOFF_REJECTED", "stale_after_player_exit",
             "stale_origin_session", "Player.STATE_ENDED", 'requestEpisode("player_next_request")',
             "playbackWorker.shutdown()",

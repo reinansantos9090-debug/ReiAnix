@@ -8,29 +8,18 @@ def read(relative_path: str) -> str:
 
 
 def test_compose_player_uses_the_native_sqlite_to_activity_handoff():
-    view_model = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
-    )
+    view_model = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
     route = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/ReiAnixPlayer.kt")
     activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
-    repository = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt"
-    )
-    codec = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt"
-    )
-    player_entry = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
-
-    launch_start = view_model.index(
-        "fun openEpisode(episodeId: Long, expectedAnimeId: Long?"
-    )
+    repository = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt")
+    codec = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt")
+    launch_start = view_model.index("fun openEpisode(episodeId: Long, expectedAnimeId?")
     launch_end = view_model.index("override fun onCleared()", launch_start)
     launch = view_model[launch_start:launch_end]
-
     assert "viewModel.openEpisode(" in route
     assert "nativeLibraryRepository.getEpisode(episodeId)" in launch
-    assert "nativeLibraryRepository.getAnime(episode.animeId)" in launch
-    assert "sqliteSettingsRepository?.allPreferences()" in launch
+    assert "dependencies.sqliteSettingsRepository.allPreferences()" in launch
+    assert "dependencies.sqliteLibraryRepository.playerNavigation(episodeId)" in launch
     assert "Intent.ACTION_VIEW" in launch
     assert '.appendQueryParameter("action", "play")' in launch
     assert '.appendQueryParameter("native_compose", "true")' in launch
@@ -43,21 +32,14 @@ def test_compose_player_uses_the_native_sqlite_to_activity_handoff():
     assert "private fun performOpenPlayer(" in activity
     assert "reportNativePlayerHandoff(" in activity
 
-
 def test_compose_player_handoff_preserves_local_identity_and_player_contract():
-    view_model = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
-    )
+    view_model = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
     activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
-    player_request = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
-    )
-    launch_start = view_model.index(
-        "fun openEpisode(episodeId: Long, expectedAnimeId: Long?"
-    )
+    repository = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt")
+    player_request = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt")
+    launch_start = view_model.index("fun openEpisode(episodeId: Long, expectedAnimeId?")
     launch_end = view_model.index("override fun onCleared()", launch_start)
     launch = view_model[launch_start:launch_end]
-
     for token in (
         "expectedAnimeId == null || episode.animeId == expectedAnimeId",
         "episode.missing != true && episode.path.isNotBlank()",
@@ -69,19 +51,16 @@ def test_compose_player_handoff_preserves_local_identity_and_player_contract():
         '.appendQueryParameter("can_next", canNext.toString())',
         '.appendQueryParameter("can_previous", canPrevious.toString())',
         "setting_audio_preferred_subtitle_language",
-        "it.missing == false",
-        'it.availabilityState == null || it.availabilityState == "available"',
-        "it.episodeType != null",
-        "neighborKeys.any { it < currentEpisodeKey }",
-        "neighborKeys.any { it > currentEpisodeKey }",
     ):
         assert token in launch
-    assert "private data class ReiAnixNativePlayerEpisodeOrderKey" in view_model
-    assert "LibraryStore.player_navigation()" in launch
+    assert "dependencies.sqliteLibraryRepository.playerNavigation(episodeId)" in launch
+    assert "ReiAnixPlayerEpisodeNavigator.resolve(current, availableEpisodes)" in repository
+    assert "WHERE anime_id = ?" in repository
+    assert "missing = 0" in repository
+    assert "COALESCE(availability_state, 'available') = 'available'" in repository
     assert "NativePlayerRequest.fromBridgeUri(source)" in activity
     assert 'putExtra("episodeId", episodeId)' in player_request
     assert 'putExtra("positionMs", positionMs)' in player_request
-
 
 def test_prompt25_traceability_documents_keep_remaining_runtime_explicit():
     bridge_doc = read("docs/KOTLIN_BRIDGE_MIGRATION.md")

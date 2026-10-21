@@ -29,10 +29,16 @@ class SessionHardeningTests(unittest.TestCase):
         self.assertIn("reportPlayerExit(", PLAYER)
         self.assertIn("PLAYER_SESSION_INVALIDATED", PLAYER)
 
-    def test_stale_mailbox_events_are_consumed_and_discarded(self):
-        for token in ("eventId", "eventVersion", "writeInternal(", "durable = true"):
-            self.assertIn(token, MAILBOX)
-        self.assertIn("MAILBOX_STALE_COMMAND_DISCARDED", MAIN_ACTIVITY + PLAYER + BRIDGE)
+    def test_stale_mailbox_events_cannot_reopen_terminal_request_state(self):
+        request_state = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt").read_text(encoding="utf-8")
+        for token in ("eventVersion", "requestId", "writeInternal(", "durable = true"):
+            self.assertIn(token, MAILBOX + MAIN_ACTIVITY + PLAYER)
+        self.assertIn("private fun canAdvanceState(", request_state)
+        self.assertIn("if (previous.isTerminal()) return false", request_state)
+        self.assertIn("OperationState.COMPLETED", request_state)
+        self.assertIn("OperationState.CANCELLED", request_state)
+        self.assertIn("OperationState.FAILED", request_state)
+        self.assertIn("PLAYER_ERROR_STALE_IGNORED", PLAYER)
 
     def test_progress_callbacks_are_session_checked(self):
         self.assertIn("saveProgress(", PLAYER)

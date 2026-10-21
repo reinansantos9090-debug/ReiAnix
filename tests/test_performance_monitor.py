@@ -42,18 +42,22 @@ class PerformanceMonitorTests(unittest.TestCase):
 
     def test_production_integration_contract_is_present(self):
         main = native_main_source()
-        settings = (ROOT / "views/settings_view.py").read_text(encoding="utf-8")
+        settings_ui = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt").read_text(encoding="utf-8")
+        settings_vm = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        settings_contract = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsContract.kt").read_text(encoding="utf-8")
         store = (ROOT / "core/library_store.py").read_text(encoding="utf-8")
         bridge = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
         player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
         host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         for source, tokens in (
             (main, ("PerformanceDiagnostics.attach", "ReiAnixDiagnosticTimeline.record(", "ReiAnixAppBootstrap", "NativeScanController")),
-            (settings, ("settings.focus", "ReiAnixSettingsRepository", "StateFlow", "ReiAnixSettingsViewModel")),
+            (settings_ui, ("ReiAnixSettingsRoute", "collectAsStateWithLifecycle")),
+            (settings_contract, ("ReiAnixSettingsContract", "definitions", "defaultFor(")),
+            (settings_vm, ("sqliteSettingsRepository", "StateFlow", "settingsState")),
             (store, ("record_sqlite", "library_summary", "save_progress", "catalog_page")),
             (bridge, ("android.launch_url", "android.command_delivery", "COMMAND_RECEIVED")),
             (player, ("PerformanceDiagnostics.markPlayer", "first_frame", "playing")),
-            (host, ("PerformanceDiagnostics.attach", "PLAY_HANDOFF_DISPATCHED")),
+            (host, ("PerformanceDiagnostics.attach", "PLAYER_HANDOFF_DISPATCHED")),
         ):
             for token in tokens:
                 self.assertIn(token, source)

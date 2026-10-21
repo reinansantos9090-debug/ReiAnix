@@ -98,7 +98,8 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("endTransaction", database_source)
         self.assertIn("NativeIndex.committedDocuments", runner)
         self.assertIn("NativeIndex.stagedDocuments", runner)
-        self.assertIn("nativeLibraryIndexOwner", activity)
+        self.assertIn("NativeScanPublisher", runner)
+        self.assertIn("nativeLibraryIndexOwner", publisher)
     def test_native_saf_finalization_records_scan_without_second_catalog_reconciliation(self):
         from unittest.mock import patch
         from core.library_service import LibraryService

@@ -86,14 +86,10 @@ class PlayerForensicTests(unittest.TestCase):
 
 
     def test_native_exit_and_lifecycle_callbacks_are_activity_scoped(self):
-        for token in (
-            "activityInstanceId",
-            "MainActivity.notePlayerActivityCreated(",
-            "MainActivity.notePlayerActivityDestroyed(activityInstanceId, playerSessionId)",
-        ):
+        for token in ("activityInstanceId", "MainActivity.notePlayerActivityCreated(", "MainActivity.notePlayerActivityDestroyed(activityInstanceId, playerSessionId)"):
             self.assertIn(token, self.player)
-        self.assertIn("stale_activity_instance", self.player + self.main_activity)
         self.assertIn("activePlayerActivityInstanceId", self.main_activity)
+        self.assertIn("activePlayerSessionId", self.main_activity)
         self.assertIn("notePlayerActivityDestroyed", self.main_activity)
         self.assertIn("PLAYER_EXIT_CLASSIFICATION", self.player)
         self.assertIn("isCurrentPlayerHandoff", self.main_activity)
@@ -104,11 +100,11 @@ class PlayerForensicTests(unittest.TestCase):
         transition = self.player[start:end]
         self.assertIn("dependencies.sqliteLibraryRepository.playerNavigation(episodeId)", transition)
         self.assertIn("isCurrentTransition(", transition)
-        self.assertIn("NEXT_TRANSITION", transition)
-        self.assertIn("PREVIOUS_TRANSITION", transition)
+        self.assertIn('val direction = if (isNextRequest) "NEXT" else "PREVIOUS"', transition)
         self.assertIn("PLAYER_NEXT_STALE_REJECTED", self.player)
         self.assertIn("PLAYER_PREVIOUS_STALE_REJECTED", self.player)
         self.assertIn("MainActivity.isCurrentPlayerHandoff(", self.player)
+
     def test_android_host_tracks_authorized_handoff_and_activity_identity(self):
         for token in (
             "activePlayerActivityInstanceId",

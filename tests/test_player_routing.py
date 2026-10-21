@@ -34,18 +34,17 @@ class PlayerRoutingTests(unittest.TestCase):
         self.assertNotIn("url_launcher.launch_url(url", direct_block)
 
     def test_process_bootstrap_starts_dispatcher_and_keeps_host_route_intact(self):
-        main = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        entrypoint = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").read_text(encoding="utf-8")
         bootstrap = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt").read_text(encoding="utf-8")
-        self.assertIn("appDependencies.bootstrap.start()", main)
+        self.assertIn("MainEntryPoint.onActivityCreated(this)", activity)
+        self.assertIn("dependencies.bootstrap.start()", entrypoint)
         self.assertIn("NativeCommandDispatcher.start(appContext)", bootstrap)
         self.assertIn("NativeScanRunner.recoverInterruptedSafScans(appContext)", bootstrap)
-        self.assertLess(
-            bootstrap.index("NativeScanRunner.recoverInterruptedSafScans(appContext)"),
-            bootstrap.index("NativeCommandDispatcher.start(appContext)"),
-        )
-        self.assertNotIn("NativeCommandDispatcher.start(this@MainActivity)", main)
-        self.assertNotIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", main)
-        self.assertIn('private fun handleNativeIntent', main)
+        self.assertLess(bootstrap.index("NativeScanRunner.recoverInterruptedSafScans(appContext)"), bootstrap.index("NativeCommandDispatcher.start(appContext)"))
+        self.assertNotIn("NativeCommandDispatcher.start(this@MainActivity)", activity)
+        self.assertNotIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
+        self.assertIn("private fun handleNativeIntent", activity)
         self.assertIn('android.intent.action.VIEW', (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"))
 
     def test_internal_command_file_is_atomic_and_self_contained(self):

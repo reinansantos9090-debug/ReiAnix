@@ -92,11 +92,15 @@ class SearchDetailsOrganizeTests(unittest.TestCase):
         )
 
     def test_home_search_uses_native_debounced_search_state(self):
-        source = native_main_source()
+        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
         self.assertIn("SEARCH_DEBOUNCE_MS = 180L", source)
-        self.assertIn("ReiAnixRoutes.SEARCH", source)
-        self.assertIn("searchGeneration", source)
-        self.assertIn("StateFlow", source)
+        self.assertIn("ReiAnixRoutes.SEARCH", navigation)
+        self.assertIn("private val debouncedSearchQuery", source)
+        self.assertIn(".debounce(SEARCH_DEBOUNCE_MS)", source)
+        self.assertIn("val searchState: StateFlow<ReiAnixSearchUiState>", source)
+        self.assertIn("fun setSearchQuery(value: String)", source)
+
     def test_home_exposes_only_domain_supported_state_filters(self):
         home = (ROOT / "views/home_view.py").read_text(encoding="utf-8")
         self.assertIn('states = [str(value) for value in (options.get("states") or []) if value]', home)

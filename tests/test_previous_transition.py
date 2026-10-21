@@ -51,9 +51,9 @@ class PreviousTransitionTests(unittest.TestCase):
     def test_previous_native_navigation_uses_sqlite_repository(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
         self.assertIn("playerNavigation(", repository)
-        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(", repository)
+        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(current, availableEpisodes)", repository)
         self.assertIn("ReiAnixPlayerEpisodeNavigationSnapshot", NAVIGATION)
-        self.assertIn("episodeId", NAVIGATION)
+        self.assertIn("episodeId: Long", repository)
 
     def test_previous_no_target_is_cancelled(self):
         self.assertIn("PREVIOUS_TRANSITION_FAILED", PLAYER)
