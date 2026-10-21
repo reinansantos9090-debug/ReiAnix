@@ -314,26 +314,8 @@ internal fun normalizeAppLifecycleState(eventOrState: Any?): String {
                 PropertyResult(false, null)
             }
         }
-        var type: Class<*>? = target.javaClass
-        while (type != null) {
-            val field = try {
-                type.getDeclaredField(name).also { it.isAccessible = true }
-            } catch (_: ReflectiveOperationException) {
-                null
-            } catch (_: SecurityException) {
-                null
-            }
-            if (field != null) {
-                return try {
-                    PropertyResult(true, field.get(target))
-                } catch (_: ReflectiveOperationException) {
-                    PropertyResult(false, null)
-                } catch (_: SecurityException) {
-                    PropertyResult(false, null)
-                }
-            }
-            type = type.superclass
-        }
+        // Only public bean-style properties are read. Inspecting private JDK fields
+        // (for example String.value) is both unnecessary and blocked on modern Android/JVMs.
         return PropertyResult(false, null)
     }
 
