@@ -658,6 +658,8 @@ internal class NativeMainRuntimePort(
             .thenBy { it.key },
     )
     private val thumbnailRequests = ConcurrentHashMap<String, NativeThumbnailRequest>()
+    // Bounded retry state mirrors the legacy thumbnail retry_after_error task.
+    private val thumbnailRetryCounts = ConcurrentHashMap<String, Int>()
     private val thumbnailInFlight = ConcurrentHashMap.newKeySet<String>()
     private val thumbnailSemaphore = Semaphore(2)
     @Volatile private var thumbnailPumpActive = false
@@ -1435,6 +1437,8 @@ internal class NativeMainRuntimePort(
                         thumbnailQueue.poll()?.also { thumbnailInFlight.add(it.key) }
                     } ?: break
                     updateThumbnailQueueSnapshot()
+                    var retryDelayMs: Long? = null
+                    var retryAttempt: Int? = null
                     try {
                         val result = thumbnailSemaphore.withPermit {
                             withContext(Dispatchers.IO) {
@@ -1455,13 +1459,24 @@ internal class NativeMainRuntimePort(
                                 result = "no_result",
                                 context = mapOf("request_id" to request.key.take(20)),
                             )
+                            val previousAttempts = thumbnailRetryCounts[request.key] ?: 0
+                            if (previousAttempts < 2 && !request.completion.isCancelled) {
+                                val nextAttempt = previousAttempts + 1
+                                thumbnailRetryCounts[request.key] = nextAttempt
+                                retryAttempt = nextAttempt
+                                retryDelayMs = if (previousAttempts == 0) 1_000L else 5_000L
+                            } else {
+                                thumbnailRetryCounts.remove(request.key)
+                            }
                         } else {
+                            thumbnailRetryCounts.remove(request.key)
                             publish(action = "thumbnail_extracted", transform = {
                                 it.copy(lastArtifactPath = result.path)
                             })
                         }
                     } catch (cancelled: CancellationException) {
                         request.completion.cancel(cancelled)
+                        thumbnailRetryCounts.remove(request.key)
                         throw cancelled
                     } catch (failure: Throwable) {
                         request.completion.completeExceptionally(failure)
@@ -1472,12 +1487,64 @@ internal class NativeMainRuntimePort(
                             error = failure,
                             context = mapOf("request_id" to request.key.take(20)),
                         )
+                        val previousAttempts = thumbnailRetryCounts[request.key] ?: 0
+                        if (previousAttempts < 2 && !request.completion.isCancelled) {
+                            val nextAttempt = previousAttempts + 1
+                            thumbnailRetryCounts[request.key] = nextAttempt
+                            retryAttempt = nextAttempt
+                            retryDelayMs = if (previousAttempts == 0) 1_000L else 5_000L
+                        } else {
+                            thumbnailRetryCounts.remove(request.key)
+                        }
                     } finally {
                         synchronized(thumbnailQueueLock) {
                             thumbnailInFlight.remove(request.key)
                             thumbnailRequests.remove(request.key)
                         }
                         updateThumbnailQueueSnapshot()
+                    }
+
+                    val delayBeforeRetry = retryDelayMs
+                    val attemptToRetry = retryAttempt
+                    if (delayBeforeRetry != null && attemptToRetry != null) {
+                        val retryScheduled = launchTracked("thumbnail_retry", lane = "thumbnail") {
+                            delay(delayBeforeRetry)
+                            if (thumbnailRetryCounts[request.key] != attemptToRetry) return@launchTracked
+                            if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) {
+                                thumbnailRetryCounts.remove(request.key)
+                                return@launchTracked
+                            }
+                            val queued = enqueueLocalThumbnail(
+                                reference = request.uri.toString(),
+                                size = request.size,
+                                modifiedAt = request.modifiedAt,
+                                mediaIdentity = request.mediaIdentity,
+                                priority = 200,
+                            )
+                            if (!queued) {
+                                if (thumbnailRetryCounts[request.key] == attemptToRetry) {
+                                    thumbnailRetryCounts.remove(request.key)
+                                }
+                                recordDiagnostic(
+                                    name = "THUMBNAIL_RETRY_REJECTED",
+                                    severity = "WARN",
+                                    result = "queue_rejected",
+                                    context = mapOf("attempt" to attemptToRetry),
+                                )
+                            } else {
+                                recordDiagnostic(
+                                    name = "THUMBNAIL_RETRY_SCHEDULED",
+                                    result = "retry_$attemptToRetry",
+                                    context = mapOf(
+                                        "attempt" to attemptToRetry,
+                                        "delay_ms" to delayBeforeRetry,
+                                    ),
+                                )
+                            }
+                        }
+                        if (!retryScheduled && thumbnailRetryCounts[request.key] == attemptToRetry) {
+                            thumbnailRetryCounts.remove(request.key)
+                        }
                     }
                 }
             } finally {
@@ -5507,6 +5574,7 @@ internal class NativeMainRuntimePort(
             thumbnailQueue.clear()
             thumbnailRequests.values.forEach { it.completion.cancel() }
             thumbnailRequests.clear()
+            thumbnailRetryCounts.clear()
             thumbnailInFlight.clear()
             thumbnailPumpActive = false
         }
