@@ -754,6 +754,7 @@ internal class NativeMainRuntimePort(
     @Volatile private var pendingSafRemovalBridge: String = "library"
     @Volatile private var pendingSafRemovalResultAction: String = "remove_saf"
     @Volatile private var pendingFolderRemovalRequestId: String? = null
+    @Volatile private var restoreMaintenanceInProgress: Boolean = false
     private var scanObserverJob: Job? = null
     private val preferenceLock = Any()
     private val preferenceFile = File(File(activity.filesDir, "data"), "navigation_state.json")
@@ -2599,6 +2600,26 @@ internal class NativeMainRuntimePort(
         requestId: String? = null,
         resultAction: String = "scan_library",
     ): Boolean {
+        if (restoreMaintenanceInProgress) {
+            val message = "Aguarde a conclusão da restauração do backup antes de atualizar a biblioteca."
+            recordDiagnostic(
+                name = "LIBRARY_SCAN_REJECTED",
+                severity = "WARN",
+                requestId = requestId,
+                result = "restore_in_progress",
+            )
+            requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "BLOCKED",
+                    operationState = "BLOCKED",
+                    message = message,
+                    error = "restore_in_progress",
+                )
+            }
+            return false
+        }
         if (!canStartLibraryScan("saf")) {
             val message = "Não há uma pasta SAF autorizada para atualizar a biblioteca."
             recordDiagnostic(
@@ -3832,24 +3853,47 @@ internal class NativeMainRuntimePort(
             publish(action = "restore_backup", error = "O arquivo de backup está ausente ou vazio.")
             return false
         }
-        return launchTracked("restore_backup", lane = "backup") {
-            val result = backupService.restoreBackup(archive)
-            libraryViewModel.refresh()
-            settingsViewModel.refresh()
-            scheduleCatalogMetadataHydration("backup_restored")
-            scheduleThumbnailReconciliation("backup_restored")
-            val summary = org.json.JSONObject()
-                .put("importedRows", result.importedRows)
-                .put("missingFiles", result.missingFiles)
-                .put("manualArtworkReconnected", result.manualArtworkReconnected)
-                .put("safetyBackup", result.safetyBackup.absolutePath)
-                .put("warnings", org.json.JSONArray(result.warnings))
-                .put("accountStatePreserved", result.accountStatePreserved)
-                .put("reauthenticationRequired", result.reauthenticationRequired)
-            publish(action = "restore_backup", transform = {
-                it.copy(lastArtifactPath = result.safetyBackup.absolutePath, lastResultJson = summary.toString())
-            })
+        val reserved = synchronized(lock) {
+            if (restoreMaintenanceInProgress || hasAnyNativeScanInProgress()) {
+                false
+            } else {
+                restoreMaintenanceInProgress = true
+                true
+            }
         }
+        if (!reserved) {
+            val message = "Finalize a atualização da biblioteca antes de restaurar um backup."
+            publish(action = "restore_backup", error = message)
+            recordDiagnostic(
+                name = "BACKUP_RESTORE_BLOCKED",
+                severity = "WARN",
+                result = "scan_in_progress_or_restore_active",
+            )
+            return false
+        }
+        val accepted = launchTracked("restore_backup", lane = "backup") {
+            try {
+                val result = backupService.restoreBackup(archive)
+                libraryViewModel.refresh()
+                settingsViewModel.refresh()
+                scheduleCatalogMetadataHydration("backup_restored")
+                scheduleThumbnailReconciliation("backup_restored")
+                val summary = org.json.JSONObject()
+                    .put("importedRows", result.importedRows)
+                    .put("missingFiles", result.missingFiles)
+                    .put("manualArtworkReconnected", result.safetyBackup.absolutePath)
+                    .put("warnings", org.json.JSONArray(result.warnings))
+                    .put("accountStatePreserved", result.accountStatePreserved)
+                    .put("reauthenticationRequired", result.reauthenticationRequired)
+                publish(action = "restore_backup", transform = {
+                    it.copy(lastArtifactPath = result.safetyBackup.absolutePath, lastResultJson = summary.toString())
+                })
+            } finally {
+                synchronized(lock) { restoreMaintenanceInProgress = false }
+            }
+        }
+        if (!accepted) synchronized(lock) { restoreMaintenanceInProgress = false }
+        return accepted
     }
 
     fun createRecoverySafetySnapshot(): Boolean =
@@ -4147,6 +4191,7 @@ internal class NativeMainRuntimePort(
     fun currentScanUiState(): NativeMainScanUiState = mutableScanUiState.value
 
     fun canStartLibraryScan(source: String? = null): Boolean {
+        if (restoreMaintenanceInProgress) return false
         val normalized = source?.trim()?.lowercase(Locale.ROOT)
         if (normalized != null && normalized !in setOf("saf", "all", "library")) return false
         // Storage selection/removal and scanning are mutually exclusive. A queued
@@ -4185,10 +4230,10 @@ internal class NativeMainRuntimePort(
     fun nativeScanSnapshot(scanId: String) = NativeScanController.snapshot(scanId)
 
     fun beginNativeScan(scanId: String, sourceKey: String? = null): Boolean =
-        NativeScanController.begin(scanId, sourceKey)
+        !restoreMaintenanceInProgress && NativeScanController.begin(scanId, sourceKey)
 
     fun launchNativeScan(scanId: String, block: suspend CoroutineScope.() -> Unit): Boolean =
-        NativeScanController.launch(scanId, block)
+        !restoreMaintenanceInProgress && NativeScanController.launch(scanId, block)
 
     fun cancelNativeScan(scanId: String, reason: String = "Solicitado pelo usuário"): Boolean =
         NativeScanController.requestCancel(scanId, reason)
