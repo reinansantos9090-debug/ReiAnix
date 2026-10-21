@@ -6152,6 +6152,26 @@ internal class NativeMainRuntimePort(
                 val request = eventRequestId ?: stringValue("requestId") ?: return false
                 val sessionId = stringValue("playerSessionId", "player_session_id", "sessionId")
                     ?: return false
+                val current = mutableSnapshot.value
+                if (!current.activePlayerSessionId.isNullOrBlank() &&
+                    current.activePlayerSessionId != sessionId
+                ) {
+                    recordDiagnostic(
+                        name = "PLAYER_CALLBACK_STALE",
+                        severity = "WARN",
+                        requestId = request,
+                        sessionId = sessionId,
+                        result = "player_opened_session_mismatch",
+                        context = mapOf("current_session" to current.activePlayerSessionId),
+                    )
+                    recordDiagnostic(
+                        name = "PLAYER_OPENED_IGNORED",
+                        requestId = request,
+                        sessionId = sessionId,
+                        result = "stale_player_session",
+                    )
+                    return false
+                }
                 notePlayerSession(
                     requestId = request,
                     sessionId = sessionId,
