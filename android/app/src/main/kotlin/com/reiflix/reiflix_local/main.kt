@@ -32,6 +32,7 @@ import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import android.os.Environment
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
+import com.reiflix.reiflix_local.scanner.ScanProgressSnapshot
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import android.net.Uri
@@ -1536,7 +1537,7 @@ internal class NativeMainRuntimePort(
             android.os.Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager()
         }.getOrDefault(false)
         val onboarding = activity.nativeStorageOnboardingState.value
-        val scans = NativeScanController.progress.value.values.toList()
+        val scans: List<ScanProgressSnapshot> = NativeScanController.progress.value.values.toList()
             .sortedByDescending { it.startedAtMillis }
         return NativeMainStorageSnapshot(
             mediaStoreAccess = access,
@@ -1577,18 +1578,19 @@ internal class NativeMainRuntimePort(
         storageSnapshot().scanSnapshots.forEach { scan ->
             scans.put(
                 org.json.JSONObject()
-                    .put("scanId", scan.scanId)
-                    .put("sourceKey", scan.sourceKey ?: "")
+                    .put("operationId", scan.operationId)
+                    .put("source", scan.source)
                     .put("state", scan.state.name)
                     .put("startedAtMillis", scan.startedAtMillis)
-                    .put("updatedAtMillis", scan.updatedAtMillis)
-                    .put("discovered", scan.discovered)
-                    .put("inserted", scan.inserted)
-                    .put("updated", scan.updated)
-                    .put("unchanged", scan.unchanged)
-                    .put("duplicates", scan.duplicates)
-                    .put("removed", scan.removed)
-                    .put("error", scan.error ?: ""),
+                    .put("finishedAtMillis", scan.finishedAtMillis ?: 0L)
+                    .put("filesFound", scan.filesFound)
+                    .put("filesProcessed", scan.filesProcessed)
+                    .put("failures", scan.failures)
+                    .put("directoriesCompleted", scan.directoriesCompleted)
+                    .put("totalFiles", scan.totalFiles ?: org.json.JSONObject.NULL)
+                    .put("partial", scan.partial)
+                    .put("message", scan.message)
+                    .put("errorCategory", scan.errorCategory ?: ""),
             )
         }
         json.put("scans", scans)
