@@ -609,6 +609,16 @@ private data class NativeThumbnailRequest(
     val completion: CompletableDeferred<VideoThumbnailExtractor.Result?>,
 )
 
+private data class NativeThumbnailCandidateRow(
+    val id: Long,
+    val reference: String,
+    val size: Long,
+    val modifiedAt: Long,
+    val mediaIdentity: String?,
+    val durationSeconds: Double,
+    val thumbnailPath: String?,
+)
+
 internal data class NativeMainUiPreferences(
     val homeState: Map<String, Any?> = emptyMap(),
     val organizeState: Map<String, Any?> = emptyMap(),
@@ -745,6 +755,79 @@ internal class NativeMainRuntimePort(
         return result.isSuccess
     }
 
+    /**
+     * Page the canonical SQLite catalog, not the currently visible Compose page.
+     * This preserves the old thumbnail_candidates(after_id, limit=128) behavior
+     * and includes episodes whose cached frame exists but duration still needs repair.
+     */
+    private suspend fun loadThumbnailCandidateRows(
+        afterId: Long,
+        limit: Int = 128,
+    ): List<NativeThumbnailCandidateRow> = withContext(Dispatchers.IO) {
+        val pageLimit = limit.coerceIn(1, 128)
+        dependencies.sqliteDatabase.read { database ->
+            database.rawQuery(
+                """
+                SELECT
+                    e.id,
+                    e.path,
+                    COALESCE(e.file_size, 0) AS file_size,
+                    COALESCE(e.modified_at, 0) AS modified_at,
+                    COALESCE(e.media_identity, '') AS media_identity,
+                    COALESCE(e.duration, 0) AS duration,
+                    (
+                        SELECT art.local_path
+                        FROM artwork art
+                        WHERE art.entity_type = 'episode'
+                          AND art.entity_id = CAST(e.id AS TEXT)
+                          AND art.artwork_type = 'episode_thumbnail'
+                          AND art.local_path IS NOT NULL
+                          AND trim(art.local_path) != ''
+                          AND COALESCE(art.status, '') != 'failed'
+                        ORDER BY art.priority DESC, art.updated_at DESC, art.id DESC
+                        LIMIT 1
+                    ) AS thumbnail_path
+                FROM episodes e
+                WHERE e.id > ?
+                  AND COALESCE(e.missing, 0) = 0
+                  AND COALESCE(e.availability_state, 'available') = 'available'
+                  AND e.path IS NOT NULL
+                  AND trim(e.path) != ''
+                ORDER BY e.id
+                LIMIT ?
+                """.trimIndent(),
+                arrayOf(afterId.toString(), pageLimit.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+                        val reference = cursor.getString(cursor.getColumnIndexOrThrow("path"))
+                            ?.trim()
+                            .orEmpty()
+                        if (id <= 0L || reference.isEmpty()) continue
+                        val mediaIdentity = cursor.getString(cursor.getColumnIndexOrThrow("media_identity"))
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+                        add(
+                            NativeThumbnailCandidateRow(
+                                id = id,
+                                reference = reference,
+                                size = cursor.getLong(cursor.getColumnIndexOrThrow("file_size")).coerceAtLeast(0L),
+                                modifiedAt = cursor.getLong(cursor.getColumnIndexOrThrow("modified_at")).coerceAtLeast(0L),
+                                mediaIdentity = mediaIdentity,
+                                durationSeconds = cursor.getDouble(cursor.getColumnIndexOrThrow("duration"))
+                                    .takeIf { it.isFinite() && it > 0.0 } ?: 0.0,
+                                thumbnailPath = cursor.getString(cursor.getColumnIndexOrThrow("thumbnail_path"))
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() },
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private suspend fun reconcileMissingLocalThumbnails(reason: String) {
         val state = withTimeoutOrNull(20_000L) {
             libraryViewModel.uiState.first { it.status.name != "LOADING" }
@@ -767,64 +850,69 @@ internal class NativeMainRuntimePort(
             return
         }
 
-        val candidates = buildList {
-            state.animes.forEach { anime ->
-                anime.seasons.forEach { season -> addAll(season.episodes) }
-                addAll(anime.specials)
-                addAll(anime.mediaFiles)
-            }
-        }.distinctBy { it.id }
+        var cursor = 0L
+        var scanned = 0
         var queued = 0
         var skipped = 0
-        for (episode in candidates) {
-            if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) return
-            val reference = episode.media.reference?.trim().orEmpty()
-            if (reference.isEmpty()) {
-                skipped += 1
-                continue
-            }
-            val artworkPath = episode.artwork?.localPath?.trim().orEmpty()
-            if (artworkPath.isNotEmpty() && runCatching { File(artworkPath).isFile }.getOrDefault(false)) {
-                continue
-            }
-            val parsed = runCatching { Uri.parse(reference) }.getOrNull()
-            val supported = when (parsed?.scheme?.lowercase(Locale.ROOT)) {
-                "content", "file" -> true
-                null -> reference.startsWith("/")
-                else -> false
-            }
-            if (!supported) {
-                skipped += 1
-                continue
-            }
-
-            val size = episode.fileSizeBytes?.coerceAtLeast(0L) ?: 0L
-            val modifiedAt = episode.modifiedAt?.toLong()?.coerceAtLeast(0L) ?: 0L
-            val identity = episode.media.mediaIdentity?.trim()?.takeIf { it.isNotEmpty() }
-                ?: ("episode:" + episode.id.toString())
+        try {
             while (lifecycleIsAlive && !activity.isFinishing && !activity.isDestroyed) {
-                if (enqueueLocalThumbnail(reference, size, modifiedAt, identity, priority = 100)) {
-                    queued += 1
-                    break
+                val rows = loadThumbnailCandidateRows(afterId = cursor, limit = 128)
+                if (rows.isEmpty()) break
+                for (row in rows) {
+                    cursor = maxOf(cursor, row.id)
+                    scanned += 1
+                    if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) return
+                    val cachedPath = row.thumbnailPath
+                    val thumbnailReady = !cachedPath.isNullOrBlank() &&
+                        runCatching { File(cachedPath).isFile }.getOrDefault(false)
+                    if (thumbnailReady && row.durationSeconds > 0.0) continue
+
+                    val identity = row.mediaIdentity ?: "episode:${row.id}"
+                    while (lifecycleIsAlive && !activity.isFinishing && !activity.isDestroyed) {
+                        if (
+                            enqueueLocalThumbnail(
+                                reference = row.reference,
+                                size = row.size,
+                                modifiedAt = row.modifiedAt,
+                                mediaIdentity = identity,
+                                priority = 100,
+                            )
+                        ) {
+                            queued += 1
+                            break
+                        }
+                        val queueHasRoom = synchronized(thumbnailQueueLock) {
+                            thumbnailRequests.size < MAX_PENDING_THUMBNAIL_REQUESTS
+                        }
+                        if (queueHasRoom) {
+                            skipped += 1
+                            break
+                        }
+                        delay(100L)
+                    }
                 }
-                val queueHasRoom = synchronized(thumbnailQueueLock) {
-                    thumbnailRequests.size < MAX_PENDING_THUMBNAIL_REQUESTS
-                }
-                if (queueHasRoom) {
-                    skipped += 1
-                    break
-                }
-                delay(100L)
+                if (rows.size < 128) break
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            recordDiagnostic(
+                name = "THUMBNAIL_RECONCILIATION_FAILED",
+                severity = "WARN",
+                result = reason,
+                error = failure,
+                context = mapOf("last_episode_id" to cursor),
+            )
+            return
         }
         recordDiagnostic(
             name = "THUMBNAIL_RECONCILIATION_FINISHED",
             result = "completed",
             context = mapOf(
                 "reason" to reason,
-                "candidate_count" to candidates.size,
-                "queued_count" to queued,
-                "skipped_count" to skipped,
+                "catalog_episode_count" to scanned,
+                "queued" to queued,
+                "skipped" to skipped,
             ),
         )
     }
