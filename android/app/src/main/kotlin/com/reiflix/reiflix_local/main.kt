@@ -3882,6 +3882,7 @@ internal class NativeMainRuntimePort(
                     .put("importedRows", result.importedRows)
                     .put("missingFiles", result.missingFiles)
                     .put("manualArtworkReconnected", result.manualArtworkReconnected)
+                    .put("safetyBackup", result.safetyBackup.absolutePath)
                     .put("warnings", org.json.JSONArray(result.warnings))
                     .put("accountStatePreserved", result.accountStatePreserved)
                     .put("reauthenticationRequired", result.reauthenticationRequired)
