@@ -34,6 +34,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import android.os.Environment
@@ -624,6 +625,7 @@ internal class NativeMainRuntimePort(
     private val mutableStorageState = MutableStateFlow<NativeMainStorageSnapshot?>(null)
     val storageState: StateFlow<NativeMainStorageSnapshot?> = mutableStorageState.asStateFlow()
     private val pendingStorageOperations = ConcurrentHashMap<String, PendingNativeStorageOperation>()
+    private val metadataHydrationRequests = Channel<String>(Channel.CONFLATED)
     @Volatile private var lastStorageMutationAtMillis: Long = 0L
     @Volatile private var pendingSafSelectionStartedAtMillis: Long = 0L
     @Volatile private var pendingSafSelectionRequestId: String? = null
@@ -657,6 +659,42 @@ internal class NativeMainRuntimePort(
                 updateScanUiState(snapshots.values)
             }
         }
+        activity.lifecycleScope.launch {
+            for (reason in metadataHydrationRequests) {
+                try {
+                    val changed = dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                    if (changed > 0) libraryViewModel.refresh()
+                    recordDiagnostic(
+                        name = "CATALOG_METADATA_HYDRATION_FINISHED",
+                        result = if (changed > 0) "updated" else "no_unmatched_metadata",
+                        context = mapOf("reason" to reason, "updated_count" to changed),
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    recordDiagnostic(
+                        name = "CATALOG_METADATA_HYDRATION_FAILED",
+                        severity = "WARN",
+                        result = reason,
+                        error = failure,
+                    )
+                }
+            }
+        }
+    }
+
+    /** Coalesced native replacement for schedule_catalog_metadata_hydration(). */
+    fun scheduleCatalogMetadataHydration(reason: String = "catalog_changed"): Boolean {
+        val normalizedReason = reason.trim().take(160).ifEmpty { "catalog_changed" }
+        val result = metadataHydrationRequests.trySend(normalizedReason)
+        if (result.isFailure) {
+            recordDiagnostic(
+                name = "CATALOG_METADATA_HYDRATION_NOT_QUEUED",
+                severity = "WARN",
+                result = normalizedReason,
+            )
+        }
+        return result.isSuccess
     }
 
     private fun updateScanUiState(snapshots: Collection<ScanProgressSnapshot>) {
@@ -3131,7 +3169,9 @@ internal class NativeMainRuntimePort(
         if (refreshDetailsForAnimeId != null && refreshDetailsForAnimeId > 0L) {
             libraryViewModel.refreshDetails(refreshDetailsForAnimeId)
         }
-        return refreshCanonicalCatalog()
+        val accepted = refreshCanonicalCatalog()
+        if (accepted) scheduleCatalogMetadataHydration("catalog_changed")
+        return accepted
     }
 
     fun onMetadataChanged(animeId: Long, requestArtwork: Boolean = true): Boolean {
@@ -4306,6 +4346,9 @@ internal class NativeMainRuntimePort(
             "saf_inventory", "saf_library_scan_complete" -> {
                 if (type == "saf_library_scan_complete") {
                     val status = stringValue("status")?.uppercase(Locale.ROOT) ?: "UNKNOWN"
+                    if (status in setOf("COMPLETED", "PARTIAL")) {
+                        scheduleCatalogMetadataHydration("native_scan_$status")
+                    }
                     val requestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
                     val mappedStatus = when (status) {
                         "FAILED", "ERROR" -> "FAILED"
