@@ -873,9 +873,20 @@ internal class NativeMainRuntimePort(
         val file = File(normalized)
         if (!file.isFile || file.length() <= 0L) return false
         return runCatching {
-            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(file.absolutePath, options)
-            options.outWidth > 0 && options.outHeight > 0
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching false
+
+            // Generated frames are small, but manually supplied artwork may be huge.
+            // Decode a sample so a valid header alone cannot hide a corrupt image body.
+            val largestDimension = maxOf(bounds.outWidth, bounds.outHeight)
+            val sampleSize = maxOf(1, largestDimension / 512)
+            val bitmap = BitmapFactory.decodeFile(
+                file.absolutePath,
+                BitmapFactory.Options().apply { inSampleSize = sampleSize },
+            ) ?: return@runCatching false
+            bitmap.recycle()
+            true
         }.getOrDefault(false)
     }
 
