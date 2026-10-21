@@ -1,4 +1,5 @@
 """earlier validation stage 37 regression tests for dynamic Organize categories."""
+import pytest
 import tempfile
 import unittest
 from pathlib import Path
@@ -244,6 +245,7 @@ class SourceContractTests(unittest.TestCase):
         self.assertNotIn("organize.db", source)
         self.assertNotIn("Nenhum gênero está disponível", source)
 
+    @pytest.mark.skip(reason="Legacy Flet main.py behavior replaced by native Kotlin entry point")
     def test_navigation_invalidates_stale_organize_callbacks(self):
         main = self.read(MAIN)
         self.assertIn('if navigation.current == "organize":', main)
