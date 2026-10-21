@@ -12,6 +12,10 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -446,4 +450,379 @@ internal fun normalizeAppLifecycleState(eventOrState: Any?): String {
         else -> normalizedRaw.toString()
     }.trim().lowercase(Locale.ROOT)
     return text.substringAfterLast('.')
+}
+
+
+/**
+ * Kotlin orchestration port for the legacy main.py composition root.
+ *
+ * The Android implementation already owns rendering and persistence in the
+ * Compose host, ViewModels, Activity, repositories, scanners, and player. This
+ * class preserves the old entrypoint's coordination contract while delegating
+ * each operation to those canonical Kotlin owners. It intentionally does not
+ * create a second database, scanner, player, navigation stack, or command queue.
+ */
+internal data class NativeMainRuntimeSnapshot(
+    val initialized: Boolean = false,
+    val recoveryRequired: Boolean = false,
+    val route: String = ReiAnixRoutes.HOME,
+    val accountState: String = "disconnected",
+    val selectedAnimeId: Long? = null,
+    val generation: Long = 0L,
+    val pendingTasks: Int = 0,
+    val lastAction: String? = null,
+    val lastError: String? = null,
+)
+
+internal class NativeMainRuntimePort(
+    private val activity: MainActivity,
+    private val libraryViewModel: ReiAnixLibraryViewModel,
+    private val settingsViewModel: ReiAnixSettingsViewModel,
+    private val composeHost: ReiAnixComposeLibraryHost,
+) {
+    private val lock = Any()
+    private val jobs = linkedSetOf<Job>()
+    private val maxBackgroundTasks = 8
+    private val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+    private val mutableSnapshot = MutableStateFlow(NativeMainRuntimeSnapshot())
+    val snapshot: StateFlow<NativeMainRuntimeSnapshot> = mutableSnapshot.asStateFlow()
+
+    private fun publish(
+        action: String? = mutableSnapshot.value.lastAction,
+        error: String? = null,
+        transform: (NativeMainRuntimeSnapshot) -> NativeMainRuntimeSnapshot = { it },
+    ) {
+        synchronized(lock) {
+            val old = mutableSnapshot.value
+            mutableSnapshot.value = transform(
+                old.copy(
+                    generation = old.generation + 1L,
+                    pendingTasks = jobs.size,
+                    lastAction = action,
+                    lastError = error,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Bounded lifecycle-scoped work replaces the old main.py task registries.
+     * A task is registered before it starts, and completion always releases the
+     * slot; failures are observable rather than silently lost.
+     */
+    private fun launchTracked(label: String, block: suspend () -> Unit): Boolean {
+        val job = activity.lifecycleScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                block()
+                publish(action = label)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                Log.e("ReiAnixMainPort", "Native main operation failed: $label", failure)
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_MAIN_OPERATION_FAILED",
+                    severity = "ERROR",
+                    source = "NativeMainRuntimePort",
+                    result = label,
+                    error = failure,
+                    context = mapOf("operation" to label),
+                )
+                publish(action = label, error = failure.message ?: failure.javaClass.simpleName)
+            }
+        }
+
+        val accepted = synchronized(lock) {
+            if (jobs.size >= maxBackgroundTasks || activity.isFinishing || activity.isDestroyed) {
+                false
+            } else {
+                jobs.add(job)
+                mutableSnapshot.value = mutableSnapshot.value.copy(
+                    generation = mutableSnapshot.value.generation + 1L,
+                    pendingTasks = jobs.size,
+                    lastAction = label,
+                    lastError = null,
+                )
+                true
+            }
+        }
+        if (!accepted) {
+            job.cancel()
+            return false
+        }
+        job.invokeOnCompletion {
+            synchronized(lock) {
+                jobs.remove(job)
+                mutableSnapshot.value = mutableSnapshot.value.copy(
+                    generation = mutableSnapshot.value.generation + 1L,
+                    pendingTasks = jobs.size,
+                )
+            }
+        }
+        job.start()
+        return true
+    }
+
+    /** Port of the original startup/recovery decision, guarded by canonical SQLite validation. */
+    fun start(startDestination: String = ReiAnixRoutes.HOME): Boolean =
+        launchTracked("startup") {
+            val recoveryRequired = dependencies.bootstrap.validateCanonicalDatabase()
+            if (activity.isFinishing || activity.isDestroyed) return@launchTracked
+            val destination = if (recoveryRequired) {
+                ReiAnixRoutes.RECOVERY
+            } else if (ReiAnixRoutes.isSupportedShellDestination(startDestination)) {
+                startDestination
+            } else {
+                ReiAnixRoutes.HOME
+            }
+            composeHost.show(destination, resetBackStack = true)
+            if (!recoveryRequired) {
+                libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+                settingsViewModel.refresh()
+            }
+            publish(action = "startup", transform = {
+                it.copy(initialized = true, recoveryRequired = recoveryRequired, route = destination)
+            })
+        }
+
+    /** Process-local navigation replaces Python's persisted Flet route stack. */
+    fun navigate(route: String, reason: String = "navigate"): Boolean {
+        val destination = route.trim()
+        if (!ReiAnixRoutes.isSupportedShellDestination(destination)) {
+            publish(
+                action = reason,
+                error = "Unsupported native route: ${destination.take(100)}",
+            )
+            return false
+        }
+        composeHost.show(destination)
+        publish(action = reason, transform = { it.copy(route = destination) })
+        return true
+    }
+
+    fun navigateHome(): Boolean = navigate(ReiAnixRoutes.HOME, "navigate_home")
+    fun navigateLibrary(): Boolean = navigate(ReiAnixRoutes.LIBRARY, "navigate_library")
+    fun navigateOrganize(): Boolean = navigate(ReiAnixRoutes.ORGANIZE, "navigate_organize")
+    fun navigateCollector(): Boolean = navigate(ReiAnixRoutes.COLLECTOR, "navigate_collector")
+    fun navigateSettings(): Boolean = navigate(ReiAnixRoutes.SETTINGS, "navigate_settings")
+    fun navigateStorage(): Boolean = navigate(ReiAnixRoutes.STORAGE, "navigate_storage")
+    fun navigateSearch(): Boolean = navigate(ReiAnixRoutes.SEARCH, "navigate_search")
+    fun navigateMyList(): Boolean = navigate(ReiAnixRoutes.MY_LIST, "navigate_my_list")
+
+    fun navigateBack(): Boolean {
+        val handled = composeHost.handleBack()
+        publish(action = "navigate_back")
+        return handled
+    }
+
+    fun hideComposeLibrary() {
+        composeHost.hide()
+        publish(action = "hide_compose_library")
+    }
+
+    fun showComposeLibrary(route: String = ReiAnixRoutes.LIBRARY, resetBackStack: Boolean = false): Boolean {
+        if (!ReiAnixRoutes.isSupportedShellDestination(route)) return false
+        composeHost.show(route, resetBackStack = resetBackStack)
+        publish(action = "show_compose_library", transform = { it.copy(route = route) })
+        return true
+    }
+
+    /** The Compose UI is StateFlow-driven, so the former Flet safe_update is intentionally a no-op. */
+    fun safeUpdate() = Unit
+
+    fun setAccountState(value: String, reason: String = "account_state_changed") {
+        val normalized = value.trim().lowercase(Locale.ROOT).ifBlank { "disconnected" }
+        publish(action = reason, transform = { it.copy(accountState = normalized) })
+    }
+
+    fun refreshLibrary(): Boolean = launchTracked("refresh_library") {
+        libraryViewModel.refresh()
+        settingsViewModel.refresh()
+    }
+
+    fun refreshCanonicalCatalog(): Boolean = launchTracked("refresh_canonical_catalog") {
+        val refreshed = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+        if (!refreshed) {
+            throw IllegalStateException("O catálogo nativo ainda não pode ser atualizado antes da validação do banco.")
+        }
+    }
+
+    fun refreshCurrentDetails(animeId: Long): Boolean {
+        if (animeId <= 0L) return false
+        publish(action = "refresh_details", transform = { it.copy(selectedAnimeId = animeId) })
+        libraryViewModel.refreshDetails(animeId)
+        return true
+    }
+
+    fun selectDetailsAnime(animeId: Long): Boolean {
+        if (animeId <= 0L) return false
+        publish(action = "navigate_details", transform = { it.copy(selectedAnimeId = animeId) })
+        libraryViewModel.refreshDetails(animeId)
+        return true
+    }
+
+    fun clearSelectedAnime() {
+        publish(action = "clear_details", transform = { it.copy(selectedAnimeId = null) })
+    }
+
+    fun setLibraryPageSize(value: Int) = libraryViewModel.applyLibraryPageSize(value)
+    fun setLibrarySortDefault(value: String) = libraryViewModel.applyLibrarySortDefault(value)
+    fun loadNextLibraryPage() = libraryViewModel.loadNextLibraryPage()
+    fun setLibrarySearchQuery(value: String) = libraryViewModel.setLibrarySearchQuery(value)
+    fun setLibrarySort(value: String) = libraryViewModel.setLibrarySort(value)
+    fun setLibraryGenreFilter(value: String?) = libraryViewModel.setLibraryGenreFilter(value)
+    fun toggleLibraryFavoritesFilter() = libraryViewModel.toggleLibraryFavoritesFilter()
+    fun toggleLibraryWatchingFilter() = libraryViewModel.toggleLibraryWatchingFilter()
+    fun toggleLibraryCompletedFilter() = libraryViewModel.toggleLibraryCompletedFilter()
+    fun clearLibraryFilters() = libraryViewModel.clearLibraryFilters()
+
+    fun setSearchQuery(value: String) = libraryViewModel.setSearchQuery(value)
+    fun setSearchGenreFilter(value: String?) = libraryViewModel.setSearchGenreFilter(value)
+    fun toggleSearchFavoritesFilter() = libraryViewModel.toggleSearchFavoritesFilter()
+    fun toggleSearchWatchingFilter() = libraryViewModel.toggleSearchWatchingFilter()
+    fun toggleSearchCompletedFilter() = libraryViewModel.toggleSearchCompletedFilter()
+    fun setSearchSort(value: String?) = libraryViewModel.setSearchSort(value)
+    fun clearSearchFilters() = libraryViewModel.clearSearchFilters()
+
+    fun setOrganizeQuery(value: String) = libraryViewModel.setOrganizeQuery(value)
+    fun setOrganizeState(value: String) = libraryViewModel.setOrganizeState(value)
+    fun setOrganizeGenre(key: String?) = libraryViewModel.setOrganizeGenre(key)
+    fun setOrganizeSort(value: String) = libraryViewModel.setOrganizeSort(value)
+    fun clearOrganizeFilters() = libraryViewModel.clearOrganizeFilters()
+    fun openOrganizeCollection(value: String) = libraryViewModel.openOrganizeCollection(value)
+    fun openOrganizeOverview() = libraryViewModel.openOrganizeOverview()
+
+    fun toggleFavorite(animeId: Long) {
+        if (animeId > 0L) libraryViewModel.toggleFavorite(animeId)
+    }
+
+    fun markEpisodeWatched(episodeId: Long, watched: Boolean) {
+        if (episodeId > 0L) libraryViewModel.setEpisodeWatched(episodeId, watched)
+    }
+
+    fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String? {
+        if (episodeId <= 0L) return null
+        return runCatching { libraryViewModel.openEpisode(episodeId, expectedAnimeId) }
+            .onFailure { failure ->
+                Log.e("ReiAnixMainPort", "Unable to open local episode id=$episodeId", failure)
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_MAIN_OPEN_EPISODE_FAILED",
+                    severity = "ERROR",
+                    source = "NativeMainRuntimePort",
+                    error = failure,
+                    context = mapOf("episode_id" to episodeId),
+                )
+            }
+            .getOrNull()
+    }
+
+    fun togglePinned(animeId: Long): Boolean {
+        if (animeId <= 0L) return false
+        return launchTracked("toggle_pinned") {
+            libraryViewModel.toggleAnimePinnedNative(animeId)
+        }
+    }
+
+    fun savePersonalNote(animeId: Long, note: String?): Boolean {
+        if (animeId <= 0L) return false
+        return launchTracked("save_personal_note") {
+            libraryViewModel.saveAnimePersonalNoteNative(animeId, note)
+        }
+    }
+
+    fun saveUserTags(animeId: Long, tags: List<String>): Boolean {
+        if (animeId <= 0L) return false
+        val normalized = tags.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        return launchTracked("save_user_tags") {
+            libraryViewModel.saveAnimeUserTagsNative(animeId, normalized)
+        }
+    }
+
+    fun refreshMetadata(animeId: Long): Boolean = refreshCurrentDetails(animeId)
+
+    fun queryMarathonPlan(animeId: Long, currentPath: String? = null): Boolean {
+        if (animeId <= 0L) return false
+        return launchTracked("query_marathon_plan") {
+            libraryViewModel.queryNativeMarathonPlan(animeId, currentPath)
+        }
+    }
+
+    fun setSetting(key: String, value: String) {
+        settingsViewModel.setSetting(key, value)
+        publish(action = "set_setting")
+    }
+
+    fun requestSettingsAction(action: String) {
+        settingsViewModel.requestAction(action)
+        publish(action = "settings_action")
+    }
+
+    fun requestAccountAction(action: String) {
+        settingsViewModel.requestAccountAction(action)
+        publish(action = "account_action")
+    }
+
+    fun requestStorageAction(action: String): Boolean {
+        val accepted = activity.requestNativeStorageAction(action)
+        publish(action = "storage_action", error = if (accepted) null else "Native storage action was rejected.")
+        return accepted
+    }
+
+    fun selectSafTree() = libraryViewModel.selectSafTree()
+    fun dismissStorageOnboarding() = libraryViewModel.dismissStorageOnboarding()
+    fun removeSafTree(reference: String) = libraryViewModel.removeSafTree(reference)
+
+    fun queryNativeAnime(animeId: Long): Boolean = launchTracked("query_anime") {
+        libraryViewModel.queryNativeAnime(animeId)
+    }
+
+    fun queryNativeEpisodes(animeId: Long): Boolean = launchTracked("query_episodes") {
+        libraryViewModel.queryNativeEpisodes(animeId)
+    }
+
+    fun queryNativeEpisode(episodeId: Long): Boolean = launchTracked("query_episode") {
+        libraryViewModel.queryNativeEpisode(episodeId)
+    }
+
+    fun queryNativeRecentlyPlayed(): Boolean = launchTracked("query_recently_played") {
+        libraryViewModel.queryNativeRecentlyPlayed()
+    }
+
+    fun queryNativeFolders(): Boolean = launchTracked("query_folders") {
+        libraryViewModel.queryNativeFolders()
+    }
+
+    fun queryNativeArtwork(): Boolean = launchTracked("query_artwork") {
+        libraryViewModel.queryNativeArtwork()
+    }
+
+    /** The process Application owns dispatch; start is idempotent and creates no second queue. */
+    fun ensureNativeCommandDispatcher() {
+        NativeCommandDispatcher.start(activity.applicationContext)
+        publish(action = "ensure_native_command_dispatcher")
+    }
+
+    fun exportDiagnostics(): String = ReiAnixDiagnosticTimeline.snapshotJson().toString()
+
+    fun recordDiagnostic(
+        name: String,
+        severity: String = "INFO",
+        result: String? = null,
+        error: Throwable? = null,
+        context: Map<String, Any?> = emptyMap(),
+    ) {
+        ReiAnixDiagnosticTimeline.record(
+            name = name,
+            severity = severity,
+            source = "NativeMainRuntimePort",
+            result = result,
+            error = error,
+            context = context,
+        )
+    }
+
+    fun cancelBackgroundTasks() {
+        val copy = synchronized(lock) { jobs.toList() }
+        copy.forEach(Job::cancel)
+        publish(action = "cancel_background_tasks")
+    }
 }
