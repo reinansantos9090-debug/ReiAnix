@@ -6605,22 +6605,22 @@ internal class NativeMainRuntimePort(
                 val exitUri = stringValue("uri", "path").orEmpty()
                 val exitPositionMs = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
                 val exitDurationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
-                var exitProgressUpdated = false
+                var exitProgressResult = "NOT_UPDATED"
                 if (exitUri.isNotBlank() && exitPositionMs >= 0L) {
                     if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                         // NativePlayerActivity has already committed the final checkpoint.
                         // Refresh the projection but never write the same checkpoint twice.
                         libraryViewModel.refresh()
-                        exitProgressUpdated = true
+                        exitProgressResult = "NATIVE_COMMIT_REUSED"
                     } else {
                         // Compatibility for a player exit published before its native writer
                         // acknowledged persistence. The validated numeric episode ID is canonical.
-                        exitProgressUpdated = savePlaybackProgress(
+                        exitProgressResult = if (savePlaybackProgress(
                             episodeId = exitEpisodeId,
                             positionMs = exitPositionMs,
                             durationMs = exitDurationMs.takeIf { it > 0L },
                             completed = payload.optBoolean("completed", false),
-                        )
+                        )) "QUEUED" else "NOT_UPDATED"
                     }
                 }
                 // A valid exit may omit requestId; session/activity identity and the
@@ -6641,8 +6641,7 @@ internal class NativeMainRuntimePort(
                     name = "PLAYER_EXITED",
                     requestId = exitRequestId,
                     sessionId = exitSessionId,
-                    result = (stringValue("reason") ?: "exit") +
-                        if (exitProgressUpdated) ":progress_saved" else ":progress_not_updated",
+                    result = (stringValue("reason") ?: "exit") + ":progress_" + exitProgressResult.lowercase(Locale.ROOT),
                     context = mapOf(
                         "episode_id" to exitEpisodeId,
                         "media_identity" to stringValue("mediaId", "media_id"),
