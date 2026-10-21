@@ -2380,14 +2380,19 @@ internal class NativeMainRuntimePort(
         originTransitionGeneration,
     )
 
-    fun notePlayerSession(requestId: String, sessionId: String, transitionGeneration: Long = 0L) {
+    fun notePlayerSession(
+        requestId: String,
+        sessionId: String,
+        transitionGeneration: Long = 0L,
+        playerGeneration: Long? = null,
+    ) {
         MainActivity.notePlayerSession(requestId, sessionId, transitionGeneration)
         publish(action = "player_session_active", transform = {
             it.copy(
                 playerSessionActive = true,
                 activePlayerRequestId = requestId.trim().takeIf { value -> value.isNotEmpty() },
                 activePlayerSessionId = sessionId.trim().takeIf { value -> value.isNotEmpty() },
-                activePlayerGeneration = transitionGeneration.coerceAtLeast(0L),
+                activePlayerGeneration = playerGeneration?.coerceAtLeast(0L) ?: it.activePlayerGeneration,
                 transitionGeneration = maxOf(it.transitionGeneration, transitionGeneration.coerceAtLeast(0L)),
             )
         })
@@ -2398,6 +2403,7 @@ internal class NativeMainRuntimePort(
         requestId: String,
         sessionId: String,
         transitionGeneration: Long = 0L,
+        playerGeneration: Long? = null,
     ) {
         MainActivity.notePlayerActivityCreated(instanceId, requestId, sessionId, transitionGeneration)
         publish(action = "player_activity_created", transform = {
@@ -2406,7 +2412,7 @@ internal class NativeMainRuntimePort(
                 activePlayerActivityInstanceId = instanceId.trim().takeIf { value -> value.isNotEmpty() },
                 activePlayerRequestId = requestId.trim().takeIf { value -> value.isNotEmpty() },
                 activePlayerSessionId = sessionId.trim().takeIf { value -> value.isNotEmpty() },
-                activePlayerGeneration = transitionGeneration.coerceAtLeast(0L),
+                activePlayerGeneration = playerGeneration?.coerceAtLeast(0L) ?: it.activePlayerGeneration,
                 transitionGeneration = maxOf(it.transitionGeneration, transitionGeneration.coerceAtLeast(0L)),
             )
         })
@@ -7130,7 +7136,8 @@ internal class NativeMainRuntimePort(
                 notePlayerSession(
                     requestId = request,
                     sessionId = sessionId,
-                    transitionGeneration = payload.optLong("transitionGeneration", payload.optLong("generation", 0L)),
+                    transitionGeneration = payload.optLong("transitionGeneration", 0L),
+                    playerGeneration = payload.optLong("generation", payload.optLong("playerGeneration", 0L)),
                 )
                 setActivePlayerMedia(
                     longValue("episodeId", "episode_id"),
@@ -7546,6 +7553,7 @@ internal class NativeMainRuntimePort(
                         notePlayerSession(
                             correlatedRequestId,
                             createdSession,
+                            payload.optLong("transitionGeneration", 0L),
                             payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
                         )
                         if (!activityInstanceId.isNullOrBlank()) {
@@ -7553,6 +7561,7 @@ internal class NativeMainRuntimePort(
                                 activityInstanceId,
                                 correlatedRequestId,
                                 createdSession,
+                                payload.optLong("transitionGeneration", 0L),
                                 payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
                             )
                         }
@@ -7658,6 +7667,7 @@ internal class NativeMainRuntimePort(
                             notePlayerSession(
                                 correlatedRequestId.orEmpty(),
                                 sessionId,
+                                payload.optLong("transitionGeneration", 0L),
                                 payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
                             )
                             if (!activityInstanceId.isNullOrBlank()) {
@@ -7665,6 +7675,7 @@ internal class NativeMainRuntimePort(
                                     activityInstanceId,
                                     correlatedRequestId.orEmpty(),
                                     sessionId,
+                                    payload.optLong("transitionGeneration", 0L),
                                     payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
                                 )
                             }
