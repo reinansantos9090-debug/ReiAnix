@@ -3177,6 +3177,52 @@ internal class NativeMainRuntimePort(
         return claimed
     }
 
+
+    /** Match main.py's progress coalescing without merging different playback identities. */
+    private fun coalesceNativeMailboxProgressEvents(
+        events: List<NativeMailboxQueueItem>,
+    ): List<NativeMailboxQueueItem> {
+        val compacted = mutableListOf<NativeMailboxQueueItem>()
+        fun eventType(item: NativeMailboxQueueItem): String =
+            item.envelope.optString("eventType", item.envelope.optString("type", "")).trim()
+
+        fun identity(item: NativeMailboxQueueItem): List<String> {
+            val envelope = item.envelope
+            val payload = envelope.optJSONObject("payload") ?: org.json.JSONObject()
+            fun value(key: String): String = payload.optString(key, "").trim()
+            val requestId = envelope.optString("requestId", "").trim()
+                .ifBlank { payload.optString("requestId", "").trim() }
+            val generation = value("generation").ifBlank { value("playerGeneration") }
+            return listOf(
+                value("playerSessionId"),
+                value("activityInstanceId"),
+                requestId,
+                value("episodeId"),
+                value("uri"),
+                generation,
+                value("transitionGeneration"),
+            )
+        }
+
+        for (event in events) {
+            val isProgress = eventType(event) == "player_progress"
+            val previous = compacted.lastOrNull()
+            if (
+                isProgress &&
+                previous != null &&
+                eventType(previous) == "player_progress"
+            ) {
+                val currentIdentity = identity(event)
+                if (currentIdentity.any { it.isNotEmpty() } && currentIdentity == identity(previous)) {
+                    compacted[compacted.lastIndex] = event
+                    continue
+                }
+            }
+            compacted += event
+        }
+        return compacted
+    }
+
     private suspend fun requeueNativeMailboxEvent(item: NativeMailboxQueueItem) {
         withContext(Dispatchers.IO) {
             val target = File(
@@ -3205,7 +3251,8 @@ internal class NativeMainRuntimePort(
         var pollDelayMillis = 200L
         while (!activity.isFinishing && !activity.isDestroyed) {
             try {
-                val events = withContext(Dispatchers.IO) { claimNativeMailboxBatch() }
+                val claimedEvents = withContext(Dispatchers.IO) { claimNativeMailboxBatch() }
+                val events = coalesceNativeMailboxProgressEvents(claimedEvents)
                 for (item in events) {
                     val eventId = item.envelope.optString("eventId", "").trim()
                     try {
@@ -3230,8 +3277,12 @@ internal class NativeMainRuntimePort(
                         )
                     }
                 }
+                val retainedEventFiles = events.map { it.file.absolutePath }.toSet()
+                claimedEvents.filter { it.file.absolutePath !in retainedEventFiles }.forEach {
+                    acknowledgeNativeMailboxEvent(it)
+                }
                 pollDelayMillis = when {
-                    events.isNotEmpty() -> 80L
+                    claimedEvents.isNotEmpty() -> 80L
                     mutableSnapshot.value.playerSessionActive -> (pollDelayMillis + 25L).coerceAtMost(250L)
                     else -> (pollDelayMillis * 3L / 2L).coerceIn(200L, 1_000L)
                 }
