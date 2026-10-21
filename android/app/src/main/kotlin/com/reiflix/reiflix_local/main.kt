@@ -1085,6 +1085,73 @@ internal class NativeMainRuntimePort(
     }
 
 
+    fun playerCallbackIdentityIsComplete(payload: org.json.JSONObject?): Boolean {
+        if (payload == null) return false
+        val session = payload.optString("playerSessionId", payload.optString("player_session_id", "")).trim()
+        val episode = payload.optString("episodeId", "").trim()
+        val media = payload.optString("mediaId", "").trim()
+        val uri = payload.optString("uri", "").trim()
+        return session.isNotEmpty() && episode.isNotEmpty() && media.isNotEmpty() && uri.isNotEmpty()
+    }
+
+    fun validatePlayerCallback(
+        eventRequestId: String?,
+        payload: org.json.JSONObject,
+        requireActive: Boolean = true,
+        expectedEpisodeId: Long? = null,
+        expectedMediaId: String? = null,
+        expectedAnimeId: Long? = null,
+    ): NativePlayerCallbackValidation {
+        val current = mutableSnapshot.value
+        fun reject(reason: String) = NativePlayerCallbackValidation(false, reason)
+        val sessionId = payload.optString("playerSessionId", payload.optString("player_session_id", "")).trim()
+        val activityId = payload.optString("activityInstanceId", payload.optString("activity_instance_id", "")).trim()
+        val requestId = eventRequestId?.trim().orEmpty().ifBlank { payload.optString("requestId", "").trim() }
+        val playerGeneration = payload.optLong("generation", payload.optLong("playerGeneration", 0L))
+        val transition = payload.optLong("transitionGeneration", 0L)
+        val episodeId = expectedEpisodeId ?: payload.optLong("episodeId", 0L).takeIf { it > 0L }
+        val animeId = expectedAnimeId ?: payload.optLong("animeId", 0L).takeIf { it > 0L }
+        val mediaId = expectedMediaId?.trim().orEmpty().ifBlank { payload.optString("mediaId", "").trim() }
+
+        if (requireActive && !current.playerSessionActive) return reject("stale_session")
+        if (sessionId.isNotBlank() && current.activePlayerSessionId != null && current.activePlayerSessionId != sessionId) return reject("stale_session")
+        if (activityId.isNotBlank() && current.activePlayerActivityInstanceId != null && current.activePlayerActivityInstanceId != activityId) return reject("stale_activity_instance")
+        if (requestId.isNotBlank() && current.activePlayerRequestId != null && current.activePlayerRequestId != requestId) return reject("stale_request")
+        if (playerGeneration > 0L && current.activePlayerGeneration > 0L && playerGeneration != current.activePlayerGeneration) return reject("stale_player_generation")
+        if (transition > 0L && current.transitionGeneration > 0L && transition < current.transitionGeneration) return reject("stale_transition_generation")
+        if (episodeId != null && current.activeEpisodeId != null && episodeId != current.activeEpisodeId) return reject("stale_episode")
+        if (mediaId.isNotBlank()) {
+            val activeEpisode = current.activeEpisodeId
+            if (activeEpisode != null && mediaId != "episode:" + activeEpisode) return reject("stale_media_identity")
+            if (activeEpisode == null && !current.activeMediaUri.isNullOrBlank() && mediaId != current.activeMediaUri) return reject("stale_media_identity")
+        }
+        if (animeId != null && current.activeAnimeId != null && animeId != current.activeAnimeId) return reject("stale_anime")
+        return NativePlayerCallbackValidation(true)
+    }
+
+    fun playerTransitionIsCurrent(
+        generation: Long,
+        requestId: String,
+        playerSessionId: String? = null,
+    ): Boolean {
+        val current = mutableSnapshot.value
+        val sessionMatches = playerSessionId == null ||
+            (!current.activePlayerSessionId.isNullOrBlank() && current.activePlayerSessionId == playerSessionId)
+        return generation == current.transitionGeneration &&
+            current.activePlayerRequestId in setOf(null, requestId) &&
+            current.playerSessionActive && sessionMatches && lifecycleIsAlive
+    }
+
+    fun setActivePlayerMedia(episodeId: Long?, animeId: Long?, mediaUri: String?) {
+        publish(action = "player_media_selected", transform = {
+            it.copy(
+                activeEpisodeId = episodeId?.takeIf { value -> value > 0L },
+                activeAnimeId = animeId?.takeIf { value -> value > 0L },
+                activeMediaUri = mediaUri?.trim()?.takeIf { value -> value.isNotEmpty() },
+            )
+        })
+    }
+
     fun isPlayerTransitionRevoked(originRequestId: String, originPlayerSessionId: String? = null): Boolean =
         MainActivity.isPlayerTransitionRevoked(originRequestId, originPlayerSessionId)
 
