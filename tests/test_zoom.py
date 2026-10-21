@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
 REQUEST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
-MAIN = ROOT / "main.py"
+LIBRARY_VIEWMODEL = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
 SETTINGS = ROOT / "core/settings.py"
 SETTINGS_VIEW = ROOT / "views/settings_view.py"
 STORE_TEST = ROOT / "tests/test_settings_store.py"
@@ -17,7 +17,7 @@ class ZoomContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.player = PLAYER.read_text(encoding="utf-8")
         cls.request = REQUEST.read_text(encoding="utf-8")
-        cls.main = MAIN.read_text(encoding="utf-8")
+        cls.main = LIBRARY_VIEWMODEL.read_text(encoding="utf-8")
         cls.settings = SETTINGS.read_text(encoding="utf-8")
         cls.settings_view = SETTINGS_VIEW.read_text(encoding="utf-8")
         cls.store_test = STORE_TEST.read_text(encoding="utf-8")
@@ -27,11 +27,12 @@ class ZoomContractTests(unittest.TestCase):
         self.assertIn('SettingDefinition("player.zoom_enabled", "bool", False)', self.settings)
         self.assertIn('"player.zoom_enabled"', self.settings)
         self.assertIn('row("player.zoom_enabled", "Zoom por gesto"', self.settings_view)
-        self.assertIn('"player.zoom_enabled": settings.get("player.zoom_enabled")', self.main)
+        self.assertIn('"player.zoom_enabled" to "setting_player_zoom_enabled"', self.main)
+        self.assertIn("preferenceValue(preferenceKey)", self.main)
         self.assertIn('self.assertFalse(self.settings.get("player.zoom_enabled"))', self.store_test)
         self.assertIn('self.settings.set("player.zoom_enabled", True)', self.store_test)
 
-    def test_python_to_android_request_has_explicit_zoom_flag_and_false_fallback(self):
+    def test_native_to_android_request_has_explicit_zoom_flag_and_false_fallback(self):
         self.assertIn('"player.zoom_enabled": settings.get("player.zoom_enabled")', self.main)
         self.assertIn('val zoomEnabled: Boolean', self.request)
         self.assertIn('zoomEnabled = get("setting_player_zoom_enabled")?.toBooleanStrictOrNull() ?: false', self.request)

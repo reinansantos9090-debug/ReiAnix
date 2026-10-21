@@ -4,7 +4,6 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "main.py"
 NAVIGATION = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
 COMPOSE_HOST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
 SETTINGS = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
@@ -19,7 +18,6 @@ COVERAGE = ROOT / "docs/PROMPT_23_COMPOSE_INTERFACE_COVERAGE.md"
 class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.main = MAIN.read_text(encoding="utf-8")
         cls.navigation = NAVIGATION.read_text(encoding="utf-8")
         cls.compose_host = COMPOSE_HOST.read_text(encoding="utf-8")
         cls.settings = SETTINGS.read_text(encoding="utf-8")
@@ -28,67 +26,39 @@ class Prompt23ComposeInterfaceMigrationContract(unittest.TestCase):
         cls.discovery_dialogs = DISCOVERY_DIALOGS.read_text(encoding="utf-8")
         cls.library_view_model = LIBRARY_VIEW_MODEL.read_text(encoding="utf-8")
         cls.sqlite_mutations = SQLITE_MUTATIONS.read_text(encoding="utf-8")
-        build_start = cls.main.index("    def _build_screen(")
-        cls.build_screen = cls.main[
-            build_start:cls.main.index("    def _settings_view_paths()", build_start)
-        ]
 
-    def test_legacy_flet_screen_modules_are_not_imported_at_module_startup(self):
-        module_prefix = self.main[:self.main.index("async def main(page: ft.Page):")]
-        self.assertNotRegex(
-            module_prefix,
-            r"from views\.(home_view|details_view|organize_view|settings_view|collector_view|recovery_view) import",
-        )
-        for import_statement in (
-            "from views.home_view import HomeView",
-            "from views.details_view import DetailView",
-            "from views.organize_view import OrganizeView",
-            "from views.settings_view import SettingsView",
-            "from views.collector_view import CollectorView",
-            "from views.recovery_view import RecoveryView",
-        ):
-            with self.subTest(import_statement=import_statement):
-                self.assertEqual(self.main.count(import_statement), 1)
+    def test_native_entrypoint_is_kotlin_and_legacy_flet_entrypoint_is_absent(self):
+        entrypoint = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("internal object MainEntryPoint", entrypoint)
+        self.assertIn("dependencies.bootstrap.start()", entrypoint)
+        self.assertIn("MainEntryPoint.onActivityCreated(", activity)
+        self.assertNotIn("import flet", entrypoint.casefold())
+        self.assertNotIn("from views.", entrypoint)
+        self.assertFalse((ROOT / "main.py").exists())
 
-    def test_migrated_screens_keep_real_non_compose_fallbacks_only(self):
-        cases = (
-            ('if route == "home":', 'elif route == "library":',
-             "if compose_primary_ui:", "from views.home_view import HomeView", "HomeView.build("),
-            ('elif route == "organize":', 'elif route == "details":',
-             "if bridge.available:", "from views.organize_view import OrganizeView", "OrganizeView.build("),
-            ('elif route == "details":', 'elif route == "collector":',
-             "if compose_primary_ui:", "from views.details_view import DetailView", "DetailView.build("),
-            ('elif route == "collector":', 'elif route == "settings":',
-             "if compose_primary_ui:", "from views.collector_view import CollectorView", "CollectorView.build("),
-        )
-        for start, end, native_guard, legacy_import, legacy_builder in cases:
-            with self.subTest(route=start):
-                begin = self.build_screen.index(start)
-                block = self.build_screen[begin:self.build_screen.index(end, begin)]
-                self.assertIn(native_guard, block)
-                self.assertIn("control = ft.Container(expand=True)", block)
-                self.assertIn(legacy_import, block)
-                self.assertIn(legacy_builder, block)
-                native_branch = block[
-                    block.index(native_guard):
-                    block.index("            else:", block.index(native_guard))
-                ]
-                self.assertNotIn(legacy_import, native_branch)
-                self.assertNotIn(legacy_builder, native_branch)
+    def test_primary_screens_are_wired_to_native_compose_destinations(self):
+        for route in ("HOME", "LIBRARY", "ORGANIZE", "DETAILS", "COLLECTOR", "SETTINGS"):
+            self.assertIn("ReiAnixRoutes." + route, self.navigation)
+        for native_screen in ("ReiAnixHomeRoute(", "ReiAnixLibraryRoute(", "ReiAnixOrganizeRoute(", "ReiAnixDetailsRoute(", "ReiAnixCollectorJourneyRoute(", "ReiAnixSettingsRoute("):
+            self.assertIn(native_screen, self.navigation + self.compose_host)
+        self.assertIn("ReiAnixNavigationHost", self.compose_host)
+        self.assertIn("rememberNavController()", self.compose_host)
+        self.assertIn("navController.popBackStack()", self.compose_host)
+        self.assertNotIn("page.views", self.compose_host)
+        self.assertNotIn("flutterEngine", self.compose_host)
 
-    def test_android_compose_owns_root_and_nested_settings_without_hidden_flet_views(self):
-        start = self.build_screen.index('elif route == "settings":')
-        block = self.build_screen[start:]
-        self.assertIn("if bridge.available:", block)
-        native_branch = block[:block.index("            else:", block.index("if bridge.available:"))]
-        self.assertIn("control = ft.Container(expand=True)", native_branch)
-        self.assertNotIn("SettingsView.build(", native_branch)
-        self.assertIn("from views.settings_view import SettingsView", block)
-        self.assertIn("control = SettingsView.build(", block)
+    def test_android_compose_owns_root_and_nested_settings_without_hidden_legacy_views(self):
+        entrypoint = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("ReiAnixNavigationHost", self.compose_host)
+        self.assertIn("ReiAnixSettingsRoute(", self.compose_host)
         self.assertIn("var selectedCategory by", self.settings)
         self.assertIn("BackHandler(enabled = selectedCategory != null)", self.settings)
         self.assertIn("onBack = { selectedCategory = null }", self.settings)
-
+        self.assertIn("composeLibraryHost", activity)
+        self.assertNotIn("page.views", entrypoint + activity + self.compose_host)
+        self.assertNotIn("SettingsView.build(", self.compose_host)
     def test_every_declared_compose_settings_category_is_managed_natively(self):
         model_start = self.settings.index("fun defaultCategories():")
         managed_start = self.settings.index("private val NativeManagedSettingsCategories")
