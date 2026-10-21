@@ -120,6 +120,24 @@ internal object MainEntryPoint {
             updates[canonicalKey] = normalized
         }
 
+        // Match SettingsStore.get(): legacy aspect values were normalized on first read.
+        // Normalize them at native startup even when the stored settings schema is current.
+        val legacyAspectRatio = stored["player.aspect_ratio"]
+        if (legacyAspectRatio != null) {
+            val compatibleAspectRatio = when (legacyAspectRatio.trim().lowercase(Locale.ROOT)) {
+                "zoom" -> "fill"
+                "auto", "original" -> "fit"
+                else -> legacyAspectRatio
+            }
+            if (compatibleAspectRatio != legacyAspectRatio) {
+                val definition = ReiAnixSettingsContract.definitions["player.aspect_ratio"]
+                val normalized = definition?.let {
+                    runCatching { it.normalize(compatibleAspectRatio) }.getOrNull()
+                }
+                if (normalized != null) updates["player.aspect_ratio"] = normalized
+            }
+        }
+
         val storedVersion = stored["settings.schema_version"]?.toIntOrNull() ?: 0
         if (storedVersion < ReiAnixSettingsFileService.SCHEMA_VERSION) {
             updates["settings.schema_version"] = ReiAnixSettingsFileService.SCHEMA_VERSION.toString()
