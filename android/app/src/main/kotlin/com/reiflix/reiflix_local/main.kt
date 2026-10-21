@@ -7548,8 +7548,11 @@ internal class NativeMainRuntimePort(
                         // activity has already registered its active launch request.
                         // Retain that correlation rather than dropping the valid session.
                         val correlatedRequestId = requestId?.takeIf { it.isNotBlank() }
-                            ?: current.activePlayerRequestId
-                        if (correlatedRequestId.isNullOrBlank()) return false
+                            ?: current.activePlayerRequestId.orEmpty()
+                        // The legacy diagnostic handler accepted a valid new session
+                        // even if its envelope had no requestId. Retain the current
+                        // correlation when available, but do not discard session state
+                        // solely because the request correlation is absent.
                         notePlayerSession(
                             correlatedRequestId,
                             createdSession,
