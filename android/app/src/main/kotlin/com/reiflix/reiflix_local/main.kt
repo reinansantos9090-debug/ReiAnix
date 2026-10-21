@@ -763,13 +763,18 @@ internal class NativeMainRuntimePort(
      * This preserves the old thumbnail_candidates(after_id, limit=128) behavior
      * and includes episodes whose cached frame exists but duration still needs repair.
      */
+    /**
+     * Page the canonical SQLite catalog, not the currently visible Compose page.
+     * Resolve artwork rows in their canonical priority order and skip corrupt images,
+     * just like ArtworkEngine.resolve_local_batch does.
+     */
     private suspend fun loadThumbnailCandidateRows(
         afterId: Long,
         limit: Int = 128,
     ): List<NativeThumbnailCandidateRow> = withContext(Dispatchers.IO) {
         val pageLimit = limit.coerceIn(1, 128)
         dependencies.sqliteDatabase.read { database ->
-            database.rawQuery(
+            val episodes = database.rawQuery(
                 """
                 SELECT
                     e.id,
@@ -777,19 +782,7 @@ internal class NativeMainRuntimePort(
                     COALESCE(e.file_size, 0) AS file_size,
                     COALESCE(e.modified_at, 0) AS modified_at,
                     COALESCE(e.media_identity, '') AS media_identity,
-                    COALESCE(e.duration, 0) AS duration,
-                    (
-                        SELECT art.local_path
-                        FROM artwork art
-                        WHERE art.entity_type = 'episode'
-                          AND art.entity_id = CAST(e.id AS TEXT)
-                          AND art.artwork_type = 'episode_thumbnail'
-                          AND art.local_path IS NOT NULL
-                          AND trim(art.local_path) != ''
-                          AND COALESCE(art.status, '') != 'failed'
-                        ORDER BY art.priority DESC, art.updated_at DESC, art.id DESC
-                        LIMIT 1
-                    ) AS thumbnail_path
+                    COALESCE(e.duration, 0) AS duration
                 FROM episodes e
                 WHERE e.id > ?
                   AND e.missing = 0
@@ -820,13 +813,45 @@ internal class NativeMainRuntimePort(
                                 mediaIdentity = mediaIdentity,
                                 durationSeconds = cursor.getDouble(cursor.getColumnIndexOrThrow("duration"))
                                     .takeIf { it.isFinite() && it > 0.0 } ?: 0.0,
-                                thumbnailPath = cursor.getString(cursor.getColumnIndexOrThrow("thumbnail_path"))
-                                    ?.trim()
-                                    ?.takeIf { it.isNotEmpty() },
+                                thumbnailPath = null,
                             ),
                         )
                     }
                 }
+            }
+            if (episodes.isEmpty()) return@read emptyList()
+
+            val idPlaceholders = episodes.joinToString(",") { "?" }
+            val episodeIds = episodes.map { it.id.toString() }
+            val validArtworkPathByEpisodeId = mutableMapOf<Long, String>()
+            database.rawQuery(
+                """
+                SELECT entity_id, local_path
+                FROM artwork
+                WHERE entity_type = 'episode'
+                  AND entity_id IN ($idPlaceholders)
+                  AND artwork_type = 'episode_thumbnail'
+                  AND status != 'failed'
+                  AND local_path IS NOT NULL
+                  AND trim(local_path) != ''
+                ORDER BY entity_id, priority DESC, updated_at DESC, id DESC
+                """.trimIndent(),
+                episodeIds.toTypedArray(),
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val episodeId = cursor.getString(cursor.getColumnIndexOrThrow("entity_id"))
+                        ?.toLongOrNull() ?: continue
+                    if (episodeId in validArtworkPathByEpisodeId) continue
+                    val path = cursor.getString(cursor.getColumnIndexOrThrow("local_path"))
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() } ?: continue
+                    if (hasValidLocalThumbnail(path)) {
+                        validArtworkPathByEpisodeId[episodeId] = path
+                    }
+                }
+            }
+            episodes.map { row ->
+                row.copy(thumbnailPath = validArtworkPathByEpisodeId[row.id])
             }
         }
     }
