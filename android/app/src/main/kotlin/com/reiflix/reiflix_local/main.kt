@@ -4269,6 +4269,8 @@ internal class NativeMainRuntimePort(
                 }
                 val progress = dependencies.consumptionService.setWatched(episodeId, watched)
                 libraryViewModel.refresh()
+                scheduleCatalogMetadataHydration("catalog_changed")
+                scheduleThumbnailReconciliation("catalog_changed")
                 val result = org.json.JSONObject()
                     .put("episodeId", progress.episodeId)
                     .put("positionMs", progress.positionMs)
@@ -4360,7 +4362,11 @@ internal class NativeMainRuntimePort(
             "refresh_library" -> refreshLibrary()
             "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog()
             "publish_catalog" -> {
+                // The canonical write was committed by Kotlin already; mirror on_catalog_changed
+                // by updating projections and scheduling coalesced metadata/artwork reconciliation.
                 invalidateCatalogViews()
+                scheduleCatalogMetadataHydration("catalog_changed")
+                scheduleThumbnailReconciliation("catalog_changed")
                 val commandRequestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id")
                 if (!commandRequestId.isNullOrBlank()) {
                     publishOperationResult(
