@@ -1,4 +1,3 @@
-import ast
 import unittest
 from pathlib import Path
 
@@ -6,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-MAIN = ROOT / "main.py"
+MAIN = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt"
 BRIDGE = ROOT / "core/android_bridge.py"
 
 
@@ -85,30 +84,31 @@ class PlayerForensicTests(unittest.TestCase):
         self.assertNotIn("finish()", watchdog)
         self.assertNotIn("episodeChangePending = false", watchdog)
 
-    def test_python_exit_and_lifecycle_callbacks_are_activity_scoped(self):
+
+    def test_native_exit_and_lifecycle_callbacks_are_activity_scoped(self):
         for token in (
-            "player_active_activity_instance_id",
-            "stale_activity_instance",
-            "stale_activity_instance_lifecycle",
             "activityInstanceId",
+            "MainActivity.notePlayerActivityCreated(",
+            "MainActivity.notePlayerActivityDestroyed(activityInstanceId, playerSessionId)",
         ):
-            self.assertIn(token, self.main)
-        exit_block = self.main[
-            self.main.index("elif event_type == 'player_exited':"):
-            self.main.index("elif event_type == 'google_sign_in_started':", self.main.index("elif event_type == 'player_exited':"))
-        ]
-        self.assertIn("exit_activity_instance_id", exit_block)
-        self.assertIn("player_active_activity_instance_id", exit_block)
+            self.assertIn(token, self.player)
+        self.assertIn("stale_activity_instance", self.player + self.main_activity)
+        self.assertIn("activePlayerActivityInstanceId", self.main_activity)
+        self.assertIn("notePlayerActivityDestroyed", self.main_activity)
+        self.assertIn("PLAYER_EXIT_CLASSIFICATION", self.player)
+        self.assertIn("isCurrentPlayerHandoff", self.main_activity)
 
-    def test_next_and_previous_use_symmetric_session_validation(self):
-        transition = self.main[
-            self.main.index("elif event_type in {'player_next_request', 'player_previous_request'}:"):
-            self.main.index("elif event_type == 'player_error':")
-        ]
-        self.assertIn('if not source_player_session_id:', transition)
-        self.assertIn('NEXT_REQUEST_REJECTED" if is_next else "PREVIOUS_REQUEST_REJECTED', transition)
-        self.assertIn('PLAYER_NEXT_STALE_REJECTED" if is_next else "PLAYER_PREVIOUS_STALE_REJECTED', transition)
-
+    def test_native_next_and_previous_use_symmetric_session_validation(self):
+        start = self.player.index("private fun dispatchNativeEpisodeTransition(")
+        end = self.player.index("private fun seekToSavedPosition", start)
+        transition = self.player[start:end]
+        self.assertIn("dependencies.sqliteLibraryRepository.playerNavigation(episodeId)", transition)
+        self.assertIn("isCurrentTransition(", transition)
+        self.assertIn("NEXT_TRANSITION", transition)
+        self.assertIn("PREVIOUS_TRANSITION", transition)
+        self.assertIn("PLAYER_NEXT_STALE_REJECTED", self.player)
+        self.assertIn("PLAYER_PREVIOUS_STALE_REJECTED", self.player)
+        self.assertIn("MainActivity.isCurrentPlayerHandoff(", self.player)
     def test_android_host_tracks_authorized_handoff_and_activity_identity(self):
         for token in (
             "activePlayerActivityInstanceId",
@@ -167,10 +167,13 @@ class PlayerForensicTests(unittest.TestCase):
         self.assertIn("publishPlayerError(", error_path)
         self.assertNotIn("finish()", error_path)
 
-    def test_python_sources_remain_valid(self):
-        for relative in ("main.py",):
-            ast.parse((ROOT / relative).read_text(encoding="utf-8"), filename=relative)
 
+    def test_native_entrypoint_is_kotlin_and_legacy_root_entrypoint_is_removed(self):
+        self.assertFalse((ROOT / "main.py").exists())
+        self.assertTrue(MAIN.is_file())
+        self.assertIn("internal object MainEntryPoint", self.main)
+        self.assertIn("dependencies.bootstrap.start()", self.main)
+        self.assertNotIn("import flet", self.main.casefold())
 
 if __name__ == "__main__":
     unittest.main()
