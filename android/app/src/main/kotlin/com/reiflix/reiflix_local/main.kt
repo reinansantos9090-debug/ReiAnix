@@ -30,6 +30,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.scanner.NativeScanController
+import android.os.Environment
+import com.reiflix.reiflix_local.scanner.MediaStoreScanner
+import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
@@ -508,6 +511,21 @@ internal data class NativeMainRuntimeSnapshot(
 )
 
 internal data class NativePlayerCallbackValidation(val isCurrent: Boolean, val reason: String = "")
+
+internal data class NativeMainStorageSnapshot(
+    val mediaStoreAccess: String,
+    val broadStorageAccess: Boolean,
+    val broadStorageManagerEnabled: Boolean,
+    val configuredSafRoots: List<String>,
+    val persistedSafRootCount: Int,
+    val scanSnapshots: List<ScanProgressSnapshot>,
+    val onboardingPhase: String,
+    val onboardingDismissed: Boolean,
+    val capturedAtMillis: Long,
+) {
+    val hasAnyAuthorizedSource: Boolean
+        get() = mediaStoreAccess != "denied" || broadStorageAccess || configuredSafRoots.isNotEmpty()
+}
 
 private data class NativeThumbnailRequest(
     val key: String,
@@ -1504,8 +1522,87 @@ internal class NativeMainRuntimePort(
     fun requestLibraryScan(): Boolean = requestStorageAction("scan_library")
     fun selectSafFolder(): Boolean = requestStorageAction("select_tree")
 
-    fun configuredSafTreeUris(): List<android.net.Uri> = libraryViewModel.authorizedSafTreeUris()
+    fun storageSnapshot(): NativeMainStorageSnapshot {
+        val context = activity.applicationContext
+        val roots = runCatching {
+            libraryViewModel.authorizedSafTreeUris()
+                .map { it.toString() }
+                .distinct()
+                .sorted()
+        }.getOrDefault(emptyList())
+        val access = runCatching { MediaStoreScanner.accessLevel(context) }.getOrDefault("denied")
+        val broad = runCatching { BroadStorageScanner.hasAccess(context) }.getOrDefault(false)
+        val manager = runCatching {
+            android.os.Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager()
+        }.getOrDefault(false)
+        val onboarding = activity.nativeStorageOnboardingState.value
+        val scans = NativeScanController.progress.value.values.toList()
+            .sortedByDescending { it.startedAtMillis }
+        return NativeMainStorageSnapshot(
+            mediaStoreAccess = access,
+            broadStorageAccess = broad,
+            broadStorageManagerEnabled = manager,
+            configuredSafRoots = roots,
+            persistedSafRootCount = roots.size,
+            scanSnapshots = scans,
+            onboardingPhase = onboarding.phase,
+            onboardingDismissed = onboarding.dismissed,
+            capturedAtMillis = System.currentTimeMillis(),
+        )
+    }
+
     fun hasConfiguredSafFolder(): Boolean = configuredSafTreeUris().isNotEmpty()
+
+    fun hasAvailableMediaSource(): Boolean = storageSnapshot().hasAnyAuthorizedSource
+
+    fun isStorageOnboardingRequired(): Boolean {
+        val snapshot = storageSnapshot()
+        return !snapshot.hasAnyAuthorizedSource &&
+            snapshot.onboardingPhase != "READY" &&
+            !snapshot.onboardingDismissed
+    }
+
+    fun storageSourceStates(): Map<String, String> {
+        val snapshot = storageSnapshot()
+        return linkedMapOf(
+            "mediastore" to snapshot.mediaStoreAccess,
+            "broad_storage" to if (snapshot.broadStorageAccess) "granted" else "denied",
+            "saf" to if (snapshot.configuredSafRoots.isNotEmpty()) "configured" else "missing",
+        )
+    }
+
+    fun scanUiSnapshot(): org.json.JSONObject {
+        val json = org.json.JSONObject()
+        val scans = org.json.JSONArray()
+        storageSnapshot().scanSnapshots.forEach { scan ->
+            scans.put(
+                org.json.JSONObject()
+                    .put("scanId", scan.scanId)
+                    .put("sourceKey", scan.sourceKey ?: "")
+                    .put("state", scan.state.name)
+                    .put("startedAtMillis", scan.startedAtMillis)
+                    .put("updatedAtMillis", scan.updatedAtMillis)
+                    .put("discovered", scan.discovered)
+                    .put("inserted", scan.inserted)
+                    .put("updated", scan.updated)
+                    .put("unchanged", scan.unchanged)
+                    .put("duplicates", scan.duplicates)
+                    .put("removed", scan.removed)
+                    .put("error", scan.error ?: ""),
+            )
+        }
+        json.put("scans", scans)
+        val storage = storageSnapshot()
+        json.put("mediaStoreAccess", storage.mediaStoreAccess)
+            .put("broadStorageAccess", storage.broadStorageAccess)
+            .put("broadStorageManagerEnabled", storage.broadStorageManagerEnabled)
+            .put("configuredSafRootCount", storage.persistedSafRootCount)
+            .put("onboardingPhase", storage.onboardingPhase)
+            .put("onboardingDismissed", storage.onboardingDismissed)
+            .put("capturedAtMillis", storage.capturedAtMillis)
+        return json
+    }
+
 
     fun onRuntimeDisconnect() {
         cancelBackgroundTasks()
