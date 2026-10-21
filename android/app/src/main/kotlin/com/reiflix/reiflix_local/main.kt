@@ -4293,10 +4293,14 @@ internal class NativeMainRuntimePort(
     fun nativeScanSnapshot(scanId: String) = NativeScanController.snapshot(scanId)
 
     fun beginNativeScan(scanId: String, sourceKey: String? = null): Boolean =
-        !restoreMaintenanceInProgress && NativeScanController.begin(scanId, sourceKey)
+        synchronized(lock) {
+            !restoreMaintenanceInProgress && NativeScanController.begin(scanId, sourceKey)
+        }
 
     fun launchNativeScan(scanId: String, block: suspend CoroutineScope.() -> Unit): Boolean =
-        !restoreMaintenanceInProgress && NativeScanController.launch(scanId, block)
+        synchronized(lock) {
+            !restoreMaintenanceInProgress && NativeScanController.launch(scanId, block)
+        }
 
     fun cancelNativeScan(scanId: String, reason: String = "Solicitado pelo usuário"): Boolean =
         NativeScanController.requestCancel(scanId, reason)
