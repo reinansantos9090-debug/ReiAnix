@@ -1591,6 +1591,8 @@ internal class NativeMainRuntimePort(
         durationMs: Long? = null,
         completed: Boolean = false,
         playedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
+        callbackPayload: org.json.JSONObject? = null,
+        callbackRequestId: String? = null,
     ): Boolean {
         if (
             episodeId <= 0L ||
@@ -1599,7 +1601,52 @@ internal class NativeMainRuntimePort(
             !playedAtEpochSeconds.isFinite() ||
             playedAtEpochSeconds < 0.0
         ) return false
+        val callbackSnapshot = callbackPayload?.let { org.json.JSONObject(it.toString()) }
         return launchTracked("save_playback_progress", lane = "playback") {
+            if (callbackSnapshot != null) {
+                val validation = validatePlayerCallback(
+                    eventRequestId = callbackRequestId,
+                    payload = callbackSnapshot,
+                    requireActive = true,
+                    expectedEpisodeId = episodeId,
+                    expectedAnimeId = callbackSnapshot.optLong("animeId", callbackSnapshot.optLong("anime_id", 0L))
+                        .takeIf { it > 0L },
+                    expectedMediaId = callbackSnapshot.optString(
+                        "mediaId",
+                        callbackSnapshot.optString("media_id", ""),
+                    ).trim().takeIf { it.isNotEmpty() },
+                )
+                if (!validation.isCurrent) {
+                    recordDiagnostic(
+                        name = "PLAYER_PROGRESS_STALE",
+                        severity = "WARN",
+                        requestId = callbackRequestId,
+                        result = "stale_before_persistence:" + validation.reason,
+                        context = mapOf("episode_id" to episodeId),
+                    )
+                    return@launchTracked
+                }
+                val suppliedPath = callbackSnapshot.optString(
+                    "uri",
+                    callbackSnapshot.optString("path", ""),
+                ).trim()
+                if (suppliedPath.isNotEmpty()) {
+                    val pathEpisode = dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(suppliedPath)
+                    if (pathEpisode != null && pathEpisode.id != episodeId) {
+                        recordDiagnostic(
+                            name = "PLAYER_PROGRESS_IDENTITY_REJECTED",
+                            severity = "WARN",
+                            requestId = callbackRequestId,
+                            result = "episode_path_mismatch",
+                            context = mapOf(
+                                "episode_id" to episodeId,
+                                "path_episode_id" to pathEpisode.id,
+                            ),
+                        )
+                        return@launchTracked
+                    }
+                }
+            }
             val existingProgress = dependencies.consumptionService.getProgress(episodeId)
                 ?: throw NoSuchElementException("Episode ID does not exist: $episodeId")
             if ((existingProgress.lastPlayedAtEpochSeconds ?: 0.0) >= playedAtEpochSeconds) {
@@ -7070,6 +7117,8 @@ internal class NativeMainRuntimePort(
                             durationMs = duration.takeIf { it > 0L },
                             completed = type == "player_completed" || payload.optBoolean("completed", false),
                             playedAtEpochSeconds = eventTime.epochSeconds ?: System.currentTimeMillis() / 1000.0,
+                            callbackPayload = payload,
+                            callbackRequestId = eventRequestId,
                         )
                     }
                 }
@@ -7202,6 +7251,8 @@ internal class NativeMainRuntimePort(
                             durationMs = durationMs.takeIf { it > 0L },
                             completed = payload.optBoolean("completed", false),
                             playedAtEpochSeconds = eventTime.epochSeconds ?: System.currentTimeMillis() / 1000.0,
+                            callbackPayload = payload,
+                            callbackRequestId = eventRequestId,
                         )
                     }
                 }
@@ -7293,7 +7344,23 @@ internal class NativeMainRuntimePort(
                                         eventTime.epochSeconds ?: System.currentTimeMillis() / 1000.0
                                     val existingProgress = dependencies.consumptionService.getProgress(exitEpisodeId)
                                         ?: throw NoSuchElementException("Episode ID does not exist: $exitEpisodeId")
-                                    if ((existingProgress.lastPlayedAtEpochSeconds ?: 0.0) >= timestampSeconds) {
+                                    val pathEpisode = if (exitUri.isNotBlank()) {
+                                        dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(exitUri)
+                                    } else null
+                                    if (pathEpisode != null && pathEpisode.id != exitEpisodeId) {
+                                        exitProgressResult = "IDENTITY_MISMATCH"
+                                        recordDiagnostic(
+                                            name = "PLAYER_PROGRESS_IDENTITY_REJECTED",
+                                            severity = "WARN",
+                                            requestId = exitRequestId,
+                                            sessionId = exitSessionId,
+                                            result = "player_exit_episode_path_mismatch",
+                                            context = mapOf(
+                                                "episode_id" to exitEpisodeId,
+                                                "path_episode_id" to pathEpisode.id,
+                                            ),
+                                        )
+                                    } else if ((existingProgress.lastPlayedAtEpochSeconds ?: 0.0) >= timestampSeconds) {
                                         exitProgressResult = "STALE"
                                         recordDiagnostic(
                                             name = "PLAYER_PROGRESS_STALE",
