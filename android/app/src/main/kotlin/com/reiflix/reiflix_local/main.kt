@@ -3456,10 +3456,14 @@ internal class NativeMainRuntimePort(
     fun canStartLibraryScan(source: String? = null): Boolean {
         val normalized = source?.trim()?.lowercase(Locale.ROOT)
         if (normalized != null && normalized !in setOf("saf", "all", "library")) return false
-        // A folder picker is an exclusive storage operation. Do not enqueue an
-        // overlapping Home/library scan while its selected/cancelled/error result
-        // is still pending, matching the previous refresh_library guard.
-        if (!pendingSafSelectionRequestId.isNullOrBlank()) return false
+        // Storage selection/removal and scanning are mutually exclusive. A queued
+        // folder deletion must not race a newly requested scan before its path has
+        // been classified as SAF or non-SAF by the canonical folder repository.
+        if (
+            !pendingSafSelectionRequestId.isNullOrBlank() ||
+            !pendingSafRemovalRequestId.isNullOrBlank() ||
+            !pendingFolderRemovalRequestId.isNullOrBlank()
+        ) return false
         return !hasAnyNativeScanInProgress() && authorizedScanTargets("saf").isNotEmpty()
     }
 
