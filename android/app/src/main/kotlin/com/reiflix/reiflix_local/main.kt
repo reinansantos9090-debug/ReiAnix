@@ -4504,6 +4504,20 @@ internal class NativeMainRuntimePort(
                 true
             }
 
+            "dismiss_storage_onboarding" -> {
+                dismissNativeStorageOnboarding()
+                val commandRequestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id")
+                if (!commandRequestId.isNullOrBlank()) {
+                    publishOperationResult(
+                        requestId = commandRequestId,
+                        action = normalized,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Onboarding de armazenamento atualizado.",
+                    )
+                }
+                true
+            }
             "select_saf", "select_tree", "add_folder" -> requestSafFolderSelection(
                 requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 bridge = nonBlank("bridge") ?: "library",
