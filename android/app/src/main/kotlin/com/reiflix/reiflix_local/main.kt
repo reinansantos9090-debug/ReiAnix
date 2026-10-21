@@ -7,6 +7,7 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
+import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -46,6 +47,11 @@ internal object MainEntryPoint {
         Log.i(TAG, "NATIVE_ACTIVITY_ENTRYPOINT_READY activity=${activity::class.java.simpleName}")
     }
 
+
+
+    /** Route selection is one native policy, made only after database validation. */
+    internal fun initialRoute(recoveryRequired: Boolean): String =
+        if (recoveryRequired) ReiAnixRoutes.RECOVERY else ReiAnixRoutes.HOME
 
     /**
      * Native replacement for main.py's composition-root startup block.
