@@ -405,6 +405,9 @@ internal fun normalizeAppLifecycleState(eventOrState: Any?): String {
         }
         if (method != null) {
             return try {
+                // Test fixtures and application event wrappers may be nested/private
+                // classes even when their bean getters are public.
+                method.isAccessible = true
                 PropertyResult(true, method.invoke(target))
             } catch (_: ReflectiveOperationException) {
                 PropertyResult(false, null)
