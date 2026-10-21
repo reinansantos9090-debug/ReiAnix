@@ -1269,9 +1269,12 @@ class MainActivity : ComponentActivity() {
             composeLibraryHost = host
             if (recoveryRequired) {
                 Log.w(tag, "NATIVE_DATABASE_RECOVERY_REQUIRED route_opened=true")
-                composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
-            } else {
-                composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+            }
+            composeLibraryHost.show(
+                MainEntryPoint.initialRoute(recoveryRequired),
+                resetBackStack = true,
+            )
+            if (!recoveryRequired) {
                 refreshNativeStorageOnboardingState("bootstrap_validated")
             }
 
