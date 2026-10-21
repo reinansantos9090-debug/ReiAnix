@@ -660,6 +660,9 @@ internal class NativeMainRuntimePort(
     private val thumbnailRequests = ConcurrentHashMap<String, NativeThumbnailRequest>()
     // Bounded retry state mirrors the legacy thumbnail retry_after_error task.
     private val thumbnailRetryCounts = ConcurrentHashMap<String, Int>()
+    // Older source-version requests for the same URI must not overtake the latest queued request.
+    private val thumbnailLatestKeyByUri = ConcurrentHashMap<String, String>()
+    private val thumbnailLatestAtMillis = ConcurrentHashMap<String, Long>()
     private val thumbnailInFlight = ConcurrentHashMap.newKeySet<String>()
     private val thumbnailSemaphore = Semaphore(2)
     @Volatile private var thumbnailPumpActive = false
@@ -1384,6 +1387,18 @@ internal class NativeMainRuntimePort(
         val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
         val key = thumbnailRequestKey(uri, boundedSize, boundedModifiedAt, identity)
         synchronized(thumbnailQueueLock) {
+            pruneThumbnailQueueStateLocked()
+            val uriKey = uri.toString()
+            val previousKey = thumbnailLatestKeyByUri.put(uriKey, key)
+            thumbnailLatestAtMillis[uriKey] = System.currentTimeMillis()
+            if (previousKey != null && previousKey != key) {
+                val previous = thumbnailRequests[previousKey]
+                if (previous != null && thumbnailQueue.remove(previous)) {
+                    thumbnailRequests.remove(previousKey, previous)
+                    thumbnailRetryCounts.remove(previousKey)
+                    previous.completion.complete(null)
+                }
+            }
             val existing = thumbnailRequests[key]
             if (existing != null) {
                 if (priority > existing.priority && key !in thumbnailInFlight) {
@@ -1431,6 +1446,35 @@ internal class NativeMainRuntimePort(
         return true
     }
 
+    /** Remove expired request bookkeeping and bound per-URI freshness metadata. Caller holds thumbnailQueueLock. */
+    private fun pruneThumbnailQueueStateLocked(nowMillis: Long = System.currentTimeMillis()) {
+        val expiredKeys = thumbnailRequests.values
+            .filter { nowMillis - it.enqueuedAtMillis > 180_000L }
+            .map { it.key }
+        expiredKeys.forEach { key ->
+            val request = thumbnailRequests[key] ?: return@forEach
+            thumbnailQueue.remove(request)
+            if (thumbnailInFlight.contains(key)) return@forEach
+            thumbnailRequests.remove(key, request)
+            thumbnailRetryCounts.remove(key)
+            request.completion.complete(null)
+            val uriKey = request.uri.toString()
+            if (thumbnailLatestKeyByUri[uriKey] == key) {
+                thumbnailLatestKeyByUri.remove(uriKey, key)
+                thumbnailLatestAtMillis.remove(uriKey)
+            }
+        }
+        if (thumbnailLatestAtMillis.size > 2_048) {
+            thumbnailLatestAtMillis.entries
+                .sortedBy { it.value }
+                .take(512)
+                .forEach { entry ->
+                    thumbnailLatestAtMillis.remove(entry.key, entry.value)
+                    thumbnailLatestKeyByUri.remove(entry.key)
+                }
+        }
+    }
+
     private fun updateThumbnailQueueSnapshot() {
         val pending = synchronized(thumbnailQueueLock) { thumbnailQueue.size }
         val active = thumbnailInFlight.size
@@ -1446,8 +1490,21 @@ internal class NativeMainRuntimePort(
             try {
                 while (true) {
                     val request = synchronized(thumbnailQueueLock) {
-                        thumbnailQueue.poll()?.also { thumbnailInFlight.add(it.key) }
+                        val next = thumbnailQueue.poll() ?: return@synchronized null
+                        val currentKey = thumbnailLatestKeyByUri[next.uri.toString()]
+                        if (currentKey != null && currentKey != next.key) {
+                            thumbnailRequests.remove(next.key, next)
+                            thumbnailRetryCounts.remove(next.key)
+                            next.completion.complete(null)
+                            return@synchronized next.copy(key = "")
+                        }
+                        thumbnailInFlight.add(next.key)
+                        next
                     } ?: break
+                    if (request.key.isEmpty()) {
+                        updateThumbnailQueueSnapshot()
+                        continue
+                    }
                     updateThumbnailQueueSnapshot()
                     var retryDelayMs: Long? = null
                     var retryAttempt: Int? = null
@@ -5587,6 +5644,8 @@ internal class NativeMainRuntimePort(
             thumbnailRequests.values.forEach { it.completion.cancel() }
             thumbnailRequests.clear()
             thumbnailRetryCounts.clear()
+            thumbnailLatestKeyByUri.clear()
+            thumbnailLatestAtMillis.clear()
             thumbnailInFlight.clear()
             thumbnailPumpActive = false
         }
