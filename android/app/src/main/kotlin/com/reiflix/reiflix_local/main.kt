@@ -659,6 +659,7 @@ internal class NativeMainRuntimePort(
     @Volatile private var pendingSafRemovalRequestId: String? = null
     @Volatile private var pendingSafRemovalReference: String? = null
     @Volatile private var pendingSafRemovalBridge: String = "library"
+    @Volatile private var pendingSafRemovalResultAction: String = "remove_saf"
     private var scanObserverJob: Job? = null
     private val preferenceLock = Any()
     private val preferenceFile = File(File(activity.filesDir, "data"), "navigation_state.json")
@@ -2467,6 +2468,7 @@ internal class NativeMainRuntimePort(
         pendingSafRemovalRequestId = null
         pendingSafRemovalReference = null
         pendingSafRemovalBridge = "library"
+        pendingSafRemovalResultAction = "remove_saf"
         publish(action = "clear_pending_saf_removal")
     }
 
@@ -2509,7 +2511,7 @@ internal class NativeMainRuntimePort(
             .put("treeUri", actualReference.ifBlank { expectedReference })
         val published = publishOperationResult(
             requestId = pendingRequestId,
-            action = "remove_saf",
+            action = pendingSafRemovalResultAction,
             status = terminalStatus,
             operationState = terminalStatus,
             message = message,
@@ -3570,6 +3572,178 @@ internal class NativeMainRuntimePort(
         }
     }
 
+    /**
+     * Legacy main.py distinguishes SAF roots (release the Android URI grant, then
+     * remove the canonical row) from ordinary folder records (remove the SQLite row).
+     * Keep that distinction at this boundary instead of treating every folder as SAF.
+     */
+    private fun requestFolderRemovalFromCanonicalCatalog(
+        reference: String,
+        requestId: String?,
+        bridge: String,
+        resultAction: String,
+    ): Boolean {
+        val normalizedReference = reference.trim()
+        val normalizedAction = resultAction.trim().lowercase(Locale.ROOT)
+            .takeIf { it in setOf("remove_folder", "remove_saf", "remove_saf_tree", "release_tree") }
+            ?: "remove_folder"
+        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
+
+        if (normalizedReference.isEmpty()) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = normalizedAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A referência da pasta não foi informada.",
+                error = "folder_reference_missing",
+            )
+            return false
+        }
+        if (!canMutateSafRoots()) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = normalizedAction,
+                status = "BLOCKED",
+                operationState = "BLOCKED",
+                message = "Aguarde a varredura ou a seleção de pasta atual terminar.",
+                error = "storage_operation_in_progress",
+            )
+            return false
+        }
+
+        publishOperationResult(
+            requestId = resolvedRequestId,
+            action = normalizedAction,
+            status = "QUEUED",
+            operationState = "QUEUED",
+            message = "Remoção da pasta enfileirada.",
+        )
+        val accepted = launchTracked("remove_folder", lane = "storage") {
+            try {
+                val folder = withContext(Dispatchers.IO) {
+                    dependencies.sqliteLibraryRepository.listFolders()
+                        .firstOrNull { it.path == normalizedReference }
+                } ?: throw IllegalArgumentException("A pasta não está configurada na biblioteca.")
+
+                val isSaf = folder.kind.equals("saf", ignoreCase = true)
+                if (!isSaf && normalizedAction != "remove_folder") {
+                    throw IllegalArgumentException("A referência não corresponde a uma pasta SAF configurada.")
+                }
+
+                if (isSaf) {
+                    if (!canMutateSafRoots()) {
+                        throw IllegalStateException("Outra operação de armazenamento está em andamento.")
+                    }
+                    val parsedTree = runCatching { Uri.parse(folder.path) }.getOrNull()
+                    require(
+                        parsedTree != null &&
+                            parsedTree.scheme.equals("content", ignoreCase = true) &&
+                            DocumentsContract.isTreeUri(parsedTree),
+                    ) { "A pasta SAF configurada contém uma referência inválida." }
+
+                    if (!pendingSafRemovalRequestId.isNullOrBlank()) {
+                        throw IllegalStateException("Já existe uma remoção SAF em andamento.")
+                    }
+                    pendingSafRemovalRequestId = resolvedRequestId
+                    pendingSafRemovalReference = folder.path
+                    pendingSafRemovalBridge = bridge.trim().lowercase(Locale.ROOT).takeIf {
+                        it == "library" || it == "settings"
+                    } ?: "library"
+                    pendingSafRemovalResultAction = normalizedAction
+                    try {
+                        withContext(Dispatchers.Main) {
+                            activity.startActivity(
+                                MainActivity.createNativeStorageActionIntent(
+                                    context = activity,
+                                    action = "release_tree",
+                                    treeUri = folder.path,
+                                    requestId = resolvedRequestId,
+                                ),
+                            )
+                        }
+                    } catch (failure: Exception) {
+                        clearPendingSafRemovalContext()
+                        throw failure
+                    }
+                    recordDiagnostic(
+                        name = "NATIVE_FOLDER_RELEASE_REQUESTED",
+                        requestId = resolvedRequestId,
+                        result = normalizedAction,
+                        context = mapOf("folder_kind" to "saf", "tree_uri_present" to true),
+                    )
+                    return@launchTracked
+                }
+
+                if (!canMutateSafRoots()) {
+                    throw IllegalStateException("Outra operação de armazenamento está em andamento.")
+                }
+                val removed = withContext(Dispatchers.IO) {
+                    dependencies.sqliteLibraryRepository.removeFolder(normalizedReference)
+                }
+                if (!removed) throw IllegalStateException("A pasta não pôde ser removida do catálogo local.")
+                libraryViewModel.refreshNativeFolders()
+                libraryViewModel.refresh()
+                publishOperationResult(
+                    requestId = resolvedRequestId,
+                    action = normalizedAction,
+                    status = "COMPLETED",
+                    operationState = "COMPLETED",
+                    message = "Pasta removida da biblioteca.",
+                    payload = org.json.JSONObject()
+                        .put("reference", normalizedReference)
+                        .put("folderKind", folder.kind ?: ""),
+                )
+                recordDiagnostic(
+                    name = "NATIVE_FOLDER_REMOVED",
+                    requestId = resolvedRequestId,
+                    result = normalizedAction,
+                    context = mapOf("folder_kind" to (folder.kind ?: "unknown")),
+                )
+                publish(action = "remove_folder")
+            } catch (cancelled: CancellationException) {
+                if (pendingSafRemovalRequestId == resolvedRequestId) clearPendingSafRemovalContext()
+                publishOperationResult(
+                    requestId = resolvedRequestId,
+                    action = normalizedAction,
+                    status = "CANCELLED",
+                    operationState = "CANCELLED",
+                    message = "Remoção da pasta cancelada.",
+                )
+                throw cancelled
+            } catch (failure: Throwable) {
+                if (pendingSafRemovalRequestId == resolvedRequestId) clearPendingSafRemovalContext()
+                publishOperationResult(
+                    requestId = resolvedRequestId,
+                    action = normalizedAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = failure.message ?: "Não foi possível remover a pasta.",
+                    error = failure.javaClass.simpleName,
+                )
+                recordDiagnostic(
+                    name = "NATIVE_FOLDER_REMOVAL_FAILED",
+                    severity = "WARN",
+                    requestId = resolvedRequestId,
+                    result = normalizedAction,
+                    error = failure,
+                )
+            }
+        }
+        if (!accepted) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = normalizedAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A operação de remoção não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
+    }
+
     fun requestSafFolderRemoval(
         reference: String,
         requestId: String? = null,
@@ -4623,10 +4797,11 @@ internal class NativeMainRuntimePort(
             "remove_folder", "remove_saf_tree", "remove_saf", "release_tree" ->
                 (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference") ?: nonBlank("source"))
                     ?.let { reference ->
-                        requestSafFolderRemoval(
+                        requestFolderRemovalFromCanonicalCatalog(
                             reference = reference,
                             requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                             bridge = nonBlank("bridge") ?: "library",
+                            resultAction = normalized,
                         )
                     } ?: false
 
