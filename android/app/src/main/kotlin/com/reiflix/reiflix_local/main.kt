@@ -3864,6 +3864,46 @@ internal class NativeMainRuntimePort(
                         message = "Pasta removida da biblioteca.",
                         payload = payload,
                     )
+                    "mediastore_permission" -> {
+                        val granted = payload.optBoolean("granted", false)
+                        finishPendingStorageOperation(
+                            eventRequestId = correlatedRequestId,
+                            expectedNativeActions = setOf("request_media_access"),
+                            status = if (granted) "COMPLETED" else "FAILED",
+                            message = if (granted) "Permissão de acesso aos vídeos confirmada."
+                                else "A permissão de acesso aos vídeos foi negada.",
+                            error = if (granted) null else "media_access_denied",
+                            payload = payload,
+                        )
+                    }
+                    "mediastore_error" -> finishPendingStorageOperation(
+                        eventRequestId = correlatedRequestId,
+                        expectedNativeActions = setOf("request_media_access"),
+                        status = "FAILED",
+                        message = stringValue("message", "error") ?: "Não foi possível obter acesso aos vídeos.",
+                        error = stringValue("error", "status") ?: "media_access_failed",
+                        payload = payload,
+                    )
+                    "broad_storage_permission" -> {
+                        val granted = payload.optBoolean("granted", false)
+                        finishPendingStorageOperation(
+                            eventRequestId = correlatedRequestId,
+                            expectedNativeActions = setOf("open_broad_storage_settings"),
+                            status = if (granted) "COMPLETED" else "BLOCKED",
+                            message = if (granted) "Acesso amplo ao armazenamento confirmado."
+                                else "O acesso amplo ao armazenamento não foi concedido.",
+                            error = if (granted) null else "broad_storage_not_granted",
+                            payload = payload,
+                        )
+                    }
+                    "broad_storage_error" -> finishPendingStorageOperation(
+                        eventRequestId = correlatedRequestId,
+                        expectedNativeActions = setOf("open_broad_storage_settings"),
+                        status = "FAILED",
+                        message = stringValue("message", "error") ?: "Não foi possível abrir as configurações de armazenamento.",
+                        error = stringValue("error", "status") ?: "broad_storage_action_failed",
+                        payload = payload,
+                    )
                     "saf_permission" -> if (payload.optBoolean("selected", false)) {
                         val treeUri = stringValue("treeUri", "tree_uri")
                         val persistedReadUris = activity.contentResolver.persistedUriPermissions
@@ -3902,6 +3942,14 @@ internal class NativeMainRuntimePort(
                 true
             }
             "storage_capabilities" -> {
+                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                finishPendingStorageOperation(
+                    eventRequestId = correlatedRequestId,
+                    expectedNativeActions = setOf("check_storage_access"),
+                    status = "COMPLETED",
+                    message = "Estado das permissões de armazenamento atualizado.",
+                    payload = payload,
+                )
                 val capabilities = payload.optJSONObject("capabilities") ?: payload
                 val publishedAt = payload.optLong(
                     "publishedAtMs",
@@ -3910,6 +3958,33 @@ internal class NativeMainRuntimePort(
                 refreshAuthoritativeStorageSnapshot(capabilities, publishedAt)
             }
             "saf_inventory", "saf_library_scan_complete" -> {
+                if (type == "saf_library_scan_complete") {
+                    val status = stringValue("status")?.uppercase(Locale.ROOT) ?: "UNKNOWN"
+                    val requestId = eventRequestId ?: stringValue("requestId")
+                    val mappedStatus = when (status) {
+                        "FAILED", "ERROR" -> "FAILED"
+                        "CANCELLED" -> "CANCELLED"
+                        "BLOCKED" -> "BLOCKED"
+                        "COMPLETED", "PARTIAL" -> "COMPLETED"
+                        else -> "FAILED"
+                    }
+                    finishPendingStorageOperation(
+                        eventRequestId = requestId,
+                        expectedNativeActions = setOf("scan_library"),
+                        status = mappedStatus,
+                        message = when (status) {
+                            "COMPLETED" -> "Biblioteca atualizada."
+                            "PARTIAL" -> "Atualização concluída parcialmente."
+                            "CANCELLED" -> "Atualização da biblioteca cancelada."
+                            "BLOCKED" -> "A atualização da biblioteca foi bloqueada."
+                            else -> "Não foi possível concluir a atualização da biblioteca."
+                        },
+                        error = if (status in setOf("FAILED", "ERROR", "BLOCKED")) {
+                            stringValue("error", "errorCode") ?: "library_scan_$status"
+                        } else null,
+                        payload = payload,
+                    )
+                }
                 // Inventory is observational. It cannot create a source from an arbitrary
                 // persisted grant or remove one when an inventory batch is incomplete.
                 val treeUri = stringValue("treeUri", "tree_uri")
