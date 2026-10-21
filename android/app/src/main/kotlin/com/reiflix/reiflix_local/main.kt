@@ -3176,14 +3176,16 @@ internal class NativeMainRuntimePort(
         NativeScanController.progress.value.values.any { !it.state.isTerminal }
 
     fun canMutateSafRoots(): Boolean =
-        pendingSafSelectionRequestId.isNullOrBlank() &&
+        !restoreMaintenanceInProgress &&
+            pendingSafSelectionRequestId.isNullOrBlank() &&
             pendingSafRemovalRequestId.isNullOrBlank() &&
             pendingFolderRemovalRequestId.isNullOrBlank() &&
             !hasAnyNativeScanInProgress() &&
             !activity.nativeStorageOnboardingState.value.phase.equals("folder_picker_open", ignoreCase = true)
 
     private fun canContinueFolderRemoval(requestId: String): Boolean =
-        pendingFolderRemovalRequestId == requestId &&
+        !restoreMaintenanceInProgress &&
+            pendingFolderRemovalRequestId == requestId &&
             pendingSafSelectionRequestId.isNullOrBlank() &&
             pendingSafRemovalRequestId.isNullOrBlank() &&
             !hasAnyNativeScanInProgress() &&
@@ -3879,7 +3881,11 @@ internal class NativeMainRuntimePort(
             return false
         }
         val reserved = synchronized(lock) {
-            if (restoreMaintenanceInProgress || hasAnyNativeScanInProgress()) {
+            val storageMutationPending =
+                !pendingSafSelectionRequestId.isNullOrBlank() ||
+                    !pendingSafRemovalRequestId.isNullOrBlank() ||
+                    !pendingFolderRemovalRequestId.isNullOrBlank()
+            if (restoreMaintenanceInProgress || hasAnyNativeScanInProgress() || storageMutationPending) {
                 false
             } else {
                 restoreMaintenanceInProgress = true
@@ -3887,7 +3893,7 @@ internal class NativeMainRuntimePort(
             }
         }
         if (!reserved) {
-            val message = "Finalize a atualização da biblioteca antes de restaurar um backup."
+            val message = "Finalize a varredura ou operação de armazenamento atual antes de restaurar um backup."
             publish(action = "restore_backup", error = message)
             recordDiagnostic(
                 name = "BACKUP_RESTORE_BLOCKED",
