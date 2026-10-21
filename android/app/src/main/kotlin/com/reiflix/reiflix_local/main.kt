@@ -3077,6 +3077,242 @@ internal class NativeMainRuntimePort(
         return true
     }
 
+    private suspend fun updateSafFolderInventoryMetadata(
+        reference: String,
+        item: org.json.JSONObject,
+        identity: String,
+        authorization: String? = null,
+        error: String? = null,
+    ): Boolean {
+        val path = reference.trim()
+        if (path.isEmpty()) return false
+        return withContext(Dispatchers.IO) {
+            dependencies.sqliteDatabase.transaction { database ->
+                val values = android.content.ContentValues().apply {
+                    put("kind", "saf")
+                    put("saf_authority", item.optString("authority", ""))
+                    put("saf_document_id", item.optString("documentId", item.optString("document_id", "")))
+                    val volume = item.optString("volumeId", item.optString("volume_id", "")).trim()
+                    if (volume.isEmpty()) putNull("saf_volume_id") else put("saf_volume_id", volume)
+                    put("saf_identity", identity)
+                    if (authorization != null) {
+                        put("authorization", authorization)
+                        if (error.isNullOrBlank()) putNull("last_error") else put("last_error", error)
+                        put("last_scan_at", System.currentTimeMillis() / 1000.0)
+                    }
+                }
+                database.update("folders", values, "path=? AND kind='saf'", arrayOf(path)) > 0
+            }
+        }
+    }
+
+    /** Mirror LibraryStore.restore_source() for a revalidated SAF root. */
+    private suspend fun restoreSafSource(reference: String): Int {
+        val path = reference.trim()
+        if (path.isEmpty()) return 0
+        return withContext(Dispatchers.IO) {
+            dependencies.sqliteDatabase.transaction { database ->
+                val now = System.currentTimeMillis() / 1000.0
+                val affectedEpisodes = linkedSetOf<Long>()
+                database.rawQuery(
+                    "SELECT DISTINCT episode_id FROM episode_observations " +
+                        "WHERE source_kind='saf' AND scope_ref=? AND state='scope_unavailable'",
+                    arrayOf(path),
+                ).use { cursor ->
+                    while (cursor.moveToNext()) affectedEpisodes.add(cursor.getLong(0))
+                }
+                var changed = 0
+                for (episodeId in affectedEpisodes) {
+                    changed += database.update(
+                        "episode_observations",
+                        android.content.ContentValues().apply {
+                            put("state", "available")
+                            putNull("error")
+                            put("last_checked_at", now)
+                        },
+                        "episode_id=? AND source_kind='saf' AND scope_ref=? AND state='scope_unavailable'",
+                        arrayOf(episodeId.toString(), path),
+                    )
+                    recomputeEpisodeAvailabilityForSource(database, episodeId)
+                }
+                changed += database.update(
+                    "episodes",
+                    android.content.ContentValues().apply {
+                        put("missing", 0)
+                        put("availability_state", "available")
+                    },
+                    "source_folder=? AND availability_state='scope_unavailable' " +
+                        "AND id NOT IN (SELECT episode_id FROM episode_observations)",
+                    arrayOf(path),
+                )
+                changed
+            }
+        }
+    }
+
+    /**
+     * Reconcile one full SAF inventory against explicitly configured folders.
+     * Persisted Android grants alone are never promoted to library sources.
+     */
+    private suspend fun reconcileSafInventory(payload: org.json.JSONObject) {
+        val inventoryStartedAt = payload.optLong(
+            "inventoryStartedAtMs",
+            payload.optLong("inventory_started_at_ms", 0L),
+        )
+        val inventoryComplete = payload.optBoolean(
+            "inventoryComplete",
+            payload.optBoolean("inventory_complete", payload.optBoolean("complete", false)),
+        )
+        if (inventoryStartedAt > 0L && lastStorageMutationAtMillis > inventoryStartedAt) {
+            recordDiagnostic(
+                name = "SAF_INVENTORY_STALE_IGNORED",
+                severity = "INFO",
+                result = "newer_storage_mutation",
+                context = mapOf(
+                    "inventory_started_at_ms" to inventoryStartedAt,
+                    "last_mutation_at_ms" to lastStorageMutationAtMillis,
+                    "inventory_complete" to inventoryComplete,
+                ),
+            )
+            settingsViewModel.refresh()
+            return
+        }
+
+        val trees = payload.optJSONArray("trees") ?: org.json.JSONArray()
+        val statusByIdentity = linkedMapOf<String, org.json.JSONObject>()
+        fun statusPriority(item: org.json.JSONObject): Int = when (
+            item.optString("status", "").trim().uppercase(Locale.ROOT)
+        ) {
+            "COMPLETED", "EMPTY_COMPLETE" -> 4
+            "UNAVAILABLE", "FAILED", "PARTIAL" -> 3
+            "REVOKED" -> 2
+            else -> 1
+        }
+        for (index in 0 until trees.length()) {
+            val item = trees.optJSONObject(index) ?: continue
+            val treeUri = item.optString("treeUri", item.optString("tree_uri", "")).trim()
+            if (treeUri.isEmpty()) continue
+            val identity = StorageAuthorization.safIdentity(treeUri)
+                ?: item.optString("identity", "").trim().takeIf { it.isNotEmpty() }
+                ?: continue
+            val previous = statusByIdentity[identity]
+            if (previous == null || statusPriority(item) > statusPriority(previous)) {
+                statusByIdentity[identity] = org.json.JSONObject(item.toString())
+                    .put("treeUri", treeUri)
+                    .put("identity", identity)
+            }
+        }
+
+        // This recovery path is allowed only for a pending explicit picker request
+        // and validates the new persisted grant before writing it to the catalog.
+        recoverPendingSafSelectionFromInventory(payload)
+
+        val folders = withContext(Dispatchers.IO) { dependencies.sqliteLibraryRepository.listFolders() }
+        val configuredSafFolders = folders.filter { it.kind.equals("saf", ignoreCase = true) }
+        val persistedReadUris = activity.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+        val availableConfiguredPaths = linkedSetOf<String>()
+        var identityRowsUpdated = 0
+        var sourcesRestored = 0
+        var sourcesUnavailable = 0
+
+        for ((identity, item) in statusByIdentity) {
+            val matchingFolders = configuredSafFolders.filter { folder ->
+                val folderIdentity = StorageAuthorization.safIdentity(folder.path)
+                    ?: folder.safIdentity?.trim()?.takeIf { it.isNotEmpty() }
+                folderIdentity == identity
+            }
+            // A persisted Android grant is a permission, not library configuration.
+            if (matchingFolders.isEmpty()) continue
+
+            val status = item.optString("status", "UNAVAILABLE").trim().uppercase(Locale.ROOT)
+            for (folder in matchingFolders) {
+                val reference = folder.path.trim()
+                if (reference.isEmpty()) continue
+                when (status) {
+                    "COMPLETED", "EMPTY_COMPLETE" -> {
+                        if (updateSafFolderInventoryMetadata(reference, item, identity, "granted", null)) {
+                            identityRowsUpdated++
+                        }
+                        sourcesRestored += restoreSafSource(reference)
+                        if (StorageAuthorization.safAccess(reference, persistedReadUris) == SafAccessLevel.AVAILABLE) {
+                            availableConfiguredPaths.add(reference)
+                        }
+                    }
+                    "REVOKED" -> {
+                        if (updateSafFolderInventoryMetadata(
+                                reference,
+                                item,
+                                identity,
+                                "revoked",
+                                "A autorização SAF desta pasta não está mais presente no Android.",
+                            )
+                        ) identityRowsUpdated++
+                        sourcesUnavailable += markSafSourceUnavailable(
+                            reference,
+                            authorization = "revoked",
+                            reason = "saf_permission_revoked",
+                        )
+                    }
+                    "UNAVAILABLE", "FAILED", "PARTIAL" -> {
+                        if (updateSafFolderInventoryMetadata(
+                                reference,
+                                item,
+                                identity,
+                                "unavailable",
+                                "O provedor SAF desta pasta está indisponível no momento.",
+                            )
+                        ) identityRowsUpdated++
+                        sourcesUnavailable += markSafSourceUnavailable(
+                            reference,
+                            authorization = "unavailable",
+                            reason = "saf_provider_unavailable",
+                        )
+                    }
+                    else -> {
+                        if (updateSafFolderInventoryMetadata(reference, item, identity)) {
+                            identityRowsUpdated++
+                        }
+                    }
+                }
+            }
+        }
+
+        if (inventoryComplete) {
+            val knownIdentities = statusByIdentity.keys
+            for (folder in configuredSafFolders) {
+                val reference = folder.path.trim()
+                val identity = StorageAuthorization.safIdentity(reference)
+                    ?: folder.safIdentity?.trim()?.takeIf { it.isNotEmpty() }
+                if (reference.isEmpty() || identity.isNullOrEmpty() || identity in knownIdentities) continue
+                sourcesUnavailable += markSafSourceUnavailable(
+                    reference,
+                    authorization = "revoked",
+                    reason = "saf_permission_revoked",
+                )
+            }
+        }
+
+        updateSafCapabilities(availableConfiguredPaths)
+        settingsViewModel.refresh()
+        libraryViewModel.refreshNativeFolders()
+        libraryViewModel.refresh()
+        mutableStorageState.value = storageSnapshot()
+        recordDiagnostic(
+            name = "NATIVE_SAF_INVENTORY_RECONCILED",
+            result = if (inventoryComplete) "complete" else "partial_inventory",
+            context = mapOf(
+                "inventory_started_at_ms" to inventoryStartedAt,
+                "configured_root_count" to configuredSafFolders.size,
+                "reported_identity_count" to statusByIdentity.size,
+                "identity_rows_updated" to identityRowsUpdated,
+                "sources_restored" to sourcesRestored,
+                "sources_marked_unavailable" to sourcesUnavailable,
+            ),
+        )
+    }
+
     fun updateSafCapabilities(currentUris: Collection<String>): NativeMainStorageSnapshot {
         val configured = configuredSafTreeUris().map { it.toString() }.toSet()
         val persisted = activity.contentResolver.persistedUriPermissions
@@ -7357,41 +7593,39 @@ internal class NativeMainRuntimePort(
                 )
                 refreshAuthoritativeStorageSnapshot(capabilities, publishedAt)
             }
-            "saf_inventory", "saf_library_scan_complete" -> {
-                if (type == "saf_inventory") recoverPendingSafSelectionFromInventory(payload)
-                if (type == "saf_library_scan_complete") {
-                    val status = stringValue("status")?.uppercase(Locale.ROOT) ?: "UNKNOWN"
-                    if (status in setOf("COMPLETED", "PARTIAL")) {
-                        scheduleCatalogMetadataHydration("native_scan_$status")
-                        scheduleThumbnailReconciliation("native_scan_$status")
-                    }
-                    val requestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
-                    val mappedStatus = when (status) {
-                        "FAILED", "ERROR" -> "FAILED"
-                        "CANCELLED" -> "CANCELLED"
-                        "BLOCKED" -> "BLOCKED"
-                        "COMPLETED", "PARTIAL" -> "COMPLETED"
-                        else -> "FAILED"
-                    }
-                    finishPendingStorageOperation(
-                        eventRequestId = requestId,
-                        expectedNativeActions = setOf("scan_library"),
-                        status = mappedStatus,
-                        message = when (status) {
-                            "COMPLETED" -> "Biblioteca atualizada."
-                            "PARTIAL" -> "Atualização concluída parcialmente."
-                            "CANCELLED" -> "Atualização da biblioteca cancelada."
-                            "BLOCKED" -> "A atualização da biblioteca foi bloqueada."
-                            else -> "Não foi possível concluir a atualização da biblioteca."
-                        },
-                        error = if (status in setOf("FAILED", "ERROR", "BLOCKED")) {
-                            stringValue("error", "errorCode") ?: "library_scan_$status"
-                        } else null,
-                        payload = payload,
-                    )
+            "saf_inventory" -> launchTracked("reconcile_saf_inventory", lane = "storage") {
+                reconcileSafInventory(payload)
+            }
+            "saf_library_scan_complete" -> {
+                val status = stringValue("status")?.uppercase(Locale.ROOT) ?: "UNKNOWN"
+                if (status in setOf("COMPLETED", "PARTIAL")) {
+                    scheduleCatalogMetadataHydration("native_scan_$status")
+                    scheduleThumbnailReconciliation("native_scan_$status")
                 }
-                // Inventory is observational. It cannot create a source from an arbitrary
-                // persisted grant or remove one when an inventory batch is incomplete.
+                val requestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
+                val mappedStatus = when (status) {
+                    "FAILED", "ERROR" -> "FAILED"
+                    "CANCELLED" -> "CANCELLED"
+                    "BLOCKED" -> "BLOCKED"
+                    "COMPLETED", "PARTIAL" -> "COMPLETED"
+                    else -> "FAILED"
+                }
+                finishPendingStorageOperation(
+                    eventRequestId = requestId,
+                    expectedNativeActions = setOf("scan_library"),
+                    status = mappedStatus,
+                    message = when (status) {
+                        "COMPLETED" -> "Biblioteca atualizada."
+                        "PARTIAL" -> "Atualização concluída parcialmente."
+                        "CANCELLED" -> "Atualização da biblioteca cancelada."
+                        "BLOCKED" -> "A atualização da biblioteca foi bloqueada."
+                        else -> "Não foi possível concluir a atualização da biblioteca."
+                    },
+                    error = if (status in setOf("FAILED", "ERROR", "BLOCKED")) {
+                        stringValue("error", "errorCode") ?: "library_scan_$status"
+                    } else null,
+                    payload = payload,
+                )
                 val treeUri = stringValue("treeUri", "tree_uri")
                 if (!treeUri.isNullOrBlank()) mergeAuthoritativeSafRoot(treeUri)
                 settingsViewModel.refresh()
