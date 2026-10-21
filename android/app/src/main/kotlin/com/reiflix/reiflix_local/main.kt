@@ -1032,8 +1032,58 @@ internal class NativeMainRuntimePort(
     /** Session identity helpers preserve the stale-callback fencing from the former player callbacks. */
     fun revokePlayerTransition(originRequestId: String, originPlayerSessionId: String? = null) {
         MainActivity.revokePlayerTransition(originRequestId, originPlayerSessionId)
-        publish(action = "revoke_player_transition")
+        publish(action = "revoke_player_transition", transform = {
+            it.copy(transitionGeneration = it.transitionGeneration + 1L)
+        })
     }
+
+    @Volatile private var lifecycleIsAlive: Boolean = true
+
+    fun cancelPlayerTransition(reason: String = "unknown") {
+        publish(action = "player_transition_cancelled", transform = {
+            it.copy(transitionGeneration = it.transitionGeneration + 1L)
+        })
+        recordDiagnostic(
+            name = "PLAYER_TRANSITION_CANCELLED",
+            severity = "INFO",
+            result = reason,
+            context = mapOf("transition_generation" to mutableSnapshot.value.transitionGeneration),
+        )
+    }
+
+    fun invalidatePlayerSession(
+        reason: String = "unknown",
+        expectedSessionId: String? = null,
+        expectedRequestId: String? = null,
+    ): Boolean {
+        val current = mutableSnapshot.value
+        if (!expectedSessionId.isNullOrBlank() && current.activePlayerSessionId != null &&
+            current.activePlayerSessionId != expectedSessionId) return false
+        if (!expectedRequestId.isNullOrBlank() && current.activePlayerRequestId != null &&
+            current.activePlayerRequestId != expectedRequestId) return false
+        cancelBackgroundTasksForLane("playback")
+        publish(action = "invalidate_player_session", transform = {
+            it.copy(
+                playerSessionActive = false,
+                activePlayerRequestId = null,
+                activePlayerSessionId = null,
+                activePlayerActivityInstanceId = null,
+                activeEpisodeId = null,
+                activeAnimeId = null,
+                activeMediaUri = null,
+                activePlayerGeneration = 0L,
+                transitionGeneration = it.transitionGeneration + 1L,
+            )
+        })
+        recordDiagnostic(
+            name = "PLAYER_SESSION_INVALIDATED",
+            severity = "INFO",
+            result = reason,
+            context = mapOf("had_session" to !current.activePlayerSessionId.isNullOrBlank()),
+        )
+        return true
+    }
+
 
     fun isPlayerTransitionRevoked(originRequestId: String, originPlayerSessionId: String? = null): Boolean =
         MainActivity.isPlayerTransitionRevoked(originRequestId, originPlayerSessionId)
