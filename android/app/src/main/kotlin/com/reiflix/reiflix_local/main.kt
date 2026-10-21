@@ -1698,6 +1698,18 @@ internal class NativeMainRuntimePort(
             return false
         }
 
+        // Publish the non-terminal state before dispatch. The native operation may
+        // complete immediately; nothing below may overwrite its terminal result.
+        if (correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = operationAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Operação nativa aceita para processamento.",
+            )
+        }
+
         var launchError: String? = null
         val accepted = try {
             if (correlatedRequestId == null) {
@@ -1720,46 +1732,27 @@ internal class NativeMainRuntimePort(
         if (!accepted && launchError == null) {
             launchError = "Native storage action was rejected."
         }
-        if (correlatedRequestId != null) {
-            if (accepted) {
-                publishOperationResult(
-                    requestId = correlatedRequestId,
-                    action = operationAction,
-                    status = "QUEUED",
-                    operationState = "QUEUED",
-                    message = "Operação nativa aceita para processamento.",
-                )
-            } else {
-                if (pendingOperation != null) pendingStorageOperations.remove(correlatedRequestId, pendingOperation)
-                publishOperationResult(
-                    requestId = correlatedRequestId,
-                    action = operationAction,
-                    status = "FAILED",
-                    operationState = "FAILED",
-                    message = launchError,
-                    error = launchError,
-                )
-                recordDiagnostic(
-                    name = "NATIVE_STORAGE_ACTION_LAUNCH_FAILED",
-                    severity = "WARN",
-                    requestId = correlatedRequestId,
-                    result = normalizedAction,
-                    error = IllegalStateException(launchError),
-                )
-            }
+        if (!accepted && correlatedRequestId != null) {
+            if (pendingOperation != null) pendingStorageOperations.remove(correlatedRequestId, pendingOperation)
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = operationAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = launchError,
+                error = launchError,
+            )
+            recordDiagnostic(
+                name = "NATIVE_STORAGE_ACTION_LAUNCH_FAILED",
+                severity = "WARN",
+                requestId = correlatedRequestId,
+                result = normalizedAction,
+                error = IllegalStateException(launchError),
+            )
         }
         publish(
             action = "storage_action",
             error = if (accepted) null else launchError,
-            transform = { state ->
-                if (correlatedRequestId == null) state else state.copy(
-                    lastResultJson = org.json.JSONObject()
-                        .put("requestId", correlatedRequestId)
-                        .put("action", operationAction)
-                        .put("status", if (accepted) "QUEUED" else "FAILED")
-                        .toString()
-                )
-            },
         )
         return accepted
     }
