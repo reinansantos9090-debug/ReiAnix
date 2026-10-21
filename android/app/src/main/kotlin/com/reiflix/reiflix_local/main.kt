@@ -1964,11 +1964,10 @@ internal class NativeMainRuntimePort(
             current.activePlayerSessionId != expectedSessionId) return false
         if (!expectedRequestId.isNullOrBlank() && current.activePlayerRequestId != null &&
             current.activePlayerRequestId != expectedRequestId) return false
-        cancelBackgroundTasksForLane("playback")
-        // The former invalidate_player_session path cancelled the current
-        // transition before clearing its session, including its own diagnostic
-        // event. Keep that order and increment transitionGeneration exactly once.
+        // Match the former invalidate_player_session order: cancel the
+        // transition and record its diagnostic before clearing the session.
         cancelPlayerTransition(reason)
+        cancelBackgroundTasksForLane("playback")
         publish(action = "invalidate_player_session", transform = {
             it.copy(
                 playerSessionActive = false,
