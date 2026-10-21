@@ -3949,10 +3949,35 @@ internal class NativeMainRuntimePort(
 
     fun clearManagedArtworkCache(): Boolean =
         launchTracked("clear_managed_artwork_cache", lane = "metadata") {
+            // Keep parity with LibraryService.clear_anilist_cache(): the modern artwork
+            // engine clears its own managed cache and expires metadata in canonical SQLite,
+            // while older AniList covers may still sit directly under data/covers.
             val removed = dependencies.artworkService.clearManagedCache()
+            val legacyCoverRoot = File(activity.applicationContext.filesDir, "data/covers")
+            var legacyRemoved = 0
+            if (legacyCoverRoot.exists()) {
+                val entries = legacyCoverRoot.listFiles()
+                    ?: throw java.io.IOException("Não foi possível listar o cache legado de capas.")
+                entries.forEach { entry ->
+                    // The Python compatibility path removes files in this directory only;
+                    // nested directories are intentionally preserved.
+                    if (entry.isFile) {
+                        if (!entry.delete()) {
+                            throw java.io.IOException("Não foi possível remover uma capa legada: ${entry.name}")
+                        }
+                        legacyRemoved++
+                    }
+                }
+            }
             libraryViewModel.refresh()
             publish(action = "clear_managed_artwork_cache", transform = {
-                it.copy(lastResultJson = org.json.JSONObject().put("removed", removed).toString())
+                it.copy(
+                    lastResultJson = org.json.JSONObject()
+                        .put("removed", removed + legacyRemoved)
+                        .put("managedRemoved", removed)
+                        .put("legacyRemoved", legacyRemoved)
+                        .toString(),
+                )
             })
         }
 
