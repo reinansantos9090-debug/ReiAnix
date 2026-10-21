@@ -1348,6 +1348,18 @@ internal class NativeMainRuntimePort(
     }
 
     /**
+     * Preserve the legacy queue identity: URI, source version and media identity
+     * are all part of one pending request. The extractor's own cache key remains
+     * identity/version based, but queue deduplication must not merge distinct URIs.
+     */
+    private fun thumbnailRequestKey(
+        uri: Uri,
+        size: Long,
+        modifiedAt: Long,
+        mediaIdentity: String,
+    ): String = VideoThumbnailExtractor.cacheKey("${uri}|${mediaIdentity}", size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L))
+
+    /**
      * Priority/deduplicated local-thumbnail queue corresponding to the Python
      * thumbnail dispatcher. The canonical extractor owns caching and artwork
      * registration; this queue only schedules work and never downloads video.
@@ -1370,7 +1382,7 @@ internal class NativeMainRuntimePort(
         val boundedSize = size.coerceAtLeast(0L)
         val boundedModifiedAt = modifiedAt.coerceAtLeast(0L)
         val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
-        val key = VideoThumbnailExtractor.cacheKey(identity, boundedSize, boundedModifiedAt)
+        val key = thumbnailRequestKey(uri, boundedSize, boundedModifiedAt, identity)
         synchronized(thumbnailQueueLock) {
             val existing = thumbnailRequests[key]
             if (existing != null) {
@@ -1567,7 +1579,7 @@ internal class NativeMainRuntimePort(
             else -> return null
         }
         val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
-        val key = VideoThumbnailExtractor.cacheKey(identity, size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L))
+        val key = thumbnailRequestKey(uri, size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L), identity)
         val accepted = enqueueLocalThumbnail(raw, size, modifiedAt, identity, priority = 100)
         if (!accepted) return null
         return thumbnailRequests[key]?.completion?.await()
@@ -1578,7 +1590,7 @@ internal class NativeMainRuntimePort(
         if (raw.isEmpty()) return false
         val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
         val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
-        val key = VideoThumbnailExtractor.cacheKey(identity, size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L))
+        val key = thumbnailRequestKey(uri, size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L), identity)
         synchronized(thumbnailQueueLock) {
             val request = thumbnailRequests.remove(key) ?: return false
             thumbnailQueue.remove(request)
