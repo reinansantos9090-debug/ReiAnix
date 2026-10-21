@@ -595,6 +595,7 @@ internal class NativeMainRuntimePort(
 ) {
     private val lock = Any()
     private val seenProjectionEventIds = LinkedHashSet<String>()
+    private val claimedRequestIds = mutableMapOf<String, LinkedHashSet<String>>()
     private val jobs = linkedSetOf<Job>()
     private val jobLanes = mutableMapOf<Job, String>()
     private val maxBackgroundTasksPerLane = 8
@@ -687,6 +688,29 @@ internal class NativeMainRuntimePort(
         }
     }
 
+
+    /**
+     * Process-local mirror of LibraryStore.claim_native_request. Requests are
+     * namespaced because Settings and Library use separate request contracts.
+     * It avoids replay within one process without creating another database/table.
+     */
+    private fun claimRequestId(requestId: String, namespace: String, limit: Int = 1000): Boolean {
+        val normalizedRequest = requestId.trim()
+        val normalizedNamespace = namespace.trim().ifBlank { "default" }
+        if (normalizedRequest.isEmpty()) return false
+        return synchronized(lock) {
+            val ids = claimedRequestIds.getOrPut(normalizedNamespace) { LinkedHashSet() }
+            if (!ids.add(normalizedRequest)) return@synchronized false
+            while (ids.size > limit.coerceAtLeast(1)) {
+                val iterator = ids.iterator()
+                if (iterator.hasNext()) {
+                    iterator.next()
+                    iterator.remove()
+                } else break
+            }
+            true
+        }
+    }
 
     private fun publish(
         action: String? = mutableSnapshot.value.lastAction,
@@ -2926,6 +2950,7 @@ internal class NativeMainRuntimePort(
         val request = requestId.trim()
         val normalizedAction = action.trim()
         if (request.isEmpty() || normalizedAction.isEmpty()) return false
+        if (!claimRequestId(request, "native_command")) return false
         if (!queueNativeOperation(request, normalizedAction)) return false
         val accepted = dispatchMainAction(normalizedAction, payload)
         if (!accepted) {
@@ -3032,6 +3057,16 @@ internal class NativeMainRuntimePort(
                 val value = if (payload.has("value")) payload.opt("value")?.toString().orEmpty() else ""
                 if (ReiAnixSettingsContract.definitions[key] == null) return false
                 val requestId = eventRequestId ?: stringValue("requestId")
+                if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_settings")) {
+                    recordDiagnostic(
+                        name = "COMPOSE_SETTINGS_DUPLICATE_OR_INVALID_REQUEST",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = "ignored",
+                        context = mapOf("key" to key),
+                    )
+                    return false
+                }
                 if (payload.optBoolean("nativePersisted", payload.optBoolean("native_persisted", false))) {
                     settingsViewModel.refresh()
                     recordDiagnostic("SETTINGS_RUNTIME_APPLY", requestId = requestId,
@@ -3046,6 +3081,8 @@ internal class NativeMainRuntimePort(
             }
             "compose_settings_action" -> {
                 val action = stringValue("action")?.lowercase(Locale.ROOT) ?: return false
+                val requestId = eventRequestId ?: stringValue("requestId")
+                if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_settings")) return false
                 val accepted = dispatchSettingsAction(action, payload)
                 recordDiagnostic("SETTINGS_ACTION_DISPATCH", requestId = eventRequestId ?: stringValue("requestId"),
                     result = if (accepted) "accepted" else "rejected", context = mapOf("action" to action))
@@ -3053,11 +3090,17 @@ internal class NativeMainRuntimePort(
             }
             "compose_account_action" -> {
                 val action = stringValue("action")?.lowercase(Locale.ROOT) ?: return false
-                if (action !in setOf("login", "logout", "switch", "switch_account")) return false
+                val requestId = eventRequestId ?: stringValue("requestId")
+                if (action !in setOf("login", "logout", "switch", "switch_account") ||
+                    requestId.isNullOrBlank() ||
+                    !claimRequestId(requestId, "compose_account")
+                ) return false
                 requestAccountActionTracked(if (action == "switch") "switch_account" else action)
             }
             "compose_library_command" -> {
                 val action = stringValue("action") ?: return false
+                val requestId = eventRequestId ?: stringValue("requestId")
+                if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_library")) return false
                 dispatchMainAction(action, payload)
             }
             "saf_permission", "saf_released", "saf_error", "saf_cancelled",
@@ -3239,6 +3282,7 @@ internal class NativeMainRuntimePort(
             }
             "compose_settings_bulk_applied" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: return false
+                if (!claimRequestId(requestId, "compose_settings")) return false
                 val values = payload.optJSONObject("settings") ?: return false
                 val iterator = values.keys()
                 val settings = linkedMapOf<String, String>()
@@ -3272,6 +3316,7 @@ internal class NativeMainRuntimePort(
             }
             "compose_settings_native_account_changed" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: return false
+                if (!claimRequestId(requestId, "compose_settings_account_changed")) return false
                 settingsViewModel.refresh()
                 libraryViewModel.refresh()
                 setAccountState(
@@ -3282,6 +3327,7 @@ internal class NativeMainRuntimePort(
             }
             "compose_settings_native_backup_restored" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: return false
+                if (!claimRequestId(requestId, "compose_settings_backup_restored")) return false
                 settingsViewModel.refresh()
                 val reconciled = reconcileRestoredFileAvailability()
                 libraryViewModel.refresh()
