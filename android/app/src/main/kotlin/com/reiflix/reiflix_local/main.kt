@@ -671,6 +671,7 @@ internal class NativeMainRuntimePort(
     private val thumbnailRequests = ConcurrentHashMap<String, NativeThumbnailRequest>()
     // Bounded retry state mirrors the legacy thumbnail retry_after_error task.
     private val thumbnailRetryCounts = ConcurrentHashMap<String, Int>()
+    private val thumbnailRetryPendingKeys = ConcurrentHashMap.newKeySet<String>()
     // Older source-version requests for the same URI must not overtake the latest queued request.
     private val thumbnailLatestKeyByUri = ConcurrentHashMap<String, String>()
     private val thumbnailLatestAtMillis = ConcurrentHashMap<String, Long>()
@@ -1492,6 +1493,7 @@ internal class NativeMainRuntimePort(
             thumbnailLatestAtMillis[uriKey] = System.currentTimeMillis()
             if (previousKey != null && previousKey != key) {
                 thumbnailRetryCounts.remove(previousKey)
+                thumbnailRetryPendingKeys.remove(previousKey)
                 val previous = thumbnailRequests[previousKey]
                 if (previous != null && thumbnailQueue.remove(previous)) {
                     thumbnailRequests.remove(previousKey, previous)
@@ -1527,6 +1529,7 @@ internal class NativeMainRuntimePort(
                 thumbnailQueue.remove(lowest)
                 thumbnailRequests.remove(lowest.key, lowest)
                 thumbnailRetryCounts.remove(lowest.key)
+                thumbnailRetryPendingKeys.remove(lowest.key)
                 lowest.completion.complete(null)
             }
             val request = NativeThumbnailRequest(
@@ -1596,6 +1599,7 @@ internal class NativeMainRuntimePort(
                         if (currentKey != null && currentKey != next.key) {
                             thumbnailRequests.remove(next.key, next)
                             thumbnailRetryCounts.remove(next.key)
+                            thumbnailRetryPendingKeys.remove(next.key)
                             next.completion.complete(null)
                             return@synchronized next.copy(key = "")
                         }
@@ -1637,9 +1641,11 @@ internal class NativeMainRuntimePort(
                                 retryDelayMs = if (previousAttempts == 0) 1_000L else 5_000L
                             } else {
                                 thumbnailRetryCounts.remove(request.key)
+                                thumbnailRetryPendingKeys.remove(request.key)
                             }
                         } else {
                             thumbnailRetryCounts.remove(request.key)
+                            thumbnailRetryPendingKeys.remove(request.key)
                             publish(action = "thumbnail_extracted", transform = {
                                 it.copy(lastArtifactPath = result.path)
                             })
@@ -1647,6 +1653,7 @@ internal class NativeMainRuntimePort(
                     } catch (cancelled: CancellationException) {
                         request.completion.cancel(cancelled)
                         thumbnailRetryCounts.remove(request.key)
+                        thumbnailRetryPendingKeys.remove(request.key)
                         throw cancelled
                     } catch (failure: Throwable) {
                         request.completion.completeExceptionally(failure)
@@ -1665,6 +1672,7 @@ internal class NativeMainRuntimePort(
                             retryDelayMs = if (previousAttempts == 0) 1_000L else 5_000L
                         } else {
                             thumbnailRetryCounts.remove(request.key)
+                            thumbnailRetryPendingKeys.remove(request.key)
                         }
                     } finally {
                         synchronized(thumbnailQueueLock) {
@@ -1677,48 +1685,54 @@ internal class NativeMainRuntimePort(
                     val delayBeforeRetry = retryDelayMs
                     val attemptToRetry = retryAttempt
                     if (delayBeforeRetry != null && attemptToRetry != null) {
+                        thumbnailRetryPendingKeys.add(request.key)
                         val retryScheduled = launchTracked("thumbnail_retry", lane = "thumbnail") {
-                            delay(delayBeforeRetry)
-                            if (thumbnailRetryCounts[request.key] != attemptToRetry) return@launchTracked
-                            val latestRequestKey = thumbnailLatestKeyByUri[request.uri.toString()]
-                            if (latestRequestKey != null && latestRequestKey != request.key) {
-                                thumbnailRetryCounts.remove(request.key)
-                                return@launchTracked
-                            }
-                            if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) {
-                                thumbnailRetryCounts.remove(request.key)
-                                return@launchTracked
-                            }
-                            val queued = enqueueLocalThumbnail(
-                                reference = request.uri.toString(),
-                                size = request.size,
-                                modifiedAt = request.modifiedAt,
-                                mediaIdentity = request.mediaIdentity,
-                                priority = 200,
-                            )
-                            if (!queued) {
-                                if (thumbnailRetryCounts[request.key] == attemptToRetry) {
+                            try {
+                                delay(delayBeforeRetry)
+                                if (thumbnailRetryCounts[request.key] != attemptToRetry) return@launchTracked
+                                val latestRequestKey = thumbnailLatestKeyByUri[request.uri.toString()]
+                                if (latestRequestKey != null && latestRequestKey != request.key) {
                                     thumbnailRetryCounts.remove(request.key)
+                                    return@launchTracked
                                 }
-                                recordDiagnostic(
-                                    name = "THUMBNAIL_RETRY_REJECTED",
-                                    severity = "WARN",
-                                    result = "queue_rejected",
-                                    context = mapOf("attempt" to attemptToRetry),
+                                if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) {
+                                    thumbnailRetryCounts.remove(request.key)
+                                    return@launchTracked
+                                }
+                                val queued = enqueueLocalThumbnail(
+                                    reference = request.uri.toString(),
+                                    size = request.size,
+                                    modifiedAt = request.modifiedAt,
+                                    mediaIdentity = request.mediaIdentity,
+                                    priority = 200,
                                 )
-                            } else {
-                                recordDiagnostic(
-                                    name = "THUMBNAIL_RETRY_SCHEDULED",
-                                    result = "retry_$attemptToRetry",
-                                    context = mapOf(
-                                        "attempt" to attemptToRetry,
-                                        "delay_ms" to delayBeforeRetry,
-                                    ),
-                                )
+                                if (!queued) {
+                                    if (thumbnailRetryCounts[request.key] == attemptToRetry) {
+                                        thumbnailRetryCounts.remove(request.key)
+                                    }
+                                    recordDiagnostic(
+                                        name = "THUMBNAIL_RETRY_REJECTED",
+                                        severity = "WARN",
+                                        result = "queue_rejected",
+                                        context = mapOf("attempt" to attemptToRetry),
+                                    )
+                                } else {
+                                    recordDiagnostic(
+                                        name = "THUMBNAIL_RETRY_SCHEDULED",
+                                        result = "retry_$attemptToRetry",
+                                        context = mapOf(
+                                            "attempt" to attemptToRetry,
+                                            "delay_ms" to delayBeforeRetry,
+                                        ),
+                                    )
+                                }
+                            } finally {
+                                thumbnailRetryPendingKeys.remove(request.key)
                             }
                         }
                         if (!retryScheduled && thumbnailRetryCounts[request.key] == attemptToRetry) {
                             thumbnailRetryCounts.remove(request.key)
+                            thumbnailRetryPendingKeys.remove(request.key)
                         }
                     }
                 }
@@ -4019,6 +4033,128 @@ internal class NativeMainRuntimePort(
     }
 
     /**
+     * Retry extraction_failed events from older bridge clients, while letting the
+     * in-process queue own retries for requests it is already processing.
+     */
+    private fun retryLegacyThumbnailError(
+        payload: org.json.JSONObject,
+        requestId: String?,
+    ): Boolean {
+        val rawReference = payload.optString("uri", payload.optString("path", "")).trim()
+        if (rawReference.isEmpty()) return false
+        val parsed = runCatching { Uri.parse(rawReference) }.getOrNull() ?: return false
+        val uri = when (parsed.scheme?.lowercase(Locale.ROOT)) {
+            "content", "file" -> parsed
+            null -> if (rawReference.startsWith("/")) Uri.fromFile(File(rawReference)) else return false
+            else -> return false
+        }
+        val size = payload.optLong("size", payload.optLong("file_size", 0L)).coerceAtLeast(0L)
+        val modifiedAt = payload.optLong("modifiedAt", payload.optLong("modified_at", 0L)).coerceAtLeast(0L)
+        val rawIdentity = payload.optString("mediaIdentity", payload.optString("media_identity", "")).trim()
+        val identity = rawIdentity.ifEmpty { uri.toString() }
+        val key = thumbnailRequestKey(uri, size, modifiedAt, identity)
+        val status = payload.optString("status", "FAILED").trim().uppercase(Locale.ROOT)
+        var attempt: Int? = null
+        var retryDelayMs: Long? = null
+
+        synchronized(thumbnailQueueLock) {
+            if (thumbnailLatestKeyByUri[uri.toString()] != key) {
+                recordDiagnostic(
+                    name = "THUMBNAIL_STALE_ERROR_IGNORED",
+                    requestId = requestId,
+                    result = status,
+                    context = mapOf("uri_present" to true),
+                )
+                return true
+            }
+            if (
+                key in thumbnailRetryPendingKeys ||
+                key in thumbnailRequests ||
+                key in thumbnailInFlight
+            ) {
+                recordDiagnostic(
+                    name = "THUMBNAIL_DUPLICATE_ERROR_IGNORED",
+                    requestId = requestId,
+                    result = status,
+                )
+                return true
+            }
+
+            val previousAttempts = thumbnailRetryCounts[key] ?: 0
+            if (status == "EXTRACTION_FAILED" && previousAttempts < 2 && lifecycleIsAlive) {
+                val nextAttempt = previousAttempts + 1
+                thumbnailRetryCounts[key] = nextAttempt
+                thumbnailRetryPendingKeys.add(key)
+                attempt = nextAttempt
+                retryDelayMs = if (previousAttempts == 0) 1_000L else 5_000L
+            } else {
+                thumbnailRetryCounts.remove(key)
+                thumbnailRetryPendingKeys.remove(key)
+                thumbnailLatestKeyByUri.remove(uri.toString(), key)
+                thumbnailLatestAtMillis.remove(uri.toString())
+                if (status == "EXTRACTION_FAILED") {
+                    recordDiagnostic(
+                        name = "THUMBNAIL_RETRY_EXHAUSTED",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = status,
+                        context = mapOf("attempts" to previousAttempts),
+                    )
+                }
+            }
+        }
+
+        val scheduledAttempt = attempt
+        val delayMs = retryDelayMs
+        if (scheduledAttempt == null || delayMs == null) return true
+        val accepted = launchTracked("thumbnail_retry", lane = "thumbnail") {
+            try {
+                delay(delayMs)
+                if (thumbnailRetryCounts[key] != scheduledAttempt) return@launchTracked
+                if (thumbnailLatestKeyByUri[uri.toString()] != key) {
+                    thumbnailRetryCounts.remove(key)
+                    return@launchTracked
+                }
+                if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) {
+                    thumbnailRetryCounts.remove(key)
+                    return@launchTracked
+                }
+                val queued = enqueueLocalThumbnail(
+                    reference = uri.toString(),
+                    size = size,
+                    modifiedAt = modifiedAt,
+                    mediaIdentity = identity,
+                    priority = 200,
+                )
+                if (!queued) {
+                    if (thumbnailRetryCounts[key] == scheduledAttempt) thumbnailRetryCounts.remove(key)
+                    recordDiagnostic(
+                        name = "THUMBNAIL_RETRY_REJECTED",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = "queue_rejected",
+                        context = mapOf("attempt" to scheduledAttempt),
+                    )
+                } else {
+                    recordDiagnostic(
+                        name = "THUMBNAIL_RETRY_SCHEDULED",
+                        requestId = requestId,
+                        result = "retry_$scheduledAttempt",
+                        context = mapOf("attempt" to scheduledAttempt, "delay_ms" to delayMs),
+                    )
+                }
+            } finally {
+                thumbnailRetryPendingKeys.remove(key)
+            }
+        }
+        if (!accepted) {
+            thumbnailRetryPendingKeys.remove(key)
+            if (thumbnailRetryCounts[key] == scheduledAttempt) thumbnailRetryCounts.remove(key)
+        }
+        return accepted
+    }
+
+    /**
      * Normalize the legacy request_missing_thumbnail(item) payload without reviving
      * the Python bridge. Missing episodes are rejected and default priority still
      * favors previously played media.
@@ -5232,12 +5368,29 @@ internal class NativeMainRuntimePort(
                 true
             }
             "thumbnail_ready", "thumbnail_error" -> {
+                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                if (type == "thumbnail_error") {
+                    retryLegacyThumbnailError(payload, correlatedRequestId)
+                } else {
+                    val rawReference = stringValue("uri", "path")
+                    if (!rawReference.isNullOrBlank()) {
+                        val parsed = runCatching { Uri.parse(rawReference) }.getOrNull()
+                        if (parsed != null) {
+                            val size = payload.optLong("size", payload.optLong("file_size", 0L)).coerceAtLeast(0L)
+                            val modifiedAt = payload.optLong("modifiedAt", payload.optLong("modified_at", 0L)).coerceAtLeast(0L)
+                            val identity = stringValue("mediaIdentity", "media_identity") ?: parsed.toString()
+                            val key = thumbnailRequestKey(parsed, size, modifiedAt, identity)
+                            thumbnailRetryCounts.remove(key)
+                            thumbnailRetryPendingKeys.remove(key)
+                        }
+                    }
+                }
                 libraryViewModel.queryNativeArtwork()
                 libraryViewModel.refresh()
                 recordDiagnostic(
                     name = if (type == "thumbnail_ready") "NATIVE_THUMBNAIL_READY" else "NATIVE_THUMBNAIL_ERROR",
                     severity = if (type == "thumbnail_error") "WARN" else "INFO",
-                    requestId = eventRequestId ?: stringValue("requestId"),
+                    requestId = correlatedRequestId,
                     result = stringValue("path", "uri", "reason", "error") ?: type,
                     context = mapOf("media_identity" to stringValue("mediaIdentity", "media_identity")),
                 )
@@ -5859,6 +6012,7 @@ internal class NativeMainRuntimePort(
             thumbnailRequests.values.forEach { it.completion.cancel() }
             thumbnailRequests.clear()
             thumbnailRetryCounts.clear()
+            thumbnailRetryPendingKeys.clear()
             thumbnailLatestKeyByUri.clear()
             thumbnailLatestAtMillis.clear()
             thumbnailInFlight.clear()
