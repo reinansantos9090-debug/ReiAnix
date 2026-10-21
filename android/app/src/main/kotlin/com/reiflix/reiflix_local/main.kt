@@ -580,6 +580,11 @@ internal data class NativeMainStorageSnapshot(
         get() = hasMediaStorePermission || broadStorageAccess || hasConfiguredLibrarySource
 }
 
+private data class PendingNativeStorageOperation(
+    val nativeAction: String,
+    val resultAction: String,
+)
+
 private data class NativeThumbnailRequest(
     val key: String,
     val uri: Uri,
@@ -618,6 +623,7 @@ internal class NativeMainRuntimePort(
     val scanUiState: StateFlow<NativeMainScanUiState> = mutableScanUiState.asStateFlow()
     private val mutableStorageState = MutableStateFlow<NativeMainStorageSnapshot?>(null)
     val storageState: StateFlow<NativeMainStorageSnapshot?> = mutableStorageState.asStateFlow()
+    private val pendingStorageOperations = ConcurrentHashMap<String, PendingNativeStorageOperation>()
     @Volatile private var lastStorageMutationAtMillis: Long = 0L
     @Volatile private var pendingSafSelectionStartedAtMillis: Long = 0L
     @Volatile private var pendingSafSelectionRequestId: String? = null
@@ -1667,10 +1673,32 @@ internal class NativeMainRuntimePort(
         publish(action = "account_action")
     }
 
-    fun requestStorageAction(action: String, requestId: String? = null): Boolean {
+    fun requestStorageAction(
+        action: String,
+        requestId: String? = null,
+        resultAction: String? = null,
+    ): Boolean {
         val normalizedAction = action.trim()
         val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
-        val accepted = try {
+        val operationAction = resultAction?.trim()?.takeIf { it.isNotEmpty() } ?: normalizedAction
+        val pendingOperation = correlatedRequestId?.let {
+            PendingNativeStorageOperation(normalizedAction, operationAction)
+        }
+        if (correlatedRequestId != null && pendingOperation != null &&
+            pendingStorageOperations.putIfAbsent(correlatedRequestId, pendingOperation) != null
+        ) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = operationAction,
+                status = "BLOCKED",
+                operationState = "BLOCKED",
+                message = "Já existe uma operação de armazenamento com este requestId.",
+                error = "duplicate_pending_storage_request",
+            )
+            return false
+        }
+
+        val launchError = try {
             if (correlatedRequestId == null) {
                 activity.requestNativeStorageAction(normalizedAction)
             } else {
@@ -1681,26 +1709,48 @@ internal class NativeMainRuntimePort(
                         requestId = correlatedRequestId,
                     )
                 )
-                true
             }
+            null
         } catch (failure: Exception) {
-            recordDiagnostic(
-                name = "NATIVE_STORAGE_ACTION_LAUNCH_FAILED",
-                severity = "WARN",
-                requestId = correlatedRequestId,
-                result = normalizedAction,
-                error = failure,
-            )
-            false
+            failure.message?.takeIf { it.isNotBlank() } ?: "Native storage action was rejected."
+        }
+        val accepted = launchError == null
+        if (correlatedRequestId != null) {
+            if (accepted) {
+                publishOperationResult(
+                    requestId = correlatedRequestId,
+                    action = operationAction,
+                    status = "QUEUED",
+                    operationState = "QUEUED",
+                    message = "Operação nativa aceita para processamento.",
+                )
+            } else {
+                if (pendingOperation != null) pendingStorageOperations.remove(correlatedRequestId, pendingOperation)
+                publishOperationResult(
+                    requestId = correlatedRequestId,
+                    action = operationAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = launchError,
+                    error = launchError,
+                )
+                recordDiagnostic(
+                    name = "NATIVE_STORAGE_ACTION_LAUNCH_FAILED",
+                    severity = "WARN",
+                    requestId = correlatedRequestId,
+                    result = normalizedAction,
+                    error = IllegalStateException(launchError),
+                )
+            }
         }
         publish(
             action = "storage_action",
-            error = if (accepted) null else "Native storage action was rejected.",
+            error = if (accepted) null else launchError,
             transform = { state ->
                 if (correlatedRequestId == null) state else state.copy(
                     lastResultJson = org.json.JSONObject()
                         .put("requestId", correlatedRequestId)
-                        .put("action", normalizedAction)
+                        .put("action", operationAction)
                         .put("status", if (accepted) "QUEUED" else "FAILED")
                         .toString()
                 )
@@ -1708,13 +1758,22 @@ internal class NativeMainRuntimePort(
         )
         return accepted
     }
-    fun requestMediaAccess(requestId: String? = null): Boolean =
-        requestStorageAction("request_media_access", requestId)
-    fun checkStorageAccess(requestId: String? = null): Boolean =
-        requestStorageAction("check_storage_access", requestId)
-    fun openBroadStorageSettings(requestId: String? = null): Boolean =
-        requestStorageAction("open_broad_storage_settings", requestId)
-    fun requestLibraryScan(requestId: String? = null): Boolean {
+    fun requestMediaAccess(
+        requestId: String? = null,
+        resultAction: String = "request_media_access",
+    ): Boolean = requestStorageAction("request_media_access", requestId, resultAction)
+    fun checkStorageAccess(
+        requestId: String? = null,
+        resultAction: String = "check_storage_access",
+    ): Boolean = requestStorageAction("check_storage_access", requestId, resultAction)
+    fun openBroadStorageSettings(
+        requestId: String? = null,
+        resultAction: String = "open_broad_storage_settings",
+    ): Boolean = requestStorageAction("open_broad_storage_settings", requestId, resultAction)
+    fun requestLibraryScan(
+        requestId: String? = null,
+        resultAction: String = "scan_library",
+    ): Boolean {
         if (!canStartLibraryScan("saf")) {
             recordDiagnostic(
                 name = "LIBRARY_SCAN_REJECTED",
@@ -1725,7 +1784,7 @@ internal class NativeMainRuntimePort(
             )
             return false
         }
-        return requestStorageAction("scan_library", requestId)
+        return requestStorageAction("scan_library", requestId, resultAction)
     }
     fun selectSafFolder(): Boolean = requestStorageAction("select_tree")
 
@@ -3118,7 +3177,10 @@ internal class NativeMainRuntimePort(
             "navigate_settings_category" ->
                 navigateSettingsCategory(nonBlank("category") ?: return false)
 
-            "refresh" -> requestLibraryScan(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
+            "refresh" -> requestLibraryScan(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                resultAction = normalized,
+            )
             "refresh_library" -> refreshLibrary()
             "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog()
             "publish_catalog" -> {
@@ -3148,12 +3210,24 @@ internal class NativeMainRuntimePort(
                 bridge = nonBlank("bridge") ?: "library",
             )
             "request_media_access", "request_video_access" ->
-                requestMediaAccess(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
+                requestMediaAccess(
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    resultAction = normalized,
+                )
             "check_storage_access", "check_video_access" ->
-                checkStorageAccess(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
+                checkStorageAccess(
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    resultAction = normalized,
+                )
             "open_broad_storage_settings", "request_storage_access" ->
-                openBroadStorageSettings(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
-            "scan_library" -> requestLibraryScan(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
+                openBroadStorageSettings(
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    resultAction = normalized,
+                )
+            "scan_library" -> requestLibraryScan(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                resultAction = normalized,
+            )
             "refresh_home_library", "request_home_refresh" -> requestHomeRefresh(
                 source = nonBlank("source") ?: "native_action",
             )
@@ -3336,6 +3410,34 @@ internal class NativeMainRuntimePort(
      * Kotlin replacement for the old ComposeSettingsBridge result writer. A QUEUED
      * state is never upgraded to COMPLETED until a real operation callback arrives.
      */
+    private fun finishPendingStorageOperation(
+        eventRequestId: String?,
+        expectedNativeActions: Set<String>,
+        status: String,
+        message: String? = null,
+        error: String? = null,
+        payload: org.json.JSONObject? = null,
+    ): Boolean {
+        val request = eventRequestId?.trim().orEmpty()
+        if (request.isEmpty()) return false
+        val pending = pendingStorageOperations[request] ?: return false
+        if (pending.nativeAction !in expectedNativeActions) return false
+
+        val terminalStatus = status.trim().uppercase(Locale.ROOT)
+        if (terminalStatus !in setOf("COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "ERROR")) return false
+        val published = publishOperationResult(
+            requestId = request,
+            action = pending.resultAction,
+            status = terminalStatus,
+            operationState = terminalStatus,
+            message = message,
+            error = error,
+            payload = payload,
+        )
+        if (published) pendingStorageOperations.remove(request, pending)
+        return published
+    }
+
     fun publishOperationResult(
         requestId: String,
         action: String,
