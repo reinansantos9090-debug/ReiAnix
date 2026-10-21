@@ -1618,7 +1618,18 @@ internal class NativeMainRuntimePort(
     fun requestMediaAccess(): Boolean = requestStorageAction("request_media_access")
     fun checkStorageAccess(): Boolean = requestStorageAction("check_storage_access")
     fun openBroadStorageSettings(): Boolean = requestStorageAction("open_broad_storage_settings")
-    fun requestLibraryScan(): Boolean = requestStorageAction("scan_library")
+    fun requestLibraryScan(): Boolean {
+        if (!canStartLibraryScan("saf")) {
+            recordDiagnostic(
+                name = "LIBRARY_SCAN_REJECTED",
+                severity = "WARN",
+                result = "no_authorized_library_saf_source",
+                context = mapOf("configured_saf_root_count" to authorizedScanTargets("saf").size),
+            )
+            return false
+        }
+        return requestStorageAction("scan_library")
+    }
     fun selectSafFolder(): Boolean = requestStorageAction("select_tree")
 
     fun storageSnapshot(): NativeMainStorageSnapshot {
@@ -1728,6 +1739,68 @@ internal class NativeMainRuntimePort(
     fun markUiDirty(reason: String = "state_changed") {
         publish(action = reason)
     }
+    fun renderSignature(): String {
+        val current = mutableSnapshot.value
+        val scan = mutableScanUiState.value
+        val input = listOf(
+            current.route,
+            current.selectedAnimeId?.toString().orEmpty(),
+            current.generation.toString(),
+            current.initialized.toString(),
+            current.recoveryRequired.toString(),
+            scan.state,
+            scan.scanId.orEmpty(),
+            mutableUiPreferences.value.homeState.hashCode().toString(),
+            mutableUiPreferences.value.organizeState.hashCode().toString(),
+            mutableUiPreferences.value.settingsState.hashCode().toString(),
+        ).joinToString("|")
+        return MessageDigest.getInstance("SHA-256")
+            .digest(input.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    /** Compose owns view instances; invalidation publishes source state rather than caching Flet controls. */
+    fun dropScreenCache(route: String) {
+        val normalized = routeForScreen(route).ifBlank { route.trim() }
+        if (normalized == mutableSnapshot.value.route) {
+            if (normalized == ReiAnixRoutes.SETTINGS) settingsViewModel.refresh()
+            else libraryViewModel.refresh()
+        }
+        publish(action = "drop_screen_cache", transform = { it.copy(generation = it.generation + 1L) })
+    }
+
+    fun clearScreenCache() {
+        libraryViewModel.refresh()
+        settingsViewModel.refresh()
+        publish(action = "clear_screen_cache", transform = { it.copy(generation = it.generation + 1L) })
+    }
+
+    fun invalidateCatalogViews(animeId: Long? = null) {
+        if (animeId != null && animeId > 0L) libraryViewModel.refreshDetails(animeId)
+        libraryViewModel.refresh()
+        publish(action = "invalidate_catalog_views", transform = { it.copy(generation = it.generation + 1L) })
+    }
+
+    fun invalidateCachedView(route: String, animeId: Long? = null) {
+        dropScreenCache(route)
+        if (animeId != null && animeId > 0L) libraryViewModel.refreshDetails(animeId)
+    }
+
+    fun showComposeHome(resetBackStack: Boolean = false): Boolean =
+        showComposeLibrary(ReiAnixRoutes.HOME, resetBackStack)
+
+    fun showComposeOrganize(resetBackStack: Boolean = false): Boolean =
+        showComposeLibrary(ReiAnixRoutes.ORGANIZE, resetBackStack)
+
+    fun showComposeSettings(resetBackStack: Boolean = false): Boolean =
+        showComposeLibrary(ReiAnixRoutes.SETTINGS, resetBackStack)
+
+    fun showComposeStorage(resetBackStack: Boolean = false): Boolean =
+        showComposeLibrary(ReiAnixRoutes.STORAGE, resetBackStack)
+
+    fun hideComposeSettings() = hideComposeLibrary()
+
+    fun handleNativeBack(): Boolean = navigateBack()
 
     fun renderCurrent(route: String, force: Boolean = false, reason: String = "render_current"): Boolean {
         val currentRoute = route.trim().ifBlank { ReiAnixRoutes.HOME }
@@ -2311,6 +2384,17 @@ internal class NativeMainRuntimePort(
         val startedAt = System.currentTimeMillis()
         val knownOperations = NativeScanController.progress.value.keys.toSet()
         if (!HomeRefreshCoordinator.begin(requestId, refreshId, source)) return false
+        if (!canStartLibraryScan("saf")) {
+            HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
+            recordDiagnostic(
+                name = "HOME_REFRESH_FAILED",
+                severity = "WARN",
+                requestId = requestId,
+                refreshId = refreshId,
+                result = "no_authorized_library_saf_source",
+            )
+            return false
+        }
         if (!requestLibraryScan()) {
             HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected")
             return false
@@ -2905,10 +2989,15 @@ internal class NativeMainRuntimePort(
             "reset_player" -> resetSettingsByPrefixes(setOf("player.", "gestures.", "audio."))
             "reset_all_settings" -> resetSettingsByPrefixes(emptySet())
             "clear_anilist_cache" -> {
-                // The current native AniList service intentionally does not expose an
-                // unscoped cache-delete operation. Refresh known mappings without
-                // mutating catalog rows a second time.
-                reconcileUnmatchedAniListMetadata()
+                // Do not misrepresent reconciliation as cache deletion. This native
+                // service exposes metadata refresh but no independent cache-clear API.
+                recordDiagnostic(
+                    name = "SETTINGS_ACTION_UNSUPPORTED",
+                    severity = "WARN",
+                    result = "clear_anilist_cache",
+                    context = mapOf("reason" to "native_service_has_no_cache_clear_contract"),
+                )
+                false
             }
             "settings_export" -> exportSettingsToPrivateFile()
             "settings_import" -> stringValueFromPayload(payload, "path", "filePath", "file_path")
