@@ -150,6 +150,20 @@ class MainEntryPointTest {
         assertEquals(ReiAnixRoutes.HOME, MainEntryPoint.initialRoute(recoveryRequired = false))
     }
 
+    @Test
+    fun lifecycleCallbacksNormalizeEventsAndTrackForegroundState() {
+        NativeLifecycleCoordinator.onEvent("AppLifecycleState.RESUME")
+        val resumed = NativeLifecycleCoordinator.state.value
+        assertEquals("resumed", resumed.state)
+        assertTrue(resumed.resumed)
+
+        NativeLifecycleCoordinator.onEvent(LifecycleEventFixture("PAUSE"))
+        val paused = NativeLifecycleCoordinator.state.value
+        assertEquals("paused", paused.state)
+        assertFalse(paused.resumed)
+        assertTrue(paused.generation > resumed.generation)
+    }
+
     private fun readyState(
         phase: ReiAnixBootstrapPhase = ReiAnixBootstrapPhase.READY,
         stage: ReiAnixBootstrapStage = ReiAnixBootstrapStage.READY,
