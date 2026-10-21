@@ -1257,16 +1257,16 @@ class MainActivity : ComponentActivity() {
             dismissed = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
                 .getBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false),
         )
-        // Do not construct the Compose host or expose catalog consumers until the
-        // process-owned bootstrap has decided whether the canonical SQLite database is usable.
-        // The launch intent and any new intents received during validation are replayed only
-        // after a safe normal route or Recovery Mode has been selected.
-        lifecycleScope.launch {
-            val recoveryRequired = appDependencies.bootstrap.validateCanonicalDatabase()
-            if (isFinishing || isDestroyed) return@launch
-
+        // main.kt owns the native composition-root startup gate. It validates the
+        // canonical database before constructing the host; this Activity then restores
+        // its lifecycle-specific intents and permission state after a safe route is chosen.
+        MainEntryPoint.launchNativeRuntime(
+            activity = this,
+            libraryViewModel = libraryViewModel,
+            settingsViewModel = settingsViewModel,
+        ) { host, recoveryRequired ->
             nativeBootstrapDecisionComplete = true
-            composeLibraryHost = ReiAnixComposeLibraryHost(this@MainActivity, libraryViewModel, settingsViewModel)
+            composeLibraryHost = host
             if (recoveryRequired) {
                 Log.w(tag, "NATIVE_DATABASE_RECOVERY_REQUIRED route_opened=true")
                 composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
