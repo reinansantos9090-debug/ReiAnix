@@ -2296,6 +2296,8 @@ internal class NativeMainRuntimePort(
         expectedEpisodeId: Long? = null,
         expectedMediaId: String? = null,
         expectedAnimeId: Long? = null,
+        allowMissingEpisodeId: Boolean = false,
+        allowMissingAnimeId: Boolean = false,
     ): NativePlayerCallbackValidation {
         val current = mutableSnapshot.value
         fun reject(reason: String) = NativePlayerCallbackValidation(false, reason)
@@ -2315,12 +2317,25 @@ internal class NativeMainRuntimePort(
             ?: return reject("invalid_player_generation")
         val transition = numericIdentity("transitionGeneration")
             ?: return reject("invalid_transition_generation")
-        val episodeId = expectedEpisodeId ?: (
-            numericIdentity("episodeId") ?: return reject("invalid_episode_id")
-        ).takeIf { it > 0L }
-        val animeId = expectedAnimeId ?: (
-            numericIdentity("animeId") ?: return reject("invalid_anime_id")
-        ).takeIf { it > 0L }
+        val rawEpisodeIdentity = payload.opt("episodeId")
+        val parsedEpisodeIdentity = numericIdentity("episodeId")
+        val episodeId = expectedEpisodeId ?: parsedEpisodeIdentity?.takeIf { it > 0L }
+        if (episodeId == null && !allowMissingEpisodeId) return reject("invalid_episode_id")
+        if (
+            allowMissingEpisodeId &&
+            pythonTruthyJsonValue(rawEpisodeIdentity) &&
+            (parsedEpisodeIdentity == null || parsedEpisodeIdentity <= 0L)
+        ) return reject("invalid_episode_id")
+
+        val rawAnimeIdentity = payload.opt("animeId")
+        val parsedAnimeIdentity = numericIdentity("animeId")
+        val animeId = expectedAnimeId ?: parsedAnimeIdentity?.takeIf { it > 0L }
+        if (animeId == null && !allowMissingAnimeId) return reject("invalid_anime_id")
+        if (
+            allowMissingAnimeId &&
+            pythonTruthyJsonValue(rawAnimeIdentity) &&
+            (parsedAnimeIdentity == null || parsedAnimeIdentity <= 0L)
+        ) return reject("invalid_anime_id")
         val mediaId = expectedMediaId?.trim().orEmpty().ifBlank {
             firstTruthyJsonText(payload, "mediaId")
         }
@@ -7629,7 +7644,13 @@ internal class NativeMainRuntimePort(
                 )
             }
             "player_error" -> {
-                val validation = validatePlayerCallback(eventRequestId, payload, requireActive = true)
+                val validation = validatePlayerCallback(
+                    eventRequestId = eventRequestId,
+                    payload = payload,
+                    requireActive = true,
+                    allowMissingEpisodeId = true,
+                    allowMissingAnimeId = true,
+                )
                 if (!validation.isCurrent) {
                     recordDiagnostic(
                         name = "PLAYER_CALLBACK_REJECTED",
