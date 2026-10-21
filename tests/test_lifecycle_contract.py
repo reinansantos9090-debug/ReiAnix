@@ -212,11 +212,12 @@ class LifecycleContractTests(unittest.TestCase):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
         on_create = source[source.index("override fun onCreate(savedInstanceState: Bundle?)"):
                            source.index("public override fun onNewIntent(intent: Intent)")]
+        entry_point = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").read_text(encoding="utf-8")
+        self.assertIn("MainEntryPoint.launchNativeRuntime(", on_create)
         self.assertIn("handleNativeIntent(launchIntent)", on_create)
-        self.assertIn("appDependencies.bootstrap.validateCanonicalDatabase()", on_create)
         self.assertLess(
-            on_create.index("appDependencies.bootstrap.validateCanonicalDatabase()"),
-            on_create.index("handleNativeIntent(launchIntent)"),
+            entry_point.index("dependencies.bootstrap.validateCanonicalDatabase()"),
+            entry_point.index("onReady(host, recoveryRequired)"),
         )
         start = source.index("public override fun onNewIntent(intent: Intent)")
         self.assertIn("handleNativeIntent(intent)", source[start:])
