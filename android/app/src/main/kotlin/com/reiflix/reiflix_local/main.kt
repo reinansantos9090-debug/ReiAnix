@@ -6394,16 +6394,21 @@ internal class NativeMainRuntimePort(
                             )
                             return false
                         }
-                        if (requestId.isNullOrBlank()) return false
+                        // Legacy callbacks may omit requestId after a native
+                        // activity has already registered its active launch request.
+                        // Retain that correlation rather than dropping the valid session.
+                        val correlatedRequestId = requestId?.takeIf { it.isNotBlank() }
+                            ?: current.activePlayerRequestId
+                        if (correlatedRequestId.isNullOrBlank()) return false
                         notePlayerSession(
-                            requestId,
+                            correlatedRequestId,
                             createdSession,
                             payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
                         )
                         if (!activityInstanceId.isNullOrBlank()) {
                             notePlayerActivityCreated(
                                 activityInstanceId,
-                                requestId,
+                                correlatedRequestId,
                                 createdSession,
                                 payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
                             )
