@@ -4063,12 +4063,12 @@ internal class NativeMainRuntimePort(
         if (!shouldStart) return
 
         activity.lifecycleScope.launch {
-            settingsViewModel.libraryPageSize.distinctUntilChanged().collect { pageSize ->
+            settingsViewModel.libraryPageSize.collect { pageSize ->
                 libraryViewModel.applyLibraryPageSize(pageSize)
             }
         }
         activity.lifecycleScope.launch {
-            settingsViewModel.librarySortDefault.distinctUntilChanged().collect { sortDefault ->
+            settingsViewModel.librarySortDefault.collect { sortDefault ->
                 libraryViewModel.applyLibrarySortDefault(sortDefault)
             }
         }
