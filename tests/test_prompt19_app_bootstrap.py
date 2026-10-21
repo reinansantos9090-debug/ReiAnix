@@ -46,8 +46,10 @@ def test_activity_delegates_process_startup_and_database_health_to_bootstrap():
     activity = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
     )
+    entry_point = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
     assert "appDependencies.bootstrap.start()" in activity
-    assert "appDependencies.bootstrap.validateCanonicalDatabase()" in activity
+    assert "MainEntryPoint.launchNativeRuntime(" in activity
+    assert "dependencies.bootstrap.validateCanonicalDatabase()" in entry_point
     assert "NativeScanRunner.recoverInterruptedSafScans(applicationContext)" not in activity
     assert "NativeCommandDispatcher.start(" not in activity
     # The Activity still calls the existing runner for explicitly authorized scans.
@@ -127,8 +129,9 @@ def test_compose_consumers_and_remote_side_effects_wait_for_a_validated_bootstra
     assert '.filter { scanning -> !scanning }' in host
     assert "composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)" in activity
     assert "composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)" in activity
-    assert activity.index("appDependencies.bootstrap.validateCanonicalDatabase()") < activity.index(
-        "composeLibraryHost = ReiAnixComposeLibraryHost("
+    entry_point = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
+    assert entry_point.index("dependencies.bootstrap.validateCanonicalDatabase()") < entry_point.index(
+        "val host = ReiAnixComposeLibraryHost("
     )
 
 def test_initial_and_persisted_native_intents_wait_for_bootstrap_decision():
@@ -138,9 +141,11 @@ def test_initial_and_persisted_native_intents_wait_for_bootstrap_decision():
     on_create_start = activity.index("override fun onCreate(savedInstanceState: Bundle?)")
     on_create_end = activity.index("public override fun onNewIntent(intent: Intent)", on_create_start)
     on_create = activity[on_create_start:on_create_end]
+    entry_point = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
+    assert "MainEntryPoint.launchNativeRuntime(" in on_create
     assert "handleNativeIntent(launchIntent)" in on_create
-    assert on_create.index("appDependencies.bootstrap.validateCanonicalDatabase()") < on_create.index(
-        "handleNativeIntent(launchIntent)"
+    assert entry_point.index("dependencies.bootstrap.validateCanonicalDatabase()") < entry_point.index(
+        "onReady(host, recoveryRequired)"
     )
     assert "handleNativeIntent(intent)" not in on_create
     assert "private fun bootstrapAllowsNativeOperations()" in activity
