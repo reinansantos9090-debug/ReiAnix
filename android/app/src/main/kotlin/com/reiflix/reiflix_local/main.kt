@@ -16,6 +16,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
+import com.reiflix.reiflix_local.scanner.NativeScanController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -820,9 +825,101 @@ internal class NativeMainRuntimePort(
         )
     }
 
+
+    private val settingLocks = ConcurrentHashMap<String, Mutex>()
+
+    /** Serialize writes to the same preference key, mirroring the old per-setting asyncio locks. */
+    fun setSettingSerialized(key: String, value: String): Boolean {
+        val normalizedKey = key.trim()
+        if (normalizedKey.isEmpty()) return false
+        val keyLock = settingLocks.getOrPut(normalizedKey) { Mutex() }
+        return launchTracked("set_setting", lane = "settings") {
+            keyLock.withLock {
+                settingsViewModel.setSetting(normalizedKey, value)
+            }
+        }
+    }
+
+    /** Settings actions are delegated to the canonical Settings ViewModel/repository. */
+    fun requestSettingsActionTracked(action: String): Boolean {
+        val normalized = action.trim()
+        if (normalized.isEmpty()) return false
+        return launchTracked("settings_action", lane = "settings") {
+            settingsViewModel.requestAction(normalized)
+        }
+    }
+
+    fun requestAccountActionTracked(action: String): Boolean {
+        val normalized = action.trim()
+        if (normalized.isEmpty()) return false
+        return launchTracked("account_action", lane = "settings") {
+            settingsViewModel.requestAccountAction(normalized)
+        }
+    }
+
+    /** Native scanner snapshots replace the old Python ScanCoordinator projection. */
+    fun nativeScanSnapshots() = NativeScanController.progress.value
+
+    fun nativeScanSnapshot(scanId: String) = NativeScanController.snapshot(scanId)
+
+    fun beginNativeScan(scanId: String, sourceKey: String? = null): Boolean =
+        NativeScanController.begin(scanId, sourceKey)
+
+    fun launchNativeScan(scanId: String, block: suspend CoroutineScope.() -> Unit): Boolean =
+        NativeScanController.launch(scanId, block)
+
+    fun cancelNativeScan(scanId: String, reason: String = "Solicitado pelo usuário"): Boolean =
+        NativeScanController.requestCancel(scanId, reason)
+
+    fun cancelAllNativeScans(): List<String> = NativeScanController.cancelAll()
+
+    fun finishNativeScan(scanId: String) = NativeScanController.finish(scanId)
+
+    /** Catalog metadata and artwork reconciliation are owned by the canonical Kotlin ViewModel/services. */
+    fun reconcileCatalogMetadata(): Boolean = launchTracked("reconcile_catalog_metadata", lane = "library") {
+        val refreshed = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+        if (!refreshed) {
+            throw IllegalStateException("A reconciliação de metadados foi bloqueada pela validação do banco.")
+        }
+        libraryViewModel.queryNativeArtwork()
+    }
+
+    fun reconcileMissingThumbnails(): Boolean = launchTracked("reconcile_thumbnails", lane = "library") {
+        libraryViewModel.queryNativeArtwork()
+    }
+
+    /** Port of the explicit SAF actions; selecting or removing a root remains user-driven. */
+    fun requestSafFolderSelection() {
+        libraryViewModel.selectSafTree()
+        publish(action = "saf_folder_selection")
+    }
+
+    fun removeConfiguredSafFolder(reference: String) {
+        val normalized = reference.trim()
+        if (normalized.isNotEmpty()) {
+            libraryViewModel.removeSafTree(normalized)
+            publish(action = "remove_saf_folder")
+        }
+    }
+
+    fun dismissNativeStorageOnboarding() {
+        libraryViewModel.dismissStorageOnboarding()
+        activity.dismissNativeStorageOnboarding()
+        publish(action = "dismiss_storage_onboarding")
+    }
+
+    fun nativeStorageAction(action: String): Boolean =
+        requestStorageAction(action)
+
+    fun performanceSnapshot(): String = PerformanceDiagnostics.snapshotJson().toString()
+
+    fun onLifecycleEvent(eventOrState: Any?) {
+        NativeLifecycleCoordinator.onEvent(eventOrState)
+    }
+
     fun cancelBackgroundTasks() {
         val copy = synchronized(lock) { jobs.toList() }
-        copy.forEach(Job::cancel)
+        copy.forEach { it.cancel() }
         publish(action = "cancel_background_tasks")
     }
 }
