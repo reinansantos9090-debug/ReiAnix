@@ -6200,6 +6200,33 @@ internal class NativeMainRuntimePort(
                         )
                     }
                 } else {
+                    val accountErrorCode = stringValue("code", "errorCode", "error_code")
+                        ?.lowercase(Locale.ROOT)
+                    val accountMessage = when (accountErrorCode) {
+                        "no_credential" ->
+                            "Nenhuma conta/credencial Google disponível. Verifique se uma conta Google está configurada no dispositivo."
+                        "unsupported" ->
+                            "Este dispositivo não oferece suporte ao Gerenciador de Credenciais usado pelo ReiAnix."
+                        "provider_configuration" ->
+                            "O provedor Google do Gerenciador de Credenciais não está configurado corretamente."
+                        "invalid_credential" ->
+                            "O Google retornou uma credencial que não pôde ser validada com segurança."
+                        "configuration_required" ->
+                            "O login Google precisa de um Web Client ID válido neste APK."
+                        else -> stringValue("message", "error")
+                            ?: "O login Google não pôde ser concluído."
+                    }
+                    when (type) {
+                        "google_sign_in_started" ->
+                            setAccountState("awaiting_google", "google_sign_in_started")
+                        "google_cancelled" ->
+                            setAccountState("disconnected", "google_sign_in_cancelled")
+                        "google_error" ->
+                            setAccountState(
+                                if (accountErrorCode == "configuration_required") "configuration_required" else "error",
+                                "google_error",
+                            )
+                    }
                     settingsViewModel.refresh()
                     libraryViewModel.refresh()
                     recordDiagnostic(
@@ -6207,8 +6234,18 @@ internal class NativeMainRuntimePort(
                         severity = if (type == "google_error") "WARN" else "INFO",
                         requestId = correlatedRequestId,
                         result = type,
-                        error = stringValue("error", "message")?.let(::IllegalStateException),
-                        context = mapOf("has_profile" to (payload.optJSONObject("profile") != null)),
+                        error = if (type == "google_error") IllegalStateException(accountMessage) else
+                            stringValue("error", "message")?.let(::IllegalStateException),
+                        context = mapOf(
+                            "has_profile" to (payload.optJSONObject("profile") != null),
+                            "error_code" to accountErrorCode,
+                            "account_state" to when (type) {
+                                "google_sign_in_started" -> "awaiting_google"
+                                "google_cancelled" -> "disconnected"
+                                "google_error" -> if (accountErrorCode == "configuration_required") "configuration_required" else "error"
+                                else -> null
+                            },
+                        ),
                     )
                     true
                 }
