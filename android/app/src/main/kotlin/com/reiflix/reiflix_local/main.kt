@@ -6360,12 +6360,22 @@ internal class NativeMainRuntimePort(
                     )
                     return false
                 }
-                val requestId = eventRequestId ?: stringValue("requestId") ?: return false
-                notePlayerExit(
-                    requestId = requestId,
+                val exitRequestId = eventRequestId ?: stringValue("requestId")
+                val exitSessionId = stringValue("playerSessionId", "sessionId", "session_id")
+                val exitActivityInstanceId = stringValue("activityInstanceId", "activity_instance_id")
+                // A valid exit may omit requestId; session/activity identity and the
+                // active snapshot still fence stale exits. The legacy path invalidated
+                // the playback session instead of merely clearing the exit projection.
+                MainActivity.notePlayerExit(
+                    requestId = exitRequestId.orEmpty(),
                     atMs = payload.optLong("atMs", payload.optLong("at_ms", System.currentTimeMillis())),
-                    sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
-                    activityInstanceId = stringValue("activityInstanceId", "activity_instance_id"),
+                    sessionId = exitSessionId,
+                    activityInstanceId = exitActivityInstanceId,
+                )
+                invalidatePlayerSession(
+                    reason = "player_exited",
+                    expectedSessionId = exitSessionId,
+                    expectedRequestId = exitRequestId,
                 )
                 true
             }
