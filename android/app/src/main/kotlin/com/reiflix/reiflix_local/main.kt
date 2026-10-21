@@ -45,6 +45,7 @@ import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.storage.SafAccessLevel
 import com.reiflix.reiflix_local.storage.StorageAuthorization
 import android.net.Uri
+import android.provider.DocumentsContract
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -615,6 +616,13 @@ internal class NativeMainRuntimePort(
     val operationResult: StateFlow<NativeMainOperationResult?> = mutableOperationResult.asStateFlow()
     private val mutableScanUiState = MutableStateFlow(NativeMainScanUiState())
     val scanUiState: StateFlow<NativeMainScanUiState> = mutableScanUiState.asStateFlow()
+    private val mutableStorageState = MutableStateFlow<NativeMainStorageSnapshot?>(null)
+    val storageState: StateFlow<NativeMainStorageSnapshot?> = mutableStorageState.asStateFlow()
+    @Volatile private var lastStorageMutationAtMillis: Long = 0L
+    @Volatile private var pendingSafSelectionStartedAtMillis: Long = 0L
+    @Volatile private var pendingSafSelectionRequestId: String? = null
+    @Volatile private var pendingSafSelectionBridge: String = "library"
+    @Volatile private var pendingSafSelectionBaselineIdentities: Set<String> = emptySet()
     private var scanObserverJob: Job? = null
     private val preferenceLock = Any()
     private val preferenceFile = File(File(activity.filesDir, "data"), "navigation_state.json")
@@ -1678,6 +1686,225 @@ internal class NativeMainRuntimePort(
     }
     fun selectSafFolder(): Boolean = requestStorageAction("select_tree")
 
+    /** Return only the SAF roots already registered by the canonical native library repository. */
+    fun configuredSafTreeUris(): List<Uri> =
+        libraryViewModel.authorizedSafTreeUris().distinctBy { it.toString() }
+
+    private fun recordStorageMutation(reason: String, treeUri: String? = null) {
+        val timestamp = System.currentTimeMillis()
+        lastStorageMutationAtMillis = timestamp
+        recordDiagnostic(
+            name = "NATIVE_STORAGE_MUTATION",
+            result = reason,
+            context = mapOf(
+                "tree_uri_present" to !treeUri.isNullOrBlank(),
+                "at_ms" to timestamp,
+            ),
+        )
+    }
+
+    fun isStorageSnapshotStale(publishedAtMillis: Long): Boolean =
+        publishedAtMillis > 0L &&
+            lastStorageMutationAtMillis > 0L &&
+            publishedAtMillis < lastStorageMutationAtMillis
+
+    /**
+     * Capability messages are hints, not proof of Android grants. Re-read the
+     * PackageManager permission state, persisted SAF grants and canonical folder rows.
+     */
+    fun refreshAuthoritativeStorageSnapshot(
+        payload: org.json.JSONObject? = null,
+        eventCreatedAtMillis: Long = 0L,
+    ): Boolean {
+        val publishedAt = when {
+            eventCreatedAtMillis > 0L -> eventCreatedAtMillis
+            payload == null -> 0L
+            else -> payload.optLong(
+                "publishedAtMs",
+                payload.optLong("published_at_ms", payload.optLong("createdAt", 0L)),
+            )
+        }
+        if (isStorageSnapshotStale(publishedAt)) {
+            mutableStorageState.value = storageSnapshot()
+            recordDiagnostic(
+                name = "STORAGE_STALE_CAPABILITY_SNAPSHOT_IGNORED",
+                severity = "WARN",
+                result = "older_than_last_storage_mutation",
+                context = mapOf(
+                    "published_at_ms" to publishedAt,
+                    "last_mutation_at_ms" to lastStorageMutationAtMillis,
+                ),
+            )
+            return false
+        }
+
+        val treeUri = payload?.let {
+            it.optString("treeUri", it.optString("tree_uri", "")).trim()
+        }.orEmpty()
+        val claimsGranted = payload?.optBoolean("granted", false) == true ||
+            payload?.optString("status", "")?.equals("GRANTED", ignoreCase = true) == true
+        if (claimsGranted && treeUri.isNotBlank()) {
+            val persisted = activity.contentResolver.persistedUriPermissions
+                .filter { it.isReadPermission }
+                .map { it.uri.toString() }
+            if (StorageAuthorization.safAccess(treeUri, persisted) == SafAccessLevel.AVAILABLE) {
+                val validSource = configuredSafTreeUris().any {
+                    StorageAuthorization.safIdentity(it.toString()) != null &&
+                        StorageAuthorization.safIdentity(it.toString()) == StorageAuthorization.safIdentity(treeUri)
+                }
+                if (validSource) {
+                    recordStorageMutation("saf_grant_confirmed", treeUri)
+                    pendingSafSelectionRequestId = null
+                    pendingSafSelectionStartedAtMillis = 0L
+                    pendingSafSelectionBridge = "library"
+                    pendingSafSelectionBaselineIdentities = emptySet()
+                }
+            } else {
+                recordDiagnostic(
+                    name = "SAF_GRANT_EVENT_REJECTED",
+                    severity = "WARN",
+                    requestId = pendingSafSelectionRequestId,
+                    result = "android_persisted_read_grant_missing",
+                )
+            }
+        }
+
+        val snapshot = storageSnapshot()
+        mutableStorageState.value = snapshot
+        settingsViewModel.refresh()
+        libraryViewModel.refreshNativeFolders()
+        libraryViewModel.refresh()
+        recordDiagnostic(
+            name = "NATIVE_STORAGE_CAPABILITIES_APPLIED",
+            requestId = pendingSafSelectionRequestId,
+            result = "authoritative_android_snapshot",
+            context = mapOf(
+                "media_store_access" to snapshot.mediaStoreAccess,
+                "broad_storage_access" to snapshot.broadStorageAccess,
+                "configured_saf_root_count" to snapshot.configuredSafRoots.size,
+                "onboarding_phase" to snapshot.onboardingPhase,
+            ),
+        )
+        return true
+    }
+
+    fun updateSafCapabilities(currentUris: Collection<String>): NativeMainStorageSnapshot {
+        val configured = configuredSafTreeUris().map { it.toString() }.toSet()
+        val persisted = activity.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+            .toSet()
+        val valid = currentUris.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it in configured }
+            .filter { StorageAuthorization.safAccess(it, persisted) == SafAccessLevel.AVAILABLE }
+            .distinctBy { StorageAuthorization.safIdentity(it) ?: it }
+            .toList()
+        val result = storageSnapshot().copy(
+            configuredSafRoots = valid,
+            persistedSafRootCount = valid.size,
+        )
+        mutableStorageState.value = result
+        return result
+    }
+
+    /** Do not add arbitrary persisted grants as library roots; only confirm configured sources. */
+    fun mergeAuthoritativeSafRoot(treeUri: String): Boolean {
+        val normalized = treeUri.trim()
+        if (normalized.isEmpty() || !DocumentsContract.isTreeUri(Uri.parse(normalized))) return false
+        val persisted = activity.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+        if (StorageAuthorization.safAccess(normalized, persisted) != SafAccessLevel.AVAILABLE) return false
+        val identity = StorageAuthorization.safIdentity(normalized) ?: return false
+        val match = configuredSafTreeUris().any { existing ->
+            StorageAuthorization.safIdentity(existing.toString()) == identity
+        }
+        if (!match) {
+            recordDiagnostic(
+                name = "SAF_ROOT_MERGE_REJECTED",
+                severity = "WARN",
+                result = "not_a_configured_library_source",
+            )
+            return false
+        }
+        mutableStorageState.value = storageSnapshot()
+        return true
+    }
+
+    private fun clearPendingSafSelectionContext() {
+        pendingSafSelectionRequestId = null
+        pendingSafSelectionStartedAtMillis = 0L
+        pendingSafSelectionBridge = "library"
+        pendingSafSelectionBaselineIdentities = emptySet()
+        publish(action = "clear_pending_saf_selection")
+    }
+
+    fun beginSafSelection(requestId: String? = null, bridge: String = "library"): Boolean {
+        if (!canMutateSafRoots()) return false
+        pendingSafSelectionRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        pendingSafSelectionBridge = bridge.trim().lowercase(Locale.ROOT).takeIf {
+            it == "library" || it == "settings"
+        } ?: "library"
+        pendingSafSelectionBaselineIdentities = configuredSafTreeUris()
+            .mapNotNull { StorageAuthorization.safIdentity(it.toString()) }
+            .toSet()
+        pendingSafSelectionStartedAtMillis = System.currentTimeMillis()
+        publish(action = "begin_saf_selection")
+        return true
+    }
+
+    suspend fun configuredValidLibrarySafRoots(): List<String> {
+        val allowed = authorizedScanTargets("saf").toSet()
+        if (allowed.isEmpty()) return emptyList()
+        return dependencies.sqliteLibraryRepository.listFolders()
+            .asSequence()
+            .filter { it.kind.equals("saf", ignoreCase = true) }
+            .filter { it.authorization.equals("granted", ignoreCase = true) }
+            .map { it.path.trim() }
+            .filter { it in allowed }
+            .distinct()
+            .toList()
+    }
+
+    suspend fun repairConfiguredSafSourceIdentities(): Int {
+        val folders = dependencies.sqliteLibraryRepository.listFolders()
+        val persistedReadUris = activity.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+        val persistedIdentities = persistedReadUris.mapNotNull { StorageAuthorization.safIdentity(it) }.toSet()
+        var repaired = 0
+        for (folder in folders) {
+            if (!folder.kind.equals("saf", ignoreCase = true) ||
+                !folder.authorization.equals("granted", ignoreCase = true)
+            ) continue
+            val reference = folder.path.trim()
+            if (reference.isEmpty()) continue
+            val uri = runCatching { Uri.parse(reference) }.getOrNull() ?: continue
+            if (!DocumentsContract.isTreeUri(uri)) continue
+            val identity = StorageAuthorization.safIdentity(reference) ?: continue
+            if (identity !in persistedIdentities || identity == folder.safIdentity) continue
+            val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri).trim() }
+                .getOrNull()?.takeIf { it.isNotEmpty() } ?: continue
+            val volumeId = documentId.substringBefore(':').takeIf { it.isNotBlank() && it != documentId }
+            dependencies.sqliteLibraryRepository.upsertSafFolder(
+                reference = reference,
+                name = folder.name,
+                authority = uri.authority,
+                documentId = documentId,
+                volumeId = volumeId,
+                identity = identity,
+            )
+            repaired += 1
+        }
+        if (repaired > 0) {
+            libraryViewModel.refreshNativeFolders()
+            libraryViewModel.refresh()
+            mutableStorageState.value = storageSnapshot()
+        }
+        return repaired
+    }
+
     fun storageSnapshot(): NativeMainStorageSnapshot {
         val context = activity.applicationContext
         val roots = runCatching {
@@ -2303,8 +2530,8 @@ internal class NativeMainRuntimePort(
     }
 
     /** Port of the explicit SAF actions; selecting or removing a root remains user-driven. */
-    fun requestSafFolderSelection(): Boolean {
-        if (!canMutateSafRoots()) {
+    fun requestSafFolderSelection(requestId: String? = null, bridge: String = "library"): Boolean {
+        if (!beginSafSelection(requestId, bridge)) {
             publish(action = "saf_folder_selection", error = "Aguarde a varredura ou a seleção de pasta atual terminar.")
             return false
         }
