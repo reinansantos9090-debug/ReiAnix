@@ -4679,7 +4679,8 @@ internal class NativeMainRuntimePort(
                 clearRuntimeSelection()
                 true
             }
-            "request_restore_reconciliation", "reconcile_after_restore" -> reconcileRestoredFileAvailability()
+            "request_restore_reconciliation", "reconcile_after_restore" ->
+                requestRestoreReconciliation(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
 
             "create_backup" -> createBackup()
             "inspect_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::inspectBackup) ?: false
@@ -4687,7 +4688,6 @@ internal class NativeMainRuntimePort(
             "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
             "restore_recovery_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreRecoveryBackup) ?: false
             "integrity_check" -> checkDatabaseIntegrity()
-            "reconcile_after_restore" -> reconcileRestoredFileAvailability()
             "export_diagnostics" -> exportDiagnosticsJson()
 
             "cancel_scan", "cancel_native_scan", "scan_cancel" -> {
