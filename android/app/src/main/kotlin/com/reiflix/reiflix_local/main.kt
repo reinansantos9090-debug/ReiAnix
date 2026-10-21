@@ -6,6 +6,7 @@ import androidx.lifecycle.lifecycleScope
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
 import java.io.File
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
@@ -1396,6 +1397,68 @@ internal class NativeMainRuntimePort(
     }
     private val diagnosticsService: ReiAnixDiagnosticsService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixDiagnosticsService(activity.applicationContext)
+    }
+    private val settingsFileService: ReiAnixSettingsFileService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixSettingsFileService(dependencies.sqliteSettingsRepository)
+    }
+
+    /** Versioned settings snapshots are validated and committed atomically in canonical SQLite. */
+    suspend fun exportSettingsJson(): String = settingsFileService.exportJson()
+
+    suspend fun importSettingsJson(raw: String): ReiAnixSettingsFileService.ImportResult {
+        require(raw.length <= 1_048_576) { "O arquivo de configurações excede o limite suportado." }
+        val result = settingsFileService.importJson(raw)
+        settingsViewModel.refresh()
+        publish(action = "import_settings", transform = {
+            it.copy(
+                lastResultJson = org.json.JSONObject()
+                    .put("imported", result.imported)
+                    .put("unknownKeys", org.json.JSONArray(result.unknownKeys))
+                    .toString(),
+            )
+        })
+        return result
+    }
+
+    fun exportSettingsToPrivateFile(): Boolean =
+        launchTracked("export_settings", lane = "settings") {
+            val raw = settingsFileService.exportJson()
+            val target = File(File(activity.filesDir, "data"), "settings-export.json")
+            val parent = target.parentFile
+            check(parent != null && (parent.isDirectory || parent.mkdirs())) {
+                "Não foi possível criar a pasta de exportação de configurações."
+            }
+            val temporary = File(parent, target.name + ".tmp")
+            try {
+                FileOutputStream(temporary).use { stream ->
+                    stream.write(raw.toByteArray(Charsets.UTF_8))
+                    stream.fd.sync()
+                }
+                try {
+                    Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                    Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
+            } catch (failure: Throwable) {
+                temporary.delete()
+                throw failure
+            }
+            publish(action = "export_settings", transform = { it.copy(lastArtifactPath = target.absolutePath) })
+        }
+
+    fun importSettingsFromPrivateFile(file: File): Boolean {
+        val sourcePath = runCatching { file.canonicalFile.toPath() }.getOrNull() ?: return false
+        val allowedRoots = listOf(activity.filesDir, activity.cacheDir).mapNotNull {
+            runCatching { it.canonicalFile.toPath() }.getOrNull()
+        }
+        if (allowedRoots.none { sourcePath.startsWith(it) } || !file.isFile || file.length() !in 1..1_048_576L) {
+            publish(action = "import_settings", error = "O arquivo de configurações não está em uma área local permitida.")
+            return false
+        }
+        return launchTracked("import_settings", lane = "settings") {
+            importSettingsJson(file.readText(Charsets.UTF_8))
+            publish(action = "import_settings", transform = { it.copy(lastArtifactPath = file.absolutePath) })
+        }
     }
 
     /** Build the existing canonical backup format; no alternate catalogue or database is created. */
