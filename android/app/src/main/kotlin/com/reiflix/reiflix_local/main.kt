@@ -5809,13 +5809,42 @@ internal class NativeMainRuntimePort(
             "compose_settings_native_account_changed" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: return false
                 if (!claimRequestId(requestId, "compose_settings_account_changed")) return false
-                settingsViewModel.refresh()
-                libraryViewModel.refresh()
-                setAccountState(
-                    stringValue("accountState", "account_state", "state") ?: mutableSnapshot.value.accountState,
-                    "native_account_changed",
-                )
-                completeNativeOperation(requestId, "account_changed")
+                val accepted = launchTracked("compose_settings_native_account_changed", lane = "settings") {
+                    // The event is only a notification that Kotlin has committed the
+                    // account row. Re-read SQLite instead of trusting stale event state.
+                    val profile = dependencies.sqliteAccountRepository.loadProfile()
+                    val connected = profile != null &&
+                        profile.id.isNotBlank() &&
+                        profile.email.contains('@')
+                    setAccountState(
+                        if (connected) "connected" else "disconnected",
+                        "native_account_changed",
+                    )
+                    settingsViewModel.refresh()
+                    libraryViewModel.refresh()
+                    recordDiagnostic(
+                        name = "NATIVE_COMPOSE_ACCOUNT_PROJECTION_REFRESHED",
+                        requestId = requestId,
+                        result = "SUCCESS",
+                        context = mapOf(
+                            "connected" to connected,
+                            "profile_present" to (profile != null),
+                            "account_write_repeated" to false,
+                        ),
+                    )
+                    completeNativeOperation(requestId, "account_changed")
+                }
+                if (!accepted) {
+                    publishOperationResult(
+                        requestId = requestId,
+                        action = "account_changed",
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = "Não foi possível atualizar o estado da conta.",
+                        error = "operation_rejected",
+                    )
+                }
+                accepted
             }
             "compose_settings_native_backup_restored" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: return false
