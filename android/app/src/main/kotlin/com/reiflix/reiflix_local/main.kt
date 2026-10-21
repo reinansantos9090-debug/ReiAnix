@@ -4,6 +4,9 @@ import androidx.activity.ComponentActivity
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -41,6 +44,41 @@ internal object MainEntryPoint {
         observeBootstrapForActivity(activity, dependencies)
 
         Log.i(TAG, "NATIVE_ACTIVITY_ENTRYPOINT_READY activity=${activity::class.java.simpleName}")
+    }
+
+
+    /**
+     * Native replacement for main.py's composition-root startup block.
+     *
+     * The process-owned Application already created the service graph. This
+     * entry point waits for canonical SQLite validation before it constructs a
+     * Compose host or exposes the library/settings ViewModels to a route. The
+     * caller receives a host only after the recovery decision is definitive.
+     */
+    fun launchNativeRuntime(
+        activity: MainActivity,
+        libraryViewModel: ReiAnixLibraryViewModel,
+        settingsViewModel: ReiAnixSettingsViewModel,
+        onReady: (ReiAnixComposeLibraryHost, Boolean) -> Unit,
+    ) {
+        val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+        activity.lifecycleScope.launch {
+            val recoveryRequired = dependencies.bootstrap.validateCanonicalDatabase()
+            if (activity.isFinishing || activity.isDestroyed) return@launch
+
+            val host = ReiAnixComposeLibraryHost(
+                activity = activity,
+                libraryViewModel = libraryViewModel,
+                settingsViewModel = settingsViewModel,
+            )
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_RUNTIME_COMPOSITION_READY",
+                severity = if (recoveryRequired) "WARN" else "INFO",
+                source = "MainEntryPoint",
+                result = if (recoveryRequired) "RECOVERY_REQUIRED" else "HOME_READY",
+            )
+            onReady(host, recoveryRequired)
+        }
     }
 
     /**
