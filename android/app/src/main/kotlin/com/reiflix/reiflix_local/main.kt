@@ -38,6 +38,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.scanner.NativeScanController
+import com.reiflix.reiflix_local.scanner.SafScanner
 import android.os.Environment
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.ScanProgressSnapshot
@@ -2198,6 +2199,170 @@ internal class NativeMainRuntimePort(
         )
         clearPendingSafSelectionContext()
         return published
+    }
+
+    /**
+     * Recover a lost picker callback only from a complete inventory that began
+     * after the explicit selection request and proves exactly one newly persisted
+     * SAF root. Unrelated grants are never promoted into library sources.
+     */
+    private fun recoverPendingSafSelectionFromInventory(payload: org.json.JSONObject): Boolean {
+        val request = pendingSafSelectionRequestId?.trim().orEmpty()
+        val selectionStarted = pendingSafSelectionStartedAtMillis
+        val inventoryStarted = payload.optLong(
+            "inventoryStartedAtMs",
+            payload.optLong("inventory_started_at_ms", 0L),
+        )
+        val inventoryComplete = payload.optBoolean(
+            "inventoryComplete",
+            payload.optBoolean("inventory_complete", payload.optBoolean("complete", false)),
+        )
+        if (request.isEmpty() || selectionStarted <= 0L || inventoryStarted < selectionStarted ||
+            inventoryStarted <= 0L || !inventoryComplete || pendingSafSelectionBaselineIdentities.isEmpty() &&
+            configuredSafTreeUris().isNotEmpty()
+        ) return false
+
+        val trees = payload.optJSONArray("trees") ?: return false
+        val candidates = linkedMapOf<String, org.json.JSONObject>()
+        for (index in 0 until trees.length()) {
+            val tree = trees.optJSONObject(index) ?: continue
+            if (!tree.optBoolean("persisted", false)) continue
+            val status = tree.optString("status", "").trim().uppercase(Locale.ROOT)
+            if (status !in setOf("COMPLETED", "EMPTY_COMPLETE")) continue
+            val treeUri = tree.optString("treeUri", tree.optString("tree_uri", "")).trim()
+            if (treeUri.isEmpty()) continue
+            val uri = runCatching { Uri.parse(treeUri) }.getOrNull() ?: continue
+            if (uri.scheme != "content" || !DocumentsContract.isTreeUri(uri)) continue
+            val identity = StorageAuthorization.safIdentity(treeUri)
+                ?: tree.optString("identity", "").trim().takeIf { it.isNotEmpty() }
+                ?: continue
+            if (identity in pendingSafSelectionBaselineIdentities) continue
+            candidates[identity] = org.json.JSONObject(tree.toString())
+                .put("treeUri", treeUri)
+                .put("identity", identity)
+        }
+        if (candidates.size != 1) return false
+        val candidate = candidates.values.single()
+        val treeUri = candidate.optString("treeUri", "").trim()
+        val identity = candidate.optString("identity", "").trim()
+        if (treeUri.isEmpty() || identity.isEmpty()) return false
+        val persistedReadUris = activity.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+        if (StorageAuthorization.safAccess(treeUri, persistedReadUris) != SafAccessLevel.AVAILABLE) {
+            recordDiagnostic(
+                name = "SAF_INVENTORY_RECOVERY_REJECTED",
+                severity = "WARN",
+                requestId = request,
+                result = "persisted_read_grant_not_available",
+                context = mapOf("identity" to identity),
+            )
+            return false
+        }
+        if (!claimRequestId(request, "saf_inventory_recovery")) {
+            recordDiagnostic(
+                name = "SAF_INVENTORY_RECOVERY_DUPLICATE_IGNORED",
+                severity = "WARN",
+                requestId = request,
+                result = "already_claimed",
+            )
+            return true
+        }
+
+        val accepted = launchTracked("recover_saf_selection_from_inventory", lane = "storage") {
+            if (pendingSafSelectionRequestId != request) return@launchTracked
+            try {
+                val treeIdentity = SafScanner.treeIdentity(Uri.parse(treeUri))
+                val accountId = dependencies.sqliteAccountRepository.loadProfile()?.id
+                dependencies.sqliteLibraryRepository.upsertSafFolder(
+                    path = treeUri,
+                    name = candidate.optString("name", "").trim()
+                        .takeIf { it.isNotEmpty() }
+                        ?: SafScanner.displayName(activity.applicationContext, Uri.parse(treeUri)),
+                    authorization = "granted",
+                    accountId = accountId,
+                    safAuthority = candidate.optString("authority", treeIdentity.authority),
+                    safDocumentId = candidate.optString("documentId", treeIdentity.documentId),
+                    safVolumeId = candidate.optString("volumeId", treeIdentity.volumeId),
+                    safIdentity = identity,
+                )
+                recordStorageMutation("saf_selection_recovered_from_inventory", treeUri)
+                libraryViewModel.refreshNativeFolders()
+                settingsViewModel.refresh()
+                libraryViewModel.refresh()
+                mutableStorageState.value = storageSnapshot()
+                scheduleCatalogMetadataHydration("storage_ready_inventory_recovery")
+                scheduleThumbnailReconciliation("storage_ready_inventory_recovery")
+
+                finishPendingSafSelection(
+                    eventRequestId = request,
+                    status = "COMPLETED",
+                    message = "Pasta autorizada e configurada.",
+                    payload = org.json.JSONObject()
+                        .put("treeUri", treeUri)
+                        .put("identity", identity)
+                        .put("recoveredFromInventory", true),
+                )
+                recordDiagnostic(
+                    name = "SAF_SELECTION_RECOVERED_FROM_INVENTORY",
+                    requestId = request,
+                    result = "completed",
+                    context = mapOf("identity" to identity),
+                )
+                try {
+                    activity.startActivity(
+                        MainActivity.createNativeStorageActionIntent(
+                            context = activity,
+                            action = "scan_tree",
+                            treeUri = treeUri,
+                            requestId = UUID.randomUUID().toString(),
+                            reason = "saf_inventory_selection_recovery",
+                        )
+                    )
+                } catch (scanFailure: Exception) {
+                    recordDiagnostic(
+                        name = "SAF_RECOVERY_RESCAN_LAUNCH_FAILED",
+                        severity = "WARN",
+                        result = "scan_tree",
+                        error = scanFailure,
+                        context = mapOf("identity" to identity),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                finishPendingSafSelection(
+                    eventRequestId = request,
+                    status = "CANCELLED",
+                    message = "Recuperação da seleção SAF cancelada.",
+                    payload = org.json.JSONObject().put("treeUri", treeUri),
+                )
+                throw cancelled
+            } catch (failure: Throwable) {
+                recordDiagnostic(
+                    name = "SAF_SELECTION_INVENTORY_RECOVERY_FAILED",
+                    severity = "WARN",
+                    requestId = request,
+                    result = "failed",
+                    error = failure,
+                    context = mapOf("identity" to identity),
+                )
+                finishPendingSafSelection(
+                    eventRequestId = request,
+                    status = "ERROR",
+                    message = failure.message ?: "Não foi possível recuperar a seleção de pasta.",
+                    error = failure.javaClass.simpleName,
+                    payload = org.json.JSONObject().put("treeUri", treeUri),
+                )
+            }
+        }
+        if (!accepted) {
+            finishPendingSafSelection(
+                eventRequestId = request,
+                status = "ERROR",
+                message = "Não foi possível agendar a recuperação da seleção SAF.",
+                error = "recovery_operation_rejected",
+            )
+        }
+        return accepted
     }
 
     fun beginSafSelection(requestId: String? = null, bridge: String = "library"): Boolean {
@@ -4571,6 +4736,7 @@ internal class NativeMainRuntimePort(
                 refreshAuthoritativeStorageSnapshot(capabilities, publishedAt)
             }
             "saf_inventory", "saf_library_scan_complete" -> {
+                if (type == "saf_inventory") recoverPendingSafSelectionFromInventory(payload)
                 if (type == "saf_library_scan_complete") {
                     val status = stringValue("status")?.uppercase(Locale.ROOT) ?: "UNKNOWN"
                     if (status in setOf("COMPLETED", "PARTIAL")) {
