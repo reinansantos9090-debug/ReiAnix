@@ -430,18 +430,20 @@ E: manifest
         ))
         self.assertTrue(module.has_max_sdk_32_for_legacy_permission(sample))
 
-    def test_main_handles_non_destructive_volume_change_events(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        service = (ROOT / "core" / "library_service.py").read_text(encoding="utf-8")
-        store = (ROOT / "core" / "library_store.py").read_text(encoding="utf-8")
-        self.assertIn("event_type == 'volume_changed'", source)
-        self.assertIn("library.ingest_native_volume_change", source)
+
+    def test_native_volume_change_events_are_non_destructive(self):
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        service = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryService.kt").read_text(encoding="utf-8")
+        store = (ROOT / "core/library_store.py").read_text(encoding="utf-8")
+        start = activity.index("private val storageReceiver")
+        end = activity.index("private fun registerStorageReceiver", start)
+        block = activity[start:end]
+        self.assertIn("NativeIndex.updateVolumeSnapshot", block)
+        self.assertIn("appDependencies.libraryService.recordNativeVolumeChange(payload)", block)
+        self.assertIn('JSONObject().put("type", "volume_changed")', block)
+        self.assertIn("nativeStorageOwner", block)
         self.assertIn("set_native_volume_states", service + store)
-        start = source.index("event_type == 'volume_changed':")
-        end = source.index("event_type == 'saf_inventory':", start)
-        self.assertNotIn("reconcile_missing", source[start:end])
-
-
+        self.assertNotIn("reconcile_missing", block)
     def test_native_apk_gate_rejects_development_and_python_payloads(self):
         project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
@@ -550,9 +552,11 @@ E: manifest
         self.assertNotIn("finally {\n                externalSettingsKind = null", block)
 
 
+
     def test_main_activity_uses_native_back_and_keeps_activity_result_callbacks(self):
-        main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
+        main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         application = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt").read_text(encoding="utf-8")
+        entrypoint = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").read_text(encoding="utf-8")
         self.assertIn("import androidx.activity.ComponentActivity", main)
         self.assertIn("import androidx.activity.OnBackPressedCallback", main)
         self.assertIn("onBackPressedDispatcher.addCallback(", main)
@@ -566,21 +570,22 @@ E: manifest
         self.assertIn("class ReiAnixApplication : Application()", application)
         self.assertNotIn("io.flutter.embedding.android.FlutterFragmentActivity", main)
         self.assertNotIn("FlutterApplication", application)
-        python = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("page.on_view_pop = handle_flet_view_pop", python)
-        self.assertIn("page.views.extend(views)", python)
+        self.assertIn("internal object MainEntryPoint", entrypoint)
+        self.assertIn("dependencies.bootstrap.start()", entrypoint)
+        self.assertNotIn("page.on_view_pop", entrypoint)
+        self.assertNotIn("page.views.extend", entrypoint)
 
-    def test_settings_permission_controls_are_wired(self):
-        settings = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        bridge = (ROOT / "core" / "android_bridge.py").read_text(encoding="utf-8")
-        self.assertIn("on_request_video_access", settings)
-        self.assertIn("on_open_broad_storage", settings)
-        self.assertIn("request_video_access", main)
-        self.assertIn("open_broad_storage_access", main)
-        self.assertIn("request_media_access", bridge)
-        self.assertIn("open_broad_storage_settings", bridge)
-
+    def test_native_settings_permission_controls_are_wired(self):
+        settings = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt").read_text(encoding="utf-8")
+        host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
+        organize = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt").read_text(encoding="utf-8")
+        main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("onOpenStorage", settings)
+        self.assertIn("ReiAnixSettingsRoute(", host)
+        self.assertIn("onOpenStorageAccess", organize)
+        self.assertIn("onRequestMediaAccess", organize)
+        self.assertIn("request_media_access", main)
+        self.assertIn("open_broad_storage_settings", main)
     def test_saf_picker_requests_only_persisted_read_access(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
         picker = main[main.index("private fun openTreePicker"):main.index("override fun onWindowFocusChanged", main.index("private fun openTreePicker"))]
@@ -595,16 +600,18 @@ E: manifest
         self.assertIn("treePicker.launch(pickerIntent)", main)
         self.assertNotIn("SafPickerProxyActivity", main)
 
-    def test_startup_uses_activity_saf_inventory_instead_of_self_deep_link(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertNotIn("await bridge.verify_tree(folder['path'])", source)
-        self.assertIn("authoritative SAF grant inventory", source)
-        activity = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        self.assertIn("publishSafInventory()", activity)
-        self.assertIn('persistedUriPermissions', activity)
-        self.assertIn('JSONObject().put("type", "saf_inventory")', activity)
-        self.assertIn('JSONObject().put("type", "saf_inventory")', activity)
 
+    def test_startup_uses_activity_saf_inventory_instead_of_self_deep_link(self):
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = activity.index("private fun publishSafInventory()")
+        end = activity.index("private fun handleBroadSettingsReturn", start)
+        source = activity[start:end]
+        self.assertIn("publishSafInventory()", activity)
+        self.assertIn("persistedUriPermissions", source)
+        self.assertIn('JSONObject().put("type", "saf_inventory")', source)
+        self.assertIn("inventoryComplete", source)
+        self.assertNotIn("verify_tree", source)
+        self.assertNotIn("reiflix://native", source)
     def test_main_activity_delegates_system_ui_to_controller_and_reapplies_on_resume(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
         controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "player" / "SystemUiController.kt").read_text(encoding="utf-8")
@@ -632,32 +639,30 @@ E: manifest
         self.assertIn("if (brightnessGesturesEnabled)", player)
         self.assertIn("if (volumeGesturesEnabled)", player)
 
+
     def test_settings_nested_back_uses_navigation_controller_contract(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        navigation = (ROOT / "core" / "navigation.py").read_text(encoding="utf-8")
-        self.assertIn("def navigate_settings_category(label):", main)
-        self.assertIn("navigation.push_settings(label)", main)
-        self.assertIn('if action in {"previous", "settings_inner"}:', main)
-        self.assertIn('if action == "settings_inner":', main)
-        self.assertEqual(navigation.count('return "settings_inner"'), 1)
-        self.assertNotIn("SETTINGS_INNER_BACK", main)
-        self.assertNotIn("settings_system_back", main)
+        settings = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt").read_text(encoding="utf-8")
+        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
+        self.assertIn("BackHandler(enabled = selectedCategory != null)", settings)
+        self.assertIn("selectedCategory = null", settings)
+        self.assertIn("selectedCategory = label", settings)
+        self.assertIn("ReiAnixRoutes.SETTINGS", navigation)
+        self.assertIn("navController.popBackStack()", navigation)
+        self.assertNotIn("SETTINGS_INNER_BACK", settings + navigation)
+        self.assertNotIn("settings_system_back", settings + navigation)
 
     def test_settings_back_is_not_registered_as_a_second_back_system(self):
-        settings = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        navigation = (ROOT / "core" / "navigation.py").read_text(encoding="utf-8")
-        self.assertIn("on_open_settings_category=navigate_settings_category", main)
-        self.assertIn("settings_path_provider=", main)
-        self.assertIn("navigation.settings_path", main)
-        self.assertIn("def back_to_categories", settings)
-        self.assertNotIn("def handle_system_back()", settings)
+        settings = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt").read_text(encoding="utf-8")
+        host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
+        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("onBack = { selectedCategory = null }", settings)
+        self.assertIn("ReiAnixSettingsRoute(", host)
+        self.assertIn("ReiAnixRoutes.SETTINGS", navigation)
+        self.assertIn("onBackPressedDispatcher.addCallback(", activity)
+        self.assertEqual(1, activity.count("onBackPressedDispatcher.addCallback("))
         self.assertNotIn("on_register_system_back", settings)
-        self.assertNotIn("settings_system_back", main)
-        self.assertNotIn("SETTINGS_INNER_BACK", main)
-        self.assertIn("def back(self) -> str:", navigation)
-        self.assertIn('return "settings_inner"', navigation)
-
+        self.assertNotIn("settings_system_back", activity + host + navigation)
     def test_native_host_and_player_use_immersive_system_bars(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
         controller = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "player" / "SystemUiController.kt").read_text(encoding="utf-8")
@@ -693,72 +698,95 @@ E: manifest
         self.assertIn('File(context.filesDir, "data")', mailbox)
         self.assertIn('val queue = File(dataDirectory, QUEUE)', mailbox)
 
-    def test_refresh_recovers_when_a_saf_scan_cannot_start(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        refresh = source[source.index("async def refresh_library"):source.index("async def login")]
-        self.assertIn("scan_coordinator.request(", refresh)
-        self.assertIn("ScanOrigin.USER_REFRESH", refresh)
-        self.assertIn('if transition.kind == "blocked"', refresh)
 
-    def test_folder_removal_is_blocked_while_refresh_is_active(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        start = source.index("    async def remove_folder(reference, request_id=None):")
-        end = source.index("    def account():", start)
-        block = source[start:end]
-        self.assertIn("if scan_coordinator.active or saf_selection.pending:", block)
-        self.assertIn("store.remove_folder(reference)", block)
+    def test_refresh_reports_when_a_native_saf_scan_cannot_start(self):
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        controller = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
+        start = activity.index("private fun scanConfiguredSafRoots(")
+        end = activity.index("private fun scanTree(", start)
+        source = activity[start:end]
+        self.assertIn("scanTree(reference, requestId)", source)
+        self.assertIn("recordSourceStartFailure", source)
+        self.assertIn("scan_not_started", source)
+        self.assertIn('put("status", "FAILED")', source)
+        self.assertIn("NativeScanController.begin(", controller)
+        self.assertIn("fun complete(", controller)
 
-    def test_folder_removal_waits_for_native_release_event(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("pending_folder_removals={}", main)
-        self.assertIn("pending_folder_removals[reference]", main)
-        self.assertIn("event_type == 'saf_released'", main)
-        self.assertIn("store.remove_folder(tree_uri)", main)
-        self.assertIn('"remove_saf"', main)
-        self.assertIn('"SUCCESS"', main)
+    def test_folder_removal_is_guarded_and_uses_native_release_state(self):
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
+        organize = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt").read_text(encoding="utf-8")
+        self.assertIn("onRemoveFolder = libraryViewModel::removeSafTree", host)
+        self.assertIn("pendingSourceRemoval", organize)
+        self.assertIn("releaseTree(", activity)
+        self.assertIn("pendingSafReleaseWaiters", activity)
+        self.assertIn("nativeFolderConfigOwner", activity)
+
+    def test_folder_removal_publishes_terminal_event_after_canonical_removal(self):
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = activity.index("private fun releaseTree(")
+        end = activity.index("private fun verifyTree(", start)
+        release = activity[start:end]
+        self.assertIn("pendingSafReleaseWaiters", release)
+        self.assertIn('put("type", "saf_released")', release)
+        self.assertIn("removeSafFolder(normalizedReference)", release)
+        self.assertIn('"release_tree"', release)
+        self.assertLess(release.index("removeSafFolder(normalizedReference)"), release.index('put("type", "saf_released")'))
+        self.assertIn("sourceAlreadyAbsent", release)
+        self.assertIn("nativeFolderConfigOwner", release)
 
     def test_folder_removal_releases_saf_permission_before_database_removal(self):
-        bridge = (ROOT / "core" / "android_bridge.py").read_text(encoding="utf-8")
-        activity = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn('async def release_tree(self, tree_uri: str)', bridge)
-        self.assertIn("native_folder_config_owner=True", bridge)
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = activity.index("private fun releaseTree(")
+        end = activity.index("private fun verifyTree(", start)
+        release = activity[start:end]
         self.assertIn('"release_tree" -> {', activity)
         self.assertIn("releaseTree(", activity)
         self.assertIn('intent.data?.getQueryParameter("tree_uri")', activity)
         self.assertIn("releasePersistableUriPermission", activity)
         self.assertIn("removeSafFolder(normalizedReference)", activity)
-        release = activity[activity.index("private fun releaseTree("):activity.index("private fun verifyTree(", activity.index("private fun releaseTree("))]
         self.assertLess(
             release.index("releasePersistableUriPermission"),
             release.index("removeSafFolder(normalizedReference)"),
         )
         self.assertEqual(1, release.count("removeSafFolder(normalizedReference)"))
         self.assertIn("nativeFolderConfigOwner", activity)
-        self.assertIn("await bridge.release_tree(reference)", main)
 
     def test_settings_exposes_folder_removal_callback(self):
-        settings = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("on_remove_folder", settings)
-        self.assertIn("on_remove_folder(ref)", settings)
-        self.assertIn("remove_folder", main)
+        host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
+        organize = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("onRemoveFolder", organize)
+        self.assertIn("onRemoveFolder = libraryViewModel::removeSafTree", host)
+        self.assertIn("release_tree", activity)
+        self.assertIn("releaseTree(", activity)
 
     def test_refresh_library_skips_revoked_saf_trees_until_permission_returns(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        refresh = source[source.index("async def refresh_library"):source.index("async def login", source.index("async def refresh_library"))]
-        self.assertIn("scan_coordinator.request(", refresh)
-        self.assertIn("ScanOrigin.USER_REFRESH", refresh)
-        self.assertNotIn("bridge.rescan_tree(", refresh)
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = activity.index("private fun scanConfiguredSafRoots(")
+        end = activity.index("private fun scanTree(", start)
+        refresh = activity[start:end]
+        invalid_grant = refresh.index("if (!grantValid)")
+        next_scan = refresh.index("scanTree(reference, requestId)")
+        self.assertIn("hasPersistedReadPermission", refresh)
+        self.assertIn("persisted_permission_missing", refresh[invalid_grant:next_scan])
+        self.assertIn("continue", refresh[invalid_grant:next_scan])
+        self.assertLess(invalid_grant, next_scan)
+        self.assertIn("SafScanner.STATUS_REVOKED", refresh)
 
     def test_refresh_library_waits_for_every_saf_scan_result_or_error(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("scan_coordinator", source)
-        self.assertIn("handle_native_event", source)
-        self.assertNotIn("pending_native_scans", source)
-        self.assertNotIn("finish_native_scan()", source)
-        self.assertIn("if event_type == 'saf_error':", source)
-
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = activity.index("private fun scanConfiguredSafRoots(")
+        end = activity.index("private fun scanTree(", start)
+        source = activity[start:end]
+        self.assertIn("pendingSources", source)
+        wait_loop = source.index("for ((source, scanId) in pendingSources)")
+        wait_call = source.index("awaitAndRecordSource(source, scanId)", wait_loop)
+        terminal_event = source.index('put("type", "saf_library_scan_complete")', wait_call)
+        self.assertLess(wait_loop, wait_call)
+        self.assertLess(wait_call, terminal_event)
+        self.assertIn("NativeScanController.progress.first", source)
+        self.assertIn("saf_error", source)
     def test_native_player_entry_requires_a_persisted_saf_document(self):
         main = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "MainActivity.kt").read_text(encoding="utf-8")
         scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
@@ -953,13 +981,14 @@ class TestSafSelectionRegistration(unittest.TestCase):
         self.assertLess(block.index('SafScanner.persistPermission(this, uri, flags)'), block.index('upsertSafFolder('))
         self.assertLess(block.index('upsertSafFolder('), block.index('scanTree(configuredReference, requestId)'))
 
-    def test_python_registers_selected_saf_tree_before_ingest_result(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("if payload.get('selected'):", source)
-        self.assertIn("store.add_folder(", source)
-        self.assertIn("kind='saf'", source)
-        self.assertIn("authorization='granted'", source)
 
+    def test_native_picker_registers_selected_saf_tree_before_scan_result(self):
+        main = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn('put("selected", true)', main)
+        self.assertIn("SafScanner.displayName(this, uri)", main)
+        block = main[main.index("private fun handleTreePickerResult"):main.index("private fun logLifecycle", main.index("private fun handleTreePickerResult"))]
+        self.assertLess(block.index("SafScanner.persistPermission(this, uri, flags)"), block.index("upsertSafFolder("))
+        self.assertLess(block.index("upsertSafFolder("), block.index("scanTree(configuredReference, requestId)"))
     def test_saf_scanner_has_safe_display_name_fallback(self):
         scanner = (ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "scanner" / "SafScanner.kt").read_text(encoding="utf-8")
         self.assertIn("fun displayName(context:Context,treeUri:Uri):String", scanner)
@@ -987,12 +1016,19 @@ class TestSafScannerHardening(unittest.TestCase):
         self.assertLess(progress, final)
         self.assertIn('put("phase", "scanning")', main)
 
-    def test_python_consumes_saf_scan_progress(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("event_type == 'saf_scan_progress'", source)
-        self.assertIn("Verificando pasta…", source)
-        self.assertIn("payload.get('directories')", source)
 
+    def test_native_compose_consumes_saf_scan_progress(self):
+        runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        controller = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
+        organize = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt").read_text(encoding="utf-8")
+        progress = runner.index('put("type", "saf_scan_progress")')
+        final = runner.index('put("type", "saf_scan")', progress)
+        self.assertLess(progress, final)
+        self.assertIn('put("phase", "scanning")', runner)
+        self.assertIn("fun updateProgress(", controller)
+        self.assertIn("ScanLifecycleState.RUNNING", controller)
+        self.assertIn("Processando", organize)
+        self.assertIn("state.scanInProgress", organize)
 
 class TestMediaStoreScannerOptimization(unittest.TestCase):
     def test_media_store_caches_volume_uuid_lookup_per_volume(self):
@@ -1061,13 +1097,15 @@ class TestFletAsyncCallbacks(unittest.TestCase):
 
 
 class BuildIdentityContractTests(unittest.TestCase):
-    def test_main_does_not_reference_legacy_back_started(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertNotIn("back_started", main)
-        self.assertIn("back_state", main)
-        self.assertIn("from core.build_identity import as_dict as build_identity", main)
-        self.assertIn('diagnostics.record("BUILD_IDENTITY"', main)
 
+    def test_native_entrypoint_does_not_reference_legacy_back_started(self):
+        entrypoint = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertNotIn("back_started", entrypoint + activity)
+        self.assertNotIn("back_state", entrypoint)
+        self.assertIn('name = "APP_NATIVE_ENTRYPOINT_BOOTSTRAP_STATE"', entrypoint)
+        self.assertIn("ReiAnixDiagnosticTimeline", entrypoint)
+        self.assertIn("dependencies.bootstrap.start()", entrypoint)
     def test_project_pins_python_312_for_legacy_source_tools(self):
         project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/build_apk.yml").read_text(encoding="utf-8")
