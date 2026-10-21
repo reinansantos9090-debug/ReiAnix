@@ -6649,24 +6649,10 @@ internal class NativeMainRuntimePort(
                 val exitUri = stringValue("uri", "path").orEmpty()
                 val exitPositionMs = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
                 val exitDurationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
-                var exitProgressResult = "NOT_UPDATED"
-                if (exitUri.isNotBlank() && exitPositionMs >= 0L) {
-                    if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
-                        // NativePlayerActivity has already committed the final checkpoint.
-                        // Refresh the projection but never write the same checkpoint twice.
-                        libraryViewModel.refresh()
-                        exitProgressResult = "NATIVE_COMMIT_REUSED"
-                    } else {
-                        // Compatibility for a player exit published before its native writer
-                        // acknowledged persistence. The validated numeric episode ID is canonical.
-                        exitProgressResult = if (savePlaybackProgress(
-                            episodeId = exitEpisodeId,
-                            positionMs = exitPositionMs,
-                            durationMs = exitDurationMs.takeIf { it > 0L },
-                            completed = payload.optBoolean("completed", false),
-                        )) "QUEUED" else "NOT_UPDATED"
-                    }
-                }
+                val nativeProgressPersisted = payload.optBoolean(
+                    "nativeProgressPersisted",
+                    payload.optBoolean("native_progress_persisted", false),
+                )
                 // A valid exit may omit requestId; session/activity identity and the
                 // active snapshot still fence stale exits. The legacy path invalidated
                 // the playback session instead of merely clearing the exit projection.
@@ -6681,20 +6667,48 @@ internal class NativeMainRuntimePort(
                     expectedSessionId = exitSessionId,
                     expectedRequestId = exitRequestId,
                 )
-                recordDiagnostic(
-                    name = "PLAYER_EXITED",
-                    requestId = exitRequestId,
-                    sessionId = exitSessionId,
-                    result = (stringValue("reason") ?: "exit") + ":progress_" + exitProgressResult.lowercase(Locale.ROOT),
-                    context = mapOf(
-                        "episode_id" to exitEpisodeId,
-                        "media_identity" to stringValue("mediaId", "media_id"),
-                        "position_ms" to exitPositionMs.takeIf { it >= 0L },
-                        "duration_ms" to exitDurationMs,
-                    ),
-                )
-                onCatalogChanged()
-                true
+                // Keep the final progress write and catalog projection ordered like the
+                // legacy awaited save -> on_catalog_changed sequence. savePlaybackProgress()
+                // queues a separate job, so calling it here could race the catalog refresh.
+                return launchTracked("player_exit_finalize", lane = "playback") {
+                    var exitProgressResult = "NOT_UPDATED"
+                    if (exitUri.isNotBlank() && exitPositionMs >= 0L) {
+                        if (nativeProgressPersisted) {
+                            // NativePlayerActivity already committed this final checkpoint.
+                            // Refresh the projection but never write the checkpoint twice.
+                            libraryViewModel.refresh()
+                            exitProgressResult = "NATIVE_COMMIT_REUSED"
+                        } else {
+                            dependencies.consumptionService.saveProgress(
+                                episodeId = exitEpisodeId,
+                                positionMs = exitPositionMs,
+                                durationMs = exitDurationMs.takeIf { it > 0L },
+                                completed = payload.optBoolean("completed", false),
+                            )
+                            libraryViewModel.refresh()
+                            exitProgressResult = "SAVED"
+                        }
+                    }
+                    val catalogAccepted = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+                    if (!catalogAccepted) {
+                        throw IllegalStateException("Não foi possível atualizar o catálogo após sair do player.")
+                    }
+                    scheduleCatalogMetadataHydration("player_exited")
+                    scheduleThumbnailReconciliation("player_exited")
+                    recordDiagnostic(
+                        name = "PLAYER_EXITED",
+                        requestId = exitRequestId,
+                        sessionId = exitSessionId,
+                        result = (stringValue("reason") ?: "exit") +
+                            ":progress_" + exitProgressResult.lowercase(Locale.ROOT),
+                        context = mapOf(
+                            "episode_id" to exitEpisodeId,
+                            "media_identity" to stringValue("mediaId", "media_id"),
+                            "position_ms" to exitPositionMs.takeIf { it >= 0L },
+                            "duration_ms" to exitDurationMs,
+                        ),
+                    )
+                }
             }
             "diagnostic" -> {
                 val eventName = (stringValue("event", "name") ?: "NATIVE_MAILBOX_DIAGNOSTIC")
