@@ -2713,6 +2713,45 @@ internal class NativeMainRuntimePort(
             publishedAtMillis < lastStorageMutationAtMillis
 
     /**
+     * Refresh the permission projection for capability-only events without
+     * scheduling a full catalog refresh on every Activity lifecycle callback.
+     * Android framework grants and explicitly configured SQLite roots remain authoritative.
+     */
+    private fun refreshStorageCapabilitiesProjection(
+        payload: org.json.JSONObject? = null,
+        eventCreatedAtMillis: Long = 0L,
+    ): Boolean {
+        val publishedAt = when {
+            eventCreatedAtMillis > 0L -> eventCreatedAtMillis
+            payload == null -> 0L
+            else -> payload.optLong(
+                "_legacySourceEventCreatedAt",
+                payload.optLong(
+                    "publishedAtMs",
+                    payload.optLong("published_at_ms", payload.optLong("createdAt", payload.optLong("timestamp", 0L))),
+                ),
+            )
+        }
+        if (isStorageSnapshotStale(publishedAt)) {
+            mutableStorageState.value = storageSnapshot()
+            recordDiagnostic(
+                name = "STORAGE_STALE_CAPABILITY_SNAPSHOT_IGNORED",
+                severity = "INFO",
+                result = "older_than_last_storage_mutation",
+                context = mapOf(
+                    "published_at_ms" to publishedAt,
+                    "last_mutation_at_ms" to lastStorageMutationAtMillis,
+                ),
+            )
+            settingsViewModel.refresh()
+            return false
+        }
+        mutableStorageState.value = storageSnapshot()
+        settingsViewModel.refresh()
+        return true
+    }
+
+    /**
      * Capability messages are hints, not proof of Android grants. Re-read the
      * PackageManager permission state, persisted SAF grants and canonical folder rows.
      */
@@ -7316,13 +7355,7 @@ internal class NativeMainRuntimePort(
                     )
                     "mediastore_permission" -> {
                         val granted = payload.optBoolean("granted", false)
-                        refreshAuthoritativeStorageSnapshot(
-                            payload,
-                            payload.optLong(
-                                "_legacySourceEventCreatedAt",
-                                payload.optLong("timestamp", 0L),
-                            ),
-                        )
+                        refreshStorageCapabilitiesProjection(payload)
                         val sourceReference = stringValue("source") ?: "mediastore:external:video"
                         if (!granted) {
                             launchTracked("mediastore_permission_revoked", lane = "storage") {
@@ -7382,13 +7415,7 @@ internal class NativeMainRuntimePort(
                         )
                     }
                     "broad_storage_status" -> {
-                        refreshAuthoritativeStorageSnapshot(
-                            payload,
-                            payload.optLong(
-                                "_legacySourceEventCreatedAt",
-                                payload.optLong("timestamp", 0L),
-                            ),
-                        )
+                        refreshStorageCapabilitiesProjection(payload)
                         if (!payload.optBoolean("hasAccess", false)) {
                             launchTracked("broad_storage_marked_unavailable", lane = "storage") {
                                 val changed = markBroadStorageSourceUnavailable(
@@ -7408,13 +7435,7 @@ internal class NativeMainRuntimePort(
                     }
                     "broad_storage_permission" -> {
                         val granted = payload.optBoolean("granted", false)
-                        refreshAuthoritativeStorageSnapshot(
-                            payload,
-                            payload.optLong(
-                                "_legacySourceEventCreatedAt",
-                                payload.optLong("timestamp", 0L),
-                            ),
-                        )
+                        refreshStorageCapabilitiesProjection(payload)
                         if (!granted) {
                             launchTracked("broad_storage_permission_denied", lane = "storage") {
                                 val changed = markBroadStorageSourceUnavailable(
