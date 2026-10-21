@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.UUID
 
 /**
  * Native Android entry-point orchestration shared by the launcher Activity.
@@ -277,4 +276,87 @@ internal object HomeRefreshCoordinator {
             ),
         )
     }
+}
+
+
+/**
+ * Kotlin equivalent of main.py's normalize_app_lifecycle_state helper.
+ *
+ * Accepts plain values, enum-like objects and event-like objects that expose
+ * state/data, value or name properties. Reflection is intentionally read-only;
+ * no Android/Flet event is retained by this helper.
+ */
+internal fun normalizeAppLifecycleState(eventOrState: Any?): String {
+    data class PropertyResult(val exists: Boolean, val value: Any?)
+
+    fun property(target: Any?, name: String): PropertyResult {
+        if (target == null) return PropertyResult(false, null)
+        if (target is Map<*, *>) {
+            return if (target.containsKey(name)) {
+                PropertyResult(true, target[name])
+            } else {
+                PropertyResult(false, null)
+            }
+        }
+        val cap = name.replaceFirstChar { character ->
+            if (character.isLowerCase()) character.titlecase(Locale.ROOT) else character.toString()
+        }
+        val method = target.javaClass.methods.firstOrNull {
+            it.parameterCount == 0 && it.name in setOf(name, "get$cap", "is$cap")
+        }
+        if (method != null) {
+            return try {
+                PropertyResult(true, method.invoke(target))
+            } catch (_: ReflectiveOperationException) {
+                PropertyResult(false, null)
+            } catch (_: SecurityException) {
+                PropertyResult(false, null)
+            }
+        }
+        var type: Class<*>? = target.javaClass
+        while (type != null) {
+            val field = try {
+                type.getDeclaredField(name).also { it.isAccessible = true }
+            } catch (_: ReflectiveOperationException) {
+                null
+            } catch (_: SecurityException) {
+                null
+            }
+            if (field != null) {
+                return try {
+                    PropertyResult(true, field.get(target))
+                } catch (_: ReflectiveOperationException) {
+                    PropertyResult(false, null)
+                } catch (_: SecurityException) {
+                    PropertyResult(false, null)
+                }
+            }
+            type = type.superclass
+        }
+        return PropertyResult(false, null)
+    }
+
+    val stateProperty = property(eventOrState, "state")
+    val raw = if (stateProperty.exists) {
+        stateProperty.value
+    } else {
+        val dataProperty = property(eventOrState, "data")
+        if (dataProperty.exists) dataProperty.value else eventOrState
+    }
+    val valueProperty = property(raw, "value")
+    val normalizedRaw = if (valueProperty.exists && valueProperty.value is String) {
+        valueProperty.value
+    } else {
+        val nameProperty = property(raw, "name")
+        if (nameProperty.exists && nameProperty.value is String) nameProperty.value else raw
+    }
+    val text = when (normalizedRaw) {
+        null, false -> ""
+        is Number -> if (normalizedRaw.toDouble() == 0.0) "" else normalizedRaw.toString()
+        is String -> normalizedRaw
+        is Collection<*> -> if (normalizedRaw.isEmpty()) "" else normalizedRaw.toString()
+        is Map<*, *> -> if (normalizedRaw.isEmpty()) "" else normalizedRaw.toString()
+        else -> normalizedRaw.toString()
+    }.trim().lowercase(Locale.ROOT)
+    return text.substringAfterLast('.')
 }
