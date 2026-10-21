@@ -4140,30 +4140,71 @@ internal class NativeMainRuntimePort(
             publish(action = "restore_recovery_backup", error = "O arquivo de recuperação está ausente ou vazio.")
             return false
         }
-        return launchTracked("restore_recovery_backup", lane = "backup") {
-            val result = withContext(Dispatchers.IO) { backupService.restoreRecoveryBackup(archive) }
-            libraryViewModel.refresh()
-            settingsViewModel.refresh()
-            scheduleCatalogMetadataHydration("recovery_backup_restored")
-            scheduleThumbnailReconciliation("recovery_backup_restored")
-            val summary = org.json.JSONObject()
-                .put("importedRows", result.importedRows)
-                .put("missingFiles", result.missingFiles)
-                .put("manualArtworkReconnected", result.manualArtworkReconnected)
-                .put("safetyBackup", result.safetyBackup.absolutePath)
-                .put("warnings", org.json.JSONArray(result.warnings))
-                .put("reauthenticationRequired", result.reauthenticationRequired)
-            publish(action = "restore_recovery_backup", transform = {
-                it.copy(
-                    initialized = true,
-                    recoveryRequired = false,
-                    route = ReiAnixRoutes.HOME,
-                    lastArtifactPath = result.safetyBackup.absolutePath,
-                    lastResultJson = summary.toString(),
-                )
-            })
-            composeHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+        val reserved = synchronized(lock) {
+            val storageMutationPending =
+                !pendingSafSelectionRequestId.isNullOrBlank() ||
+                    !pendingSafRemovalRequestId.isNullOrBlank() ||
+                    !pendingFolderRemovalRequestId.isNullOrBlank()
+            if (restoreMaintenanceInProgress || hasAnyNativeScanInProgress() || storageMutationPending) {
+                false
+            } else {
+                restoreMaintenanceInProgress = true
+                true
+            }
         }
+        if (!reserved) {
+            publish(
+                action = "restore_recovery_backup",
+                error = "Finalize a varredura ou operação de armazenamento atual antes de restaurar a recuperação.",
+            )
+            recordDiagnostic(
+                name = "RECOVERY_RESTORE_BLOCKED",
+                severity = "WARN",
+                result = "scan_in_progress_or_restore_active",
+            )
+            return false
+        }
+        val accepted = launchTracked("restore_recovery_backup", lane = "backup") {
+            try {
+                cancelBackgroundTasksForLane("metadata")
+                cancelBackgroundTasksForLane("thumbnail")
+                val result = withContext(Dispatchers.IO) {
+                    synchronized(NativeScanController) {
+                        if (NativeScanController.progress.value.values.any { !it.state.isTerminal }) {
+                            throw IllegalStateException(
+                                "Uma varredura foi iniciada antes da reserva exclusiva da recuperação.",
+                            )
+                        }
+                        backupService.restoreRecoveryBackup(archive)
+                    }
+                }
+                libraryViewModel.refresh()
+                settingsViewModel.refresh()
+                scheduleCatalogMetadataHydration("recovery_backup_restored")
+                scheduleThumbnailReconciliation("recovery_backup_restored")
+                val summary = org.json.JSONObject()
+                    .put("importedRows", result.importedRows)
+                    .put("missingFiles", result.missingFiles)
+                    .put("manualArtworkReconnected", result.manualArtworkReconnected)
+                    .put("safetyBackup", result.safetyBackup.absolutePath)
+                    .put("warnings", org.json.JSONArray(result.warnings))
+                    .put("reauthenticationRequired", result.reauthenticationRequired)
+                publish(action = "restore_recovery_backup", transform = {
+                    it.copy(
+                        initialized = true,
+                        recoveryRequired = false,
+                        route = ReiAnixRoutes.HOME,
+                        lastArtifactPath = result.safetyBackup.absolutePath,
+                        lastResultJson = summary.toString(),
+                    )
+                })
+                composeHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+            } finally {
+                synchronized(lock) { restoreMaintenanceInProgress = false }
+            }
+        }
+        if (!accepted) synchronized(lock) { restoreMaintenanceInProgress = false }
+        return accepted
     }
 
     fun checkDatabaseIntegrity(): Boolean = launchTracked("database_integrity", lane = "backup") {
