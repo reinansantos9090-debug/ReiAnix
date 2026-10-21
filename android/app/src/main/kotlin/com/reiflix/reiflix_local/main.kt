@@ -3060,12 +3060,27 @@ internal class NativeMainRuntimePort(
                 val action = stringValue("action") ?: return false
                 dispatchMainAction(action, payload)
             }
-            "saf_permission", "saf_released", "saf_error", "storage_status", "volume_changed" -> {
+            "saf_permission", "saf_released", "saf_error", "saf_cancelled",
+            "storage_status", "volume_changed",
+            "mediastore_permission", "mediastore_error",
+            "broad_storage_permission", "broad_storage_status", "broad_storage_error" -> {
+                if (type == "saf_cancelled") clearPendingSafSelectionContext()
+                refreshAuthoritativeStorageSnapshot(payload, payload.optLong("createdAt", 0L))
                 settingsViewModel.refresh()
+                libraryViewModel.refreshNativeFolders()
                 libraryViewModel.refresh()
-                val reason = stringValue("reason", "state", "status") ?: type
-                recordDiagnostic("NATIVE_STORAGE_PROJECTION_REFRESH", requestId = eventRequestId ?: stringValue("requestId"),
-                    result = reason, context = mapOf("event_type" to type))
+                val reason = stringValue("reason", "state", "status", "message") ?: type
+                recordDiagnostic(
+                    name = "NATIVE_STORAGE_PROJECTION_REFRESH",
+                    severity = if (type.endsWith("_error")) "WARN" else "INFO",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = reason,
+                    context = mapOf(
+                        "event_type" to type,
+                        "broad_storage_is_library_source" to false,
+                        "mediastore_is_library_source" to false,
+                    ),
+                )
                 true
             }
             "storage_capabilities" -> {
@@ -3076,9 +3091,11 @@ internal class NativeMainRuntimePort(
                 )
                 refreshAuthoritativeStorageSnapshot(capabilities, publishedAt)
             }
-            "saf_inventory", "saf_document_identity_change", "saf_library_scan_complete" -> {
-                // Native Kotlin remains the only owner of persisted SAF grants and index writes.
-                // These events invalidate the view projection and never add/remove a source here.
+            "saf_inventory", "saf_library_scan_complete" -> {
+                // Inventory is observational. It cannot create a source from an arbitrary
+                // persisted grant or remove one when an inventory batch is incomplete.
+                val treeUri = stringValue("treeUri", "tree_uri")
+                if (!treeUri.isNullOrBlank()) mergeAuthoritativeSafRoot(treeUri)
                 settingsViewModel.refresh()
                 libraryViewModel.refreshNativeFolders()
                 libraryViewModel.refresh()
@@ -3090,6 +3107,79 @@ internal class NativeMainRuntimePort(
                     context = mapOf("inventory_complete" to payload.optBoolean("complete", false)),
                 )
                 true
+            }
+            "saf_document_identity_change" -> {
+                val oldUri = stringValue("oldUri", "old_uri") ?: return false
+                val newUri = stringValue("newUri", "new_uri") ?: return false
+                val name = stringValue("name", "displayName") ?: return false
+                val treeUri = stringValue("treeUri", "tree_uri") ?: return false
+                val nativeOwner = payload.optBoolean(
+                    "nativeIdentityOwner",
+                    payload.optBoolean("native_identity_owner", false),
+                )
+                if (nativeOwner) {
+                    // A newer Kotlin scanner already committed the canonical re-key.
+                    libraryViewModel.refreshNativeFolders()
+                    libraryViewModel.refresh()
+                    recordDiagnostic(
+                        name = "SAF_IDENTITY_PROJECTION_REFRESH",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = stringValue("status") ?: "native_commit_already_applied",
+                        context = mapOf("episode_id" to longValue("episodeId", "episode_id")),
+                    )
+                    true
+                } else {
+                    val persistedReadUris = activity.contentResolver.persistedUriPermissions
+                        .filter { it.isReadPermission }
+                        .map { it.uri.toString() }
+                    if (StorageAuthorization.safAccess(treeUri, persistedReadUris) != SafAccessLevel.AVAILABLE ||
+                        authorizedScanTargets("saf", treeUri).isEmpty()
+                    ) {
+                        recordDiagnostic(
+                            name = "SAF_IDENTITY_RECONCILIATION_REJECTED",
+                            severity = "WARN",
+                            requestId = eventRequestId ?: stringValue("requestId"),
+                            result = "tree_not_authorized_library_source",
+                        )
+                        return false
+                    }
+                    launchTracked("saf_document_identity_change", lane = "library") {
+                        val result = dependencies.sqliteLibraryRepository.reconcileSafDocumentIdentityChange(
+                            oldUri = oldUri,
+                            newUri = newUri,
+                            name = name,
+                            treeUri = treeUri,
+                        )
+                        val status = result.optString("status", "unknown")
+                        publish(
+                            action = "saf_document_identity_change",
+                            error = if (status in setOf("rejected", "ambiguous", "not_found")) status else null,
+                            transform = { it.copy(lastResultJson = result.toString()) },
+                        )
+                        if (status in setOf("reconciled", "already_reconciled")) {
+                            libraryViewModel.refreshNativeFolders()
+                            libraryViewModel.refresh()
+                            libraryViewModel.queryNativeArtwork()
+                            recordDiagnostic(
+                                name = "SAF_IDENTITY_RECONCILED",
+                                requestId = eventRequestId ?: stringValue("requestId"),
+                                result = status,
+                                context = mapOf(
+                                    "episode_id" to result.optLong("episode_id", 0L),
+                                    "source" to "legacy_event_compatibility",
+                                ),
+                            )
+                        } else {
+                            recordDiagnostic(
+                                name = "SAF_IDENTITY_RECONCILIATION_NOT_APPLIED",
+                                severity = "WARN",
+                                requestId = eventRequestId ?: stringValue("requestId"),
+                                result = status,
+                                context = mapOf("canonical_episode_row_preserved" to true),
+                            )
+                        }
+                    }
+                }
             }
             "saf_scan_progress", "mediastore_scan_progress", "broad_storage_scan_progress",
             "saf_scan", "mediastore_scan", "broad_storage_scan",
