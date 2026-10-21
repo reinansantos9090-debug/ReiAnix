@@ -17,11 +17,11 @@ SYSTEM_UI = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/playe
 
 class RegressionTests(unittest.TestCase):
     def test_details_primary_action_does_not_autofocus_or_rebuild_for_thumbnails(self):
+        details_native = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt").read_text(encoding="utf-8")
         self.assertNotIn("autofocus=bool(primary_target)", DETAILS)
-        self.assertIn("palette_changed = (", DETAILS)
-        self.assertIn("home_state.get('_update_thumbnail')", MAIN)
-        self.assertIn('if navigation.current == "details":', MAIN)
-        self.assertIn("if not refresh_details:", MAIN)
+        self.assertIn("LaunchedEffect(aniListState.associationRevision)", details_native)
+        self.assertIn("viewModel.refreshDetails(canonicalId)", details_native)
+        self.assertIn("fun refreshDetails(animeId: Long)", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8"))
 
     def test_next_accepts_file_uri_for_absolute_path_episode(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -36,8 +36,10 @@ class RegressionTests(unittest.TestCase):
             self.assertEqual(second, result["path"])
 
     def test_player_next_has_concurrency_guard_and_native_timeout(self):
-        self.assertIn("player_transition_inflight", MAIN)
-        self.assertIn("transition_in_progress", MAIN)
+        self.assertIn("episodeChangePending", PLAYER)
+        self.assertIn("transitionGeneration", PLAYER)
+        self.assertIn("isCurrentTransition(", PLAYER)
+        self.assertIn("playbackWorker.submit", PLAYER)
         self.assertIn("episodeChangeTimeout", PLAYER)
         self.assertIn("EPISODE_CHANGE_WATCHDOG", PLAYER)
         self.assertIn("handler.postDelayed(episodeChangeTimeout, 5_000L)", PLAYER)
@@ -50,11 +52,13 @@ class RegressionTests(unittest.TestCase):
         self.assertIn("on_click=lambda _: play(primary_target)", primary_block)
 
     def test_thumbnail_refresh_does_not_pop_details_cache(self):
-        thumb_block_start = MAIN.find("elif event_type == 'thumbnail_ready':")
-        thumb_block_end = MAIN.find("elif event_type == 'thumbnail_error':", thumb_block_start)
-        thumb_block = MAIN[thumb_block_start:thumb_block_end]
-        self.assertIn("home_update(uri, thumbnail_path, media_identity)", thumb_block)
-        self.assertNotIn("screen_cache.pop('details'", thumb_block)
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        extractor = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn('put("type", "thumbnail_ready")', activity)
+        self.assertIn("latestKeyByUri[uri.toString()]", extractor)
+        self.assertIn("registerGeneratedThumbnail", extractor)
+        self.assertIn("refreshNativeCatalog()", view_model)
 
     def test_next_without_next_episode_is_supported(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -65,13 +69,13 @@ class RegressionTests(unittest.TestCase):
             self.assertIsNone(store.next_episode(path))
 
     def test_next_repeat_is_serialized(self):
-        self.assertIn('if player_transition_inflight["value"]:', MAIN)
-        self.assertIn('player_transition_inflight["value"] = True', MAIN)
-        transition_start = MAIN.index("elif event_type in {'player_next_request', 'player_previous_request'}:")
-        transition_end = MAIN.index("elif event_type == 'player_error':", transition_start)
-        transition_block = MAIN[transition_start:transition_end]
-        self.assertIn("finally:", transition_block)
-        self.assertIn('player_transition_inflight["value"] = False', transition_block)
+        self.assertIn("episodeChangePending", PLAYER)
+        self.assertIn("transitionGeneration", PLAYER)
+        self.assertIn("isCurrentTransition(", PLAYER)
+        self.assertIn("invalidateTransition(", PLAYER)
+        self.assertIn("playbackWorker.submit", PLAYER)
+        self.assertIn("NEXT_REQUEST_DUPLICATE", PLAYER)
+        self.assertIn("PREVIOUS_REQUEST_DUPLICATE", PLAYER)
 
     def test_system_ui_policy_is_reapplied_and_player_setting_is_respected(self):
         self.assertIn("show(WindowInsetsCompat.Type.systemBars())", SYSTEM_UI)
@@ -89,21 +93,18 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(1, PLAYER.count("ExoPlayer.Builder(this).build()"))
 
     def test_full_regression_contract_keeps_core_flows_present(self):
-        for token in (
-            "on_catalog_changed",
-            "start_native_player",
-            "player_exited",
-            "store.save_progress",
-            "library.player_navigation",
-            "resolve_artwork_palette",
-        ):
-            self.assertIn(token, MAIN)
-        for token in (
-            "onResume()",
-            "onConfigurationChanged",
-            "onPictureInPictureModeChanged",
-            "restoreSystemUiBeforeExit",
-        ):
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixPlayerEpisodeNavigation.kt").read_text(encoding="utf-8")
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("refreshNativeCatalog()", view_model)
+        self.assertIn("openEpisode(episodeId", view_model)
+        self.assertIn("playerNavigation", navigation + view_model)
+        self.assertIn("reportPlayerExit", PLAYER)
+        self.assertIn("saveProgress(", PLAYER)
+        self.assertIn("ReiAnixArtworkService", MAIN)
+        self.assertIn("requestAnimeArtwork", view_model)
+        self.assertIn("PLAYER_HANDOFF_DISPATCHED", activity)
+        for token in ("onResume()", "onConfigurationChanged", "onPictureInPictureModeChanged", "restoreSystemUiBeforeExit"):
             self.assertIn(token, PLAYER)
 
     def test_anilist_ptbr_translation_is_cached(self):

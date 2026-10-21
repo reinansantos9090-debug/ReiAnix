@@ -1,74 +1,66 @@
 import unittest
 from pathlib import Path
-from tests.native_main_contract import native_main_source
-
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = native_main_source()
 BRIDGE = (ROOT / "core/android_bridge.py").read_text(encoding="utf-8")
 REQUEST = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8")
 ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
+MAILBOX = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
+NAVIGATION = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixPlayerEpisodeNavigation.kt").read_text(encoding="utf-8")
 
 
 class PreviousTransitionTests(unittest.TestCase):
     def test_required_previous_events_exist(self):
-        required = [
-            "PREVIOUS_REQUEST_RECEIVED",
-            "PREVIOUS_REQUEST_ACCEPTED",
-            "PREVIOUS_REQUEST_REJECTED",
-            "PREVIOUS_REQUEST_STALE",
-            "PREVIOUS_REQUEST_DUPLICATE",
-            "PREVIOUS_REQUEST_CANCELLED",
-            "PREVIOUS_TRANSITION_STARTED",
-            "PREVIOUS_TRANSITION_INVALIDATED",
-            "PREVIOUS_TRANSITION_READY",
-            "PREVIOUS_TRANSITION_FIRST_FRAME",
-            "PREVIOUS_TRANSITION_COMMITTED",
-            "PREVIOUS_TRANSITION_FAILED",
-        ]
-        for token in required:
-            self.assertIn(token, MAIN + PLAYER)
+        for token in (
+            "PREVIOUS_REQUEST_RECEIVED", "PREVIOUS_REQUEST_ACCEPTED",
+            "PREVIOUS_REQUEST_REJECTED", "PREVIOUS_REQUEST_STALE",
+            "PREVIOUS_REQUEST_DUPLICATE", "PREVIOUS_REQUEST_CANCELLED",
+            "PREVIOUS_TRANSITION_STARTED", "PREVIOUS_TRANSITION_INVALIDATED",
+            "PREVIOUS_TRANSITION_READY", "PREVIOUS_TRANSITION_FIRST_FRAME",
+            "PREVIOUS_TRANSITION_COMMITTED", "PREVIOUS_TRANSITION_FAILED",
+        ):
+            self.assertIn(token, PLAYER + ACTIVITY)
 
     def test_previous_single_flight_and_generation(self):
-        self.assertIn("pending_previous_transition", MAIN)
-        self.assertIn('player_transition_inflight["value"]', MAIN)
-        self.assertIn('player_transition_generation["value"]', MAIN)
-        self.assertIn("python_transition_generation", MAIN)
+        for token in ("episodeChangePending", "previousTransitionActive", "transitionGeneration", "playerGeneration"):
+            self.assertIn(token, PLAYER)
+        self.assertIn("playbackWorker.submit", PLAYER)
+        self.assertIn("isCurrentTransition(", PLAYER)
 
     def test_previous_session_and_stale_fencing(self):
-        self.assertIn('player_session_active["value"]', MAIN)
-        self.assertIn('player_active_session_id["value"]', MAIN)
-        self.assertIn("source_player_session_id", MAIN)
-        self.assertIn("PLAYER_PREVIOUS_STALE_REJECTED", MAIN + ACTIVITY + PLAYER)
+        self.assertIn("originPlayerSessionId", PLAYER + ACTIVITY)
+        self.assertIn("activePlayerSessionId", ACTIVITY)
+        self.assertIn("isCurrentPlayerHandoff(", ACTIVITY)
+        self.assertIn("PLAYER_PREVIOUS_STALE_REJECTED", ACTIVITY + PLAYER)
 
     def test_previous_cross_direction_identity(self):
-        self.assertIn('"direction": direction_name', MAIN)
-        self.assertIn('"transitionDirection"', PLAYER)
-        self.assertIn("transition_direction", BRIDGE)
-        self.assertIn("transitionDirection", REQUEST)
+        self.assertIn('transitionDirection', PLAYER)
+        self.assertIn("transitionSourceDirection", PLAYER)
         self.assertIn("originMonotonicNs", REQUEST + ACTIVITY + PLAYER)
+        self.assertIn("transition_direction", BRIDGE)
 
     def test_previous_uses_canonical_navigation(self):
-        self.assertIn("library.player_navigation", MAIN)
-        self.assertNotIn("episode.number - 1", MAIN)
-        self.assertNotIn("episode_number - 1", MAIN)
+        self.assertIn("playerNavigation", ACTIVITY + NAVIGATION)
+        self.assertIn("ReiAnixPlayerEpisodeNavigationSnapshot", NAVIGATION)
+        self.assertNotIn("episode.number - 1", PLAYER + ACTIVITY)
+        self.assertNotIn("episode_number - 1", PLAYER + ACTIVITY)
 
-    def test_previous_sqlite_instrumentation(self):
-        self.assertIn("PREVIOUS_SQLITE_QUERY_STARTED", MAIN)
-        self.assertIn("PREVIOUS_SQLITE_QUERY_FINISHED", MAIN)
-        self.assertIn("current_row_id", MAIN)
-        self.assertIn("current_row_anime", MAIN)
-        self.assertIn("current_row_path", MAIN)
+    def test_previous_native_navigation_uses_sqlite_repository(self):
+        self.assertIn("playerNavigation", ACTIVITY)
+        self.assertIn("ReiAnixPlayerEpisodeNavigationSnapshot", NAVIGATION)
+        self.assertIn("episodeId", NAVIGATION)
 
     def test_previous_no_target_is_cancelled(self):
-        self.assertIn("previous_no_target", MAIN)
-        self.assertIn("PREVIOUS_TRANSITION_FAILED", MAIN)
+        self.assertIn("PREVIOUS_TRANSITION_FAILED", PLAYER)
+        self.assertIn("PREVIOUS_REQUEST_REJECTED", PLAYER)
+        self.assertIn("invalidateTransition(", PLAYER)
 
     def test_previous_ready_waits_for_first_frame(self):
         self.assertIn("PREVIOUS_TRANSITION_READY", PLAYER)
-        self.assertIn("PREVIOUS_TRANSITION_FIRST_FRAME", MAIN + PLAYER)
-        self.assertIn("PREVIOUS_TRANSITION_COMMITTED", MAIN + PLAYER)
+        self.assertIn("PREVIOUS_TRANSITION_FIRST_FRAME", PLAYER)
+        self.assertIn("PREVIOUS_TRANSITION_COMMITTED", PLAYER)
+        self.assertIn("FIRST_FRAME_RENDERED", PLAYER)
 
     def test_media_item_transition_is_not_confirmation(self):
         start = PLAYER.index("override fun onMediaItemTransition")
@@ -93,18 +85,17 @@ class PreviousTransitionTests(unittest.TestCase):
         self.assertIn("PREVIOUS_TRANSITION_INVALIDATED", block)
         self.assertIn("PREVIOUS_REQUEST_CANCELLED", block)
         self.assertIn("previousTransitionActive = false", block)
+        self.assertIn("episodeChangePending = false", block)
 
     def test_previous_exit_rejects_old_request(self):
-        self.assertIn("invalidate_player_session(", MAIN)
-        self.assertIn('"player_exited"', MAIN)
-        self.assertIn('player_session_active["value"] = False', MAIN)
+        self.assertIn("reportPlayerExit(", PLAYER)
+        self.assertIn("PLAYER_SESSION_INVALIDATED", PLAYER)
         self.assertIn("PLAYER_PREVIOUS_STALE_REJECTED", ACTIVITY + PLAYER)
+        self.assertIn("isCurrentPlayerHandoff(", ACTIVITY)
 
     def test_previous_reused_activity_requires_origin_fencing(self):
-        self.assertIn("incomingOriginTransitionGeneration", PLAYER)
-        self.assertIn("incomingOriginPlayerSessionId", PLAYER)
-        self.assertIn("incomingOriginMonotonicNs", PLAYER)
-        self.assertIn("incomingOriginTransitionDirection", PLAYER)
+        for token in ("incomingOriginTransitionGeneration", "incomingOriginPlayerSessionId", "incomingOriginMonotonicNs", "incomingOriginTransitionDirection"):
+            self.assertIn(token, PLAYER)
 
     def test_previous_new_activity_rejects_old_origin(self):
         self.assertIn("origin_on_new_activity", PLAYER)
@@ -114,15 +105,16 @@ class PreviousTransitionTests(unittest.TestCase):
     def test_previous_progress_save_before_navigation(self):
         request = PLAYER[PLAYER.index("private fun requestEpisode"):PLAYER.index("private fun seekToSavedPosition")]
         self.assertIn('saveProgress("player_progress", force = true)', request)
-        self.assertIn('currentEpisodeId()', request)
+        self.assertIn("currentEpisodeId()", request)
+        self.assertLess(request.index('saveProgress("player_progress", force = true)'), request.index("NativeMailbox.write("))
 
     def test_previous_prepare_callbacks_are_generation_bound(self):
         self.assertIn("expectedTransitionGeneration", PLAYER)
         self.assertIn("transitionGeneration == expectedTransitionGeneration", PLAYER)
 
     def test_previous_does_not_use_time_only_staleness(self):
-        self.assertNotIn("mailbox_latency_ms > 5000", MAIN)
-        self.assertNotIn("mailbox_latency_ms >= 5000", MAIN)
+        self.assertNotIn("mailbox_latency_ms > 5000", PLAYER + ACTIVITY)
+        self.assertNotIn("mailbox_latency_ms >= 5000", PLAYER + ACTIVITY)
 
     def test_previous_tests_do_not_sleep(self):
         source = Path(__file__).read_text(encoding="utf-8")
@@ -130,16 +122,11 @@ class PreviousTransitionTests(unittest.TestCase):
         self.assertNotIn("asyncio" + ".sleep(", source)
 
     def test_previous_and_next_are_direction_fenced(self):
-        self.assertIn('"NEXT_REQUEST_STALE" if is_next else "PREVIOUS_REQUEST_STALE"', MAIN)
-        self.assertIn('"NEXT_REQUEST_DUPLICATE" if is_next else "PREVIOUS_REQUEST_DUPLICATE"', MAIN)
-        self.assertIn('"NEXT_TRANSITION_STARTED" if is_next else "PREVIOUS_TRANSITION_STARTED"', MAIN)
+        for token in ("NEXT_REQUEST_STALE", "PREVIOUS_REQUEST_STALE", "NEXT_REQUEST_DUPLICATE", "PREVIOUS_REQUEST_DUPLICATE", "NEXT_TRANSITION_STARTED", "PREVIOUS_TRANSITION_STARTED"):
+            self.assertIn(token, PLAYER)
 
     def test_previous_bridge_identity_survives_handoff(self):
-        self.assertIn("origin_monotonic_ns", BRIDGE)
-        self.assertIn("transition_direction", BRIDGE)
-        self.assertIn("originMonotonicNs", REQUEST)
-        self.assertIn("transitionDirection", REQUEST)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        for token in ("origin_monotonic_ns", "transition_direction"):
+            self.assertIn(token, BRIDGE)
+        for token in ("originMonotonicNs", "transitionDirection"):
+            self.assertIn(token, REQUEST)

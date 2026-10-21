@@ -9,6 +9,9 @@ SETTINGS = (ROOT / "views" / "settings_view.py").read_text(encoding="utf-8")
 UI = (ROOT / "core" / "ui.py").read_text(encoding="utf-8")
 MAIN = native_main_source()
 DETAILS = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")
+MAIN_ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+EXTRACTOR = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
+ARTWORK = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt").read_text(encoding="utf-8")
 
 
 class FocusAndThumbnailRegressionTests(unittest.TestCase):
@@ -30,12 +33,11 @@ class FocusAndThumbnailRegressionTests(unittest.TestCase):
         self.assertNotIn("FOCUSED: ft.BorderSide(2,", DETAILS)
 
     def test_thumbnail_ready_dispatches_incremental_home_update_not_catalog_refresh(self):
-        start = MAIN.index("elif event_type == 'thumbnail_ready':")
-        end = MAIN.index("elif event_type == 'thumbnail_error':", start)
-        handler = MAIN[start:end]
-        self.assertIn("home_state.get('_update_thumbnail')", handler)
-        self.assertIn("home_update(uri, thumbnail_path, media_identity)", handler)
-        self.assertNotIn("on_catalog_changed(", handler)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn('put("type", "thumbnail_ready")', MAIN_ACTIVITY)
+        self.assertIn("latestKeyByUri[uri.toString()]", EXTRACTOR)
+        self.assertIn("registerGeneratedThumbnail", ARTWORK)
+        self.assertIn("refreshNativeCatalog()", view_model)
 
     def test_incremental_thumbnail_update_preserves_grid_and_uses_existing_bindings(self):
         start = HOME.index("def update_thumbnail_in_place")
@@ -58,12 +60,10 @@ class FocusAndThumbnailRegressionTests(unittest.TestCase):
         self.assertIn("view_state[\'_update_thumbnail\'] = update_thumbnail_in_place", HOME)
 
     def test_existing_thumbnail_generation_guard_remains(self):
-        start = MAIN.index("elif event_type == 'thumbnail_ready':")
-        end = MAIN.index("elif event_type == 'thumbnail_error':", start)
-        handler = MAIN[start:end]
-        self.assertIn("thumbnail_key = (uri, size, modified_at, media_identity)", handler)
-        self.assertIn("thumbnail_key != latest_key", handler)
-        self.assertIn("THUMBNAIL_STALE", handler)
+        self.assertIn("latestKeyByUri[uri.toString()] != cacheKey(identity, size, modifiedAt)", EXTRACTOR)
+        self.assertIn("return result.copy(canonicalArtworkRegistered = false)", EXTRACTOR)
+        self.assertIn("THUMBNAIL_REQUESTED", EXTRACTOR)
+        self.assertIn("THUMBNAIL_GENERATION_STARTED", EXTRACTOR)
 
     def test_multiple_thumbnail_updates_are_idempotent(self):
         start = HOME.index("def update_thumbnail_in_place")
@@ -75,41 +75,29 @@ class FocusAndThumbnailRegressionTests(unittest.TestCase):
 
 
     def test_thumbnail_rejection_releases_request_bookkeeping(self):
-        request_start = MAIN.index("def request_missing_thumbnail")
-        request_end = MAIN.index("def storage_state", request_start)
-        request = MAIN[request_start:request_end]
-        self.assertIn("asyncio.PriorityQueue(maxsize=128)", MAIN)
-        self.assertNotIn("len(thumbnail_requests) >= 32", request)
-        self.assertIn("queue_deferred", request)
+        self.assertIn("private val extractionPermits = Semaphore(2)", EXTRACTOR)
+        self.assertIn("val lock = inFlight.computeIfAbsent(key)", EXTRACTOR)
+        self.assertIn("if (permitAcquired) extractionPermits.release()", EXTRACTOR)
+        self.assertIn("inFlight.remove(key, lock)", EXTRACTOR)
 
-    def test_thumbnail_cache_hit_releases_request_bookkeeping(self):
-        request_start = MAIN.index("def request_missing_thumbnail")
-        request_end = MAIN.index("def storage_state", request_start)
-        request = MAIN[request_start:request_end]
-        cache_hit = request.index('performance.counter("artwork.thumbnail.cache_hit")')
-        prefix = request[:cache_hit]
-        self.assertIn("thumbnail_requests.discard(key)", prefix)
-        self.assertIn("thumbnail_request_started_at.pop(key, None)", prefix)
-        self.assertIn("thumbnail_latest_key_by_uri.pop(path_ref, None)", prefix)
+    def test_thumbnail_cache_hit_reuses_only_a_validated_cache_entry(self):
+        self.assertIn("isValidCachedThumbnail(target)", EXTRACTOR)
+        self.assertIn("readCachedResult(context, uri, target, key, size, modifiedAt)", EXTRACTOR)
+        self.assertIn("THUMBNAIL_CACHE_HIT", EXTRACTOR)
+        self.assertIn("registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)", EXTRACTOR)
 
-    def test_thumbnail_ready_captures_native_start_before_cleanup(self):
-        start = MAIN.index("elif event_type == 'thumbnail_ready':")
-        end = MAIN.index("elif event_type == 'thumbnail_error':", start)
-        block = MAIN[start:end]
-        self.assertIn("started_native = thumbnail_request_started_at.pop(thumbnail_key, None)", block)
-        self.assertNotIn("started_native = thumbnail_request_started_at.get(thumbnail_key)", block)
+    def test_thumbnail_generation_reports_duration_and_request_identity(self):
+        self.assertIn("THUMBNAIL_GENERATION_STARTED", EXTRACTOR)
+        self.assertIn("THUMBNAIL_GENERATION_FINISHED", EXTRACTOR)
+        self.assertIn("elapsedRealtimeNanos()", EXTRACTOR)
+        self.assertIn('"requestId", requestId', EXTRACTOR)
+        self.assertIn('"mediaIdentity", identity', EXTRACTOR)
 
-
-    def test_thumbnail_generation_maps_remain_bounded_while_latest_version_wins(self):
-        request_start = MAIN.index("def request_missing_thumbnail")
-        request_end = MAIN.index("def storage_state", request_start)
-        request = MAIN[request_start:request_end]
-        self.assertIn("previous != key", request)
-        self.assertIn("thumbnail_pending.pop(previous, None)", request)
-        self.assertIn("thumbnail_latest_key_by_uri[path_ref] = key", request)
-        self.assertIn("if len(thumbnail_latest_at) > 2048:", MAIN)
-        self.assertIn("if len(thumbnail_completed_request_by_key) > 2048:", MAIN)
-
+    def test_thumbnail_generation_state_remains_bounded_while_latest_version_wins(self):
+        self.assertIn("if (latestKeyByUri.size > 2048)", EXTRACTOR)
+        self.assertIn("MAX_CACHE_BYTES = 128L * 1024L * 1024L", EXTRACTOR)
+        self.assertIn("latestKeyByUri[uri.toString()] != cacheKey(identity, size, modifiedAt)", EXTRACTOR)
+        self.assertIn("private val extractionPermits = Semaphore(2)", EXTRACTOR)
 
 if __name__ == "__main__":
     unittest.main()

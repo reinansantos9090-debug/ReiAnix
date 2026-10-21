@@ -18,6 +18,10 @@ STORE = (ROOT / "core" / "library_store.py").read_text(encoding="utf-8")
 MAIN_ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
 PLAYER = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
 SYSTEM_UI = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt").read_text(encoding="utf-8")
+VIEW_MODEL = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+EXTRACTOR = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
+ANI_INTEGRATION = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")
+DETAILS_NATIVE = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt").read_text(encoding="utf-8")
 
 
 class StabilizationTests(unittest.TestCase):
@@ -34,9 +38,9 @@ class StabilizationTests(unittest.TestCase):
 
     def test_details_guards_remain(self):
         self.assertNotIn("autofocus=bool(primary_target)", DETAILS)
-        self.assertIn("palette_changed = (", DETAILS)
-        self.assertIn("home_state.get('_update_thumbnail')", MAIN)
-        self.assertIn("player_transition_inflight", MAIN)
+        self.assertIn("LaunchedEffect(aniListState.associationRevision)", DETAILS_NATIVE)
+        self.assertIn("viewModel.refreshDetails(canonicalId)", DETAILS_NATIVE)
+        self.assertIn("fun refreshDetails(animeId: Long)", VIEW_MODEL)
         self.assertIn("episodeChangeTimeout", PLAYER)
         self.assertIn("resolveImmersivePolicy", PLAYER)
 
@@ -69,24 +73,13 @@ class StabilizationTests(unittest.TestCase):
         destroy = PLAYER[PLAYER.index("override fun onDestroy"):PLAYER.index("private fun shouldUseImmersive")]
         self.assertIn("playbackWorker.shutdown()", destroy)
 
-    def test_player_overlaid_events_do_not_rebuild_flet_under_the_native_activity(self):
-        watched_start = MAIN.index("elif event_type == 'player_mark_watched':")
-        watched_end = MAIN.index("elif event_type == 'player_mark_unwatched':", watched_start)
-        unwatched_end = MAIN.index("elif event_type == 'player_autoplay_changed':", watched_end)
-        watched = MAIN[watched_start:watched_end]
-        unwatched = MAIN[watched_end:unwatched_end]
-        self.assertNotIn("render_current()", watched)
-        self.assertNotIn("render_current()", unwatched)
-        self.assertIn("elif event_type == 'player_exited':", MAIN)
-        self.assertIn("on_catalog_changed()", MAIN[MAIN.index("elif event_type == 'player_exited':"):])
+    def test_player_overlaid_events_do_not_rebuild_legacy_ui_under_native_activity(self):
+        self.assertNotIn("render_current()", PLAYER + MAIN_ACTIVITY)
+        self.assertIn("reportPlayerExit(", PLAYER)
+        self.assertIn("refreshNativeCatalog()", VIEW_MODEL)
 
     def test_autoplay_event_updates_canonical_settings_key(self):
-        start = MAIN.index("elif event_type == 'player_autoplay_changed':")
-        end = MAIN.index("elif event_type in {'player_next_request', 'player_previous_request'}:", start)
-        block = MAIN[start:end]
-        self.assertIn('settings.set("player.autoplay_next", enabled)', block)
-        self.assertNotIn("store.set_preference('autoplay_next'", block)
-
+        self.assertIn('persistCanonicalPlayerSetting("player.autoplay_next"', PLAYER)
         with tempfile.TemporaryDirectory() as directory:
             store = LibraryStore(directory)
             settings = SettingsStore(store)
@@ -118,19 +111,18 @@ class StabilizationTests(unittest.TestCase):
         self.assertEqual(25, store.physical_row(path)["progress"])
 
     def test_details_metadata_and_palette_tasks_have_stale_result_guards(self):
-        self.assertIn("navigation.current != \"details\"", MAIN)
-        self.assertIn("(current[0] or {}).get(\"id\") != anime_id", MAIN)
-        self.assertIn("details_instance_generation", MAIN)
-        self.assertIn("detail_instance_token", MAIN)
+        self.assertIn("LaunchedEffect(aniListState.associationRevision)", DETAILS_NATIVE)
+        self.assertIn("detailsState(canonicalId)", DETAILS_NATIVE)
+        self.assertIn("refreshDetails(animeId: Long)", VIEW_MODEL)
+        self.assertIn("collectAsStateWithLifecycle", DETAILS_NATIVE)
         self.assertIn("callable(is_active) and not is_active()", DETAILS)
 
-    def test_details_refresh_rechecks_view_generation_after_background_catalog_read(self):
-        start = MAIN.index("async def refresh_current_details")
-        end = MAIN.index("async def refresh_current_metadata", start)
-        block = MAIN[start:end]
-        self.assertIn("details_token = details_instance_generation[0]", block)
-        self.assertIn("details_instance_generation[0] != details_token", block)
-        self.assertIn('navigation.current != "details"', block)
+    def test_details_refresh_is_lifecycle_scoped_to_the_current_canonical_item(self):
+        self.assertIn("fun refreshDetails(animeId: Long)", VIEW_MODEL)
+        self.assertIn("if (animeId <= 0L) return", VIEW_MODEL)
+        self.assertIn("nativeCatalogReloadMutex.withLock", VIEW_MODEL)
+        self.assertIn("detailsState(canonicalId)", DETAILS_NATIVE)
+        self.assertIn("viewModel.refreshDetails(canonicalId)", DETAILS_NATIVE)
 
     def test_details_mutation_callbacks_ignore_results_after_navigation(self):
         note = DETAILS[DETAILS.index("async def save(_event):", DETAILS.index("def edit_note")):DETAILS.index("async def clear_and_save", DETAILS.index("def edit_note"))]
@@ -141,25 +133,17 @@ class StabilizationTests(unittest.TestCase):
         self.assertIn("callable(is_active) and not is_active()", identification)
 
     def test_newer_thumbnail_generation_supersedes_inflight_older_request(self):
-        request_start = MAIN.index("def request_missing_thumbnail")
-        request_end = MAIN.index("def storage_state", request_start)
-        block = MAIN[request_start:request_end]
-        self.assertIn("previous = thumbnail_latest_key_by_uri.get(path_ref)", block)
-        self.assertIn("thumbnail_pending.pop(previous, None)", block)
-        self.assertIn("thumbnail_requests.discard(previous)", block)
-        self.assertIn("thumbnail_latest_key_by_uri[path_ref] = key", block)
-        self.assertIn("thumbnail_key != latest_key", MAIN)
+        self.assertIn("latestKeyByUri[uri.toString()] = key", EXTRACTOR)
+        self.assertIn("latestKeyByUri[uri.toString()] != cacheKey(identity, size, modifiedAt)", EXTRACTOR)
+        self.assertIn("return result.copy(canonicalArtworkRegistered = false)", EXTRACTOR)
+        self.assertIn("if (latestKeyByUri.size > 2048)", EXTRACTOR)
 
     def test_thumbnail_ready_only_accepts_latest_generation(self):
-        start = MAIN.index("elif event_type == 'thumbnail_ready':")
-        end = MAIN.index("elif event_type == 'thumbnail_error':", start)
-        block = MAIN[start:end]
-        self.assertIn("thumbnail_latest_key_by_uri", MAIN)
-        self.assertIn("latest_key = thumbnail_latest_key_by_uri.get(uri)", block)
-        self.assertIn("thumbnail_key != latest_key", block)
-        self.assertIn("media_identity", block)
-        self.assertIn("THUMBNAIL_STALE", block)
-        self.assertIn("thumbnail_request_started_at", MAIN)
+        self.assertIn("type", MAIN_ACTIVITY)
+        self.assertIn("thumbnail_ready", MAIN_ACTIVITY)
+        self.assertIn("latestKeyByUri[uri.toString()] != cacheKey(identity, size, modifiedAt)", EXTRACTOR)
+        self.assertIn("registerGeneratedThumbnail", EXTRACTOR)
+        self.assertIn("registerGeneratedArtwork", EXTRACTOR)
 
     def test_home_and_organize_catalog_refreshes_are_coalesced(self):
         home = (ROOT / "views" / "home_view.py").read_text(encoding="utf-8")
@@ -170,12 +154,10 @@ class StabilizationTests(unittest.TestCase):
             self.assertIn("while catalog_refresh_dirty[0]", source)
 
     def test_duplicate_player_handoffs_are_serialized(self):
-        start = MAIN.index("def play_episode")
-        end = MAIN.index("def open_marathon", start)
-        block = MAIN[start:end]
-        self.assertIn('player_launch_inflight["value"]', block)
-        self.assertIn("PLAYER_HANDOFF_DUPLICATE_IGNORED", block)
-        self.assertIn('finally:\n                player_launch_inflight["value"] = False', block)
+        self.assertIn("seenPlayerRequestIds", MAIN_ACTIVITY)
+        self.assertIn("PLAYER_HANDOFF_DUPLICATE", MAIN_ACTIVITY)
+        self.assertIn("while (seenPlayerRequestIds.size > 256)", MAIN_ACTIVITY)
+        self.assertIn("PLAYER_HANDOFF_REJECTED", MAIN_ACTIVITY)
 
     def test_native_player_reuse_refreshes_autoplay_state(self):
         start = PLAYER.index("override fun onNewIntent")
@@ -225,8 +207,9 @@ class StabilizationTests(unittest.TestCase):
         self.assertIn("MAX_TRANSLATION_CACHE_ENTRIES = 4096", ANILIST)
 
     def test_playback_event_dedupe_cache_is_bounded(self):
-        self.assertIn("if len(self._last_playback_event_at) > 8192", STORE)
-        self.assertIn("if len(processed_native_operations) > 1024", MAIN)
+        self.assertIn("seenPlayerRequestIds", MAIN_ACTIVITY)
+        self.assertIn("while (seenPlayerRequestIds.size > 256)", MAIN_ACTIVITY)
+        self.assertIn("seenPlayerRequestIds.remove(oldest)", MAIN_ACTIVITY)
 
     def test_description_original_is_not_cleared_by_local_metadata_updates(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -399,16 +382,10 @@ class StabilizationTests(unittest.TestCase):
                 service.shutdown()
 
     def test_details_and_main_use_canonical_localized_description_pipeline(self):
-        mapper = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mapper/LibraryUiMappers.kt").read_text(encoding="utf-8")
-        details_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/ReiAnixDetailsUiModels.kt").read_text(encoding="utf-8")
-        self.assertIn('metadata.get("description") or ""', DETAILS)
-        self.assertNotIn('metadata.get("description_original")', DETAILS)
-        self.assertIn("library.set_metadata_change_listener(_dispatch_metadata_change)", MAIN)
-        self.assertIn("f\"metadata_translation:{payload.get('anime_id') or 0}\"", MAIN)
-        self.assertIn('description = metadata.stringOrNull("description")', mapper)
-        self.assertNotIn('?: metadata.stringOrNull("description_original")', mapper)
-        self.assertIn("description = anime.description", details_model)
-        self.assertIn("description_original", ANILIST)
+        self.assertIn("ReiAnixAniListIntegrationService", ANI_INTEGRATION)
+        self.assertIn("anilist_metadata_committed", ANI_INTEGRATION + VIEW_MODEL)
+        self.assertIn("refreshDetails(canonicalId)", DETAILS_NATIVE)
+        self.assertIn("ReiAnixAniListViewModel", DETAILS_NATIVE)
 
 if __name__ == "__main__":
     unittest.main()

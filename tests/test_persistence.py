@@ -10,13 +10,15 @@ MAIN = native_main_source()
 
 class DurableProgressTests(unittest.TestCase):
     def test_dispatcher_allows_durable_replay_when_no_live_player_exists(self):
-        start = MAIN.index("elif event_type in {'player_progress', 'player_paused', 'player_completed'}:")
-        end = MAIN.index("elif event_type == 'player_mark_watched':", start)
-        block = MAIN[start:end]
-        self.assertGreaterEqual(
-            block.count('require_active=bool(player_session_active["value"])'),
-            2,
-        )
+        mailbox = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
+        player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
+        consumption = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt").read_text(encoding="utf-8")
+        self.assertIn("fun write(context: Context, event: JSONObject): Boolean", mailbox)
+        self.assertIn("writeInternal(context, event, durable = true)", mailbox)
+        self.assertIn("fun writeBestEffort(context: Context, event: JSONObject)", mailbox)
+        self.assertIn("saveProgress(", player)
+        self.assertIn("suspend fun saveProgress(", consumption)
+        self.assertIn("player_exited", consumption)
 
     def test_one_episode_replay_after_process_restart_is_persisted(self):
         from core.library_store import LibraryStore

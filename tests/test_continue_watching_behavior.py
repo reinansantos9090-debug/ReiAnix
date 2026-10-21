@@ -71,17 +71,14 @@ class ContinueWatchingTests(unittest.TestCase):
             self.assertEqual(450, after[0]["progress"])
 
     def test_player_progress_publishes_compose_only_after_a_real_persistence_change(self):
-        start = MAIN.index("elif event_type in {'player_progress', 'player_paused', 'player_completed'}:")
-        end = MAIN.index("elif event_type == 'player_error':", start)
-        block = MAIN[start:end]
-        publish = "compose_library_bridge.request_publish("
-        reason = "f\"player_progress:{payload.get('episodeId') or 0}\""
-        self.assertIn(publish, block)
-        self.assertIn(reason, block)
-        publish_pos = block.index(publish)
-        reason_pos = block.index(reason)
-        self.assertIn("if updated:", block[max(0, reason_pos - 320):reason_pos + len(reason)])
-        self.assertEqual(block.count(reason), 1)
+        player = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
+        consumption = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn('saveProgress("player_progress"', player)
+        self.assertIn("suspend fun saveProgress(", consumption)
+        self.assertIn("UI_REFRESH_EVENT_TYPES", consumption)
+        self.assertIn("ReiAnixConsumptionService.playbackChanges", view_model)
+        self.assertIn("refreshNativeCatalog()", view_model)
 
     def test_progress_change_does_not_create_a_second_persistence_source(self):
         bridge = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")

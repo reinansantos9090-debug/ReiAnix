@@ -25,6 +25,9 @@ class NativeMainSource(str):
     def is_file(self) -> bool:
         return False
 
+    def __repr__(self) -> str:
+        return "<NativeMainSource: Kotlin production source aggregate>"
+
 
 @lru_cache(maxsize=1)
 def native_main_source() -> NativeMainSource:

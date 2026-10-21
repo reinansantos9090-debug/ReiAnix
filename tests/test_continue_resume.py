@@ -20,35 +20,41 @@ HOME = (ROOT / "views/home_view.py").read_text(encoding="utf-8")
 
 class ContinueResumeTests(unittest.TestCase):
     def test_continue_resolves_episode_by_canonical_episode_id(self):
-        self.assertIn("def episode_by_id(self, episode_id):", STORE_SOURCE)
-        self.assertIn("fresh_episode = await asyncio.to_thread(store.episode_by_id, episode_id)", MAIN)
-        self.assertIn('launch_anime_id = fresh_episode.get("anime_id")', MAIN)
-        self.assertIn('launch_path = str(fresh_episode.get("path") or "").strip()', MAIN)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn("fun openEpisode(episodeId: Long, expectedAnimeId: Long?", view_model)
+        self.assertIn("nativeLibraryRepository.getEpisode(episodeId)", view_model)
+        self.assertIn("nativeLibraryRepository.listEpisodes(episode.animeId)", view_model)
+        self.assertIn("episode.animeId", view_model)
 
     def test_continue_does_not_trust_stale_home_anime_identity(self):
-        play = MAIN[MAIN.index("def play_episode("):MAIN.index("def open_marathon(", MAIN.index("def play_episode("))]
-        self.assertIn('player_active_anime_id["value"] = launch_anime_id', play)
-        self.assertIn('anime_id=launch_anime_id', play)
-        self.assertIn('episode_id=fresh_episode.get("id")', play)
-        self.assertIn('uri_source": "canonical_sqlite_row"', play)
-        # The Home control tree is intentionally untouched in this stage.
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        start = view_model.index("fun openEpisode(episodeId: Long, expectedAnimeId: Long?")
+        end = view_model.index("override fun onCleared()", start)
+        launch = view_model[start:end]
+        self.assertIn("expectedAnimeId", launch)
+        self.assertIn("nativeLibraryRepository.getEpisode(episodeId)", launch)
+        self.assertIn("Intent.ACTION_VIEW", launch)
+        self.assertIn("episode.id", launch)
         self.assertIn('on_play_episode(', HOME)
 
     def test_resume_uses_seconds_in_sqlite_and_ms_on_native_boundary(self):
-        self.assertIn("position_ms / 1000.0", MAIN)
-        self.assertIn("duration_ms / 1000.0", MAIN)
-        self.assertIn("int(max(0.0, launch_progress_seconds) * 1000)", MAIN)
-        self.assertIn('"positionMs", position', PLAYER)
-        self.assertIn('"durationMs", duration', PLAYER)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn('preferenceValue("player.resume")', view_model)
+        self.assertIn("val progressSeconds = episode.progress", view_model)
+        self.assertIn("(progressSeconds * 1_000.0).toLong()", view_model)
+        self.assertIn('putExtra("positionMs", positionMs)', (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8"))
+        self.assertIn('saveProgress("player_progress"', PLAYER)
 
     def test_continue_reloads_the_latest_persisted_progress(self):
-        play = MAIN[MAIN.index("async def launch_native_player():"):MAIN.index("def open_marathon(", MAIN.index("async def launch_native_player():"))]
-        self.assertIn('raw_progress = fresh_episode.get("progress")', play)
-        self.assertIn('raw_progress_seconds = float(raw_progress or 0.0)', play)
-        self.assertIn('float(raw_progress or 0.0)', play)
-        self.assertIn('duration_seconds = max(', play)
-        self.assertIn('launch_progress_seconds = raw_progress_seconds', play)
-        self.assertIn('"PROGRESS_VALIDATED"', play)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        start = view_model.index("fun openEpisode(episodeId: Long, expectedAnimeId: Long?")
+        end = view_model.index("override fun onCleared()", start)
+        launch = view_model[start:end]
+        self.assertIn("nativeLibraryRepository.getEpisode(episodeId)", launch)
+        self.assertIn("preferenceValue(\"player.resume\")", launch)
+        self.assertIn("episode.progress", launch)
+        self.assertIn("positionMs", launch)
+        self.assertIn("positionWasExplicit", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8"))
 
     def test_ready_uses_preloaded_resume_position_before_playback(self):
         prepare = PLAYER[PLAYER.index("private fun prepareCurrentMedia"):PLAYER.index("private fun createPlayerListener")]
@@ -73,18 +79,19 @@ class ContinueResumeTests(unittest.TestCase):
         self.assertIn("requestedMs.coerceIn(0L, lastPlayable)", POLICY)
 
     def test_invalid_continue_source_is_rejected_before_native_handoff(self):
-        play = MAIN[MAIN.index("async def launch_native_player():"):MAIN.index("def open_marathon(", MAIN.index("async def launch_native_player():"))]
-        self.assertIn('"EPISODE_NOT_FOUND"', play)
-        self.assertIn('"MEDIA_URI_MISSING"', play)
-        self.assertIn('"FILE_NOT_FOUND"', play)
-        self.assertIn("STALE_SESSION_AFTER_PROGRESS_LOOKUP", play)
+        self.assertIn("validateLocalSource(localUri)", PLAYER)
+        self.assertIn("SourceValidationFailure", PLAYER)
+        self.assertIn("FILE_NOT_FOUND", PLAYER)
+        self.assertIn("performOpenPlayer(", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8"))
+        self.assertIn("PLAYER_HANDOFF_REJECTED", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8"))
 
     def test_progress_writes_are_session_bound(self):
-        self.assertIn("activate_playback_session", MAIN)
-        self.assertIn("invalidate_playback_session", MAIN)
-        self.assertIn('session_id=payload.get("playerSessionId")', MAIN)
-        self.assertIn("self._playback_session_lock", STORE_SOURCE)
-        self.assertIn('status="stale_session"', STORE_SOURCE)
+        consumption = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt").read_text(encoding="utf-8")
+        self.assertIn("playerSessionId", PLAYER)
+        self.assertIn("playerGeneration", PLAYER)
+        self.assertIn("transitionGeneration", PLAYER)
+        self.assertIn("suspend fun saveProgress(", consumption)
+        self.assertIn("episodeId: Long", consumption)
 
     def test_stale_session_cannot_overwrite_new_session_progress(self):
         from core.library_store import LibraryStore
