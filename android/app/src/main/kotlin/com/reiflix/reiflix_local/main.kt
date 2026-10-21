@@ -7014,7 +7014,7 @@ internal class NativeMainRuntimePort(
         val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
             ?: stringValueFromPayload(payload, "requestId", "request_id")
         return when (normalized) {
-            "reset_player" -> resetSettingsByPrefixes(setOf("player.", "gestures.", "audio."))
+            "reset_player" -> resetSettingsByPrefixes(setOf("player."))
             "reset_all_settings" -> resetSettingsByPrefixes(emptySet())
             "clear_anilist_cache", "clear_artwork_cache" -> clearManagedArtworkCache()
             "settings_export" -> launchNativeSettingsFileAction(normalized, resolvedRequestId)
