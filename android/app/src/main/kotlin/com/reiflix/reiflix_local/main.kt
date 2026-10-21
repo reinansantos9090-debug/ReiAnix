@@ -1855,6 +1855,8 @@ internal class NativeMainRuntimePort(
 
         val terminalStatus = status.trim().uppercase(Locale.ROOT)
         if (terminalStatus !in setOf("COMPLETED", "ERROR", "FAILED", "CANCELLED")) return false
+        val resultPayload = org.json.JSONObject(payload?.toString() ?: "{}")
+            .put("selectionBridge", pendingSafSelectionBridge)
         val published = publishOperationResult(
             requestId = pendingRequestId,
             action = "select_saf",
@@ -1862,14 +1864,14 @@ internal class NativeMainRuntimePort(
             operationState = terminalStatus,
             message = message,
             error = error,
-            payload = payload,
+            payload = resultPayload,
         )
         clearPendingSafSelectionContext()
         return published
     }
 
     fun beginSafSelection(requestId: String? = null, bridge: String = "library"): Boolean {
-        if (!canMutateSafRoots()) return false
+        if (pendingSafSelectionRequestId?.isNotBlank() == true || !canMutateSafRoots()) return false
         pendingSafSelectionRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
         pendingSafSelectionBridge = bridge.trim().lowercase(Locale.ROOT).takeIf {
             it == "library" || it == "settings"
