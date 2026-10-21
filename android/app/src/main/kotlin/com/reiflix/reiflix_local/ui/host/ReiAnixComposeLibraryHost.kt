@@ -43,6 +43,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 
@@ -107,12 +108,10 @@ class ReiAnixComposeLibraryHost(
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
-            // Port of main.py's Home refresh lifecycle. The native scan remains the
-            // sole scanner and SQLite owner; this state machine only tracks REQUESTED ->
-            // RUNNING -> CATALOG_UPDATING -> UI_COMMIT -> SUCCESS for diagnostics.
-            // An initial idle snapshot is ignored because it has no active request; if
-            // the host attaches during a scan, the true snapshot is tracked so its terminal
-            // result is still processed without a second scan or duplicate reconciliation.
+            // Track the native scan's refresh lifecycle independently from metadata work.
+            // Unlike a UI side effect, this observer may process the initial snapshot: if the
+            // host attaches while a scan is active, its terminal state still belongs to this
+            // request. It records state only and never starts scans or writes SQLite.
             LaunchedEffect(libraryViewModel) {
                 var activeRefreshRequestId: String? = null
                 libraryViewModel.uiState
@@ -139,61 +138,62 @@ class ReiAnixComposeLibraryHost(
                         val terminalStatus = (
                             terminalUiState.lastScanStatus ?: terminalUiState.scanState
                         ).trim().uppercase()
-                        var refreshCanComplete = true
                         when (terminalStatus) {
-                            "CANCELLED", "CANCELED" -> {
+                            "CANCELLED", "CANCELED" ->
                                 HomeRefreshCoordinator.cancel(requestId, "scan_$terminalStatus")
-                                refreshCanComplete = false
-                            }
-                            "PARTIAL", "FAILED", "ERROR", "BLOCKED" -> {
+                            "PARTIAL", "FAILED", "ERROR", "BLOCKED" ->
                                 HomeRefreshCoordinator.fail(requestId, "scan_$terminalStatus")
-                                refreshCanComplete = false
-                            }
-                            "COMPLETED", "SUCCESS", "SUCCEEDED", "EMPTY_COMPLETE" -> Unit
-                            else -> {
-                                HomeRefreshCoordinator.fail(requestId, "scan_terminal_status_unverified")
-                                refreshCanComplete = false
-                            }
-                        }
-                        if (refreshCanComplete && !HomeRefreshCoordinator.markScanTerminal(requestId)) {
-                            HomeRefreshCoordinator.fail(requestId, "scan_terminal_transition_rejected")
-                            refreshCanComplete = false
-                        }
-                        // Keep the existing post-scan metadata/artwork reconciliation even
-                        // for partial/cancelled scans. The state machine reports the terminal
-                        // scan outcome but never suppresses safe work for already indexed rows.
-                        if (terminalUiState.animes.isNotEmpty()) {
-                            val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                            try {
-                                withContext(Dispatchers.IO) {
-                                    dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                            "COMPLETED", "SUCCESS", "SUCCEEDED", "EMPTY_COMPLETE" -> {
+                                if (HomeRefreshCoordinator.markScanTerminal(requestId)) {
+                                    if (HomeRefreshCoordinator.markCatalogUpdated(requestId)) {
+                                        HomeRefreshCoordinator.complete(requestId)
+                                    } else {
+                                        HomeRefreshCoordinator.fail(requestId, "catalog_projection_not_committed")
+                                    }
+                                } else {
+                                    HomeRefreshCoordinator.fail(requestId, "scan_terminal_transition_rejected")
                                 }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
+                            }
+                            else ->
+                                HomeRefreshCoordinator.fail(requestId, "scan_terminal_status_unverified")
+                        }
+                        activeRefreshRequestId = null
+                    }
+            }
+
+            // A route mount must not trigger remote work from the stored first snapshot.
+            // Keep the existing behavior: only later transitions back to idle initiate the
+            // asynchronous AniList/artwork reconciliation, and only when the catalog has rows.
+            LaunchedEffect(libraryViewModel) {
+                libraryViewModel.uiState
+                    .map { it.scanInProgress }
+                    .distinctUntilChanged()
+                    .drop(1)
+                    .filter { scanning -> !scanning }
+                    .collectLatest {
+                        if (libraryViewModel.uiState.value.animes.isEmpty()) return@collectLatest
+                        val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                        try {
+                            withContext(Dispatchers.IO) {
+                                dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w(
+                                TAG,
+                                "Native AniList reconciliation after scan failed. errorType=" +
+                                    error::class.java.simpleName,
+                            )
+                        }
+                        runCatching { dependencies.artworkService.requestPendingArtwork() }
+                            .onFailure { error ->
                                 android.util.Log.w(
                                     TAG,
-                                    "Native AniList reconciliation after scan failed. errorType=" +
+                                    "Native artwork backfill after scan failed. errorType=" +
                                         error::class.java.simpleName,
                                 )
                             }
-                            runCatching { dependencies.artworkService.requestPendingArtwork() }
-                                .onFailure { error ->
-                                    android.util.Log.w(
-                                        TAG,
-                                        "Native artwork backfill after scan failed. errorType=" +
-                                            error::class.java.simpleName,
-                                    )
-                                }
-                        }
-                        if (refreshCanComplete) {
-                            if (HomeRefreshCoordinator.markCatalogUpdated(requestId)) {
-                                HomeRefreshCoordinator.complete(requestId)
-                            } else {
-                                HomeRefreshCoordinator.fail(requestId, "catalog_projection_not_committed")
-                            }
-                        }
-                        activeRefreshRequestId = null
                     }
             }
 
