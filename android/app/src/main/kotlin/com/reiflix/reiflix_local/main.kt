@@ -6155,6 +6155,21 @@ internal class NativeMainRuntimePort(
                 true
             }
             "player_paused", "player_completed" -> {
+                if (!playerCallbackIdentityIsComplete(payload)) {
+                    recordDiagnostic(
+                        name = "PLAYER_CALLBACK_REJECTED_INCOMPLETE_IDENTITY",
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = type,
+                        context = mapOf(
+                            "has_session_id" to stringValue("playerSessionId", "player_session_id").isNullOrBlank().not(),
+                            "has_episode_id" to (longValue("episodeId", "episode_id") != null),
+                            "has_media_id" to stringValue("mediaId", "media_id").isNullOrBlank().not(),
+                            "has_uri" to stringValue("uri").isNullOrBlank().not(),
+                        ),
+                    )
+                    return false
+                }
                 val validation = validatePlayerCallback(
                     eventRequestId,
                     payload,
@@ -6265,6 +6280,21 @@ internal class NativeMainRuntimePort(
                 true
             }
             "player_progress", "playback_progress" -> {
+                if (!playerCallbackIdentityIsComplete(payload)) {
+                    recordDiagnostic(
+                        name = "PLAYER_CALLBACK_REJECTED_INCOMPLETE_IDENTITY",
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = type,
+                        context = mapOf(
+                            "has_session_id" to stringValue("playerSessionId", "player_session_id").isNullOrBlank().not(),
+                            "has_episode_id" to (longValue("episodeId", "episode_id") != null),
+                            "has_media_id" to stringValue("mediaId", "media_id").isNullOrBlank().not(),
+                            "has_uri" to stringValue("uri").isNullOrBlank().not(),
+                        ),
+                    )
+                    return false
+                }
                 if (!validatePlayerCallback(eventRequestId, payload, requireActive = true).isCurrent) {
                     recordDiagnostic("PLAYER_CALLBACK_REJECTED", severity = "WARN",
                         requestId = eventRequestId, result = "stale_progress_callback")
@@ -6295,6 +6325,38 @@ internal class NativeMainRuntimePort(
                 }
             }
             "player_exited", "player_exit" -> {
+                if (!playerCallbackIdentityIsComplete(payload)) {
+                    recordDiagnostic(
+                        name = "PLAYER_CALLBACK_REJECTED_INCOMPLETE_IDENTITY",
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = type,
+                        context = mapOf(
+                            "has_session_id" to stringValue("playerSessionId", "player_session_id").isNullOrBlank().not(),
+                            "has_episode_id" to (longValue("episodeId", "episode_id") != null),
+                            "has_media_id" to stringValue("mediaId", "media_id").isNullOrBlank().not(),
+                            "has_uri" to stringValue("uri").isNullOrBlank().not(),
+                        ),
+                    )
+                    return false
+                }
+                val validation = validatePlayerCallback(
+                    eventRequestId = eventRequestId,
+                    payload = payload,
+                    requireActive = mutableSnapshot.value.playerSessionActive,
+                    expectedEpisodeId = longValue("episodeId", "episode_id"),
+                    expectedAnimeId = longValue("animeId", "anime_id"),
+                    expectedMediaId = stringValue("mediaId", "media_id"),
+                )
+                if (!validation.isCurrent) {
+                    recordDiagnostic(
+                        name = "PLAYER_CALLBACK_REJECTED",
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = validation.reason,
+                    )
+                    return false
+                }
                 val requestId = eventRequestId ?: stringValue("requestId") ?: return false
                 notePlayerExit(
                     requestId = requestId,
