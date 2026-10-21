@@ -3262,19 +3262,20 @@ internal class NativeMainRuntimePort(
                 scheduleCatalogMetadataHydration("post_restore_reconciliation")
                 scheduleThumbnailReconciliation("post_restore_reconciliation")
 
-                val scanAccepted = requestStorageAction(
-                    action = "scan_library",
+                val scanAccepted = requestLibraryScan(
                     requestId = resolvedRequestId,
                     resultAction = "backup_reconcile",
                 )
                 if (!scanAccepted) {
-                    publishOperationResult(
+                    // requestLibraryScan already publishes the specific BLOCKED or
+                    // FAILED terminal result. Do not overwrite that reason with a
+                    // generic failure from this caller.
+                    recordDiagnostic(
+                        name = "RESTORE_RECONCILIATION_SCAN_NOT_QUEUED",
+                        severity = "WARN",
                         requestId = resolvedRequestId,
-                        action = "backup_reconcile",
-                        status = "FAILED",
-                        operationState = "FAILED",
-                        message = "A varredura de reconciliação não foi aceita.",
-                        error = "scan_request_rejected",
+                        result = operationResultFor(resolvedRequestId)?.status ?: "rejected",
+                        context = mapOf("local_references_updated" to updated),
                     )
                     return@launchTracked
                 }
