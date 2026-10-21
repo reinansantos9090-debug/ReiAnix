@@ -1687,13 +1687,12 @@ internal class NativeMainRuntimePort(
         if (correlatedRequestId != null && pendingOperation != null &&
             pendingStorageOperations.putIfAbsent(correlatedRequestId, pendingOperation) != null
         ) {
-            publishOperationResult(
+            recordDiagnostic(
+                name = "NATIVE_STORAGE_DUPLICATE_REQUEST_IGNORED",
+                severity = "WARN",
                 requestId = correlatedRequestId,
-                action = operationAction,
-                status = "BLOCKED",
-                operationState = "BLOCKED",
-                message = "Já existe uma operação de armazenamento com este requestId.",
-                error = "duplicate_pending_storage_request",
+                result = operationAction,
+                context = mapOf("native_action" to normalizedAction),
             )
             return false
         }
@@ -2732,6 +2731,15 @@ internal class NativeMainRuntimePort(
     fun requestSafFolderSelection(requestId: String? = null, bridge: String = "library"): Boolean {
         val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
             ?: UUID.randomUUID().toString()
+        if (pendingSafSelectionRequestId == resolvedRequestId) {
+            recordDiagnostic(
+                name = "SAF_SELECTION_DUPLICATE_REQUEST_IGNORED",
+                severity = "WARN",
+                requestId = resolvedRequestId,
+                result = "request_already_pending",
+            )
+            return false
+        }
         if (!beginSafSelection(resolvedRequestId, bridge)) {
             val message = "Aguarde a varredura ou a seleção de pasta atual terminar."
             publishOperationResult(
@@ -2780,6 +2788,15 @@ internal class NativeMainRuntimePort(
         val requestedReference = reference.trim()
         val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
             ?: UUID.randomUUID().toString()
+        if (pendingSafRemovalRequestId == resolvedRequestId) {
+            recordDiagnostic(
+                name = "SAF_REMOVAL_DUPLICATE_REQUEST_IGNORED",
+                severity = "WARN",
+                requestId = resolvedRequestId,
+                result = "request_already_pending",
+            )
+            return false
+        }
         val requestedIdentity = StorageAuthorization.safIdentity(requestedReference)
         val configuredReference = configuredSafTreeUris().firstOrNull { configured ->
             val configuredText = configured.toString()
@@ -3434,7 +3451,8 @@ internal class NativeMainRuntimePort(
 
         val terminalStatus = status.trim().uppercase(Locale.ROOT)
         if (terminalStatus !in setOf("COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "ERROR")) return false
-        val published = publishOperationResult(
+        if (!pendingStorageOperations.remove(request, pending)) return false
+        return publishOperationResult(
             requestId = request,
             action = pending.resultAction,
             status = terminalStatus,
@@ -3443,8 +3461,6 @@ internal class NativeMainRuntimePort(
             error = error,
             payload = payload,
         )
-        if (published) pendingStorageOperations.remove(request, pending)
-        return published
     }
 
     fun publishOperationResult(
