@@ -675,6 +675,9 @@ internal class NativeMainRuntimePort(
     // Bounded retry state mirrors the legacy thumbnail retry_after_error task.
     private val thumbnailRetryCounts = ConcurrentHashMap<String, Int>()
     private val thumbnailRetryPendingKeys = ConcurrentHashMap.newKeySet<String>()
+    // Suppress repeated completion events for one request, matching main.py's
+    // thumbnail_completed_request_by_key guard.
+    private val thumbnailCompletedRequestByKey = java.util.LinkedHashMap<String, String>()
     // Older source-version requests for the same URI must not overtake the latest queued request.
     private val thumbnailLatestKeyByUri = ConcurrentHashMap<String, String>()
     private val thumbnailLatestAtMillis = ConcurrentHashMap<String, Long>()
@@ -1647,6 +1650,10 @@ internal class NativeMainRuntimePort(
             thumbnailRetryPendingKeys.asSequence()
                 .take(512)
                 .forEach { key -> thumbnailRetryPendingKeys.remove(key) }
+        }
+        if (thumbnailCompletedRequestByKey.size > 2_048) {
+            thumbnailCompletedRequestByKey.keys.take(512)
+                .forEach { key -> thumbnailCompletedRequestByKey.remove(key) }
         }
     }
 
@@ -6109,8 +6116,48 @@ internal class NativeMainRuntimePort(
                             val modifiedAt = payload.optLong("modifiedAt", payload.optLong("modified_at", 0L)).coerceAtLeast(0L)
                             val identity = stringValue("mediaIdentity", "media_identity") ?: uri.toString()
                             val key = thumbnailRequestKey(uri, size, modifiedAt, identity)
-                            thumbnailRetryCounts.remove(key)
-                            thumbnailRetryPendingKeys.remove(key)
+                            val eventDisposition = synchronized(thumbnailQueueLock) {
+                                pruneThumbnailQueueStateLocked()
+                                val completedRequestId = thumbnailCompletedRequestByKey[key]
+                                val latestKey = thumbnailLatestKeyByUri[uri.toString()]
+                                when {
+                                    !correlatedRequestId.isNullOrBlank() &&
+                                        completedRequestId == correlatedRequestId &&
+                                        key !in thumbnailRequests -> "duplicate"
+                                    latestKey != null && latestKey != key -> "stale"
+                                    else -> {
+                                        thumbnailRetryCounts.remove(key)
+                                        thumbnailRetryPendingKeys.remove(key)
+                                        if (!correlatedRequestId.isNullOrBlank()) {
+                                            thumbnailCompletedRequestByKey[key] = correlatedRequestId
+                                            if (thumbnailCompletedRequestByKey.size > 2_048) {
+                                                thumbnailCompletedRequestByKey.keys.take(512)
+                                                    .forEach { thumbnailCompletedRequestByKey.remove(it) }
+                                            }
+                                        }
+                                        "accepted"
+                                    }
+                                }
+                            }
+                            when (eventDisposition) {
+                                "duplicate" -> {
+                                    recordDiagnostic(
+                                        name = "THUMBNAIL_DUPLICATE",
+                                        requestId = correlatedRequestId,
+                                        result = "IGNORED",
+                                    )
+                                    return true
+                                }
+                                "stale" -> {
+                                    recordDiagnostic(
+                                        name = "THUMBNAIL_STALE",
+                                        requestId = correlatedRequestId,
+                                        result = "IGNORED",
+                                        context = mapOf("uri_present" to true),
+                                    )
+                                    return true
+                                }
+                            }
                         }
                     }
                 }
