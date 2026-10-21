@@ -4,6 +4,9 @@ import androidx.activity.ComponentActivity
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
+import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
+import java.io.File
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
@@ -477,6 +480,8 @@ internal data class NativeMainRuntimeSnapshot(
     val pendingTasks: Int = 0,
     val lastAction: String? = null,
     val lastError: String? = null,
+    val lastArtifactPath: String? = null,
+    val lastResultJson: String? = null,
 )
 
 internal class NativeMainRuntimePort(
@@ -819,6 +824,128 @@ internal class NativeMainRuntimePort(
         publish(action = "ensure_native_command_dispatcher")
     }
 
+    private val backupService: ReiAnixBackupService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixBackupService(activity.applicationContext)
+    }
+    private val diagnosticsService: ReiAnixDiagnosticsService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixDiagnosticsService(activity.applicationContext)
+    }
+
+    /** Build the existing canonical backup format; no alternate catalogue or database is created. */
+    fun createBackup(): Boolean = launchTracked("create_backup", lane = "backup") {
+        val archive = backupService.createBackupFile()
+        require(archive.isFile && archive.length() > 0L) {
+            "O serviço de backup não produziu um arquivo válido."
+        }
+        publish(action = "create_backup", transform = {
+            it.copy(lastArtifactPath = archive.absolutePath, lastResultJson = null)
+        })
+    }
+
+    /** Inspect archive structure and integrity before an explicit restore request. */
+    fun inspectBackup(archive: File): Boolean {
+        if (!archive.isFile || archive.length() <= 0L) {
+            publish(action = "inspect_backup", error = "O arquivo de backup está ausente ou vazio.")
+            return false
+        }
+        return launchTracked("inspect_backup", lane = "backup") {
+            val inspection = backupService.inspectBackup(archive)
+            val summary = org.json.JSONObject()
+                .put("manifest", inspection.manifest)
+                .put("counts", inspection.counts)
+                .put("invalidOptionalEntries", org.json.JSONArray(inspection.invalidOptionalEntries.toList()))
+                .put("warnings", org.json.JSONArray(inspection.warnings))
+            publish(action = "inspect_backup", transform = {
+                it.copy(lastArtifactPath = archive.absolutePath, lastResultJson = summary.toString())
+            })
+        }
+    }
+
+    /** Restore through the canonical Kotlin service, including its pre-restore safety backup. */
+    fun restoreBackup(archive: File): Boolean {
+        if (!archive.isFile || archive.length() <= 0L) {
+            publish(action = "restore_backup", error = "O arquivo de backup está ausente ou vazio.")
+            return false
+        }
+        return launchTracked("restore_backup", lane = "backup") {
+            val result = backupService.restoreBackup(archive)
+            libraryViewModel.refresh()
+            settingsViewModel.refresh()
+            val summary = org.json.JSONObject()
+                .put("importedRows", result.importedRows)
+                .put("missingFiles", result.missingFiles)
+                .put("manualArtworkReconnected", result.manualArtworkReconnected)
+                .put("safetyBackup", result.safetyBackup.absolutePath)
+                .put("warnings", org.json.JSONArray(result.warnings))
+                .put("accountStatePreserved", result.accountStatePreserved)
+                .put("reauthenticationRequired", result.reauthenticationRequired)
+            publish(action = "restore_backup", transform = {
+                it.copy(lastArtifactPath = result.safetyBackup.absolutePath, lastResultJson = summary.toString())
+            })
+        }
+    }
+
+    fun createRecoverySafetySnapshot(): Boolean =
+        launchTracked("create_recovery_safety_snapshot", lane = "backup") {
+            val file = backupService.createRecoverySafetySnapshotForUser()
+            publish(action = "create_recovery_safety_snapshot", transform = {
+                it.copy(lastArtifactPath = file.absolutePath)
+            })
+        }
+
+    fun restoreRecoveryBackup(archive: File): Boolean {
+        if (!archive.isFile || archive.length() <= 0L) {
+            publish(action = "restore_recovery_backup", error = "O arquivo de recuperação está ausente ou vazio.")
+            return false
+        }
+        return launchTracked("restore_recovery_backup", lane = "backup") {
+            val result = backupService.restoreRecoveryBackup(archive)
+            libraryViewModel.refresh()
+            settingsViewModel.refresh()
+            val summary = org.json.JSONObject()
+                .put("importedRows", result.importedRows)
+                .put("missingFiles", result.missingFiles)
+                .put("manualArtworkReconnected", result.manualArtworkReconnected)
+                .put("safetyBackup", result.safetyBackup.absolutePath)
+                .put("warnings", org.json.JSONArray(result.warnings))
+                .put("reauthenticationRequired", result.reauthenticationRequired)
+            publish(action = "restore_recovery_backup", transform = {
+                it.copy(
+                    initialized = true,
+                    recoveryRequired = false,
+                    route = ReiAnixRoutes.HOME,
+                    lastArtifactPath = result.safetyBackup.absolutePath,
+                    lastResultJson = summary.toString(),
+                )
+            })
+            composeHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+        }
+    }
+
+    fun checkDatabaseIntegrity(): Boolean = launchTracked("database_integrity", lane = "backup") {
+        val report = backupService.integrityReport().toJson()
+        publish(action = "database_integrity", transform = {
+            it.copy(lastResultJson = report.toString())
+        })
+    }
+
+    fun reconcileRestoredFileAvailability(): Boolean =
+        launchTracked("reconcile_restored_file_availability", lane = "backup") {
+            val count = backupService.reconcileRestoredFileAvailability()
+            publish(action = "reconcile_restored_file_availability", transform = {
+                it.copy(lastResultJson = org.json.JSONObject().put("updatedRows", count).toString())
+            })
+            libraryViewModel.refresh()
+        }
+
+    /** Native privacy-filtered report mirrors the old diagnostic export action. */
+    fun exportDiagnosticsJson(): Boolean = launchTracked("export_diagnostics", lane = "diagnostics") {
+        val bytes = diagnosticsService.exportJson()
+        publish(action = "export_diagnostics", transform = {
+            it.copy(lastResultJson = bytes.toString(Charsets.UTF_8))
+        })
+    }
+
     fun exportDiagnostics(): String = ReiAnixDiagnosticTimeline.snapshotJson().toString()
 
     fun recordDiagnostic(
@@ -925,6 +1052,88 @@ internal class NativeMainRuntimePort(
         requestStorageAction(action)
 
     fun performanceSnapshot(): String = PerformanceDiagnostics.snapshotJson().toString()
+
+    /** Metadata-only AniList access delegates to the existing native integration service. */
+    suspend fun searchAniList(term: String, limit: Int = 10) =
+        dependencies.aniListIntegrationService.search(term, limit.coerceIn(1, 50))
+
+    suspend fun lookupAniList(anilistId: Int) =
+        dependencies.aniListIntegrationService.lookupAnimeById(anilistId)
+
+    suspend fun associateAniList(animeId: Long, anilistId: Int) =
+        dependencies.aniListIntegrationService.associateManually(animeId, anilistId)
+
+    suspend fun autoMatchAniList(animeId: Long) =
+        dependencies.aniListIntegrationService.autoMatch(animeId)
+
+    fun refreshAniListMetadata(animeId: Long): Boolean {
+        if (animeId <= 0L) return false
+        return launchTracked("refresh_anilist_metadata", lane = "metadata") {
+            val result = dependencies.aniListIntegrationService.refreshMetadata(animeId)
+            publish(action = "refresh_anilist_metadata", transform = {
+                it.copy(lastResultJson = result.toString())
+            })
+        }
+    }
+
+    fun reconcileUnmatchedAniListMetadata(): Boolean =
+        launchTracked("reconcile_unmatched_metadata", lane = "metadata") {
+            val updated = dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+            publish(action = "reconcile_unmatched_metadata", transform = {
+                it.copy(lastResultJson = org.json.JSONObject().put("updated", updated).toString())
+            })
+        }
+
+    fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean {
+        if (animeId <= 0L) return false
+        val accepted = dependencies.artworkService.requestAnimeArtwork(animeId, force)
+        publish(action = "request_anime_artwork", error = if (accepted) null else "Solicitação de artwork não aceita.")
+        return accepted
+    }
+
+    fun requestPendingArtwork(): Boolean {
+        val accepted = dependencies.artworkService.requestPendingArtwork()
+        publish(action = "request_pending_artwork", error = if (accepted) null else "Não há solicitação pendente aceita.")
+        return accepted
+    }
+
+    fun clearManagedArtworkCache(): Boolean =
+        launchTracked("clear_managed_artwork_cache", lane = "metadata") {
+            val removed = dependencies.artworkService.clearManagedCache()
+            libraryViewModel.refresh()
+            publish(action = "clear_managed_artwork_cache", transform = {
+                it.copy(lastResultJson = org.json.JSONObject().put("removed", removed).toString())
+            })
+        }
+
+    suspend fun timelineGroups() = libraryViewModel.queryNativeTimelineGroups()
+    suspend fun durationAnomalies(animeId: Long? = null) =
+        libraryViewModel.queryNativeDurationAnomalies(animeId)
+    suspend fun marathonPlan(animeId: Long, currentPath: String? = null) =
+        libraryViewModel.queryNativeMarathonPlan(animeId, currentPath)
+
+    suspend fun personalListItems() = libraryViewModel.personalListItems()
+    suspend fun addToPersonalList(animeId: Long) = libraryViewModel.addToPersonalList(animeId)
+    suspend fun removeFromPersonalList(animeId: Long) = libraryViewModel.removeFromPersonalList(animeId)
+
+    fun classifyMissingLocalGenres(): Boolean =
+        launchTracked("classify_missing_local_genres", lane = "library") {
+            libraryViewModel.classifyMissingLocalGenres()
+        }
+
+    fun refreshNativeFolders() {
+        libraryViewModel.refreshNativeFolders()
+        publish(action = "refresh_native_folders")
+    }
+
+    suspend fun listSafDirectory(uri: android.net.Uri) = libraryViewModel.listSafDirectory(uri)
+    suspend fun createSafDirectory(parentUri: android.net.Uri, name: String) =
+        libraryViewModel.createSafDirectory(parentUri, name)
+    suspend fun renameSafItem(uri: android.net.Uri, newName: String) =
+        libraryViewModel.renameSafItem(uri, newName)
+    suspend fun moveSafItem(uri: android.net.Uri, destinationUri: android.net.Uri) =
+        libraryViewModel.moveSafItem(uri, destinationUri)
+    suspend fun deleteSafItem(uri: android.net.Uri) = libraryViewModel.deleteSafItem(uri)
 
     fun onLifecycleEvent(eventOrState: Any?) {
         NativeLifecycleCoordinator.onEvent(eventOrState)
