@@ -1631,7 +1631,7 @@ internal class NativeMainRuntimePort(
         if (thumbnailRetryPendingKeys.size > 2_048) {
             thumbnailRetryPendingKeys.asSequence()
                 .take(512)
-                .forEach(thumbnailRetryPendingKeys::remove)
+                .forEach { key -> thumbnailRetryPendingKeys.remove(key) }
         }
     }
 
