@@ -8,6 +8,10 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.util.UUID
 
 /**
  * Native Android entry-point orchestration shared by the launcher Activity.
@@ -111,5 +115,166 @@ internal object MainEntryPoint {
                     }
                 }
         }
+    }
+}
+
+
+/**
+ * Typed Kotlin port of the legacy main.py Home-refresh state machine.
+ *
+ * This coordinator owns only refresh lifecycle/diagnostics. It deliberately
+ * does not scan storage, write SQLite, or decide whether a partial scan can
+ * reconcile missing files; those operations remain owned by the existing
+ * native scanner and canonical SQLite services.
+ */
+internal enum class HomeRefreshPhase {
+    IDLE,
+    REQUESTED,
+    RUNNING,
+    CATALOG_UPDATING,
+    UI_COMMIT,
+    SUCCESS,
+    ERROR,
+    CANCELLED,
+}
+
+internal data class HomeRefreshSnapshot(
+    val active: Boolean = false,
+    val phase: HomeRefreshPhase = HomeRefreshPhase.IDLE,
+    val refreshId: String? = null,
+    val requestId: String? = null,
+    val startedAtMillis: Long? = null,
+    val scanStarted: Boolean = false,
+    val scanStartedAtMillis: Long? = null,
+    val scanTerminal: Boolean = false,
+    val catalogUpdated: Boolean = false,
+    val source: String? = null,
+    val terminalReason: String? = null,
+)
+
+internal object HomeRefreshCoordinator {
+    private val lock = Any()
+    private val mutableState = MutableStateFlow(HomeRefreshSnapshot())
+    val state: StateFlow<HomeRefreshSnapshot> = mutableState.asStateFlow()
+
+    private val allowedTransitions = mapOf(
+        HomeRefreshPhase.REQUESTED to setOf(
+            HomeRefreshPhase.RUNNING, HomeRefreshPhase.ERROR, HomeRefreshPhase.CANCELLED,
+        ),
+        HomeRefreshPhase.RUNNING to setOf(
+            HomeRefreshPhase.CATALOG_UPDATING, HomeRefreshPhase.ERROR, HomeRefreshPhase.CANCELLED,
+        ),
+        HomeRefreshPhase.CATALOG_UPDATING to setOf(
+            HomeRefreshPhase.UI_COMMIT, HomeRefreshPhase.ERROR, HomeRefreshPhase.CANCELLED,
+        ),
+        HomeRefreshPhase.UI_COMMIT to setOf(
+            HomeRefreshPhase.SUCCESS, HomeRefreshPhase.ERROR, HomeRefreshPhase.CANCELLED,
+        ),
+    )
+
+    /** Starts exactly one refresh generation; terminal generations may be replaced. */
+    fun begin(requestId: String, refreshId: String = requestId, source: String): Boolean {
+        val request = requestId.trim()
+        val refresh = refreshId.trim()
+        val normalizedSource = source.trim().ifBlank { "native" }
+        if (request.isBlank() || refresh.isBlank()) return false
+        synchronized(lock) {
+            val current = mutableState.value
+            if (current.active) return current.requestId == request
+            val now = System.currentTimeMillis()
+            mutableState.value = HomeRefreshSnapshot(
+                active = true,
+                phase = HomeRefreshPhase.REQUESTED,
+                refreshId = refresh,
+                requestId = request,
+                startedAtMillis = now,
+                source = normalizedSource,
+            )
+            recordTransition(null, HomeRefreshPhase.REQUESTED, request, refresh, normalizedSource, "begin")
+            return true
+        }
+    }
+
+    fun markScanStarted(requestId: String): Boolean = synchronized(lock) {
+        val current = currentFor(requestId) ?: return false
+        if (current.scanStarted || current.phase != HomeRefreshPhase.REQUESTED) return false
+        val now = System.currentTimeMillis()
+        transition(current.copy(scanStarted = true, scanStartedAtMillis = now), HomeRefreshPhase.RUNNING, "scan_started")
+    }
+
+    /** A terminal scanner callback does not itself certify a complete scan. */
+    fun markScanTerminal(requestId: String): Boolean = synchronized(lock) {
+        val current = currentFor(requestId) ?: return false
+        if (!current.scanStarted || current.scanTerminal || current.phase != HomeRefreshPhase.RUNNING) return false
+        transition(current.copy(scanTerminal = true), HomeRefreshPhase.CATALOG_UPDATING, "scan_terminal")
+    }
+
+    fun markCatalogUpdated(requestId: String): Boolean = synchronized(lock) {
+        val current = currentFor(requestId) ?: return false
+        if (!current.scanTerminal || current.catalogUpdated || current.phase != HomeRefreshPhase.CATALOG_UPDATING) return false
+        transition(current.copy(catalogUpdated = true), HomeRefreshPhase.UI_COMMIT, "catalog_updated")
+    }
+
+    fun complete(requestId: String): Boolean = synchronized(lock) {
+        val current = currentFor(requestId) ?: return false
+        if (!current.catalogUpdated || current.phase != HomeRefreshPhase.UI_COMMIT) return false
+        transition(current.copy(active = false, terminalReason = null), HomeRefreshPhase.SUCCESS, "success")
+    }
+
+    fun fail(requestId: String, reason: String): Boolean =
+        terminate(requestId, HomeRefreshPhase.ERROR, reason)
+
+    fun cancel(requestId: String, reason: String = "cancelled"): Boolean =
+        terminate(requestId, HomeRefreshPhase.CANCELLED, reason)
+
+    private fun terminate(requestId: String, phase: HomeRefreshPhase, reason: String): Boolean =
+        synchronized(lock) {
+            val current = currentFor(requestId) ?: return false
+            if (phase !in setOf(HomeRefreshPhase.ERROR, HomeRefreshPhase.CANCELLED)) return false
+            if (!current.active) return false
+            transition(current.copy(active = false, terminalReason = reason.trim().take(120).ifBlank { phase.name }), phase, reason)
+        }
+
+    private fun currentFor(requestId: String): HomeRefreshSnapshot? {
+        val current = mutableState.value
+        if (!current.active || current.requestId != requestId.trim()) return null
+        return current
+    }
+
+    private fun transition(
+        next: HomeRefreshSnapshot,
+        phase: HomeRefreshPhase,
+        reason: String,
+    ): Boolean {
+        val previous = mutableState.value
+        if (phase !in allowedTransitions[previous.phase].orEmpty()) return false
+        val updated = next.copy(phase = phase)
+        mutableState.value = updated
+        recordTransition(previous.phase, phase, updated.requestId, updated.refreshId, updated.source, reason)
+        return true
+    }
+
+    private fun recordTransition(
+        previous: HomeRefreshPhase?,
+        next: HomeRefreshPhase,
+        requestId: String?,
+        refreshId: String?,
+        source: String?,
+        reason: String,
+    ) {
+        if (previous == next) return
+        ReiAnixDiagnosticTimeline.record(
+            name = "HOME_REFRESH_PHASE_CHANGED",
+            severity = if (next == HomeRefreshPhase.ERROR || next == HomeRefreshPhase.CANCELLED) "WARN" else "INFO",
+            source = source,
+            result = next.name,
+            requestId = requestId,
+            refreshId = refreshId,
+            context = mapOf(
+                "previous_phase" to (previous?.name ?: "NONE"),
+                "phase" to next.name,
+                "transition_reason" to reason.take(80),
+            ),
+        )
     }
 }
