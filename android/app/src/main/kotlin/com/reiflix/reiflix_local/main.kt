@@ -1542,18 +1542,83 @@ internal class NativeMainRuntimePort(
     suspend fun watchedRecently(limit: Int = 36) =
         dependencies.consumptionService.watchedRecently(limit.coerceIn(1, 200))
 
+    private data class ParsedLegacyPlaybackTimestamp(
+        val supplied: Boolean,
+        val epochSeconds: Double?,
+    )
+
+    private fun pythonTruthyJsonValue(value: Any?): Boolean = when (value) {
+        null, org.json.JSONObject.NULL -> false
+        is Boolean -> value
+        is Number -> value.toDouble() != 0.0
+        is String -> value.isNotEmpty()
+        is org.json.JSONArray -> value.length() > 0
+        is org.json.JSONObject -> value.length() > 0
+        else -> true
+    }
+
+    /**
+     * Read the legacy mailbox envelope timestamp using Python's truthy
+     * createdAt-then-timestamp fallback. Epoch-millisecond values are converted
+     * to seconds to match episodes.last_played_at and the Kotlin stale-write guard.
+     */
+    private fun parseLegacyPlaybackTimestamp(payload: org.json.JSONObject): ParsedLegacyPlaybackTimestamp {
+        val raw = if (payload.has("_legacySourceEventCreatedAt")) {
+            payload.opt("_legacySourceEventCreatedAt")
+        } else {
+            val createdAt = payload.opt("createdAt")
+            if (pythonTruthyJsonValue(createdAt)) createdAt else payload.opt("timestamp")
+        }
+        if (raw == null || raw === org.json.JSONObject.NULL) {
+            return ParsedLegacyPlaybackTimestamp(supplied = false, epochSeconds = null)
+        }
+        val numeric = when (raw) {
+            is Number -> raw.toDouble()
+            is String -> raw.trim().toDoubleOrNull()
+            is Boolean -> if (raw) 1.0 else 0.0
+            else -> null
+        }
+        if (numeric == null || !numeric.isFinite()) {
+            return ParsedLegacyPlaybackTimestamp(supplied = true, epochSeconds = null)
+        }
+        val normalized = if (numeric > 10_000_000_000.0) numeric / 1_000.0 else numeric
+        return ParsedLegacyPlaybackTimestamp(supplied = true, epochSeconds = normalized)
+    }
+
     fun savePlaybackProgress(
         episodeId: Long,
         positionMs: Long,
         durationMs: Long? = null,
         completed: Boolean = false,
+        playedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
     ): Boolean {
-        if (episodeId <= 0L || positionMs < 0L || (durationMs != null && durationMs <= 0L)) return false
+        if (
+            episodeId <= 0L ||
+            positionMs < 0L ||
+            (durationMs != null && durationMs <= 0L) ||
+            !playedAtEpochSeconds.isFinite() ||
+            playedAtEpochSeconds < 0.0
+        ) return false
         return launchTracked("save_playback_progress", lane = "playback") {
+            val existingProgress = dependencies.consumptionService.getProgress(episodeId)
+                ?: throw NoSuchElementException("Episode ID does not exist: $episodeId")
+            if ((existingProgress.lastPlayedAtEpochSeconds ?: 0.0) >= playedAtEpochSeconds) {
+                recordDiagnostic(
+                    name = "PLAYER_PROGRESS_STALE",
+                    result = "stale_event_timestamp",
+                    context = mapOf(
+                        "episode_id" to episodeId,
+                        "event_time_seconds" to playedAtEpochSeconds,
+                        "stored_last_played_at" to existingProgress.lastPlayedAtEpochSeconds,
+                    ),
+                )
+                return@launchTracked
+            }
             val progress = dependencies.consumptionService.saveProgress(
                 episodeId = episodeId,
                 positionMs = positionMs,
                 durationMs = durationMs,
+                playedAtEpochSeconds = playedAtEpochSeconds,
                 completed = completed,
             )
             libraryViewModel.refresh()
@@ -5891,6 +5956,12 @@ internal class NativeMainRuntimePort(
         val payload = event.optJSONObject("payload")
             ?.let { org.json.JSONObject(it.toString()) }
             ?: org.json.JSONObject()
+        val sourceCreatedAt = event.opt("createdAt")
+        val sourceEventTimestamp = if (pythonTruthyJsonValue(sourceCreatedAt)) {
+            sourceCreatedAt
+        } else {
+            event.opt("timestamp")
+        }
         val keys = event.keys()
         while (keys.hasNext()) {
             val key = keys.next()
@@ -5912,6 +5983,10 @@ internal class NativeMainRuntimePort(
             payload.optString("event_id", ""),
             payload.optString("id", ""),
         ).firstOrNull { it.isNotBlank() }
+        payload.put(
+            "_legacySourceEventCreatedAt",
+            sourceEventTimestamp ?: org.json.JSONObject.NULL,
+        )
         return dispatchNativeEvent(eventType, payload, requestId, eventId)
     }
 
@@ -6979,12 +7054,24 @@ internal class NativeMainRuntimePort(
                     )
                     true
                 } else {
-                    savePlaybackProgress(
-                        episodeId = episodeId,
-                        positionMs = position,
-                        durationMs = duration.takeIf { it > 0L },
-                        completed = type == "player_completed" || payload.optBoolean("completed", false),
-                    )
+                    val eventTime = parseLegacyPlaybackTimestamp(payload)
+                    if (eventTime.supplied && eventTime.epochSeconds == null) {
+                        recordDiagnostic(
+                            name = "PLAYER_PROGRESS_TIMESTAMP_REJECTED",
+                            severity = "WARN",
+                            requestId = eventRequestId,
+                            result = type,
+                        )
+                        true
+                    } else {
+                        savePlaybackProgress(
+                            episodeId = episodeId,
+                            positionMs = position,
+                            durationMs = duration.takeIf { it > 0L },
+                            completed = type == "player_completed" || payload.optBoolean("completed", false),
+                            playedAtEpochSeconds = eventTime.epochSeconds ?: System.currentTimeMillis() / 1000.0,
+                        )
+                    }
                 }
             }
             "player_autoplay_changed" -> {
@@ -7099,12 +7186,24 @@ internal class NativeMainRuntimePort(
                     )
                     true
                 } else {
-                    savePlaybackProgress(
-                        episodeId = episodeId,
-                        positionMs = positionMs,
-                        durationMs = durationMs.takeIf { it > 0L },
-                        completed = payload.optBoolean("completed", false),
-                    )
+                    val eventTime = parseLegacyPlaybackTimestamp(payload)
+                    if (eventTime.supplied && eventTime.epochSeconds == null) {
+                        recordDiagnostic(
+                            name = "PLAYER_PROGRESS_TIMESTAMP_REJECTED",
+                            severity = "WARN",
+                            requestId = eventRequestId,
+                            result = type,
+                        )
+                        true
+                    } else {
+                        savePlaybackProgress(
+                            episodeId = episodeId,
+                            positionMs = positionMs,
+                            durationMs = durationMs.takeIf { it > 0L },
+                            completed = payload.optBoolean("completed", false),
+                            playedAtEpochSeconds = eventTime.epochSeconds ?: System.currentTimeMillis() / 1000.0,
+                        )
+                    }
                 }
             }
             "player_exited", "player_exit" -> {
@@ -7177,14 +7276,49 @@ internal class NativeMainRuntimePort(
                             libraryViewModel.refresh()
                             exitProgressResult = "NATIVE_COMMIT_REUSED"
                         } else {
-                            dependencies.consumptionService.saveProgress(
-                                episodeId = exitEpisodeId,
-                                positionMs = exitPositionMs,
-                                durationMs = exitDurationMs.takeIf { it > 0L },
-                                completed = payload.optBoolean("completed", false),
-                            )
-                            libraryViewModel.refresh()
-                            exitProgressResult = "SAVED"
+                            val eventTime = parseLegacyPlaybackTimestamp(payload)
+                            when {
+                                eventTime.supplied && eventTime.epochSeconds == null -> {
+                                    recordDiagnostic(
+                                        name = "PLAYER_PROGRESS_TIMESTAMP_REJECTED",
+                                        severity = "WARN",
+                                        requestId = exitRequestId,
+                                        sessionId = exitSessionId,
+                                        result = "player_exited",
+                                    )
+                                    exitProgressResult = "INVALID_TIMESTAMP"
+                                }
+                                else -> {
+                                    val timestampSeconds =
+                                        eventTime.epochSeconds ?: System.currentTimeMillis() / 1000.0
+                                    val existingProgress = dependencies.consumptionService.getProgress(exitEpisodeId)
+                                        ?: throw NoSuchElementException("Episode ID does not exist: $exitEpisodeId")
+                                    if ((existingProgress.lastPlayedAtEpochSeconds ?: 0.0) >= timestampSeconds) {
+                                        exitProgressResult = "STALE"
+                                        recordDiagnostic(
+                                            name = "PLAYER_PROGRESS_STALE",
+                                            result = "player_exit_stale_timestamp",
+                                            requestId = exitRequestId,
+                                            sessionId = exitSessionId,
+                                            context = mapOf(
+                                                "episode_id" to exitEpisodeId,
+                                                "event_time_seconds" to timestampSeconds,
+                                                "stored_last_played_at" to existingProgress.lastPlayedAtEpochSeconds,
+                                            ),
+                                        )
+                                    } else {
+                                        dependencies.consumptionService.saveProgress(
+                                            episodeId = exitEpisodeId,
+                                            positionMs = exitPositionMs,
+                                            durationMs = exitDurationMs.takeIf { it > 0L },
+                                            playedAtEpochSeconds = timestampSeconds,
+                                            completed = payload.optBoolean("completed", false),
+                                        )
+                                        exitProgressResult = "SAVED"
+                                    }
+                                    libraryViewModel.refresh()
+                                }
+                            }
                         }
                     }
                     val catalogAccepted = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
