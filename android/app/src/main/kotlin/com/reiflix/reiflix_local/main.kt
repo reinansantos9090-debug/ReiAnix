@@ -3881,7 +3881,7 @@ internal class NativeMainRuntimePort(
                 val summary = org.json.JSONObject()
                     .put("importedRows", result.importedRows)
                     .put("missingFiles", result.missingFiles)
-                    .put("manualArtworkReconnected", result.safetyBackup.absolutePath)
+                    .put("manualArtworkReconnected", result.manualArtworkReconnected)
                     .put("warnings", org.json.JSONArray(result.warnings))
                     .put("accountStatePreserved", result.accountStatePreserved)
                     .put("reauthenticationRequired", result.reauthenticationRequired)
