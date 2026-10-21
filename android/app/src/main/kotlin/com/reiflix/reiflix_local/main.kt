@@ -1618,6 +1618,21 @@ internal class NativeMainRuntimePort(
                     thumbnailLatestKeyByUri.remove(entry.key)
                 }
         }
+        // Match the legacy queue's hard bound when many delayed retries are
+        // cancelled by lifecycle or lane cancellation before their next attempt.
+        if (thumbnailRetryCounts.size > 2_048) {
+            thumbnailRetryCounts.keys.asSequence()
+                .take(512)
+                .forEach { key ->
+                    thumbnailRetryCounts.remove(key)
+                    thumbnailRetryPendingKeys.remove(key)
+                }
+        }
+        if (thumbnailRetryPendingKeys.size > 2_048) {
+            thumbnailRetryPendingKeys.asSequence()
+                .take(512)
+                .forEach(thumbnailRetryPendingKeys::remove)
+        }
     }
 
     private fun updateThumbnailQueueSnapshot() {
