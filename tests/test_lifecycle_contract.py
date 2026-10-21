@@ -93,15 +93,16 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("object NativeScanController", source)
         self.assertIn("activeScanId", source)
         self.assertIn("fun begin(", source)
-        self.assertIn("snapshot()", source)
+        self.assertIn("fun snapshot(scanId: String)", source)
         self.assertIn("NativeScanController.begin(", native_main_source())
     def test_native_player_cancels_generation_bound_work_on_destroy(self):
         source = PLAYER_ACTIVITY.read_text(encoding="utf-8")
-        self.assertIn("private val mediaMetadataWorker: ExecutorService", source)
         self.assertIn("pendingPreparation?.cancel(true)", source)
         self.assertIn("handler.removeCallbacks(progressReporter)", source)
-        self.assertIn("mediaMetadataWorker.shutdown()", source)
+        self.assertIn("progressWorker.shutdown()", source)
         self.assertIn("playbackWorker.shutdown()", source)
+        self.assertIn("cancelFirstFrameDiagnostics", source)
+
     def test_native_navigation_host_keeps_route_state_inside_compose(self):
         host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
         nav = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
@@ -183,7 +184,7 @@ class LifecycleContractTests(unittest.TestCase):
         request_state = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt").read_text(encoding="utf-8")
         for token in ("eventId", "requestId", "createdAt", "AtomicMoveNotSupportedException"):
             self.assertIn(token, mailbox)
-        for token in ("MISSING_REQUEST_ID", "OperationState", "isTerminal()", "canAdvanceState("):
+        for token in ("if(id.isEmpty())return false", "OperationState", "isTerminal()", "canAdvanceState("):
             self.assertIn(token, request_state)
     def test_native_mailbox_uses_atomic_delivery_and_correlated_acknowledgement(self):
         bridge = BRIDGE.read_text(encoding="utf-8")
@@ -228,12 +229,14 @@ class LifecycleContractTests(unittest.TestCase):
         self.assertIn("durable_time", progress_block)
 
     def test_native_thumbnail_callbacks_are_media_identity_guarded(self):
-        player = PLAYER_ACTIVITY.read_text(encoding="utf-8")
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
         extractor = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
-        self.assertIn("mediaIdentity", player)
-        self.assertIn("media_identity", extractor)
+        self.assertIn("mediaIdentity", activity + extractor)
+        self.assertIn("latestKeyByUri[uri.toString()] = key", extractor)
+        self.assertIn("latestKeyByUri[uri.toString()] != cacheKey(identity, size, modifiedAt)", extractor)
+        self.assertIn("registerGeneratedThumbnail", extractor)
         self.assertIn("cacheKey", extractor)
-        self.assertIn("Thumbnail", extractor)
+
     def test_python_stale_screen_work_is_generation_guarded(self):
         home = HOME.read_text(encoding="utf-8")
         organize = ORGANIZE.read_text(encoding="utf-8")

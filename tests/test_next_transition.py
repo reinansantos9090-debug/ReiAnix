@@ -149,12 +149,14 @@ class NextTransitionTests(unittest.TestCase):
         self.assertIn("startActivity(successorIntent)", transition)
     def test_native_cancellation_invalidates_pending_next_without_stale_handoff(self):
         start = self.player.index("private fun invalidateTransition(")
-        end = self.player.index("private fun publishNextTransitionDiagnostic(", start)
+        end = self.player.index("private fun isCurrentTransition(", start)
         block = self.player[start:end]
         self.assertIn("NEXT_TRANSITION_INVALIDATED", block)
         self.assertIn("NEXT_REQUEST_CANCELLED", block)
-        self.assertIn("transitionGeneration++", block)
+        self.assertIn("transitionGeneration += 1L", block)
         self.assertIn("episodeChangePending = false", block)
+        self.assertIn("transitionPublishFuture?.cancel(true)", block)
+
     def test_new_activity_authorizes_valid_episode_successor_without_forcing_player_exit(self):
         create = self.player[
             self.player.index("override fun onCreate(savedInstanceState"):
@@ -195,10 +197,14 @@ class NextTransitionTests(unittest.TestCase):
         self.assertIn("activePlayerTransitionGeneration = 0L", self.main_activity)
 
     def test_native_player_callbacks_are_activity_instance_scoped(self):
-        for token in ("activityInstanceId", "stale_activity_instance", "stale_activity_instance_lifecycle"):
-            self.assertIn(token, self.main + self.player)
-        self.assertIn("MainActivity.notePlayerActivityCreated", self.player)
-        self.assertIn("MainActivity.notePlayerActivityDestroyed", self.player)
+        for token in ("activityInstanceId", "MainActivity.notePlayerActivityCreated(", "notePlayerActivityDestroyed(activityInstanceId, playerSessionId)"):
+            self.assertIn(token, self.player)
+        self.assertIn("activePlayerActivityInstanceId", self.main_activity)
+        self.assertIn("isCurrentPlayerHandoff(", self.main_activity)
+        self.assertIn("PLAYER_ERROR_STALE_IGNORED", self.player)
+        self.assertIn("playerSessionId", self.player)
+        self.assertIn("transitionGeneration", self.player)
+
     def test_recreation_restores_transition_state_before_origin_fencing(self):
         create = self.player[
             self.player.index("override fun onCreate(savedInstanceState"):

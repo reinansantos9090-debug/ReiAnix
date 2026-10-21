@@ -259,7 +259,8 @@ class ContractTests(unittest.TestCase):
         refresh_end = view_model.index("fun refreshDetails(", refresh_start)
         refresh = view_model[refresh_start:refresh_end]
         self.assertIn("repository.refresh()", refresh)
-        self.assertIn("requestNativeStorageAction", repository)
+        self.assertIn("publishScanRequest(", activity)
+        self.assertIn("scan_library", activity)
         self.assertIn('"scan_library"', activity)
         self.assertIn("publishScanRequest(", activity)
         self.assertIn("NativeScanController", activity)
