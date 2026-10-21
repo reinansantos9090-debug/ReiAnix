@@ -42,6 +42,8 @@ import com.reiflix.reiflix_local.scanner.ScanProgressSnapshot
 import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
+import com.reiflix.reiflix_local.storage.SafAccessLevel
+import com.reiflix.reiflix_local.storage.StorageAuthorization
 import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
@@ -520,6 +522,20 @@ internal data class NativeMainRuntimeSnapshot(
 
 internal data class NativePlayerCallbackValidation(val isCurrent: Boolean, val reason: String = "")
 
+internal data class NativeMainScanUiState(
+    val state: String = "IDLE",
+    val source: String? = null,
+    val scanId: String? = null,
+    val found: Long = 0L,
+    val files: Long = 0L,
+    val directories: Long = 0L,
+    val error: String? = null,
+    val timestamp: Long? = null,
+) {
+    val isTerminal: Boolean
+        get() = state in setOf("COMPLETED", "CANCELLED", "FAILED", "PARTIAL")
+}
+
 internal data class NativeMainStorageSnapshot(
     val mediaStoreAccess: String,
     val broadStorageAccess: Boolean,
@@ -574,6 +590,9 @@ internal class NativeMainRuntimePort(
     private val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
     private val mutableSnapshot = MutableStateFlow(NativeMainRuntimeSnapshot())
     val snapshot: StateFlow<NativeMainRuntimeSnapshot> = mutableSnapshot.asStateFlow()
+    private val mutableScanUiState = MutableStateFlow(NativeMainScanUiState())
+    val scanUiState: StateFlow<NativeMainScanUiState> = mutableScanUiState.asStateFlow()
+    private var scanObserverJob: Job? = null
     private val preferenceLock = Any()
     private val preferenceFile = File(File(activity.filesDir, "data"), "navigation_state.json")
     private val preferenceWriteMutex = Mutex()
@@ -591,6 +610,70 @@ internal class NativeMainRuntimePort(
     @Volatile private var homeRefreshJob: Job? = null
     private val mutableUiPreferences = MutableStateFlow(loadDurableUiPreferences())
     val uiPreferences: StateFlow<NativeMainUiPreferences> = mutableUiPreferences.asStateFlow()
+
+    init {
+        scanObserverJob = activity.lifecycleScope.launch {
+            NativeScanController.progress.collect { snapshots ->
+                updateScanUiState(snapshots.values)
+            }
+        }
+    }
+
+    private fun updateScanUiState(snapshots: Collection<ScanProgressSnapshot>) {
+        if (snapshots.isEmpty()) {
+            if (!mutableScanUiState.value.isTerminal) mutableScanUiState.value = NativeMainScanUiState()
+            return
+        }
+        val current = mutableScanUiState.value
+        val sameOperation = current.scanId?.let { id -> snapshots.firstOrNull { it.operationId == id } }
+        if (sameOperation != null && current.isTerminal && !sameOperation.state.isTerminal) {
+            recordDiagnostic(
+                name = "SCAN_STALE_PROGRESS_IGNORED",
+                severity = "WARN",
+                result = sameOperation.state.name,
+                scanId = sameOperation.operationId,
+                context = mapOf("current_state" to current.state),
+            )
+            return
+        }
+        val preferred = snapshots.filter { !it.state.isTerminal }.maxByOrNull { it.startedAtMillis }
+            ?: snapshots.maxByOrNull { it.finishedAtMillis ?: it.startedAtMillis }
+            ?: return
+        val uiState = when (preferred.state) {
+            ScanLifecycleState.IDLE -> "IDLE"
+            ScanLifecycleState.PREPARING -> "CHECKING"
+            ScanLifecycleState.RUNNING, ScanLifecycleState.CANCELLATION_REQUESTED -> "SCANNING"
+            ScanLifecycleState.CANCELLED -> "CANCELLED"
+            ScanLifecycleState.SUCCEEDED -> if (preferred.partial) "PARTIAL" else "COMPLETED"
+            ScanLifecycleState.PARTIAL -> "PARTIAL"
+            ScanLifecycleState.FAILED -> "FAILED"
+        }
+        mutableScanUiState.value = NativeMainScanUiState(
+            state = uiState,
+            source = preferred.source,
+            scanId = preferred.operationId,
+            found = preferred.filesFound,
+            files = preferred.filesProcessed,
+            directories = preferred.directoriesCompleted,
+            error = preferred.message.takeIf { it.isNotBlank() } ?: preferred.errorCategory,
+            timestamp = preferred.finishedAtMillis ?: preferred.startedAtMillis,
+        )
+        if (current.state != uiState || current.scanId != preferred.operationId) {
+            recordDiagnostic(
+                name = "SCAN_UI_STATE_CHANGED",
+                result = uiState,
+                scanId = preferred.operationId,
+                context = mapOf(
+                    "source" to preferred.source,
+                    "files_found" to preferred.filesFound,
+                    "files_processed" to preferred.filesProcessed,
+                    "directories_completed" to preferred.directoriesCompleted,
+                    "partial" to preferred.partial,
+                ),
+            )
+        }
+    }
+
 
     private fun publish(
         action: String? = mutableSnapshot.value.lastAction,
@@ -2027,6 +2110,34 @@ internal class NativeMainRuntimePort(
     }
 
     /** Native scanner snapshots replace the old Python ScanCoordinator projection. */
+    fun currentScanUiState(): NativeMainScanUiState = mutableScanUiState.value
+
+    fun canStartLibraryScan(source: String? = null): Boolean {
+        val normalized = source?.trim()?.lowercase(Locale.ROOT)
+        if (normalized != null && normalized !in setOf("saf", "all", "library")) return false
+        return !hasAnyNativeScanInProgress() && authorizedScanTargets("saf").isNotEmpty()
+    }
+
+    /** Only persisted, still-authorized SAF roots are valid native library scan targets. */
+    fun authorizedScanTargets(source: String? = null, scopeReference: String? = null): List<String> {
+        val normalized = source?.trim()?.lowercase(Locale.ROOT)
+        if (normalized != null && normalized != "saf") return emptyList()
+        val persisted = activity.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+            .toSet()
+        val roots = configuredSafTreeUris().map { it.toString() }
+            .filter { StorageAuthorization.safAccess(it, persisted) == SafAccessLevel.AVAILABLE }
+            .distinctBy { StorageAuthorization.safIdentity(it) ?: it }
+        val scope = scopeReference?.trim().orEmpty()
+        return if (scope.isEmpty()) roots else roots.filter {
+            it == scope || (
+                StorageAuthorization.safIdentity(it) != null &&
+                StorageAuthorization.safIdentity(it) == StorageAuthorization.safIdentity(scope)
+            )
+        }
+    }
+
     fun nativeScanSnapshots() = NativeScanController.progress.value
 
     fun nativeScanSnapshot(scanId: String) = NativeScanController.snapshot(scanId)
