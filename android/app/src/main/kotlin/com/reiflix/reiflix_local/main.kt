@@ -489,7 +489,18 @@ internal data class NativeMainRuntimeSnapshot(
     val lastError: String? = null,
     val lastArtifactPath: String? = null,
     val lastResultJson: String? = null,
+    val playerSessionActive: Boolean = false,
+    val activePlayerRequestId: String? = null,
+    val activePlayerSessionId: String? = null,
+    val activePlayerActivityInstanceId: String? = null,
+    val activeEpisodeId: Long? = null,
+    val activeAnimeId: Long? = null,
+    val activeMediaUri: String? = null,
+    val activePlayerGeneration: Long = 0L,
+    val transitionGeneration: Long = 0L,
 )
+
+internal data class NativePlayerCallbackValidation(val isCurrent: Boolean, val reason: String = "")
 
 internal data class NativeMainUiPreferences(
     val homeState: Map<String, Any?> = emptyMap(),
