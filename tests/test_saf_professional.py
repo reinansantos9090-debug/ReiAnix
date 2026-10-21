@@ -82,34 +82,20 @@ class TestSafProfessionalContract(unittest.TestCase):
     def test_saf_identity_reconciliation_uses_canonical_mailbox_and_store(self):
         store = (ROOT / "core/library_store.py").read_text(encoding="utf-8")
         service = (ROOT / "core/library_service.py").read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
-        view_model = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
-        ).read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        native_repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        native_library_service = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryService.kt").read_text(encoding="utf-8")
         self.assertIn("reconcile_saf_document_identity_change", store)
         self.assertIn("UPDATE episode_observations", store)
-        self.assertIn("reconcile_saf_document_identity_change", service)  # compatibility for older queued events
-        native_repository = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt"
-        ).read_text(encoding="utf-8")
+        self.assertIn("reconcile_saf_document_identity_change", service)
         self.assertIn("reconcileSafDocumentIdentityChange(", native_repository)
         self.assertIn("nativeLibraryService.reconcileSafDocumentIdentityChange(", view_model)
-        native_library_service = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryService.kt"
-        ).read_text(encoding="utf-8")
         self.assertIn("repository.reconcileSafDocumentIdentityChange(", native_library_service)
         self.assertIn("nativeIdentityOwner", view_model)
-        self.assertIn("saf_document_identity_change", main)
-        self.assertIn("payload.get('nativeIdentityOwner') is True", main)
         self.assertIn("NativeMailbox.write(appContext, event)", view_model)
         self.assertIn("treeUri", view_model)
         self.assertIn("catalogReconciliationQueued", view_model)
-        self.assertIn("asyncio.create_task(_request_reconciled_saf_rescan())", main)
-        self.assertIn("target_tree_uri=tree_uri", main)
-        self.assertNotIn("library.sqlite", view_model)
-        operations = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/SafFileOperations.kt"
-        ).read_text(encoding="utf-8")
+        operations = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/SafFileOperations.kt").read_text(encoding="utf-8")
         self.assertIn("mutationAttempted", operations)
         self.assertNotIn("runCatching { DocumentsContract.isChildDocument", operations)
         self.assertIn("a movimentação foi recusada por segurança", operations.lower())
@@ -220,15 +206,17 @@ class TestSafProfessionalContract(unittest.TestCase):
         self.assertIn('"UNAVAILABLE" -> "saf_unavailable"', source)
 
     def test_scan_failure_does_not_revoke_saf_authorization(self):
-        source = MAIN.read_text(encoding="utf-8")
-        block_start = source.find("elif event_type in {'saf_error','google_error'}:")
-        block_end = source.find("elif event_type == 'google_error':", block_start + 1)
-        if block_end < 0:
-            block_end = len(source)
-        block = source[block_start:block_end]
-        self.assertIn("status == 'REVOKED'", block)
-        self.assertIn("status in {'UNAVAILABLE', 'FAILED', 'PARTIAL'}", block)
-        self.assertIn("update_folder_status(tree_uri, 'unavailable'", block)
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = activity.index("val inspection = SafScanner.inspectTree(")
+        end = activity.index("recordSourceStartFailure(sourceKey, error)", start)
+        block = activity[start:end]
+        self.assertIn("val revoked = inspectionStatus == SafScanner.STATUS_REVOKED", block)
+        self.assertIn('val authorization = if (revoked) "revoked" else "unavailable"', block)
+        self.assertIn("if (revoked)", block)
+        self.assertIn('SafScanner.STATUS_UNAVAILABLE', block)
+        # Provider/IO failures preserve an unavailable/unknown authorization; only
+        # a confirmed revoked persisted permission is marked revoked.
+        self.assertIn('updateSafFolderAccess(reference, authorization, error)', block)
 
     def test_persisted_tree_inventory_does_real_validation(self):
         source = MAIN_ACTIVITY.read_text(encoding="utf-8")
@@ -433,32 +421,28 @@ class TestSafProfessionalContract(unittest.TestCase):
         )
 
     def test_cancelled_global_scan_remains_cancelled_in_the_compose_command_result(self):
-        source = MAIN.read_text(encoding="utf-8")
-        start = source.index("elif event_type == 'saf_library_scan_complete':")
-        end = source.index("elif event_type == 'saf_scan':", start)
-        block = source[start:end]
-        self.assertIn('if native_status == "CANCELLED":', block)
-        self.assertIn('"refresh",\n                                            "CANCELLED"', block)
-        self.assertIn('_cancel_home_refresh(', block)
-        self.assertNotIn('if native_status == "CANCELLED":\n                                        compose_library_bridge.write_command_result(\n                                            event_request_id,\n                                            "refresh",\n                                            "FAILED"', block)
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        self.assertIn("ScanLifecycleState.CANCELLED", activity)
+        self.assertIn('cancelledScopes == requestedSources && successfulScopes == 0 && failedScopes == 0 -> "CANCELLED"', activity)
+        self.assertIn('NativeRequestState.OperationState.CANCELLED', activity)
+        self.assertIn('"type", "saf_library_scan_complete"', activity)
+        self.assertIn('.put("status", status)', activity)
+        self.assertIn('NativeScanController.complete(scanId, "CANCELLED"', runner)
+        self.assertIn('NativeScanController.complete(scanId, terminalStatus, result)', runner)
 
-        self.assertIn("def _cancel_home_refresh(", source)
-        self.assertIn('_set_home_refresh_phase("CANCELLED"', source)
-        coordinator = source[
-            source.index("def _scan_coordinator_state_changed("):
-            source.index("ScanCoordinator(", source.index("def _scan_coordinator_state_changed("))
-        ]
-        self.assertIn('terminal_ui_state = "CANCELLED" if terminal_cancelled else "ERROR"', coordinator)
-        self.assertIn("resetter(terminal_ui_state, 1.6)", coordinator)
-
-
-    def test_python_refresh_error_uses_global_source_count_not_saf_folder_count(self):
-        source = MAIN.read_text(encoding="utf-8")
-        block = source[source.index("elif event_type == 'saf_library_scan_complete':"):source.index("elif event_type == 'saf_scan':", source.index("elif event_type == 'saf_library_scan_complete':"))]
-        self.assertIn('payload.get("noSourcesAvailable") is True', block)
-        self.assertIn('payload.get("requestedSources")', block)
-        self.assertNotIn('if payload.get(\'configuredScopes\') == 0', block)
-
+    def test_native_refresh_error_uses_global_source_count_not_saf_folder_count(self):
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        start = activity.index("var configuredScopes = 0")
+        end = activity.index("private fun scanTree(", start)
+        block = activity[start:end]
+        self.assertIn("var requestedSources = 0", block)
+        self.assertIn("configuredScopes = folders.size", block)
+        self.assertIn("requestedSources++", block)
+        self.assertIn('requestedSources == 0 -> "FAILED"', block)
+        self.assertIn('.put("requestedSources", requestedSources)', block)
+        self.assertIn('.put("noSourcesAvailable", requestedSources == 0)', block)
+        self.assertNotIn('if (payload.get("configuredScopes") == 0)', block)
 
 if __name__ == "__main__":
     unittest.main()

@@ -92,16 +92,64 @@ jobs:
           done < <(find . -path './.git' -prune -o -path './build' -prune -o -type f -name '*.json' -print0)
 
       - name: Run Python regression suite
+        id: pytest_regression
         shell: bash
         run: |
-          set -o pipefail
-          python -m pytest -q | tee build/pytest.txt
+          set +e
+          mkdir -p build
+          python -m pytest -q --tb=short > build/pytest-full.txt 2>&1
+          pytest_status=$?
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          raw_path = Path("build/pytest-full.txt")
+          summary_path = Path("build/pytest-summary.txt")
+          pattern = re.compile(
+              r"^(FAILED|ERROR|XPASS|XFAIL)\s|^=+ .* (failed|passed|error|warning)s? .* =+$|"
+              r"^E\s+(AssertionError|TypeError|ValueError|KeyError|AttributeError|ImportError|ModuleNotFoundError|FileNotFoundError|RuntimeError|IndexError|NameError|OSError):|"
+              r"^short test summary info|^tests/[^ ]+::[^ ]+\s+(FAILED|ERROR|XPASS|XFAIL)"
+          )
+          selected = []
+          bytes_seen = 0
+          with raw_path.open("r", encoding="utf-8", errors="replace") as stream:
+              for line in stream:
+                  bytes_seen += len(line.encode("utf-8", errors="replace"))
+                  text = line.rstrip("\r\n")
+                  if pattern.search(text.strip()):
+                      if len(text) > 600:
+                          text = text[:600] + " … [linha truncada]"
+                      selected.append(text)
+          if not selected:
+              with raw_path.open("r", encoding="utf-8", errors="replace") as stream:
+                  tail = stream.readlines()[-80:]
+              selected = [line.rstrip("\r\n")[:600] for line in tail]
+          output = [
+              f"pytest_output_bytes={bytes_seen}",
+              f"diagnostic_lines={len(selected)}",
+              "",
+              *selected[-240:],
+          ]
+          summary_path.write_text("\n".join(output) + "\n", encoding="utf-8")
+          print(summary_path.read_text(encoding="utf-8"))
+          PY
+          rm -f build/pytest-full.txt
+          exit "$pytest_status"
+
+      - name: Upload Python regression diagnostic summary
+        if: always() && steps.pytest_regression.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-regression-summary-${{ github.run_number }}
+          path: build/pytest-summary.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Validate retained Python source and repository integrity
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q main.py app_config.py core views scripts
+          python -m compileall -q app_config.py core views scripts
           bash -n scripts/run_android_instrumented_diagnostic.sh
           python scripts/audit_release.py --root .
           git diff --check

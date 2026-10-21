@@ -12,7 +12,6 @@ VIEW_MODEL = ANDROID / "viewmodel/ReiAnixCollectorJourneyViewModel.kt"
 COMPOSE_SCREEN = ANDROID / "ui/collector/ReiAnixCollectorJourneyScreen.kt"
 NAVIGATION = ANDROID / "ui/navigation/ReiAnixNavigation.kt"
 COMPOSE_HOST = ANDROID / "ui/host/ReiAnixComposeLibraryHost.kt"
-MAIN = ROOT / "main.py"
 DOCUMENTATION = ROOT / "docs/KOTLIN_COLLECTOR_JOURNEY_MIGRATION.md"
 KOTLIN_JVM_TEST = ROOT / "android/app/src/test/java/com/reiflix/reiflix_local/data/collector/ReiAnixCollectorJourneyCalculatorTest.kt"
 
@@ -49,26 +48,25 @@ class CollectorJourneyKotlinMigrationContractTests(unittest.TestCase):
         self.assertIn("sqliteSettingsRepository", dependencies)
         self.assertIn("collectorJourneyService", dependencies)
 
-    def test_compose_route_runs_native_actions_and_does_not_delegate_to_python(self):
+
+    def test_compose_route_runs_collector_actions_without_a_python_entrypoint(self):
         navigation = NAVIGATION.read_text(encoding="utf-8")
         host = COMPOSE_HOST.read_text(encoding="utf-8")
         view_model = VIEW_MODEL.read_text(encoding="utf-8")
         screen = COMPOSE_SCREEN.read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
+        entrypoint = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").read_text(encoding="utf-8")
         self.assertIn('const val COLLECTOR = "collector"', navigation)
         self.assertIn("composable(ReiAnixRoutes.COLLECTOR) { collector() }", navigation)
         self.assertIn("navController.navigateToCollector()", host)
         self.assertIn("service.setActiveTitle(titleId)", view_model)
         self.assertIn("collectAsStateWithLifecycle()", screen)
-        # The legacy route table remains for Flet fallback, but Compose no longer
-        # mirrors its active route or sends a navigation decision through Python.
-        self.assertIn('"collector": "/collector"', main)
-        self.assertNotIn("compose_navigation_changed", main)
-        self.assertNotIn("compose_library_navigation", main)
-        self.assertNotIn("compose_settings_navigation", main)
-        self.assertIn("if compose_primary_ui:", main)
-        self.assertIn("control = ft.Container(expand=True)", main)
-
+        self.assertIn("ReiAnixNavigationHost", host)
+        self.assertIn("dependencies.bootstrap.start()", entrypoint)
+        self.assertNotIn("compose_navigation_changed", entrypoint)
+        self.assertNotIn("compose_library_navigation", entrypoint)
+        self.assertNotIn("compose_settings_navigation", entrypoint)
+        self.assertNotIn("import flet", entrypoint.casefold())
+        self.assertFalse((ROOT / "main.py").exists())
     def test_manual_kotlin_jvm_regressions_cover_domain_thresholds(self):
         source = KOTLIN_JVM_TEST.read_text(encoding="utf-8")
         self.assertIn("completionThresholdIsNinetyPercent", source)

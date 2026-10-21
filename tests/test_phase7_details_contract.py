@@ -18,15 +18,17 @@ class Phase7DetailsContractTests(unittest.TestCase):
         self.assertIn("metadata.get(\"format\")", details)
         self.assertIn("metadata.get(\"episodes_count\")", details)
 
-    def test_details_loads_contextual_palette_off_thread(self):
-        details = self.read("views/details_view.py")
-        main = self.read("main.py")
-        self.assertIn("resolve_artwork_palette=None", details)
-        self.assertIn("asyncio.to_thread(", details)
-        self.assertIn("resolve_artwork_palette", details)
-        self.assertIn("run_task(load_contextual_palette)", details)
-        self.assertIn("resolve_artwork_palette=library.resolve_artwork_palette", main)
-
+    def test_native_details_load_artwork_through_the_shared_native_pipeline(self):
+        details = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt")
+        artwork_ui = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt")
+        artwork_service = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt")
+        dependencies = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppDependencies.kt")
+        self.assertIn("ReiAnixPoster(", details)
+        self.assertIn("ReiAnixBackdrop(", details)
+        self.assertIn("fun ReiAnixLocalArtwork(", artwork_ui)
+        self.assertIn("ReiAnixArtworkService", dependencies)
+        self.assertIn("requestAnimeArtwork", artwork_service)
+        self.assertIn("data/covers", artwork_service)
     def test_contextual_palette_does_not_replace_global_theme(self):
         details = self.read("views/details_view.py")
         self.assertIn("activate_theme_for_page(page)", details)

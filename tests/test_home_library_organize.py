@@ -4,7 +4,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "main.py"
+MAIN = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
 HOME = ROOT / "views" / "home_view.py"
 ORGANIZE = ROOT / "views" / "organize_view.py"
 COMPOSE_ORGANIZE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/organize/ReiAnixOrganize.kt"
@@ -16,11 +16,15 @@ class HomeLibraryOrganizeTests(unittest.TestCase):
     def read(self, path):
         return path.read_text(encoding="utf-8")
 
-    def test_main_binds_home_and_organize_to_current_route_lifecycle(self):
-        main = self.read(MAIN)
-        self.assertIn('is_active=lambda: ui_alive[0] and navigation.current == "home"', main)
-        self.assertIn('is_active=lambda: ui_alive[0] and navigation.current == "organize"', main)
-
+    def test_compose_home_and_organize_follow_the_active_route_lifecycle(self):
+        host = self.read(MAIN)
+        navigation = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
+        self.assertIn("val currentRoute by navController.currentBackStackEntryAsState()", host)
+        self.assertIn("LaunchedEffect(currentRoute?.destination?.route)", host)
+        self.assertIn("lastHomeBackAtElapsedRealtimeMs = 0L", host)
+        self.assertIn("ReiAnixRoutes.HOME", navigation)
+        self.assertIn("ReiAnixRoutes.ORGANIZE", navigation)
+        self.assertIn("ReiAnixOrganizeRoute(", host)
     def test_home_uses_lifecycle_guard_without_replacing_paging(self):
         home = self.read(HOME)
         self.assertIn("is_active=None", home)

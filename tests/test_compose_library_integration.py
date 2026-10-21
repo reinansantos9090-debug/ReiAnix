@@ -2,146 +2,91 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
 BRIDGE = (ROOT / "core/compose_library_bridge.py").read_text(encoding="utf-8")
+VIEW_MODEL = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+REPOSITORY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
+CODEC = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
+ACTIVITY = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+NAVIGATION = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
+DETAILS = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt").read_text(encoding="utf-8")
 
 
 class ComposeLibraryIntegrationTests(unittest.TestCase):
-    @staticmethod
-    def _command_dispatch_block():
-        start = MAIN.index("if event_type == 'compose_library_command':")
-        end = MAIN.index("player_event_types = {", start)
-        return MAIN[start:end]
+    def test_main_uses_native_repository_and_compose_navigation_boundary(self):
+        self.assertIn("ReiAnixLibraryViewModel", VIEW_MODEL)
+        self.assertIn("loadLibraryCatalogRows()", VIEW_MODEL + REPOSITORY)
+        self.assertIn("ReiAnixNativeLibraryCatalogProjector", VIEW_MODEL)
+        self.assertIn("ReiAnixNavigationHost", NAVIGATION)
+        self.assertIn("ReiAnixRoutes.LIBRARY", NAVIGATION)
 
-    @staticmethod
-    def _command_worker_block():
-        start = MAIN.index("async def _run_compose_library_command")
-        end = MAIN.index("async def poll_native_bridge", start)
-        return MAIN[start:end]
+    def test_native_catalog_publication_is_not_a_scan_request(self):
+        start = VIEW_MODEL.index("fun refresh()")
+        end = VIEW_MODEL.index("fun refreshDetails(", start)
+        refresh = VIEW_MODEL[start:end]
+        self.assertIn("repository.refresh()", refresh)
+        self.assertIn("refreshNativeCatalog()", refresh)
+        self.assertNotIn("NativeScanRunner.run", refresh)
+        self.assertNotIn("MediaStoreScanner.scan", refresh)
 
-    def test_main_uses_real_library_projection_and_compose_command_boundary(self):
-        dispatch = self._command_dispatch_block()
-        worker = self._command_worker_block()
-        self.assertIn("ComposeLibraryBridge(", MAIN)
-        self.assertIn('compose_library_bridge.request_publish("startup")', MAIN)
-        self.assertIn("if event_type == 'compose_library_command':", MAIN)
-        self.assertIn("_track_compose_library_task", dispatch)
-        self.assertIn('namespace="compose_library"', dispatch)
-        for action in ("set_watched", "refresh", "publish_catalog", "load_library_page"):
-            self.assertIn('action == "' + action + '":', worker)
-        self.assertIn("'load_library_page'", dispatch)
+    def test_library_viewmodel_refresh_uses_repository_and_canonical_projection(self):
+        self.assertIn("nativeLibraryRepository.loadLibraryCatalogRows()", VIEW_MODEL)
+        self.assertIn("ReiAnixNativeLibraryCatalogProjector", VIEW_MODEL)
+        self.assertIn("nativeCatalogReloadMutex.withLock", VIEW_MODEL)
+        self.assertIn("refreshCanonicalCatalogAfterBootstrapValidation()", VIEW_MODEL)
 
-    def test_native_catalog_publication_does_not_request_a_scan(self):
-        block = self._command_worker_block()
-        start = block.index('elif action == "publish_catalog":')
-        end = block.index('elif action == "refresh":', start)
-        publish = block[start:end]
-        self.assertIn("on_catalog_changed(refresh_details=False)", publish)
-        self.assertNotIn("scan_coordinator.request", publish)
+    def test_personal_list_mutations_are_native_and_refresh_state(self):
+        for token in ("personalListService.toggle(animeId)", "personalListService.add(animeId)", "personalListService.remove(animeId)"):
+            self.assertIn(token, VIEW_MODEL)
+        self.assertIn("refreshNativeCatalog()", VIEW_MODEL)
+        self.assertNotIn("TOGGLE_FAVORITE", CODEC)
 
-    def test_compose_library_commands_ack_before_slow_work(self):
-        block = self._command_dispatch_block()
-        worker = self._command_worker_block()
-        self.assertIn('"QUEUED"', block)
-        self.assertIn("_run_compose_library_command", block)
-        self.assertIn("started = await add_folder(compose_request_id=request_id)", worker)
-        self.assertIn("started = await remove_folder(reference, request_id=request_id)", worker)
-        self.assertNotIn("store.toggle_favorite", block)
-        self.assertNotIn("store.set_watched", block)
-        self.assertNotIn("store.episode_by_id", block)
-
-    def test_compose_library_request_ids_are_idempotent(self):
-        block = self._command_dispatch_block()
-        self.assertIn("store.claim_native_request", block)
-        self.assertIn('namespace="compose_library"', block)
-        self.assertIn("duplicate request ignored", block)
-
-
-    def test_mutations_run_outside_python_ui_event_thread(self):
-        worker = self._command_worker_block()
-        for token in (
-            "await asyncio.to_thread(",
-            "store.set_watched",
-        ):
-            self.assertIn(token, worker)
-
-    def test_compose_favorite_mutation_is_owned_by_the_native_personal_list_service(self):
-        worker = self._command_worker_block()
-        codec = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
-        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
-        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
-        legacy_details = (ROOT / "views/details_view.py").read_text(encoding="utf-8")
-
-        self.assertNotIn('action == "toggle_favorite":', worker)
-        self.assertNotIn("store.toggle_favorite", worker)
-        self.assertNotIn('TOGGLE_FAVORITE("toggle_favorite")', codec)
-        self.assertNotIn("fun toggleFavorite(animeId: Long)", repository)
-        self.assertIn("personalListService.toggle(animeId)", view_model)
-        self.assertIn("personalListService.add(animeId)", view_model)
-        self.assertIn("personalListService.remove(animeId)", view_model)
-        self.assertIn("def _toggle_favorite_from_details(anime_id):", MAIN)
-        self.assertIn("on_toggle_favorite", legacy_details)
     def test_repository_snapshot_reconciliation_does_not_reset_to_first_page(self):
-        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
-        self.assertIn("reconcilePagedState", repository)
-        self.assertIn("loadedPage = current.loadedPage", repository)
-        self.assertIn("hasMore = current.hasMore ||", repository)
-        self.assertNotIn("animes = firstPage", repository)
-        self.assertNotIn("animes.take(36)", repository)
+        self.assertIn("reconcilePagedState", REPOSITORY)
+        self.assertIn("loadedPage = current.loadedPage", REPOSITORY)
+        self.assertIn("hasMore = current.hasMore ||", REPOSITORY)
+        self.assertNotIn("animes = firstPage", REPOSITORY)
+        self.assertNotIn("animes.take(36)", REPOSITORY)
 
-    def test_library_page_worker_is_bounded_and_runs_off_ui_thread(self):
-        worker = self._command_worker_block()
-        start = worker.index('elif action == "load_library_page":')
-        end = worker.index('\n            else:\n                command_status = "FAILED"', start)
-        page = worker[start:end]
-        for token in (
-            "library.catalog_page",
-            "pageSize",
-            "favoritesOnly",
-            "watchingOnly",
-            "completedOnly",
-            "ComposeLibraryBridge.project_library_page",
-            "await asyncio.to_thread",
-        ):
-            self.assertIn(token, page)
+    def test_library_page_loading_is_bounded_and_uses_page_state(self):
+        self.assertIn("loadNativeLibraryPage(", VIEW_MODEL)
+        self.assertIn("nativePageGeneration", VIEW_MODEL)
+        self.assertIn("pageSize", VIEW_MODEL)
+        self.assertIn("nativePagedLibraryState", VIEW_MODEL)
 
-    def test_existing_scanner_coordinator_remains_refresh_owner(self):
-        block = self._command_worker_block()
-        start = block.index('elif action == "refresh":')
-        end = block.index('\n            else:\n                command_status = "FAILED"', start)
-        refresh = block[start:end]
-        self.assertIn("ScanOrigin.USER_REFRESH", refresh)
-        self.assertIn("scan_coordinator.request(", refresh)
-        self.assertNotIn("bridge.scan_media_store", refresh)
-        self.assertNotIn("bridge.scan_all_storage", refresh)
-
-    def test_compose_player_open_does_not_dispatch_open_media_to_python(self):
-        worker = self._command_worker_block()
-        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
-        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
-        codec = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
+    def test_scanning_is_owned_by_the_native_scan_coordinator(self):
+        controller = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
+        runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        start = view_model.index("fun openEpisode(episodeId: Long, expectedAnimeId: Long?")
-        end = view_model.index("override fun onCleared()", start)
-        launch = view_model[start:end]
-        self.assertNotIn('elif action == "open_media":', worker)
-        self.assertNotIn("fun openEpisode(episodeId: Long): String =", repository)
-        self.assertNotIn('OPEN_MEDIA("open_media")', codec)
-        for token in (
-            "nativeLibraryRepository.getEpisode(episodeId)",
-            "nativeLibraryRepository.listEpisodes(episode.animeId)",
-            "Intent.ACTION_VIEW",
-            '.appendQueryParameter("native_compose", "true")',
-            "ReiAnixSettingsContract.defaultFor",
-        ):
-            self.assertIn(token, launch)
-        self.assertNotIn("NativeMailbox.write", launch)
-        self.assertIn("private fun performOpenPlayer(", activity)
-        self.assertIn("reportNativePlayerHandoff(", activity)
+        self.assertIn("object NativeScanController", controller)
+        self.assertIn("fun begin(", controller)
+        self.assertIn("fun complete(", controller)
+        self.assertIn("NativeScanController.begin(", activity)
+        self.assertIn("NativeScanController.complete(", runner)
 
-    def test_compose_projection_is_derived_and_does_not_define_sqlite_schema(self):
+    def test_compose_player_open_is_native_not_a_python_mailbox_command(self):
+        start = VIEW_MODEL.index("fun openEpisode(episodeId: Long, expectedAnimeId: Long?")
+        end = VIEW_MODEL.index("override fun onCleared()", start)
+        launch = VIEW_MODEL[start:end]
+        self.assertIn("nativeLibraryRepository.getEpisode(episodeId)", launch)
+        self.assertIn("Intent.ACTION_VIEW", launch)
+        self.assertIn('.appendQueryParameter("native_compose", "true")', launch)
+        self.assertIn("private fun performOpenPlayer(", ACTIVITY)
+        self.assertIn("reportNativePlayerHandoff(", ACTIVITY)
+        self.assertNotIn("NativeMailbox.write", launch)
+
+    def test_details_and_navigation_use_canonical_native_ids(self):
+        self.assertIn("detailsState(canonicalId)", DETAILS)
+        self.assertIn("viewModel.refreshDetails(canonicalId)", DETAILS)
+        self.assertIn("navigateToDetails", NAVIGATION)
+        self.assertIn("ReiAnixRoutes.DETAILS", NAVIGATION)
+
+    def test_legacy_projection_bridge_does_not_create_a_second_database(self):
         self.assertIn("self.library.catalog()", BRIDGE)
         self.assertIn("self.store.folders()", BRIDGE)
         self.assertIn("SCHEMA_VERSION = 1", BRIDGE)
         self.assertNotIn("CREATE TABLE", BRIDGE)
-        self.assertNotIn("sqlite3", BRIDGE)
+        self.assertNotIn("sqlite3.connect", BRIDGE)
+
+
+if __name__ == "__main__":
+    unittest.main()

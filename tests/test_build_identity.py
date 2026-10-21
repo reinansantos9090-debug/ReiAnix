@@ -53,7 +53,8 @@ class BuildIdentityTests(unittest.TestCase):
             )
             manifest = json.loads((root / "build-identity.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["version"], "0.2.1")
-            self.assertEqual(len(manifest["source_files"]), 3)
+            self.assertEqual(len(manifest["source_files"]), 2)
+            self.assertNotIn("main.py", manifest["source_files"])
             self.assertNotIn("app_config.py", manifest["source_files"])
             self.assertNotIn("core/build_identity.py", manifest["source_files"])
 

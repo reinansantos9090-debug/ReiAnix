@@ -16,8 +16,10 @@ from core.storage_access import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "main.py"
+MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 SAF = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/SafScanner.kt"
+SCAN_RUNNER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt"
+SCAN_CONTROLLER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt"
 
 
 class FakeStore:
@@ -235,56 +237,63 @@ class DatabaseSourceTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
-    def test_library_target_provider_only_dispatches_saf(self):
-        source = MAIN.read_text(encoding="utf-8")
-        start = source.index("    def _authorized_scan_targets(source=None, scope_ref=None):")
-        end = source.index("    scan_coordinator = ScanCoordinator(", start)
-        block = source[start:end]
-        self.assertIn("configured_library_saf_roots", block)
-        self.assertIn('ScanTarget("saf", uri)', block)
-        self.assertNotIn('ScanTarget("mediastore")', block)
-        self.assertNotIn('ScanTarget("broad_storage")', block)
-        self.assertNotIn("/storage/emulated/0", block)
-        self.assertIn("non_library_scanner", block)
 
-    def test_refresh_and_pull_to_refresh_share_the_coordinator(self):
-        source = MAIN.read_text(encoding="utf-8")
-        a = source.index("    async def refresh_library")
-        b = source.index("    async def refresh_home_library", a)
-        refresh = source[a:b]
-        self.assertIn("scan_coordinator.request(", refresh)
-        self.assertIn("ScanOrigin.USER_REFRESH", refresh)
-        a = source.index("    async def request_home_refresh")
-        b = source.index("    async def refresh_home_library", a)
-        self.assertIn("await refresh_library(_home_refresh_context=home_refresh_context)", source[a:b])
-    def test_global_scan_results_never_enter_library(self):
-        source = MAIN.read_text(encoding="utf-8")
-        a = source.index("                        elif event_type == 'broad_storage_scan':")
-        b = source.index("                        elif event_type == 'broad_storage_status':", a)
-        broad = source[a:b]
-        a = source.index("                        elif event_type == 'mediastore_scan':")
-        b = source.index("                        elif event_type == 'mediastore_permission':", a)
-        media = source[a:b]
-        self.assertIn("SCAN_SOURCE_REJECTED", broad)
-        self.assertNotIn("library.ingest_documents", broad)
-        self.assertNotIn("library.finish_ingest_documents", broad)
-        self.assertIn("SCAN_SOURCE_REJECTED", media)
-        self.assertNotIn("library.ingest_documents", media)
-        self.assertNotIn("library.finish_ingest_documents", media)
+    def test_library_target_provider_only_dispatches_configured_saf(self):
+        source = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        start = source.index("private fun scanConfiguredSafRoots(")
+        end = source.index("private fun scanTree(", start)
+        block = source[start:end]
+        self.assertIn("repository.listFolders()", block)
+        self.assertIn('it.kind.equals("saf", ignoreCase = true)', block)
+        self.assertIn("SafScanner.hasPersistedReadPermission", block)
+        self.assertIn("SafScanner.inspectTree", block)
+        self.assertIn("scanTree(reference, requestId)", block)
+        self.assertNotIn('kind = "mediastore"', block)
+        self.assertNotIn('kind = "broad_storage"', block)
+
+    def test_native_refresh_uses_the_same_scan_dispatch_path(self):
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        refresh_start = view_model.index("fun refresh()")
+        refresh_end = view_model.index("fun refreshDetails(", refresh_start)
+        refresh = view_model[refresh_start:refresh_end]
+        self.assertIn("repository.refresh()", refresh)
+        self.assertIn("publishScanRequest(", activity)
+        self.assertIn("scan_library", activity)
+        self.assertIn('"scan_library"', activity)
+        self.assertIn("publishScanRequest(", activity)
+        self.assertIn("NativeScanController", activity)
+
+    def test_scan_catalog_writes_are_owned_by_the_native_index_pipeline(self):
+        runner = SCAN_RUNNER.read_text(encoding="utf-8")
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        self.assertIn("nativeLibraryIndexOwner", runner)
+        self.assertIn("indexDiscoveredMedia(", runner)
+        self.assertIn("finishNativeScanRun(", runner)
+        self.assertIn("scanMediaStore(requestId)", activity)
+        self.assertIn("scanAllStorage(requestId)", activity)
+        self.assertIn("repository.listFolders()", activity)
+        self.assertIn('it.kind.equals("saf", ignoreCase = true)', activity)
 
     def test_media_and_broad_permissions_do_not_create_library_source_rows(self):
-        source = MAIN.read_text(encoding="utf-8")
-        a = source.index("                        elif event_type == 'broad_storage_status':")
-        b = source.index("                        elif event_type == 'broad_storage_error':", a)
-        broad = source[a:b]
-        a = source.index("                        elif event_type == 'mediastore_permission':")
-        b = source.index("                        elif event_type == 'mediastore_error':", a)
-        media = source[a:b]
-        self.assertNotIn("store.add_folder('broad-storage'", broad)
-        self.assertNotIn("store.restore_source('broad-storage')", broad)
-        self.assertNotIn("kind='mediastore'", media)
-        self.assertNotIn("store.restore_source(source)", media)
-
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        source_start = activity.index("private fun scanConfiguredSafRoots(")
+        source_end = activity.index("private fun scanTree(", source_start)
+        configured_sources = activity[source_start:source_end]
+        self.assertIn('it.kind.equals("saf", ignoreCase = true)', configured_sources)
+        self.assertNotIn('it.kind.equals("mediastore"', configured_sources)
+        self.assertNotIn('it.kind.equals("broad_storage"', configured_sources)
+        broad_start = activity.index("private fun handleBroadSettingsReturn(")
+        broad_end = activity.index("private fun launchExternalSettings(", broad_start)
+        broad = activity[broad_start:broad_end]
+        media_start = activity.index("private fun requestMediaAccess(")
+        media_end = activity.index("fun dismissNativeStorageOnboarding(", media_start)
+        media = activity[media_start:media_end]
+        self.assertIn("publishScanRequest(", broad)
+        self.assertIn("scanMediaStore(requestId)", media)
+        self.assertNotIn("upsertSafFolder(", broad)
+        self.assertNotIn("upsertSafFolder(", media)
     def test_saf_scanner_recurses_from_selected_tree_and_not_storage_root(self):
         source = SAF.read_text(encoding="utf-8")
         self.assertIn("pending.addLast(identity.documentId to \"\")", source)

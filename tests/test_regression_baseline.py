@@ -2,6 +2,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import unittest
+from tests.native_main_contract import native_main_source
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -13,7 +14,7 @@ class RegressionBaselineTests(unittest.TestCase):
 
     def test_required_architecture_components_are_present(self):
         for path in (
-            "main.py","core/android_bridge.py","core/library_store.py",
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt","core/android_bridge.py","core/library_store.py",
             "core/library_service.py","core/artwork.py","core/genre_classifier.py",
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt",
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt",
@@ -22,14 +23,13 @@ class RegressionBaselineTests(unittest.TestCase):
         ):
             self.assertTrue((ROOT / path).is_file(), path)
 
-    def test_android_back_is_owned_by_flet_navigation_not_native_mailbox(self):
-        main=self.read("main.py")
-        activity=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
-        self.assertIn("page.on_view_pop = handle_flet_view_pop",main)
-        self.assertIn("page.views.clear()",main)
-        self.assertNotIn('put("type", "android_back")',activity)
-        self.assertNotIn("event_type == 'android_back'",main)
-
+    def test_android_back_is_owned_by_native_compose_navigation(self):
+        source = native_main_source()
+        activity = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+        self.assertIn("fun handleBack(): Boolean", source)
+        self.assertIn("composeLibraryHost.handleBack()", activity)
+        self.assertIn("NavHostController", source)
+        self.assertNotIn('put("type", "android_back")', activity)
     def test_on_resume_contains_authorized_discovery_scan_triggers(self):
         source=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
         start=source.index("override fun onResume()")
@@ -75,28 +75,16 @@ class RegressionBaselineTests(unittest.TestCase):
 
     def test_player_contracts_and_horizontal_swipe_seek_is_supported(self):
         player=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
-        main=self.read("main.py")
         for token in ("player_error","player_exited"):
             self.assertIn(token,player)
-            self.assertIn(token,main)
         for token in (
-            "PlayerGesturePolicy",
-            "PLAYER_DOUBLE_TAP",
-            "PLAYER_LONG_PRESS",
-            "VERTICAL",
-            "GestureMode.HORIZONTAL_SEEK",
-            "seekTarget",
-            "adjustBrightness",
-            "adjustVolumeByFraction",
-            "playerGeneration",
-            "restoreSystemUiBeforeExit",
+            "PlayerGesturePolicy", "PLAYER_DOUBLE_TAP", "PLAYER_LONG_PRESS", "VERTICAL",
+            "GestureMode.HORIZONTAL_SEEK", "seekTarget", "adjustBrightness", "adjustVolumeByFraction",
+            "playerGeneration", "restoreSystemUiBeforeExit",
         ):
             self.assertIn(token,player)
         self.assertIn("PlayerGesturePolicy.horizontalSeekTarget", player)
         self.assertIn("GESTURE_END type=horizontal_seek", player)
-
-
-    # Compatibility alias retained for the existing contract runner.
     def test_player_contracts_and_horizontal_seek_are_present(self):
         self.test_player_contracts_and_horizontal_swipe_seek_is_supported()
 

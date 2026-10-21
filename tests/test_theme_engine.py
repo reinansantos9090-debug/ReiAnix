@@ -5,6 +5,7 @@ from pathlib import Path
 
 from core.library_store import LibraryStore
 from core.settings import SettingsStore
+from tests.native_main_contract import native_main_source
 from core.ui import (
     DARK_THEME,
     _flet_material_theme,
@@ -200,13 +201,13 @@ class ThemeEngineTests(unittest.TestCase):
             for color in legacy_palette:
                 self.assertNotIn(color, source, f"{path.name} retains {color}")
 
-    def test_main_owns_runtime_theme_apply_and_system_brightness_hook(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("apply_page_theme(page, settings.get(\"appearance.theme\"))", source)
-        self.assertIn('if setting_key == "appearance.theme":', source)
-        self.assertIn("page.on_platform_brightness_change", source)
-        self.assertNotIn("page.theme_mode =", source)
-
+    def test_native_settings_state_owns_runtime_theme_and_system_mode(self):
+        source = native_main_source()
+        self.assertIn("ReiAnixComposeTheme", source)
+        self.assertIn("themeMode", source)
+        self.assertIn("appearance.theme", source)
+        self.assertIn("ReiAnixSettingsRepository", source)
+        self.assertIn("collectAsStateWithLifecycle", source)
     def test_settings_has_explicit_three_mode_selection_and_selection_indicator(self):
         source = (ROOT / "views/settings_view.py").read_text(encoding="utf-8")
         for label in ("Sistema", "Claro", "Escuro"):
@@ -216,69 +217,11 @@ class ThemeEngineTests(unittest.TestCase):
         self.assertIn('settings.get("appearance.theme") == mode', source)
 
     def test_theme_change_does_not_route_through_storage_or_native_player(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        tree = ast.parse(source, filename="main.py")
-        runtime = next(
-            node for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == "apply_settings_runtime"
-        )
-        theme_if = next(
-            node for node in runtime.body
-            if isinstance(node, ast.If)
-            and isinstance(node.test, ast.Compare)
-            and isinstance(node.test.left, ast.Name)
-            and node.test.left.id == "setting_key"
-            and len(node.test.ops) == 1
-            and isinstance(node.test.ops[0], ast.Eq)
-            and len(node.test.comparators) == 1
-            and isinstance(node.test.comparators[0], ast.Constant)
-            and node.test.comparators[0].value == "appearance.theme"
-        )
-        theme_calls = [
-            node for node in ast.walk(theme_if)
-            if isinstance(node, ast.Call)
-        ]
-        call_names = {
-            node.func.id
-            for node in theme_calls
-            if isinstance(node.func, ast.Name)
-        }
-        self.assertIn("apply_page_theme", call_names)
-        self.assertIn("render_current", call_names)
-        self.assertTrue(any(isinstance(node, ast.Return) for node in theme_if.body))
-        self.assertFalse(
-            any(
-                isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "library"
-                and node.func.attr == "configure_settings"
-                for node in theme_calls
-            )
-        )
-
-        theme_index = runtime.body.index(theme_if)
-        following = runtime.body[theme_index + 1:]
-        self.assertTrue(
-            any(
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "library"
-                and node.func.attr == "configure_settings"
-                for statement in following
-                for node in ast.walk(statement)
-            )
-        )
-        self.assertTrue(
-            any(
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "_clear_screen_cache"
-                for node in theme_calls
-            )
-        )
-
+        source = native_main_source()
+        self.assertIn("themeMode", source)
+        self.assertIn("ReiAnixComposeTheme", source)
+        self.assertIn("ReiAnixSettingsViewModel", source)
+        self.assertNotIn("NativePlayerActivity.applyTheme", source)
 
 if __name__ == "__main__":
     unittest.main()

@@ -105,19 +105,20 @@ def test_no_forbidden_remote_media_pipeline_was_added():
 
 
 def test_episode_reconciliation_path_is_canonical_after_player_exit():
-    main = read("main.py")
-    start = main.index("elif event_type == 'player_exited':")
-    end = main.index("elif event_type == 'google_sign_in_started':", start)
-    block = main[start:end]
-    for token in (
-        "exit_is_current",
-        "invalidate_player_session",
-        "on_catalog_changed()",
-        "exit_activity_instance_id",
-    ):
-        assert token in block
-    assert "store.save_progress" in block
-
+    consumption = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt")
+    player = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
+    view_model = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
+    assert '"player_exited"' in consumption
+    assert "playbackChanges" in consumption
+    assert "saveProgress(" in player
+    assert "ReiAnixConsumptionService.playbackChanges" in view_model
+    playback_collector = view_model[
+        view_model.index("ReiAnixConsumptionService.playbackChanges"):
+        view_model.index("NativeScanController.progress", view_model.index("ReiAnixConsumptionService.playbackChanges"))
+    ]
+    assert "refreshNativeCatalog()" in playback_collector
+    assert "playerSessionId" in playback_collector
+    assert "transitionGeneration" in playback_collector
 
 def test_no_known_ui_tree_mutation_regression_was_reintroduced():
     details = read("views/details_view.py")

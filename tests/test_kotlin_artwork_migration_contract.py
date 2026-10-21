@@ -6,9 +6,9 @@ KOTLIN = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local"
 ARTWORK = KOTLIN / "data/artwork/ReiAnixArtworkService.kt"
 DEPENDENCIES = KOTLIN / "ReiAnixAppDependencies.kt"
 EXTRACTOR = KOTLIN / "storage/VideoThumbnailExtractor.kt"
-MAIN_ACTIVITY = KOTLIN / "MainActivity.kt"
+ACTIVITY = KOTLIN / "MainActivity.kt"
 DISPATCHER = KOTLIN / "bridge/NativeCommandDispatcher.kt"
-MAIN = ROOT / "main.py"
+ANILIST = KOTLIN / "data/anilist/ReiAnixAniListIntegrationService.kt"
 
 
 class KotlinArtworkMigrationContractTests(unittest.TestCase):
@@ -34,37 +34,29 @@ class KotlinArtworkMigrationContractTests(unittest.TestCase):
         self.assertNotIn("HostnameVerifier", source)
         self.assertNotIn("TrustManager", source)
 
-    def test_native_anilist_flow_does_not_delegate_artwork_to_python(self):
+    def test_native_anilist_flow_persists_then_requests_native_artwork(self):
+        integration = ANILIST.read_text(encoding="utf-8")
         dependencies = DEPENDENCIES.read_text(encoding="utf-8")
         artwork = ARTWORK.read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
-        start = main.index("if event_type == 'anilist_metadata_committed':")
-        end = main.index("if event_type == 'compose_settings_set':", start)
-        handler = main[start:end]
-        self.assertIn("artworkService.requestAnimeArtwork(animeId, force = true)", dependencies)
-        self.assertIn('put("requestArtwork", false)', dependencies)
+        self.assertIn('put("type", "anilist_metadata_committed")', integration)
+        self.assertIn("requestAnimeArtwork(animeId, force = true)", integration + dependencies)
         self.assertIn("ARTWORK_PUBLISHED", artwork)
-        self.assertNotIn("library.artwork.sync_anime_metadata(", handler)
-        self.assertNotIn("library.artwork.request(", handler)
-        self.assertIn("if event_type == 'artwork_published':", handler)
-        self.assertIn("artwork_ready:", handler)
+        self.assertIn("persistDownloaded(", artwork)
+        self.assertNotIn("library.artwork.sync_anime_metadata(", integration)
+        self.assertNotIn("library.artwork.request(", integration)
 
     def test_thumbnail_extraction_registers_with_canonical_artwork_writer(self):
         extractor = EXTRACTOR.read_text(encoding="utf-8")
-        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        activity = ACTIVITY.read_text(encoding="utf-8")
         dispatcher = DISPATCHER.read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
-        self.assertIn("registerGeneratedThumbnail(", ARTWORK.read_text(encoding="utf-8"))
+        artwork = ARTWORK.read_text(encoding="utf-8")
+        self.assertIn("registerGeneratedThumbnail(", artwork)
         self.assertIn("registerGeneratedArtwork", extractor)
         self.assertIn("canonicalArtworkRegistered", extractor)
         self.assertIn('put("canonicalArtworkRegistered", result.canonicalArtworkRegistered)', activity)
         self.assertIn('put("canonicalArtworkRegistered", result.canonicalArtworkRegistered)', dispatcher)
-        start = main.index("elif event_type == 'thumbnail_ready':")
-        end = main.index("elif event_type == 'thumbnail_error':", start)
-        handler = main[start:end]
-        self.assertIn("payload.get('canonicalArtworkRegistered') is True", handler)
-        self.assertIn("not compose_library_bridge.enabled", handler)
-        self.assertNotIn("library.register_generated_thumbnail", handler.split("if not registered", 1)[0])
+        self.assertIn("VideoThumbnailExtractor", activity + dispatcher)
+        self.assertIn("ARTWORK_PUBLISHED", artwork)
 
     def test_event_is_emitted_only_after_native_persistence_path(self):
         source = ARTWORK.read_text(encoding="utf-8")

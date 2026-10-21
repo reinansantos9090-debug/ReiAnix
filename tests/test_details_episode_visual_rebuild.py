@@ -10,7 +10,7 @@ from views.details_view import DetailView
 
 ROOT = Path(__file__).resolve().parents[1]
 DETAILS_SOURCE = ROOT / "views" / "details_view.py"
-MAIN_SOURCE = ROOT / "main.py"
+NATIVE_DETAILS_SOURCE = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"
 
 
 class _FakePage:
@@ -250,28 +250,22 @@ class DetailsEpisodeReconciliationTests(unittest.TestCase):
         self.assertIn("episode_column.controls = build_episode_controls()", render_block)
 
     def test_details_catalog_changes_use_canonical_refresh_path(self):
-        source = MAIN_SOURCE.read_text(encoding="utf-8")
+        source = NATIVE_DETAILS_SOURCE.read_text(encoding="utf-8")
+        view_model = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+        ).read_text(encoding="utf-8")
+        repository = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt"
+        ).read_text(encoding="utf-8")
 
-        self.assertIn(
-            'anime_id = current[0].get("id") if current[0] else None',
-            source,
-        )
-        self.assertIn("catalog = await asyncio.to_thread(library.catalog)", source)
-        self.assertIn("page.run_task(refresh_current_details)", source)
-
-        start = source.index("def on_catalog_changed(*, refresh_details=True, refresh_request_id=None):")
-        end = source.index("    def apply_settings_runtime", start)
-        block = source[start:end]
-
-        details_start = block.index('if navigation.current == "details":')
-        details_block = block[details_start:block.index(
-            '        _drop_screen_cache(navigation.current)',
-            details_start,
-        )]
-        self.assertIn("if not refresh_details:", details_block)
-        self.assertIn("page.run_task(refresh_current_details)", details_block)
-        self.assertNotIn('render_current(reason="catalog_changed")', details_block)
-
+        self.assertIn("viewModel.refreshDetails(canonicalId)", source)
+        self.assertIn("LaunchedEffect(aniListState.associationRevision)", source)
+        self.assertIn("viewModel.refreshDetails(canonicalId)", source)
+        self.assertIn("fun refreshDetails(", view_model)
+        self.assertIn("nativeLibraryRepository", view_model)
+        self.assertIn("loadLibraryCatalogRows()", repository)
+        self.assertNotIn("asyncio.to_thread(library.catalog)", source)
+        self.assertNotIn("page.run_task(refresh_current_details)", source)
 
 if __name__ == "__main__":
     unittest.main()

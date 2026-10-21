@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 ROOT = Path(__file__).resolve().parents[1]
 ANDROID = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local"
@@ -8,7 +9,7 @@ VIEW_MODEL = (ANDROID / "viewmodel/ReiAnixLibraryViewModel.kt").read_text(encodi
 MY_LIST = (ANDROID / "ui/mylist/ReiAnixMyList.kt").read_text(encoding="utf-8")
 REPOSITORY = (ANDROID / "data/library/ReiAnixLibraryRepository.kt").read_text(encoding="utf-8")
 CODEC = (ANDROID / "data/library/ReiAnixLibraryCommandCodec.kt").read_text(encoding="utf-8")
-MAIN = (ROOT / "main.py").read_text(encoding="utf-8")
+MAIN = native_main_source()
 DETAILS_FLET = (ROOT / "views/details_view.py").read_text(encoding="utf-8")
 STORE = (ROOT / "core/library_store.py").read_text(encoding="utf-8")
 
@@ -36,26 +37,18 @@ class KotlinPersonalListMigrationTests(unittest.TestCase):
         self.assertIn("onToggleFavorite = viewModel::toggleFavorite", MY_LIST)
 
     def test_compose_favorite_write_does_not_cross_the_python_mailbox(self):
-        worker_start = MAIN.index("async def _run_compose_library_command")
-        worker_end = MAIN.index("async def poll_native_bridge", worker_start)
-        worker = MAIN[worker_start:worker_end]
-        dispatch_start = MAIN.index("if event_type == 'compose_library_command':")
-        dispatch_end = MAIN.index("player_event_types = {", dispatch_start)
-        dispatch = MAIN[dispatch_start:dispatch_end]
-
-        self.assertNotIn('action == "toggle_favorite":', worker)
-        self.assertNotIn("store.toggle_favorite", worker)
-        self.assertNotIn("'toggle_favorite',", dispatch)
         self.assertNotIn('TOGGLE_FAVORITE("toggle_favorite")', CODEC)
         self.assertNotIn("fun toggleFavorite(animeId: Long)", REPOSITORY)
         self.assertIn("personalListService.toggle(animeId)", VIEW_MODEL)
         self.assertIn("refreshNativeCatalog()", VIEW_MODEL)
+        self.assertIn("onToggleFavorite = viewModel::toggleFavorite", MY_LIST)
+        self.assertNotIn("NativeMailbox", (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/mylist/ReiAnixMyList.kt").read_text(encoding="utf-8"))
 
     def test_legacy_flet_writer_is_identified_not_misrepresented_as_migrated(self):
-        self.assertIn("def _toggle_favorite_from_details(anime_id):", MAIN)
-        self.assertIn("store.toggle_favorite(anime_id)", MAIN)
+        self.assertFalse((ROOT / "main.py").exists())
         self.assertIn("on_toggle_favorite", DETAILS_FLET)
         self.assertIn("toggle_favorite", STORE)
+        self.assertIn("personalListService.toggle(animeId)", VIEW_MODEL)
 
     def test_add_remove_only_change_membership_not_consumption_or_associations(self):
         update_start = SERVICE.index("private suspend fun setMembership(")

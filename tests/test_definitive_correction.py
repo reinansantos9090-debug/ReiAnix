@@ -700,35 +700,33 @@ class DefinitiveCorrectionTests(unittest.TestCase):
             self.assertEqual(first_anime, store.episode_by_id(episode_id)["anime_id"])
             self.assertNotEqual(first_anime, second_anime)
 
+
     def test_metadata_identity_contract_is_explicitly_owner_bound(self):
         store_source = self.read("core/library_store.py")
         service_source = self.read("core/library_service.py")
-        main_source = self.read("main.py")
         details_source = self.read("views/details_view.py")
         home_source = self.read("views/home_view.py")
+        native_association = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteAniListAssociation.kt")
+        native_integration = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt")
+        native_repository = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt")
 
         self.assertIn("def resolve_local_anime_owner(", store_source)
         self.assertIn("local_anime_id=None", store_source)
         self.assertIn('effective_anime_id = existing["anime_id"]', store_source)
         self.assertIn("resolve_local_anime_owner(", service_source)
         self.assertIn("local_anime_id=owner_id", service_source)
-        self.assertIn("local_anime_id=anime_id", main_source)
-        self.assertIn("library.catalog", details_source + main_source)
+        self.assertIn("updateAniListMetadataAndAssociation", native_association)
+        self.assertIn("if (!manual && current.anilistId != null && current.anilistId != anilistId)", native_association)
+        self.assertIn("local.id", native_integration)
+        self.assertIn("loadLibraryCatalogRows()", native_repository)
         self.assertIn("library.browse_catalog_page", home_source)
-        self.assertIn("METADATA_ACTION_START", main_source + service_source)
-        self.assertIn("METADATA_ACTION_DB_WRITE", main_source + service_source)
-        self.assertIn("METADATA_ACTION_CATALOG_REFRESH", main_source + service_source)
-        self.assertIn("METADATA_ACTION_UI_COMMIT", main_source + service_source)
-        self.assertIn("navigation.current != \"details\"", main_source)
-        self.assertIn("details_instance_generation[0] != details_token", main_source)
         self.assertIn("settings_generation_provider", self.read("views/settings_view.py"))
         self.assertIn("register_settings_task", self.read("views/settings_view.py"))
-        self.assertIn("selected.get(\"episodes\", [])", details_source)
+        self.assertIn('selected.get("episodes", [])', details_source)
         self.assertIn("visible_regular = season_items[:visible_episode_count[0]]", details_source)
         self.assertIn("new_controls.extend(", details_source)
         self.assertIn("episode_item(item, scope=\"episode\")", details_source)
         self.assertIn("library.browse_catalog_page", home_source)
-
     def test_home_metadata_hydration_uses_the_canonical_artwork_resolver(self):
         source = self.read("views/home_view.py")
         start = source.index("async def hydrate_metadata_and_artwork")
@@ -761,37 +759,34 @@ class DefinitiveCorrectionTests(unittest.TestCase):
         self.assertNotIn("entity_type='anime'", block)
         self.assertNotIn("UPDATE anime SET cover_cache", block)
 
-    def test_home_refresh_has_one_intent_entry_point_and_explicit_phases(self):
-        source = self.read("main.py")
-        self.assertIn("async def request_home_refresh", source)
-        self.assertIn("async def refresh_home_library", source)
-        self.assertIn("on_refresh_library=request_home_refresh", source)
-        self.assertIn("on_refresh_library=request_home_refresh", source)
-        for phase in (
-            "IDLE",
-            "REQUESTED",
-            "RUNNING",
-            "CATALOG_UPDATING",
-            "UI_COMMIT",
-            "SUCCESS",
-            "ERROR",
-            "CANCELLED",
-        ):
-            self.assertIn(f'"{phase}"', source)
-        self.assertIn("def _set_home_refresh_phase", source)
-        self.assertIn("HOME_REFRESH_PHASE_CHANGED", source)
 
-    def test_home_refresh_catalog_commit_is_bound_to_the_scan_request(self):
-        source = self.read("main.py")
-        self.assertIn("refresh_request_id=refresh_request_id", source)
-        start = source.index("def on_catalog_changed")
-        end = source.index("async def refresh_current_metadata", start) if "async def refresh_current_metadata" in source[start:] else len(source)
-        block = source[start:end]
-        self.assertIn("refresh_request_id is not None", block)
-        self.assertIn("current_refresh_request_id == refresh_request_id", block)
-        self.assertIn('_set_home_refresh_phase(', block)
-        self.assertIn('"CATALOG_UPDATING"', block)
+    def test_native_library_refresh_has_one_scan_dispatch_entrypoint(self):
+        activity = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+        view_model = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
+        controller = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt")
+        self.assertIn("fun refresh()", view_model)
+        refresh_start = view_model.index("fun refresh()")
+        refresh_end = view_model.index("fun refreshDetails(", refresh_start)
+        self.assertIn("repository.refresh()", view_model[refresh_start:refresh_end])
+        self.assertIn("requestNativeStorageAction", activity)
+        self.assertIn('"scan_library"', activity)
+        self.assertIn("fun begin(", controller)
+        self.assertIn("fun complete(", controller)
+        for phase in ("PREPARING", "RUNNING", "SUCCEEDED", "PARTIAL", "CANCELLED", "FAILED"):
+            self.assertIn("ScanLifecycleState." + phase, controller)
 
+    def test_native_catalog_commit_is_bound_to_scan_identity_and_generation(self):
+        activity = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+        runner = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt")
+        repository = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt")
+        self.assertIn("triggerRequestId", activity)
+        self.assertIn("val requestId = triggerRequestId", activity)
+        self.assertIn("scanGeneration", runner)
+        self.assertIn("generationId", runner)
+        self.assertIn("finishNativeScanRun(", runner)
+        self.assertIn("requestId = requestId", runner)
+        self.assertIn("markNativeCatalogCommitted", runner)
+        self.assertIn("nativeGeneration", repository)
     def test_player_exit_classification_has_forensic_categories(self):
         source = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
         for label in (
@@ -812,9 +807,9 @@ class DefinitiveCorrectionTests(unittest.TestCase):
         self.assertIn("PLAYER_FINISH_REQUEST", source)
         self.assertIn("PLAYER_EXIT_CLASSIFICATION=STALE_HANDOFF", source)
 
+
     def test_runtime_correction_uses_canonical_player_settings_and_compose_lock_ui(self):
         settings = self.read("core/settings.py")
-        main = self.read("main.py")
         request = self.read(
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt"
         )
@@ -827,15 +822,17 @@ class DefinitiveCorrectionTests(unittest.TestCase):
         tokens = self.read(
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/ReiAnixTokens.kt"
         )
+        host = self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+        )
+        integration = self.read(
+            "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt"
+        )
 
         self.assertIn('SettingDefinition("player.lock_mode", "bool", False)', settings)
-        self.assertIn('"player.lock_mode"', main)
-        self.assertIn("hydrate_catalog_metadata", main)
-        self.assertIn("schedule_catalog_metadata_hydration", main)
-        self.assertIn('schedule_catalog_metadata_hydration("storage_ready")', main)
-        self.assertIn('tuple(dict.fromkeys', main)
-        self.assertIn('setting_player_lock_mode', request)
-
+        self.assertIn('"player.lock_mode"', request + player)
+        self.assertIn("reconcileUnmatchedLibraryMetadata()", integration + host)
+        self.assertIn("requestPendingArtwork()", host)
         self.assertNotIn("SharedPreferences", player)
         self.assertNotIn("gesturePreferences", player)
         self.assertIn('persistCanonicalPlayerSetting("gestures.double_tap"', player)
@@ -850,7 +847,6 @@ class DefinitiveCorrectionTests(unittest.TestCase):
         self.assertIn("lifecycleScope.launch(Dispatchers.IO)", player)
         self.assertIn("topBar.visibility = View.GONE", player)
         self.assertIn("hideLegacyPrimaryControls()", player)
-
         self.assertIn("modifier = Modifier.weight(1f)", controls)
         self.assertIn("centerHorizontalPadding", controls)
         self.assertIn("state.locked", controls)
@@ -858,32 +854,36 @@ class DefinitiveCorrectionTests(unittest.TestCase):
         self.assertIn("externalUrl", self.read(
             "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/artwork/ReiAnixLocalArtwork.kt"
         ))
-
         self.assertIn("seekIconSize", tokens)
         self.assertIn("lockAffordanceSize", tokens)
 
-    def test_saf_ready_and_metadata_pipeline_are_in_real_runtime_path(self):
-        main = self.read("main.py")
-        service = self.read("core/library_service.py")
+    def test_saf_ready_and_metadata_pipeline_are_in_real_native_runtime_path(self):
+        host = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
+        runner = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt")
+        integration = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt")
+        artwork = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt")
+        service = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixLibraryService.kt")
+        self.assertIn("scanInProgress", host)
+        self.assertIn("ReiAnixAppDependencies.from(activity.applicationContext)", host)
+        self.assertIn("reconcileUnmatchedLibraryMetadata()", host)
+        self.assertIn("requestPendingArtwork()", host)
+        self.assertIn("indexDiscoveredMedia(", runner)
+        self.assertIn("nativeLibraryIndexOwner", runner)
+        self.assertIn("finishNativeScanRun(", runner)
+        self.assertIn("loadLibraryCatalogRows()", integration)
+        self.assertIn("updateAniListMetadataAndAssociation", integration)
+        self.assertIn("requestAnimeArtwork(", artwork)
+        self.assertIn("finishNativeScanRun(", service)
 
-        on_catalog_start = main.index("def on_catalog_changed")
-        on_catalog_end = main.index("def apply_settings_runtime", on_catalog_start)
-        catalog_block = main[on_catalog_start:on_catalog_end]
-
-        self.assertIn('schedule_thumbnail_reconciliation("catalog_changed")', catalog_block)
-        self.assertIn('schedule_catalog_metadata_hydration("catalog_changed")', catalog_block)
-        self.assertIn("await asyncio.to_thread(", main)
-        self.assertIn("library.hydrate_catalog_metadata", main)
-        self.assertIn("on_item=publish_item", main)
-        self.assertIn("def hydrate_catalog_metadata(self, catalog, on_item=None, *, allow_anilist_metadata=True):", service)
-        self.assertIn("allow_anilist_metadata=not compose_library_bridge.enabled", main)
-        self.assertIn("needs_metadata = allow_anilist_metadata and not materialized", service)
-        self.assertIn("on_item(result)", service)
-
-    def test_source_files_parse(self):
-        ast.parse(self.read("main.py"), filename="main.py")
+    def test_native_entrypoint_and_android_sources_are_present(self):
+        entrypoint = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
+        activity = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+        self.assertIn("package com.reiflix.reiflix_local", entrypoint)
+        self.assertIn("internal object MainEntryPoint", entrypoint)
+        self.assertIn("dependencies.bootstrap.start()", entrypoint)
+        self.assertIn("override fun onCreate(", activity)
+        self.assertFalse((Path(__file__).resolve().parents[1] / "main.py").exists())
         ast.parse(self.read("views/home_view.py"), filename="views/home_view.py")
-
 
 if __name__ == "__main__":
     unittest.main()

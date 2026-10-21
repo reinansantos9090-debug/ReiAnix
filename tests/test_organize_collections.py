@@ -7,7 +7,9 @@ from core.search_engine import LibrarySearchEngine
 
 ROOT = Path(__file__).resolve().parents[1]
 ORGANIZE = ROOT / "views/organize_view.py"
-MAIN = ROOT / "main.py"
+HOST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+NAVIGATION = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
+VIEW_MODEL = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
 
 
 def episode(*, number, progress=0, duration=100, watched=False, file_name=None):
@@ -197,15 +199,19 @@ class OrganizeHandlerContractTests(unittest.TestCase):
         self.assertNotIn("scan_coordinator", load)
         self.assertNotIn("request_video_access", load)
 
-    def test_returning_to_organize_refreshes_durable_details_changes_without_scanning(self):
-        source = MAIN.read_text(encoding="utf-8")
-        self.assertIn('if navigation.current == "organize":', source)
-        self.assertIn('_drop_screen_cache("organize")', source)
-        back_block = source[source.index('if action in {"previous", "settings_inner"}:'):source.index('elif action == "exit_requested":', source.index('if action in {"previous", "settings_inner"}:'))]
-        self.assertIn('if navigation.current == "organize":', back_block)
-        self.assertIn('_drop_screen_cache("organize")', back_block)
-        self.assertNotIn("refresh_library(", back_block)
 
+    def test_returning_to_organize_uses_native_catalog_state_without_dispatching_a_scan(self):
+        host = HOST.read_text(encoding="utf-8")
+        navigation = NAVIGATION.read_text(encoding="utf-8")
+        view_model = VIEW_MODEL.read_text(encoding="utf-8")
+        self.assertIn("ReiAnixOrganizeRoute(", host)
+        self.assertIn("ReiAnixRoutes.ORGANIZE", navigation)
+        self.assertIn("val currentRoute by navController.currentBackStackEntryAsState()", host)
+        self.assertIn("refreshNativeCatalog()", view_model)
+        self.assertIn("repository.refresh()", view_model)
+        self.assertIn("fun handleBack(): Boolean", host)
+        self.assertNotIn("refresh_library", host)
+        self.assertNotIn("page.views", host)
 
 if __name__ == "__main__":
     unittest.main()

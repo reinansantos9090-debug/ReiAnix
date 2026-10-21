@@ -6,6 +6,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from core.library_service import LibraryService
+from tests.native_main_contract import native_main_source
 from core.library_store import LibraryStore
 
 
@@ -297,14 +298,14 @@ class ServiceAndSourceTests(unittest.TestCase):
         self.assertNotIn("library.search_options", startup)
 
     def test_home_library_tree_is_page_bounded_and_mailbox_has_idle_backoff(self):
-        home = Path("views/home_view.py").read_text(encoding="utf-8")
-        main = Path("main.py").read_text(encoding="utf-8")
-        self.assertIn("page_size = settings.get(\"library.page_size\")", home)
-        self.assertIn("catalog.extend(fresh_items)", home)
-        self.assertIn("if remaining < 800", home)
-        self.assertIn('poll_interval = 0.08 if player_session_active["value"] else 0.2', main)
-        self.assertIn('poll_interval = min(1.0, max(0.2, poll_interval * 1.5))', main)
-        self.assertNotIn("while True:\n            bridge.drain()", main)
+        source = native_main_source()
+        view_model = Path("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn("nativePagedLibraryState", view_model)
+        self.assertIn("loadNativeLibraryPage(", view_model)
+        self.assertIn("pageSize", source)
+        self.assertIn("NativeScanController.progress", view_model)
+        self.assertIn("conflate()", view_model)
+
 
     def test_async_stale_generation_contracts_are_present(self):
         home = Path("views/home_view.py").read_text(encoding="utf-8")
@@ -342,15 +343,13 @@ class MetadataAndViewLifecycleCoalescingTests(unittest.TestCase):
             service.artwork.shutdown()
 
     def test_cached_view_invalidation_advances_existing_generation_guards(self):
-        home = Path("views/home_view.py").read_text(encoding="utf-8")
-        organize = Path("views/organize_view.py").read_text(encoding="utf-8")
-        main = Path("main.py").read_text(encoding="utf-8")
-        for source in (home, organize):
-            self.assertIn("def invalidate_view_tasks():", source)
-            self.assertIn("render_generation[0] += 1", source)
-            self.assertIn("view_state['_invalidate_view_tasks'] = invalidate_view_tasks", source)
-        self.assertIn("def _invalidate_cached_view(state, route):", main)
-        self.assertIn("invalidate_tasks = state.pop('_invalidate_view_tasks', None)", main)
+        source = native_main_source()
+        view_model = Path("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        for token in ("nativePageGeneration", "nativeCatalogReloadMutex", "refreshNativeCatalog()"):
+            self.assertIn(token, source)
+        self.assertIn("nativePageGeneration", view_model)
+        self.assertIn("refreshNativeCatalog()", view_model)
+
 
 
 class SQLiteConnectionConcurrencyTests(unittest.TestCase):

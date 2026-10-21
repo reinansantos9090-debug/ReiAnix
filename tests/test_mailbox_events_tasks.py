@@ -9,7 +9,9 @@ from core.android_bridge import AndroidBridge
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "main.py"
+NATIVE_MAILBOX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt"
+CONSUMPTION = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt"
+LIBRARY_VIEWMODEL = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
 HOME = ROOT / "views" / "home_view.py"
 ORGANIZE = ROOT / "views" / "organize_view.py"
 PLAYER = ROOT / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt"
@@ -99,17 +101,18 @@ class NativeMailboxstage14Tests(unittest.TestCase):
 
 
 class EventAndTaskContractTests(unittest.TestCase):
-    def test_mailbox_backlog_metrics_are_recorded(self):
-        source = MAIN.read_text(encoding="utf-8")
-        for token in (
-            "bridge.pending_count()",
-            'performance.gauge("android.mailbox.backlog"',
-            'performance.counter("android.mailbox.events_drained"',
-            '"android.mailbox.drain"',
-            '"backlog_after"',
-        ):
-            self.assertIn(token, source)
 
+    def test_native_mailbox_queue_is_bounded_and_events_are_instrumented(self):
+        source = NATIVE_MAILBOX.read_text(encoding="utf-8")
+        self.assertIn("BEST_EFFORT_QUEUE_CAPACITY = 128", source)
+        self.assertIn("ArrayBlockingQueue(BEST_EFFORT_QUEUE_CAPACITY)", source)
+        self.assertIn("EVENT_WRITTEN", source)
+        self.assertIn("mailboxWriteStartedElapsedNs", source)
+        self.assertIn("writeDurationMs=", source)
+        self.assertIn("payloadBytes=", source)
+        self.assertIn("eventVersion", source)
+        self.assertIn("Files.move(", source)
+        self.assertIn("StandardCopyOption.ATOMIC_MOVE", source)
     def test_home_tasks_are_tracked_and_cancelled_on_invalidation(self):
         source = HOME.read_text(encoding="utf-8")
         self.assertIn("view_tasks: set[object] = set()", source)
@@ -130,19 +133,22 @@ class EventAndTaskContractTests(unittest.TestCase):
         self.assertNotIn("asyncio.create_task(", source)
         self.assertEqual(1, source.count("task = page.run_task(handler, *args)"))
 
-    def test_player_progress_does_not_trigger_global_ui_refresh(self):
-        main = MAIN.read_text(encoding="utf-8")
-        start = main.index("elif event_type in {'player_progress', 'player_paused', 'player_completed'}:")
-        end = main.index("elif event_type == 'player_mark_watched':", start)
-        block = main[start:end]
-        self.assertIn("store.save_progress", block)
-        self.assertNotIn("safe_update()", block)
-        self.assertIn("elif event_type == 'player_exited':", main)
-        exit_start = main.index("elif event_type == 'player_exited':")
-        exit_end = main.index("elif event_type == 'google_sign_in_started':", exit_start)
-        exit_block = main[exit_start:exit_end]
-        self.assertIn("on_catalog_changed()", exit_block)
 
+    def test_player_progress_uses_canonical_commit_and_targeted_catalog_refresh(self):
+        player = PLAYER.read_text(encoding="utf-8")
+        consumption = CONSUMPTION.read_text(encoding="utf-8")
+        view_model = LIBRARY_VIEWMODEL.read_text(encoding="utf-8")
+        self.assertIn('saveProgress("player_progress"', player)
+        self.assertIn("suspend fun saveProgress(", consumption)
+        self.assertIn("UI_REFRESH_EVENT_TYPES", consumption)
+        self.assertIn('"player_exited"', consumption)
+        self.assertIn("ReiAnixConsumptionService.playbackChanges", view_model)
+        start = view_model.index("ReiAnixConsumptionService.playbackChanges")
+        end = view_model.index("NativeScanController.progress", start)
+        collector = view_model[start:end]
+        self.assertIn("refreshNativeCatalog()", collector)
+        self.assertIn("change.playerSessionId", collector)
+        self.assertIn("change.transitionGeneration", collector)
     def test_previous_player_transition_and_completion_guards_remain(self):
         player = PLAYER.read_text(encoding="utf-8")
         for token in (

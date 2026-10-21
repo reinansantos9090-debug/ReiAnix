@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -14,16 +15,17 @@ class InstrumentationTests(unittest.TestCase):
             self.assertIn(token, source)
 
     def test_player_correlation_events_exist(self):
-        main=self.read("main.py")
+        source = native_main_source()
         player=self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt")
         for token in (
-            "NEXT_BUTTON_PRESSED","PREVIOUS_BUTTON_PRESSED","PLAYER_COMMAND_DUPLICATE",
-            "PLAYER_COMMAND_OUT_OF_ORDER","PLAYER_COMMAND_STALE","TARGET_EPISODE_RESOLVED",
-            "NATIVE_PLAY_REQUEST_CREATED","PYTHON_MAILBOX_RECEIVED",
-            "SQLITE_NEIGHBOR_QUERY_STARTED","SQLITE_NEIGHBOR_QUERY_FINISHED",
-            "PLAYER_TRANSITION_COMMITTED",
+            "NATIVE_PLAYER_TRANSITION_DISPATCH",
+            "PLAYER_COMMAND_OUT_OF_ORDER",
+            "NATIVE_PLAYER_OPENED",
+            "FIRST_FRAME_RENDERED",
+            "NATIVE_SCAN_STARTED",
+            "ReiAnixDiagnosticTimeline.record(",
         ):
-            self.assertIn(token, main)
+            self.assertIn(token, source)
         for token in ("sequence","transitionGeneration","playerSessionId","PLAYER_COMMAND_OUT_OF_ORDER","PLAYER_LIFECYCLE"):
             self.assertIn(token, player)
 

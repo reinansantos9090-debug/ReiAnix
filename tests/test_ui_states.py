@@ -1,6 +1,7 @@
 import ast
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 from core.storage_access import StorageCapabilities
 from tests.test_flet_page_harness import AsyncRunTaskMixin
@@ -83,26 +84,25 @@ class UiStateTests(unittest.TestCase):
         for token in ("Varredura em andamento:", "Status:", "Última varredura:", "Volumes removíveis:"):
             self.assertIn(token, source)
 
-    def test_main_passes_authoritative_snapshots_to_settings(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("storage_snapshot=storage_capabilities[0]", source)
-        self.assertIn("scan_snapshot=scan_state[0]", source)
-
-    def test_main_has_lifecycle_safe_page_update(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn("def safe_update():", source)
-        self.assertIn("ui_alive", source)
-        self.assertIn("stale lifecycle callback", source)
-
-    def test_main_does_not_treat_library_rows_as_permission_authority(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
-        refresh = source[source.index("async def refresh_library"):source.index("async def login")]
-        self.assertIn("caps.known", refresh)
-        self.assertIn("scan_coordinator.request(", refresh)
-        self.assertIn("ScanOrigin.USER_REFRESH", refresh)
-        self.assertNotIn("folder.get('authorization') == 'granted'", refresh)
-
-
+    def test_native_entrypoint_passes_authoritative_state_to_compose(self):
+        source = native_main_source()
+        self.assertIn("ReiAnixSettingsViewModel", source)
+        self.assertIn("ReiAnixLibraryViewModel", source)
+        self.assertIn("NativeScanController.progress", source)
+        self.assertIn("StateFlow", source)
+    def test_native_entrypoint_binds_work_to_android_lifecycle(self):
+        source = native_main_source()
+        self.assertIn("ComponentActivity", source)
+        self.assertIn("lifecycleScope", source)
+        self.assertIn("onDestroy()", source)
+        self.assertIn("ReiAnixAppDependencies", source)
+    def test_storage_authorization_is_independent_of_library_rows(self):
+        source = native_main_source()
+        self.assertIn("object StorageAuthorization", source)
+        self.assertIn("canScanMediaStore", source)
+        self.assertIn("canReconcileMediaStore", source)
+        self.assertIn("SafScanner", source)
+        self.assertIn("MediaStoreScanner", source)
     def test_home_and_organize_do_not_mutate_flet_from_background_threads(self):
         home = (ROOT / "views" / "home_view.py").read_text(encoding="utf-8")
         organize = (ROOT / "views" / "organize_view.py").read_text(encoding="utf-8")
@@ -122,7 +122,7 @@ class UiStateTests(unittest.TestCase):
         self.assertIn("artwork_holder(item, card_width, card_height", source)
 
     def test_source_is_valid_python(self):
-        for path in (ROOT / "main.py", ROOT / "views" / "settings_view.py", ROOT / "core" / "storage_access.py"):
+        for path in (ROOT / "views" / "settings_view.py", ROOT / "core" / "storage_access.py"):
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 

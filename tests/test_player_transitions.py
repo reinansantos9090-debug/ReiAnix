@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-MAIN = ROOT / "main.py"
+MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 STORE = ROOT / "core/library_store.py"
 
 
@@ -12,7 +12,7 @@ class PlayerTransitionContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.player = PLAYER.read_text(encoding="utf-8")
-        cls.main = MAIN.read_text(encoding="utf-8")
+        cls.main_activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
         cls.store = STORE.read_text(encoding="utf-8")
 
     def test_transition_gate_blocks_second_request_until_media3_ready(self):
@@ -79,24 +79,17 @@ class PlayerTransitionContractTests(unittest.TestCase):
         self.assertIn('invalidateTransition("finish_player")', finish)
         self.assertNotIn("handler.removeCallbacks(episodeChangeTimeout)", finish)
 
-    def test_python_transition_uses_canonical_library_direction_and_identity(self):
-        block = self.main[
-            self.main.index("elif event_type in {'player_next_request', 'player_previous_request'}:"):
-            self.main.index("elif event_type == 'player_error':")
-        ]
-        self.assertIn('direction = 1 if event_type == "player_next_request" else -1', block)
-        self.assertIn("await asyncio.to_thread(", block)
-        self.assertIn("library.player_navigation", block)
-        self.assertIn('player_transition_task["task"]', block)
-        self.assertIn("asyncio.create_task(", block)
-        self.assertIn("episode_id=target.get(\"id\")", block)
-        self.assertIn("anime_id=target.get(\"anime_id\")", block)
-        self.assertIn('target.get("progress")', block)
-        self.assertIn("player_transition_inflight[\"value\"] = True", block)
-        self.assertIn("player_transition_generation[\"value\"] += 1", block)
-        self.assertIn("player_transition_inflight[\"value\"] = False", block)
-        self.assertIn('origin_request_id=event_request_id', block)
-
+    def test_native_transition_uses_canonical_library_direction_and_identity(self):
+        start = self.player.index("private fun dispatchNativeEpisodeTransition(")
+        end = self.player.index("private fun seekToSavedPosition", start)
+        block = self.player[start:end]
+        self.assertIn("dependencies.sqliteLibraryRepository.playerNavigation(episodeId)", block)
+        self.assertIn("transitionGeneration", block)
+        self.assertIn("startActivity(successorIntent)", block)
+        self.assertIn("PLAYER_NEXT_STALE_REJECTED", self.player)
+        self.assertIn("PLAYER_PREVIOUS_STALE_REJECTED", self.player)
+        self.assertIn("MainActivity.isCurrentPlayerHandoff(", self.player)
+        self.assertIn("activePlayerActivityInstanceId", self.main_activity)
     def test_autoplay_completion_is_single_transition_source(self):
         playback = self.player[
             self.player.index("override fun onPlaybackStateChanged"):

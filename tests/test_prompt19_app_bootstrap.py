@@ -43,17 +43,17 @@ def test_application_owns_and_starts_one_process_bootstrap():
 
 
 def test_activity_delegates_process_startup_and_database_health_to_bootstrap():
-    activity = read(
-        "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-    )
-    assert "appDependencies.bootstrap.start()" in activity
-    assert "appDependencies.bootstrap.validateCanonicalDatabase()" in activity
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    entrypoint = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
+    bootstrap = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt")
+    assert "MainEntryPoint.onActivityCreated(this)" in activity
+    assert "dependencies.bootstrap.start()" in entrypoint
+    assert "appDependencies.bootstrap.start()" not in activity
+    assert "validateCanonicalDatabase()" in bootstrap
     assert "NativeScanRunner.recoverInterruptedSafScans(applicationContext)" not in activity
     assert "NativeCommandDispatcher.start(" not in activity
-    # The Activity still calls the existing runner for explicitly authorized scans.
     assert "NativeScanRunner.runSafScan(" in activity
     assert "NativeScanRunner.runMediaStoreScan(" in activity
-
 
 def test_bootstrap_preserves_canonical_sqlite_and_recovery_contract():
     bootstrap = read(
@@ -91,20 +91,21 @@ def test_compose_observes_process_bootstrap_state_without_owning_service_lifecyc
     assert 'Log.w(TAG, "Could not record bootstrap diagnostic event=$name.", error)' in bootstrap
 
 
-def test_legacy_runtime_is_preserved_and_documented_as_a_migration_boundary():
-    main = read("main.py")
-    doc = read("docs/KOTLIN_APP_BOOTSTRAP_MIGRATION.md")
-    assert "async def main(page: ft.Page)" in main
-    assert "LibraryStore(data_dir)" in main
-    assert "SettingsStore(store)" in main
-    assert "ComposeLibraryBridge(" in main
-    assert "ComposeSettingsBridge(" in main
-    assert "ScanCoordinator(" in main
-    for token in ("Grupo A", "Grupo B", "Grupo C", "FlutterFragmentActivity", "NOT_CREATED", "não"):
-        assert token.lower() in doc.lower()
-    assert "Não foi removida delegação global Python" in doc
 
-
+def test_native_runtime_entrypoint_owns_bootstrap_and_android_shell():
+    entrypoint = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    host = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
+    bootstrap = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt")
+    assert "internal object MainEntryPoint" in entrypoint
+    assert "dependencies.bootstrap.start()" in entrypoint
+    assert "override fun onCreate(" in activity
+    assert "MainEntryPoint.onActivityCreated(" in activity
+    assert "ReiAnixNavigationHost" in host
+    assert "validateCanonicalDatabase()" in bootstrap
+    assert "LibraryStore(data_dir)" not in entrypoint
+    assert "import flet" not in entrypoint.casefold()
+    assert not (ROOT / "main.py").exists()
 def test_compose_consumers_and_remote_side_effects_wait_for_a_validated_bootstrap():
     view_model = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"

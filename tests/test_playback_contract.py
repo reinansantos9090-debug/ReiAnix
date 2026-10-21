@@ -7,7 +7,6 @@ PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePla
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 MAILBOX = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt"
 MANIFEST = ROOT / "android/app/src/main/AndroidManifest.xml"
-MAIN = ROOT / "main.py"
 
 
 class PlaybackContractTests(unittest.TestCase):
@@ -17,7 +16,6 @@ class PlaybackContractTests(unittest.TestCase):
         cls.main_activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
         cls.mailbox = MAILBOX.read_text(encoding="utf-8")
         cls.manifest = MANIFEST.read_text(encoding="utf-8")
-        cls.main = MAIN.read_text(encoding="utf-8")
 
     def test_progress_events_use_existing_episode_identity_and_media3_state(self):
         for token in (
@@ -69,14 +67,16 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertGreaterEqual(self.player.count("NativeMailbox.writeBestEffort("), 3)
         self.assertIn("NativeMailbox.write(", self.player)
 
-    def test_play_launch_neighbor_queries_leave_flet_event_loop(self):
-        start = self.main.index("    async def start_native_player(")
-        end = self.main.index("    def play_episode(", start)
-        block = self.main[start:end]
-        self.assertIn("await asyncio.to_thread(library.player_navigation, path)", block)
-        self.assertIn('source": "player_navigation"', block)
-        self.assertNotIn("can_next=library.next_episode(path)", block)
-        self.assertNotIn("can_previous=library.previous_episode(path)", block)
+
+    def test_play_launch_neighbor_queries_use_canonical_native_repository_off_ui_thread(self):
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        self.assertIn("dependencies.sqliteLibraryRepository.playerNavigation(episodeId)", view_model)
+        self.assertIn("withContext(Dispatchers.IO)", view_model)
+        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(current, availableEpisodes)", navigation)
+        self.assertIn("startActivity(intent)", view_model)
+        self.assertIn("sourcePlayerSessionId", self.player)
+        self.assertIn("transitionGeneration", self.player)
 
     def test_native_player_handoff_dedupes_exact_request_id_without_uri_window(self):
         source = self.main_activity
@@ -265,14 +265,18 @@ class PlaybackContractTests(unittest.TestCase):
             self.assertIn(token, consumption)
         self.assertNotIn("PLAYER_COMPLETED", (ROOT / "core/consumption.py").read_text(encoding="utf-8"))
 
-    def test_existing_python_event_consumer_updates_single_store(self):
-        for token in (
-            "elif event_type in {'player_progress', 'player_paused', 'player_completed'}:",
-            "store.save_progress",
-            "elif event_type == 'player_exited':",
-        ):
-            self.assertIn(token, self.main)
 
+    def test_native_consumption_events_update_the_canonical_sqlite_store(self):
+        consumption = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn("suspend fun saveProgress(", consumption)
+        self.assertIn('"player_exited"', consumption)
+        self.assertIn("ReiAnixConsumptionService.playbackChanges", view_model)
+        self.assertIn("refreshNativeCatalog()", view_model)
+        self.assertIn("consumptionService.saveProgress(", self.player)
+        start = view_model.index("ReiAnixConsumptionService.playbackChanges")
+        end = view_model.index("NativeScanController.progress", start)
+        self.assertNotIn("NativeMailbox", view_model[start:end])
     def test_audio_subtitle_speed_and_seek_stay_on_one_media3_player(self):
         for token in (
             'TrackSelectionOverride(',
@@ -334,24 +338,21 @@ class PlaybackContractTests(unittest.TestCase):
         self.assertIn("publishCommittedProgress(", block)
         self.assertLess(block.index("consumptionService.saveProgress("), block.index("NativeMailbox.write("))
 
-    def test_native_consumption_refreshes_compose_without_python_progress_publication(self):
-        view_model = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
-        ).read_text(encoding="utf-8")
-        consumption = (
-            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt"
-        ).read_text(encoding="utf-8")
+
+    def test_native_consumption_refreshes_compose_without_mailbox_round_trip(self):
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        consumption = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt").read_text(encoding="utf-8")
         self.assertIn("ReiAnixConsumptionService.playbackChanges", view_model)
         self.assertIn(".conflate()", view_model)
         self.assertIn("refreshNativeCatalog()", view_model)
         self.assertIn("val isCompleted", consumption)
         self.assertIn("durationSeconds?.let(position::coerceAtMost)", consumption)
-        progress_start = self.main.index("elif event_type in {'player_progress', 'player_paused', 'player_completed'}:")
-        progress_end = self.main.index("elif event_type == 'player_mark_watched':", progress_start)
-        progress_block = self.main[progress_start:progress_end]
-        self.assertIn("if updated:", progress_block)
-        self.assertIn('if payload.get("nativeProgressPersisted") is not True:', progress_block)
-
+        start = view_model.index("ReiAnixConsumptionService.playbackChanges")
+        end = view_model.index("NativeScanController.progress", start)
+        block = view_model[start:end]
+        self.assertIn("change.playerSessionId", block)
+        self.assertIn("change.transitionGeneration", block)
+        self.assertNotIn("NativeMailbox", block)
     def test_native_compose_progress_and_exit_do_not_enqueue_python_mailbox_events(self):
         save_start = self.player.index("    private fun saveProgress(")
         save_end = self.player.index("    override fun onStart()", save_start)

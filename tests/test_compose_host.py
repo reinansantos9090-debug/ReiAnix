@@ -10,9 +10,9 @@ HOST = (
     ROOT
     / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
 )
-NAVIGATION = ROOT / "core/navigation.py"
-HOME = ROOT / "views/home_view.py"
-MAIN = ROOT / "main.py"
+NAVIGATION = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
+HOME = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt"
+HOST = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
 
 
 class ComposeHostTests(unittest.TestCase):
@@ -30,29 +30,37 @@ class ComposeHostTests(unittest.TestCase):
         self.assertIn("startDestination = startDestination", host)
         self.assertIn("showBottomNavigation = true", host)
 
-    def test_library_is_a_single_existing_navigation_route(self):
-        navigation = NAVIGATION.read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
-        self.assertIn('"library"', navigation)
-        self.assertIn('navigation.push("library")', main)
-        self.assertIn('route == "library"', main)
-        self.assertNotIn("class ComposeNavigationController", main)
-        self.assertNotIn("class LibraryNavigation", main)
 
-    def test_home_exposes_the_real_library_entry_point(self):
+    def test_library_is_a_single_existing_native_navigation_route(self):
+        navigation = NAVIGATION.read_text(encoding="utf-8")
+        host = HOST.read_text(encoding="utf-8")
+        self.assertIn('const val LIBRARY = "library"', navigation)
+        self.assertIn("composable(ReiAnixRoutes.LIBRARY)", navigation)
+        self.assertIn("ReiAnixLibraryRoute(", navigation)
+        self.assertIn("ReiAnixNavigationHost", host)
+        self.assertIn("rememberNavController()", host)
+        self.assertNotIn("class ComposeNavigationController", navigation)
+        self.assertNotIn("class LibraryNavigation", navigation)
+
+    def test_compose_home_exposes_the_real_library_entry_point(self):
         home = HOME.read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
-        self.assertIn("on_open_library", home)
-        self.assertIn('tooltip="Biblioteca"', home)
-        self.assertIn("on_open_library=navigate_library", main)
-
-    def test_python_keeps_details_and_back_in_the_existing_navigation_authority(self):
         navigation = NAVIGATION.read_text(encoding="utf-8")
-        main = MAIN.read_text(encoding="utf-8")
-        self.assertIn("library", navigation)
-        self.assertIn('if navigation.current == "library":', main)
-        self.assertIn('navigation.back()', main)
-        self.assertIn('navigate_details(anime', main)
+        self.assertIn("onOpenLibrary", home)
+        self.assertIn("onOpenLibrary = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) }", home)
+        self.assertIn("fun NavHostController.navigateToTopLevel(", navigation)
+        self.assertIn("ReiAnixRoutes.LIBRARY", navigation)
+
+    def test_compose_details_and_back_use_native_navigation_authority(self):
+        navigation = NAVIGATION.read_text(encoding="utf-8")
+        host = HOST.read_text(encoding="utf-8")
+        details = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt").read_text(encoding="utf-8")
+        self.assertIn("ReiAnixRoutes.DETAILS", navigation)
+        self.assertIn("fun NavHostController.navigateToDetails(", navigation)
+        self.assertIn("fun NavHostController.navigateToPlayer(", navigation)
+        self.assertIn("navigateToPlayer(", details)
+        self.assertIn("controller.popBackStack()", host)
+        self.assertIn("fun handleBack(): Boolean", host)
+        self.assertNotIn("class ComposeNavigationController", navigation)
 
     def test_library_route_uses_canonical_compose_path_without_list_positions(self):
         host = HOST.read_text(encoding="utf-8")

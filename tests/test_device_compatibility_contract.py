@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_UI = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/SystemUiController.kt"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
 PLAYER_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-MAIN_PY = ROOT / "main.py"
+COMPOSE_ROOT = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/ReiAnixComposeRoot.kt"
 HOME = ROOT / "views/home_view.py"
 GRADLE = ROOT / "android/app/build.gradle.kts"
 MANIFEST = ROOT / "android/app/src/main/AndroidManifest.xml"
@@ -37,17 +37,19 @@ class DeviceCompatibilityContractTests(unittest.TestCase):
         self.assertIn("isAppearanceLightStatusBars = !darkTheme", source)
         self.assertIn("isAppearanceLightNavigationBars = !darkTheme", source)
 
-    def test_flet_primary_views_use_safe_area_without_creating_second_system_ui(self):
-        source = MAIN_PY.read_text(encoding="utf-8")
-        self.assertIn("ft.SafeArea(", source)
-        shell_start = source.index("def _view_shell")
-        shell_end = source.index("def _invalidate_cached_view", shell_start)
-        shell = source[shell_start:shell_end]
-        self.assertIn("ft.SafeArea(", shell)
-        self.assertIn("controls=[safe_area]", shell)
-        self.assertIn("content=control", shell)
-        self.assertNotIn("padding=ft.Padding(top=", shell)
+    def test_native_compose_root_uses_one_edge_to_edge_authority(self):
+        root = COMPOSE_ROOT.read_text(encoding="utf-8")
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        system_ui = SYSTEM_UI.read_text(encoding="utf-8")
 
+        self.assertIn("ReiAnixComposeTheme(themeMode = themeMode)", root)
+        self.assertIn("Modifier", root)
+        self.assertIn(".fillMaxSize()", root)
+        self.assertIn("composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)", activity)
+        self.assertIn("systemUiController = SystemUiController(window)", activity)
+        self.assertIn("WindowCompat.setDecorFitsSystemWindows(window, false)", system_ui)
+        self.assertNotIn("ft.SafeArea(", activity + root)
+        self.assertNotRegex(activity, r"(?im)^\\s*import\\s+[^\\n]*flet")
     def test_player_uses_dynamic_cutout_insets_and_restores_normal_bars(self):
         source = PLAYER_ACTIVITY.read_text(encoding="utf-8")
         self.assertIn("getInsetsIgnoringVisibility(WindowInsetsCompat.Type.displayCutout())", source)

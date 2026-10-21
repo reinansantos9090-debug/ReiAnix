@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 from core.navigation import NavigationController, SafSelectionState
 
@@ -129,43 +130,38 @@ class NavigationControllerTests(unittest.TestCase):
         self.assertEqual(self.navigation.back(), "previous")
         self.assertEqual(self.navigation.current, "home")
 
-    def test_main_has_single_logical_back_router_with_duplicate_suppression(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
-        self.assertIn('def navigate_back(source="unknown")', source)
-        self.assertIn("BACK_DEBOUNCE_SECONDS = 0.30", source)
-        self.assertIn("duplicate BACK suppressed", source)
-        self.assertIn('"[NAV] DIALOG_BACK', source)
-        self.assertIn('"[NAV] NAVIGATE_BACK', source)
-        self.assertNotIn("settings_system_back", source)
-        self.assertIn("def close_home_search():", source)
-        self.assertIn('"[NAV] SEARCH_BACK consumed on Home"', source)
-
-    def test_visual_back_callbacks_identify_their_origin_screen(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
-        self.assertIn('lambda: navigate_back("visual:organize")', source)
-        self.assertIn('lambda: navigate_back("visual:details")', source)
-        self.assertIn('lambda: navigate_back("visual:settings")', source)
-
-
-    def test_main_uses_flet_views_as_the_system_navigation_surface(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
-        self.assertIn("page.views.clear()", source)
-        self.assertIn("page.views.extend(views)", source)
-        self.assertIn("page.on_view_pop = handle_flet_view_pop", source)
-        self.assertIn("NavigationController", source)
-        self.assertNotIn("page.clean()", source)
-
-    def test_home_exit_uses_navigation_policy_instead_of_process_exit(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+    def test_native_compose_has_single_logical_back_router(self):
+        source = native_main_source()
+        self.assertIn("fun handleBack(): Boolean", source)
+        self.assertIn("onBackPressedDispatcher.addCallback", source)
+        self.assertIn("controller.popBackStack()", source)
+        self.assertIn("handleRootBack()", source)
+        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", source)
+    def test_visual_and_system_back_callbacks_use_native_navigation(self):
+        source = native_main_source()
+        self.assertIn("BackHandler", source)
+        self.assertIn("composeLibraryHost.handleBack()", source)
+        self.assertIn("NavHostController", source)
+        self.assertIn("popBackStack()", source)
+    def test_native_compose_host_is_the_system_navigation_surface(self):
+        source = native_main_source()
+        self.assertIn("ReiAnixComposeLibraryHost", source)
+        self.assertIn("NavHostController", source)
+        self.assertIn("ReiAnixRoutes.HOME", source)
+        self.assertIn("ReiAnixRoutes.LIBRARY", source)
+        self.assertIn("ReiAnixRoutes.SETTINGS", source)
+        self.assertNotIn("page.views.extend(views)", source)
+    def test_home_exit_uses_native_navigation_policy(self):
+        source = native_main_source()
+        self.assertIn("HOME_DOUBLE_BACK_WINDOW_MS", source)
+        self.assertIn("activity.finish()", source)
+        self.assertIn("NATIVE_ROOT_BACK_EXIT", source)
         self.assertNotIn("exitProcess(", source)
-        self.assertIn('elif action == "exit":', source)
-        self.assertIn("page.window.close()", source)
-
-    def test_main_does_not_route_android_back_through_native_mailbox(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
-        self.assertNotIn("event_type == 'android_back'", source)
-        self.assertNotIn('navigate_back("android_back")', source)
-
+    def test_android_back_is_handled_by_the_native_navigation_host(self):
+        source = native_main_source()
+        self.assertIn("installSystemBackHandler()", source)
+        self.assertIn("composeLibraryHost.handleBack()", source)
+        self.assertIn("fun handleBack(): Boolean", source)
     def test_multiple_back_events_never_underflow_history(self):
         self.navigation.push("organize")
         self.assertEqual(self.navigation.back(), "previous")

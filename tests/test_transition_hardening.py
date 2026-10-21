@@ -5,7 +5,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PLAYER = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
 MAIN_ACTIVITY = ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
-MAIN = ROOT / "main.py"
 BRIDGE = ROOT / "core/android_bridge.py"
 STORE = ROOT / "core/library_store.py"
 SERVICE = ROOT / "core/library_service.py"
@@ -17,7 +16,6 @@ class TransitionHardeningTests(unittest.TestCase):
     def setUpClass(cls):
         cls.player = PLAYER.read_text(encoding="utf-8")
         cls.main_activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
-        cls.main = MAIN.read_text(encoding="utf-8")
         cls.bridge = BRIDGE.read_text(encoding="utf-8")
         cls.store = STORE.read_text(encoding="utf-8")
         cls.service = SERVICE.read_text(encoding="utf-8")
@@ -84,60 +82,46 @@ class TransitionHardeningTests(unittest.TestCase):
         self.assertIn("lastPlayerExitAtMs >= originCreatedAtMs", handoff)
         self.assertIn("return false", handoff)
 
-    def test_python_transition_runs_outside_mailbox_loop_and_is_cancellable(self):
-        for token in (
-            "player_transition_task",
-            "player_transition_generation",
-            "asyncio.create_task(",
-            "task.cancel()",
-            "cancel_player_transition",
-            "player_transition_is_current",
-            'player_active_request_id["value"]',
-        ):
-            self.assertIn(token, self.main)
-        block = self.main[
-            self.main.index("elif event_type in {'player_next_request', 'player_previous_request'}:"):
-            self.main.index("elif event_type == 'player_error':")
-        ]
-        self.assertIn("run_player_transition", block)
-        self.assertIn("asyncio.to_thread", block)
-        self.assertIn("origin_request_id=event_request_id", block)
-        self.assertIn("asyncio.CancelledError", block)
 
-    def test_exit_and_activity_result_cancel_only_the_current_player_session(self):
-        exit_block = self.main[
-            self.main.index("elif event_type == 'player_exited':"):
-            self.main.index("elif event_type == 'google_sign_in_started':", self.main.index("elif event_type == 'player_exited':"))
-        ]
-        self.assertIn("PLAYER_CALLBACK_STALE", exit_block)
-        self.assertIn("MAILBOX_STALE_COMMAND_DISCARDED", exit_block)
-        self.assertIn("invalidate_player_session(", exit_block)
-        self.assertIn('player_session_active["value"] = False', self.main)
-        self.assertIn('cancel_player_transition("player_activity_result")', self.main)
+    def test_native_transition_runs_off_ui_thread_and_is_cancellable(self):
+        transition_start = self.player.index("private fun dispatchNativeEpisodeTransition(")
+        transition_end = self.player.index("private fun seekToSavedPosition", transition_start)
+        transition = self.player[transition_start:transition_end]
+        for token in ("transitionGeneration", "isCurrentTransition(", "NEXT_TRANSITION", "PREVIOUS_TRANSITION", "PLAYER_NEXT_STALE_REJECTED", "PLAYER_PREVIOUS_STALE_REJECTED"):
+            self.assertIn(token, transition + self.player)
+        self.assertIn("dependencies.sqliteLibraryRepository.playerNavigation(episodeId)", transition)
+        self.assertIn("playbackWorker.submit", self.player)
+        self.assertIn("NativePlayerActivity", self.main_activity)
 
-    def test_mailbox_polling_has_a_bounded_low_latency_lane(self):
-        self.assertIn("bridge.drain()", self.main)
-        self.assertIn("bridge.requeue_event_ids(failed_event_ids)", self.main)
-        self.assertIn("bridge.acknowledge()", self.main)
-        self.assertIn("poll_interval = 0.08", self.main)
-        self.assertIn("min(0.25", self.main)
-        self.assertIn('"android.mailbox.drain"', self.main)
-        self.assertIn('"android.mailbox.backlog"', self.main)
+    def test_exit_and_activity_result_invalidate_only_the_current_player_session(self):
+        for token in ("activityInstanceId", "playerSessionId", "notePlayerActivityDestroyed", "PLAYER_EXIT_CLASSIFICATION"):
+            self.assertIn(token, self.player + self.main_activity)
+        self.assertIn("activePlayerActivityInstanceId", self.main_activity)
+        self.assertIn("activePlayerSessionId", self.main_activity)
+        self.assertIn("isCurrentPlayerHandoff", self.main_activity)
+        self.assertIn("isFinishing", self.player)
+        self.assertIn("isChangingConfigurations", self.player)
+
+    def test_native_mailbox_has_bounded_background_telemetry_and_durable_control_events(self):
+        mailbox = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
+        for token in ("BEST_EFFORT_QUEUE_CAPACITY = 128", "ArrayBlockingQueue(BEST_EFFORT_QUEUE_CAPACITY)", "ThreadPoolExecutor.AbortPolicy()", "StandardCopyOption.ATOMIC_MOVE", "fun writeBestEffort(", "fun writeOrThrow("):
+            self.assertIn(token, mailbox)
+        self.assertIn("NativeMailbox.writeBestEffort(this@NativePlayerActivity, event)", self.player)
+        self.assertIn("NativeMailbox.write(this@NativePlayerActivity, event)", self.player)
+        self.assertNotIn("@Synchronized\n    fun write(", mailbox)
 
     def test_navigation_snapshot_eliminates_duplicate_transition_queries(self):
-        self.assertIn("def player_navigation(self, path):", self.store)
-        self.assertIn("def player_navigation(self, path): return self.store.player_navigation(path)", self.service)
-        self.assertIn("await asyncio.to_thread(library.player_navigation", self.main)
-        transition = self.main[
-            self.main.index("elif event_type in {'player_next_request', 'player_previous_request'}:"):
-            self.main.index("elif event_type == 'player_error':")
-        ]
-        self.assertNotIn("library.next_episode, current_path", transition)
-        self.assertNotIn("library.previous_episode, current_path", transition)
-        self.assertIn('navigation_snapshot.get("next")', transition)
-        self.assertIn('navigation_snapshot.get("previous")', transition)
-        self.assertIn('navigation_snapshot.get("next")', transition)
-        self.assertIn('navigation_snapshot.get("previous")', transition)
+        transition_start = self.player.index("private fun dispatchNativeEpisodeTransition(")
+        transition_end = self.player.index("private fun seekToSavedPosition", transition_start)
+        transition = self.player[transition_start:transition_end]
+        self.assertEqual(1, transition.count("playerNavigation(episodeId)"))
+        self.assertIn("val navigation = withContext(Dispatchers.IO)", transition)
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(current, availableEpisodes)", repository)
+        self.assertIn("navigation.next", transition)
+        self.assertIn("navigation.previous", transition)
+        self.assertNotIn("nextEpisode(", transition)
+        self.assertNotIn("previousEpisode(", transition)
 
     def test_reuse_metadata_read_is_off_ui_thread_and_generation_guarded(self):
         self.assertIn("loadLocalMetadataAsync(transitionGeneration, resolvedUri)", self.player)
@@ -164,40 +148,26 @@ class TransitionHardeningTests(unittest.TestCase):
         self.assertIn("NativeMailbox.write(this@NativePlayerActivity, event)", block)
         self.assertIn("playerSessionId", block)
 
-    def test_latency_instrumentation_covers_button_mailbox_handoff_and_ready(self):
-        for token in (
-            "buttonPressedAtMs",
-            "player.mailbox.consume",
-            "PLAYER_HANDOFF_DISPATCHED",
-            "transition_ready",
-            "PLAYER_TRANSITION_READY",
-            "originCreatedAtMs",
-            "handoffDispatchedAtMs",
-        ):
-            self.assertIn(token, self.main + self.main_activity + self.player)
 
-    def test_required_scenarios_are_guarded(self):
+    def test_latency_instrumentation_covers_native_handoff_and_first_frame(self):
+        performance = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/PerformanceDiagnostics.kt").read_text(encoding="utf-8")
+        for token in ("commandCreatedAtMs", "activityCreatedAtMs", "prepareAtMs", "firstFrameAtMs", "first_frame_ms", "tapToFirstFrameMs"):
+            self.assertIn(token, performance + self.player)
+        self.assertIn("PLAYER_HANDOFF_DISPATCHED", self.main_activity)
+        self.assertIn("FIRST_FRAME_RENDERED", self.player)
+        self.assertIn("PLAYER_PERFORMANCE_MILESTONE", performance)
+
+    def test_required_native_player_scenarios_are_guarded(self):
+        combined = self.player + self.main_activity
         scenario_tokens = (
-            "episodeChangePending",
-            "canNext",
-            "canPrevious",
-            "player_transition_inflight",
-            "player_transition_generation",
-            "episodeChangeTimeout",
-            "PLAYER_TRANSITION_INVALIDATED",
-            "PLAYER_CALLBACK_STALE",
-            "PLAYER_OPENED_IGNORED",
-            "PLAYER_HANDOFF_REJECTED",
-            "stale_after_player_exit",
-            "stale_origin_session",
-            "Player.STATE_ENDED",
-            'requestEpisode("player_next_request")',
+            "episodeChangePending", "canNext", "canPrevious", "transitionGeneration",
+            "episodeChangeTimeout", "PLAYER_TRANSITION_INVALIDATED", "PLAYER_ERROR_STALE_IGNORED",
+            "PLAYER_OPENED_IGNORED", "PLAYER_HANDOFF_REJECTED", "stale_after_player_exit",
+            "stale_origin_session", "Player.STATE_ENDED", 'requestEpisode("player_next_request")',
             "playbackWorker.shutdown()",
         )
-        combined = self.player + self.main + self.main_activity
         for token in scenario_tokens:
             self.assertIn(token, combined)
-
 
 if __name__ == "__main__":
     unittest.main()

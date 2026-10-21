@@ -95,13 +95,20 @@ def test_native_services_publish_diagnostics_without_replacing_domain_events():
     assert "throw error" in backup
 
 
-def test_python_diagnostic_modules_are_preserved_for_active_legacy_consumers():
-    # This prompt removes Kotlin-to-Python performance-event delegation, not Python/Flet globally.
+
+def test_native_diagnostics_are_the_android_runtime_authority():
     assert (ROOT / "core/diagnostic_service.py").is_file()
     assert (ROOT / "core/diagnostics.py").is_file()
     assert (ROOT / "core/performance.py").is_file()
-    main = read("main.py")
-    assert "from core.diagnostics import DiagnosticTimeline" in main
-    assert "from core.performance import get_performance_monitor" in main
-    assert "from core.diagnostic_service import DiagnosticsService" in main
-    assert "performance.record_native_event(event)" in main
+    entrypoint = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    diagnostics_service = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/backup/ReiAnixDiagnosticsService.kt")
+    assert "ReiAnixDiagnosticTimeline" in entrypoint
+    assert "PerformanceDiagnostics" in entrypoint
+    assert "ReiAnixDiagnosticTimeline.record(" in entrypoint
+    assert "MainEntryPoint.onActivityCreated(" in activity
+    assert "PerformanceDiagnostics.snapshotJson()" in diagnostics_service
+    assert "DiagnosticTimeline" not in entrypoint
+    assert "get_performance_monitor" not in entrypoint
+    assert "DiagnosticsService" not in entrypoint
+    assert not (ROOT / "main.py").exists()

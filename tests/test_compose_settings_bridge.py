@@ -129,7 +129,6 @@ def test_settings_request_id_ledger_is_idempotent_without_a_new_store(tmp_path):
 
 def test_native_settings_integration_contract():
     root = Path(__file__).resolve().parents[1]
-    main = (root / "main.py").read_text(encoding="utf-8")
     request_state = (
         root
         / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeRequestState.kt"
@@ -138,18 +137,25 @@ def test_native_settings_integration_contract():
         root
         / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
     ).read_text(encoding="utf-8")
+    host = (
+        root
+        / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt"
+    ).read_text(encoding="utf-8")
+    navigation = (
+        root
+        / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt"
+    ).read_text(encoding="utf-8")
     settings_screen = (
         root
         / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt"
     ).read_text(encoding="utf-8")
-    assert "ComposeSettingsBridge" in main
-    assert "compose_settings_navigation" not in main
-    assert "_show_compose_settings" in main
     assert "open_settings" in request_state
     assert "hide_settings" in request_state
     assert "composeSettingsHost" not in activity
     assert "composeLibraryHost" in activity
-    assert "ReiAnixRoutes.SETTINGS" in activity
+    assert "ReiAnixSettingsRoute(" in host
+    assert "ReiAnixRoutes.SETTINGS" in navigation
+    assert "ReiAnixRoutes.SETTINGS" in host
     assert "collectAsStateWithLifecycle" in settings_screen
     assert 'ReiAnixSettingsCategoryUiModel("Player"' in settings_screen
     assert 'ReiAnixSettingsCategoryUiModel("Armazenamento"' in settings_screen

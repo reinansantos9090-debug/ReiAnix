@@ -124,15 +124,18 @@ def test_native_compose_recovery_route_is_connected_to_the_restore_action():
     assert "Restaurar a biblioteca?" in route or "Recuperar a biblioteca?" in route
     assert "diagnostic_export" in route
 
-def test_android_startup_recovery_does_not_invoke_python_restore_writer():
-    main = read("main.py")
-    anchor = "if recovery_bridge.available:\n        # Android recovery is owned by the native Compose/SQLite services."
-    start = main.index(anchor)
-    end = main.index("        async def recovery_diagnostic()", start)
-    android_recovery_branch = main[start:end]
+def test_android_startup_recovery_stays_on_the_native_restore_path():
+    entrypoint = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt")
+    activity = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+    host = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
+    route = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/recovery/ReiAnixRecoveryRoute.kt")
+    repository = read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/backup/ReiAnixBackupService.kt")
 
-    assert 'await recovery_bridge.open_library(start_destination="recovery")' in android_recovery_branch
-    assert "recovery_service.restore_backup" not in android_recovery_branch
-    assert "await recovery_bridge.hide_library()" not in main
-    # The desktop-only fallback remains available; this prompt does not remove Flet globally.
-    assert "recovery_service.restore_backup" in main[end:]
+    assert "dependencies.bootstrap.start()" in entrypoint
+    assert "ReiAnixRoutes.RECOVERY" in host
+    assert "ReiAnixRecoveryRoute(viewModel = settingsViewModel)" in host
+    assert 'viewModel.requestAction("backup_recovery_restore")' in route
+    assert "backup_recovery_restore" in activity
+    assert "restoreRecoveryBackupLocked" in repository
+    assert "recovery_service.restore_backup" not in entrypoint + activity
+    assert "import flet" not in entrypoint.casefold()

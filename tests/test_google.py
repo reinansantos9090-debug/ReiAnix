@@ -92,12 +92,13 @@ class GoogleAndroidIntegrationTests(unittest.TestCase):
         ):
             self.assertIn(code, source)
 
-    def test_main_maps_google_errors_without_exposing_tokens(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
+    def test_native_google_error_categories_do_not_expose_tokens(self):
+        source = GOOGLE_IDENTITY.read_text(encoding="utf-8")
         for code in ("no_credential", "unsupported", "provider_configuration", "invalid_credential", "configuration_required"):
             self.assertIn(code, source)
-        self.assertNotIn("event.get('idToken')", source)
-        self.assertNotIn("event.get('token')", source)
+        self.assertNotIn('.put("idToken"', source)
+        self.assertNotIn('.put("token"', source)
+
 
     def test_current_google_dependencies_are_supported_release_targets(self):
         gradle = GRADLE.read_text(encoding="utf-8")

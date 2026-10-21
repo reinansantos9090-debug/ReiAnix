@@ -1,6 +1,7 @@
 import ast
 import unittest
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +14,7 @@ class ArtworkPipelineTests(unittest.TestCase):
     def test_python_artwork_engine_is_retained_only_for_legacy_consumers(self):
         source = self.read("core/artwork.py")
         native = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt")
-        main = self.read("main.py")
+        main = native_main_source()
         self.assertIn("class ArtworkEngine:", source)
         self.assertNotIn("class ArtworkEngineV2", source)
         self.assertNotIn("class ArtworkDownloader", source)
@@ -23,11 +24,11 @@ class ArtworkPipelineTests(unittest.TestCase):
         self.assertIn("ARTWORK_PUBLISHED", source)
         self.assertIn("private suspend fun download", native)
         self.assertIn("private fun persistDownloaded", native)
-        handler_start = main.index("if event_type == 'anilist_metadata_committed':")
-        handler_end = main.index("if event_type == 'compose_settings_set':", handler_start)
-        handler = main[handler_start:handler_end]
-        self.assertNotIn("library.artwork.sync_anime_metadata(", handler)
-        self.assertNotIn("library.artwork.request(", handler)
+        self.assertIn("ReiAnixAniListIntegrationService", main)
+        self.assertIn("ReiAnixArtworkService", main)
+        self.assertIn("anilist_metadata_committed", main)
+        self.assertIn("requestArtwork", main)
+        self.assertIn("persistDownloaded", main)
 
     def test_download_validation_is_not_http_200_only(self):
         source = self.read("core/artwork.py")
@@ -45,12 +46,15 @@ class ArtworkPipelineTests(unittest.TestCase):
         self.assertIn("UPDATE anime SET cover_cache='' WHERE id=?", source)
 
     def test_main_publishes_artwork_without_rebuilding_catalog(self):
-        source = self.read("main.py")
-        self.assertIn("library.artwork.set_change_listener", source)
-        self.assertIn("library.artwork.set_diagnostic_recorder(diagnostics.record)", source)
-        self.assertIn("artwork_event_loop.call_soon_threadsafe", source)
-        self.assertIn("compose_library_bridge.request_publish", source)
-        self.assertNotIn("refresh_everything()", source)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        artwork = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt").read_text(encoding="utf-8")
+        extractor = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
+        integration = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")
+        self.assertIn("requestAnimeArtwork(animeId)", view_model)
+        self.assertIn("registerGeneratedThumbnail", artwork)
+        self.assertIn("ARTWORK_PUBLISHED", artwork)
+        self.assertIn("registerGeneratedArtwork", extractor)
+        self.assertIn("anilist_metadata_committed", integration)
 
     def test_flet_views_have_incremental_artwork_callbacks(self):
         home = self.read("views/home_view.py")
@@ -95,7 +99,7 @@ class ArtworkPipelineTests(unittest.TestCase):
         self.assertNotIn("cover_attempt_failed", hydration)
 
     def test_python_files_remain_syntactically_valid(self):
-        for relative in ("main.py", "core/artwork.py", "core/library_service.py", "views/home_view.py", "views/details_view.py"):
+        for relative in ("core/artwork.py", "core/library_service.py", "views/home_view.py", "views/details_view.py"):
             ast.parse(self.read(relative), filename=relative)
 
 

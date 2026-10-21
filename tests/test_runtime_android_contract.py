@@ -398,29 +398,31 @@ class RuntimeAndroidContractTests(unittest.TestCase):
         for source in (home, organize, (ROOT / "views/details_view.py").read_text(encoding="utf-8"), (ROOT / "views/settings_view.py").read_text(encoding="utf-8")):
             self.assertIn("expand=True", source)
 
-    def test_python_handles_native_player_state_and_navigation_events(self):
-        source = (ROOT / "main.py").read_text(encoding="utf-8")
+
+    def test_native_player_state_and_navigation_events_are_owned_by_kotlin(self):
+        player = PLAYER_ACTIVITY.read_text(encoding="utf-8")
+        activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+        consumption = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixConsumptionService.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
         for token in (
-            "event_type in {'player_progress', 'player_paused', 'player_completed'}",
-            "store.save_progress",
-            "event_type == 'player_mark_watched'",
-            "store.set_watched",
-            "event_type == 'player_autoplay_changed'",
-            'settings.set("player.autoplay_next", enabled)',
-            "event_type in {'player_next_request', 'player_previous_request'}",
-            "asyncio.to_thread(\n                                        library.player_navigation,",
-            "await start_native_player(",
-            'origin_request_id=event_request_id',
-            'player_transition_generation["value"]',
-
-            "event_type == 'player_exited'",
-            "event_created_at=event.get('createdAt') or event.get('timestamp')",
-            "exit_updated = await asyncio.to_thread(",
-            "store.save_progress",
-            "on_catalog_changed()",
+            'saveProgress("player_progress")',
+            'saveProgress("player_paused", force = true)',
+            'saveProgress("player_completed", force = true)',
+            "private fun dispatchNativeEpisodeTransition(",
+            "dependencies.sqliteLibraryRepository.playerNavigation(episodeId)",
+            "PLAYER_NEXT_STALE_REJECTED",
+            "PLAYER_PREVIOUS_STALE_REJECTED",
+            'reportPlayerExit("activity_finish")',
+            "ReiAnixConsumptionService.playbackChanges",
+            "refreshNativeCatalog()",
         ):
-            self.assertIn(token, source)
-
+            self.assertIn(token, player + consumption + view_model)
+        self.assertIn("seenPlayerRequestIds", activity)
+        self.assertIn("activePlayerCommandCreatedAtMs", activity)
+        self.assertIn('persistCanonicalPlayerSetting("player.autoplay_next"', player)
+        start = view_model.index("ReiAnixConsumptionService.playbackChanges")
+        end = view_model.index("NativeScanController.progress", start)
+        self.assertNotIn("NativeMailbox", view_model[start:end])
     def test_scan_ui_only_calls_running_a_snapshot_not_final(self):
         settings = (ROOT / "views/settings_view.py").read_text(encoding="utf-8")
         self.assertIn("Varredura em andamento:", settings)

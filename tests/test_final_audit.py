@@ -1,22 +1,19 @@
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "main.py"
+MAIN = native_main_source()
 
 
 class FinalAuditTests(unittest.TestCase):
-    def test_page_disconnect_cancels_player_transition_task(self):
-        source = MAIN.read_text(encoding="utf-8")
-        self.assertIn('player_transition_task = {"task": None}', source)
-        disconnect = source[
-            source.index("def _handle_page_disconnect"):
-            source.index("try:\n        page.on_disconnect", source.index("def _handle_page_disconnect"))
-        ]
-        self.assertIn('transition_task = player_transition_task.get("task")', disconnect)
-        self.assertIn("transition_task.cancel()", disconnect)
-        self.assertIn('player_transition_task["task"] = None', disconnect)
+    def test_native_player_and_activity_cancel_stale_async_work(self):
+        source = native_main_source()
+        self.assertIn("pendingPreparation?.cancel(true)", source)
+        self.assertIn("private val playbackWorker: ExecutorService", source)
+        self.assertIn("private val progressWorker: ExecutorService", source)
+        self.assertIn("override fun onDestroy()", source)
 
 
 if __name__ == "__main__":

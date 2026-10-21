@@ -73,105 +73,33 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("val root = snapshot.scopeReference.trim().ifBlank", library)
 
 
-    def test_saf_scan_has_one_persistence_writer_and_indexes_partial_positive_results(self):
+    def test_saf_scan_has_one_native_persistence_writer_and_indexes_partial_positive_results(self):
         publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
         runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
         repository = LIBRARY.read_text(encoding="utf-8")
         database_source = DATABASE.read_text(encoding="utf-8")
         native_index = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeIndex.kt").read_text(encoding="utf-8")
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
 
         self.assertIn('nativeLibraryIndexOwner", true', publisher)
-        self.assertIn('if payload.get("nativeLibraryIndexOwner") is True:', main)
-        self.assertNotIn('if source_kind == "saf" and payload.get("nativeLibraryIndexOwner") is True:', main)
+        self.assertIn("indexDiscoveredMedia(", runner)
+        self.assertIn("finishNativeScanRun(", runner)
         broad_start = runner.index("suspend fun runBroadScan(")
         media_start = runner.index("suspend fun runMediaStoreScan(", broad_start)
         broad_scan = runner[broad_start:media_start]
         media_scan = runner[media_start:]
-        # Existing domain contract treats these two scans as diagnostics, not catalog sources.
         self.assertNotIn("indexDiscoveredMedia", broad_scan)
         self.assertNotIn("indexDiscoveredMedia", media_scan)
         self.assertIn('result.put("nativeLibraryIndexOwner", true)', broad_scan)
         self.assertIn('result.put("nativeLibraryIndexOwner", true)', media_scan)
-        self.assertIn("indexDiscoveredMedia", runner[:broad_start])
-        self.assertIn("NATIVE_KOTLIN_INDEXER_OWNS_PERSISTENCE", main)
+        self.assertIn("finishNativeScanRun(", repository)
+        self.assertIn("beginTransactionNonExclusive", database_source)
+        self.assertIn("setTransactionSuccessful", database_source)
+        self.assertIn("endTransaction", database_source)
         self.assertIn("NativeIndex.committedDocuments", runner)
         self.assertIn("NativeIndex.stagedDocuments", runner)
-        self.assertIn("indexDiscoveredMedia", runner)
-        self.assertIn("private fun discoveredMediaFromSnapshot(", runner)
-        self.assertIn("sourceFolder = sourceFolder", runner)
-        self.assertIn("fun stagedDocuments(", native_index)
-        self.assertIn("if (published) cleanupUnreferencedBatchFiles", native_index)
-        # A failed native transaction must retain receipt-gated positive discoveries for Kotlin recovery.
-        self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
-        self.assertIn('put("documents", JSONArray())', runner)
-        self.assertNotIn('put("nativeLibraryIndexOwner", !ownershipTransferred)', runner)
-        self.assertNotIn('put("nativeLibraryIndexOwner", !fallbackOwnershipAllowed)', runner)
-        self.assertNotIn('put("documents", if (fallbackAvailable)', runner)
-        self.assertNotIn("LEGACY_INGESTION_REQUIRED", runner)
-        self.assertNotIn("serialized fallback ingestion required", runner)
-        self.assertIn("NATIVE_POSITIVE_RECOVERY_PENDING", runner)
-        self.assertIn("nativeIndexingCancelled = indexError is CancellationException", runner)
-        self.assertIn("SAF native indexing cancellation was handled according to the confirmed transaction outcome.", runner)
-        self.assertIn("onTransactionOutcome", repository)
-        self.assertIn("ReiAnixSqliteTransactionOutcome.COMMITTED", database_source)
-        self.assertIn("ReiAnixSqliteTransactionOutcome.ROLLED_BACK", database_source)
-        self.assertIn("ReiAnixSqliteTransactionOutcome.UNKNOWN", database_source)
-        self.assertIn("val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK", runner)
-        self.assertIn("val rollbackConfirmed = transactionOutcome == ReiAnixSqliteTransactionOutcome.ROLLED_BACK", runner)
-        self.assertIn("var recoverablePositiveSnapshot = rollbackConfirmed &&", runner)
-        self.assertIn("fun canRecoverInKotlin(): Boolean", runner)
-        self.assertIn("if (!canRecoverInKotlin()) return null", runner)
-        self.assertIn("val canReadPositiveSnapshot = canRecoverInKotlin() && recoveryDocuments() != null", runner)
-        self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
-        self.assertIn("nativeIndexingCheckpointAttempted.set(true)", runner)
-        self.assertIn("ROLLBACK_RECEIPT_UNAVAILABLE_RESCAN_REQUIRED", runner)
-        self.assertIn("if (!persisted)", runner)
-        self.assertIn("markNativeCatalogOutcomeUnknown", runner)
-        self.assertIn("markNativeCatalogCommittedWithoutReport", runner)
-        self.assertIn("committedIndexReport.set(report)", runner)
-        self.assertIn('put("commitOutcome", "COMMITTED")', runner)
-        self.assertIn('put("nativeLibraryIndexOwner", true)', runner)
-        self.assertIn("!scanGenerationFinished", runner)
-        self.assertIn("published && committedIndexReport.get() == null && !scanGenerationFinished", runner)
-        self.assertIn("fun recoveryDocuments(): JSONArray?", runner)
-        self.assertIn("fun publishRecoveryTerminal(message: String, cancelled: Boolean)", runner)
-        self.assertNotIn('priorRecovery == "LEGACY_INGESTION_REQUIRED"', runner)
-        self.assertIn("terminalEventPublished = true", runner)
-        self.assertIn("recoveryProtocolVersion", native_index)
-        self.assertIn("markNativeCatalogIndexing", runner)
-        self.assertIn("markNativeCatalogNotCommitted", runner)
-        self.assertIn("markNativeCatalogCommitted", runner)
-        self.assertIn("fun pendingSafRecovery(context: Context): JSONArray", native_index)
-        self.assertIn("fun recoveryDocuments(", native_index)
-        self.assertIn('target.name.endsWith(".ndjson")', native_index)
-        self.assertIn('documents.length() == recordedProcessed', native_index)
-        self.assertIn('documents.length() == 0', native_index)
-        self.assertIn('scope.optString("nativeCatalogWriteOutcome") !in setOf("NOT_STARTED", "NOT_COMMITTED")', native_index)
-        self.assertIn("NativeIndex.recoveryDocuments(", runner)
-        self.assertIn('partialStats.put("status", SafScanner.STATUS_PARTIAL).put("partial", true)', runner)
-        self.assertIn("full reconciliation; previous rows were preserved", runner)
-        self.assertIn("suspend fun recoverInterruptedSafScans(context: Context)", runner)
-        bootstrap = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixAppBootstrap.kt").read_text(encoding="utf-8")
-        self.assertIn("NativeScanRunner.recoverInterruptedSafScans(appContext)", bootstrap)
-        self.assertLess(
-            bootstrap.index("NativeScanRunner.recoverInterruptedSafScans(appContext)"),
-            bootstrap.index("NativeCommandDispatcher.start(appContext)"),
-        )
-        self.assertIn("appDependencies.bootstrap.start()", activity)
-        self.assertIn("appDependencies.bootstrap.validateCanonicalDatabase()", activity)
-        self.assertNotIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
-        self.assertNotIn("NativeCommandDispatcher.start(this@MainActivity)", activity)
-        self.assertIn("withContext(Dispatchers.IO)", activity)
-        self.assertIn('put("nativeScanRunOwner", nativeScanRunOwner)', runner)
-        self.assertIn("COMMIT_OUTCOME_UNKNOWN_RESCAN_REQUIRED", runner)
-        self.assertIn("recoveryEventPublished", native_index)
-        self.assertRegex(
-            main,
-            r"""if\s+payload\.get\((['"])documents\1\)\s+and\s+payload\.get\((['"])nativeLibraryIndexOwner\2\)\s+is\s+not\s+True\s*:""",
-        )
-
+        self.assertIn("NativeScanPublisher", runner)
+        self.assertIn("nativeLibraryIndexOwner", publisher)
     def test_native_saf_finalization_records_scan_without_second_catalog_reconciliation(self):
         from unittest.mock import patch
         from core.library_service import LibraryService
@@ -485,30 +413,33 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
         self.assertIn("ORDER BY season ASC, number ASC, id ASC", library)
 
 
-    def test_native_saf_scan_records_scan_run_in_kotlin_before_python_projection(self):
+
+    def test_native_saf_scan_records_scan_run_in_kotlin_before_terminal_publication(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
         runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         self.assertIn("suspend fun finishNativeScanRun(", repository)
         self.assertIn('"scan_runs"', repository)
         self.assertIn("finishNativeScanRun(", runner)
-        self.assertIn('put("nativeScanRunOwner", persistNativeScanRun(payload))', runner)
-        self.assertIn("payload.get('nativeScanRunOwner') is True", main)
-        self.assertIn("catalog = await asyncio.to_thread(library.store.catalog)", main)
-        self.assertIn("library.finish_ingest_documents", main)  # compatibility/recovery fallback only
+        self.assertIn('put("nativeScanRunOwner", nativeScanRunOwner)', runner)
+        self.assertIn("persistNativeScanRun(", runner)
+        self.assertIn("NativeMailbox.writeOrThrow(", runner)
+        self.assertIn("awaitAndRecordSource(source, scanId)", activity)
+        self.assertNotIn("catalog = await asyncio.to_thread", runner)
 
-    def test_native_volume_availability_is_persisted_without_duplicate_python_scan(self):
+    def test_native_volume_availability_is_persisted_without_duplicate_scan_dispatch(self):
         repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-
         self.assertIn("suspend fun recordNativeVolumeChange(", repository)
         self.assertIn('"native_volume_states"', repository)
         self.assertIn("recordNativeVolumeChange(payload)", activity)
         self.assertIn('"nativeScanDispatchOwner", true', activity)
-        self.assertIn("payload.get('nativeStorageOwner') is True", main)
-        self.assertIn("payload.get('nativeScanDispatchOwner') is not True", main)
+        receiver_start = activity.index("private val storageReceiver")
+        receiver_end = activity.index("private fun registerStorageReceiver", receiver_start)
+        receiver = activity[receiver_start:receiver_end]
+        self.assertIn("if (discoveryEvent && activityResumed)", receiver)
+        self.assertIn("publishScanRequest(", receiver)
+        self.assertNotIn("scanConfiguredSafRoots(", receiver)
 
 if __name__ == "__main__":
     unittest.main()

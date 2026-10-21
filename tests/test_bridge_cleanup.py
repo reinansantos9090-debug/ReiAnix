@@ -1,4 +1,5 @@
 from pathlib import Path
+from tests.native_main_contract import native_main_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,17 +51,17 @@ def test_preserves_domain_bridges_and_stable_event_contracts():
 
 def test_keeps_diagnostics_and_refresh_correlation_explicit():
     diagnostics = read("core/diagnostics.py")
-    main = read("main.py")
+    main = native_main_source()
     assert "refresh_id: str | None = None" in diagnostics
     assert "refresh_id: Any = None" in diagnostics
     assert "refresh_id=str(refresh_id).strip()" in diagnostics
-    assert "refreshId=" not in main
-    assert "diagnostics.record(" in main
+    assert "ReiAnixDiagnosticTimeline.record(" in main
+    assert "requestId" in main
+    assert "source = \"NativePlayerActivity\"" in main
 
 
 def test_has_zero_removed_host_references_in_runtime_sources():
     runtime_roots = [
-        ROOT / "main.py",
         ROOT / "core",
         ROOT / "views",
         ROOT / "scripts",
@@ -187,14 +188,11 @@ def test_prompt18_scan_completion_refreshes_the_canonical_catalog_without_python
     view_model = read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
     )
-    legacy_runtime = read("main.py")
     library_bridge = read("core/compose_library_bridge.py")
     assert "collectLatest { refreshNativeCatalog() }" in view_model
     assert "load_library_page" not in view_model
     assert "refreshCanonicalCatalogAfterBootstrapValidation()" in view_model
-    # The explicit command remains only in the live Python runtime; the bridge module
-    # projects page models but does not itself dispatch the command.
-    assert 'elif action == "load_library_page":' in legacy_runtime
+    assert "NativeScanController.progress" in view_model
     assert '"kind": "library_page"' in library_bridge
     assert "NativeMailbox" in read(
         "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsRepository.kt"

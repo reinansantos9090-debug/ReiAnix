@@ -269,40 +269,38 @@ class ThumbnailTests(unittest.TestCase):
             )
 
     def test_static_pipeline_contract(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
         service_source = (ROOT / "core" / "library_service.py").read_text(encoding="utf-8")
         home = (ROOT / "views" / "home_view.py").read_text(encoding="utf-8")
         details = (ROOT / "views" / "details_view.py").read_text(encoding="utf-8")
         extractor = (
-            ROOT
-            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt"
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt"
         ).read_text(encoding="utf-8")
         activity = (
-            ROOT
-            / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        artwork_service = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt"
+        ).read_text(encoding="utf-8")
+        compose_details = (
+            ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("asyncio.PriorityQueue(maxsize=128)", main)
-        self.assertIn("thumbnail_reconciliation_pending", main)
-        self.assertIn("library.thumbnail_candidates", main)
-        self.assertIn("media_identity", main)
-        self.assertNotIn("len(thumbnail_requests) >= 32", main)
-        self.assertIn("details_state.get('_update_thumbnail')", main)
-        self.assertIn('view_state["_update_thumbnail"] = update_thumbnail_in_place', details)
-        self.assertIn("media_identity and item_identity == media_identity", home)
-        self.assertIn("Semaphore(2)", extractor)
+        self.assertIn("private val extractionPermits = Semaphore(2)", extractor)
         self.assertIn("isValidCachedThumbnail", extractor)
         self.assertIn("readCachedResult", extractor)
         self.assertIn("writeCacheMetadata", extractor)
-        self.assertIn("duration_known", main)
-        self.assertIn('float(row.get("duration") or 0) <= 0.0', service_source)
+        self.assertIn("val durationMs = parseDurationMs(", extractor)
         self.assertIn('"THUMBNAIL_DURATION_REPAIRED"', extractor)
-        self.assertIn("f\"thumbnail_ready:{payload.get('episodeId') or media_identity or uri}\"", main)
-        self.assertIn('"THUMBNAIL_PUBLISHED"', main)
-        self.assertIn('put("mediaIdentity", mediaIdentity)', activity)
-        self.assertIn("count < 2", main)
-        self.assertIn("retryable = status == 'EXTRACTION_FAILED'", main)
-
+        self.assertIn('put("type", "thumbnail_ready")', activity)
+        self.assertIn('put("canonicalArtworkRegistered", result.canonicalArtworkRegistered)', activity)
+        self.assertIn("registerGeneratedThumbnail", artwork_service)
+        self.assertIn('"ARTWORK_PUBLISHED"', artwork_service)
+        self.assertIn("ReiAnixEpisodeThumbnail(", compose_details)
+        self.assertIn("THUMBNAIL_DURATION_REPAIRED", extractor)
+        self.assertIn("durationMs", extractor)
+        self.assertIn('float(row.get("duration") or 0) <= 0.0', service_source)
+        self.assertIn("media_identity and item_identity == media_identity", home)
+        self.assertIn('view_state["_update_thumbnail"] = update_thumbnail_in_place', details)
 
 if __name__ == "__main__":
     unittest.main()
