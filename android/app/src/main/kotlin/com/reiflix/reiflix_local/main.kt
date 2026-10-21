@@ -38,6 +38,7 @@ import com.reiflix.reiflix_local.scanner.NativeScanController
 import android.os.Environment
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.ScanProgressSnapshot
+import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import android.net.Uri
