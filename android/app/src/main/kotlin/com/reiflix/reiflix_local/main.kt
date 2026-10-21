@@ -3846,7 +3846,7 @@ internal class NativeMainRuntimePort(
 
     /** Build the existing canonical backup format; no alternate catalogue or database is created. */
     fun createBackup(): Boolean = launchTracked("create_backup", lane = "backup") {
-        val archive = backupService.createBackupFile()
+        val archive = withContext(Dispatchers.IO) { backupService.createBackupFile() }
         require(archive.isFile && archive.length() > 0L) {
             "O serviço de backup não produziu um arquivo válido."
         }
@@ -3862,7 +3862,7 @@ internal class NativeMainRuntimePort(
             return false
         }
         return launchTracked("inspect_backup", lane = "backup") {
-            val inspection = backupService.inspectBackup(archive)
+            val inspection = withContext(Dispatchers.IO) { backupService.inspectBackup(archive) }
             val summary = org.json.JSONObject()
                 .put("manifest", inspection.manifest)
                 .put("counts", inspection.counts)
@@ -3912,7 +3912,7 @@ internal class NativeMainRuntimePort(
                 cancelBackgroundTasksForLane("thumbnail")
                 val result = metadataMaintenanceMutex.withLock {
                     thumbnailMaintenanceMutex.withLock {
-                        backupService.restoreBackup(archive)
+                        withContext(Dispatchers.IO) { backupService.restoreBackup(archive) }
                     }
                 }
                 libraryViewModel.refresh()
@@ -3940,7 +3940,7 @@ internal class NativeMainRuntimePort(
 
     fun createRecoverySafetySnapshot(): Boolean =
         launchTracked("create_recovery_safety_snapshot", lane = "backup") {
-            val file = backupService.createRecoverySafetySnapshotForUser()
+            val file = withContext(Dispatchers.IO) { backupService.createRecoverySafetySnapshotForUser() }
             publish(action = "create_recovery_safety_snapshot", transform = {
                 it.copy(lastArtifactPath = file.absolutePath)
             })
@@ -3952,7 +3952,7 @@ internal class NativeMainRuntimePort(
             return false
         }
         return launchTracked("restore_recovery_backup", lane = "backup") {
-            val result = backupService.restoreRecoveryBackup(archive)
+            val result = withContext(Dispatchers.IO) { backupService.restoreRecoveryBackup(archive) }
             libraryViewModel.refresh()
             settingsViewModel.refresh()
             scheduleCatalogMetadataHydration("recovery_backup_restored")
@@ -3978,7 +3978,7 @@ internal class NativeMainRuntimePort(
     }
 
     fun checkDatabaseIntegrity(): Boolean = launchTracked("database_integrity", lane = "backup") {
-        val report = backupService.integrityReport().toJson()
+        val report = withContext(Dispatchers.IO) { backupService.integrityReport().toJson() }
         publish(action = "database_integrity", transform = {
             it.copy(lastResultJson = report.toString())
         })
@@ -3986,7 +3986,7 @@ internal class NativeMainRuntimePort(
 
     fun reconcileRestoredFileAvailability(): Boolean =
         launchTracked("reconcile_restored_file_availability", lane = "backup") {
-            val count = backupService.reconcileRestoredFileAvailability()
+            val count = withContext(Dispatchers.IO) { backupService.reconcileRestoredFileAvailability() }
             publish(action = "reconcile_restored_file_availability", transform = {
                 it.copy(lastResultJson = org.json.JSONObject().put("updatedRows", count).toString())
             })
@@ -4116,7 +4116,7 @@ internal class NativeMainRuntimePort(
 
     /** Native privacy-filtered report mirrors the old diagnostic export action. */
     fun exportDiagnosticsJson(): Boolean = launchTracked("export_diagnostics", lane = "diagnostics") {
-        val bytes = diagnosticsService.exportJson()
+        val bytes = withContext(Dispatchers.IO) { diagnosticsService.exportJson() }
         publish(action = "export_diagnostics", transform = {
             it.copy(lastResultJson = bytes.toString(Charsets.UTF_8))
         })
