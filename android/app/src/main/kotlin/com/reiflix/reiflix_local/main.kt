@@ -1382,6 +1382,7 @@ internal class NativeMainRuntimePort(
             if (!recoveryRequired) {
                 libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
                 settingsViewModel.refresh()
+                ensureLibrarySettingsRuntimeSync()
             }
             publish(action = "startup", transform = {
                 it.copy(initialized = true, recoveryRequired = recoveryRequired, route = destination)
@@ -3863,6 +3864,7 @@ internal class NativeMainRuntimePort(
             val result = backupService.restoreRecoveryBackup(archive)
             libraryViewModel.refresh()
             settingsViewModel.refresh()
+            ensureLibrarySettingsRuntimeSync()
             scheduleCatalogMetadataHydration("recovery_backup_restored")
             scheduleThumbnailReconciliation("recovery_backup_restored")
             val summary = org.json.JSONObject()
@@ -4041,6 +4043,36 @@ internal class NativeMainRuntimePort(
         )
     }
 
+
+    @Volatile private var librarySettingsRuntimeSyncStarted: Boolean = false
+
+    /**
+     * Keep the native library's runtime defaults aligned with persisted settings.
+     * The legacy entry point applied these values whenever settings changed;
+     * the native port consumes the canonical SettingsViewModel StateFlows instead.
+     */
+    private fun ensureLibrarySettingsRuntimeSync() {
+        val shouldStart = synchronized(lock) {
+            if (librarySettingsRuntimeSyncStarted || activity.isFinishing || activity.isDestroyed) {
+                false
+            } else {
+                librarySettingsRuntimeSyncStarted = true
+                true
+            }
+        }
+        if (!shouldStart) return
+
+        activity.lifecycleScope.launch {
+            settingsViewModel.libraryPageSize.distinctUntilChanged().collect { pageSize ->
+                libraryViewModel.applyLibraryPageSize(pageSize)
+            }
+        }
+        activity.lifecycleScope.launch {
+            settingsViewModel.librarySortDefault.distinctUntilChanged().collect { sortDefault ->
+                libraryViewModel.applyLibrarySortDefault(sortDefault)
+            }
+        }
+    }
 
     private val settingLocks = ConcurrentHashMap<String, Mutex>()
 
