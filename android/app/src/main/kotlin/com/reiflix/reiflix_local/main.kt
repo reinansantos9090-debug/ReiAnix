@@ -3728,8 +3728,70 @@ internal class NativeMainRuntimePort(
                 } ?: false
             "mark_episode_watched", "set_episode_watched", "set_watched" -> {
                 val id = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
-                markEpisodeWatched(id, payload.optBoolean("watched", true))
-                true
+                // LibraryStore.set_watched historically defaults to false when called
+                // through the Compose Library command, while the explicit mark/set
+                // aliases default to the action name's natural "watched" semantics.
+                val watched = payload.optBoolean("watched", normalized != "set_watched")
+                val commandRequestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id")
+                if (commandRequestId.isNullOrBlank()) {
+                    markEpisodeWatched(id, watched)
+                    true
+                } else {
+                    publishOperationResult(
+                        requestId = commandRequestId,
+                        action = normalized,
+                        status = "QUEUED",
+                        operationState = "QUEUED",
+                        message = "Atualização do estado do episódio enfileirada.",
+                    )
+                    val accepted = launchTracked(normalized, lane = "playback") {
+                        try {
+                            val progress = dependencies.consumptionService.setWatched(id, watched)
+                            libraryViewModel.refresh()
+                            publishOperationResult(
+                                requestId = commandRequestId,
+                                action = normalized,
+                                status = "COMPLETED",
+                                operationState = "COMPLETED",
+                                payload = org.json.JSONObject()
+                                    .put("episodeId", progress.episodeId)
+                                    .put("watched", progress.watched)
+                                    .put("positionMs", progress.positionMs)
+                                    .put("durationMs", progress.durationMs),
+                            )
+                        } catch (cancelled: CancellationException) {
+                            publishOperationResult(
+                                requestId = commandRequestId,
+                                action = normalized,
+                                status = "CANCELLED",
+                                operationState = "CANCELLED",
+                                message = "Atualização do estado do episódio cancelada.",
+                            )
+                            throw cancelled
+                        } catch (failure: Throwable) {
+                            publishOperationResult(
+                                requestId = commandRequestId,
+                                action = normalized,
+                                status = "FAILED",
+                                operationState = "FAILED",
+                                message = failure.message ?: "Não foi possível atualizar o estado do episódio.",
+                                error = failure.javaClass.simpleName,
+                            )
+                            throw failure
+                        }
+                    }
+                    if (!accepted) {
+                        publishOperationResult(
+                            requestId = commandRequestId,
+                            action = normalized,
+                            status = "FAILED",
+                            operationState = "FAILED",
+                            message = "A atualização do estado do episódio não foi aceita.",
+                            error = "operation_rejected",
+                        )
+                    }
+                    accepted
+                }
             }
             "toggle_pinned", "toggle_pin" ->
                 positiveLong("animeId")?.let(::togglePinned) ?: false
