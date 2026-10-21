@@ -4726,7 +4726,9 @@ internal class NativeMainRuntimePort(
                     if (!HomeRefreshCoordinator.markCatalogUpdated(requestId)) {
                         throw IllegalStateException("Home refresh refused catalog update before scan completion.")
                     }
-                    composeHost.show(ReiAnixRoutes.HOME)
+                    // The canonical catalog and observed ViewModel state are now committed.
+                    // Do not force navigation back to Home if the user left during the scan;
+                    // Compose observes the refreshed StateFlow when the relevant screen is shown.
                     if (!HomeRefreshCoordinator.complete(requestId)) {
                         throw IllegalStateException("Home refresh refused completion before UI commit.")
                     }
