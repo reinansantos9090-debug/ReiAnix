@@ -4156,7 +4156,7 @@ internal class NativeMainRuntimePort(
             "settings_export" -> exportSettingsToPrivateFile()
             "settings_import" -> stringValueFromPayload(payload, "path", "filePath", "file_path")
                 ?.let { importSettingsFromPrivateFile(File(it)) } ?: false
-            "select_saf" -> requestSafFolderSelection()
+            "select_saf" -> requestSafFolderSelection(bridge = "settings")
             "request_media_access" -> requestMediaAccess()
             "check_storage_access" -> checkStorageAccess()
             "open_broad_storage_settings" -> openBroadStorageSettings()
