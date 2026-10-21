@@ -46,12 +46,15 @@ class ArtworkPipelineTests(unittest.TestCase):
         self.assertIn("UPDATE anime SET cover_cache='' WHERE id=?", source)
 
     def test_main_publishes_artwork_without_rebuilding_catalog(self):
-        source = native_main_source()
-        self.assertIn("library.artwork.set_change_listener", source)
-        self.assertIn("library.artwork.set_diagnostic_recorder(diagnostics.record)", source)
-        self.assertIn("artwork_event_loop.call_soon_threadsafe", source)
-        self.assertIn("compose_library_bridge.request_publish", source)
-        self.assertNotIn("refresh_everything()", source)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        artwork = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt").read_text(encoding="utf-8")
+        extractor = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractor.kt").read_text(encoding="utf-8")
+        integration = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt").read_text(encoding="utf-8")
+        self.assertIn("requestAnimeArtwork(animeId)", view_model)
+        self.assertIn("registerGeneratedThumbnail", artwork)
+        self.assertIn("ARTWORK_PUBLISHED", artwork)
+        self.assertIn("registerGeneratedArtwork", extractor)
+        self.assertIn("anilist_metadata_committed", integration)
 
     def test_flet_views_have_incremental_artwork_callbacks(self):
         home = self.read("views/home_view.py")

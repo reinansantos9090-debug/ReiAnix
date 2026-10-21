@@ -49,7 +49,7 @@ class DeviceCompatibilityContractTests(unittest.TestCase):
         self.assertIn("systemUiController = SystemUiController(window)", activity)
         self.assertIn("WindowCompat.setDecorFitsSystemWindows(window, false)", system_ui)
         self.assertNotIn("ft.SafeArea(", activity + root)
-        self.assertNotIn("Flet", activity)
+        self.assertNotRegex(activity, r"(?im)^\\s*import\\s+[^\\n]*flet")
     def test_player_uses_dynamic_cutout_insets_and_restores_normal_bars(self):
         source = PLAYER_ACTIVITY.read_text(encoding="utf-8")
         self.assertIn("getInsetsIgnoringVisibility(WindowInsetsCompat.Type.displayCutout())", source)

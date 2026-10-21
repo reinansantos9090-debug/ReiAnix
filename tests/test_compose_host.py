@@ -55,11 +55,13 @@ class ComposeHostTests(unittest.TestCase):
         host = HOST.read_text(encoding="utf-8")
         details = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt").read_text(encoding="utf-8")
         self.assertIn("ReiAnixRoutes.DETAILS", navigation)
-        self.assertIn("navController.navigateToDetails", navigation + details)
-        self.assertIn("navController.navigateToPlayer(", details)
-        self.assertIn("navController.popBackStack()", host)
+        self.assertIn("fun NavHostController.navigateToDetails(", navigation)
+        self.assertIn("fun NavHostController.navigateToPlayer(", navigation)
+        self.assertIn("navigateToPlayer(", details)
+        self.assertIn("controller.popBackStack()", host)
         self.assertIn("fun handleBack(): Boolean", host)
         self.assertNotIn("class ComposeNavigationController", navigation)
+
     def test_library_route_uses_canonical_compose_path_without_list_positions(self):
         host = HOST.read_text(encoding="utf-8")
         navigation = (

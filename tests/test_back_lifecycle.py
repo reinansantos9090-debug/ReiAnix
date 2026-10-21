@@ -67,9 +67,10 @@ class BackLifecycleTests(unittest.TestCase):
         self.assertIn("rememberNavController()", host)
         self.assertIn("ReiAnixNavigationHost", host)
         self.assertIn("NavHost(", navigation)
-        self.assertIn("navController.navigate(", navigation)
-        self.assertIn("navController.popBackStack()", navigation + host)
+        self.assertIn("fun NavHostController.navigateToTopLevel(", navigation)
+        self.assertIn("controller.popBackStack()", host)
         self.assertIn("BackHandler(enabled = selectedCategory != null)", settings)
+
     def test_manifest_uses_single_task_and_predictive_back_enabled(self):
         manifest = self.read(MANIFEST)
         self.assertIn('android:launchMode="singleTask"', manifest)

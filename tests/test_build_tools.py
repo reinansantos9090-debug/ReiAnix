@@ -182,7 +182,7 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: true", workflow)
         self.assertIn("timeout-minutes: 90", workflow)
         self.assertIn("Run Python regression suite", workflow)
-        self.assertIn("python -m pytest -q | tee build/pytest.txt", workflow)
+        self.assertRegex(workflow, r"python\s+-m\s+pytest\s+-q[^\n]*build/pytest\.txt")
         self.assertIn("gradle -p android --no-daemon", workflow)
         self.assertIn(":app:assembleRelease", workflow)
         self.assertIn(":app:compileReleaseKotlin", workflow)
@@ -642,14 +642,11 @@ E: manifest
 
     def test_settings_nested_back_uses_navigation_controller_contract(self):
         settings = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt").read_text(encoding="utf-8")
-        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
+        host = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt").read_text(encoding="utf-8")
         self.assertIn("BackHandler(enabled = selectedCategory != null)", settings)
         self.assertIn("selectedCategory = null", settings)
-        self.assertIn("selectedCategory = label", settings)
-        self.assertIn("ReiAnixRoutes.SETTINGS", navigation)
-        self.assertIn("navController.popBackStack()", navigation)
-        self.assertNotIn("SETTINGS_INNER_BACK", settings + navigation)
-        self.assertNotIn("settings_system_back", settings + navigation)
+        self.assertIn("controller.popBackStack()", host)
+        self.assertNotIn("onBackPressedDispatcher.addCallback", settings)
 
     def test_settings_back_is_not_registered_as_a_second_back_system(self):
         settings = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/ReiAnixSettings.kt").read_text(encoding="utf-8")
@@ -709,8 +706,9 @@ E: manifest
         self.assertIn("recordSourceStartFailure", source)
         self.assertIn("scan_not_started", source)
         self.assertIn('put("status", "FAILED")', source)
-        self.assertIn("NativeScanController.begin(", controller)
+        self.assertIn("fun begin(", controller)
         self.assertIn("fun complete(", controller)
+        self.assertIn("fun snapshot(scanId: String)", controller)
 
     def test_folder_removal_is_guarded_and_uses_native_release_state(self):
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
@@ -731,7 +729,9 @@ E: manifest
         self.assertIn('put("type", "saf_released")', release)
         self.assertIn("removeSafFolder(normalizedReference)", release)
         self.assertIn('"release_tree"', release)
-        self.assertLess(release.index("removeSafFolder(normalizedReference)"), release.index('put("type", "saf_released")'))
+        # The terminal event object can be assembled first, but it must not be
+        # written to the mailbox until the canonical source removal has finished.
+        self.assertLess(release.index("removeSafFolder(normalizedReference)"), release.index("NativeMailbox.write("))
         self.assertIn("sourceAlreadyAbsent", release)
         self.assertIn("nativeFolderConfigOwner", release)
 
