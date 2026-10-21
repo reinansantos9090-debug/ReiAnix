@@ -2788,6 +2788,59 @@ internal class NativeMainRuntimePort(
     }
 
     /**
+     * Recalculate the aggregate episode availability from the latest observation
+     * for each canonical source location after one source becomes unavailable.
+     */
+    private fun recomputeEpisodeAvailabilityForSource(
+        database: android.database.sqlite.SQLiteDatabase,
+        episodeId: Long,
+    ) {
+        val latestByLocation = linkedMapOf<String, String>()
+        database.rawQuery(
+            "SELECT source_kind,scope_kind,scope_ref,volume_id,state " +
+                "FROM episode_observations WHERE episode_id=? ORDER BY last_checked_at DESC,id DESC",
+            arrayOf(episodeId.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val source = cursor.getString(0).orEmpty().trim()
+                    .lowercase(Locale.ROOT).ifBlank { "unknown" }
+                val scopeKind = cursor.getString(1).orEmpty().trim()
+                    .lowercase(Locale.ROOT).ifBlank { "source" }
+                val scopeRef = cursor.getString(2).orEmpty().trim()
+                val volumeId = cursor.getString(3).orEmpty().trim()
+                val key = if (volumeId.isNotEmpty()) {
+                    "$source|volume|$volumeId"
+                } else {
+                    "$source|$scopeKind|$scopeRef"
+                }
+                if (!latestByLocation.containsKey(key)) {
+                    latestByLocation[key] = cursor.getString(4).orEmpty()
+                        .trim().lowercase(Locale.ROOT)
+                }
+            }
+        }
+        if (latestByLocation.isEmpty()) return
+        val states = latestByLocation.values.toSet()
+        val (missing, availability) = when {
+            "available" in states -> 0 to "available"
+            "volume_unavailable" in states -> 1 to "volume_unavailable"
+            "scope_unavailable" in states -> 1 to "scope_unavailable"
+            "unavailable" in states -> 1 to "unavailable"
+            states.all { it == "scope_removed" } -> 1 to "scope_removed"
+            else -> 1 to "missing"
+        }
+        database.update(
+            "episodes",
+            android.content.ContentValues().apply {
+                put("missing", missing)
+                put("availability_state", availability)
+            },
+            "id=?",
+            arrayOf(episodeId.toString()),
+        )
+    }
+
+    /**
      * Native equivalent of LibraryStore.mark_source_unavailable() for a SAF root.
      * A failed/revoked source must not leave episodes from that source playable just
      * because a failed scan correctly avoided destructive full-scan reconciliation.
@@ -2839,52 +2892,8 @@ internal class NativeMainRuntimePort(
                         arrayOf(episodeId.toString(), reference),
                     )
 
-                    // Keep the repository's canonical precedence when an episode also
-                    // exists under another source: any current available observation wins.
-                    val latestByLocation = linkedMapOf<String, String>()
-                    database.rawQuery(
-                        "SELECT source_kind,scope_kind,scope_ref,volume_id,state " +
-                            "FROM episode_observations WHERE episode_id=? ORDER BY last_checked_at DESC,id DESC",
-                        arrayOf(episodeId.toString()),
-                    ).use { cursor ->
-                        while (cursor.moveToNext()) {
-                            val source = cursor.getString(0).orEmpty().trim()
-                                .lowercase(Locale.ROOT).ifBlank { "unknown" }
-                            val scopeKind = cursor.getString(1).orEmpty().trim()
-                                .lowercase(Locale.ROOT).ifBlank { "source" }
-                            val scopeRef = cursor.getString(2).orEmpty().trim()
-                            val volumeId = cursor.getString(3).orEmpty().trim()
-                            val key = if (volumeId.isNotEmpty()) {
-                                "$source|volume|$volumeId"
-                            } else {
-                                "$source|$scopeKind|$scopeRef"
-                            }
-                            if (!latestByLocation.containsKey(key)) {
-                                latestByLocation[key] = cursor.getString(4).orEmpty()
-                                    .trim().lowercase(Locale.ROOT)
-                            }
-                        }
-                    }
-                    if (latestByLocation.isNotEmpty()) {
-                        val states = latestByLocation.values.toSet()
-                        val (missing, availability) = when {
-                            "available" in states -> 0 to "available"
-                            "volume_unavailable" in states -> 1 to "volume_unavailable"
-                            "scope_unavailable" in states -> 1 to "scope_unavailable"
-                            "unavailable" in states -> 1 to "unavailable"
-                            states.all { it == "scope_removed" } -> 1 to "scope_removed"
-                            else -> 1 to "missing"
-                        }
-                        database.update(
-                            "episodes",
-                            android.content.ContentValues().apply {
-                                put("missing", missing)
-                                put("availability_state", availability)
-                            },
-                            "id=?",
-                            arrayOf(episodeId.toString()),
-                        )
-                    }
+                    // Recompute using the latest observation from each canonical source.
+                    recomputeEpisodeAvailabilityForSource(database, episodeId)
                 }
 
                 // Legacy episodes without an observation row still need to reflect the
@@ -2898,6 +2907,67 @@ internal class NativeMainRuntimePort(
                     "source_folder=? AND availability_state != 'scope_removed' " +
                         "AND id NOT IN (SELECT episode_id FROM episode_observations)",
                     arrayOf(reference),
+                )
+                changed
+            }
+        }
+    }
+
+    /**
+     * Mirror LibraryStore.mark_source_unavailable("broad-storage", reason) for
+     * legacy catalog observations after the optional broad-storage grant disappears.
+     * A current available observation from another source still keeps an episode playable.
+     */
+    private suspend fun markBroadStorageSourceUnavailable(
+        authorization: String,
+        reason: String,
+    ): Int {
+        val normalizedAuthorization = authorization.trim().lowercase(Locale.ROOT)
+            .takeIf { it in setOf("revoked", "unavailable") } ?: "unavailable"
+        val normalizedReason = reason.trim().takeIf { it.isNotEmpty() } ?: "broad_scan_failed"
+        return withContext(Dispatchers.IO) {
+            dependencies.sqliteDatabase.transaction { database ->
+                val now = System.currentTimeMillis() / 1000.0
+                database.update(
+                    "folders",
+                    android.content.ContentValues().apply {
+                        put("authorization", normalizedAuthorization)
+                        put("last_error", normalizedReason)
+                        put("last_scan_at", now)
+                    },
+                    "path=?",
+                    arrayOf("broad-storage"),
+                )
+                val affectedEpisodes = linkedSetOf<Long>()
+                database.rawQuery(
+                    "SELECT DISTINCT episode_id FROM episode_observations WHERE source_kind='broad_storage'",
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) affectedEpisodes.add(cursor.getLong(0))
+                }
+                var changed = 0
+                for (episodeId in affectedEpisodes) {
+                    changed += database.update(
+                        "episode_observations",
+                        android.content.ContentValues().apply {
+                            put("state", "scope_unavailable")
+                            put("error", normalizedReason)
+                            put("last_checked_at", now)
+                        },
+                        "episode_id=? AND source_kind='broad_storage'",
+                        arrayOf(episodeId.toString()),
+                    )
+                    recomputeEpisodeAvailabilityForSource(database, episodeId)
+                }
+                changed += database.update(
+                    "episodes",
+                    android.content.ContentValues().apply {
+                        put("missing", 1)
+                        put("availability_state", "scope_unavailable")
+                    },
+                    "source_folder=? AND availability_state != 'scope_removed' " +
+                        "AND id NOT IN (SELECT episode_id FROM episode_observations)",
+                    arrayOf("broad-storage"),
                 )
                 changed
             }
@@ -6960,8 +7030,43 @@ internal class NativeMainRuntimePort(
                         error = stringValue("error", "status") ?: "media_access_failed",
                         payload = payload,
                     )
+                    "broad_storage_status" -> {
+                        if (!payload.optBoolean("hasAccess", false)) {
+                            launchTracked("broad_storage_marked_unavailable", lane = "storage") {
+                                val changed = markBroadStorageSourceUnavailable(
+                                    authorization = "revoked",
+                                    reason = "broad_access_revoked",
+                                )
+                                libraryViewModel.refreshNativeFolders()
+                                libraryViewModel.refresh()
+                                recordDiagnostic(
+                                    name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
+                                    severity = "WARN",
+                                    result = "broad_access_revoked",
+                                    context = mapOf("updated_rows" to changed),
+                                )
+                            }
+                        }
+                    }
                     "broad_storage_permission" -> {
                         val granted = payload.optBoolean("granted", false)
+                        if (!granted) {
+                            launchTracked("broad_storage_permission_denied", lane = "storage") {
+                                val changed = markBroadStorageSourceUnavailable(
+                                    authorization = "revoked",
+                                    reason = "broad_access_denied",
+                                )
+                                libraryViewModel.refreshNativeFolders()
+                                libraryViewModel.refresh()
+                                recordDiagnostic(
+                                    name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
+                                    severity = "WARN",
+                                    requestId = correlatedRequestId,
+                                    result = "broad_access_denied",
+                                    context = mapOf("updated_rows" to changed),
+                                )
+                            }
+                        }
                         finishPendingStorageOperation(
                             eventRequestId = correlatedRequestId,
                             expectedNativeActions = setOf("open_broad_storage_settings"),
@@ -6972,14 +7077,33 @@ internal class NativeMainRuntimePort(
                             payload = payload,
                         )
                     }
-                    "broad_storage_error" -> finishPendingStorageOperation(
-                        eventRequestId = correlatedRequestId,
-                        expectedNativeActions = setOf("open_broad_storage_settings"),
-                        status = "FAILED",
-                        message = stringValue("message", "error") ?: "Não foi possível abrir as configurações de armazenamento.",
-                        error = stringValue("error", "status") ?: "broad_storage_action_failed",
-                        payload = payload,
-                    )
+                    "broad_storage_error" -> {
+                        val status = stringValue("status")?.uppercase(Locale.ROOT).orEmpty()
+                        val revoked = status in setOf("REVOKED", "DENIED")
+                        launchTracked("broad_storage_error_state", lane = "storage") {
+                            val changed = markBroadStorageSourceUnavailable(
+                                authorization = if (revoked) "revoked" else "unavailable",
+                                reason = if (revoked) "broad_access_revoked" else "broad_scan_failed",
+                            )
+                            libraryViewModel.refreshNativeFolders()
+                            libraryViewModel.refresh()
+                            recordDiagnostic(
+                                name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
+                                severity = "WARN",
+                                requestId = correlatedRequestId,
+                                result = if (revoked) "broad_access_revoked" else "broad_scan_failed",
+                                context = mapOf("updated_rows" to changed, "status" to status),
+                            )
+                        }
+                        finishPendingStorageOperation(
+                            eventRequestId = correlatedRequestId,
+                            expectedNativeActions = setOf("open_broad_storage_settings"),
+                            status = "FAILED",
+                            message = stringValue("message", "error") ?: "Não foi possível abrir as configurações de armazenamento.",
+                            error = stringValue("error", "status") ?: "broad_storage_action_failed",
+                            payload = payload,
+                        )
+                    }
                     "saf_permission" -> {
                         val treeUri = stringValue("treeUri", "tree_uri")
                         val granted = payload.optBoolean("granted", false)
