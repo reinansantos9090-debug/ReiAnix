@@ -2284,20 +2284,10 @@ internal class NativeMainRuntimePort(
         }
         // Bad event fields are rejected here rather than escaping the dispatcher:
         // a thrown exception would make the durable mailbox requeue this poison event.
-        val rawGeneration = payload.opt("generation")
-        val rawLegacyPlayerGeneration = payload.opt("playerGeneration")
-        val generationWasSupplied = (payload.has("generation") && pythonTruthyJsonValue(rawGeneration)) ||
-            (payload.has("playerGeneration") && pythonTruthyJsonValue(rawLegacyPlayerGeneration))
-        val rawTransitionGeneration = payload.opt("transitionGeneration")
-        val transitionGenerationWasSupplied = payload.has("transitionGeneration") &&
-            pythonTruthyJsonValue(rawTransitionGeneration)
-        // Legacy Python defaulted absent/falsey generation fields to zero.
-        // Reject malformed explicit values, but don't discard otherwise-valid callbacks
-        // just because an older producer omitted generation metadata.
         val playerGeneration = numericIdentity("generation", "playerGeneration")
-            ?: if (generationWasSupplied) return reject("invalid_player_generation") else 0L
+            ?: return reject("invalid_player_generation")
         val transition = numericIdentity("transitionGeneration")
-            ?: if (transitionGenerationWasSupplied) return reject("invalid_transition_generation") else 0L
+            ?: return reject("invalid_transition_generation")
         // The legacy callback guard checked episode/anime identity only when the
         // callback supplied those values. Some player-error callbacks legitimately
         // arrive without an anime identity; those errors must still be surfaced.
