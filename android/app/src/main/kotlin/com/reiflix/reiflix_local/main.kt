@@ -1642,6 +1642,16 @@ internal class NativeMainRuntimePort(
                             } else {
                                 thumbnailRetryCounts.remove(request.key)
                                 thumbnailRetryPendingKeys.remove(request.key)
+                                val uriKey = request.uri.toString()
+                                if (thumbnailLatestKeyByUri.remove(uriKey, request.key)) {
+                                    thumbnailLatestAtMillis.remove(uriKey)
+                                }
+                                recordDiagnostic(
+                                    name = "THUMBNAIL_RETRY_EXHAUSTED",
+                                    severity = "WARN",
+                                    result = "extraction_failed",
+                                    context = mapOf("attempts" to previousAttempts),
+                                )
                             }
                         } else {
                             thumbnailRetryCounts.remove(request.key)
@@ -1673,6 +1683,16 @@ internal class NativeMainRuntimePort(
                         } else {
                             thumbnailRetryCounts.remove(request.key)
                             thumbnailRetryPendingKeys.remove(request.key)
+                            val uriKey = request.uri.toString()
+                            if (thumbnailLatestKeyByUri.remove(uriKey, request.key)) {
+                                thumbnailLatestAtMillis.remove(uriKey)
+                            }
+                            recordDiagnostic(
+                                name = "THUMBNAIL_RETRY_EXHAUSTED",
+                                severity = "WARN",
+                                error = failure,
+                                context = mapOf("attempts" to previousAttempts),
+                            )
                         }
                     } finally {
                         synchronized(thumbnailQueueLock) {
@@ -5375,11 +5395,18 @@ internal class NativeMainRuntimePort(
                     val rawReference = stringValue("uri", "path")
                     if (!rawReference.isNullOrBlank()) {
                         val parsed = runCatching { Uri.parse(rawReference) }.getOrNull()
-                        if (parsed != null) {
+                        val uri = parsed?.let {
+                            when (it.scheme?.lowercase(Locale.ROOT)) {
+                                "content", "file" -> it
+                                null -> if (rawReference.startsWith("/")) Uri.fromFile(File(rawReference)) else null
+                                else -> null
+                            }
+                        }
+                        if (uri != null) {
                             val size = payload.optLong("size", payload.optLong("file_size", 0L)).coerceAtLeast(0L)
                             val modifiedAt = payload.optLong("modifiedAt", payload.optLong("modified_at", 0L)).coerceAtLeast(0L)
-                            val identity = stringValue("mediaIdentity", "media_identity") ?: parsed.toString()
-                            val key = thumbnailRequestKey(parsed, size, modifiedAt, identity)
+                            val identity = stringValue("mediaIdentity", "media_identity") ?: uri.toString()
+                            val key = thumbnailRequestKey(uri, size, modifiedAt, identity)
                             thumbnailRetryCounts.remove(key)
                             thumbnailRetryPendingKeys.remove(key)
                         }
