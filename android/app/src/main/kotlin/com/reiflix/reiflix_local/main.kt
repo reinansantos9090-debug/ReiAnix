@@ -768,13 +768,18 @@ internal class NativeMainRuntimePort(
      * Resolve artwork rows in their canonical priority order and skip corrupt images,
      * just like ArtworkEngine.resolve_local_batch does.
      */
+    /**
+     * Page the canonical SQLite catalog, not the currently visible Compose page.
+     * Resolve artwork rows in canonical priority order and skip corrupt images,
+     * like ArtworkEngine.resolve_local_batch, without decoding files under the DB lock.
+     */
     private suspend fun loadThumbnailCandidateRows(
         afterId: Long,
         limit: Int = 128,
     ): List<NativeThumbnailCandidateRow> = withContext(Dispatchers.IO) {
         val pageLimit = limit.coerceIn(1, 128)
-        dependencies.sqliteDatabase.read { database ->
-            val episodes = database.rawQuery(
+        val (episodes, artworkCandidates) = dependencies.sqliteDatabase.read { database ->
+            val episodeRows = database.rawQuery(
                 """
                 SELECT
                     e.id,
@@ -819,12 +824,13 @@ internal class NativeMainRuntimePort(
                     }
                 }
             }
-            if (episodes.isEmpty()) return@read emptyList()
+            if (episodeRows.isEmpty()) {
+                return@read emptyList<NativeThumbnailCandidateRow>() to emptyList<Pair<Long, String>>()
+            }
 
-            val idPlaceholders = episodes.joinToString(",") { "?" }
-            val episodeIds = episodes.map { it.id.toString() }
-            val validArtworkPathByEpisodeId = mutableMapOf<Long, String>()
-            database.rawQuery(
+            val idPlaceholders = episodeRows.joinToString(",") { "?" }
+            val episodeIds = episodeRows.map { it.id.toString() }
+            val artworkRows = database.rawQuery(
                 """
                 SELECT entity_id, local_path
                 FROM artwork
@@ -838,22 +844,27 @@ internal class NativeMainRuntimePort(
                 """.trimIndent(),
                 episodeIds.toTypedArray(),
             ).use { cursor ->
-                while (cursor.moveToNext()) {
-                    val episodeId = cursor.getString(cursor.getColumnIndexOrThrow("entity_id"))
-                        ?.toLongOrNull() ?: continue
-                    if (episodeId in validArtworkPathByEpisodeId) continue
-                    val path = cursor.getString(cursor.getColumnIndexOrThrow("local_path"))
-                        ?.trim()
-                        ?.takeIf { it.isNotEmpty() } ?: continue
-                    if (hasValidLocalThumbnail(path)) {
-                        validArtworkPathByEpisodeId[episodeId] = path
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val episodeId = cursor.getString(cursor.getColumnIndexOrThrow("entity_id"))
+                            ?.toLongOrNull() ?: continue
+                        val path = cursor.getString(cursor.getColumnIndexOrThrow("local_path"))
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() } ?: continue
+                        add(episodeId to path)
                     }
                 }
             }
-            episodes.map { row ->
-                row.copy(thumbnailPath = validArtworkPathByEpisodeId[row.id])
+            episodeRows to artworkRows
+        }
+
+        val validArtworkPathByEpisodeId = mutableMapOf<Long, String>()
+        for ((episodeId, path) in artworkCandidates) {
+            if (episodeId !in validArtworkPathByEpisodeId && hasValidLocalThumbnail(path)) {
+                validArtworkPathByEpisodeId[episodeId] = path
             }
         }
+        episodes.map { row -> row.copy(thumbnailPath = validArtworkPathByEpisodeId[row.id]) }
     }
 
     private fun hasValidLocalThumbnail(path: String?): Boolean {
