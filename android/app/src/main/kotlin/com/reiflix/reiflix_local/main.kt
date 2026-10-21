@@ -7,6 +7,8 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
+import java.util.UUID
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import java.io.File
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
@@ -525,7 +527,9 @@ internal data class NativeMainStorageSnapshot(
     val capturedAtMillis: Long,
 ) {
     val hasAnyAuthorizedSource: Boolean
-        get() = mediaStoreAccess != "denied" || broadStorageAccess || configuredSafRoots.isNotEmpty()
+        get() = mediaStoreAccess.equals("full", ignoreCase = true) ||
+            mediaStoreAccess.equals("partial", ignoreCase = true) ||
+            broadStorageAccess || configuredSafRoots.isNotEmpty()
 }
 
 private data class NativeThumbnailRequest(
@@ -1559,7 +1563,7 @@ internal class NativeMainRuntimePort(
     fun isStorageOnboardingRequired(): Boolean {
         val snapshot = storageSnapshot()
         return !snapshot.hasAnyAuthorizedSource &&
-            snapshot.onboardingPhase != "READY" &&
+            !snapshot.onboardingPhase.equals("ready", ignoreCase = true) &&
             !snapshot.onboardingDismissed
     }
 
@@ -1924,6 +1928,68 @@ internal class NativeMainRuntimePort(
             settingsViewModel.requestAction(normalized)
         }
     }
+    /** Validate the entire update before committing any settings row. */
+    fun applySettingsAtomically(values: Map<String, String>): Boolean {
+        if (values.isEmpty() || values.size > ReiAnixSettingsContract.definitions.size) return false
+        val normalized = linkedMapOf<String, String>()
+        for ((rawKey, rawValue) in values) {
+            val key = rawKey.trim()
+            val definition = ReiAnixSettingsContract.definitions[key] ?: return false
+            val value = runCatching { definition.normalize(rawValue) }.getOrNull() ?: return false
+            normalized[key] = value
+        }
+        if (normalized.isEmpty()) return false
+        return launchTracked("settings_bulk_applied", lane = "settings") {
+            dependencies.sqliteSettingsRepository.setPreferencesAtomically(normalized)
+            settingsViewModel.refresh()
+            publish(
+                action = "settings_bulk_applied",
+                transform = {
+                    it.copy(
+                        lastResultJson = org.json.JSONObject()
+                            .put("applied", normalized.size)
+                            .put("keys", org.json.JSONArray(normalized.keys.toList()))
+                            .toString(),
+                    )
+                },
+            )
+        }
+    }
+
+    fun resetSettingToDefault(key: String): Boolean {
+        val definition = ReiAnixSettingsContract.definitions[key.trim()] ?: return false
+        return setSettingSerialized(definition.key, definition.defaultValue)
+    }
+
+    fun updateSettingsRuntime(key: String, value: String): Boolean =
+        setSettingSerialized(key, value)
+
+    fun accountChanged(state: String, reason: String = "account_changed"): Boolean =
+        launchTracked("account_changed", lane = "settings") {
+            setAccountState(state, reason)
+            settingsViewModel.refresh()
+            libraryViewModel.refresh()
+        }
+
+    fun requestRecoveryDiagnostic(): Boolean = exportDiagnosticsJson()
+
+    fun createRecoverySnapshot(): Boolean = createRecoverySafetySnapshot()
+
+    fun restoreRecoveryFromPrivateFile(file: File, previewOnly: Boolean = false): Boolean {
+        val candidate = resolvePrivateBackupFile(file.absolutePath) ?: return false
+        return if (previewOnly) inspectBackup(candidate) else restoreRecoveryBackup(candidate)
+    }
+
+    fun integrityReport(): Boolean = checkDatabaseIntegrity()
+
+    fun refreshCatalogAfterRestore(): Boolean = reconcileRestoredFileAvailability()
+
+    fun refreshCurrentMetadata(animeId: Long): Boolean = refreshAniListMetadata(animeId)
+
+    fun scheduleMetadataHydration(): Boolean = reconcileCatalogMetadata()
+
+    fun scheduleThumbnailReconciliation(): Boolean = reconcileMissingThumbnails()
+
 
     fun requestAccountActionTracked(action: String): Boolean {
         val normalized = action.trim()
