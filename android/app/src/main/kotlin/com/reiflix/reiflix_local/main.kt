@@ -3256,16 +3256,21 @@ internal class NativeMainRuntimePort(
             }
         }
         val specials = org.json.JSONArray().apply {
-            if (anime.specials.isNotEmpty()) {
-                put(
-                    org.json.JSONObject().put(
-                        "episodes",
-                        org.json.JSONArray().apply {
-                            anime.specials.forEach { put(projectNativeLibraryPageEpisode(it)) }
-                        },
-                    ),
-                )
-            }
+            anime.specials
+                .groupBy { it.seasonNumber }
+                .forEach { (seasonNumber, episodes) ->
+                    put(
+                        org.json.JSONObject()
+                            .put("season", seasonNumber ?: org.json.JSONObject.NULL)
+                            .put("season_name", seasonNumber?.let { "Temporada $it" } ?: "Especiais")
+                            .put(
+                                "episodes",
+                                org.json.JSONArray().apply {
+                                    episodes.forEach { put(projectNativeLibraryPageEpisode(it)) }
+                                },
+                            ),
+                    )
+                }
         }
         return org.json.JSONObject()
             .put("id", anime.id)
