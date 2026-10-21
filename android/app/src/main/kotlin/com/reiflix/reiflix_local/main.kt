@@ -3132,6 +3132,110 @@ internal class NativeMainRuntimePort(
             libraryViewModel.refresh()
         }
 
+    /**
+     * Explicit post-restore reconciliation mirrors ScanCoordinator.request_restore_reconciliation:
+     * repair local availability first, then ask the native scanner to revisit every currently
+     * authorized source. It is never triggered implicitly by process/activity resume.
+     */
+    private fun requestRestoreReconciliation(requestId: String?): Boolean {
+        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
+        if (mutableSnapshot.value.recoveryRequired) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = "backup_reconcile",
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A reconciliação normal está indisponível durante o Recovery Mode.",
+                error = "recovery_required",
+            )
+            return false
+        }
+        val accepted = launchTracked("backup_reconcile", lane = "backup") {
+            try {
+                val updated = withContext(Dispatchers.IO) {
+                    backupService.reconcileRestoredFileAvailability()
+                }
+                libraryViewModel.refresh()
+                scheduleCatalogMetadataHydration("post_restore_reconciliation")
+                scheduleThumbnailReconciliation("post_restore_reconciliation")
+
+                val scanState = mutableScanUiState.value.state.uppercase(Locale.ROOT)
+                if (scanState in setOf("RUNNING", "QUEUED", "CANCELLING")) {
+                    recordDiagnostic(
+                        name = "RESTORE_RECONCILIATION_SCAN_ALREADY_RUNNING",
+                        severity = "WARN",
+                        requestId = resolvedRequestId,
+                        result = scanState,
+                        context = mapOf("local_references_updated" to updated),
+                    )
+                    publishOperationResult(
+                        requestId = resolvedRequestId,
+                        action = "backup_reconcile",
+                        status = "BLOCKED",
+                        operationState = "BLOCKED",
+                        message = "Aguarde a varredura atual terminar antes de reconciliar novamente.",
+                        error = "scan_already_running",
+                    )
+                    return@launchTracked
+                }
+
+                val scanAccepted = requestStorageAction(
+                    action = "scan_library",
+                    requestId = resolvedRequestId,
+                    resultAction = "backup_reconcile",
+                )
+                if (!scanAccepted) {
+                    publishOperationResult(
+                        requestId = resolvedRequestId,
+                        action = "backup_reconcile",
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = "A varredura de reconciliação não foi aceita.",
+                        error = "scan_request_rejected",
+                    )
+                    return@launchTracked
+                }
+                recordDiagnostic(
+                    name = "RESTORE_RECONCILIATION_QUEUED",
+                    requestId = resolvedRequestId,
+                    result = "scan_library",
+                    context = mapOf("local_references_updated" to updated),
+                )
+            } catch (cancelled: CancellationException) {
+                publishOperationResult(
+                    requestId = resolvedRequestId,
+                    action = "backup_reconcile",
+                    status = "CANCELLED",
+                    operationState = "CANCELLED",
+                    message = "A reconciliação pós-restauração foi cancelada.",
+                )
+                throw cancelled
+            } catch (failure: Throwable) {
+                publishOperationResult(
+                    requestId = resolvedRequestId,
+                    action = "backup_reconcile",
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = failure.message ?: "Não foi possível reconciliar a biblioteca restaurada.",
+                    error = failure.javaClass.simpleName,
+                )
+                throw failure
+            }
+        }
+        if (!accepted) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = "backup_reconcile",
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A operação de reconciliação não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
+    }
+
     /** Native privacy-filtered report mirrors the old diagnostic export action. */
     fun exportDiagnosticsJson(): Boolean = launchTracked("export_diagnostics", lane = "diagnostics") {
         val bytes = diagnosticsService.exportJson()
@@ -6021,7 +6125,8 @@ internal class NativeMainRuntimePort(
                 requestId = resolvedRequestId,
                 resultAction = normalized,
             )
-            "backup_create", "backup_integrity", "backup_reconcile", "diagnostic_export",
+            "backup_reconcile" -> requestRestoreReconciliation(resolvedRequestId)
+            "backup_create", "backup_integrity", "diagnostic_export",
             "backup_recovery_restore", "backup_recovery_snapshot" ->
                 launchNativeSettingsFileAction(normalized, resolvedRequestId)
             "backup_restore" -> {
