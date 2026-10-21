@@ -3199,7 +3199,7 @@ internal class NativeMainRuntimePort(
             "navigate_storage" -> navigateStorage()
             "navigate_search" -> navigateSearch()
             "navigate_my_list" -> navigateMyList()
-            "navigate_back", "back", "previous" -> navigateBack()
+            "navigate_back", "back", "previous", "settings_inner" -> navigateBack()
             "navigate_settings_category" ->
                 navigateSettingsCategory(nonBlank("category") ?: return false)
 
@@ -3225,7 +3225,7 @@ internal class NativeMainRuntimePort(
 
             "login" -> login()
             "logout" -> logout()
-            "switch_account", "switchaccount" -> switchAccount()
+            "switch", "switch_account", "switchaccount" -> switchAccount()
             "account_state_changed" -> {
                 setAccountState(payload.optString("state", "disconnected"), "native_event")
                 true
