@@ -7448,6 +7448,10 @@ internal class NativeMainRuntimePort(
                         val treeUri = stringValue("treeUri", "tree_uri")
                         val granted = payload.optBoolean("granted", false)
                         val selected = payload.optBoolean("selected", false)
+                        // Permission callback arrival is a storage mutation even when it
+                        // only revalidates an existing source. Fence older SAF inventories
+                        // so they cannot undo this grant/revocation decision.
+                        recordStorageMutation("saf_permission_event", treeUri)
                         val nativeFolderConfigOwner = payload.optBoolean(
                             "nativeFolderConfigOwner",
                             payload.optBoolean("native_folder_config_owner", false),
