@@ -5180,6 +5180,37 @@ internal class NativeMainRuntimePort(
             return null
         }
         return when (type) {
+            "translation_succeeded", "translation_cache_hit", "translation_failed" -> {
+                val animeId = longValue("animeId", "anime_id")
+                if (type != "translation_failed" && (animeId == null || animeId <= 0L)) {
+                    recordDiagnostic(
+                        name = "METADATA_TRANSLATION_EVENT_REJECTED",
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = "missing_anime_id",
+                        context = mapOf("event_type" to type),
+                    )
+                    return false
+                }
+                if (type in setOf("translation_succeeded", "translation_cache_hit")) {
+                    if (animeId != null) libraryViewModel.refreshDetails(animeId)
+                }
+                // The Python metadata listener republishes the catalog for all
+                // translation outcomes; only successful/cache-hit events hydrate
+                // Details, while failures still refresh the observable status.
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = "METADATA_TRANSLATION_PROJECTION_REFRESH",
+                    severity = if (type == "translation_failed") "WARN" else "INFO",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = type,
+                    context = mapOf(
+                        "anime_id" to animeId,
+                        "lookup_title" to stringValue("lookupTitle", "lookup_title"),
+                    ),
+                )
+                true
+            }
             "anilist_metadata_committed" -> {
                 val animeId = longValue("animeId", "anime_id") ?: return false
                 refreshCurrentDetails(animeId)
