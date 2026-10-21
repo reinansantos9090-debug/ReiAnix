@@ -1358,6 +1358,7 @@ internal class NativeMainRuntimePort(
             val laneSize = jobLanes.values.count { it == normalizedLane }
             if (
                 laneSize >= maxBackgroundTasksPerLane ||
+                (restoreMaintenanceInProgress && normalizedLane in setOf("metadata", "thumbnail")) ||
                 activity.isFinishing ||
                 activity.isDestroyed
             ) {
@@ -4716,13 +4717,31 @@ internal class NativeMainRuntimePort(
         }
 
     fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean {
-        if (animeId <= 0L) return false
+        if (animeId <= 0L || restoreMaintenanceInProgress) {
+            if (restoreMaintenanceInProgress) {
+                recordDiagnostic(
+                    name = "ARTWORK_REQUEST_BLOCKED",
+                    severity = "WARN",
+                    result = "restore_in_progress",
+                    context = mapOf("anime_id" to animeId),
+                )
+            }
+            return false
+        }
         val accepted = dependencies.artworkService.requestAnimeArtwork(animeId, force)
         publish(action = "request_anime_artwork", error = if (accepted) null else "Solicitação de artwork não aceita.")
         return accepted
     }
 
     fun requestPendingArtwork(): Boolean {
+        if (restoreMaintenanceInProgress) {
+            recordDiagnostic(
+                name = "ARTWORK_RECONCILIATION_BLOCKED",
+                severity = "WARN",
+                result = "restore_in_progress",
+            )
+            return false
+        }
         val accepted = dependencies.artworkService.requestPendingArtwork()
         publish(action = "request_pending_artwork", error = if (accepted) null else "Não há solicitação pendente aceita.")
         return accepted
