@@ -1756,11 +1756,10 @@ internal class NativeMainRuntimePort(
                         StorageAuthorization.safIdentity(it.toString()) == StorageAuthorization.safIdentity(treeUri)
                 }
                 if (validSource) {
+                    // Projection snapshots are not terminal picker results. Keep the
+                    // original request correlation until a matching selected/cancelled/error
+                    // event arrives; an unrelated grant must not clear a newer request.
                     recordStorageMutation("saf_grant_confirmed", treeUri)
-                    pendingSafSelectionRequestId = null
-                    pendingSafSelectionStartedAtMillis = 0L
-                    pendingSafSelectionBridge = "library"
-                    pendingSafSelectionBaselineIdentities = emptySet()
                 }
             } else {
                 recordDiagnostic(
