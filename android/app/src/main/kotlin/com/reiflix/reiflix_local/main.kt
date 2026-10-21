@@ -25,6 +25,8 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.scanner.NativeScanController
+import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
+import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -804,6 +806,8 @@ internal class NativeMainRuntimePort(
         val normalized = value.trim().lowercase(Locale.ROOT).ifBlank { "disconnected" }
         publish(action = reason, transform = { it.copy(accountState = normalized) })
     }
+    suspend fun accountProfile() = dependencies.sqliteAccountRepository.loadProfile()
+
     fun openHomeSearch() {
         libraryViewModel.setSearchQuery("")
         publish(action = "open_home_search")
@@ -895,6 +899,107 @@ internal class NativeMainRuntimePort(
     fun markEpisodeWatched(episodeId: Long, watched: Boolean) {
         if (episodeId > 0L) libraryViewModel.setEpisodeWatched(episodeId, watched)
     }
+    suspend fun playbackProgress(episodeId: Long) =
+        dependencies.consumptionService.getProgress(episodeId)
+
+    suspend fun playbackHistory(limit: Int = 36) =
+        dependencies.consumptionService.playbackHistory(limit.coerceIn(1, 200))
+
+    suspend fun continueWatching(limit: Int = 36) =
+        dependencies.consumptionService.continueWatching(limit.coerceIn(1, 200))
+
+    suspend fun watchedRecently(limit: Int = 36) =
+        dependencies.consumptionService.watchedRecently(limit.coerceIn(1, 200))
+
+    fun savePlaybackProgress(
+        episodeId: Long,
+        positionMs: Long,
+        durationMs: Long? = null,
+        completed: Boolean = false,
+    ): Boolean {
+        if (episodeId <= 0L || positionMs < 0L || (durationMs != null && durationMs <= 0L)) return false
+        return launchTracked("save_playback_progress", lane = "playback") {
+            val progress = dependencies.consumptionService.saveProgress(
+                episodeId = episodeId,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                completed = completed,
+            )
+            libraryViewModel.refresh()
+            publish(action = "save_playback_progress", transform = {
+                it.copy(
+                    lastResultJson = org.json.JSONObject()
+                        .put("episodeId", progress.episodeId)
+                        .put("positionMs", progress.positionMs)
+                        .put("durationMs", progress.durationMs)
+                        .put("watched", progress.watched)
+                        .put("isCompleted", progress.isCompleted)
+                        .toString(),
+                )
+            })
+        }
+    }
+
+    fun markEpisodeWatchedTracked(episodeId: Long, watched: Boolean): Boolean {
+        if (episodeId <= 0L) return false
+        return launchTracked("mark_episode_watched", lane = "playback") {
+            val progress = dependencies.consumptionService.setWatched(episodeId, watched)
+            libraryViewModel.refresh()
+            publish(action = "mark_episode_watched", transform = {
+                it.copy(
+                    lastResultJson = org.json.JSONObject()
+                        .put("episodeId", progress.episodeId)
+                        .put("positionMs", progress.positionMs)
+                        .put("durationMs", progress.durationMs)
+                        .put("watched", progress.watched)
+                        .toString(),
+                )
+            })
+        }
+    }
+
+    fun extractLocalThumbnail(
+        reference: String,
+        size: Long = 0L,
+        modifiedAt: Long = 0L,
+        mediaIdentity: String? = null,
+    ): Boolean {
+        val raw = reference.trim()
+        if (raw.isEmpty()) return false
+        val parsed = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        val uri = when (parsed.scheme?.lowercase(Locale.ROOT)) {
+            "content", "file" -> parsed
+            null -> if (raw.startsWith("/")) Uri.fromFile(File(raw)) else return false
+            else -> return false
+        }
+        return launchTracked("extract_local_thumbnail", lane = "thumbnail") {
+            val result = withContext(Dispatchers.IO) {
+                VideoThumbnailExtractor.extract(
+                    activity.applicationContext,
+                    uri,
+                    size.coerceAtLeast(0L),
+                    modifiedAt.coerceAtLeast(0L),
+                    mediaIdentity,
+                )
+            } ?: throw IllegalStateException("Não foi possível extrair uma miniatura da mídia local.")
+            publish(action = "extract_local_thumbnail", transform = {
+                it.copy(
+                    lastArtifactPath = result.path,
+                    lastResultJson = org.json.JSONObject()
+                        .put("path", result.path)
+                        .put("durationMs", result.durationMs)
+                        .put("width", result.width)
+                        .put("height", result.height)
+                        .put("rotation", result.rotation)
+                        .put("mimeType", result.mimeType)
+                        .put("canonicalArtworkRegistered", result.canonicalArtworkRegistered)
+                        .toString(),
+                )
+            })
+            libraryViewModel.queryNativeArtwork()
+        }
+    }
+
 
     fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String? {
         if (episodeId <= 0L) return null
