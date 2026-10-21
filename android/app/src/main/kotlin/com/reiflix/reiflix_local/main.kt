@@ -6500,12 +6500,22 @@ internal class NativeMainRuntimePort(
                                 invalidatePlayerSession("player_lifecycle_$lifecycle", sessionId, requestId)
                             }
                             true
-                        } else if (normalizedLifecycle in setOf("ondestroy", "onstop") &&
-                            stringValue("sessionState")?.uppercase(Locale.ROOT) in setOf("EXITING", "DESTROYED")
+                        } else if (
+                            !sessionId.isNullOrBlank() &&
+                            normalizedLifecycle in setOf("onpause", "onstop", "ondestroy") &&
+                            (
+                                stringValue("sessionState")?.uppercase(Locale.ROOT) in setOf("EXITING", "DESTROYED") ||
+                                    normalizedLifecycle == "ondestroy"
+                            )
                         ) {
-                            if (!sessionId.isNullOrBlank() && !requestId.isNullOrBlank()) {
-                                invalidatePlayerSession("player_lifecycle_$lifecycle", sessionId, requestId)
-                            } else false
+                            // Preserve the legacy lifecycle rule: an exiting session
+                            // is invalidated on pause/stop, and any current session is
+                            // invalidated on destroy even if requestId was omitted.
+                            invalidatePlayerSession(
+                                "player_lifecycle_$lifecycle",
+                                sessionId,
+                                requestId,
+                            )
                         } else {
                             NativeLifecycleCoordinator.onEvent(lifecycle)
                             true
