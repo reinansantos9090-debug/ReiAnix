@@ -2975,6 +2975,70 @@ internal class NativeMainRuntimePort(
     }
 
     /**
+     * Native equivalent of LibraryStore.mark_source_unavailable() for legacy
+     * MediaStore observations. MediaStore is diagnostic-only for new imports, but
+     * existing catalog rows can still point at this provider source.
+     */
+    private suspend fun markMediaStoreSourceUnavailable(
+        sourceReference: String,
+        authorization: String,
+        reason: String,
+    ): Int {
+        val reference = sourceReference.trim().ifBlank { "mediastore:external:video" }
+        val normalizedAuthorization = authorization.trim().lowercase(Locale.ROOT)
+            .takeIf { it in setOf("revoked", "unavailable") } ?: "unavailable"
+        val normalizedReason = reason.trim().takeIf { it.isNotEmpty() } ?: "mediastore_scan_failed"
+        return withContext(Dispatchers.IO) {
+            dependencies.sqliteDatabase.transaction { database ->
+                val now = System.currentTimeMillis() / 1000.0
+                database.update(
+                    "folders",
+                    android.content.ContentValues().apply {
+                        put("authorization", normalizedAuthorization)
+                        put("last_error", normalizedReason)
+                        put("last_scan_at", now)
+                    },
+                    "path=?",
+                    arrayOf(reference),
+                )
+                val affectedEpisodes = linkedSetOf<Long>()
+                database.rawQuery(
+                    "SELECT DISTINCT episode_id FROM episode_observations " +
+                        "WHERE source_kind='mediastore' AND scope_ref=?",
+                    arrayOf(reference),
+                ).use { cursor ->
+                    while (cursor.moveToNext()) affectedEpisodes.add(cursor.getLong(0))
+                }
+                var changed = 0
+                for (episodeId in affectedEpisodes) {
+                    changed += database.update(
+                        "episode_observations",
+                        android.content.ContentValues().apply {
+                            put("state", "scope_unavailable")
+                            put("error", normalizedReason)
+                            put("last_checked_at", now)
+                        },
+                        "episode_id=? AND source_kind='mediastore' AND scope_ref=?",
+                        arrayOf(episodeId.toString(), reference),
+                    )
+                    recomputeEpisodeAvailabilityForSource(database, episodeId)
+                }
+                changed += database.update(
+                    "episodes",
+                    android.content.ContentValues().apply {
+                        put("missing", 1)
+                        put("availability_state", "scope_unavailable")
+                    },
+                    "source_folder=? AND availability_state != 'scope_removed' " +
+                        "AND id NOT IN (SELECT episode_id FROM episode_observations)",
+                    arrayOf(reference),
+                )
+                changed
+            }
+        }
+    }
+
+    /**
      * A verify_tree result is a confirmation of an existing source, not permission to
      * create a new library root from an arbitrary persisted Android grant.
      */
@@ -7012,6 +7076,25 @@ internal class NativeMainRuntimePort(
                     )
                     "mediastore_permission" -> {
                         val granted = payload.optBoolean("granted", false)
+                        val sourceReference = stringValue("source") ?: "mediastore:external:video"
+                        if (!granted) {
+                            launchTracked("mediastore_permission_revoked", lane = "storage") {
+                                val changed = markMediaStoreSourceUnavailable(
+                                    sourceReference = sourceReference,
+                                    authorization = "revoked",
+                                    reason = "media_permission_revoked",
+                                )
+                                libraryViewModel.refreshNativeFolders()
+                                libraryViewModel.refresh()
+                                recordDiagnostic(
+                                    name = "MEDIASTORE_SOURCE_MARKED_UNAVAILABLE",
+                                    severity = "WARN",
+                                    requestId = correlatedRequestId,
+                                    result = "media_permission_revoked",
+                                    context = mapOf("updated_rows" to changed),
+                                )
+                            }
+                        }
                         finishPendingStorageOperation(
                             eventRequestId = correlatedRequestId,
                             expectedNativeActions = setOf("request_media_access"),
@@ -7022,14 +7105,35 @@ internal class NativeMainRuntimePort(
                             payload = payload,
                         )
                     }
-                    "mediastore_error" -> finishPendingStorageOperation(
-                        eventRequestId = correlatedRequestId,
-                        expectedNativeActions = setOf("request_media_access"),
-                        status = "FAILED",
-                        message = stringValue("message", "error") ?: "Não foi possível obter acesso aos vídeos.",
-                        error = stringValue("error", "status") ?: "media_access_failed",
-                        payload = payload,
-                    )
+                    "mediastore_error" -> {
+                        val sourceReference = stringValue("source") ?: "mediastore:external:video"
+                        val status = stringValue("status")?.uppercase(Locale.ROOT).orEmpty()
+                        val revoked = status in setOf("REVOKED", "DENIED")
+                        launchTracked("mediastore_error_state", lane = "storage") {
+                            val changed = markMediaStoreSourceUnavailable(
+                                sourceReference = sourceReference,
+                                authorization = if (revoked) "revoked" else "unavailable",
+                                reason = if (revoked) "media_permission_revoked" else "mediastore_scan_failed",
+                            )
+                            libraryViewModel.refreshNativeFolders()
+                            libraryViewModel.refresh()
+                            recordDiagnostic(
+                                name = "MEDIASTORE_SOURCE_MARKED_UNAVAILABLE",
+                                severity = "WARN",
+                                requestId = correlatedRequestId,
+                                result = if (revoked) "media_permission_revoked" else "mediastore_scan_failed",
+                                context = mapOf("updated_rows" to changed, "status" to status),
+                            )
+                        }
+                        finishPendingStorageOperation(
+                            eventRequestId = correlatedRequestId,
+                            expectedNativeActions = setOf("request_media_access"),
+                            status = "FAILED",
+                            message = stringValue("message", "error") ?: "Não foi possível obter acesso aos vídeos.",
+                            error = stringValue("error", "status") ?: "media_access_failed",
+                            payload = payload,
+                        )
+                    }
                     "broad_storage_status" -> {
                         if (!payload.optBoolean("hasAccess", false)) {
                             launchTracked("broad_storage_marked_unavailable", lane = "storage") {
