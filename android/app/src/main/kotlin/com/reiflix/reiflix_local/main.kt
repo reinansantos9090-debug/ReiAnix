@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local
 
 import androidx.activity.ComponentActivity
 import android.util.Log
+import android.graphics.BitmapFactory
 import androidx.lifecycle.lifecycleScope
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
@@ -789,7 +790,7 @@ internal class NativeMainRuntimePort(
                     ) AS thumbnail_path
                 FROM episodes e
                 WHERE e.id > ?
-                  AND COALESCE(e.missing, 0) = 0
+                  AND e.missing = 0
                   AND COALESCE(e.availability_state, 'available') = 'available'
                   AND e.path IS NOT NULL
                   AND trim(e.path) != ''
@@ -828,6 +829,18 @@ internal class NativeMainRuntimePort(
         }
     }
 
+    private fun hasValidLocalThumbnail(path: String?): Boolean {
+        val normalized = path?.trim().orEmpty()
+        if (normalized.isEmpty()) return false
+        val file = File(normalized)
+        if (!file.isFile || file.length() <= 0L) return false
+        return runCatching {
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, options)
+            options.outWidth > 0 && options.outHeight > 0
+        }.getOrDefault(false)
+    }
+
     private suspend fun reconcileMissingLocalThumbnails(reason: String) {
         val state = withTimeoutOrNull(20_000L) {
             libraryViewModel.uiState.first { it.status.name != "LOADING" }
@@ -862,9 +875,7 @@ internal class NativeMainRuntimePort(
                     cursor = maxOf(cursor, row.id)
                     scanned += 1
                     if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) return
-                    val cachedPath = row.thumbnailPath
-                    val thumbnailReady = !cachedPath.isNullOrBlank() &&
-                        runCatching { File(cachedPath).isFile }.getOrDefault(false)
+                    val thumbnailReady = hasValidLocalThumbnail(row.thumbnailPath)
                     if (thumbnailReady && row.durationSeconds > 0.0) continue
 
                     val identity = row.mediaIdentity ?: "episode:${row.id}"
