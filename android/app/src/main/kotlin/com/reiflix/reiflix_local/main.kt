@@ -4288,7 +4288,10 @@ internal class NativeMainRuntimePort(
                         size = payload.optLong("size", 0L),
                         modifiedAt = payload.optLong("modifiedAt", payload.optLong("modified_at", 0L)),
                         mediaIdentity = nonBlank("mediaIdentity") ?: nonBlank("media_identity"),
-                        priority = payload.optInt("priority", 0),
+                        priority = payload.optInt(
+                            "priority",
+                            if (payload.optDouble("lastPlayedAt", payload.optDouble("last_played_at", 0.0)) > 0.0) 150 else 100,
+                        ),
                     )
                 } ?: false
             "extract_local_thumbnail" ->
