@@ -49,6 +49,11 @@ internal object MainEntryPoint {
 
 
 
+    /** Normalized Activity lifecycle notifications replace the legacy Flet lifecycle callback. */
+    fun onActivityLifecycleEvent(eventOrState: Any?) {
+        NativeLifecycleCoordinator.onEvent(eventOrState)
+    }
+
     /** Route selection is one native policy, made only after database validation. */
     internal fun initialRoute(recoveryRequired: Boolean): String =
         if (recoveryRequired) ReiAnixRoutes.RECOVERY else ReiAnixRoutes.HOME
