@@ -760,18 +760,9 @@ internal class NativeMainRuntimePort(
 
     /**
      * Page the canonical SQLite catalog, not the currently visible Compose page.
-     * This preserves the old thumbnail_candidates(after_id, limit=128) behavior
-     * and includes episodes whose cached frame exists but duration still needs repair.
-     */
-    /**
-     * Page the canonical SQLite catalog, not the currently visible Compose page.
-     * Resolve artwork rows in their canonical priority order and skip corrupt images,
-     * just like ArtworkEngine.resolve_local_batch does.
-     */
-    /**
-     * Page the canonical SQLite catalog, not the currently visible Compose page.
-     * Resolve artwork rows in canonical priority order and skip corrupt images,
-     * like ArtworkEngine.resolve_local_batch, without decoding files under the DB lock.
+     * Resolve exact artwork in priority order, skipping corrupt images without decoding
+     * files under the database lock. This mirrors thumbnail_candidates(after_id, limit=128)
+     * and also catches episodes with an existing thumbnail but missing duration.
      */
     private suspend fun loadThumbnailCandidateRows(
         afterId: Long,
