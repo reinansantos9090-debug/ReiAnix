@@ -6352,8 +6352,19 @@ internal class NativeMainRuntimePort(
                 val action = stringValue("action")?.lowercase(Locale.ROOT) ?: return false
                 val requestId = eventRequestId ?: stringValue("requestId")
                 if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_settings")) return false
+                if (payload.optBoolean("nativeHandled", payload.optBoolean("native_handled", false))) {
+                    // Native settings repositories publish a compatibility event after
+                    // committing actions such as artwork-cache clearing. Consume it as
+                    // a projection/acknowledgement only; do not execute the action twice.
+                    recordDiagnostic(
+                        name = "SETTINGS_ACTION_ALREADY_HANDLED_NATIVELY",
+                        requestId = requestId,
+                        result = action,
+                    )
+                    return true
+                }
                 val accepted = dispatchSettingsAction(action, payload, requestId)
-                recordDiagnostic("SETTINGS_ACTION_DISPATCH", requestId = eventRequestId ?: stringValue("requestId"),
+                recordDiagnostic("SETTINGS_ACTION_DISPATCH", requestId = requestId,
                     result = if (accepted) "accepted" else "rejected", context = mapOf("action" to action))
                 accepted
             }
