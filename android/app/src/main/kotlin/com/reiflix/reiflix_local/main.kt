@@ -530,10 +530,16 @@ internal data class NativeMainStorageSnapshot(
     val onboardingDismissed: Boolean,
     val capturedAtMillis: Long,
 ) {
-    val hasAnyAuthorizedSource: Boolean
+    val hasMediaStorePermission: Boolean
         get() = mediaStoreAccess.equals("full", ignoreCase = true) ||
-            mediaStoreAccess.equals("partial", ignoreCase = true) ||
-            broadStorageAccess || configuredSafRoots.isNotEmpty()
+            mediaStoreAccess.equals("partial", ignoreCase = true)
+
+    /** The library index is SAF-root scoped; MediaStore/broad permission alone is not a configured library. */
+    val hasConfiguredLibrarySource: Boolean
+        get() = configuredSafRoots.isNotEmpty()
+
+    val hasAnyAuthorizedSource: Boolean
+        get() = hasMediaStorePermission || broadStorageAccess || hasConfiguredLibrarySource
 }
 
 private data class NativeThumbnailRequest(
@@ -1559,11 +1565,18 @@ internal class NativeMainRuntimePort(
 
     fun hasConfiguredSafFolder(): Boolean = configuredSafTreeUris().isNotEmpty()
 
-    fun hasAvailableMediaSource(): Boolean = storageSnapshot().hasAnyAuthorizedSource
+    fun hasAvailableMediaSource(): Boolean = storageSnapshot().hasConfiguredLibrarySource
+
+    fun hasAnyNativeScanInProgress(): Boolean =
+        NativeScanController.progress.value.values.any { !it.state.isTerminal }
+
+    fun canMutateSafRoots(): Boolean =
+        !hasAnyNativeScanInProgress() &&
+            !activity.nativeStorageOnboardingState.value.phase.equals("folder_picker_open", ignoreCase = true)
 
     fun isStorageOnboardingRequired(): Boolean {
         val snapshot = storageSnapshot()
-        return !snapshot.hasAnyAuthorizedSource &&
+        return !snapshot.hasConfiguredLibrarySource &&
             !snapshot.onboardingPhase.equals("ready", ignoreCase = true) &&
             !snapshot.onboardingDismissed
     }
@@ -2056,17 +2069,25 @@ internal class NativeMainRuntimePort(
     }
 
     /** Port of the explicit SAF actions; selecting or removing a root remains user-driven. */
-    fun requestSafFolderSelection() {
+    fun requestSafFolderSelection(): Boolean {
+        if (!canMutateSafRoots()) {
+            publish(action = "saf_folder_selection", error = "Aguarde a varredura ou a seleção de pasta atual terminar.")
+            return false
+        }
         libraryViewModel.selectSafTree()
         publish(action = "saf_folder_selection")
+        return true
     }
 
-    fun removeConfiguredSafFolder(reference: String) {
+    fun removeConfiguredSafFolder(reference: String): Boolean {
         val normalized = reference.trim()
-        if (normalized.isNotEmpty()) {
-            libraryViewModel.removeSafTree(normalized)
-            publish(action = "remove_saf_folder")
+        if (normalized.isEmpty() || !canMutateSafRoots()) {
+            publish(action = "remove_saf_folder", error = "Aguarde a varredura ou a seleção de pasta atual terminar.")
+            return false
         }
+        libraryViewModel.removeSafTree(normalized)
+        publish(action = "remove_saf_folder")
+        return true
     }
 
     fun dismissNativeStorageOnboarding() {
@@ -2422,10 +2443,7 @@ internal class NativeMainRuntimePort(
                 source = nonBlank("source") ?: "native_action",
             )
             "remove_folder", "remove_saf_tree", "release_tree" ->
-                (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference"))?.let {
-                    removeConfiguredSafFolder(it)
-                    true
-                } ?: false
+                (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference"))?.let(::removeConfiguredSafFolder) ?: false
 
             "set_setting", "compose_settings_set" -> {
                 val key = nonBlank("key") ?: nonBlank("setting_key") ?: return false
