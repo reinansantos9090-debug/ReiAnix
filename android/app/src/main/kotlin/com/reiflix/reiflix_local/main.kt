@@ -7222,6 +7222,15 @@ internal class NativeMainRuntimePort(
                 }
                 val playerErrorMessage = stringValue("message", "error")
                     ?: "Não foi possível reproduzir este arquivo localmente."
+                // Match the legacy main.py error path: a failure for the current
+                // launch invalidates an in-flight NEXT/PREVIOUS transition.
+                val playerErrorRequestId = eventRequestId ?: stringValue("requestId")
+                if (
+                    !playerErrorRequestId.isNullOrBlank() &&
+                    mutableSnapshot.value.activePlayerRequestId == playerErrorRequestId
+                ) {
+                    cancelPlayerTransition("player_error")
+                }
                 recordDiagnostic(
                     name = "PLAYER_RUNTIME_ERROR",
                     severity = "ERROR",
