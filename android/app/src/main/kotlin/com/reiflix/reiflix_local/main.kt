@@ -1307,6 +1307,7 @@ internal class NativeMainRuntimePort(
     }
 
     fun onRuntimeReconnect() {
+        resumeRuntimeTasks()
         ensureNativeCommandDispatcher()
         settingsViewModel.refresh()
         libraryViewModel.refresh()
