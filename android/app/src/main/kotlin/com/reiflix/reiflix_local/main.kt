@@ -3202,21 +3202,49 @@ internal class NativeMainRuntimePort(
         fun eventType(item: NativeMailboxQueueItem): String =
             item.envelope.optString("eventType", item.envelope.optString("type", "")).trim()
 
+        fun pythonTruthy(value: Any?): Boolean = when (value) {
+            null, org.json.JSONObject.NULL -> false
+            is Boolean -> value
+            is Number -> value.toDouble() != 0.0
+            is String -> value.isNotEmpty()
+            is org.json.JSONArray -> value.length() > 0
+            is org.json.JSONObject -> value.length() > 0
+            else -> true
+        }
+
+        fun truthyText(source: org.json.JSONObject, vararg keys: String): String {
+            var selected: Any? = null
+            for (key in keys) {
+                val candidate = source.opt(key)
+                if (pythonTruthy(candidate)) {
+                    selected = candidate
+                    break
+                }
+            }
+            return when (selected) {
+                null, org.json.JSONObject.NULL -> ""
+                is Boolean -> if (selected) "True" else "False"
+                else -> selected.toString()
+            }.trim()
+        }
+
         fun identity(item: NativeMailboxQueueItem): List<String> {
             val envelope = item.envelope
             val payload = envelope.optJSONObject("payload") ?: org.json.JSONObject()
-            fun value(key: String): String = payload.optString(key, "").trim()
-            val requestId = envelope.optString("requestId", "").trim()
-                .ifBlank { payload.optString("requestId", "").trim() }
-            val generation = value("generation").ifBlank { value("playerGeneration") }
             return listOf(
-                value("playerSessionId"),
-                value("activityInstanceId"),
-                requestId,
-                value("episodeId"),
-                value("uri"),
-                generation,
-                value("transitionGeneration"),
+                truthyText(payload, "playerSessionId"),
+                truthyText(payload, "activityInstanceId"),
+                truthyText(envelope, "requestId").ifEmpty {
+                    // Python selects requestId before stripping whitespace. Keep
+                    // fallback semantics exact, including a truthy whitespace-only ID.
+                    val topLevel = envelope.opt("requestId")
+                    if (pythonTruthy(topLevel)) truthyText(envelope, "requestId")
+                    else truthyText(payload, "requestId")
+                },
+                truthyText(payload, "episodeId"),
+                truthyText(payload, "uri"),
+                truthyText(payload, "generation", "playerGeneration"),
+                truthyText(payload, "transitionGeneration"),
             )
         }
 
