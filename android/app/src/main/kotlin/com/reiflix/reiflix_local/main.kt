@@ -3068,6 +3068,256 @@ internal class NativeMainRuntimePort(
                     result = reason, context = mapOf("event_type" to type))
                 true
             }
+            "storage_capabilities" -> {
+                val capabilities = payload.optJSONObject("capabilities") ?: payload
+                val publishedAt = payload.optLong(
+                    "publishedAtMs",
+                    payload.optLong("published_at_ms", payload.optLong("createdAt", 0L)),
+                )
+                refreshAuthoritativeStorageSnapshot(capabilities, publishedAt)
+            }
+            "saf_inventory", "saf_document_identity_change", "saf_library_scan_complete" -> {
+                // Native Kotlin remains the only owner of persisted SAF grants and index writes.
+                // These events invalidate the view projection and never add/remove a source here.
+                settingsViewModel.refresh()
+                libraryViewModel.refreshNativeFolders()
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = "NATIVE_SAF_PROJECTION_REFRESH",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    scanId = stringValue("scanId", "scan_id"),
+                    result = type,
+                    context = mapOf("inventory_complete" to payload.optBoolean("complete", false)),
+                )
+                true
+            }
+            "saf_scan_progress", "mediastore_scan_progress", "broad_storage_scan_progress",
+            "saf_scan", "mediastore_scan", "broad_storage_scan",
+            "saf_scan_batch", "mediastore_scan_batch", "broad_storage_scan_batch",
+            "scan_request" -> {
+                val scanId = stringValue("scanId", "scan_id")
+                val source = stringValue("source", "sourceKind", "source_kind")
+                val operationState = stringValue("operationState", "status", "generationStatus")
+                recordDiagnostic(
+                    name = "NATIVE_SCAN_EVENT_OBSERVED",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    scanId = scanId,
+                    severity = if (operationState.equals("FAILED", true) || operationState.equals("REVOKED", true)) "WARN" else "INFO",
+                    result = operationState ?: type,
+                    context = mapOf(
+                        "event_type" to type,
+                        "source" to source,
+                        "canonical_writer" to "NativeScanController",
+                        "payload_bytes" to payload.toString().length,
+                    ),
+                )
+                // NativeScanController emits the authoritative StateFlow snapshots;
+                // re-ingesting a reported batch here would create a second writer.
+                true
+            }
+            "thumbnail_ready", "thumbnail_error" -> {
+                libraryViewModel.queryNativeArtwork()
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = if (type == "thumbnail_ready") "NATIVE_THUMBNAIL_READY" else "NATIVE_THUMBNAIL_ERROR",
+                    severity = if (type == "thumbnail_error") "WARN" else "INFO",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = stringValue("path", "uri", "reason", "error") ?: type,
+                    context = mapOf("media_identity" to stringValue("mediaIdentity", "media_identity")),
+                )
+                true
+            }
+            "google_account", "google_signed_out", "google_cancelled", "google_error", "google_sign_in_started" -> {
+                val normalizedState = when (type) {
+                    "google_account" -> "connected"
+                    "google_signed_out" -> "disconnected"
+                    "google_cancelled", "google_error", "google_sign_in_started" -> null
+                    else -> null
+                }
+                if (normalizedState != null) setAccountState(normalizedState, "native_$type")
+                settingsViewModel.refresh()
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = "NATIVE_ACCOUNT_EVENT",
+                    severity = if (type == "google_error") "WARN" else "INFO",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = type,
+                    error = stringValue("error", "message")?.let(::IllegalStateException),
+                    context = mapOf("has_profile" to (payload.optJSONObject("profile") != null)),
+                )
+                true
+            }
+            "compose_settings_bulk_applied" -> {
+                val requestId = eventRequestId ?: stringValue("requestId") ?: return false
+                val values = payload.optJSONObject("settings") ?: return false
+                val iterator = values.keys()
+                val settings = linkedMapOf<String, String>()
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    val raw = values.opt(key) ?: return false
+                    settings[key] = raw.toString()
+                }
+                if (settings.isEmpty()) return false
+                val nativePersisted = payload.optBoolean("nativePersisted", payload.optBoolean("native_persisted", true))
+                val accepted = if (nativePersisted) {
+                    settingsViewModel.refresh()
+                    publishOperationResult(
+                        requestId = requestId,
+                        action = "settings_bulk_applied",
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        payload = org.json.JSONObject().put("refreshed", true).put("settingsCount", settings.size),
+                    )
+                    true
+                } else {
+                    applySettingsAtomically(settings)
+                }
+                recordDiagnostic(
+                    name = "SETTINGS_RUNTIME_BULK_APPLY",
+                    requestId = requestId,
+                    result = if (accepted) "accepted" else "rejected",
+                    context = mapOf("settings_count" to settings.size, "native_persisted" to nativePersisted),
+                )
+                accepted
+            }
+            "compose_settings_native_account_changed" -> {
+                val requestId = eventRequestId ?: stringValue("requestId") ?: return false
+                settingsViewModel.refresh()
+                libraryViewModel.refresh()
+                setAccountState(
+                    stringValue("accountState", "account_state", "state") ?: mutableSnapshot.value.accountState,
+                    "native_account_changed",
+                )
+                completeNativeOperation(requestId, "account_changed")
+            }
+            "compose_settings_native_backup_restored" -> {
+                val requestId = eventRequestId ?: stringValue("requestId") ?: return false
+                settingsViewModel.refresh()
+                val reconciled = reconcileRestoredFileAvailability()
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = "NATIVE_BACKUP_RESTORE_PROJECTION_REFRESH",
+                    requestId = requestId,
+                    result = if (reconciled) "reconciliation_queued" else "catalog_refreshed",
+                )
+                completeNativeOperation(requestId, "backup_restored")
+            }
+            "performance_metrics", "performance_player" -> {
+                recordDiagnostic(
+                    name = "NATIVE_PERFORMANCE_EVENT",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
+                    result = type,
+                    context = mapOf("payload" to payload.toString().take(2000)),
+                )
+                true
+            }
+            "player_opened" -> {
+                val request = eventRequestId ?: stringValue("requestId") ?: return false
+                val sessionId = stringValue("playerSessionId", "player_session_id", "sessionId")
+                    ?: return false
+                notePlayerSession(
+                    requestId = request,
+                    sessionId = sessionId,
+                    transitionGeneration = payload.optLong("transitionGeneration", payload.optLong("generation", 0L)),
+                )
+                setActivePlayerMedia(
+                    longValue("episodeId", "episode_id"),
+                    longValue("animeId", "anime_id"),
+                    stringValue("uri", "mediaUri", "media_uri"),
+                )
+                recordDiagnostic(
+                    name = "PLAYER_OPENED_EVENT",
+                    requestId = request,
+                    sessionId = sessionId,
+                    result = "session_active",
+                )
+                true
+            }
+            "player_paused", "player_completed" -> {
+                val validation = validatePlayerCallback(
+                    eventRequestId,
+                    payload,
+                    requireActive = true,
+                    expectedEpisodeId = longValue("episodeId", "episode_id"),
+                    expectedAnimeId = longValue("animeId", "anime_id"),
+                    expectedMediaId = stringValue("mediaId", "media_id"),
+                )
+                if (!validation.isCurrent) {
+                    recordDiagnostic(
+                        name = "PLAYER_CALLBACK_REJECTED",
+                        severity = "WARN",
+                        requestId = eventRequestId,
+                        result = validation.reason,
+                    )
+                    return false
+                }
+                val episodeId = longValue("episodeId", "episode_id") ?: return false
+                val position = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
+                val duration = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
+                if (position < 0L) return false
+                savePlaybackProgress(
+                    episodeId = episodeId,
+                    positionMs = position,
+                    durationMs = duration.takeIf { it > 0L },
+                    completed = type == "player_completed" || payload.optBoolean("completed", false),
+                )
+            }
+            "player_mark_watched", "player_mark_unwatched" -> {
+                val validation = validatePlayerCallback(
+                    eventRequestId,
+                    payload,
+                    requireActive = true,
+                    expectedEpisodeId = longValue("episodeId", "episode_id"),
+                    expectedAnimeId = longValue("animeId", "anime_id"),
+                    expectedMediaId = stringValue("mediaId", "media_id"),
+                )
+                if (!validation.isCurrent) {
+                    recordDiagnostic(
+                        name = "PLAYER_CALLBACK_REJECTED",
+                        severity = "WARN",
+                        requestId = eventRequestId,
+                        result = validation.reason,
+                    )
+                    return false
+                }
+                val episodeId = longValue("episodeId", "episode_id") ?: return false
+                markEpisodeWatchedTracked(episodeId, type == "player_mark_watched")
+            }
+            "player_error" -> {
+                val validation = validatePlayerCallback(eventRequestId, payload, requireActive = true)
+                if (!validation.isCurrent) {
+                    recordDiagnostic(
+                        name = "PLAYER_CALLBACK_REJECTED",
+                        severity = "WARN",
+                        requestId = eventRequestId,
+                        result = validation.reason,
+                    )
+                    return false
+                }
+                recordDiagnostic(
+                    name = "PLAYER_RUNTIME_ERROR",
+                    severity = "ERROR",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    sessionId = stringValue("playerSessionId", "sessionId"),
+                    result = stringValue("errorCode", "code", "reason"),
+                    error = IllegalStateException(stringValue("message", "error") ?: "Native player error"),
+                    context = mapOf("episode_id" to longValue("episodeId", "episode_id")),
+                )
+                true
+            }
+            "player_next_request", "player_previous_request" -> {
+                // In a native Media3 session the Activity owns adjacent-episode navigation;
+                // do not dispatch a second launch from a mailbox projection callback.
+                recordDiagnostic(
+                    name = if (type == "player_next_request") "PLAYER_NEXT_ALREADY_NATIVE" else "PLAYER_PREVIOUS_ALREADY_NATIVE",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
+                    result = "delegated_to_native_player_activity",
+                    context = mapOf("transition_direction" to if (type == "player_next_request") "NEXT" else "PREVIOUS"),
+                )
+                true
+            }
             "player_progress", "playback_progress" -> {
                 if (!validatePlayerCallback(eventRequestId, payload, requireActive = true).isCurrent) {
                     recordDiagnostic("PLAYER_CALLBACK_REJECTED", severity = "WARN",
