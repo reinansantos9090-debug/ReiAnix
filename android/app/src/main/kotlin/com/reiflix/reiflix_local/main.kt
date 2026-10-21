@@ -4088,7 +4088,20 @@ internal class NativeMainRuntimePort(
                 cancelBackgroundTasksForLane("thumbnail")
                 val result = metadataMaintenanceMutex.withLock {
                     thumbnailMaintenanceMutex.withLock {
-                        withContext(Dispatchers.IO) { backupService.restoreBackup(archive) }
+                        withContext(Dispatchers.IO) {
+                            // MainActivity starts SAF/broad scans through NativeScanController
+                            // directly, outside this runtime adapter. Serialize this final
+                            // preflight and restore against the controller's synchronized
+                            // begin/launch methods so a new scan cannot start during restore.
+                            synchronized(NativeScanController) {
+                                if (NativeScanController.progress.value.values.any { !it.state.isTerminal }) {
+                                    throw IllegalStateException(
+                                        "Uma varredura foi iniciada antes da reserva exclusiva do restore.",
+                                    )
+                                }
+                                backupService.restoreBackup(archive)
+                            }
+                        }
                     }
                 }
                 libraryViewModel.refresh()
