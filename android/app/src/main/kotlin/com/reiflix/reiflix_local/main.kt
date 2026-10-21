@@ -29,6 +29,7 @@ import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import java.util.PriorityQueue
+import java.util.LinkedHashSet
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.CompletableDeferred
@@ -566,6 +567,7 @@ internal class NativeMainRuntimePort(
     private val composeHost: ReiAnixComposeLibraryHost,
 ) {
     private val lock = Any()
+    private val seenProjectionEventIds = LinkedHashSet<String>()
     private val jobs = linkedSetOf<Job>()
     private val jobLanes = mutableMapOf<Job, String>()
     private val maxBackgroundTasksPerLane = 8
@@ -2312,6 +2314,7 @@ internal class NativeMainRuntimePort(
         const val HOME_REFRESH_TERMINAL_SETTLE_MS = 250L
         const val HOME_REFRESH_MONITOR_INTERVAL_MS = 100L
         const val MAX_PENDING_THUMBNAIL_REQUESTS = 512
+        const val MAX_SEEN_PROJECTION_EVENTS = 512
     }
 
     fun beginHomeRefresh(requestId: String, refreshId: String = requestId, source: String = "native"): Boolean =
@@ -2602,6 +2605,232 @@ internal class NativeMainRuntimePort(
                 false
             }
         }
+    }
+
+    /**
+     * Translates the legacy mailbox event switch to an idempotent Kotlin event
+     * boundary. Canonical scan/index/SQLite writes are never replayed here; only
+     * projection refreshes and explicitly non-native-persisted settings commands
+     * can be applied. Duplicate event IDs are ignored within this process.
+     */
+    fun dispatchNativeEvent(
+        eventType: String,
+        payload: org.json.JSONObject,
+        eventRequestId: String? = null,
+        eventId: String? = null,
+    ): Boolean {
+        val type = eventType.trim().lowercase(Locale.ROOT)
+        if (type.isBlank()) return false
+        val normalizedEventId = eventId?.trim().orEmpty()
+        if (normalizedEventId.isNotEmpty()) {
+            synchronized(lock) {
+                if (!seenProjectionEventIds.add(normalizedEventId)) return true
+                while (seenProjectionEventIds.size > MAX_SEEN_PROJECTION_EVENTS) {
+                    val iterator = seenProjectionEventIds.iterator()
+                    if (iterator.hasNext()) {
+                        iterator.next()
+                        iterator.remove()
+                    } else break
+                }
+            }
+        }
+        fun longValue(vararg keys: String): Long? {
+            for (key in keys) {
+                val value = payload.optLong(key, 0L)
+                if (value > 0L) return value
+            }
+            return null
+        }
+        fun stringValue(vararg keys: String): String? {
+            for (key in keys) {
+                val value = payload.optString(key, "").trim()
+                if (value.isNotEmpty()) return value
+            }
+            return null
+        }
+        return when (type) {
+            "anilist_metadata_committed" -> {
+                val animeId = longValue("animeId", "anime_id") ?: return false
+                refreshCurrentDetails(animeId)
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = "ANILIST_METADATA_PROJECTION_REFRESH",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = "canonical_write_already_committed",
+                    context = mapOf("anime_id" to animeId),
+                )
+                true
+            }
+            "native_genres_committed" -> {
+                val count = payload.optInt("changedCount", payload.optInt("changed_count", 0))
+                if (count <= 0) return false
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = "NATIVE_GENRES_PROJECTION_REFRESH",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = "canonical_bulk_write_already_committed",
+                    context = mapOf("changed_count" to count),
+                )
+                true
+            }
+            "artwork_published" -> {
+                val event = stringValue("event")?.uppercase(Locale.ROOT) ?: return false
+                val entity = stringValue("entity_type", "entityType")?.lowercase(Locale.ROOT) ?: return false
+                val artworkType = stringValue("artwork_type", "artworkType") ?: return false
+                val entityId = longValue("entity_id", "entityId") ?: return false
+                val path = stringValue("local_path", "localPath") ?: return false
+                val localFile = runCatching { File(path).canonicalFile }.getOrNull() ?: return false
+                if (event != "ARTWORK_PUBLISHED" ||
+                    entity !in setOf("anime", "movie", "episode", "season", "special") ||
+                    !localFile.isFile
+                ) {
+                    recordDiagnostic(
+                        name = "ARTWORK_PUBLICATION_REJECTED",
+                        severity = "WARN",
+                        result = "invalid_local_publication",
+                        context = mapOf("entity_type" to entity, "entity_id" to entityId, "artwork_type" to artworkType),
+                    )
+                    return false
+                }
+                if (entity in setOf("anime", "movie")) libraryViewModel.refreshDetails(entityId)
+                libraryViewModel.queryNativeArtwork()
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = "ARTWORK_PROJECTION_REFRESH",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = "local_artwork_published",
+                    context = mapOf("entity_type" to entity, "entity_id" to entityId, "artwork_type" to artworkType),
+                )
+                true
+            }
+            "compose_settings_set" -> {
+                val key = stringValue("key") ?: return false
+                val value = if (payload.has("value")) payload.opt("value")?.toString().orEmpty() else ""
+                if (ReiAnixSettingsContract.definitions[key] == null) return false
+                val requestId = eventRequestId ?: stringValue("requestId")
+                if (payload.optBoolean("nativePersisted", payload.optBoolean("native_persisted", false))) {
+                    settingsViewModel.refresh()
+                    recordDiagnostic("SETTINGS_RUNTIME_APPLY", requestId = requestId,
+                        result = "native_persisted_projection_refresh", context = mapOf("key" to key))
+                    true
+                } else {
+                    val accepted = setSettingSerialized(key, value)
+                    recordDiagnostic("SETTINGS_COMMAND_RECEIVED", requestId = requestId,
+                        result = if (accepted) "queued" else "rejected", context = mapOf("key" to key))
+                    accepted
+                }
+            }
+            "compose_settings_action" -> {
+                val action = stringValue("action")?.lowercase(Locale.ROOT) ?: return false
+                val accepted = dispatchSettingsAction(action, payload)
+                recordDiagnostic("SETTINGS_ACTION_DISPATCH", requestId = eventRequestId ?: stringValue("requestId"),
+                    result = if (accepted) "accepted" else "rejected", context = mapOf("action" to action))
+                accepted
+            }
+            "compose_account_action" -> {
+                val action = stringValue("action")?.lowercase(Locale.ROOT) ?: return false
+                if (action !in setOf("login", "logout", "switch", "switch_account")) return false
+                requestAccountActionTracked(if (action == "switch") "switch_account" else action)
+            }
+            "compose_library_command" -> {
+                val action = stringValue("action") ?: return false
+                dispatchMainAction(action, payload)
+            }
+            "saf_permission", "saf_released", "saf_error", "storage_status", "volume_changed" -> {
+                settingsViewModel.refresh()
+                libraryViewModel.refresh()
+                val reason = stringValue("reason", "state", "status") ?: type
+                recordDiagnostic("NATIVE_STORAGE_PROJECTION_REFRESH", requestId = eventRequestId ?: stringValue("requestId"),
+                    result = reason, context = mapOf("event_type" to type))
+                true
+            }
+            "player_progress", "playback_progress" -> {
+                if (!validatePlayerCallback(eventRequestId, payload, requireActive = true).isCurrent) {
+                    recordDiagnostic("PLAYER_CALLBACK_REJECTED", severity = "WARN",
+                        requestId = eventRequestId, result = "stale_progress_callback")
+                    return false
+                }
+                val episodeId = longValue("episodeId", "episode_id") ?: return false
+                val positionMs = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
+                val durationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
+                if (positionMs < 0L) return false
+                savePlaybackProgress(
+                    episodeId = episodeId,
+                    positionMs = positionMs,
+                    durationMs = durationMs.takeIf { it > 0L },
+                    completed = payload.optBoolean("completed", false),
+                )
+            }
+            "player_exited", "player_exit" -> {
+                val requestId = eventRequestId ?: stringValue("requestId") ?: return false
+                notePlayerExit(
+                    requestId = requestId,
+                    atMs = payload.optLong("atMs", payload.optLong("at_ms", System.currentTimeMillis())),
+                    sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
+                    activityInstanceId = stringValue("activityInstanceId", "activity_instance_id"),
+                )
+                true
+            }
+            "diagnostic" -> {
+                recordDiagnostic(
+                    name = stringValue("event", "name") ?: "NATIVE_MAILBOX_DIAGNOSTIC",
+                    severity = stringValue("severity") ?: "INFO",
+                    result = stringValue("result"),
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    sessionId = stringValue("sessionId", "session_id"),
+                    context = mapOf("event_type" to type),
+                )
+                true
+            }
+            else -> false
+        }
+    }
+
+    fun dispatchSettingsAction(action: String, payload: org.json.JSONObject = org.json.JSONObject()): Boolean {
+        val normalized = action.trim().lowercase(Locale.ROOT)
+        return when (normalized) {
+            "reset_player" -> resetSettingsByPrefixes(setOf("player.", "gestures.", "audio."))
+            "reset_all_settings" -> resetSettingsByPrefixes(emptySet())
+            "clear_anilist_cache" -> {
+                // The current native AniList service intentionally does not expose an
+                // unscoped cache-delete operation. Refresh known mappings without
+                // mutating catalog rows a second time.
+                reconcileUnmatchedAniListMetadata()
+            }
+            "settings_export" -> exportSettingsToPrivateFile()
+            "settings_import" -> stringValueFromPayload(payload, "path", "filePath", "file_path")
+                ?.let { importSettingsFromPrivateFile(File(it)) } ?: false
+            "select_saf" -> requestSafFolderSelection()
+            "request_media_access" -> requestMediaAccess()
+            "check_storage_access" -> checkStorageAccess()
+            "open_broad_storage_settings" -> openBroadStorageSettings()
+            "backup_create" -> createBackup()
+            "backup_restore" -> stringValueFromPayload(payload, "archivePath", "path", "filePath")
+                ?.let(::resolvePrivateBackupFile)?.let(::restoreBackup) ?: false
+            "backup_integrity" -> checkDatabaseIntegrity()
+            "backup_reconcile" -> reconcileRestoredFileAvailability()
+            "diagnostic_export" -> exportDiagnosticsJson()
+            "dismiss_storage_onboarding" -> {
+                dismissNativeStorageOnboarding()
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun resetSettingsByPrefixes(prefixes: Set<String>): Boolean {
+        val defaults = ReiAnixSettingsContract.definitions
+            .filterKeys { key -> prefixes.isEmpty() || prefixes.any(key::startsWith) }
+            .mapValues { (_, definition) -> definition.defaultValue }
+        return applySettingsAtomically(defaults)
+    }
+
+    private fun stringValueFromPayload(payload: org.json.JSONObject, vararg keys: String): String? {
+        for (key in keys) {
+            val value = payload.optString(key, "").trim()
+            if (value.isNotEmpty()) return value
+        }
+        return null
     }
 
     fun onLifecycleEvent(eventOrState: Any?) {
