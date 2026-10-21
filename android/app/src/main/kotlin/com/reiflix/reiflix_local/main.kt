@@ -4019,6 +4019,64 @@ internal class NativeMainRuntimePort(
     }
 
     /**
+     * Normalize the legacy request_missing_thumbnail(item) payload without reviving
+     * the Python bridge. Missing episodes are rejected and default priority still
+     * favors previously played media.
+     */
+    private fun enqueueThumbnailFromLegacyPayload(payload: org.json.JSONObject): Boolean {
+        val nestedEpisode = payload.optJSONObject("current_episode")
+            ?: payload.optJSONObject("currentEpisode")
+            ?: payload.optJSONObject("episode")
+        val episode = if (payload.optString("path", "").trim().isNotEmpty()) payload else nestedEpisode ?: payload
+        if (payload.optBoolean("missing", false) || episode.optBoolean("missing", false)) return false
+
+        fun firstText(vararg keys: String): String? {
+            for (key in keys) {
+                val top = payload.optString(key, "").trim()
+                if (top.isNotEmpty()) return top
+                val nested = episode.optString(key, "").trim()
+                if (nested.isNotEmpty()) return nested
+            }
+            return null
+        }
+
+        val reference = firstText("uri", "path", "mediaUri", "media_uri") ?: return false
+        val size = payload.optLong(
+            "size",
+            episode.optLong("file_size", episode.optLong("fileSize", 0L)),
+        ).coerceAtLeast(0L)
+        val modifiedAt = payload.optLong(
+            "modifiedAt",
+            payload.optLong(
+                "modified_at",
+                episode.optLong("modifiedAt", episode.optLong("modified_at", 0L)),
+            ),
+        ).coerceAtLeast(0L)
+        val mediaIdentity = firstText("mediaIdentity", "media_identity")
+        val lastPlayedAt = payload.optDouble(
+            "lastPlayedAt",
+            payload.optDouble(
+                "last_played_at",
+                episode.optDouble("lastPlayedAt", episode.optDouble("last_played_at", 0.0)),
+            ),
+        )
+        val priority = if (payload.has("priority") && !payload.isNull("priority")) {
+            payload.optInt("priority", 100)
+        } else if (lastPlayedAt.isFinite() && lastPlayedAt > 0.0) {
+            150
+        } else {
+            100
+        }
+        return enqueueLocalThumbnail(
+            reference = reference,
+            size = size,
+            modifiedAt = modifiedAt,
+            mediaIdentity = mediaIdentity,
+            priority = priority,
+        )
+    }
+
+    /**
      * Typed replacement for the legacy main.py action/event branching. Values
      * are validated at this boundary, and domain writes still run in their
      * canonical Kotlin service. Unknown actions are rejected, not acknowledged.
@@ -4281,19 +4339,7 @@ internal class NativeMainRuntimePort(
             } ?: false
             "request_pending_artwork" -> requestPendingArtwork()
             "clear_artwork_cache" -> clearManagedArtworkCache()
-            "request_missing_thumbnail", "request_thumbnail" ->
-                (nonBlank("uri") ?: nonBlank("path") ?: nonBlank("mediaUri"))?.let {
-                    enqueueLocalThumbnail(
-                        reference = it,
-                        size = payload.optLong("size", 0L),
-                        modifiedAt = payload.optLong("modifiedAt", payload.optLong("modified_at", 0L)),
-                        mediaIdentity = nonBlank("mediaIdentity") ?: nonBlank("media_identity"),
-                        priority = payload.optInt(
-                            "priority",
-                            if (payload.optDouble("lastPlayedAt", payload.optDouble("last_played_at", 0.0)) > 0.0) 150 else 100,
-                        ),
-                    )
-                } ?: false
+            "request_missing_thumbnail", "request_thumbnail" -> enqueueThumbnailFromLegacyPayload(payload)
             "extract_local_thumbnail" ->
                 (nonBlank("uri") ?: nonBlank("path") ?: nonBlank("mediaUri"))?.let {
                     extractLocalThumbnail(
