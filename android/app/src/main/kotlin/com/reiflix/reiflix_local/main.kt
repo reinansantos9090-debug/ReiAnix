@@ -9,6 +9,7 @@ import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
 import java.util.UUID
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
+import com.reiflix.reiflix_local.data.sqlite.getAnimeByLookupTitle
 import java.io.File
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
@@ -3765,11 +3766,35 @@ internal class NativeMainRuntimePort(
             "refresh_anilist_metadata", "refresh_current_metadata", "refresh_metadata" ->
                 positiveLong("animeId")?.let(::refreshAniListMetadata) ?: false
             "resolve_match", "associate_anilist" -> {
-                val animeId = positiveLong("animeId") ?: positiveLong("anime_id") ?: return false
                 val remoteId = positiveLong("anilistId") ?: positiveLong("anilist_id") ?: return false
+                val animeId = positiveLong("animeId") ?: positiveLong("anime_id")
+                val lookupTitle = nonBlank("lookupTitle") ?: nonBlank("lookup_title")
+                if (animeId == null && lookupTitle.isNullOrBlank()) return false
                 launchTracked("associate_anilist", lane = "metadata") {
-                    val result = dependencies.aniListIntegrationService.associateManually(animeId, remoteId.toInt())
-                    publish(action = "associate_anilist", transform = { it.copy(lastResultJson = result.toString()) })
+                    val resolvedAnimeId = animeId
+                        ?: dependencies.sqliteLibraryRepository.getAnimeByLookupTitle(lookupTitle!!)
+                            ?.id
+                        ?: throw IllegalArgumentException("A chave local do anime não existe no catálogo SQLite.")
+                    val result = dependencies.aniListIntegrationService.associateManually(
+                        resolvedAnimeId,
+                        remoteId.toInt(),
+                    )
+                    if (result is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure) {
+                        throw IllegalStateException(result.error.toString())
+                    }
+                    libraryViewModel.refreshDetails(resolvedAnimeId)
+                    libraryViewModel.refresh()
+                    settingsViewModel.refresh()
+                    publish(
+                        action = "associate_anilist",
+                        transform = { it.copy(lastResultJson = result.toString(), selectedAnimeId = resolvedAnimeId) },
+                    )
+                    recordDiagnostic(
+                        name = "ANILIST_MANUAL_ASSOCIATION_COMPLETED",
+                        requestId = requestId,
+                        result = "associated",
+                        context = mapOf("anime_id" to resolvedAnimeId, "anilist_id" to remoteId),
+                    )
                 }
             }
             "reconcile_unmatched_metadata" -> reconcileUnmatchedAniListMetadata()
