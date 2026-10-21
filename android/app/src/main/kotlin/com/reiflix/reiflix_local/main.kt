@@ -522,6 +522,15 @@ internal data class NativeMainRuntimeSnapshot(
 
 internal data class NativePlayerCallbackValidation(val isCurrent: Boolean, val reason: String = "")
 
+internal data class NativeMainViewShell(
+    val route: String,
+    val viewRoute: String,
+    val key: String,
+    val generation: Long,
+    val stateSignature: String,
+    val settingsPath: List<String> = emptyList(),
+)
+
 internal data class NativeMainOperationResult(
     val requestId: String,
     val action: String,
@@ -2910,6 +2919,147 @@ internal class NativeMainRuntimePort(
         }
     }
 
+    /** Native Compose shell descriptor replacing the Flet View/Control cache. */
+    fun viewShell(
+        route: String,
+        viewRoute: String = route,
+        key: String = route,
+        settingsPath: List<String> = emptyList(),
+    ): NativeMainViewShell {
+        val normalizedRoute = routeForScreen(route).ifBlank { route.trim() }.ifBlank { ReiAnixRoutes.HOME }
+        val normalizedViewRoute = routeForScreen(viewRoute).ifBlank { viewRoute.trim() }.ifBlank { normalizedRoute }
+        return NativeMainViewShell(
+            route = normalizedRoute,
+            viewRoute = normalizedViewRoute,
+            key = key.trim().ifBlank { normalizedViewRoute },
+            generation = mutableSnapshot.value.generation,
+            stateSignature = renderSignature(),
+            settingsPath = settingsPath.map { it.trim() }.filter { it.isNotEmpty() },
+        )
+    }
+
+    fun buildScreen(
+        route: String,
+        force: Boolean = false,
+        settingsPathOverride: List<String>? = null,
+    ): Boolean {
+        if (settingsPathOverride != null) {
+            setSettingsUiPreference("settings_path", settingsPathOverride)
+        }
+        return renderCurrent(route, force, "build_screen")
+    }
+
+    /** Versioned durable-state contract translated from _navigation_state_payload. */
+    fun loadNavigationState(): NativeMainUiPreferences = mutableUiPreferences.value
+
+    fun navigationStatePayload(): org.json.JSONObject =
+        preferencePayload(mutableUiPreferences.value)
+
+    fun writeNavigationState(payload: org.json.JSONObject): Boolean {
+        fun readMap(key: String): Map<String, Any?> {
+            val objectValue = payload.optJSONObject(key) ?: return emptyMap()
+            val target = linkedMapOf<String, Any?>()
+            val iterator = objectValue.keys()
+            while (iterator.hasNext()) {
+                val name = iterator.next()
+                val item = objectValue.opt(name)
+                if (item != null && item !== org.json.JSONObject.NULL) target[name] = item
+            }
+            return target
+        }
+        val next = NativeMainUiPreferences(
+            homeState = readMap("home_state"),
+            organizeState = readMap("organize_state"),
+            settingsState = readMap("settings_state"),
+        )
+        mutableUiPreferences.value = next
+        return flushUiPreferences()
+    }
+
+    fun persistNavigationState(): Boolean = flushUiPreferences()
+
+    fun flushNavigationState(): Boolean = flushUiPreferences()
+
+    /** Navigation route/back stack is process-local; clearing it never touches catalog data. */
+    fun clearPersistedNavigationState() {
+        clearPersistedNavigationState()
+        publish(action = "clear_navigation_state")
+    }
+
+    fun handleFletViewPop(): Boolean = handleNativeBack()
+
+    fun handlePageDisconnect() = onRuntimeDisconnect()
+    fun handlePageConnect() = onRuntimeReconnect()
+    fun handleAppLifecycleStateChange(eventOrState: Any?) = onLifecycleEvent(eventOrState)
+
+    fun scanCoordinatorStateChanged(snapshots: Collection<ScanProgressSnapshot>) =
+        updateScanUiState(snapshots)
+
+    fun publishHomeRefreshState(): org.json.JSONObject {
+        val state = HomeRefreshCoordinator.state.value
+        return org.json.JSONObject()
+            .put("active", state.active)
+            .put("phase", state.phase.name)
+            .put("requestId", state.requestId ?: org.json.JSONObject.NULL)
+            .put("refreshId", state.refreshId ?: org.json.JSONObject.NULL)
+            .put("source", state.source ?: org.json.JSONObject.NULL)
+            .put("scanStarted", state.scanStarted)
+            .put("scanTerminal", state.scanTerminal)
+            .put("catalogUpdated", state.catalogUpdated)
+            .put("terminalReason", state.terminalReason ?: org.json.JSONObject.NULL)
+            .put("startedAtMillis", state.startedAtMillis ?: org.json.JSONObject.NULL)
+    }
+
+    fun homeRefreshUiUpdated() {
+        publish(action = "home_refresh_ui_updated")
+    }
+
+    fun setHomeRefreshPhase(
+        phase: String,
+        requestId: String,
+        reason: String? = null,
+        refreshId: String = requestId,
+        source: String = "native",
+    ): Boolean {
+        val normalized = phase.trim().uppercase(Locale.ROOT)
+        val current = HomeRefreshCoordinator.state.value
+        return when (normalized) {
+            "IDLE" -> {
+                if (current.active && current.requestId == requestId) {
+                    HomeRefreshCoordinator.cancel(requestId, reason ?: "reset_to_idle")
+                } else true
+            }
+            "REQUESTED" -> HomeRefreshCoordinator.begin(requestId, refreshId, source)
+            "RUNNING", "SCANNING" -> {
+                if (!current.active) HomeRefreshCoordinator.begin(requestId, refreshId, source)
+                HomeRefreshCoordinator.markScanStarted(requestId)
+            }
+            "CATALOG_UPDATING", "SCAN_TERMINAL" ->
+                HomeRefreshCoordinator.markScanTerminal(requestId)
+            "UI_COMMIT", "CATALOG_UPDATED" ->
+                HomeRefreshCoordinator.markCatalogUpdated(requestId)
+            "SUCCESS", "COMPLETED" -> HomeRefreshCoordinator.complete(requestId)
+            "ERROR", "FAILED" -> HomeRefreshCoordinator.fail(requestId, reason ?: "failed")
+            "CANCELLED", "CANCELED" -> HomeRefreshCoordinator.cancel(requestId, reason ?: "cancelled")
+            else -> false
+        }
+    }
+
+    fun setHomeRefreshError(requestId: String, reason: String): Boolean =
+        HomeRefreshCoordinator.fail(requestId, reason)
+
+    fun setHomeRefreshCancelled(requestId: String, reason: String = "cancelled"): Boolean =
+        HomeRefreshCoordinator.cancel(requestId, reason)
+
+    fun safeUpdate() = Unit
+
+    fun dispatchArtworkEvent(eventName: String, payload: org.json.JSONObject): Boolean =
+        dispatchNativeEvent("artwork_published", payload.putIfAbsentSafe("event", eventName))
+
+    fun dispatchMetadataChange(eventName: String, payload: org.json.JSONObject): Boolean =
+        dispatchNativeEvent(eventName, payload)
+
+
     fun completeNativeOperation(
         requestId: String,
         action: String,
@@ -3708,6 +3858,9 @@ internal class NativeMainRuntimePort(
             .mapValues { (_, definition) -> definition.defaultValue }
         return applySettingsAtomically(defaults)
     }
+
+    private fun org.json.JSONObject.putIfAbsentSafe(key: String, value: String): org.json.JSONObject =
+        apply { if (!has(key)) put(key, value) }
 
     private fun stringValueFromPayload(payload: org.json.JSONObject, vararg keys: String): String? {
         for (key in keys) {
