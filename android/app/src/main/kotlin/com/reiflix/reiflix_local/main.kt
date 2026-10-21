@@ -6468,7 +6468,13 @@ internal class NativeMainRuntimePort(
                             active.activePlayerRequestId == requestId
                         if (controlled && instanceMatches && requestMatches) {
                             cancelPlayerTransition("player_activity_result")
-                            invalidatePlayerSession("player_activity_result", sessionId, requestId)
+                            publish(action = "player_activity_result", transform = {
+                                it.copy(
+                                    playerSessionActive = false,
+                                    activePlayerRequestId = null,
+                                    activePlayerActivityInstanceId = null,
+                                )
+                            })
                             true
                         } else false
                     }
