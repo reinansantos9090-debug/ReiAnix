@@ -3648,6 +3648,16 @@ internal class NativeMainRuntimePort(
             "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog()
             "publish_catalog" -> {
                 invalidateCatalogViews()
+                val commandRequestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id")
+                if (!commandRequestId.isNullOrBlank()) {
+                    publishOperationResult(
+                        requestId = commandRequestId,
+                        action = normalized,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Projeção do catálogo nativo atualizada.",
+                    )
+                }
                 true
             }
             "refresh_settings" -> refreshSettingsIfActive()
@@ -5182,6 +5192,16 @@ internal class NativeMainRuntimePort(
             "diagnostic_export" -> exportDiagnosticsJson()
             "dismiss_storage_onboarding" -> {
                 dismissNativeStorageOnboarding()
+                val commandRequestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id")
+                if (!commandRequestId.isNullOrBlank()) {
+                    publishOperationResult(
+                        requestId = commandRequestId,
+                        action = normalized,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Onboarding de armazenamento atualizado.",
+                    )
+                }
                 true
             }
             else -> false
