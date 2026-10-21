@@ -2690,9 +2690,13 @@ internal class NativeMainRuntimePort(
     fun configuredSafTreeUris(): List<Uri> =
         libraryViewModel.authorizedSafTreeUris().distinctBy { it.toString() }
 
-    private fun recordStorageMutation(reason: String, treeUri: String? = null) {
-        val timestamp = System.currentTimeMillis()
-        lastStorageMutationAtMillis = timestamp
+    private fun recordStorageMutation(
+        reason: String,
+        treeUri: String? = null,
+        eventTimestampMillis: Long = 0L,
+    ) {
+        val timestamp = eventTimestampMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
+        lastStorageMutationAtMillis = maxOf(lastStorageMutationAtMillis, timestamp)
         recordDiagnostic(
             name = "NATIVE_STORAGE_MUTATION",
             result = reason,
@@ -7451,7 +7455,14 @@ internal class NativeMainRuntimePort(
                         // Permission callback arrival is a storage mutation even when it
                         // only revalidates an existing source. Fence older SAF inventories
                         // so they cannot undo this grant/revocation decision.
-                        recordStorageMutation("saf_permission_event", treeUri)
+                        recordStorageMutation(
+                            reason = "saf_permission_event",
+                            treeUri = treeUri,
+                            eventTimestampMillis = payload.optLong(
+                                "_legacySourceEventCreatedAt",
+                                payload.optLong("timestamp", 0L),
+                            ),
+                        )
                         val nativeFolderConfigOwner = payload.optBoolean(
                             "nativeFolderConfigOwner",
                             payload.optBoolean("native_folder_config_owner", false),
