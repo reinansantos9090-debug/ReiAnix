@@ -623,6 +623,9 @@ internal class NativeMainRuntimePort(
     @Volatile private var pendingSafSelectionRequestId: String? = null
     @Volatile private var pendingSafSelectionBridge: String = "library"
     @Volatile private var pendingSafSelectionBaselineIdentities: Set<String> = emptySet()
+    @Volatile private var pendingSafRemovalRequestId: String? = null
+    @Volatile private var pendingSafRemovalReference: String? = null
+    @Volatile private var pendingSafRemovalBridge: String = "library"
     private var scanObserverJob: Job? = null
     private val preferenceLock = Any()
     private val preferenceFile = File(File(activity.filesDir, "data"), "navigation_state.json")
@@ -1840,6 +1843,63 @@ internal class NativeMainRuntimePort(
         publish(action = "clear_pending_saf_selection")
     }
 
+    private fun clearPendingSafRemovalContext() {
+        pendingSafRemovalRequestId = null
+        pendingSafRemovalReference = null
+        pendingSafRemovalBridge = "library"
+        publish(action = "clear_pending_saf_removal")
+    }
+
+    private fun finishPendingSafRemoval(
+        eventRequestId: String?,
+        treeUri: String?,
+        status: String,
+        message: String? = null,
+        error: String? = null,
+        payload: org.json.JSONObject? = null,
+    ): Boolean {
+        val pendingRequestId = pendingSafRemovalRequestId?.trim().orEmpty()
+        val incomingRequestId = eventRequestId?.trim().orEmpty()
+        if (pendingRequestId.isEmpty() || incomingRequestId.isEmpty() ||
+            pendingRequestId != incomingRequestId
+        ) return false
+
+        val expectedReference = pendingSafRemovalReference?.trim().orEmpty()
+        val actualReference = treeUri?.trim().orEmpty()
+        if (expectedReference.isNotEmpty() && actualReference.isNotEmpty() &&
+            expectedReference != actualReference
+        ) {
+            val expectedIdentity = StorageAuthorization.safIdentity(expectedReference)
+            val actualIdentity = StorageAuthorization.safIdentity(actualReference)
+            if (expectedIdentity == null || actualIdentity == null || expectedIdentity != actualIdentity) {
+                recordDiagnostic(
+                    name = "SAF_REMOVAL_RESULT_REJECTED",
+                    severity = "WARN",
+                    requestId = pendingRequestId,
+                    result = "tree_uri_mismatch",
+                )
+                return false
+            }
+        }
+
+        val terminalStatus = status.trim().uppercase(Locale.ROOT)
+        if (terminalStatus !in setOf("COMPLETED", "ERROR", "FAILED", "CANCELLED")) return false
+        val resultPayload = org.json.JSONObject(payload?.toString() ?: "{}")
+            .put("removalBridge", pendingSafRemovalBridge)
+            .put("treeUri", actualReference.ifBlank { expectedReference })
+        val published = publishOperationResult(
+            requestId = pendingRequestId,
+            action = "remove_saf",
+            status = terminalStatus,
+            operationState = terminalStatus,
+            message = message,
+            error = error,
+            payload = resultPayload,
+        )
+        clearPendingSafRemovalContext()
+        return published
+    }
+
     private fun finishPendingSafSelection(
         eventRequestId: String?,
         status: String,
@@ -1972,7 +2032,9 @@ internal class NativeMainRuntimePort(
         NativeScanController.progress.value.values.any { !it.state.isTerminal }
 
     fun canMutateSafRoots(): Boolean =
-        !hasAnyNativeScanInProgress() &&
+        pendingSafSelectionRequestId.isNullOrBlank() &&
+            pendingSafRemovalRequestId.isNullOrBlank() &&
+            !hasAnyNativeScanInProgress() &&
             !activity.nativeStorageOnboardingState.value.phase.equals("folder_picker_open", ignoreCase = true)
 
     fun isStorageOnboardingRequired(): Boolean {
@@ -2603,6 +2665,73 @@ internal class NativeMainRuntimePort(
         }
     }
 
+    fun requestSafFolderRemoval(
+        reference: String,
+        requestId: String? = null,
+        bridge: String = "library",
+    ): Boolean {
+        val requestedReference = reference.trim()
+        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
+        val requestedIdentity = StorageAuthorization.safIdentity(requestedReference)
+        val configuredReference = configuredSafTreeUris().firstOrNull { configured ->
+            val configuredText = configured.toString()
+            configuredText == requestedReference ||
+                (requestedIdentity != null && StorageAuthorization.safIdentity(configuredText) == requestedIdentity)
+        }?.toString()
+
+        val blockedReason = when {
+            requestedReference.isEmpty() -> "A referência da pasta SAF não foi informada."
+            configuredReference.isNullOrBlank() -> "A pasta SAF não está configurada na biblioteca."
+            !canMutateSafRoots() -> "A remoção da pasta não pode acontecer enquanto outra operação de armazenamento está em andamento."
+            else -> null
+        }
+        if (blockedReason != null) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = "remove_saf",
+                status = "BLOCKED",
+                operationState = "BLOCKED",
+                message = blockedReason,
+                error = blockedReason,
+            )
+            publish(action = "remove_saf_folder", error = blockedReason)
+            return false
+        }
+
+        pendingSafRemovalRequestId = resolvedRequestId
+        pendingSafRemovalReference = configuredReference
+        pendingSafRemovalBridge = bridge.trim().lowercase(Locale.ROOT).takeIf {
+            it == "library" || it == "settings"
+        } ?: "library"
+        return try {
+            activity.startActivity(
+                MainActivity.createNativeStorageActionIntent(
+                    context = activity,
+                    action = "release_tree",
+                    treeUri = configuredReference,
+                    requestId = resolvedRequestId,
+                )
+            )
+            publish(action = "remove_saf_folder")
+            true
+        } catch (failure: Exception) {
+            val message = failure.message?.takeIf { it.isNotBlank() }
+                ?: "Não foi possível remover a pasta SAF."
+            clearPendingSafRemovalContext()
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = "remove_saf",
+                status = "ERROR",
+                operationState = "ERROR",
+                message = message,
+                error = message,
+            )
+            publish(action = "remove_saf_folder", error = message)
+            false
+        }
+    }
+
     fun removeConfiguredSafFolder(reference: String): Boolean {
         val normalized = reference.trim()
         if (normalized.isEmpty() || !canMutateSafRoots()) {
@@ -2988,7 +3117,13 @@ internal class NativeMainRuntimePort(
             )
             "remove_folder", "remove_saf_tree", "remove_saf", "release_tree" ->
                 (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference") ?: nonBlank("source"))
-                    ?.let(::removeConfiguredSafFolder) ?: false
+                    ?.let { reference ->
+                        requestSafFolderRemoval(
+                            reference = reference,
+                            requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                            bridge = nonBlank("bridge") ?: "library",
+                        )
+                    } ?: false
 
             "set_setting", "compose_settings_set" -> {
                 val key = nonBlank("key") ?: nonBlank("setting_key") ?: return false
@@ -3558,13 +3693,31 @@ internal class NativeMainRuntimePort(
                         message = stringValue("reason", "message") ?: "Seleção de pasta cancelada.",
                         payload = payload,
                     )
-                    "saf_error" -> finishPendingSafSelection(
+                    "saf_error" -> {
+                        val message = stringValue("message", "reason", "status")
+                            ?: "Não foi possível concluir a operação de armazenamento."
+                        val error = stringValue("error", "reason", "status") ?: "saf_operation_failed"
+                        finishPendingSafSelection(
+                            eventRequestId = correlatedRequestId,
+                            status = "ERROR",
+                            message = message,
+                            error = error,
+                            payload = payload,
+                        )
+                        finishPendingSafRemoval(
+                            eventRequestId = correlatedRequestId,
+                            treeUri = stringValue("treeUri", "tree_uri"),
+                            status = "ERROR",
+                            message = message,
+                            error = error,
+                            payload = payload,
+                        )
+                    }
+                    "saf_released" -> finishPendingSafRemoval(
                         eventRequestId = correlatedRequestId,
-                        status = "ERROR",
-                        message = stringValue("message", "reason", "status")
-                            ?: "Não foi possível validar a pasta selecionada.",
-                        error = stringValue("error", "reason", "status")
-                            ?: "saf_selection_failed",
+                        treeUri = stringValue("treeUri", "tree_uri"),
+                        status = "COMPLETED",
+                        message = "Pasta removida da biblioteca.",
                         payload = payload,
                     )
                     "saf_permission" -> if (payload.optBoolean("selected", false)) {
