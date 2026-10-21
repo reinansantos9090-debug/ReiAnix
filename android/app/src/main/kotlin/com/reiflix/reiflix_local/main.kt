@@ -1173,7 +1173,15 @@ internal class NativeMainRuntimePort(
 
     fun notePlayerSession(requestId: String, sessionId: String, transitionGeneration: Long = 0L) {
         MainActivity.notePlayerSession(requestId, sessionId, transitionGeneration)
-        publish(action = "player_session_active")
+        publish(action = "player_session_active", transform = {
+            it.copy(
+                playerSessionActive = true,
+                activePlayerRequestId = requestId.trim().takeIf { value -> value.isNotEmpty() },
+                activePlayerSessionId = sessionId.trim().takeIf { value -> value.isNotEmpty() },
+                activePlayerGeneration = transitionGeneration.coerceAtLeast(0L),
+                transitionGeneration = maxOf(it.transitionGeneration, transitionGeneration.coerceAtLeast(0L)),
+            )
+        })
     }
 
     fun notePlayerActivityCreated(
@@ -1183,12 +1191,25 @@ internal class NativeMainRuntimePort(
         transitionGeneration: Long = 0L,
     ) {
         MainActivity.notePlayerActivityCreated(instanceId, requestId, sessionId, transitionGeneration)
-        publish(action = "player_activity_created")
+        publish(action = "player_activity_created", transform = {
+            it.copy(
+                playerSessionActive = true,
+                activePlayerActivityInstanceId = instanceId.trim().takeIf { value -> value.isNotEmpty() },
+                activePlayerRequestId = requestId.trim().takeIf { value -> value.isNotEmpty() },
+                activePlayerSessionId = sessionId.trim().takeIf { value -> value.isNotEmpty() },
+                activePlayerGeneration = transitionGeneration.coerceAtLeast(0L),
+                transitionGeneration = maxOf(it.transitionGeneration, transitionGeneration.coerceAtLeast(0L)),
+            )
+        })
     }
 
     fun notePlayerActivityDestroyed(instanceId: String, sessionId: String) {
         MainActivity.notePlayerActivityDestroyed(instanceId, sessionId)
-        publish(action = "player_activity_destroyed")
+        publish(action = "player_activity_destroyed", transform = {
+            if (it.activePlayerActivityInstanceId == instanceId.trim() &&
+                (sessionId.isBlank() || it.activePlayerSessionId == sessionId.trim())
+            ) it.copy(activePlayerActivityInstanceId = null) else it
+        })
     }
 
     fun notePlayerExit(
@@ -1198,7 +1219,24 @@ internal class NativeMainRuntimePort(
         activityInstanceId: String? = null,
     ) {
         MainActivity.notePlayerExit(requestId, atMs, sessionId, activityInstanceId)
-        publish(action = "player_exit")
+        publish(action = "player_exit", transform = {
+            val requestMatches = it.activePlayerRequestId == null || it.activePlayerRequestId == requestId.trim()
+            val sessionMatches = sessionId.isNullOrBlank() || it.activePlayerSessionId == null ||
+                it.activePlayerSessionId == sessionId.trim()
+            val instanceMatches = activityInstanceId.isNullOrBlank() || it.activePlayerActivityInstanceId == null ||
+                it.activePlayerActivityInstanceId == activityInstanceId.trim()
+            if (requestMatches && sessionMatches && instanceMatches) it.copy(
+                playerSessionActive = false,
+                activePlayerRequestId = null,
+                activePlayerSessionId = null,
+                activePlayerActivityInstanceId = null,
+                activeEpisodeId = null,
+                activeAnimeId = null,
+                activeMediaUri = null,
+                activePlayerGeneration = 0L,
+                transitionGeneration = it.transitionGeneration + 1L,
+            ) else it
+        })
     }
 
 
@@ -1919,9 +1957,22 @@ internal class NativeMainRuntimePort(
         NativeLifecycleCoordinator.onEvent(eventOrState)
     }
 
+    fun cancelBackgroundTasksForLane(lane: String) {
+        val normalized = lane.trim().ifBlank { "general" }
+        val copy = synchronized(lock) { jobs.filter { jobLanes[it] == normalized } }
+        copy.forEach { it.cancel() }
+        publish(action = "cancel_background_tasks_" + normalized)
+    }
+
     fun cancelBackgroundTasks() {
         val copy = synchronized(lock) { jobs.toList() }
         copy.forEach { it.cancel() }
+        lifecycleIsAlive = false
         publish(action = "cancel_background_tasks")
+    }
+
+    fun resumeRuntimeTasks() {
+        lifecycleIsAlive = true
+        publish(action = "resume_runtime_tasks")
     }
 }
