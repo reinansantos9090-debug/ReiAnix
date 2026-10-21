@@ -6356,6 +6356,9 @@ internal class NativeMainRuntimePort(
                     // Native settings repositories publish a compatibility event after
                     // committing actions such as artwork-cache clearing. Consume it as
                     // a projection/acknowledgement only; do not execute the action twice.
+                    // Refresh the visible library state because the database change was
+                    // already committed by the native settings repository.
+                    libraryViewModel.refresh()
                     recordDiagnostic(
                         name = "SETTINGS_ACTION_ALREADY_HANDLED_NATIVELY",
                         requestId = requestId,
