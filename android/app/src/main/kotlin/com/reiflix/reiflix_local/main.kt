@@ -656,6 +656,32 @@ internal class NativeMainRuntimePort(
         val normalized = value.trim().lowercase(Locale.ROOT).ifBlank { "disconnected" }
         publish(action = reason, transform = { it.copy(accountState = normalized) })
     }
+    fun openHomeSearch() {
+        libraryViewModel.setSearchQuery("")
+        publish(action = "open_home_search")
+    }
+
+    fun closeHomeSearch() {
+        libraryViewModel.setSearchQuery("")
+        publish(action = "close_home_search")
+    }
+
+    fun updateHomeSearchQuery(value: String) = libraryViewModel.setSearchQuery(value)
+
+    fun navigateSettingsCategory(category: String): Boolean {
+        val normalized = category.trim().lowercase(Locale.ROOT)
+        val destination = when (normalized) {
+            "storage", "folders", "permissions", "armazenamento", "pastas" -> ReiAnixRoutes.STORAGE
+            else -> ReiAnixRoutes.SETTINGS
+        }
+        return navigate(destination, "navigate_settings_category")
+    }
+
+    fun navigateBackFromSettings(): Boolean = navigateBack()
+
+    fun login(): Boolean = requestAccountActionTracked("login")
+    fun logout(): Boolean = requestAccountActionTracked("logout")
+    fun switchAccount(): Boolean = requestAccountActionTracked("switch_account")
 
     fun refreshLibrary(): Boolean = launchTracked("refresh_library") {
         libraryViewModel.refresh()
@@ -846,6 +872,71 @@ internal class NativeMainRuntimePort(
         publish(action = "storage_action", error = if (accepted) null else "Native storage action was rejected.")
         return accepted
     }
+    fun requestMediaAccess(): Boolean = requestStorageAction("request_media_access")
+    fun checkStorageAccess(): Boolean = requestStorageAction("check_storage_access")
+    fun openBroadStorageSettings(): Boolean = requestStorageAction("open_broad_storage_settings")
+    fun requestLibraryScan(): Boolean = requestStorageAction("scan_library")
+    fun selectSafFolder(): Boolean = requestStorageAction("select_tree")
+
+    fun configuredSafTreeUris(): List<android.net.Uri> = libraryViewModel.authorizedSafTreeUris()
+    fun hasConfiguredSafFolder(): Boolean = configuredSafTreeUris().isNotEmpty()
+
+    fun onRuntimeDisconnect() {
+        cancelBackgroundTasks()
+        publish(action = "runtime_disconnect")
+    }
+
+    fun onRuntimeReconnect() {
+        ensureNativeCommandDispatcher()
+        settingsViewModel.refresh()
+        libraryViewModel.refresh()
+        publish(action = "runtime_reconnect")
+    }
+
+    /** In Compose these compatibility hooks invalidate observed state, not a hidden Flet view tree. */
+    fun markUiDirty(reason: String = "state_changed") {
+        publish(action = reason)
+    }
+
+    fun renderCurrent(route: String, force: Boolean = false, reason: String = "render_current"): Boolean {
+        val currentRoute = route.trim().ifBlank { ReiAnixRoutes.HOME }
+        if (!ReiAnixRoutes.isSupportedShellDestination(currentRoute)) return false
+        if (force || currentRoute != mutableSnapshot.value.route) {
+            return navigate(currentRoute, reason)
+        }
+        return true
+    }
+
+    fun buildScreen(route: String, force: Boolean = false): Boolean =
+        renderCurrent(route, force, "build_screen")
+
+    fun routeForScreen(screen: String): String {
+        val normalized = screen.trim().lowercase(Locale.ROOT)
+        return when (normalized) {
+            "home" -> ReiAnixRoutes.HOME
+            "library" -> ReiAnixRoutes.LIBRARY
+            "organize" -> ReiAnixRoutes.ORGANIZE
+            "collector" -> ReiAnixRoutes.COLLECTOR
+            "settings" -> ReiAnixRoutes.SETTINGS
+            "storage" -> ReiAnixRoutes.STORAGE
+            "search" -> ReiAnixRoutes.SEARCH
+            "my_list", "my-list", "my list" -> ReiAnixRoutes.MY_LIST
+            else -> ""
+        }
+    }
+
+    fun navigateScreen(screen: String, reason: String = "navigate_screen"): Boolean {
+        val route = routeForScreen(screen)
+        return route.isNotBlank() && navigate(route, reason)
+    }
+
+    fun refreshSettingsIfActive(): Boolean = launchTracked("refresh_settings", lane = "settings") {
+        settingsViewModel.refresh()
+    }
+
+    fun applySettingRuntime(key: String, value: String): Boolean = setSettingSerialized(key, value)
+    fun openSettingsAction(action: String): Boolean = requestSettingsActionTracked(action)
+
 
     fun selectSafTree() = libraryViewModel.selectSafTree()
     fun dismissStorageOnboarding() = libraryViewModel.dismissStorageOnboarding()
