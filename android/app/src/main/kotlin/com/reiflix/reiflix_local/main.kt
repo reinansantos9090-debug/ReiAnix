@@ -1576,10 +1576,12 @@ internal class NativeMainRuntimePort(
             val value = payload.opt(key)
             if (!pythonTruthyJsonValue(value)) continue
             return when (value) {
-                is Number -> value.toLong()
+                is Number -> value.toDouble().takeIf { it.isFinite() }?.toLong()
+                    ?: throw IllegalArgumentException("Player callback generation must be finite.")
                 is Boolean -> if (value) 1L else 0L
-                is String -> value.trim().toLongOrNull() ?: 0L
-                else -> 0L
+                is String -> value.trim().toLongOrNull()
+                    ?: throw IllegalArgumentException("Player callback generation must be an integer.")
+                else -> throw IllegalArgumentException("Player callback generation must be numeric.")
             }
         }
         return 0L
