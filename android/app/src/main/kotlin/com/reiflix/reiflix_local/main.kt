@@ -2932,7 +2932,7 @@ internal class NativeMainRuntimePort(
 
         dependencies.sqliteLibraryRepository.upsertSafFolder(
             reference = reference,
-            name = payload.optString("name", "").trim().ifBlank { existing.name },
+            name = payload.optString("name", "").trim().ifBlank { existing.name.orEmpty() },
             authority = payload.optString("authority", "").trim().ifBlank { existing.safAuthority.orEmpty() },
             documentId = payload.optString("documentId", payload.optString("document_id", ""))
                 .trim().ifBlank { existing.safDocumentId.orEmpty() },
