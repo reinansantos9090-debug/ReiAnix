@@ -1667,25 +1667,65 @@ internal class NativeMainRuntimePort(
         publish(action = "account_action")
     }
 
-    fun requestStorageAction(action: String): Boolean {
-        val accepted = activity.requestNativeStorageAction(action)
-        publish(action = "storage_action", error = if (accepted) null else "Native storage action was rejected.")
+    fun requestStorageAction(action: String, requestId: String? = null): Boolean {
+        val normalizedAction = action.trim()
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        val accepted = try {
+            if (correlatedRequestId == null) {
+                activity.requestNativeStorageAction(normalizedAction)
+            } else {
+                activity.startActivity(
+                    MainActivity.createNativeStorageActionIntent(
+                        context = activity,
+                        action = normalizedAction,
+                        requestId = correlatedRequestId,
+                    )
+                )
+                true
+            }
+        } catch (failure: Exception) {
+            recordDiagnostic(
+                name = "NATIVE_STORAGE_ACTION_LAUNCH_FAILED",
+                severity = "WARN",
+                requestId = correlatedRequestId,
+                result = normalizedAction,
+                error = failure,
+            )
+            false
+        }
+        publish(
+            action = "storage_action",
+            error = if (accepted) null else "Native storage action was rejected.",
+            transform = { state ->
+                if (correlatedRequestId == null) state else state.copy(
+                    lastResultJson = org.json.JSONObject()
+                        .put("requestId", correlatedRequestId)
+                        .put("action", normalizedAction)
+                        .put("status", if (accepted) "QUEUED" else "FAILED")
+                        .toString()
+                )
+            },
+        )
         return accepted
     }
-    fun requestMediaAccess(): Boolean = requestStorageAction("request_media_access")
-    fun checkStorageAccess(): Boolean = requestStorageAction("check_storage_access")
-    fun openBroadStorageSettings(): Boolean = requestStorageAction("open_broad_storage_settings")
-    fun requestLibraryScan(): Boolean {
+    fun requestMediaAccess(requestId: String? = null): Boolean =
+        requestStorageAction("request_media_access", requestId)
+    fun checkStorageAccess(requestId: String? = null): Boolean =
+        requestStorageAction("check_storage_access", requestId)
+    fun openBroadStorageSettings(requestId: String? = null): Boolean =
+        requestStorageAction("open_broad_storage_settings", requestId)
+    fun requestLibraryScan(requestId: String? = null): Boolean {
         if (!canStartLibraryScan("saf")) {
             recordDiagnostic(
                 name = "LIBRARY_SCAN_REJECTED",
                 severity = "WARN",
+                requestId = requestId,
                 result = "no_authorized_library_saf_source",
                 context = mapOf("configured_saf_root_count" to authorizedScanTargets("saf").size),
             )
             return false
         }
-        return requestStorageAction("scan_library")
+        return requestStorageAction("scan_library", requestId)
     }
     fun selectSafFolder(): Boolean = requestStorageAction("select_tree")
 
@@ -3078,7 +3118,7 @@ internal class NativeMainRuntimePort(
             "navigate_settings_category" ->
                 navigateSettingsCategory(nonBlank("category") ?: return false)
 
-            "refresh" -> requestLibraryScan()
+            "refresh" -> requestLibraryScan(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
             "refresh_library" -> refreshLibrary()
             "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog()
             "publish_catalog" -> {
@@ -3107,10 +3147,13 @@ internal class NativeMainRuntimePort(
                 requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 bridge = nonBlank("bridge") ?: "library",
             )
-            "request_media_access", "request_video_access" -> requestMediaAccess()
-            "check_storage_access", "check_video_access" -> checkStorageAccess()
-            "open_broad_storage_settings", "request_storage_access" -> openBroadStorageSettings()
-            "scan_library" -> requestLibraryScan()
+            "request_media_access", "request_video_access" ->
+                requestMediaAccess(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
+            "check_storage_access", "check_video_access" ->
+                checkStorageAccess(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
+            "open_broad_storage_settings", "request_storage_access" ->
+                openBroadStorageSettings(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
+            "scan_library" -> requestLibraryScan(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
             "refresh_home_library", "request_home_refresh" -> requestHomeRefresh(
                 source = nonBlank("source") ?: "native_action",
             )
