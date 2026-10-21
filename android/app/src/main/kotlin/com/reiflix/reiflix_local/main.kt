@@ -1557,6 +1557,34 @@ internal class NativeMainRuntimePort(
         else -> true
     }
 
+    private fun pythonJsonString(value: Any?): String = when (value) {
+        null, org.json.JSONObject.NULL -> "None"
+        is Boolean -> if (value) "True" else "False"
+        else -> value.toString()
+    }
+
+    private fun firstTruthyJsonText(payload: org.json.JSONObject, vararg keys: String): String {
+        for (key in keys) {
+            val value = payload.opt(key)
+            if (pythonTruthyJsonValue(value)) return pythonJsonString(value).trim()
+        }
+        return ""
+    }
+
+    private fun firstTruthyJsonLong(payload: org.json.JSONObject, vararg keys: String): Long {
+        for (key in keys) {
+            val value = payload.opt(key)
+            if (!pythonTruthyJsonValue(value)) continue
+            return when (value) {
+                is Number -> value.toLong()
+                is Boolean -> if (value) 1L else 0L
+                is String -> value.trim().toLongOrNull() ?: 0L
+                else -> 0L
+            }
+        }
+        return 0L
+    }
+
     /**
      * Read the legacy mailbox envelope timestamp using Python's truthy
      * createdAt-then-timestamp fallback. Epoch-millisecond values are converted
@@ -2218,10 +2246,10 @@ internal class NativeMainRuntimePort(
 
     fun playerCallbackIdentityIsComplete(payload: org.json.JSONObject?): Boolean {
         if (payload == null) return false
-        val session = payload.optString("playerSessionId", payload.optString("player_session_id", "")).trim()
-        val episode = payload.optString("episodeId", "").trim()
-        val media = payload.optString("mediaId", "").trim()
-        val uri = payload.optString("uri", "").trim()
+        val session = firstTruthyJsonText(payload, "playerSessionId", "player_session_id")
+        val episode = firstTruthyJsonText(payload, "episodeId")
+        val media = firstTruthyJsonText(payload, "mediaId")
+        val uri = firstTruthyJsonText(payload, "uri")
         return session.isNotEmpty() && episode.isNotEmpty() && media.isNotEmpty() && uri.isNotEmpty()
     }
 
@@ -2235,14 +2263,18 @@ internal class NativeMainRuntimePort(
     ): NativePlayerCallbackValidation {
         val current = mutableSnapshot.value
         fun reject(reason: String) = NativePlayerCallbackValidation(false, reason)
-        val sessionId = payload.optString("playerSessionId", payload.optString("player_session_id", "")).trim()
-        val activityId = payload.optString("activityInstanceId", payload.optString("activity_instance_id", "")).trim()
-        val requestId = eventRequestId?.trim().orEmpty().ifBlank { payload.optString("requestId", "").trim() }
-        val playerGeneration = payload.optLong("generation", payload.optLong("playerGeneration", 0L))
-        val transition = payload.optLong("transitionGeneration", 0L)
-        val episodeId = expectedEpisodeId ?: payload.optLong("episodeId", 0L).takeIf { it > 0L }
-        val animeId = expectedAnimeId ?: payload.optLong("animeId", 0L).takeIf { it > 0L }
-        val mediaId = expectedMediaId?.trim().orEmpty().ifBlank { payload.optString("mediaId", "").trim() }
+        val sessionId = firstTruthyJsonText(payload, "playerSessionId", "player_session_id")
+        val activityId = firstTruthyJsonText(payload, "activityInstanceId", "activity_instance_id")
+        val requestId = eventRequestId?.trim().orEmpty().ifBlank {
+            firstTruthyJsonText(payload, "requestId")
+        }
+        val playerGeneration = firstTruthyJsonLong(payload, "generation", "playerGeneration")
+        val transition = firstTruthyJsonLong(payload, "transitionGeneration")
+        val episodeId = expectedEpisodeId ?: firstTruthyJsonLong(payload, "episodeId").takeIf { it > 0L }
+        val animeId = expectedAnimeId ?: firstTruthyJsonLong(payload, "animeId").takeIf { it > 0L }
+        val mediaId = expectedMediaId?.trim().orEmpty().ifBlank {
+            firstTruthyJsonText(payload, "mediaId")
+        }
 
         if (requireActive && !current.playerSessionActive) return reject("stale_session")
         if (sessionId.isNotBlank() && current.activePlayerSessionId != null && current.activePlayerSessionId != sessionId) return reject("stale_session")
