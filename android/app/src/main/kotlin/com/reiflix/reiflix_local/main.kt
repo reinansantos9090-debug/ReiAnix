@@ -2288,12 +2288,22 @@ internal class NativeMainRuntimePort(
             ?: return reject("invalid_player_generation")
         val transition = numericIdentity("transitionGeneration")
             ?: return reject("invalid_transition_generation")
-        val episodeId = expectedEpisodeId ?: (
-            numericIdentity("episodeId") ?: return reject("invalid_episode_id")
-        ).takeIf { it > 0L }
-        val animeId = expectedAnimeId ?: (
-            numericIdentity("animeId") ?: return reject("invalid_anime_id")
-        ).takeIf { it > 0L }
+        // The legacy callback guard checked episode/anime identity only when the
+        // callback supplied those values. Some player-error callbacks legitimately
+        // arrive without an anime identity; those errors must still be surfaced.
+        // Progress/pause/exit handlers separately require a complete identity.
+        val rawEpisodeIdentity = payload.opt("episodeId")
+        val episodeIdentitySupplied = payload.has("episodeId") &&
+            pythonTruthyJsonValue(rawEpisodeIdentity)
+        val rawAnimeIdentity = payload.opt("animeId")
+        val animeIdentitySupplied = payload.has("animeId") &&
+            pythonTruthyJsonValue(rawAnimeIdentity)
+        val episodeId = expectedEpisodeId
+            ?: numericIdentity("episodeId", "episode_id")?.takeIf { it > 0L }
+        if (episodeIdentitySupplied && episodeId == null) return reject("invalid_episode_id")
+        val animeId = expectedAnimeId
+            ?: numericIdentity("animeId", "anime_id")?.takeIf { it > 0L }
+        if (animeIdentitySupplied && animeId == null) return reject("invalid_anime_id")
         val mediaId = expectedMediaId?.trim().orEmpty().ifBlank {
             firstTruthyJsonText(payload, "mediaId")
         }
