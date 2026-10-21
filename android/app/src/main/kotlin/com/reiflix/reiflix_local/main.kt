@@ -5633,6 +5633,123 @@ internal class NativeMainRuntimePort(
             "mediastore_permission", "mediastore_error",
             "broad_storage_permission", "broad_storage_status", "broad_storage_error" -> {
                 val correlatedRequestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
+                if (type == "volume_changed") {
+                    val nativeStorageOwner = payload.optBoolean("nativeStorageOwner", false)
+                    if (nativeStorageOwner && payload.optBoolean("nativeVolumeStateIgnored", false)) {
+                        recordDiagnostic(
+                            name = "NATIVE_VOLUME_CHANGE_IGNORED",
+                            requestId = correlatedRequestId,
+                            result = "stale_native_volume_snapshot",
+                            context = mapOf("event_timestamp" to payload.optLong("eventTimestamp", payload.optLong("timestamp", 0L))),
+                        )
+                        return true
+                    }
+
+                    val volumeEvent = org.json.JSONObject(payload.toString())
+                    if (!volumeEvent.has("eventTimestamp")) {
+                        volumeEvent.put(
+                            "eventTimestamp",
+                            volumeEvent.optLong("timestamp", System.currentTimeMillis()),
+                        )
+                    }
+                    val nativeScanDispatchOwner = payload.optBoolean("nativeScanDispatchOwner", false)
+                    return launchTracked("volume_changed", lane = "storage") {
+                        val volumeResult = if (nativeStorageOwner) {
+                            org.json.JSONObject().put("ignored", false)
+                        } else {
+                            dependencies.libraryService.recordNativeVolumeChange(volumeEvent)
+                        }
+                        if (volumeResult.optBoolean("ignored", false)) {
+                            recordDiagnostic(
+                                name = "NATIVE_VOLUME_CHANGE_IGNORED",
+                                requestId = correlatedRequestId,
+                                result = "stale_volume_event",
+                                context = mapOf("event_timestamp" to volumeEvent.optLong("eventTimestamp", 0L)),
+                            )
+                            return@launchTracked
+                        }
+
+                        val catalogRefreshed = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+                        if (!catalogRefreshed) {
+                            throw IllegalStateException(
+                                "A disponibilidade de armazenamento mudou, mas o catálogo canônico não pôde ser atualizado.",
+                            )
+                        }
+                        libraryViewModel.refreshNativeFolders()
+                        libraryViewModel.refresh()
+                        settingsViewModel.refresh()
+                        scheduleCatalogMetadataHydration("volume_changed")
+                        scheduleThumbnailReconciliation("volume_changed")
+
+                        fun volumeBecameAvailable(): Boolean {
+                            val added = volumeEvent.optJSONArray("added")
+                            if (added != null) {
+                                for (index in 0 until added.length()) {
+                                    if (added.optJSONObject(index)?.optBoolean("available", false) == true) {
+                                        return true
+                                    }
+                                }
+                            }
+                            val changed = volumeEvent.optJSONArray("changedVolumes")
+                            if (changed != null) {
+                                for (index in 0 until changed.length()) {
+                                    val change = changed.optJSONObject(index) ?: continue
+                                    val after = change.optJSONObject("after") ?: continue
+                                    val before = change.optJSONObject("before")
+                                    if (after.optBoolean("available", false) &&
+                                        before?.optBoolean("available", false) != true
+                                    ) return true
+                                }
+                            }
+                            return false
+                        }
+
+                        val volumeReturned = volumeBecameAvailable()
+                        if (volumeReturned && nativeScanDispatchOwner) {
+                            recordDiagnostic(
+                                name = "NATIVE_VOLUME_SCAN_DISPATCH",
+                                requestId = correlatedRequestId,
+                                result = "native_owner",
+                            )
+                        } else if (volumeReturned) {
+                            val scanRequestId = UUID.randomUUID().toString()
+                            val scanUri = Uri.parse("reiflix://native").buildUpon()
+                                .appendQueryParameter("action", "scan_all_storage")
+                                .appendQueryParameter("request_id", scanRequestId)
+                                .appendQueryParameter("protocol_version", "2")
+                                .appendQueryParameter("created_at", System.currentTimeMillis().toString())
+                                .build()
+                            activity.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    scanUri,
+                                    activity,
+                                    MainActivity::class.java,
+                                ).addFlags(
+                                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                        android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                                ),
+                            )
+                            recordDiagnostic(
+                                name = "NATIVE_VOLUME_SCAN_DISPATCH",
+                                requestId = scanRequestId,
+                                result = "volume_returned",
+                                context = mapOf("source_request_id" to correlatedRequestId),
+                            )
+                        }
+                        recordDiagnostic(
+                            name = "NATIVE_VOLUME_CHANGE_APPLIED",
+                            requestId = correlatedRequestId,
+                            result = if (nativeStorageOwner) "native_persisted" else "compatibility_persisted",
+                            context = mapOf(
+                                "volume_returned" to volumeReturned,
+                                "native_scan_dispatch_owner" to nativeScanDispatchOwner,
+                                "event_timestamp" to volumeEvent.optLong("eventTimestamp", 0L),
+                            ),
+                        )
+                    }
+                }
                 when (type) {
                     "saf_cancelled" -> finishPendingSafSelection(
                         eventRequestId = correlatedRequestId,
