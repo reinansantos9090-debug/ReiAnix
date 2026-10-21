@@ -1475,9 +1475,22 @@ internal class NativeMainRuntimePort(
         }
     }
 
-    fun markEpisodeWatchedTracked(episodeId: Long, watched: Boolean): Boolean {
+    fun markEpisodeWatchedTracked(
+        episodeId: Long,
+        watched: Boolean,
+        path: String? = null,
+    ): Boolean {
         if (episodeId <= 0L) return false
         return launchTracked("mark_episode_watched", lane = "playback") {
+            val canonicalEpisode = dependencies.sqliteLibraryRepository.getEpisode(episodeId)
+                ?: throw IllegalArgumentException("Episódio não encontrado.")
+            val suppliedPath = path?.trim().orEmpty()
+            if (suppliedPath.isNotEmpty()) {
+                val pathEpisode = dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(suppliedPath)
+                require(pathEpisode == null || pathEpisode.id == canonicalEpisode.id) {
+                    "Episódio não encontrado ou referência local incompatível."
+                }
+            }
             val progress = dependencies.consumptionService.setWatched(episodeId, watched)
             libraryViewModel.refresh()
             publish(action = "mark_episode_watched", transform = {
@@ -6246,7 +6259,11 @@ internal class NativeMainRuntimePort(
                     return false
                 }
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
-                markEpisodeWatchedTracked(episodeId, type == "player_mark_watched")
+                markEpisodeWatchedTracked(
+                    episodeId = episodeId,
+                    watched = type == "player_mark_watched",
+                    path = stringValue("uri", "path"),
+                )
             }
             "player_error" -> {
                 val validation = validatePlayerCallback(eventRequestId, payload, requireActive = true)
