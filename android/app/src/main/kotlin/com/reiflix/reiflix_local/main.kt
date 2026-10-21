@@ -8063,3 +8063,5 @@ internal class NativeMainRuntimePort(
             if (thumbnailQueue.isNotEmpty()) startThumbnailPumpLocked()
         }
         publish(action = "resume_runtime_tasks")
+    }
+}
