@@ -7223,10 +7223,13 @@ internal class NativeMainRuntimePort(
                 true
             }
             "player_opened" -> {
-                val request = eventRequestId ?: stringValue("requestId") ?: return false
+                val current = mutableSnapshot.value
+                // The legacy handler accepted player_opened without requestId;
+                // preserve the current request correlation when possible instead
+                // of dropping a valid session event.
+                val request = eventRequestId ?: stringValue("requestId") ?: current.activePlayerRequestId.orEmpty()
                 val sessionId = stringValue("playerSessionId", "player_session_id", "sessionId")
                     ?: return false
-                val current = mutableSnapshot.value
                 if (!current.activePlayerSessionId.isNullOrBlank() &&
                     current.activePlayerSessionId != sessionId
                 ) {
