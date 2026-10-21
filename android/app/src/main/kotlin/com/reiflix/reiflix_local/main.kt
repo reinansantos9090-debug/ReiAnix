@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
+import java.security.MessageDigest
 
 /**
  * Native Android entry-point orchestration shared by the launcher Activity.
@@ -680,6 +681,18 @@ internal class NativeMainRuntimePort(
     private val composeHost: ReiAnixComposeLibraryHost,
 ) {
     private val lock = Any()
+    private val nativeMailboxPollLock = Any()
+    private val nativeMailboxEventLedgerLock = Any()
+    private val nativeMailboxDirectory = File(File(activity.filesDir, "data"), "reiflix-native-events")
+    private val nativeMailboxEventIds = LinkedHashSet<String>()
+    @Volatile private var nativeMailboxLedgerLoaded = false
+    @Volatile private var nativeMailboxPollJob: Job? = null
+    private data class NativeMailboxQueueItem(
+        val file: File,
+        val envelope: org.json.JSONObject,
+        val createdAtMillis: Long,
+        val modifiedAtMillis: Long,
+    )
     private val seenProjectionEventIds = LinkedHashSet<String>()
     private val claimedRequestIds = mutableMapOf<String, LinkedHashSet<String>>()
     private val jobs = linkedSetOf<Job>()
@@ -2950,6 +2963,270 @@ internal class NativeMainRuntimePort(
     }
 
 
+
+    /**
+     * Drain the existing Android -> app event mailbox that main.py previously
+     * polled. Files are claimed by atomic rename, acknowledged only after native
+     * dispatch and the bounded event-ID ledger have both committed, and restored
+     * to .json after a failed dispatch so a later poll can retry them.
+     */
+    private fun ensureNativeMailboxPoller() {
+        synchronized(nativeMailboxPollLock) {
+            if (nativeMailboxPollJob?.isActive == true) return
+            nativeMailboxPollJob = activity.lifecycleScope.launch {
+                pollNativeMailboxQueue()
+            }
+        }
+    }
+
+    private fun nativeMailboxDigest(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+
+    private fun ensureNativeMailboxEventId(
+        event: org.json.JSONObject,
+        sourceName: String,
+        index: Int,
+        serializedSource: String,
+    ): String {
+        val supplied = event.optString("eventId", "").trim()
+        if (supplied.isNotEmpty()) return supplied
+        val digest = nativeMailboxDigest("$sourceName\u0000$index\u0000$serializedSource").take(24)
+        val generated = "legacy:$sourceName:$index:$digest"
+        event.put("eventId", generated)
+        return generated
+    }
+
+    private suspend fun loadNativeMailboxEventLedger() {
+        if (nativeMailboxLedgerLoaded) return
+        val preferences = dependencies.sqliteSettingsRepository.allPreferences()
+        val raw = preferences["native_event_ids"]
+        val restored = LinkedHashSet<String>()
+        if (!raw.isNullOrBlank()) {
+            runCatching {
+                val array = org.json.JSONArray(raw)
+                for (index in 0 until array.length()) {
+                    array.optString(index, "").trim().takeIf { it.isNotEmpty() }?.let(restored::add)
+                }
+            }.onFailure {
+                Log.w("ReiAnixMainPort", "Native mailbox event ledger is malformed; rebuilding bounded ledger.", it)
+            }
+        }
+        synchronized(nativeMailboxEventLedgerLock) {
+            if (!nativeMailboxLedgerLoaded) {
+                nativeMailboxEventIds.clear()
+                restored.toList().takeLast(1_000).forEach(nativeMailboxEventIds::add)
+                nativeMailboxLedgerLoaded = true
+            }
+        }
+    }
+
+    private fun hasClaimedNativeMailboxEvent(eventId: String): Boolean =
+        synchronized(nativeMailboxEventLedgerLock) { eventId in nativeMailboxEventIds }
+
+    private suspend fun persistNativeMailboxEventId(eventId: String) {
+        val normalized = eventId.trim()
+        if (normalized.isEmpty()) return
+        val updated = synchronized(nativeMailboxEventLedgerLock) {
+            LinkedHashSet(nativeMailboxEventIds).apply {
+                add(normalized)
+                while (size > 1_000) {
+                    val iterator = iterator()
+                    if (iterator.hasNext()) {
+                        iterator.next()
+                        iterator.remove()
+                    } else break
+                }
+            }.toList()
+        }
+        dependencies.sqliteSettingsRepository.setPreferencesAtomically(
+            mapOf("native_event_ids" to org.json.JSONArray(updated).toString()),
+        )
+        synchronized(nativeMailboxEventLedgerLock) {
+            nativeMailboxEventIds.clear()
+            updated.forEach(nativeMailboxEventIds::add)
+        }
+    }
+
+    /** Recover claims left by process death and migrate the older one-file mailbox format. */
+    private fun recoverNativeMailboxQueueFiles() {
+        if (!nativeMailboxDirectory.isDirectory && !nativeMailboxDirectory.mkdirs()) {
+            throw IllegalStateException("Não foi possível abrir a fila de eventos nativos.")
+        }
+        val dataDirectory = nativeMailboxDirectory.parentFile
+        if (dataDirectory != null) {
+            val legacy = File(dataDirectory, "reiflix-native-events.json")
+            val legacyClaimed = File(dataDirectory, "reiflix-native-events.consumed")
+            if (legacyClaimed.exists() && !legacy.exists()) legacyClaimed.renameTo(legacy)
+            if (legacy.exists() && legacy.renameTo(legacyClaimed)) {
+                try {
+                    val raw = legacyClaimed.readText(Charsets.UTF_8)
+                    val parsed = runCatching { org.json.JSONArray(raw) }.getOrNull()
+                    val legacyEvents = if (parsed != null) {
+                        (0 until parsed.length()).mapNotNull { parsed.optJSONObject(it) }
+                    } else {
+                        listOf(org.json.JSONObject(raw))
+                    }
+                    legacyEvents.forEachIndexed { index, event ->
+                        if (event.optString("type", "").isBlank()) return@forEachIndexed
+                        val eventId = ensureNativeMailboxEventId(
+                            event = event,
+                            sourceName = legacy.name,
+                            index = index,
+                            serializedSource = event.toString(),
+                        )
+                        val nameDigest = nativeMailboxDigest(eventId).take(24)
+                        val target = File(nativeMailboxDirectory, "event-legacy-$nameDigest.json")
+                        if (target.exists()) return@forEachIndexed
+                        val temporary = File(nativeMailboxDirectory, "${target.name}.tmp")
+                        java.io.FileOutputStream(temporary).use { stream ->
+                            stream.write(event.toString().toByteArray(Charsets.UTF_8))
+                            stream.fd.sync()
+                        }
+                        if (!temporary.renameTo(target)) {
+                            temporary.delete()
+                            throw IllegalStateException("Não foi possível migrar um evento nativo legado.")
+                        }
+                    }
+                    legacyClaimed.delete()
+                    Log.i("ReiAnixMainPort", "LEGACY_NATIVE_MAILBOX_MIGRATED")
+                } catch (failure: Throwable) {
+                    if (!legacy.exists()) legacyClaimed.renameTo(legacy)
+                    Log.w("ReiAnixMainPort", "Não foi possível migrar a fila de eventos legada.", failure)
+                }
+            }
+        }
+
+        nativeMailboxDirectory.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("event-") && it.name.endsWith(".consumed") }
+            ?.sortedBy { it.name }
+            ?.forEach { claimed ->
+                val target = File(nativeMailboxDirectory, claimed.name.removeSuffix(".consumed") + ".json")
+                if (target.exists()) {
+                    claimed.delete()
+                } else if (!claimed.renameTo(target)) {
+                    Log.w("ReiAnixMainPort", "Não foi possível recuperar o evento reivindicado: ${claimed.name}")
+                }
+            }
+    }
+
+    /** Claim a bounded batch in createdAt order, using file publication time as a tie-breaker. */
+    private fun claimNativeMailboxBatch(): List<NativeMailboxQueueItem> {
+        if (!nativeMailboxDirectory.isDirectory && !nativeMailboxDirectory.mkdirs()) return emptyList()
+        val candidates = mutableListOf<NativeMailboxQueueItem>()
+        nativeMailboxDirectory.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("event-") && it.name.endsWith(".json") }
+            ?.forEach { file ->
+                try {
+                    val raw = file.readText(Charsets.UTF_8)
+                    val envelope = org.json.JSONObject(raw)
+                    if (envelope.optString("type", "").isBlank()) {
+                        Log.w("ReiAnixMainPort", "EVENT_REJECTED reason=missing_type file=${file.name}")
+                        file.delete()
+                        return@forEach
+                    }
+                    ensureNativeMailboxEventId(envelope, file.name, 0, raw)
+                    val createdAt = envelope.optLong("createdAt", envelope.optLong("timestamp", 0L))
+                        .coerceAtLeast(0L)
+                    candidates += NativeMailboxQueueItem(
+                        file = file,
+                        envelope = envelope,
+                        createdAtMillis = createdAt,
+                        modifiedAtMillis = file.lastModified(),
+                    )
+                } catch (failure: Throwable) {
+                    Log.w("ReiAnixMainPort", "EVENT_REJECTED reason=invalid_json file=${file.name}", failure)
+                    file.delete()
+                }
+            }
+        candidates.sortWith(
+            compareBy<NativeMailboxQueueItem> { it.createdAtMillis }
+                .thenBy { it.modifiedAtMillis }
+                .thenBy { it.file.name },
+        )
+
+        val claimed = mutableListOf<NativeMailboxQueueItem>()
+        candidates.take(64).forEach { candidate ->
+            val target = File(
+                nativeMailboxDirectory,
+                candidate.file.name.removeSuffix(".json") + ".consumed",
+            )
+            if (candidate.file.renameTo(target)) {
+                claimed += candidate.copy(file = target)
+            }
+        }
+        return claimed
+    }
+
+    private suspend fun requeueNativeMailboxEvent(item: NativeMailboxQueueItem) {
+        withContext(Dispatchers.IO) {
+            val target = File(
+                nativeMailboxDirectory,
+                item.file.name.removeSuffix(".consumed") + ".json",
+            )
+            if (target.exists()) {
+                Log.w("ReiAnixMainPort", "EVENT_REQUEUE_COLLISION file=${item.file.name}")
+            } else if (!item.file.renameTo(target)) {
+                Log.w("ReiAnixMainPort", "EVENT_REQUEUE_FAILED file=${item.file.name}")
+            }
+        }
+    }
+
+    private suspend fun acknowledgeNativeMailboxEvent(item: NativeMailboxQueueItem) {
+        withContext(Dispatchers.IO) {
+            if (!item.file.delete() && item.file.exists()) {
+                Log.w("ReiAnixMainPort", "EVENT_ACK_FAILED file=${item.file.name}")
+            }
+        }
+    }
+
+    private suspend fun pollNativeMailboxQueue() {
+        loadNativeMailboxEventLedger()
+        withContext(Dispatchers.IO) { recoverNativeMailboxQueueFiles() }
+        var pollDelayMillis = 200L
+        while (!activity.isFinishing && !activity.isDestroyed) {
+            try {
+                val events = withContext(Dispatchers.IO) { claimNativeMailboxBatch() }
+                for (item in events) {
+                    val eventId = item.envelope.optString("eventId", "").trim()
+                    try {
+                        if (eventId.isBlank() || !hasClaimedNativeMailboxEvent(eventId)) {
+                            item.envelope.put("receivedAtMs", System.currentTimeMillis())
+                            dispatchNativeMailboxEnvelope(item.envelope)
+                            persistNativeMailboxEventId(eventId)
+                        }
+                        acknowledgeNativeMailboxEvent(item)
+                    } catch (cancelled: CancellationException) {
+                        withContext(kotlinx.coroutines.NonCancellable) {
+                            requeueNativeMailboxEvent(item)
+                        }
+                        throw cancelled
+                    } catch (failure: Throwable) {
+                        synchronized(lock) { seenProjectionEventIds.remove(eventId) }
+                        requeueNativeMailboxEvent(item)
+                        Log.e(
+                            "ReiAnixMainPort",
+                            "EVENT_PROCESS_FAILED eventId=${eventId.ifBlank { "-" }} type=${item.envelope.optString("type")}",
+                            failure,
+                        )
+                    }
+                }
+                pollDelayMillis = when {
+                    events.isNotEmpty() -> 80L
+                    mutableSnapshot.value.playerSessionActive -> (pollDelayMillis + 25L).coerceAtMost(250L)
+                    else -> (pollDelayMillis * 3L / 2L).coerceIn(200L, 1_000L)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                Log.e("ReiAnixMainPort", "NATIVE_MAILBOX_LOOP_FAILED", failure)
+                pollDelayMillis = (pollDelayMillis * 3L / 2L).coerceAtMost(1_000L)
+            }
+            delay(pollDelayMillis)
+        }
+    }
+
     fun onRuntimeDisconnect() {
         cancelBackgroundTasks()
         publish(action = "runtime_disconnect")
@@ -2960,6 +3237,7 @@ internal class NativeMainRuntimePort(
         ensureNativeCommandDispatcher()
         settingsViewModel.refresh()
         libraryViewModel.refresh()
+        ensureNativeMailboxPoller()
         publish(action = "runtime_reconnect")
     }
 
@@ -7176,6 +7454,10 @@ internal class NativeMainRuntimePort(
         copy.forEach { it.cancel() }
         homeRefreshJob?.cancel()
         homeRefreshJob = null
+        synchronized(nativeMailboxPollLock) {
+            nativeMailboxPollJob?.cancel()
+            nativeMailboxPollJob = null
+        }
         thumbnailPumpJob?.cancel()
         thumbnailPumpJob = null
         synchronized(thumbnailQueueLock) {
