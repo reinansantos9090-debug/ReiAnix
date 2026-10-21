@@ -2218,8 +2218,7 @@ internal class NativeMainRuntimePort(
             payload.optBoolean("inventory_complete", payload.optBoolean("complete", false)),
         )
         if (request.isEmpty() || selectionStarted <= 0L || inventoryStarted < selectionStarted ||
-            inventoryStarted <= 0L || !inventoryComplete || pendingSafSelectionBaselineIdentities.isEmpty() &&
-            configuredSafTreeUris().isNotEmpty()
+            inventoryStarted <= 0L || !inventoryComplete
         ) return false
 
         val trees = payload.optJSONArray("trees") ?: return false
