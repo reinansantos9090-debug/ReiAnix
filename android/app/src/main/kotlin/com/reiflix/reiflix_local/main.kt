@@ -1508,6 +1508,180 @@ internal class NativeMainRuntimePort(
     fun dismissPlayerTransition(originRequestId: String, originPlayerSessionId: String? = null) =
         revokePlayerTransition(originRequestId, originPlayerSessionId)
 
+    /**
+     * Typed replacement for the legacy main.py action/event branching. Values
+     * are validated at this boundary, and domain writes still run in their
+     * canonical Kotlin service. Unknown actions are rejected, not acknowledged.
+     */
+    fun dispatchMainAction(action: String, payload: org.json.JSONObject): Boolean {
+        val normalized = action.trim().lowercase(Locale.ROOT)
+        fun positiveLong(key: String): Long? =
+            payload.optLong(key, 0L).takeIf { it > 0L }
+        fun nonBlank(key: String): String? =
+            payload.optString(key, "").trim().takeIf { it.isNotEmpty() }
+        return when (normalized) {
+            "navigate_home" -> navigateHome()
+            "navigate_library" -> navigateLibrary()
+            "navigate_organize" -> navigateOrganize()
+            "navigate_collector" -> navigateCollector()
+            "navigate_settings" -> navigateSettings()
+            "navigate_storage" -> navigateStorage()
+            "navigate_search" -> navigateSearch()
+            "navigate_my_list" -> navigateMyList()
+            "navigate_back", "back" -> navigateBack()
+            "navigate_settings_category" ->
+                navigateSettingsCategory(nonBlank("category") ?: return false)
+
+            "refresh_library" -> refreshLibrary()
+            "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog()
+            "refresh_settings" -> refreshSettingsIfActive()
+            "close_home_search" -> {
+                closeHomeSearch()
+                true
+            }
+            "home_search_query" -> {
+                updateHomeSearchQuery(payload.optString("query", ""))
+                true
+            }
+
+            "login" -> login()
+            "logout" -> logout()
+            "switch_account", "switchaccount" -> switchAccount()
+            "account_state_changed" -> {
+                setAccountState(payload.optString("state", "disconnected"), "native_event")
+                true
+            }
+
+            "select_saf", "select_tree", "add_folder" -> selectSafFolder()
+            "request_media_access", "request_video_access" -> requestMediaAccess()
+            "check_storage_access", "check_video_access" -> checkStorageAccess()
+            "open_broad_storage_settings", "request_storage_access" -> openBroadStorageSettings()
+            "scan_library", "refresh_home_library" -> requestLibraryScan()
+            "remove_folder", "remove_saf_tree", "release_tree" ->
+                (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference"))?.let {
+                    removeConfiguredSafFolder(it)
+                    true
+                } ?: false
+
+            "set_setting", "compose_settings_set" -> {
+                val key = nonBlank("key") ?: nonBlank("setting_key") ?: return false
+                val value = if (payload.has("value")) payload.opt("value")?.toString().orEmpty()
+                    else payload.optString("setting_value", "")
+                setSettingSerialized(key, value)
+            }
+            "settings_action", "compose_settings_action" ->
+                (nonBlank("action") ?: nonBlank("setting_action"))?.let(::requestSettingsActionTracked) ?: false
+            "account_action", "compose_settings_account_action" ->
+                (nonBlank("accountAction") ?: nonBlank("account_action"))?.let(::requestAccountActionTracked) ?: false
+            "set_theme" -> setSettingSerialized("appearance.theme", payload.optString("theme", "dark"))
+
+            "open_episode", "play_episode" -> {
+                val episodeId = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
+                val animeId = positiveLong("animeId") ?: positiveLong("anime_id")
+                openEpisode(episodeId, animeId) != null
+            }
+            "toggle_favorite", "toggle_personal_list" ->
+                positiveLong("animeId")?.let {
+                    libraryViewModel.toggleFavorite(it)
+                    true
+                } ?: false
+            "mark_episode_watched", "set_episode_watched" -> {
+                val id = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
+                markEpisodeWatched(id, payload.optBoolean("watched", true))
+                true
+            }
+            "toggle_pinned", "toggle_pin" ->
+                positiveLong("animeId")?.let(::togglePinned) ?: false
+            "save_personal_note", "set_note" -> {
+                val id = positiveLong("animeId") ?: positiveLong("anime_id") ?: return false
+                savePersonalNote(id, payload.optString("note", ""))
+            }
+            "save_user_tags", "set_tags" -> {
+                val id = positiveLong("animeId") ?: positiveLong("anime_id") ?: return false
+                val raw = payload.optJSONArray("tags") ?: return false
+                val tags = (0 until raw.length()).mapNotNull { index ->
+                    raw.optString(index, "").trim().takeIf { it.isNotEmpty() }
+                }
+                saveUserTags(id, tags)
+            }
+            "set_episode_manual_identification" -> {
+                val id = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
+                val season = if (payload.has("season")) payload.optInt("season") else null
+                val number = if (payload.has("number")) payload.optDouble("number") else null
+                val kind = payload.optString("episodeType", payload.optString("episode_type", "regular"))
+                val title = nonBlank("title")
+                setManualEpisodeIdentification(id, season, number, kind, title)
+            }
+            "query_anime" -> positiveLong("animeId")?.let(::queryNativeAnime) ?: false
+            "query_episodes" -> positiveLong("animeId")?.let(::queryNativeEpisodes) ?: false
+            "query_episode" -> positiveLong("episodeId")?.let(::queryNativeEpisode) ?: false
+            "query_recently_played" -> queryNativeRecentlyPlayed()
+            "query_folders" -> queryNativeFolders()
+            "query_artwork" -> queryNativeArtwork()
+            "query_marathon_plan" -> positiveLong("animeId")?.let {
+                queryMarathonPlan(it, nonBlank("currentPath") ?: nonBlank("current_path"))
+            } ?: false
+            "refresh_details" -> positiveLong("animeId")?.let(::refreshCurrentDetails) ?: false
+            "refresh_anilist_metadata" -> positiveLong("animeId")?.let(::refreshAniListMetadata) ?: false
+            "reconcile_unmatched_metadata" -> reconcileUnmatchedAniListMetadata()
+            "request_anime_artwork" -> positiveLong("animeId")?.let {
+                requestAnimeArtwork(it, payload.optBoolean("force", false))
+            } ?: false
+            "request_pending_artwork" -> requestPendingArtwork()
+            "clear_artwork_cache" -> clearManagedArtworkCache()
+            "classify_missing_local_genres" -> classifyMissingLocalGenres()
+
+            "create_backup" -> createBackup()
+            "inspect_backup" -> nonBlank("archivePath")?.let { inspectBackup(File(it)) } ?: false
+            "restore_backup" -> nonBlank("archivePath")?.let { restoreBackup(File(it)) } ?: false
+            "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
+            "restore_recovery_backup" -> nonBlank("archivePath")?.let { restoreRecoveryBackup(File(it)) } ?: false
+            "integrity_check" -> checkDatabaseIntegrity()
+            "reconcile_after_restore" -> reconcileRestoredFileAvailability()
+            "export_diagnostics" -> exportDiagnosticsJson()
+
+            "native_scan_progress" -> {
+                val id = nonBlank("scanId") ?: nonBlank("scan_id") ?: return false
+                val stats = payload.optJSONObject("payload") ?: payload
+                updateNativeScanProgress(id, stats)
+                true
+            }
+            "native_scan_terminal" -> {
+                val id = nonBlank("scanId") ?: nonBlank("scan_id") ?: return false
+                val status = nonBlank("status") ?: return false
+                val stats = payload.optJSONObject("payload") ?: payload
+                completeNativeScan(id, status, stats)
+                true
+            }
+            "cancel_player_transition" -> {
+                val origin = nonBlank("originRequestId") ?: nonBlank("origin_request_id") ?: return false
+                revokePlayerTransition(origin, nonBlank("originPlayerSessionId") ?: nonBlank("origin_player_session_id"))
+                true
+            }
+            "diagnostic" -> {
+                recordDiagnostic(
+                    name = nonBlank("name") ?: "NATIVE_MAIN_DIAGNOSTIC",
+                    severity = payload.optString("severity", "INFO"),
+                    result = nonBlank("result"),
+                    context = payload.optJSONObject("context")?.let { context ->
+                        buildMap {
+                            val keys = context.keys()
+                            while (keys.hasNext()) {
+                                val key = keys.next()
+                                put(key, context.opt(key))
+                            }
+                        }
+                    } ?: emptyMap(),
+                )
+                true
+            }
+            else -> {
+                Log.w("ReiAnixMainPort", "Rejected unknown main action='$normalized'")
+                false
+            }
+        }
+    }
+
     fun onLifecycleEvent(eventOrState: Any?) {
         NativeLifecycleCoordinator.onEvent(eventOrState)
     }
