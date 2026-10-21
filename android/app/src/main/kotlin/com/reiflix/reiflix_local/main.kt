@@ -3854,7 +3854,7 @@ internal class NativeMainRuntimePort(
             "storage_status", "volume_changed",
             "mediastore_permission", "mediastore_error",
             "broad_storage_permission", "broad_storage_status", "broad_storage_error" -> {
-                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                val correlatedRequestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
                 when (type) {
                     "saf_cancelled" -> finishPendingSafSelection(
                         eventRequestId = correlatedRequestId,
@@ -3967,7 +3967,7 @@ internal class NativeMainRuntimePort(
                 true
             }
             "native_error" -> {
-                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                val correlatedRequestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
                 val nested = payload.optJSONObject("payload")
                 fun errorField(vararg keys: String): String? {
                     stringValue(*keys)?.let { return it }
@@ -4022,7 +4022,7 @@ internal class NativeMainRuntimePort(
                 }
             }
             "storage_capabilities" -> {
-                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                val correlatedRequestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
                 finishPendingStorageOperation(
                     eventRequestId = correlatedRequestId,
                     expectedNativeActions = setOf("check_storage_access"),
@@ -4040,7 +4040,7 @@ internal class NativeMainRuntimePort(
             "saf_inventory", "saf_library_scan_complete" -> {
                 if (type == "saf_library_scan_complete") {
                     val status = stringValue("status")?.uppercase(Locale.ROOT) ?: "UNKNOWN"
-                    val requestId = eventRequestId ?: stringValue("requestId")
+                    val requestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
                     val mappedStatus = when (status) {
                         "FAILED", "ERROR" -> "FAILED"
                         "CANCELLED" -> "CANCELLED"
