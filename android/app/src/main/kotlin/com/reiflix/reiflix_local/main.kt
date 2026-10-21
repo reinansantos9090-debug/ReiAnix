@@ -522,6 +522,17 @@ internal data class NativeMainRuntimeSnapshot(
 
 internal data class NativePlayerCallbackValidation(val isCurrent: Boolean, val reason: String = "")
 
+internal data class NativeMainOperationResult(
+    val requestId: String,
+    val action: String,
+    val status: String,
+    val operationState: String,
+    val message: String? = null,
+    val error: String? = null,
+    val payloadJson: String? = null,
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+)
+
 internal data class NativeMainScanUiState(
     val state: String = "IDLE",
     val source: String? = null,
@@ -590,6 +601,8 @@ internal class NativeMainRuntimePort(
     private val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
     private val mutableSnapshot = MutableStateFlow(NativeMainRuntimeSnapshot())
     val snapshot: StateFlow<NativeMainRuntimeSnapshot> = mutableSnapshot.asStateFlow()
+    private val mutableOperationResult = MutableStateFlow<NativeMainOperationResult?>(null)
+    val operationResult: StateFlow<NativeMainOperationResult?> = mutableOperationResult.asStateFlow()
     private val mutableScanUiState = MutableStateFlow(NativeMainScanUiState())
     val scanUiState: StateFlow<NativeMainScanUiState> = mutableScanUiState.asStateFlow()
     private var scanObserverJob: Job? = null
@@ -2810,6 +2823,120 @@ internal class NativeMainRuntimePort(
      * projection refreshes and explicitly non-native-persisted settings commands
      * can be applied. Duplicate event IDs are ignored within this process.
      */
+    /**
+     * Kotlin replacement for the old ComposeSettingsBridge result writer. A QUEUED
+     * state is never upgraded to COMPLETED until a real operation callback arrives.
+     */
+    fun publishOperationResult(
+        requestId: String,
+        action: String,
+        status: String,
+        operationState: String = status,
+        message: String? = null,
+        error: String? = null,
+        payload: org.json.JSONObject? = null,
+    ): Boolean {
+        val request = requestId.trim()
+        val operation = action.trim()
+        val normalizedStatus = status.trim().uppercase(Locale.ROOT)
+        val normalizedState = operationState.trim().uppercase(Locale.ROOT)
+        if (request.isEmpty() || operation.isEmpty()) return false
+        if (normalizedStatus !in setOf("ACK", "QUEUED", "COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "ERROR")) return false
+        if (normalizedState !in setOf("RECEIVED", "QUEUED", "RUNNING", "COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "ERROR")) return false
+        val result = NativeMainOperationResult(
+            requestId = request,
+            action = operation,
+            status = normalizedStatus,
+            operationState = normalizedState,
+            message = message?.take(500),
+            error = error?.take(500),
+            payloadJson = payload?.toString(),
+        )
+        mutableOperationResult.value = result
+        publish(action = "operation_result", error = result.error, transform = {
+            it.copy(lastResultJson = org.json.JSONObject()
+                .put("requestId", result.requestId)
+                .put("action", result.action)
+                .put("status", result.status)
+                .put("operationState", result.operationState)
+                .put("message", result.message ?: org.json.JSONObject.NULL)
+                .put("error", result.error ?: org.json.JSONObject.NULL)
+                .put("payload", result.payloadJson ?: org.json.JSONObject.NULL)
+                .put("updatedAtMillis", result.updatedAtMillis)
+                .toString())
+        })
+        recordDiagnostic(
+            name = "NATIVE_OPERATION_RESULT",
+            severity = if (normalizedStatus in setOf("FAILED", "ERROR", "BLOCKED")) "WARN" else "INFO",
+            requestId = request,
+            result = normalizedState,
+            context = mapOf("action" to operation, "status" to normalizedStatus, "has_error" to !result.error.isNullOrBlank()),
+        )
+        return true
+    }
+
+    fun operationResultFor(requestId: String): NativeMainOperationResult? =
+        mutableOperationResult.value?.takeIf { it.requestId == requestId.trim() }
+
+    fun settingsViewPaths(settingsPath: List<String>): List<List<String>> {
+        val current = settingsPath.map { it.trim() }.filter { it.isNotEmpty() }
+        return buildList {
+            add(emptyList())
+            for (index in 1..current.size) add(current.take(index))
+        }
+    }
+
+    fun completeNativeOperation(
+        requestId: String,
+        action: String,
+        payload: org.json.JSONObject? = null,
+        message: String? = null,
+    ): Boolean = publishOperationResult(
+        requestId = requestId,
+        action = action,
+        status = "COMPLETED",
+        operationState = "COMPLETED",
+        payload = payload,
+        message = message,
+    )
+
+    fun failNativeOperation(requestId: String, action: String, error: String): Boolean =
+        publishOperationResult(
+            requestId = requestId,
+            action = action,
+            status = "ERROR",
+            operationState = "ERROR",
+            error = error,
+        )
+
+    fun queueNativeOperation(requestId: String, action: String, message: String? = null): Boolean =
+        publishOperationResult(
+            requestId = requestId,
+            action = action,
+            status = "ACK",
+            operationState = "QUEUED",
+            message = message ?: "Operacao nativa aceita para processamento.",
+        )
+
+    fun dispatchNativeCommand(
+        requestId: String,
+        action: String,
+        payload: org.json.JSONObject = org.json.JSONObject(),
+    ): Boolean {
+        val request = requestId.trim()
+        val normalizedAction = action.trim()
+        if (request.isEmpty() || normalizedAction.isEmpty()) return false
+        if (!queueNativeOperation(request, normalizedAction)) return false
+        val accepted = dispatchMainAction(normalizedAction, payload)
+        if (!accepted) {
+            failNativeOperation(request, normalizedAction, "A operacao nativa nao foi aceita.")
+            return false
+        }
+        recordDiagnostic(name = "NATIVE_OPERATION_ACCEPTED", requestId = request, result = "queued",
+            context = mapOf("action" to normalizedAction))
+        return true
+    }
+
     fun dispatchNativeEvent(
         eventType: String,
         payload: org.json.JSONObject,
