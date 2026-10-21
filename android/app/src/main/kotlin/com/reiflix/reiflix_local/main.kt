@@ -487,7 +487,8 @@ internal class NativeMainRuntimePort(
 ) {
     private val lock = Any()
     private val jobs = linkedSetOf<Job>()
-    private val maxBackgroundTasks = 8
+    private val jobLanes = mutableMapOf<Job, String>()
+    private val maxBackgroundTasksPerLane = 8
     private val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
     private val mutableSnapshot = MutableStateFlow(NativeMainRuntimeSnapshot())
     val snapshot: StateFlow<NativeMainRuntimeSnapshot> = mutableSnapshot.asStateFlow()
@@ -515,7 +516,12 @@ internal class NativeMainRuntimePort(
      * A task is registered before it starts, and completion always releases the
      * slot; failures are observable rather than silently lost.
      */
-    private fun launchTracked(label: String, block: suspend () -> Unit): Boolean {
+    private fun launchTracked(
+        label: String,
+        lane: String = "general",
+        block: suspend () -> Unit,
+    ): Boolean {
+        val normalizedLane = lane.trim().ifBlank { "general" }
         val job = activity.lifecycleScope.launch(start = CoroutineStart.LAZY) {
             try {
                 block()
@@ -530,17 +536,23 @@ internal class NativeMainRuntimePort(
                     source = "NativeMainRuntimePort",
                     result = label,
                     error = failure,
-                    context = mapOf("operation" to label),
+                    context = mapOf("operation" to label, "lane" to normalizedLane),
                 )
                 publish(action = label, error = failure.message ?: failure.javaClass.simpleName)
             }
         }
 
         val accepted = synchronized(lock) {
-            if (jobs.size >= maxBackgroundTasks || activity.isFinishing || activity.isDestroyed) {
+            val laneSize = jobLanes.values.count { it == normalizedLane }
+            if (
+                laneSize >= maxBackgroundTasksPerLane ||
+                activity.isFinishing ||
+                activity.isDestroyed
+            ) {
                 false
             } else {
                 jobs.add(job)
+                jobLanes[job] = normalizedLane
                 mutableSnapshot.value = mutableSnapshot.value.copy(
                     generation = mutableSnapshot.value.generation + 1L,
                     pendingTasks = jobs.size,
@@ -557,6 +569,7 @@ internal class NativeMainRuntimePort(
         job.invokeOnCompletion {
             synchronized(lock) {
                 jobs.remove(job)
+                jobLanes.remove(job)
                 mutableSnapshot.value = mutableSnapshot.value.copy(
                     generation = mutableSnapshot.value.generation + 1L,
                     pendingTasks = jobs.size,
