@@ -43,7 +43,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 
@@ -111,13 +110,14 @@ class ReiAnixComposeLibraryHost(
             // Port of main.py's Home refresh lifecycle. The native scan remains the
             // sole scanner and SQLite owner; this state machine only tracks REQUESTED ->
             // RUNNING -> CATALOG_UPDATING -> UI_COMMIT -> SUCCESS for diagnostics.
-            // Dropping the first snapshot prevents a route mount from fabricating a scan.
+            // An initial idle snapshot is ignored because it has no active request; if
+            // the host attaches during a scan, the true snapshot is tracked so its terminal
+            // result is still processed without a second scan or duplicate reconciliation.
             LaunchedEffect(libraryViewModel) {
                 var activeRefreshRequestId: String? = null
                 libraryViewModel.uiState
                     .map { it.scanInProgress }
                     .distinctUntilChanged()
-                    .drop(1)
                     .collectLatest { scanning ->
                         if (scanning) {
                             activeRefreshRequestId?.let { previousRequest ->
