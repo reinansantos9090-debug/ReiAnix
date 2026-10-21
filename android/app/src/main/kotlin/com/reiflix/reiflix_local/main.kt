@@ -15,6 +15,11 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -484,6 +489,12 @@ internal data class NativeMainRuntimeSnapshot(
     val lastResultJson: String? = null,
 )
 
+internal data class NativeMainUiPreferences(
+    val homeState: Map<String, Any?> = emptyMap(),
+    val organizeState: Map<String, Any?> = emptyMap(),
+    val settingsState: Map<String, Any?> = emptyMap(),
+)
+
 internal class NativeMainRuntimePort(
     private val activity: MainActivity,
     private val libraryViewModel: ReiAnixLibraryViewModel,
@@ -497,6 +508,11 @@ internal class NativeMainRuntimePort(
     private val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
     private val mutableSnapshot = MutableStateFlow(NativeMainRuntimeSnapshot())
     val snapshot: StateFlow<NativeMainRuntimeSnapshot> = mutableSnapshot.asStateFlow()
+    private val preferenceLock = Any()
+    private val preferenceFile = File(File(activity.filesDir, "data"), "navigation_state.json")
+    private val preferenceWriteMutex = Mutex()
+    private val mutableUiPreferences = MutableStateFlow(loadDurableUiPreferences())
+    val uiPreferences: StateFlow<NativeMainUiPreferences> = mutableUiPreferences.asStateFlow()
 
     private fun publish(
         action: String? = mutableSnapshot.value.lastAction,
@@ -514,6 +530,138 @@ internal class NativeMainRuntimePort(
                 ),
             )
         }
+    }
+
+    /**
+     * The previous Flet runtime persisted durable Home/Organize/Settings preferences
+     * only. Route and back-stack state is deliberately not restored; each process
+     * starts at Home and a recovery decision remains authoritative.
+     */
+    private fun loadDurableUiPreferences(): NativeMainUiPreferences {
+        val file = preferenceFile
+        if (!file.isFile || file.length() !in 1..1_048_576L) return NativeMainUiPreferences()
+        return runCatching {
+            val root = org.json.JSONObject(file.readText(Charsets.UTF_8))
+            fun values(key: String): Map<String, Any?> {
+                val source = root.optJSONObject(key) ?: return emptyMap()
+                val target = linkedMapOf<String, Any?>()
+                val keys = source.keys()
+                while (keys.hasNext()) {
+                    val name = keys.next()
+                    val value = source.opt(name)
+                    if (value != null && value !== org.json.JSONObject.NULL) target[name] = value
+                }
+                return target
+            }
+            NativeMainUiPreferences(
+                homeState = values("home_state"),
+                organizeState = values("organize_state"),
+                settingsState = values("settings_state"),
+            )
+        }.getOrElse { error ->
+            Log.w("ReiAnixMainPort", "Ignoring invalid durable UI preference snapshot", error)
+            NativeMainUiPreferences()
+        }
+    }
+
+    private fun preferencePayload(state: NativeMainUiPreferences): org.json.JSONObject =
+        org.json.JSONObject()
+            .put("version", 3)
+            .put("home_state", org.json.JSONObject(state.homeState))
+            .put("organize_state", org.json.JSONObject(state.organizeState))
+            .put("settings_state", org.json.JSONObject(state.settingsState))
+
+    private fun writeDurableUiPreferences(state: NativeMainUiPreferences) {
+        synchronized(preferenceLock) {
+            val directory = preferenceFile.parentFile
+            check(directory != null && (directory.isDirectory || directory.mkdirs())) {
+                "Could not create durable UI preference directory"
+            }
+            val temporary = File(directory, preferenceFile.name + ".tmp")
+            try {
+                val bytes = preferencePayload(state).toString().toByteArray(Charsets.UTF_8)
+                FileOutputStream(temporary).use { stream ->
+                    stream.write(bytes)
+                    stream.fd.sync()
+                }
+                try {
+                    Files.move(
+                        temporary.toPath(),
+                        preferenceFile.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING,
+                    )
+                } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                    Files.move(
+                        temporary.toPath(),
+                        preferenceFile.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING,
+                    )
+                }
+            } catch (failure: Throwable) {
+                temporary.delete()
+                throw failure
+            }
+        }
+    }
+
+    private fun updateUiPreference(
+        area: String,
+        key: String,
+        value: Any?,
+        remove: Boolean,
+    ): Boolean {
+        val normalizedKey = key.trim()
+        if (normalizedKey.isEmpty()) return false
+        val current = mutableUiPreferences.value
+        fun nextMap(source: Map<String, Any?>): Map<String, Any?> = source.toMutableMap().apply {
+            if (remove) remove(normalizedKey) else put(normalizedKey, value)
+        }
+        val next = when (area) {
+            "home" -> current.copy(homeState = nextMap(current.homeState))
+            "organize" -> current.copy(organizeState = nextMap(current.organizeState))
+            "settings" -> current.copy(settingsState = nextMap(current.settingsState))
+            else -> return false
+        }
+        mutableUiPreferences.value = next
+        return launchTracked("persist_ui_preferences", lane = "settings") {
+            preferenceWriteMutex.withLock {
+                withContext(Dispatchers.IO) {
+                    writeDurableUiPreferences(mutableUiPreferences.value)
+                }
+            }
+        }
+    }
+
+    fun setHomeUiPreference(key: String, value: Any?): Boolean =
+        updateUiPreference("home", key, value, remove = false)
+
+    fun removeHomeUiPreference(key: String): Boolean =
+        updateUiPreference("home", key, null, remove = true)
+
+    fun setOrganizeUiPreference(key: String, value: Any?): Boolean =
+        updateUiPreference("organize", key, value, remove = false)
+
+    fun removeOrganizeUiPreference(key: String): Boolean =
+        updateUiPreference("organize", key, null, remove = true)
+
+    fun setSettingsUiPreference(key: String, value: Any?): Boolean =
+        updateUiPreference("settings", key, value, remove = false)
+
+    fun removeSettingsUiPreference(key: String): Boolean =
+        updateUiPreference("settings", key, null, remove = true)
+
+    fun flushUiPreferences(): Boolean = launchTracked("flush_ui_preferences", lane = "settings") {
+        preferenceWriteMutex.withLock {
+            withContext(Dispatchers.IO) {
+                writeDurableUiPreferences(mutableUiPreferences.value)
+            }
+        }
+    }
+
+    fun clearPersistedNavigationState() {
+        // Runtime route and back stack are not durable UI preferences and must not be replayed.
+        publish(action = "navigation_state_process_local")
     }
 
     /**
