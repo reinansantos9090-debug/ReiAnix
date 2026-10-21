@@ -5543,6 +5543,8 @@ internal class NativeMainRuntimePort(
                 settingsViewModel.refresh()
                 val reconciled = reconcileRestoredFileAvailability()
                 libraryViewModel.refresh()
+                scheduleCatalogMetadataHydration("backup_restored")
+                scheduleThumbnailReconciliation("backup_restored")
                 recordDiagnostic(
                     name = "NATIVE_BACKUP_RESTORE_PROJECTION_REFRESH",
                     requestId = requestId,
