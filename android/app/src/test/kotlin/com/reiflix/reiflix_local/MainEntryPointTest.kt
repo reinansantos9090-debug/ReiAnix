@@ -143,6 +143,13 @@ class MainEntryPointTest {
         assertEquals("", normalizeAppLifecycleState(null))
     }
 
+
+    @Test
+    fun initialRouteCannotExposeHomeWhenRecoveryIsRequired() {
+        assertEquals(ReiAnixRoutes.RECOVERY, MainEntryPoint.initialRoute(recoveryRequired = true))
+        assertEquals(ReiAnixRoutes.HOME, MainEntryPoint.initialRoute(recoveryRequired = false))
+    }
+
     private fun readyState(
         phase: ReiAnixBootstrapPhase = ReiAnixBootstrapPhase.READY,
         stage: ReiAnixBootstrapStage = ReiAnixBootstrapStage.READY,
