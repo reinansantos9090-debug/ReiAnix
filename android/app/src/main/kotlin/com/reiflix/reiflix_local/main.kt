@@ -3153,13 +3153,6 @@ internal class NativeMainRuntimePort(
         }
         val accepted = launchTracked("backup_reconcile", lane = "backup") {
             try {
-                val updated = withContext(Dispatchers.IO) {
-                    backupService.reconcileRestoredFileAvailability()
-                }
-                libraryViewModel.refresh()
-                scheduleCatalogMetadataHydration("post_restore_reconciliation")
-                scheduleThumbnailReconciliation("post_restore_reconciliation")
-
                 val scanState = mutableScanUiState.value.state.uppercase(Locale.ROOT)
                 if (scanState in setOf("RUNNING", "QUEUED", "CANCELLING")) {
                     recordDiagnostic(
@@ -3167,7 +3160,7 @@ internal class NativeMainRuntimePort(
                         severity = "WARN",
                         requestId = resolvedRequestId,
                         result = scanState,
-                        context = mapOf("local_references_updated" to updated),
+                        context = mapOf("reconciliation" to "blocked_before_mutation"),
                     )
                     publishOperationResult(
                         requestId = resolvedRequestId,
@@ -3179,6 +3172,12 @@ internal class NativeMainRuntimePort(
                     )
                     return@launchTracked
                 }
+                val updated = withContext(Dispatchers.IO) {
+                    backupService.reconcileRestoredFileAvailability()
+                }
+                libraryViewModel.refresh()
+                scheduleCatalogMetadataHydration("post_restore_reconciliation")
+                scheduleThumbnailReconciliation("post_restore_reconciliation")
 
                 val scanAccepted = requestStorageAction(
                     action = "scan_library",
