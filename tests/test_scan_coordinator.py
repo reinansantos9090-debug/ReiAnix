@@ -303,23 +303,30 @@ class ScanCoordinatorSourceContractTests(unittest.TestCase):
         self.assertNotIn("scanAllStorage(null)", block)
         self.assertNotIn("scanMediaStore(null)", block)
 
-    def test_refresh_library_uses_scan_coordinator(self):
-        source = self.read("main.py")
-        start = source.index("async def refresh_library")
-        end = source.index("async def login", start)
-        block = source[start:end]
-        self.assertIn("scan_coordinator.request(", block)
-        self.assertIn("ScanOrigin.USER_REFRESH", block)
-        self.assertNotIn("bridge.scan_all_storage()", block)
-        self.assertNotIn("bridge.scan_media_store()", block)
-        self.assertNotIn("bridge.rescan_tree(", block)
 
-    def test_native_scan_terminal_events_flow_through_coordinator(self):
-        source = self.read("main.py")
-        self.assertIn("scan_coordinator.handle_native_event(", source)
-        hook = source[source.index("if event_type in {'saf_scan', 'broad_storage_scan', 'mediastore_scan',"): ]
-        self.assertIn("on_catalog_changed(refresh_request_id=refresh_request_id)", hook)
+    def test_library_refresh_uses_native_scan_dispatch_and_controller(self):
+        activity = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt")
+        controller = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt")
+        runner = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt")
+        view_model = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
+        self.assertIn("publishScanRequest(", activity)
+        self.assertIn("NativeScanController", activity)
+        self.assertIn("NativeScanRunner", activity)
+        self.assertIn("fun refresh()", view_model)
+        refresh = view_model[view_model.index("fun refresh()"):view_model.index("fun refreshDetails(", view_model.index("fun refresh()"))]
+        self.assertIn("repository.refresh()", refresh)
+        self.assertIn("fun begin(", controller)
+        self.assertIn("NativeIndex.markNativeCatalogIndexing", runner)
 
+    def test_native_scan_terminal_events_commit_catalog_and_refresh_compose(self):
+        runner = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt")
+        controller = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt")
+        view_model = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
+        self.assertIn("NativeMailbox", runner)
+        self.assertIn("markNativeCatalogCommitted", runner)
+        self.assertIn("fun finish(", controller)
+        self.assertIn("NativeScanController.progress", view_model)
+        self.assertIn("refreshNativeCatalog()", view_model)
     def test_media_observer_has_single_register_unregister_contract(self):
         source = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/MediaStoreScanner.kt")
         self.assertIn("if (changeObserver != null) return", source)
