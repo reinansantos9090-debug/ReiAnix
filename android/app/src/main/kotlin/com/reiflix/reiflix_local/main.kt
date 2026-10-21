@@ -4732,6 +4732,15 @@ internal class NativeMainRuntimePort(
      * accepted. Lifecycle resume alone never invokes this method.
      */
     fun requestHomeRefresh(source: String = "button"): Boolean {
+        if (restoreMaintenanceInProgress) {
+            recordDiagnostic(
+                name = "HOME_REFRESH_BLOCKED",
+                severity = "WARN",
+                result = "restore_in_progress",
+                context = mapOf("source" to source),
+            )
+            return false
+        }
         if (HomeRefreshCoordinator.state.value.active) return false
         val requestId = UUID.randomUUID().toString()
         val refreshId = UUID.randomUUID().toString()
