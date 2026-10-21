@@ -6482,21 +6482,45 @@ internal class NativeMainRuntimePort(
                         val lifecycle = stringValue("lifecycle") ?: return false
                         val normalizedLifecycle = lifecycle.lowercase(Locale.ROOT)
                         val current = mutableSnapshot.value
+                        if (
+                            !sessionId.isNullOrBlank() &&
+                            !current.activePlayerActivityInstanceId.isNullOrBlank() &&
+                            !activityInstanceId.isNullOrBlank() &&
+                            current.activePlayerActivityInstanceId != activityInstanceId
+                        ) {
+                            recordDiagnostic(
+                                name = "PLAYER_CALLBACK_STALE",
+                                severity = "WARN",
+                                requestId = requestId,
+                                sessionId = sessionId,
+                                result = "stale_activity_instance_lifecycle",
+                                context = mapOf(
+                                    "activity_instance_id" to activityInstanceId,
+                                    "current_activity_instance_id" to current.activePlayerActivityInstanceId,
+                                    "lifecycle" to lifecycle,
+                                ),
+                            )
+                            return false
+                        }
                         if (!sessionId.isNullOrBlank() &&
                             !current.activePlayerSessionId.isNullOrBlank() &&
                             current.activePlayerSessionId != sessionId
                         ) return false
                         if (normalizedLifecycle in setOf("oncreate", "onnewintent", "onstart", "onresume")) {
-                            if (requestId.isNullOrBlank() || sessionId.isNullOrBlank()) return false
+                            if (sessionId.isNullOrBlank()) return false
+                            // PLAYER_LIFECYCLE did not require requestId in the legacy
+                            // handler; an omitted ID keeps the active request correlation.
+                            val correlatedRequestId = requestId?.takeIf { it.isNotBlank() }
+                                ?: current.activePlayerRequestId
                             notePlayerSession(
-                                requestId,
+                                correlatedRequestId.orEmpty(),
                                 sessionId,
                                 payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
                             )
                             if (!activityInstanceId.isNullOrBlank()) {
                                 notePlayerActivityCreated(
                                     activityInstanceId,
-                                    requestId,
+                                    correlatedRequestId.orEmpty(),
                                     sessionId,
                                     payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
                                 )
