@@ -160,7 +160,9 @@ class NativeSqlitePersistenceContractTests(unittest.TestCase):
             bootstrap.index("NativeCommandDispatcher.start(appContext)"),
         )
         self.assertIn("appDependencies.bootstrap.start()", activity)
-        self.assertIn("appDependencies.bootstrap.validateCanonicalDatabase()", activity)
+        self.assertIn("MainEntryPoint.launchNativeRuntime(", activity)
+        entry_point = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").read_text(encoding="utf-8")
+        self.assertIn("dependencies.bootstrap.validateCanonicalDatabase()", entry_point)
         self.assertNotIn("NativeScanRunner.recoverInterruptedSafScans(applicationContext)", activity)
         self.assertNotIn("NativeCommandDispatcher.start(this@MainActivity)", activity)
         self.assertIn("withContext(Dispatchers.IO)", activity)
