@@ -4341,7 +4341,7 @@ internal class NativeMainRuntimePort(
             ?: payload.optJSONObject("currentEpisode")
             ?: payload.optJSONObject("episode")
         val episode = if (payload.optString("path", "").trim().isNotEmpty()) payload else nestedEpisode ?: payload
-        if (payload.optBoolean("missing", false) || episode.optBoolean("missing", false)) return false
+        if (episode.optBoolean("missing", false)) return false
 
         fun firstText(vararg keys: String): String? {
             for (key in keys) {
