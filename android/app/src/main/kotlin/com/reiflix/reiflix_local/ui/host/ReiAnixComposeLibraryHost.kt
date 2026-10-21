@@ -139,29 +139,29 @@ class ReiAnixComposeLibraryHost(
                         val terminalStatus = (
                             terminalUiState.lastScanStatus ?: terminalUiState.scanState
                         ).trim().uppercase()
+                        var refreshCanComplete = true
                         when (terminalStatus) {
                             "CANCELLED", "CANCELED" -> {
                                 HomeRefreshCoordinator.cancel(requestId, "scan_$terminalStatus")
-                                activeRefreshRequestId = null
-                                return@collectLatest
+                                refreshCanComplete = false
                             }
                             "PARTIAL", "FAILED", "ERROR", "BLOCKED" -> {
                                 HomeRefreshCoordinator.fail(requestId, "scan_$terminalStatus")
-                                activeRefreshRequestId = null
-                                return@collectLatest
+                                refreshCanComplete = false
                             }
                             "COMPLETED", "SUCCESS", "SUCCEEDED", "EMPTY_COMPLETE" -> Unit
                             else -> {
                                 HomeRefreshCoordinator.fail(requestId, "scan_terminal_status_unverified")
-                                activeRefreshRequestId = null
-                                return@collectLatest
+                                refreshCanComplete = false
                             }
                         }
-                        if (!HomeRefreshCoordinator.markScanTerminal(requestId)) {
+                        if (refreshCanComplete && !HomeRefreshCoordinator.markScanTerminal(requestId)) {
                             HomeRefreshCoordinator.fail(requestId, "scan_terminal_transition_rejected")
-                            activeRefreshRequestId = null
-                            return@collectLatest
+                            refreshCanComplete = false
                         }
+                        // Keep the existing post-scan metadata/artwork reconciliation even
+                        // for partial/cancelled scans. The state machine reports the terminal
+                        // scan outcome but never suppresses safe work for already indexed rows.
                         if (terminalUiState.animes.isNotEmpty()) {
                             val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
                             try {
@@ -186,10 +186,12 @@ class ReiAnixComposeLibraryHost(
                                     )
                                 }
                         }
-                        if (HomeRefreshCoordinator.markCatalogUpdated(requestId)) {
-                            HomeRefreshCoordinator.complete(requestId)
-                        } else {
-                            HomeRefreshCoordinator.fail(requestId, "catalog_projection_not_committed")
+                        if (refreshCanComplete) {
+                            if (HomeRefreshCoordinator.markCatalogUpdated(requestId)) {
+                                HomeRefreshCoordinator.complete(requestId)
+                            } else {
+                                HomeRefreshCoordinator.fail(requestId, "catalog_projection_not_committed")
+                            }
                         }
                         activeRefreshRequestId = null
                     }
