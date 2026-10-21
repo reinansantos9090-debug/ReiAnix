@@ -3179,6 +3179,259 @@ internal class NativeMainRuntimePort(
         return candidate
     }
 
+    private fun projectNativeLibraryPageEpisode(
+        episode: com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel,
+    ): org.json.JSONObject {
+        val artwork = episode.artwork
+        return org.json.JSONObject()
+            .put("id", episode.id)
+            .put("anime_id", episode.animeId)
+            .put("season", episode.seasonNumber ?: org.json.JSONObject.NULL)
+            .put("number", episode.number ?: org.json.JSONObject.NULL)
+            .put("episode_title", episode.title ?: org.json.JSONObject.NULL)
+            .put("file_name", episode.fileName)
+            .put("progress", episode.progressSeconds ?: org.json.JSONObject.NULL)
+            .put("duration", episode.durationSeconds ?: org.json.JSONObject.NULL)
+            .put("watched", episode.watched ?: org.json.JSONObject.NULL)
+            .put("consumption_state", episode.consumptionState?.name?.lowercase(Locale.ROOT) ?: org.json.JSONObject.NULL)
+            .put("last_played_at", episode.lastPlayedAt ?: org.json.JSONObject.NULL)
+            .put("modified_at", episode.modifiedAt ?: org.json.JSONObject.NULL)
+            .put("file_size", episode.fileSizeBytes ?: org.json.JSONObject.NULL)
+            .put("episode_type", episode.episodeType ?: org.json.JSONObject.NULL)
+            .put("manual_override", episode.manualOverride)
+            .put("path", episode.media.path ?: org.json.JSONObject.NULL)
+            .put("uri", episode.media.uri ?: org.json.JSONObject.NULL)
+            .put("media_identity", episode.media.mediaIdentity ?: org.json.JSONObject.NULL)
+            .put(
+                "availability_state",
+                episode.media.sourceAvailabilityState ?: episode.media.availability.name.lowercase(Locale.ROOT),
+            )
+            .put("missing", episode.media.availability.name == "MISSING")
+            .put("artwork_local_path", artwork?.localPath ?: org.json.JSONObject.NULL)
+            .put("artwork_external_url", artwork?.externalUrl ?: org.json.JSONObject.NULL)
+    }
+
+    private fun projectNativeLibraryPageAnime(
+        anime: com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel,
+    ): org.json.JSONObject {
+        val artwork = anime.artwork
+        val meta = org.json.JSONObject()
+            .put("title", anime.title)
+            .put("year", anime.year ?: org.json.JSONObject.NULL)
+            .put("media_kind", anime.mediaKind.name.lowercase(Locale.ROOT))
+            .put("presentation_state", anime.presentationState.name.lowercase(Locale.ROOT))
+            .put("metadata_status", anime.metadataAvailability.name.lowercase(Locale.ROOT))
+            .put("description", anime.description ?: org.json.JSONObject.NULL)
+            .put("romaji", anime.romajiTitle ?: org.json.JSONObject.NULL)
+            .put("english", anime.englishTitle ?: org.json.JSONObject.NULL)
+            .put("native", anime.nativeTitle ?: org.json.JSONObject.NULL)
+            .put("aliases", org.json.JSONArray().apply { anime.aliases.forEach { put(it) } })
+            .put("score", anime.score ?: org.json.JSONObject.NULL)
+            .put("added_at", anime.addedAt ?: org.json.JSONObject.NULL)
+            .put("status", anime.status ?: org.json.JSONObject.NULL)
+            .put("format", anime.format ?: org.json.JSONObject.NULL)
+            .put("duration_minutes", anime.durationMinutes ?: org.json.JSONObject.NULL)
+            .put("studio", anime.studio ?: org.json.JSONObject.NULL)
+            .put("season_label", anime.seasonLabel ?: org.json.JSONObject.NULL)
+            .put("announced_episode_count", anime.announcedEpisodeCount ?: org.json.JSONObject.NULL)
+            .put("cover_cache", artwork?.localPath ?: org.json.JSONObject.NULL)
+            .put("cover_url", artwork?.externalUrl ?: org.json.JSONObject.NULL)
+            .put("banner_url", artwork?.backdropExternalUrl ?: org.json.JSONObject.NULL)
+        val seasons = org.json.JSONArray().apply {
+            anime.seasons.forEach { season ->
+                put(
+                    org.json.JSONObject()
+                        .put("season", season.number ?: org.json.JSONObject.NULL)
+                        .put("season_name", season.title)
+                        .put(
+                            "episodes",
+                            org.json.JSONArray().apply {
+                                season.episodes.forEach { put(projectNativeLibraryPageEpisode(it)) }
+                            },
+                        ),
+                )
+            }
+        }
+        val specials = org.json.JSONArray().apply {
+            if (anime.specials.isNotEmpty()) {
+                put(
+                    org.json.JSONObject().put(
+                        "episodes",
+                        org.json.JSONArray().apply {
+                            anime.specials.forEach { put(projectNativeLibraryPageEpisode(it)) }
+                        },
+                    ),
+                )
+            }
+        }
+        return org.json.JSONObject()
+            .put("id", anime.id)
+            .put("main_title", anime.title)
+            .put("lookup_title", anime.romajiTitle ?: anime.englishTitle ?: anime.title)
+            .put("favorite", anime.favorite)
+            .put("is_pinned", anime.pinned)
+            .put("last_played_at", anime.lastPlayedAt ?: org.json.JSONObject.NULL)
+            .put("media_kind", anime.mediaKind.name.lowercase(Locale.ROOT))
+            .put("year", anime.year ?: org.json.JSONObject.NULL)
+            .put("presentation_state", anime.presentationState.name.lowercase(Locale.ROOT))
+            .put("artwork_available", artwork?.isAvailable ?: false)
+            .put("playback_target_episode_id", anime.playbackTargetEpisodeId ?: org.json.JSONObject.NULL)
+            .put("genres", org.json.JSONArray().apply { anime.genres.forEach { put(it.name) } })
+            .put("genre_ids", org.json.JSONArray().apply { anime.genres.forEach { put(it.id ?: "") } })
+            .put("user_tags", org.json.JSONArray().apply { anime.userTags.forEach { put(it) } })
+            .put("personal_note", anime.personalNote ?: org.json.JSONObject.NULL)
+            .put("artwork_local_path", artwork?.localPath ?: org.json.JSONObject.NULL)
+            .put("artwork_external_url", artwork?.externalUrl ?: org.json.JSONObject.NULL)
+            .put("backdrop_local_path", artwork?.backdropLocalPath ?: org.json.JSONObject.NULL)
+            .put("backdrop_external_url", artwork?.backdropExternalUrl ?: org.json.JSONObject.NULL)
+            .put("meta", meta)
+            .put("seasons", seasons)
+            .put("specials", specials)
+            .put(
+                "media_files",
+                org.json.JSONArray().apply {
+                    anime.mediaFiles.forEach { put(projectNativeLibraryPageEpisode(it)) }
+                },
+            )
+    }
+
+    /**
+     * Compatibility for a queued legacy page request without reviving the Python
+     * catalog writer. Filters and rows are served by the canonical SQLite-backed
+     * Compose ViewModel and the result is projected using its current generation.
+     */
+    private fun requestLegacyLibraryPage(
+        payload: org.json.JSONObject,
+        requestId: String?,
+    ): Boolean {
+        val requestedPage = payload.optInt("page", 0).coerceAtLeast(0)
+        val pageSize = payload.optInt("pageSize", 36).coerceIn(12, 48)
+        val requestedGeneration = payload.optLong("generation", 0L).coerceAtLeast(0L)
+        val query = payload.optString("query", "").trim()
+        val rawGenre = payload.optString("genre", "Todos").trim().ifEmpty { "Todos" }
+        val genre = rawGenre.takeUnless { it.equals("Todos", ignoreCase = true) }
+        val sort = payload.optString("sort", "Mais recentes").trim().ifEmpty { "Mais recentes" }
+        val favoritesOnly = payload.optBoolean("favoritesOnly", false)
+        val watchingOnly = payload.optBoolean("watchingOnly", false)
+        val completedOnly = payload.optBoolean("completedOnly", false)
+        val normalizedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+
+        return launchTracked("load_library_page", lane = "library") {
+            try {
+                require(requestedPage <= 100) {
+                    "A página solicitada excede o limite de compatibilidade nativa."
+                }
+                libraryViewModel.applyLibraryPageSize(pageSize)
+                libraryViewModel.setLibrarySearchQuery(query)
+                libraryViewModel.setLibraryGenreFilter(genre)
+                libraryViewModel.setLibrarySort(sort)
+                if (libraryViewModel.libraryFilters.value.favoritesOnly != favoritesOnly) {
+                    libraryViewModel.toggleLibraryFavoritesFilter()
+                }
+                if (libraryViewModel.libraryFilters.value.watchingOnly != watchingOnly) {
+                    libraryViewModel.toggleLibraryWatchingFilter()
+                }
+                if (libraryViewModel.libraryFilters.value.completedOnly != completedOnly) {
+                    libraryViewModel.toggleLibraryCompletedFilter()
+                }
+
+                val expectedFilters = libraryViewModel.libraryFilters.value
+                fun matchesRequestedFilters(
+                    state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState,
+                ): Boolean =
+                    state.query == query &&
+                        state.genreKey == expectedFilters.selectedGenreKey &&
+                        state.sort == expectedFilters.sort &&
+                        state.favoritesOnly == expectedFilters.favoritesOnly &&
+                        state.watchingOnly == expectedFilters.watchingOnly &&
+                        state.completedOnly == expectedFilters.completedOnly &&
+                        state.pageSize == pageSize &&
+                        !state.isLoading &&
+                        state.status.name != "LOADING"
+
+                var pageState = withTimeoutOrNull(20_000L) {
+                    libraryViewModel.pagedLibraryState.first(::matchesRequestedFilters)
+                } ?: error("A consulta da biblioteca nativa não terminou no tempo esperado.")
+                if (pageState.status.name == "ERROR") {
+                    error(pageState.error ?: "A consulta da biblioteca nativa falhou.")
+                }
+
+                while (pageState.loadedPage < requestedPage && pageState.hasMore) {
+                    val previousGeneration = pageState.generation
+                    val nextPage = pageState.loadedPage + 1
+                    libraryViewModel.loadNextLibraryPage()
+                    pageState = withTimeoutOrNull(20_000L) {
+                        libraryViewModel.pagedLibraryState.first { state ->
+                            state.generation != previousGeneration ||
+                                (!state.isLoading &&
+                                    (state.loadedPage >= nextPage ||
+                                        state.status.name == "ERROR" ||
+                                        !state.hasMore))
+                        }
+                    } ?: error("A página solicitada da biblioteca não foi carregada a tempo.")
+                    if (pageState.generation != previousGeneration) {
+                        error("Os filtros da biblioteca mudaram durante a consulta; o resultado antigo foi descartado.")
+                    }
+                    if (pageState.status.name == "ERROR") {
+                        error(pageState.error ?: "A consulta da página da biblioteca falhou.")
+                    }
+                }
+
+                val offset = requestedPage * pageSize
+                val items = pageState.animes.drop(offset).take(pageSize)
+                val itemPayload = org.json.JSONArray().apply {
+                    items.forEach { put(projectNativeLibraryPageAnime(it)) }
+                }
+                val pagePayload = org.json.JSONObject()
+                    .put("kind", "library_page")
+                    .put("generation", requestedGeneration)
+                    .put("page", requestedPage)
+                    .put("page_size", pageSize)
+                    .put("total", pageState.totalCount)
+                    .put("has_more", offset + items.size < pageState.totalCount)
+                    .put("items", itemPayload)
+
+                if (normalizedRequestId != null) {
+                    publishOperationResult(
+                        requestId = normalizedRequestId,
+                        action = "load_library_page",
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        payload = pagePayload,
+                    )
+                } else {
+                    publish(
+                        action = "load_library_page",
+                        transform = { it.copy(lastResultJson = pagePayload.toString()) },
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                normalizedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = "load_library_page",
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "Operação da biblioteca cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                normalizedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = "load_library_page",
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível carregar a página da biblioteca.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+    }
+
     /**
      * Typed replacement for the legacy main.py action/event branching. Values
      * are validated at this boundary, and domain writes still run in their
@@ -3203,6 +3456,10 @@ internal class NativeMainRuntimePort(
             "navigate_settings_category" ->
                 navigateSettingsCategory(nonBlank("category") ?: return false)
 
+            "load_library_page" -> requestLegacyLibraryPage(
+                payload = payload,
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+            )
             "refresh" -> requestLibraryScan(
                 requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 resultAction = normalized,
