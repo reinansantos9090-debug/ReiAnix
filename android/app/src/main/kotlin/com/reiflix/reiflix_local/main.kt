@@ -5380,6 +5380,43 @@ internal class NativeMainRuntimePort(
         }
     }
 
+    /**
+     * Adapter for the complete NativeMailbox envelope formerly unpacked by
+     * main.py's poll_native_bridge loop. Preserve top-level fields such as
+     * Google error code/message while preferring values already nested in payload.
+     * The mailbox owner remains responsible for acknowledging an event after this
+     * dispatcher returns.
+     */
+    fun dispatchNativeMailboxEnvelope(event: org.json.JSONObject): Boolean {
+        val eventType = event.optString("type", "").trim()
+        if (eventType.isEmpty()) return false
+        val payload = event.optJSONObject("payload")
+            ?.let { org.json.JSONObject(it.toString()) }
+            ?: org.json.JSONObject()
+        val keys = event.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (key == "type" || key == "payload" || payload.has(key)) continue
+            val value = event.opt(key) ?: continue
+            payload.put(key, value)
+        }
+        val requestId = sequenceOf(
+            event.optString("requestId", ""),
+            event.optString("request_id", ""),
+            payload.optString("requestId", ""),
+            payload.optString("request_id", ""),
+        ).firstOrNull { it.isNotBlank() }
+        val eventId = sequenceOf(
+            event.optString("eventId", ""),
+            event.optString("event_id", ""),
+            event.optString("id", ""),
+            payload.optString("eventId", ""),
+            payload.optString("event_id", ""),
+            payload.optString("id", ""),
+        ).firstOrNull { it.isNotBlank() }
+        return dispatchNativeEvent(eventType, payload, requestId, eventId)
+    }
+
     fun dispatchNativeEvent(
         eventType: String,
         payload: org.json.JSONObject,
