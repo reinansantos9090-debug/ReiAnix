@@ -3346,15 +3346,184 @@ internal class NativeMainRuntimePort(
                 true
             }
             "diagnostic" -> {
-                recordDiagnostic(
-                    name = stringValue("event", "name") ?: "NATIVE_MAILBOX_DIAGNOSTIC",
-                    severity = stringValue("severity") ?: "INFO",
-                    result = stringValue("result"),
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    sessionId = stringValue("sessionId", "session_id"),
-                    context = mapOf("event_type" to type),
-                )
-                true
+                val eventName = (stringValue("event", "name") ?: "NATIVE_MAILBOX_DIAGNOSTIC")
+                    .trim()
+                    .uppercase(Locale.ROOT)
+                val requestId = eventRequestId ?: stringValue("requestId")
+                val sessionId = stringValue("playerSessionId", "sessionId", "session_id")
+                val activityInstanceId = stringValue("activityInstanceId", "activity_instance_id")
+                when (eventName) {
+                    "PLAYER_SESSION_CREATED" -> {
+                        val createdSession = sessionId ?: stringValue("result") ?: return false
+                        val current = mutableSnapshot.value
+                        if (current.playerSessionActive &&
+                            current.activePlayerSessionId != null &&
+                            current.activePlayerSessionId != createdSession
+                        ) {
+                            recordDiagnostic(
+                                name = "PLAYER_CALLBACK_STALE",
+                                severity = "WARN",
+                                requestId = requestId,
+                                sessionId = createdSession,
+                                result = "stale_session_created",
+                                context = mapOf("current_session" to current.activePlayerSessionId),
+                            )
+                            return false
+                        }
+                        if (requestId.isNullOrBlank()) return false
+                        notePlayerSession(
+                            requestId,
+                            createdSession,
+                            payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
+                        )
+                        if (!activityInstanceId.isNullOrBlank()) {
+                            notePlayerActivityCreated(
+                                activityInstanceId,
+                                requestId,
+                                createdSession,
+                                payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
+                            )
+                        }
+                        true
+                    }
+                    "PLAYER_SESSION_INVALIDATED" -> {
+                        val invalidSession = sessionId ?: return false
+                        val current = mutableSnapshot.value
+                        if (current.activePlayerSessionId != invalidSession ||
+                            (!activityInstanceId.isNullOrBlank() &&
+                                current.activePlayerActivityInstanceId != null &&
+                                current.activePlayerActivityInstanceId != activityInstanceId)
+                        ) {
+                            recordDiagnostic(
+                                name = "PLAYER_CALLBACK_STALE",
+                                severity = "WARN",
+                                requestId = requestId,
+                                sessionId = invalidSession,
+                                result = "stale_session_invalidated",
+                            )
+                            return false
+                        }
+                        invalidatePlayerSession(
+                            reason = stringValue("reason") ?: "native_session_invalidated",
+                            expectedSessionId = invalidSession,
+                            expectedRequestId = requestId,
+                        )
+                    }
+                    "PLAYER_HANDOFF_DISPATCHED" -> {
+                        val active = mutableSnapshot.value
+                        if (requestId.isNullOrBlank() ||
+                            !active.playerSessionActive ||
+                            active.activePlayerSessionId != sessionId
+                        ) {
+                            recordDiagnostic(
+                                name = "PLAYER_CALLBACK_STALE",
+                                severity = "WARN",
+                                requestId = requestId,
+                                sessionId = sessionId,
+                                result = "stale_handoff_dispatch",
+                            )
+                            return false
+                        }
+                        publish(action = "player_handoff_dispatched", transform = {
+                            it.copy(activePlayerRequestId = requestId)
+                        })
+                        true
+                    }
+                    "PLAYER_ACTIVITY_RESULT" -> {
+                        val active = mutableSnapshot.value
+                        val controlled = payload.optBoolean("controlled", false)
+                        val instanceMatches = activityInstanceId.isNullOrBlank() ||
+                            active.activePlayerActivityInstanceId == null ||
+                            active.activePlayerActivityInstanceId == activityInstanceId
+                        val requestMatches = active.activePlayerRequestId == null ||
+                            active.activePlayerRequestId == requestId
+                        if (controlled && instanceMatches && requestMatches) {
+                            cancelPlayerTransition("player_activity_result")
+                            invalidatePlayerSession("player_activity_result", sessionId, requestId)
+                            true
+                        } else false
+                    }
+                    "PLAYER_LIFECYCLE" -> {
+                        val lifecycle = stringValue("lifecycle") ?: return false
+                        val normalizedLifecycle = lifecycle.lowercase(Locale.ROOT)
+                        val current = mutableSnapshot.value
+                        if (!sessionId.isNullOrBlank() &&
+                            !current.activePlayerSessionId.isNullOrBlank() &&
+                            current.activePlayerSessionId != sessionId
+                        ) return false
+                        if (normalizedLifecycle in setOf("oncreate", "onnewintent", "onstart", "onresume")) {
+                            if (requestId.isNullOrBlank() || sessionId.isNullOrBlank()) return false
+                            notePlayerSession(
+                                requestId,
+                                sessionId,
+                                payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
+                            )
+                            if (!activityInstanceId.isNullOrBlank()) {
+                                notePlayerActivityCreated(
+                                    activityInstanceId,
+                                    requestId,
+                                    sessionId,
+                                    payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
+                                )
+                            }
+                            val state = stringValue("sessionState")?.uppercase(Locale.ROOT)
+                            if (state in setOf("EXITING", "DESTROYED")) {
+                                invalidatePlayerSession("player_lifecycle_$lifecycle", sessionId, requestId)
+                            }
+                            true
+                        } else if (normalizedLifecycle in setOf("ondestroy", "onstop") &&
+                            stringValue("sessionState")?.uppercase(Locale.ROOT) in setOf("EXITING", "DESTROYED")
+                        ) {
+                            if (!sessionId.isNullOrBlank() && !requestId.isNullOrBlank()) {
+                                invalidatePlayerSession("player_lifecycle_$lifecycle", sessionId, requestId)
+                            } else false
+                        } else {
+                            NativeLifecycleCoordinator.onEvent(lifecycle)
+                            true
+                        }
+                    }
+                    "FIRST_FRAME_RENDERED" -> {
+                        val validation = validatePlayerCallback(
+                            requestId,
+                            payload,
+                            requireActive = true,
+                        )
+                        if (!validation.isCurrent) {
+                            recordDiagnostic(
+                                name = "PLAYER_CALLBACK_STALE",
+                                severity = "WARN",
+                                requestId = requestId,
+                                sessionId = sessionId,
+                                result = validation.reason,
+                            )
+                            false
+                        } else {
+                            recordDiagnostic(
+                                name = "PLAYER_FIRST_FRAME_RENDERED",
+                                requestId = requestId,
+                                sessionId = sessionId,
+                                result = "current_session",
+                                context = mapOf(
+                                    "episode_id" to payload.optLong("episodeId", 0L),
+                                    "generation" to payload.optLong("generation", 0L),
+                                    "transition_generation" to payload.optLong("transitionGeneration", 0L),
+                                ),
+                            )
+                            true
+                        }
+                    }
+                    else -> {
+                        recordDiagnostic(
+                            name = eventName,
+                            severity = stringValue("severity") ?: "INFO",
+                            result = stringValue("result"),
+                            requestId = requestId,
+                            sessionId = sessionId,
+                            context = mapOf("event_type" to type),
+                        )
+                        true
+                    }
+                }
             }
             else -> false
         }
