@@ -136,6 +136,6 @@ def test_android_startup_recovery_stays_on_the_native_restore_path():
     assert "ReiAnixRecoveryRoute(viewModel = settingsViewModel)" in host
     assert 'viewModel.requestAction("backup_recovery_restore")' in route
     assert "backup_recovery_restore" in activity
-    assert "restoreBackup" in repository or "restore_backup" in repository
+    assert "restoreRecoveryBackupLocked" in repository
     assert "recovery_service.restore_backup" not in entrypoint + activity
     assert "import flet" not in entrypoint.casefold()
