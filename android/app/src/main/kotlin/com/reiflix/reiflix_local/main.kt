@@ -1392,6 +1392,7 @@ internal class NativeMainRuntimePort(
             val previousKey = thumbnailLatestKeyByUri.put(uriKey, key)
             thumbnailLatestAtMillis[uriKey] = System.currentTimeMillis()
             if (previousKey != null && previousKey != key) {
+                thumbnailRetryCounts.remove(previousKey)
                 val previous = thumbnailRequests[previousKey]
                 if (previous != null && thumbnailQueue.remove(previous)) {
                     thumbnailRequests.remove(previousKey, previous)
@@ -1426,6 +1427,7 @@ internal class NativeMainRuntimePort(
                 }
                 thumbnailQueue.remove(lowest)
                 thumbnailRequests.remove(lowest.key, lowest)
+                thumbnailRetryCounts.remove(lowest.key)
                 lowest.completion.complete(null)
             }
             val request = NativeThumbnailRequest(
@@ -1579,6 +1581,11 @@ internal class NativeMainRuntimePort(
                         val retryScheduled = launchTracked("thumbnail_retry", lane = "thumbnail") {
                             delay(delayBeforeRetry)
                             if (thumbnailRetryCounts[request.key] != attemptToRetry) return@launchTracked
+                            val latestRequestKey = thumbnailLatestKeyByUri[request.uri.toString()]
+                            if (latestRequestKey != null && latestRequestKey != request.key) {
+                                thumbnailRetryCounts.remove(request.key)
+                                return@launchTracked
+                            }
                             if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) {
                                 thumbnailRetryCounts.remove(request.key)
                                 return@launchTracked
