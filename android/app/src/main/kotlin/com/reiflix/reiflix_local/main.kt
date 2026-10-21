@@ -95,6 +95,45 @@ internal object MainEntryPoint {
 
 
 
+    /**
+     * Startup equivalent of SettingsStore._migrate_legacy_keys().
+     * Copy recognized pre-schema-2 aliases only when the canonical key is absent;
+     * invalid legacy values are ignored and the original keys are preserved.
+     */
+    private suspend fun migrateLegacySettingsKeys(dependencies: ReiAnixAppDependencies) {
+        val stored = dependencies.sqliteSettingsRepository.allPreferences()
+        val aliases = listOf(
+            "resume_playback" to "player.resume",
+            "autoplay_next" to "player.autoplay_next",
+            "gesture_volume" to "gestures.volume",
+            "gesture_brightness" to "gestures.brightness",
+            "gesture_double_tap" to "gestures.double_tap",
+            "gesture_long_press" to "gestures.long_press",
+        )
+        val updates = linkedMapOf<String, String>()
+        aliases.forEach { (legacyKey, canonicalKey) ->
+            val raw = stored[legacyKey] ?: return@forEach
+            if (canonicalKey in stored) return@forEach
+            val definition = ReiAnixSettingsContract.definitions[canonicalKey] ?: return@forEach
+            val normalized = runCatching { definition.normalize(raw) }.getOrNull() ?: return@forEach
+            updates[canonicalKey] = normalized
+        }
+
+        val storedVersion = stored["settings.schema_version"]?.toIntOrNull() ?: 0
+        if (storedVersion < ReiAnixSettingsFileService.SCHEMA_VERSION) {
+            updates["settings.schema_version"] = ReiAnixSettingsFileService.SCHEMA_VERSION.toString()
+        }
+        if (updates.isEmpty()) return
+
+        dependencies.sqliteSettingsRepository.setPreferencesAtomically(updates)
+        Log.i(
+            TAG,
+            "LEGACY_SETTINGS_MIGRATION_COMPLETED migratedAliases=" +
+                updates.keys.count { it != "settings.schema_version" } +
+                " schemaVersionUpdated=" + (storedVersion < ReiAnixSettingsFileService.SCHEMA_VERSION),
+        )
+    }
+
     /** Normalized Activity lifecycle notifications replace the legacy Flet lifecycle callback. */
     fun onActivityLifecycleEvent(eventOrState: Any?) {
         NativeLifecycleCoordinator.onEvent(eventOrState)
@@ -122,6 +161,13 @@ internal object MainEntryPoint {
         activity.lifecycleScope.launch {
             val recoveryRequired = dependencies.bootstrap.validateCanonicalDatabase()
             if (activity.isFinishing || activity.isDestroyed) return@launch
+
+            if (!recoveryRequired) {
+                migrateLegacySettingsKeys(dependencies)
+                // The ViewModel may have read preferences while bootstrap was validating.
+                // Refresh after the one-time alias migration and before exposing Settings.
+                settingsViewModel.refresh()
+            }
 
             val host = ReiAnixComposeLibraryHost(
                 activity = activity,
