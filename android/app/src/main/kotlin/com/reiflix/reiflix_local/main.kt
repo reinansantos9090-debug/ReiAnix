@@ -2298,6 +2298,30 @@ internal class NativeMainRuntimePort(
             firstTruthyJsonText(payload, "mediaId")
         }
 
+        // Preserve Python's raw JSON comparison for episodeId instead of accepting
+        // a numeric-looking string such as "123" as the integer 123.
+        val rawLegacyEpisodeId = payload.opt("episodeId")
+        if (pythonTruthyJsonValue(rawLegacyEpisodeId) && current.activeEpisodeId != null) {
+            val matchesLegacyEpisodeId = when (rawLegacyEpisodeId) {
+                is Number -> rawLegacyEpisodeId.toDouble().isFinite() &&
+                    rawLegacyEpisodeId.toDouble() == current.activeEpisodeId.toDouble()
+                is Boolean -> (if (rawLegacyEpisodeId) 1L else 0L) == current.activeEpisodeId
+                else -> false
+            }
+            if (!matchesLegacyEpisodeId) return reject("stale_episode")
+        }
+        // Python normalized anime IDs with str(value or "").strip(), so preserve
+        // distinctions such as "0" and 123.0 rather than coercing both to Long.
+        val rawLegacyAnimeId = firstTruthyJsonText(payload, "animeId")
+        val currentAnimeId = current.activeAnimeId?.toString().orEmpty()
+        if (
+            rawLegacyAnimeId.isNotBlank() &&
+            currentAnimeId.isNotBlank() &&
+            rawLegacyAnimeId != currentAnimeId
+        ) {
+            return reject("stale_anime")
+        }
+
         if (requireActive && !current.playerSessionActive) return reject("stale_session")
         if (sessionId.isNotBlank() && current.activePlayerSessionId != null && current.activePlayerSessionId != sessionId) return reject("stale_session")
         if (activityId.isNotBlank() && current.activePlayerActivityInstanceId != null && current.activePlayerActivityInstanceId != activityId) return reject("stale_activity_instance")
@@ -7898,5 +7922,3 @@ internal class NativeMainRuntimePort(
             if (thumbnailQueue.isNotEmpty()) startThumbnailPumpLocked()
         }
         publish(action = "resume_runtime_tasks")
-    }
-}
