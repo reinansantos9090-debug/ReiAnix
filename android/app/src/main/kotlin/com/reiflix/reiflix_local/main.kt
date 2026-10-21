@@ -23,6 +23,10 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
+import java.util.PriorityQueue
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.scanner.NativeScanController
@@ -499,9 +503,22 @@ internal data class NativeMainRuntimeSnapshot(
     val activeMediaUri: String? = null,
     val activePlayerGeneration: Long = 0L,
     val transitionGeneration: Long = 0L,
+    val queuedThumbnailCount: Int = 0,
+    val activeThumbnailCount: Int = 0,
 )
 
 internal data class NativePlayerCallbackValidation(val isCurrent: Boolean, val reason: String = "")
+
+private data class NativeThumbnailRequest(
+    val key: String,
+    val uri: Uri,
+    val size: Long,
+    val modifiedAt: Long,
+    val mediaIdentity: String?,
+    val priority: Int,
+    val enqueuedAtMillis: Long,
+    val completion: CompletableDeferred<VideoThumbnailExtractor.Result?>,
+)
 
 internal data class NativeMainUiPreferences(
     val homeState: Map<String, Any?> = emptyMap(),
@@ -525,6 +542,16 @@ internal class NativeMainRuntimePort(
     private val preferenceLock = Any()
     private val preferenceFile = File(File(activity.filesDir, "data"), "navigation_state.json")
     private val preferenceWriteMutex = Mutex()
+    private val thumbnailQueueLock = Any()
+    private val thumbnailQueue = PriorityQueue<NativeThumbnailRequest>(
+        compareByDescending<NativeThumbnailRequest> { it.priority }
+            .thenBy { it.enqueuedAtMillis }
+            .thenBy { it.key },
+    )
+    private val thumbnailRequests = ConcurrentHashMap<String, NativeThumbnailRequest>()
+    private val thumbnailInFlight = ConcurrentHashMap.newKeySet<String>()
+    private val thumbnailSemaphore = Semaphore(2)
+    @Volatile private var thumbnailPumpActive = false
     private val mutableUiPreferences = MutableStateFlow(loadDurableUiPreferences())
     val uiPreferences: StateFlow<NativeMainUiPreferences> = mutableUiPreferences.asStateFlow()
 
@@ -968,6 +995,185 @@ internal class NativeMainRuntimePort(
                 )
             })
         }
+    }
+
+    /**
+     * Priority/deduplicated local-thumbnail queue corresponding to the Python
+     * thumbnail dispatcher. The canonical extractor owns caching and artwork
+     * registration; this queue only schedules work and never downloads video.
+     */
+    fun enqueueLocalThumbnail(
+        reference: String,
+        size: Long = 0L,
+        modifiedAt: Long = 0L,
+        mediaIdentity: String? = null,
+        priority: Int = 0,
+    ): Boolean {
+        val raw = reference.trim()
+        if (raw.isEmpty()) return false
+        val parsed = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        val uri = when (parsed.scheme?.lowercase(Locale.ROOT)) {
+            "content", "file" -> parsed
+            null -> if (raw.startsWith("/")) Uri.fromFile(File(raw)) else return false
+            else -> return false
+        }
+        val boundedSize = size.coerceAtLeast(0L)
+        val boundedModifiedAt = modifiedAt.coerceAtLeast(0L)
+        val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
+        val key = VideoThumbnailExtractor.cacheKey(identity, boundedSize, boundedModifiedAt)
+        synchronized(thumbnailQueueLock) {
+            val existing = thumbnailRequests[key]
+            if (existing != null) {
+                if (priority > existing.priority && key !in thumbnailInFlight) {
+                    thumbnailQueue.remove(existing)
+                    val promoted = existing.copy(priority = priority)
+                    thumbnailRequests[key] = promoted
+                    thumbnailQueue.add(promoted)
+                }
+                updateThumbnailQueueSnapshot()
+                startThumbnailPumpLocked()
+                return true
+            }
+            if (thumbnailRequests.size >= MAX_PENDING_THUMBNAIL_REQUESTS) {
+                val lowest = thumbnailQueue.minWithOrNull(
+                    compareBy<NativeThumbnailRequest> { it.priority }.thenByDescending { it.enqueuedAtMillis },
+                )
+                if (lowest == null || lowest.priority >= priority) {
+                    recordDiagnostic(
+                        name = "THUMBNAIL_REQUEST_REJECTED",
+                        severity = "WARN",
+                        result = "queue_full",
+                        context = mapOf("pending_count" to thumbnailRequests.size),
+                    )
+                    return false
+                }
+                thumbnailQueue.remove(lowest)
+                thumbnailRequests.remove(lowest.key, lowest)
+                lowest.completion.complete(null)
+            }
+            val request = NativeThumbnailRequest(
+                key = key,
+                uri = uri,
+                size = boundedSize,
+                modifiedAt = boundedModifiedAt,
+                mediaIdentity = identity,
+                priority = priority,
+                enqueuedAtMillis = System.currentTimeMillis(),
+                completion = CompletableDeferred(),
+            )
+            thumbnailRequests[key] = request
+            thumbnailQueue.add(request)
+            updateThumbnailQueueSnapshot()
+            startThumbnailPumpLocked()
+        }
+        return true
+    }
+
+    private fun updateThumbnailQueueSnapshot() {
+        val pending = synchronized(thumbnailQueueLock) { thumbnailQueue.size }
+        val active = thumbnailInFlight.size
+        publish(action = "thumbnail_queue_updated", transform = {
+            it.copy(queuedThumbnailCount = pending, activeThumbnailCount = active)
+        })
+    }
+
+    private fun startThumbnailPumpLocked() {
+        if (thumbnailPumpActive || thumbnailQueue.isEmpty() || activity.isFinishing || activity.isDestroyed) return
+        thumbnailPumpActive = true
+        activity.lifecycleScope.launch {
+            try {
+                while (true) {
+                    val request = synchronized(thumbnailQueueLock) {
+                        thumbnailQueue.poll()?.also { thumbnailInFlight.add(it.key) }
+                    } ?: break
+                    updateThumbnailQueueSnapshot()
+                    try {
+                        val result = thumbnailSemaphore.withPermit {
+                            withContext(Dispatchers.IO) {
+                                VideoThumbnailExtractor.extract(
+                                    activity.applicationContext,
+                                    request.uri,
+                                    request.size,
+                                    request.modifiedAt,
+                                    request.mediaIdentity,
+                                )
+                            }
+                        }
+                        request.completion.complete(result)
+                        if (result == null) {
+                            recordDiagnostic(
+                                name = "THUMBNAIL_EXTRACTION_FAILED",
+                                severity = "WARN",
+                                result = "no_result",
+                                context = mapOf("request_id" to request.key.take(20)),
+                            )
+                        } else {
+                            publish(action = "thumbnail_extracted", transform = {
+                                it.copy(lastArtifactPath = result.path)
+                            })
+                        }
+                    } catch (cancelled: CancellationException) {
+                        request.completion.cancel(cancelled)
+                        throw cancelled
+                    } catch (failure: Throwable) {
+                        request.completion.completeExceptionally(failure)
+                        Log.w("ReiAnixMainPort", "Local thumbnail extraction failed", failure)
+                        recordDiagnostic(
+                            name = "THUMBNAIL_EXTRACTION_FAILED",
+                            severity = "WARN",
+                            error = failure,
+                            context = mapOf("request_id" to request.key.take(20)),
+                        )
+                    } finally {
+                        synchronized(thumbnailQueueLock) {
+                            thumbnailInFlight.remove(request.key)
+                            thumbnailRequests.remove(request.key)
+                        }
+                        updateThumbnailQueueSnapshot()
+                    }
+                }
+            } finally {
+                synchronized(thumbnailQueueLock) {
+                    thumbnailPumpActive = false
+                    if (thumbnailQueue.isNotEmpty()) startThumbnailPumpLocked()
+                }
+            }
+        }
+    }
+
+    suspend fun awaitLocalThumbnail(reference: String, size: Long = 0L, modifiedAt: Long = 0L, mediaIdentity: String? = null): VideoThumbnailExtractor.Result? {
+        val raw = reference.trim()
+        if (raw.isEmpty()) return null
+        val parsed = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
+        val uri = when (parsed.scheme?.lowercase(Locale.ROOT)) {
+            "content", "file" -> parsed
+            null -> if (raw.startsWith("/")) Uri.fromFile(File(raw)) else return null
+            else -> return null
+        }
+        val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
+        val key = VideoThumbnailExtractor.cacheKey(identity, size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L))
+        val accepted = enqueueLocalThumbnail(raw, size, modifiedAt, identity, priority = 100)
+        if (!accepted) return null
+        return thumbnailRequests[key]?.completion?.await()
+    }
+
+    fun cancelThumbnailRequest(reference: String, size: Long = 0L, modifiedAt: Long = 0L, mediaIdentity: String? = null): Boolean {
+        val raw = reference.trim()
+        if (raw.isEmpty()) return false
+        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
+        val key = VideoThumbnailExtractor.cacheKey(identity, size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L))
+        synchronized(thumbnailQueueLock) {
+            val request = thumbnailRequests.remove(key) ?: return false
+            thumbnailQueue.remove(request)
+            request.completion.cancel()
+            updateThumbnailQueueSnapshot()
+            return true
+        }
+    }
+
+    private companion object {
+        const val MAX_PENDING_THUMBNAIL_REQUESTS = 512
     }
 
     fun extractLocalThumbnail(
@@ -1988,7 +2194,17 @@ internal class NativeMainRuntimePort(
             } ?: false
             "request_pending_artwork" -> requestPendingArtwork()
             "clear_artwork_cache" -> clearManagedArtworkCache()
-            "request_missing_thumbnail", "extract_local_thumbnail", "request_thumbnail" ->
+            "request_missing_thumbnail", "request_thumbnail" ->
+                (nonBlank("uri") ?: nonBlank("path") ?: nonBlank("mediaUri"))?.let {
+                    enqueueLocalThumbnail(
+                        reference = it,
+                        size = payload.optLong("size", 0L),
+                        modifiedAt = payload.optLong("modifiedAt", payload.optLong("modified_at", 0L)),
+                        mediaIdentity = nonBlank("mediaIdentity") ?: nonBlank("media_identity"),
+                        priority = payload.optInt("priority", 0),
+                    )
+                } ?: false
+            "extract_local_thumbnail" ->
                 (nonBlank("uri") ?: nonBlank("path") ?: nonBlank("mediaUri"))?.let {
                     extractLocalThumbnail(
                         reference = it,
