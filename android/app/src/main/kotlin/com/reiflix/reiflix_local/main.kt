@@ -725,7 +725,7 @@ internal class NativeMainRuntimePort(
     }
 
     /** Native replacement for the bounded thumbnail-candidate reconciliation worker. */
-    fun scheduleThumbnailReconciliation(reason: String = "catalog_changed"): Boolean {
+    fun scheduleThumbnailReconciliation(reason: String): Boolean {
         val normalizedReason = reason.trim().take(160).ifEmpty { "catalog_changed" }
         val result = thumbnailReconciliationRequests.trySend(normalizedReason)
         if (result.isFailure) {
@@ -2803,9 +2803,11 @@ internal class NativeMainRuntimePort(
 
     fun refreshCurrentMetadata(animeId: Long): Boolean = refreshAniListMetadata(animeId)
 
-    fun scheduleMetadataHydration(): Boolean = reconcileCatalogMetadata()
+    fun scheduleMetadataHydration(): Boolean =
+        scheduleCatalogMetadataHydration("legacy_schedule_metadata_hydration")
 
-    fun scheduleThumbnailReconciliation(): Boolean = reconcileMissingThumbnails()
+    fun scheduleThumbnailReconciliation(): Boolean =
+        scheduleThumbnailReconciliation("legacy_schedule_thumbnail_reconciliation")
 
 
     fun requestAccountActionTracked(action: String): Boolean {
