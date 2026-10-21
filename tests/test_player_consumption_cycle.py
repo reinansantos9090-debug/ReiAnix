@@ -218,13 +218,16 @@ class PlaybackConsumptionCycleTests(unittest.TestCase):
     def test_native_player_contract_uses_single_autoplay_preference(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
-        main = (root / "main.py").read_text(encoding="utf-8")
-        bridge = (root / "core" / "android_bridge.py").read_text(encoding="utf-8")
-        player = (root / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "NativePlayerActivity.kt").read_text(encoding="utf-8")
-        self.assertIn('settings.get("player.autoplay_next")', main)
-        self.assertIn('SettingDefinition("player.autoplay_next", "bool", True)', (root / "core" / "settings.py").read_text(encoding="utf-8"))
-        self.assertIn('autoplay=str(bool(autoplay)).lower()', bridge)
-        self.assertNotIn('get_preference("autoplay_next"', main)
+        settings = (root / "core" / "settings.py").read_text(encoding="utf-8")
+        settings_contract = (root / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/ReiAnixSettingsContract.kt").read_text(encoding="utf-8")
+        view_model = (root / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        player = (root / "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt").read_text(encoding="utf-8")
+        mailbox = (root / "android/app/src/main/kotlin/com/reiflix/reiflix_local/bridge/NativeMailbox.kt").read_text(encoding="utf-8")
+
+        self.assertIn('SettingDefinition("player.autoplay_next", "bool", True)', settings)
+        self.assertIn('"player.autoplay_next"', settings_contract)
+        self.assertIn('preferenceValue("player.autoplay_next")', view_model)
+        self.assertIn('.appendQueryParameter("autoplay"', view_model)
         self.assertIn('intent.getBooleanExtra("autoplay", true)', player)
         self.assertIn('persistCanonicalPlayerSetting("player.autoplay_next"', player)
         self.assertNotIn('getSharedPreferences("reiflix_player"', player)
@@ -237,8 +240,7 @@ class PlaybackConsumptionCycleTests(unittest.TestCase):
         self.assertIn("val shouldReportExit = isFinishing && !suppressExitEvent && !exitReported && !isChangingConfigurations", player)
         self.assertIn("if (shouldReportExit)", player)
         self.assertIn('reportPlayerExit("activity_finish")', player)
-        self.assertIn('val temp = File(queue, "$PREFIX$id.json.tmp")', (root / "android" / "app" / "src" / "main" / "kotlin" / "com" / "reiflix" / "reiflix_local" / "bridge" / "NativeMailbox.kt").read_text(encoding="utf-8"))
-
+        self.assertIn('val temp = File(queue, "$PREFIX$id.json.tmp")', mailbox)
 
 if __name__ == "__main__":
     unittest.main()
