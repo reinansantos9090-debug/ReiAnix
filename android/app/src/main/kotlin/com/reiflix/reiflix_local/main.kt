@@ -880,7 +880,9 @@ internal class NativeMainRuntimePort(
                     val thumbnailReady = hasValidLocalThumbnail(row.thumbnailPath)
                     if (thumbnailReady && row.durationSeconds > 0.0) continue
 
-                    val identity = row.mediaIdentity ?: "episode:${row.id}"
+                    // Keep the extractor's original fallback: a blank media identity
+                    // is normalized to the URI, not an invented per-episode token.
+                    val identity = row.mediaIdentity
                     while (lifecycleIsAlive && !activity.isFinishing && !activity.isDestroyed) {
                         if (
                             enqueueLocalThumbnail(
