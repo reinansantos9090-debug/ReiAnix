@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.delay
 import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -575,6 +578,7 @@ internal class NativeMainRuntimePort(
     private val thumbnailInFlight = ConcurrentHashMap.newKeySet<String>()
     private val thumbnailSemaphore = Semaphore(2)
     @Volatile private var thumbnailPumpActive = false
+    @Volatile private var homeRefreshJob: Job? = null
     private val mutableUiPreferences = MutableStateFlow(loadDurableUiPreferences())
     val uiPreferences: StateFlow<NativeMainUiPreferences> = mutableUiPreferences.asStateFlow()
 
@@ -1193,10 +1197,6 @@ internal class NativeMainRuntimePort(
             updateThumbnailQueueSnapshot()
             return true
         }
-    }
-
-    private companion object {
-        const val MAX_PENDING_THUMBNAIL_REQUESTS = 512
     }
 
     fun extractLocalThumbnail(
@@ -2153,6 +2153,136 @@ internal class NativeMainRuntimePort(
     suspend fun deleteSafItem(uri: android.net.Uri) = libraryViewModel.deleteSafItem(uri)
 
     /** Home refresh transitions are separated from scanner truth; a callback alone never implies a complete scan. */
+    /**
+     * Explicit Home refresh coordinator. A refresh is successful only after a new
+     * native scan reaches a terminal result and the canonical catalog refresh is
+     * accepted. Lifecycle resume alone never invokes this method.
+     */
+    fun requestHomeRefresh(source: String = "button"): Boolean {
+        if (HomeRefreshCoordinator.state.value.active) return false
+        val requestId = UUID.randomUUID().toString()
+        val refreshId = UUID.randomUUID().toString()
+        val startedAt = System.currentTimeMillis()
+        val knownOperations = NativeScanController.progress.value.keys.toSet()
+        if (!HomeRefreshCoordinator.begin(requestId, refreshId, source)) return false
+        if (!requestLibraryScan()) {
+            HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected")
+            return false
+        }
+        synchronized(lock) {
+            homeRefreshJob?.cancel()
+            homeRefreshJob = activity.lifecycleScope.launch {
+                try {
+                    val firstBatch = withTimeoutOrNull(HOME_REFRESH_SCAN_START_TIMEOUT_MS) {
+                        NativeScanController.progress
+                            .map { snapshots ->
+                                snapshots.values.filter {
+                                    it.operationId !in knownOperations && it.startedAtMillis >= startedAt
+                                }
+                            }
+                            .first { it.isNotEmpty() }
+                    }
+                    if (firstBatch.isNullOrEmpty()) {
+                        HomeRefreshCoordinator.fail(requestId, "native_scan_start_timeout")
+                        recordDiagnostic("HOME_REFRESH_FAILED", result = "native_scan_start_timeout",
+                            requestId = requestId, context = mapOf("source" to source))
+                        return@launch
+                    }
+                    HomeRefreshCoordinator.markScanStarted(requestId)
+                    recordDiagnostic("HOME_REFRESH_SCAN_STARTED", requestId = requestId, refreshId = refreshId,
+                        context = mapOf("source" to source, "operation_count" to firstBatch.size))
+                    var stableTerminalBatch: List<ScanProgressSnapshot> = emptyList()
+                    while (true) {
+                        val current = NativeScanController.progress.value.values.filter {
+                            it.operationId !in knownOperations && it.startedAtMillis >= startedAt
+                        }
+                        if (current.isNotEmpty() && current.all { it.state.isTerminal }) {
+                            delay(HOME_REFRESH_TERMINAL_SETTLE_MS)
+                            val afterSettle = NativeScanController.progress.value.values.filter {
+                                it.operationId !in knownOperations && it.startedAtMillis >= startedAt
+                            }
+                            if (afterSettle.isNotEmpty() && afterSettle.all { it.state.isTerminal }) {
+                                stableTerminalBatch = afterSettle
+                                break
+                            }
+                        }
+                        delay(HOME_REFRESH_MONITOR_INTERVAL_MS)
+                    }
+                    if (stableTerminalBatch.any { it.state == ScanLifecycleState.FAILED }) {
+                        HomeRefreshCoordinator.fail(requestId, "native_scan_failed")
+                        recordDiagnostic("HOME_REFRESH_FAILED", severity = "WARN", requestId = requestId,
+                            refreshId = refreshId, result = "native_scan_failed",
+                            context = mapOf("terminal_states" to stableTerminalBatch.joinToString { it.state.name }))
+                        return@launch
+                    }
+                    if (stableTerminalBatch.any { it.state == ScanLifecycleState.CANCELLED }) {
+                        HomeRefreshCoordinator.cancel(requestId, "native_scan_cancelled")
+                        recordDiagnostic("HOME_REFRESH_CANCELLED", severity = "WARN", requestId = requestId,
+                            refreshId = refreshId, result = "native_scan_cancelled")
+                        return@launch
+                    }
+                    if (!HomeRefreshCoordinator.markScanTerminal(requestId)) {
+                        throw IllegalStateException("Home refresh refused a non-running terminal scan transition.")
+                    }
+                    recordDiagnostic("HOME_REFRESH_SCAN_COMPLETED", requestId = requestId, refreshId = refreshId,
+                        context = mapOf(
+                            "operation_count" to stableTerminalBatch.size,
+                            "partial_count" to stableTerminalBatch.count { it.state == ScanLifecycleState.PARTIAL },
+                        ))
+                    val catalogAccepted = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+                    if (!catalogAccepted) {
+                        HomeRefreshCoordinator.fail(requestId, "canonical_catalog_refresh_rejected")
+                        return@launch
+                    }
+                    libraryViewModel.refresh()
+                    if (!HomeRefreshCoordinator.markCatalogUpdated(requestId)) {
+                        throw IllegalStateException("Home refresh refused catalog update before scan completion.")
+                    }
+                    composeHost.show(ReiAnixRoutes.HOME)
+                    if (!HomeRefreshCoordinator.complete(requestId)) {
+                        throw IllegalStateException("Home refresh refused completion before UI commit.")
+                    }
+                    recordDiagnostic("HOME_REFRESH_COMPLETED", requestId = requestId, refreshId = refreshId,
+                        context = mapOf(
+                            "elapsed_ms" to (System.currentTimeMillis() - startedAt),
+                            "partial_count" to stableTerminalBatch.count { it.state == ScanLifecycleState.PARTIAL },
+                        ))
+                } catch (cancelled: CancellationException) {
+                    HomeRefreshCoordinator.cancel(requestId, "runtime_cancelled")
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    HomeRefreshCoordinator.fail(requestId, failure.message ?: "runtime_failure")
+                    recordDiagnostic("HOME_REFRESH_FAILED", severity = "ERROR", requestId = requestId,
+                        refreshId = refreshId, error = failure)
+                } finally {
+                    synchronized(lock) {
+                        if (homeRefreshJob === kotlinx.coroutines.currentCoroutineContext()[Job]) {
+                            homeRefreshJob = null
+                        }
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    fun cancelHomeRefreshOperation(reason: String = "cancelled"): Boolean {
+        val current = HomeRefreshCoordinator.state.value
+        if (!current.active || current.requestId.isNullOrBlank()) return false
+        homeRefreshJob?.cancel()
+        val cancelled = HomeRefreshCoordinator.cancel(current.requestId, reason)
+        if (cancelled) recordDiagnostic("HOME_REFRESH_CANCELLED", severity = "WARN",
+            requestId = current.requestId, refreshId = current.refreshId, result = reason)
+        return cancelled
+    }
+
+    private companion object HomeRefreshTiming {
+        const val HOME_REFRESH_SCAN_START_TIMEOUT_MS = 15_000L
+        const val HOME_REFRESH_TERMINAL_SETTLE_MS = 250L
+        const val HOME_REFRESH_MONITOR_INTERVAL_MS = 100L
+        const val MAX_PENDING_THUMBNAIL_REQUESTS = 512
+    }
+
     fun beginHomeRefresh(requestId: String, refreshId: String = requestId, source: String = "native"): Boolean =
         HomeRefreshCoordinator.begin(requestId, refreshId, source)
 
@@ -2277,7 +2407,10 @@ internal class NativeMainRuntimePort(
             "request_media_access", "request_video_access" -> requestMediaAccess()
             "check_storage_access", "check_video_access" -> checkStorageAccess()
             "open_broad_storage_settings", "request_storage_access" -> openBroadStorageSettings()
-            "scan_library", "refresh_home_library" -> requestLibraryScan()
+            "scan_library" -> requestLibraryScan()
+            "refresh_home_library", "request_home_refresh" -> requestHomeRefresh(
+                source = nonBlank("source") ?: "native_action",
+            )
             "remove_folder", "remove_saf_tree", "release_tree" ->
                 (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference"))?.let {
                     removeConfiguredSafFolder(it)
