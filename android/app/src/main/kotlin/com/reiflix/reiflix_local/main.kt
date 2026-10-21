@@ -1835,15 +1835,21 @@ internal class NativeMainRuntimePort(
         val identity = mediaIdentity?.trim()?.takeIf { it.isNotEmpty() } ?: uri.toString()
         val key = thumbnailRequestKey(uri, size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L), identity)
         synchronized(thumbnailQueueLock) {
-            val request = thumbnailRequests.remove(key) ?: return false
-            thumbnailQueue.remove(request)
+            val request = thumbnailRequests.remove(key)
+            val hadRetry = thumbnailRetryCounts.remove(key) != null || thumbnailRetryPendingKeys.remove(key)
+            if (request == null && !hadRetry) return false
+            if (request != null) {
+                thumbnailQueue.remove(request)
+                request.completion.cancel()
+            }
+            // A failed request leaves the queue before its delayed retry is enqueued.
+            // Cancellation must still win during that gap, even when no request object remains.
             thumbnailRetryCounts.remove(key)
             thumbnailRetryPendingKeys.remove(key)
             val uriKey = uri.toString()
             if (thumbnailLatestKeyByUri.remove(uriKey, key)) {
                 thumbnailLatestAtMillis.remove(uriKey)
             }
-            request.completion.cancel()
             updateThumbnailQueueSnapshot()
             return true
         }
