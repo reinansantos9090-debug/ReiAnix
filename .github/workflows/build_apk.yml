@@ -106,16 +106,16 @@ jobs:
           raw_path = Path("build/pytest-full.txt")
           summary_path = Path("build/pytest-summary.txt")
           pattern = re.compile(
-              r"^(FAILED|ERROR|XPASS|XFAIL)\\s|^=+ .* (failed|passed|error|warning)s? .* =+$|"
-              r"^E\\s+(AssertionError|TypeError|ValueError|KeyError|AttributeError|ImportError|ModuleNotFoundError|FileNotFoundError|RuntimeError|IndexError|NameError|OSError):|"
-              r"^short test summary info|^tests/[^ ]+::[^ ]+\\s+(FAILED|ERROR|XPASS|XFAIL)"
+              r"^(FAILED|ERROR|XPASS|XFAIL)\s|^=+ .* (failed|passed|error|warning)s? .* =+$|"
+              r"^E\s+(AssertionError|TypeError|ValueError|KeyError|AttributeError|ImportError|ModuleNotFoundError|FileNotFoundError|RuntimeError|IndexError|NameError|OSError):|"
+              r"^short test summary info|^tests/[^ ]+::[^ ]+\s+(FAILED|ERROR|XPASS|XFAIL)"
           )
           selected = []
           bytes_seen = 0
           with raw_path.open("r", encoding="utf-8", errors="replace") as stream:
               for line in stream:
                   bytes_seen += len(line.encode("utf-8", errors="replace"))
-                  text = line.rstrip("\\r\\n")
+                  text = line.rstrip("\r\n")
                   if pattern.search(text.strip()):
                       if len(text) > 600:
                           text = text[:600] + " … [linha truncada]"
@@ -123,14 +123,14 @@ jobs:
           if not selected:
               with raw_path.open("r", encoding="utf-8", errors="replace") as stream:
                   tail = stream.readlines()[-80:]
-              selected = [line.rstrip("\\r\\n")[:600] for line in tail]
+              selected = [line.rstrip("\r\n")[:600] for line in tail]
           output = [
               f"pytest_output_bytes={bytes_seen}",
               f"diagnostic_lines={len(selected)}",
               "",
               *selected[-240:],
           ]
-          summary_path.write_text("\\n".join(output) + "\\n", encoding="utf-8")
+          summary_path.write_text("\n".join(output) + "\n", encoding="utf-8")
           print(summary_path.read_text(encoding="utf-8"))
           PY
           rm -f build/pytest-full.txt
