@@ -123,6 +123,26 @@ class MainEntryPointTest {
         assertFalse(HomeRefreshCoordinator.markScanStarted(owner))
     }
 
+
+    private enum class LifecycleFixture { RESUME, SHOW }
+
+    private data class LifecycleEventFixture(val state: Any?)
+
+    private data class LifecycleDataEventFixture(val data: Any?)
+
+    @Test
+    fun lifecycleNormalizerSupportsEnumsEventObjectsAndDottedStrings() {
+        assertEquals("resume", normalizeAppLifecycleState(LifecycleFixture.RESUME))
+        assertEquals("show", normalizeAppLifecycleState(LifecycleFixture.SHOW))
+        assertEquals("resume", normalizeAppLifecycleState("AppLifecycleState.RESUME"))
+        assertEquals("resume", normalizeAppLifecycleState("RESUME"))
+        assertEquals("resume", normalizeAppLifecycleState("resume"))
+        assertEquals("resume", normalizeAppLifecycleState(LifecycleEventFixture(LifecycleFixture.RESUME)))
+        assertEquals("resume", normalizeAppLifecycleState(LifecycleEventFixture("resume")))
+        assertEquals("show", normalizeAppLifecycleState(LifecycleDataEventFixture("LifecycleState.SHOW")))
+        assertEquals("", normalizeAppLifecycleState(null))
+    }
+
     private fun readyState(
         phase: ReiAnixBootstrapPhase = ReiAnixBootstrapPhase.READY,
         stage: ReiAnixBootstrapStage = ReiAnixBootstrapStage.READY,
