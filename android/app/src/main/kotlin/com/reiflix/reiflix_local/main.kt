@@ -744,6 +744,8 @@ internal class NativeMainRuntimePort(
     private val pendingStorageOperations = ConcurrentHashMap<String, PendingNativeStorageOperation>()
     private val metadataHydrationRequests = Channel<String>(Channel.CONFLATED)
     private val thumbnailReconciliationRequests = Channel<String>(Channel.CONFLATED)
+    private val metadataMaintenanceMutex = Mutex()
+    private val thumbnailMaintenanceMutex = Mutex()
     @Volatile private var lastStorageMutationAtMillis: Long = 0L
     @Volatile private var pendingSafSelectionStartedAtMillis: Long = 0L
     @Volatile private var pendingSafSelectionRequestId: String? = null
@@ -792,7 +794,18 @@ internal class NativeMainRuntimePort(
         activity.lifecycleScope.launch {
             for (reason in metadataHydrationRequests) {
                 try {
-                    val changed = dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                    val changed = metadataMaintenanceMutex.withLock {
+                        if (restoreMaintenanceInProgress) {
+                            null
+                        } else {
+                            dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                        }
+                    }
+                    if (changed == null) {
+                        metadataHydrationRequests.trySend(reason)
+                        delay(100)
+                        continue
+                    }
                     if (changed > 0) libraryViewModel.refresh()
                     recordDiagnostic(
                         name = "CATALOG_METADATA_HYDRATION_FINISHED",
@@ -814,7 +827,19 @@ internal class NativeMainRuntimePort(
         activity.lifecycleScope.launch {
             for (reason in thumbnailReconciliationRequests) {
                 try {
-                    reconcileMissingLocalThumbnails(reason)
+                    val reconciled = thumbnailMaintenanceMutex.withLock {
+                        if (restoreMaintenanceInProgress) {
+                            false
+                        } else {
+                            reconcileMissingLocalThumbnails(reason)
+                            true
+                        }
+                    }
+                    if (!reconciled) {
+                        thumbnailReconciliationRequests.trySend(reason)
+                        delay(100)
+                        continue
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Throwable) {
@@ -3873,7 +3898,17 @@ internal class NativeMainRuntimePort(
         }
         val accepted = launchTracked("restore_backup", lane = "backup") {
             try {
-                val result = backupService.restoreBackup(archive)
+                // Match the old library metadata lock and artwork-generation invalidation:
+                // stop tracked metadata/thumbnail work, wait for in-flight reconciliations
+                // to finish, then restore the canonical snapshot without stale work writing
+                // into the restored catalogue.
+                cancelBackgroundTasksForLane("metadata")
+                cancelBackgroundTasksForLane("thumbnail")
+                val result = metadataMaintenanceMutex.withLock {
+                    thumbnailMaintenanceMutex.withLock {
+                        backupService.restoreBackup(archive)
+                    }
+                }
                 libraryViewModel.refresh()
                 settingsViewModel.refresh()
                 scheduleCatalogMetadataHydration("backup_restored")
