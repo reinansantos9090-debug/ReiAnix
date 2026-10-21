@@ -11,6 +11,7 @@ import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
 import java.util.UUID
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import com.reiflix.reiflix_local.data.sqlite.getAnimeByLookupTitle
+import com.reiflix.reiflix_local.data.sqlite.findEpisodeByPathOrFileUri
 import java.io.File
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
@@ -4233,6 +4234,98 @@ internal class NativeMainRuntimePort(
     }
 
     /**
+     * Compatibility for LibraryStore.set_watched(path, watched, episode_id):
+     * the episode ID is authoritative, but a supplied path that resolves to
+     * another episode must reject the write rather than mutating the wrong row.
+     */
+    private fun markEpisodeWatchedFromLegacyCommand(
+        episodeId: Long,
+        watched: Boolean,
+        path: String?,
+        requestId: String?,
+        action: String,
+    ): Boolean {
+        if (episodeId <= 0L) return false
+        val normalizedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        if (normalizedRequestId != null) {
+            publishOperationResult(
+                requestId = normalizedRequestId,
+                action = action,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Atualização do estado do episódio enfileirada.",
+            )
+        }
+        val accepted = launchTracked(action, lane = "playback") {
+            try {
+                val canonicalEpisode = dependencies.sqliteLibraryRepository.getEpisode(episodeId)
+                    ?: throw IllegalArgumentException("Episódio não encontrado.")
+                val suppliedPath = path?.trim().orEmpty()
+                if (suppliedPath.isNotEmpty()) {
+                    val pathEpisode = dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(suppliedPath)
+                    require(pathEpisode == null || pathEpisode.id == canonicalEpisode.id) {
+                        "Episódio não encontrado ou referência local incompatível."
+                    }
+                }
+                val progress = dependencies.consumptionService.setWatched(episodeId, watched)
+                libraryViewModel.refresh()
+                val result = org.json.JSONObject()
+                    .put("episodeId", progress.episodeId)
+                    .put("positionMs", progress.positionMs)
+                    .put("durationMs", progress.durationMs)
+                    .put("watched", progress.watched)
+                if (normalizedRequestId != null) {
+                    publishOperationResult(
+                        requestId = normalizedRequestId,
+                        action = action,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        payload = result,
+                    )
+                } else {
+                    publish(action = action, transform = {
+                        it.copy(lastResultJson = result.toString())
+                    })
+                }
+            } catch (cancelled: CancellationException) {
+                normalizedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = action,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "Atualização do estado do episódio cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                normalizedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = action,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível atualizar o estado do episódio.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && normalizedRequestId != null) {
+            publishOperationResult(
+                requestId = normalizedRequestId,
+                action = action,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A atualização do estado do episódio não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
+    }
+
+    /**
      * Typed replacement for the legacy main.py action/event branching. Values
      * are validated at this boundary, and domain writes still run in their
      * canonical Kotlin service. Unknown actions are rejected, not acknowledged.
@@ -4358,70 +4451,16 @@ internal class NativeMainRuntimePort(
                 } ?: false
             "mark_episode_watched", "set_episode_watched", "set_watched" -> {
                 val id = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
-                // LibraryStore.set_watched historically defaults to false when called
-                // through the Compose Library command, while the explicit mark/set
-                // aliases default to the action name's natural "watched" semantics.
+                // Preserve the old Compose Library default (false for set_watched)
+                // while enforcing path/ID agreement in the canonical SQLite catalog.
                 val watched = payload.optBoolean("watched", normalized != "set_watched")
-                val commandRequestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id")
-                if (commandRequestId.isNullOrBlank()) {
-                    markEpisodeWatched(id, watched)
-                    true
-                } else {
-                    publishOperationResult(
-                        requestId = commandRequestId,
-                        action = normalized,
-                        status = "QUEUED",
-                        operationState = "QUEUED",
-                        message = "Atualização do estado do episódio enfileirada.",
-                    )
-                    val accepted = launchTracked(normalized, lane = "playback") {
-                        try {
-                            val progress = dependencies.consumptionService.setWatched(id, watched)
-                            libraryViewModel.refresh()
-                            publishOperationResult(
-                                requestId = commandRequestId,
-                                action = normalized,
-                                status = "COMPLETED",
-                                operationState = "COMPLETED",
-                                payload = org.json.JSONObject()
-                                    .put("episodeId", progress.episodeId)
-                                    .put("watched", progress.watched)
-                                    .put("positionMs", progress.positionMs)
-                                    .put("durationMs", progress.durationMs),
-                            )
-                        } catch (cancelled: CancellationException) {
-                            publishOperationResult(
-                                requestId = commandRequestId,
-                                action = normalized,
-                                status = "CANCELLED",
-                                operationState = "CANCELLED",
-                                message = "Atualização do estado do episódio cancelada.",
-                            )
-                            throw cancelled
-                        } catch (failure: Throwable) {
-                            publishOperationResult(
-                                requestId = commandRequestId,
-                                action = normalized,
-                                status = "FAILED",
-                                operationState = "FAILED",
-                                message = failure.message ?: "Não foi possível atualizar o estado do episódio.",
-                                error = failure.javaClass.simpleName,
-                            )
-                            throw failure
-                        }
-                    }
-                    if (!accepted) {
-                        publishOperationResult(
-                            requestId = commandRequestId,
-                            action = normalized,
-                            status = "FAILED",
-                            operationState = "FAILED",
-                            message = "A atualização do estado do episódio não foi aceita.",
-                            error = "operation_rejected",
-                        )
-                    }
-                    accepted
-                }
+                markEpisodeWatchedFromLegacyCommand(
+                    episodeId = id,
+                    watched = watched,
+                    path = nonBlank("uri") ?: nonBlank("path"),
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    action = normalized,
+                )
             }
             "toggle_pinned", "toggle_pin" ->
                 positiveLong("animeId")?.let(::togglePinned) ?: false
