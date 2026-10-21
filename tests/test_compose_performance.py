@@ -195,12 +195,19 @@ class ComposePerformanceTests(unittest.TestCase):
         self.assertNotIn("resolve_artwork_batch(", bridge)
         self.assertNotIn("from PIL import Image", bridge)
 
-    def test_native_scan_batches_publish_incrementally_to_compose(self):
-        main = (ROOT / "main.py").read_text(encoding="utf-8")
-        self.assertIn('compose_library_bridge.request_publish("library_batch_ingested")', main)
-        self.assertIn('int(result.get("new") or 0) > 0', main)
-        self.assertIn('int(result.get("updated") or 0) > 0', main)
-
+    def test_native_scan_batches_publish_progress_and_stage_incrementally(self):
+        runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
+        publisher = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanPublisher.kt").read_text(encoding="utf-8")
+        controller = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        self.assertIn('put("type", "saf_scan_progress")', runner)
+        self.assertIn("onBatch = { batch ->", runner)
+        self.assertIn("NativeScanPublisher.publish(", runner)
+        self.assertIn("NativeIndex.prepareBatch(", publisher)
+        self.assertIn('put("batchNumber", batchNumber)', publisher)
+        self.assertIn('put("batchSize", documents.length())', publisher)
+        self.assertIn("fun updateProgress(", controller)
+        self.assertIn("NativeScanController.progress", view_model)
     def test_does_not_reintroduce_database_or_filesystem_access_to_compose_ui(self):
         sources = []
         for path in (HOME, DETAILS, SEARCH):
