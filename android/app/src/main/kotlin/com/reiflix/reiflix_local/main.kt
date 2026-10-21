@@ -5961,24 +5961,45 @@ internal class NativeMainRuntimePort(
                 true
             }
             "google_account", "google_signed_out", "google_cancelled", "google_error", "google_sign_in_started" -> {
-                val normalizedState = when (type) {
-                    "google_account" -> "connected"
-                    "google_signed_out" -> "disconnected"
-                    "google_cancelled", "google_error", "google_sign_in_started" -> null
-                    else -> null
+                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                if (type == "google_account" || type == "google_signed_out") {
+                    launchTracked("native_account_event", lane = "settings") {
+                        // The mailbox event is a notification, not the source of truth.
+                        // Re-read the canonical account row so a delayed sign-out event
+                        // cannot overwrite a newer successful login in the UI projection.
+                        val profile = dependencies.sqliteAccountRepository.loadProfile()
+                        val connected = profile != null &&
+                            profile.id.isNotBlank() &&
+                            profile.email.contains('@')
+                        setAccountState(
+                            if (connected) "connected" else "disconnected",
+                            "native_$type",
+                        )
+                        settingsViewModel.refresh()
+                        libraryViewModel.refresh()
+                        recordDiagnostic(
+                            name = "NATIVE_ACCOUNT_EVENT",
+                            requestId = correlatedRequestId,
+                            result = type,
+                            context = mapOf(
+                                "profile_present" to (profile != null),
+                                "connected" to connected,
+                            ),
+                        )
+                    }
+                } else {
+                    settingsViewModel.refresh()
+                    libraryViewModel.refresh()
+                    recordDiagnostic(
+                        name = "NATIVE_ACCOUNT_EVENT",
+                        severity = if (type == "google_error") "WARN" else "INFO",
+                        requestId = correlatedRequestId,
+                        result = type,
+                        error = stringValue("error", "message")?.let(::IllegalStateException),
+                        context = mapOf("has_profile" to (payload.optJSONObject("profile") != null)),
+                    )
+                    true
                 }
-                if (normalizedState != null) setAccountState(normalizedState, "native_$type")
-                settingsViewModel.refresh()
-                libraryViewModel.refresh()
-                recordDiagnostic(
-                    name = "NATIVE_ACCOUNT_EVENT",
-                    severity = if (type == "google_error") "WARN" else "INFO",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    result = type,
-                    error = stringValue("error", "message")?.let(::IllegalStateException),
-                    context = mapOf("has_profile" to (payload.optJSONObject("profile") != null)),
-                )
-                true
             }
             "compose_settings_bulk_applied" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: return false
