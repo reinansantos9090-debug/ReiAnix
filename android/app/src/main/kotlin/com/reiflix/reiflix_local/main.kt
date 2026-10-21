@@ -5388,6 +5388,33 @@ internal class NativeMainRuntimePort(
             return null
         }
         return when (type) {
+            "permission_requested" -> {
+                recordDiagnostic(
+                    name = "STORAGE_PERMISSION_REQUESTED",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = stringValue("source", "permission", "reason") ?: "native_permission_request",
+                )
+                true
+            }
+            "permission_cancelled" -> {
+                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                finishPendingSafSelection(
+                    eventRequestId = correlatedRequestId,
+                    status = "CANCELLED",
+                    message = stringValue("reason", "message") ?: "Seleção de pasta cancelada.",
+                    payload = payload,
+                )
+                refreshAuthoritativeStorageSnapshot(payload, payload.optLong("createdAt", 0L))
+                settingsViewModel.refresh()
+                libraryViewModel.refreshNativeFolders()
+                libraryViewModel.refresh()
+                recordDiagnostic(
+                    name = "STORAGE_PERMISSION_CANCELLED",
+                    requestId = correlatedRequestId,
+                    result = stringValue("reason") ?: "user_cancelled",
+                )
+                true
+            }
             "translation_succeeded", "translation_cache_hit", "translation_failed" -> {
                 val animeId = longValue("animeId", "anime_id")
                 if (type != "translation_failed" && (animeId == null || animeId <= 0L)) {
