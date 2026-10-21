@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -93,6 +94,33 @@ class MainEntryPointTest {
                 ),
             )
         )
+    }
+
+
+    @Test
+    fun homeRefreshCoordinatorRequiresOrderedSuccessfulStagesAndFencesStaleRequests() {
+        val requestId = java.util.UUID.randomUUID().toString()
+        assertTrue(HomeRefreshCoordinator.begin(requestId, requestId, "native_compose_scan"))
+        assertFalse(HomeRefreshCoordinator.markScanTerminal(requestId))
+        assertTrue(HomeRefreshCoordinator.markScanStarted(requestId))
+        assertFalse(HomeRefreshCoordinator.markScanStarted(requestId))
+        assertTrue(HomeRefreshCoordinator.markScanTerminal(requestId))
+        assertTrue(HomeRefreshCoordinator.markCatalogUpdated(requestId))
+        assertTrue(HomeRefreshCoordinator.complete(requestId))
+        assertEquals(HomeRefreshPhase.SUCCESS, HomeRefreshCoordinator.state.value.phase)
+        assertFalse(HomeRefreshCoordinator.markCatalogUpdated(requestId))
+    }
+
+    @Test
+    fun homeRefreshCoordinatorDoesNotReplaceAnActiveRequestAndAllowsCancellation() {
+        val owner = java.util.UUID.randomUUID().toString()
+        val rejected = java.util.UUID.randomUUID().toString()
+        assertTrue(HomeRefreshCoordinator.begin(owner, owner, "native_compose_scan"))
+        assertFalse(HomeRefreshCoordinator.begin(rejected, rejected, "native_compose_scan"))
+        assertEquals(owner, HomeRefreshCoordinator.state.value.requestId)
+        assertTrue(HomeRefreshCoordinator.cancel(owner, "test_cancellation"))
+        assertEquals(HomeRefreshPhase.CANCELLED, HomeRefreshCoordinator.state.value.phase)
+        assertFalse(HomeRefreshCoordinator.markScanStarted(owner))
     }
 
     private fun readyState(
