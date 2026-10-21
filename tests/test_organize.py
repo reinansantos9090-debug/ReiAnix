@@ -245,9 +245,9 @@ class SourceContractTests(unittest.TestCase):
         self.assertNotIn("Nenhum gênero está disponível", source)
 
     def test_native_navigation_and_organize_actions_are_owned_by_compose_host(self):
-        host = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
-        navigation = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
-        view_model = self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
+        host = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt")
+        navigation = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt")
+        view_model = self.read(ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt")
         self.assertIn("ReiAnixOrganizeRoute(", host)
         self.assertIn("ReiAnixRoutes.ORGANIZE", navigation)
         self.assertIn("onRemoveFolder = libraryViewModel::removeSafTree", host)

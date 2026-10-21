@@ -179,6 +179,7 @@ class CollectorJourneyUiContractTests(unittest.TestCase):
         self.assertIn("D-pad", source) if "D-pad" in source else self.assertIn("OutlinedButton", source)
 
     def test_native_collector_route_and_home_action_are_wired_without_player_changes(self):
+        from pathlib import Path
         root = Path(__file__).resolve().parents[1]
         navigation = (root / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/navigation/ReiAnixNavigation.kt").read_text(encoding="utf-8")
         home = (root / "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt").read_text(encoding="utf-8")

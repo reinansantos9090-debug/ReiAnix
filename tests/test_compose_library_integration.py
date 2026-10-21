@@ -54,12 +54,13 @@ class ComposeLibraryIntegrationTests(unittest.TestCase):
         self.assertIn("nativePagedLibraryState", VIEW_MODEL)
 
     def test_scanning_is_owned_by_the_native_scan_coordinator(self):
-        source = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
+        controller = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanController.kt").read_text(encoding="utf-8")
         runner = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/NativeScanRunner.kt").read_text(encoding="utf-8")
-        self.assertIn("object NativeScanController", source)
-        self.assertIn("fun begin(", source)
-        self.assertIn("fun complete(", source)
-        self.assertIn("NativeScanController.begin(", runner)
+        activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
+        self.assertIn("object NativeScanController", controller)
+        self.assertIn("fun begin(", controller)
+        self.assertIn("fun complete(", controller)
+        self.assertIn("NativeScanController.begin(", activity)
         self.assertIn("NativeScanController.complete(", runner)
 
     def test_compose_player_open_is_native_not_a_python_mailbox_command(self):

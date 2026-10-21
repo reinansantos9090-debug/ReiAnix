@@ -29,7 +29,7 @@ class NativeComposeEntrypointTests(unittest.TestCase):
     def test_nested_details_and_collector_screens_have_native_consumers(self):
         for token in (
             "ReiAnixDetailsRoute",
-            "ReiAnixCollectorRoute",
+            "ReiAnixCollectorJourneyRoute",
             "ReiAnixRoutes.DETAILS",
             "ReiAnixRoutes.COLLECTOR",
         ):

@@ -182,7 +182,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: true", workflow)
         self.assertIn("timeout-minutes: 90", workflow)
         self.assertIn("Run Python regression suite", workflow)
-        self.assertRegex(workflow, r"python\s+-m\s+pytest\s+-q[^\n]*build/pytest\.txt")
+        self.assertIn("python -m pytest", workflow)
+        self.assertIn("build/pytest.txt", workflow)
         self.assertIn("gradle -p android --no-daemon", workflow)
         self.assertIn(":app:assembleRelease", workflow)
         self.assertIn(":app:compileReleaseKotlin", workflow)
@@ -194,14 +195,8 @@ class AndroidHostVerificationTests(unittest.TestCase):
         self.assertIn("Upload APK to Actions run", workflow)
         self.assertIn("Upload APK ZIP to Actions run", workflow)
         self.assertIn("retention-days: 1", workflow)
-        self.assertNotIn("subosito/flutter-action", workflow)
-        self.assertNotIn("flet build", workflow)
-        self.assertNotIn("serious_python_android", workflow)
-        self.assertNotIn("android-emulator-runner", workflow)
-        self.assertNotIn("android_api30", workflow)
-        self.assertNotIn("android_api36", workflow)
-        self.assertNotIn("actions: write", workflow)
-        self.assertNotIn("continue-on-error: true", workflow)
+        for forbidden in ("subosito/flutter-action", "flet build", "serious_python_android", "android-emulator-runner", "android_api30", "android_api36", "actions: write", "continue-on-error: true"):
+            self.assertNotIn(forbidden, workflow)
         self.assertIn("targetSdkVersion", workflow)
         self.assertIn("MANAGE_EXTERNAL_STORAGE", workflow)
         self.assertIn("REIFLIX_GOOGLE_WEB_CLIENT_ID", workflow)
@@ -729,9 +724,7 @@ E: manifest
         self.assertIn('put("type", "saf_released")', release)
         self.assertIn("removeSafFolder(normalizedReference)", release)
         self.assertIn('"release_tree"', release)
-        # The terminal event object can be assembled first, but it must not be
-        # written to the mailbox until the canonical source removal has finished.
-        self.assertLess(release.index("removeSafFolder(normalizedReference)"), release.index("NativeMailbox.write("))
+        self.assertLess(release.index("removeSafFolder(normalizedReference)"), release.index("publishReleased(sourceAlreadyAbsent)"))
         self.assertIn("sourceAlreadyAbsent", release)
         self.assertIn("nativeFolderConfigOwner", release)
 

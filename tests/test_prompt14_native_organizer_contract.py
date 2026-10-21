@@ -105,7 +105,7 @@ class NativeGenreMigrationContractTests(unittest.TestCase):
         self.assertIn("onClassifyLocalGenres = viewModel::classifyMissingLocalGenres", ui)
         self.assertIn("organizerGenreOperationState", ui)
         self.assertIn("ReiAnixGenreRegistry(sqliteDatabase)", dependencies)
-        self.assertNotIn("import flet", self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").casefold())
+        self.assertNotIn("import flet", self.read(KOTLIN / "main.kt").casefold())
     def test_prompt_migration_doc_records_cutover_limitations(self):
         document = self.read(ROOT / "docs" / "KOTLIN_ORGANIZER_MIGRATION.md")
         self.assertIn("schema v29", document)
