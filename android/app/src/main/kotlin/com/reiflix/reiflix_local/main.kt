@@ -3754,7 +3754,7 @@ internal class NativeMainRuntimePort(
                 .put("operationState", result.operationState)
                 .put("message", result.message ?: org.json.JSONObject.NULL)
                 .put("error", result.error ?: org.json.JSONObject.NULL)
-                .put("payload", result.payloadJson ?: org.json.JSONObject.NULL)
+                .put("payload", payload?.let { org.json.JSONObject(it.toString()) } ?: org.json.JSONObject.NULL)
                 .put("updatedAtMillis", result.updatedAtMillis)
                 .toString())
         })
