@@ -3960,6 +3960,23 @@ internal class NativeMainRuntimePort(
     private fun requestRestoreReconciliation(requestId: String?): Boolean {
         val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
             ?: UUID.randomUUID().toString()
+        if (restoreMaintenanceInProgress) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = "backup_reconcile",
+                status = "BLOCKED",
+                operationState = "BLOCKED",
+                message = "Aguarde a restauração do backup terminar antes de reconciliar a biblioteca.",
+                error = "restore_in_progress",
+            )
+            recordDiagnostic(
+                name = "RESTORE_RECONCILIATION_BLOCKED",
+                severity = "WARN",
+                requestId = resolvedRequestId,
+                result = "restore_in_progress",
+            )
+            return false
+        }
         if (mutableSnapshot.value.recoveryRequired) {
             publishOperationResult(
                 requestId = resolvedRequestId,
