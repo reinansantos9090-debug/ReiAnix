@@ -692,6 +692,22 @@ internal data class NativeMainUiPreferences(
     val settingsState: Map<String, Any?> = emptyMap(),
 )
 
+/**
+ * Process-local deduplication for the startup warning translated from
+ * main.py's recovered_scans notice. A notice is claimed only when at least one
+ * interrupted scan exists, so transient query failures do not suppress retry.
+ */
+private object NativeMainStartupNoticeState {
+    private var interruptedScanNoticeShown = false
+
+    @Synchronized
+    fun claimInterruptedScansNotice(count: Int): Boolean {
+        if (count <= 0 || interruptedScanNoticeShown) return false
+        interruptedScanNoticeShown = true
+        return true
+    }
+}
+
 internal class NativeMainRuntimePort(
     private val activity: MainActivity,
     private val libraryViewModel: ReiAnixLibraryViewModel,
@@ -3301,12 +3317,48 @@ internal class NativeMainRuntimePort(
         publish(action = "runtime_disconnect")
     }
 
+    /**
+     * Native equivalent of main.py's startup notice for scan_runs that the
+     * existing SQLite startup migration marked as interrupted. This is a
+     * read-only projection: it never starts a scan or edits catalog rows.
+     */
+    private fun showInterruptedScanNoticeIfNeeded() {
+        launchTracked("startup_interrupted_scan_notice", lane = "startup") {
+            val interruptedCount = withContext(Dispatchers.IO) {
+                dependencies.sqliteDatabase.read { database ->
+                    database.rawQuery(
+                        "SELECT COUNT(*) FROM scan_runs WHERE status = ?",
+                        arrayOf("interrupted"),
+                    ).use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getInt(0) else 0
+                    }
+                }
+            }
+            if (!NativeMainStartupNoticeState.claimInterruptedScansNotice(interruptedCount)) {
+                return@launchTracked
+            }
+            val message =
+                "$interruptedCount varredura(s) anterior(es) foram interrompidas e poderão ser refeitas."
+            android.widget.Toast.makeText(
+                activity.applicationContext,
+                message,
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+            recordDiagnostic(
+                name = "INTERRUPTED_SCAN_STARTUP_NOTICE",
+                result = "shown",
+                context = mapOf("interrupted_scan_count" to interruptedCount),
+            )
+        }
+    }
+
     fun onRuntimeReconnect() {
         resumeRuntimeTasks()
         ensureNativeCommandDispatcher()
         settingsViewModel.refresh()
         libraryViewModel.refresh()
         ensureNativeMailboxPoller()
+        showInterruptedScanNoticeIfNeeded()
         publish(action = "runtime_reconnect")
     }
 
