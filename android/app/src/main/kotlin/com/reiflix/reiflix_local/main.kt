@@ -5348,8 +5348,20 @@ internal class NativeMainRuntimePort(
             "backup_integrity", "backup_reconcile", "diagnostic_export",
         )
         if (normalizedAction !in allowedActions) return false
-        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
-            ?: UUID.randomUUID().toString()
+        val suppliedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        val resolvedRequestId = suppliedRequestId ?: UUID.randomUUID().toString()
+        val uuidRequestId = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+        if (!uuidRequestId.matches(resolvedRequestId)) {
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = normalizedAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "O identificador da operação de arquivo não é um UUID válido.",
+                error = "invalid_request_id",
+            )
+            return false
+        }
         if (!publishOperationResult(
                 requestId = resolvedRequestId,
                 action = normalizedAction,
