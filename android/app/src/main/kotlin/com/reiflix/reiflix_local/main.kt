@@ -2270,10 +2270,23 @@ internal class NativeMainRuntimePort(
         val requestId = eventRequestId?.trim().orEmpty().ifBlank {
             firstTruthyJsonText(payload, "requestId")
         }
-        val playerGeneration = firstTruthyJsonLong(payload, "generation", "playerGeneration")
-        val transition = firstTruthyJsonLong(payload, "transitionGeneration")
-        val episodeId = expectedEpisodeId ?: firstTruthyJsonLong(payload, "episodeId").takeIf { it > 0L }
-        val animeId = expectedAnimeId ?: firstTruthyJsonLong(payload, "animeId").takeIf { it > 0L }
+        fun numericIdentity(vararg keys: String): Long? = try {
+            firstTruthyJsonLong(payload, *keys)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+        // Bad event fields are rejected here rather than escaping the dispatcher:
+        // a thrown exception would make the durable mailbox requeue this poison event.
+        val playerGeneration = numericIdentity("generation", "playerGeneration")
+            ?: return reject("invalid_player_generation")
+        val transition = numericIdentity("transitionGeneration")
+            ?: return reject("invalid_transition_generation")
+        val episodeId = expectedEpisodeId ?: (
+            numericIdentity("episodeId") ?: return reject("invalid_episode_id")
+        ).takeIf { it > 0L }
+        val animeId = expectedAnimeId ?: (
+            numericIdentity("animeId") ?: return reject("invalid_anime_id")
+        ).takeIf { it > 0L }
         val mediaId = expectedMediaId?.trim().orEmpty().ifBlank {
             firstTruthyJsonText(payload, "mediaId")
         }
