@@ -1840,6 +1840,34 @@ internal class NativeMainRuntimePort(
         publish(action = "clear_pending_saf_selection")
     }
 
+    private fun finishPendingSafSelection(
+        eventRequestId: String?,
+        status: String,
+        message: String? = null,
+        error: String? = null,
+        payload: org.json.JSONObject? = null,
+    ): Boolean {
+        val pendingRequestId = pendingSafSelectionRequestId?.trim().orEmpty()
+        val incomingRequestId = eventRequestId?.trim().orEmpty()
+        if (pendingRequestId.isEmpty() || incomingRequestId.isEmpty() ||
+            pendingRequestId != incomingRequestId
+        ) return false
+
+        val terminalStatus = status.trim().uppercase(Locale.ROOT)
+        if (terminalStatus !in setOf("COMPLETED", "ERROR", "FAILED", "CANCELLED")) return false
+        val published = publishOperationResult(
+            requestId = pendingRequestId,
+            action = "select_saf",
+            status = terminalStatus,
+            operationState = terminalStatus,
+            message = message,
+            error = error,
+            payload = payload,
+        )
+        clearPendingSafSelectionContext()
+        return published
+    }
+
     fun beginSafSelection(requestId: String? = null, bridge: String = "library"): Boolean {
         if (!canMutateSafRoots()) return false
         pendingSafSelectionRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
@@ -2531,13 +2559,46 @@ internal class NativeMainRuntimePort(
 
     /** Port of the explicit SAF actions; selecting or removing a root remains user-driven. */
     fun requestSafFolderSelection(requestId: String? = null, bridge: String = "library"): Boolean {
-        if (!beginSafSelection(requestId, bridge)) {
-            publish(action = "saf_folder_selection", error = "Aguarde a varredura ou a seleção de pasta atual terminar.")
+        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
+        if (!beginSafSelection(resolvedRequestId, bridge)) {
+            val message = "Aguarde a varredura ou a seleção de pasta atual terminar."
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = "select_saf",
+                status = "BLOCKED",
+                operationState = "BLOCKED",
+                message = message,
+                error = message,
+            )
+            publish(action = "saf_folder_selection", error = message)
             return false
         }
-        libraryViewModel.selectSafTree()
-        publish(action = "saf_folder_selection")
-        return true
+        return try {
+            activity.startActivity(
+                MainActivity.createNativeStorageActionIntent(
+                    context = activity,
+                    action = "select_tree",
+                    requestId = resolvedRequestId,
+                )
+            )
+            publish(action = "saf_folder_selection")
+            true
+        } catch (failure: Exception) {
+            val message = failure.message?.takeIf { it.isNotBlank() }
+                ?: "Não foi possível abrir o seletor de pastas."
+            clearPendingSafSelectionContext()
+            publishOperationResult(
+                requestId = resolvedRequestId,
+                action = "select_saf",
+                status = "ERROR",
+                operationState = "ERROR",
+                message = message,
+                error = message,
+            )
+            publish(action = "saf_folder_selection", error = message)
+            false
+        }
     }
 
     fun removeConfiguredSafFolder(reference: String): Boolean {
@@ -2868,7 +2929,7 @@ internal class NativeMainRuntimePort(
      * are validated at this boundary, and domain writes still run in their
      * canonical Kotlin service. Unknown actions are rejected, not acknowledged.
      */
-    fun dispatchMainAction(action: String, payload: org.json.JSONObject): Boolean {
+    fun dispatchMainAction(action: String, payload: org.json.JSONObject, requestId: String? = null): Boolean {
         val normalized = action.trim().lowercase(Locale.ROOT)
         fun positiveLong(key: String): Long? =
             payload.optLong(key, 0L).takeIf { it > 0L }
@@ -2907,7 +2968,10 @@ internal class NativeMainRuntimePort(
                 true
             }
 
-            "select_saf", "select_tree", "add_folder" -> selectSafFolder()
+            "select_saf", "select_tree", "add_folder" -> requestSafFolderSelection(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                bridge = nonBlank("bridge") ?: "library",
+            )
             "request_media_access", "request_video_access" -> requestMediaAccess()
             "check_storage_access", "check_video_access" -> checkStorageAccess()
             "open_broad_storage_settings", "request_storage_access" -> openBroadStorageSettings()
@@ -3323,7 +3387,7 @@ internal class NativeMainRuntimePort(
         if (request.isEmpty() || normalizedAction.isEmpty()) return false
         if (!claimRequestId(request, "native_command")) return false
         if (!queueNativeOperation(request, normalizedAction)) return false
-        val accepted = dispatchMainAction(normalizedAction, payload)
+        val accepted = dispatchMainAction(normalizedAction, payload, request)
         if (!accepted) {
             failNativeOperation(request, normalizedAction, "A operacao nativa nao foi aceita.")
             return false
@@ -3472,13 +3536,48 @@ internal class NativeMainRuntimePort(
                 val action = stringValue("action") ?: return false
                 val requestId = eventRequestId ?: stringValue("requestId")
                 if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_library")) return false
-                dispatchMainAction(action, payload)
+                dispatchMainAction(action, payload, requestId)
             }
             "saf_permission", "saf_released", "saf_error", "saf_cancelled",
             "storage_status", "volume_changed",
             "mediastore_permission", "mediastore_error",
             "broad_storage_permission", "broad_storage_status", "broad_storage_error" -> {
-                if (type == "saf_cancelled") clearPendingSafSelectionContext()
+                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                when (type) {
+                    "saf_cancelled" -> finishPendingSafSelection(
+                        eventRequestId = correlatedRequestId,
+                        status = "CANCELLED",
+                        message = stringValue("reason", "message") ?: "Seleção de pasta cancelada.",
+                        payload = payload,
+                    )
+                    "saf_error" -> finishPendingSafSelection(
+                        eventRequestId = correlatedRequestId,
+                        status = "ERROR",
+                        message = stringValue("message", "reason", "status")
+                            ?: "Não foi possível validar a pasta selecionada.",
+                        error = stringValue("error", "reason", "status")
+                            ?: "saf_selection_failed",
+                        payload = payload,
+                    )
+                    "saf_permission" -> if (payload.optBoolean("selected", false)) {
+                        val treeUri = stringValue("treeUri", "tree_uri")
+                        val persistedReadUris = activity.contentResolver.persistedUriPermissions
+                            .filter { it.isReadPermission }
+                            .map { it.uri.toString() }
+                        val authorized = payload.optBoolean("granted", false) &&
+                            !treeUri.isNullOrBlank() &&
+                            StorageAuthorization.safAccess(treeUri, persistedReadUris) == SafAccessLevel.AVAILABLE &&
+                            mergeAuthoritativeSafRoot(treeUri)
+                        finishPendingSafSelection(
+                            eventRequestId = correlatedRequestId,
+                            status = if (authorized) "COMPLETED" else "ERROR",
+                            message = if (authorized) "Pasta autorizada e configurada."
+                                else "O Android não confirmou uma fonte SAF válida para a biblioteca.",
+                            error = if (authorized) null else "saf_source_validation_failed",
+                            payload = payload,
+                        )
+                    }
+                }
                 refreshAuthoritativeStorageSnapshot(payload, payload.optLong("createdAt", 0L))
                 settingsViewModel.refresh()
                 libraryViewModel.refreshNativeFolders()
