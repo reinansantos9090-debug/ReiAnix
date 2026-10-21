@@ -5206,33 +5206,89 @@ internal class NativeMainRuntimePort(
             }
             "artwork_published" -> {
                 val event = stringValue("event")?.uppercase(Locale.ROOT) ?: return false
-                val entity = stringValue("entity_type", "entityType")?.lowercase(Locale.ROOT) ?: return false
-                val artworkType = stringValue("artwork_type", "artworkType") ?: return false
-                val entityId = longValue("entity_id", "entityId") ?: return false
-                val path = stringValue("local_path", "localPath") ?: return false
-                val localFile = runCatching { File(path).canonicalFile }.getOrNull() ?: return false
-                if (event != "ARTWORK_PUBLISHED" ||
-                    entity !in setOf("anime", "movie", "episode", "season", "special") ||
-                    !localFile.isFile
-                ) {
-                    recordDiagnostic(
-                        name = "ARTWORK_PUBLICATION_REJECTED",
-                        severity = "WARN",
-                        result = "invalid_local_publication",
-                        context = mapOf("entity_type" to entity, "entity_id" to entityId, "artwork_type" to artworkType),
-                    )
-                    return false
-                }
-                if (entity in setOf("anime", "movie")) libraryViewModel.refreshDetails(entityId)
-                libraryViewModel.queryNativeArtwork()
-                libraryViewModel.refresh()
-                recordDiagnostic(
-                    name = "ARTWORK_PROJECTION_REFRESH",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    result = "local_artwork_published",
-                    context = mapOf("entity_type" to entity, "entity_id" to entityId, "artwork_type" to artworkType),
+                val entity = stringValue("entity_type", "entityType")?.lowercase(Locale.ROOT).orEmpty()
+                val artworkType = stringValue("artwork_type", "artworkType").orEmpty()
+                val entityId = longValue("entity_id", "entityId") ?: 0L
+                val localPath = stringValue("local_path", "localPath").orEmpty()
+                val publicationEvents = setOf(
+                    "ARTWORK_DOWNLOAD_SUCCEEDED",
+                    "ARTWORK_PUBLISHED",
+                    "ARTWORK_CACHE_HIT",
                 )
-                true
+                val stateOnlyEvents = setOf(
+                    "ARTWORK_CACHE_INVALID",
+                    "ARTWORK_DOWNLOAD_FAILED",
+                    "ARTWORK_RETRY",
+                )
+                if (event in publicationEvents) {
+                    val localFile = localPath.takeIf { it.isNotBlank() }
+                        ?.let { runCatching { File(it).canonicalFile }.getOrNull() }
+                    if (
+                        entity !in setOf("anime", "movie", "episode", "season", "special") ||
+                        entityId <= 0L ||
+                        artworkType.isBlank() ||
+                        localFile?.isFile != true
+                    ) {
+                        recordDiagnostic(
+                            name = "ARTWORK_PUBLICATION_REJECTED",
+                            severity = "WARN",
+                            requestId = eventRequestId ?: stringValue("requestId"),
+                            result = "invalid_local_publication",
+                            context = mapOf(
+                                "event" to event,
+                                "entity_type" to entity,
+                                "entity_id" to entityId,
+                                "artwork_type" to artworkType,
+                                "path_present" to localPath.isNotBlank(),
+                            ),
+                        )
+                        return false
+                    }
+                    if (entity in setOf("anime", "movie")) libraryViewModel.refreshDetails(entityId)
+                    libraryViewModel.queryNativeArtwork()
+                    libraryViewModel.refresh()
+                    recordDiagnostic(
+                        name = "ARTWORK_PROJECTION_REFRESH",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = event.lowercase(Locale.ROOT),
+                        context = mapOf(
+                            "entity_type" to entity,
+                            "entity_id" to entityId,
+                            "artwork_type" to artworkType,
+                        ),
+                    )
+                    return true
+                }
+                if (event in stateOnlyEvents) {
+                    // Cache invalidation, retry and failure events have no successful
+                    // local path to validate. Refresh the native artwork projection so
+                    // the UI can observe the persisted status instead of dropping them.
+                    if (entityId > 0L && entity in setOf("anime", "movie")) {
+                        libraryViewModel.refreshDetails(entityId)
+                    }
+                    libraryViewModel.queryNativeArtwork()
+                    libraryViewModel.refresh()
+                    recordDiagnostic(
+                        name = "ARTWORK_STATE_PROJECTION_REFRESH",
+                        severity = if (event == "ARTWORK_DOWNLOAD_FAILED") "WARN" else "INFO",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = event.lowercase(Locale.ROOT),
+                        context = mapOf(
+                            "entity_type" to entity,
+                            "entity_id" to entityId,
+                            "artwork_type" to artworkType,
+                        ),
+                    )
+                    return true
+                }
+                recordDiagnostic(
+                    name = "ARTWORK_EVENT_IGNORED",
+                    severity = "WARN",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    result = event,
+                    context = mapOf("unsupported_event" to true),
+                )
+                false
             }
             "compose_settings_set" -> {
                 val key = stringValue("key") ?: return false
