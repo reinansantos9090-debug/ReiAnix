@@ -1965,6 +1965,10 @@ internal class NativeMainRuntimePort(
         if (!expectedRequestId.isNullOrBlank() && current.activePlayerRequestId != null &&
             current.activePlayerRequestId != expectedRequestId) return false
         cancelBackgroundTasksForLane("playback")
+        // The former invalidate_player_session path cancelled the current
+        // transition before clearing its session, including its own diagnostic
+        // event. Keep that order and increment transitionGeneration exactly once.
+        cancelPlayerTransition(reason)
         publish(action = "invalidate_player_session", transform = {
             it.copy(
                 playerSessionActive = false,
@@ -1975,7 +1979,7 @@ internal class NativeMainRuntimePort(
                 activeAnimeId = null,
                 activeMediaUri = null,
                 activePlayerGeneration = 0L,
-                transitionGeneration = it.transitionGeneration + 1L,
+                transitionGeneration = it.transitionGeneration,
             )
         })
         recordDiagnostic(
