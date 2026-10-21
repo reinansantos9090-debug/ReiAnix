@@ -1842,6 +1842,21 @@ internal class NativeMainRuntimePort(
     fun dismissPlayerTransition(originRequestId: String, originPlayerSessionId: String? = null) =
         revokePlayerTransition(originRequestId, originPlayerSessionId)
 
+    private fun resolvePrivateBackupFile(reference: String): File? {
+        val raw = reference.trim()
+        if (raw.isEmpty()) return null
+        val candidate = runCatching { File(raw).canonicalFile }.getOrNull() ?: return null
+        val roots = listOf(
+            File(activity.filesDir, "data/backups"),
+            File(activity.filesDir, "data"),
+            activity.cacheDir,
+        ).mapNotNull { runCatching { it.canonicalFile.toPath() }.getOrNull() }
+        val path = runCatching { candidate.toPath() }.getOrNull() ?: return null
+        if (roots.none { path.startsWith(it) }) return null
+        if (!candidate.isFile || candidate.length() <= 0L) return null
+        return candidate
+    }
+
     /**
      * Typed replacement for the legacy main.py action/event branching. Values
      * are validated at this boundary, and domain writes still run in their
@@ -1905,7 +1920,7 @@ internal class NativeMainRuntimePort(
             }
             "settings_action", "compose_settings_action" ->
                 (nonBlank("action") ?: nonBlank("setting_action"))?.let(::requestSettingsActionTracked) ?: false
-            "account_action", "compose_settings_account_action" ->
+            "account_action", "compose_account_action", "compose_settings_account_action" ->
                 (nonBlank("accountAction") ?: nonBlank("account_action"))?.let(::requestAccountActionTracked) ?: false
             "set_theme" -> setSettingSerialized("appearance.theme", payload.optString("theme", "dark"))
 
@@ -1956,24 +1971,54 @@ internal class NativeMainRuntimePort(
                 queryMarathonPlan(it, nonBlank("currentPath") ?: nonBlank("current_path"))
             } ?: false
             "refresh_details" -> positiveLong("animeId")?.let(::refreshCurrentDetails) ?: false
-            "refresh_anilist_metadata" -> positiveLong("animeId")?.let(::refreshAniListMetadata) ?: false
+            "refresh_anilist_metadata", "refresh_current_metadata", "refresh_metadata" ->
+                positiveLong("animeId")?.let(::refreshAniListMetadata) ?: false
+            "resolve_match", "associate_anilist" -> {
+                val animeId = positiveLong("animeId") ?: positiveLong("anime_id") ?: return false
+                val remoteId = positiveLong("anilistId") ?: positiveLong("anilist_id") ?: return false
+                launchTracked("associate_anilist", lane = "metadata") {
+                    val result = dependencies.aniListIntegrationService.associateManually(animeId, remoteId.toInt())
+                    publish(action = "associate_anilist", transform = { it.copy(lastResultJson = result.toString()) })
+                }
+            }
             "reconcile_unmatched_metadata" -> reconcileUnmatchedAniListMetadata()
             "request_anime_artwork" -> positiveLong("animeId")?.let {
                 requestAnimeArtwork(it, payload.optBoolean("force", false))
             } ?: false
             "request_pending_artwork" -> requestPendingArtwork()
             "clear_artwork_cache" -> clearManagedArtworkCache()
+            "request_missing_thumbnail", "extract_local_thumbnail", "request_thumbnail" ->
+                (nonBlank("uri") ?: nonBlank("path") ?: nonBlank("mediaUri"))?.let {
+                    extractLocalThumbnail(
+                        reference = it,
+                        size = payload.optLong("size", 0L),
+                        modifiedAt = payload.optLong("modifiedAt", payload.optLong("modified_at", 0L)),
+                        mediaIdentity = nonBlank("mediaIdentity") ?: nonBlank("media_identity"),
+                    )
+                } ?: false
             "classify_missing_local_genres" -> classifyMissingLocalGenres()
+            "open_marathon" -> positiveLong("animeId")?.let {
+                queryMarathonPlan(it, nonBlank("currentPath") ?: nonBlank("current_path"))
+            } ?: false
+            "clear_runtime_selection" -> {
+                clearRuntimeSelection()
+                true
+            }
+            "request_restore_reconciliation", "reconcile_after_restore" -> reconcileRestoredFileAvailability()
 
             "create_backup" -> createBackup()
-            "inspect_backup" -> nonBlank("archivePath")?.let { inspectBackup(File(it)) } ?: false
-            "restore_backup" -> nonBlank("archivePath")?.let { restoreBackup(File(it)) } ?: false
+            "inspect_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::inspectBackup) ?: false
+            "restore_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreBackup) ?: false
             "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
-            "restore_recovery_backup" -> nonBlank("archivePath")?.let { restoreRecoveryBackup(File(it)) } ?: false
+            "restore_recovery_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreRecoveryBackup) ?: false
             "integrity_check" -> checkDatabaseIntegrity()
             "reconcile_after_restore" -> reconcileRestoredFileAvailability()
             "export_diagnostics" -> exportDiagnosticsJson()
 
+            "cancel_scan", "cancel_native_scan", "scan_cancel" -> {
+                val id = nonBlank("scanId") ?: nonBlank("scan_id") ?: return false
+                cancelNativeScan(id, nonBlank("reason") ?: "cancelled")
+            }
             "native_scan_progress" -> {
                 val id = nonBlank("scanId") ?: nonBlank("scan_id") ?: return false
                 val stats = payload.optJSONObject("payload") ?: payload
