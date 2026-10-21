@@ -4586,7 +4586,7 @@ internal class NativeMainRuntimePort(
                 resultAction = normalized,
             )
             "refresh_home_library", "request_home_refresh" -> requestHomeRefresh(
-                source = nonBlank("source") ?: "native_action",
+                source = nonBlank("source") ?: "button",
             )
             "remove_folder", "remove_saf_tree", "remove_saf", "release_tree" ->
                 (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference") ?: nonBlank("source"))
