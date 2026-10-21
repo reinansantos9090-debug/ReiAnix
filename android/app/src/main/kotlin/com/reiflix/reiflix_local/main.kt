@@ -7316,6 +7316,13 @@ internal class NativeMainRuntimePort(
                     )
                     "mediastore_permission" -> {
                         val granted = payload.optBoolean("granted", false)
+                        refreshAuthoritativeStorageSnapshot(
+                            payload,
+                            payload.optLong(
+                                "_legacySourceEventCreatedAt",
+                                payload.optLong("timestamp", 0L),
+                            ),
+                        )
                         val sourceReference = stringValue("source") ?: "mediastore:external:video"
                         if (!granted) {
                             launchTracked("mediastore_permission_revoked", lane = "storage") {
@@ -7375,6 +7382,13 @@ internal class NativeMainRuntimePort(
                         )
                     }
                     "broad_storage_status" -> {
+                        refreshAuthoritativeStorageSnapshot(
+                            payload,
+                            payload.optLong(
+                                "_legacySourceEventCreatedAt",
+                                payload.optLong("timestamp", 0L),
+                            ),
+                        )
                         if (!payload.optBoolean("hasAccess", false)) {
                             launchTracked("broad_storage_marked_unavailable", lane = "storage") {
                                 val changed = markBroadStorageSourceUnavailable(
@@ -7394,6 +7408,13 @@ internal class NativeMainRuntimePort(
                     }
                     "broad_storage_permission" -> {
                         val granted = payload.optBoolean("granted", false)
+                        refreshAuthoritativeStorageSnapshot(
+                            payload,
+                            payload.optLong(
+                                "_legacySourceEventCreatedAt",
+                                payload.optLong("timestamp", 0L),
+                            ),
+                        )
                         if (!granted) {
                             launchTracked("broad_storage_permission_denied", lane = "storage") {
                                 val changed = markBroadStorageSourceUnavailable(
@@ -7603,8 +7624,11 @@ internal class NativeMainRuntimePort(
                 )
                 val capabilities = payload.optJSONObject("capabilities") ?: payload
                 val publishedAt = payload.optLong(
-                    "publishedAtMs",
-                    payload.optLong("published_at_ms", payload.optLong("createdAt", 0L)),
+                    "_legacySourceEventCreatedAt",
+                    payload.optLong(
+                        "publishedAtMs",
+                        payload.optLong("published_at_ms", payload.optLong("createdAt", payload.optLong("timestamp", 0L))),
+                    ),
                 )
                 refreshAuthoritativeStorageSnapshot(capabilities, publishedAt)
             }
