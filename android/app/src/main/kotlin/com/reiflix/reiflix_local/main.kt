@@ -2198,6 +2198,13 @@ internal class NativeMainRuntimePort(
     @Volatile private var lifecycleIsAlive: Boolean = true
 
     fun cancelPlayerTransition(reason: String = "unknown") {
+        // MainActivity fences delayed native handoffs with its own revocation ledger.
+        // Advance both guards so a late NEXT/PREVIOUS launch cannot outlive cancellation.
+        val current = mutableSnapshot.value
+        val originRequestId = current.activePlayerRequestId
+        if (!originRequestId.isNullOrBlank()) {
+            MainActivity.revokePlayerTransition(originRequestId, current.activePlayerSessionId)
+        }
         publish(action = "player_transition_cancelled", transform = {
             it.copy(transitionGeneration = it.transitionGeneration + 1L)
         })
