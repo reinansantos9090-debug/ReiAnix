@@ -738,6 +738,63 @@ internal class NativeMainRuntimePort(
             .getOrNull()
     }
 
+
+    /** Session identity helpers preserve the stale-callback fencing from the former player callbacks. */
+    fun revokePlayerTransition(originRequestId: String, originPlayerSessionId: String? = null) {
+        MainActivity.revokePlayerTransition(originRequestId, originPlayerSessionId)
+        publish(action = "revoke_player_transition")
+    }
+
+    fun isPlayerTransitionRevoked(originRequestId: String, originPlayerSessionId: String? = null): Boolean =
+        MainActivity.isPlayerTransitionRevoked(originRequestId, originPlayerSessionId)
+
+    fun isCurrentPlayerHandoff(
+        requestId: String,
+        originRequestId: String,
+        originCreatedAtMs: Long,
+        playerSessionId: String,
+        originPlayerSessionId: String,
+        originTransitionGeneration: Long,
+    ): Boolean = MainActivity.isCurrentPlayerHandoff(
+        requestId,
+        originRequestId,
+        originCreatedAtMs,
+        playerSessionId,
+        originPlayerSessionId,
+        originTransitionGeneration,
+    )
+
+    fun notePlayerSession(requestId: String, sessionId: String, transitionGeneration: Long = 0L) {
+        MainActivity.notePlayerSession(requestId, sessionId, transitionGeneration)
+        publish(action = "player_session_active")
+    }
+
+    fun notePlayerActivityCreated(
+        instanceId: String,
+        requestId: String,
+        sessionId: String,
+        transitionGeneration: Long = 0L,
+    ) {
+        MainActivity.notePlayerActivityCreated(instanceId, requestId, sessionId, transitionGeneration)
+        publish(action = "player_activity_created")
+    }
+
+    fun notePlayerActivityDestroyed(instanceId: String, sessionId: String) {
+        MainActivity.notePlayerActivityDestroyed(instanceId, sessionId)
+        publish(action = "player_activity_destroyed")
+    }
+
+    fun notePlayerExit(
+        requestId: String,
+        atMs: Long = System.currentTimeMillis(),
+        sessionId: String? = null,
+        activityInstanceId: String? = null,
+    ) {
+        MainActivity.notePlayerExit(requestId, atMs, sessionId, activityInstanceId)
+        publish(action = "player_exit")
+    }
+
+
     fun togglePinned(animeId: Long): Boolean {
         if (animeId <= 0L) return false
         return launchTracked("toggle_pinned") {
@@ -1014,6 +1071,21 @@ internal class NativeMainRuntimePort(
     fun cancelAllNativeScans(): List<String> = NativeScanController.cancelAll()
 
     fun finishNativeScan(scanId: String) = NativeScanController.finish(scanId)
+    fun updateNativeScanProgress(scanId: String, payload: org.json.JSONObject) =
+        NativeScanController.updateProgress(scanId, payload)
+
+    fun completeNativeScan(
+        scanId: String,
+        status: String,
+        payload: org.json.JSONObject = org.json.JSONObject(),
+    ) = NativeScanController.complete(scanId, status, payload)
+
+    fun nativeScanIsRunning(sourceKey: String): Boolean =
+        NativeScanController.isRunning(sourceKey)
+
+    fun activeNativeScanId(sourceKey: String): String? =
+        NativeScanController.activeScanId(sourceKey)
+
 
     /** Catalog metadata and artwork reconciliation are owned by the canonical Kotlin ViewModel/services. */
     fun reconcileCatalogMetadata(): Boolean = launchTracked("reconcile_catalog_metadata", lane = "library") {
@@ -1134,6 +1206,68 @@ internal class NativeMainRuntimePort(
     suspend fun moveSafItem(uri: android.net.Uri, destinationUri: android.net.Uri) =
         libraryViewModel.moveSafItem(uri, destinationUri)
     suspend fun deleteSafItem(uri: android.net.Uri) = libraryViewModel.deleteSafItem(uri)
+
+    /** Home refresh transitions are separated from scanner truth; a callback alone never implies a complete scan. */
+    fun beginHomeRefresh(requestId: String, refreshId: String = requestId, source: String = "native"): Boolean =
+        HomeRefreshCoordinator.begin(requestId, refreshId, source)
+
+    fun markHomeRefreshScanStarted(requestId: String): Boolean =
+        HomeRefreshCoordinator.markScanStarted(requestId)
+
+    fun markHomeRefreshScanTerminal(requestId: String): Boolean =
+        HomeRefreshCoordinator.markScanTerminal(requestId)
+
+    fun markHomeRefreshCatalogUpdated(requestId: String): Boolean =
+        HomeRefreshCoordinator.markCatalogUpdated(requestId)
+
+    fun completeHomeRefresh(requestId: String): Boolean =
+        HomeRefreshCoordinator.complete(requestId)
+
+    fun failHomeRefresh(requestId: String, reason: String): Boolean =
+        HomeRefreshCoordinator.fail(requestId, reason)
+
+    fun cancelHomeRefresh(requestId: String, reason: String = "cancelled"): Boolean =
+        HomeRefreshCoordinator.cancel(requestId, reason)
+
+    fun homeRefreshSnapshot(): HomeRefreshSnapshot = HomeRefreshCoordinator.state.value
+
+    /** StateFlow-driven Android screens invalidate by publishing catalog state, not rebuilding a Flet view tree. */
+    fun onCatalogChanged(refreshDetailsForAnimeId: Long? = null): Boolean {
+        if (refreshDetailsForAnimeId != null && refreshDetailsForAnimeId > 0L) {
+            libraryViewModel.refreshDetails(refreshDetailsForAnimeId)
+        }
+        return refreshCanonicalCatalog()
+    }
+
+    fun onMetadataChanged(animeId: Long, requestArtwork: Boolean = true): Boolean {
+        if (animeId <= 0L) return false
+        return launchTracked("metadata_changed", lane = "metadata") {
+            val metadata = dependencies.aniListIntegrationService.refreshMetadata(animeId)
+            if (requestArtwork) dependencies.artworkService.requestAnimeArtwork(animeId)
+            publish(action = "metadata_changed", transform = { it.copy(lastResultJson = metadata.toString()) })
+        }
+    }
+
+    fun clearRuntimeSelection() {
+        clearSelectedAnime()
+        publish(action = "clear_runtime_selection", transform = { it.copy(route = ReiAnixRoutes.HOME) })
+    }
+
+    fun setManualEpisodeIdentification(
+        episodeId: Long,
+        season: Int?,
+        number: Double?,
+        episodeType: String,
+        title: String?,
+    ): Boolean {
+        if (episodeId <= 0L) return false
+        return launchTracked("manual_episode_identification", lane = "library") {
+            libraryViewModel.setEpisodeManualIdentificationNative(episodeId, season, number, episodeType, title)
+        }
+    }
+
+    fun dismissPlayerTransition(originRequestId: String, originPlayerSessionId: String? = null) =
+        revokePlayerTransition(originRequestId, originPlayerSessionId)
 
     fun onLifecycleEvent(eventOrState: Any?) {
         NativeLifecycleCoordinator.onEvent(eventOrState)
