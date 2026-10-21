@@ -11,7 +11,6 @@ DEPENDENCIES = KOTLIN / "ReiAnixAppDependencies.kt"
 ANILIST = KOTLIN / "data" / "anilist" / "ReiAnixAniListIntegrationService.kt"
 VIEWMODEL = KOTLIN / "viewmodel" / "ReiAnixLibraryViewModel.kt"
 ORGANIZE_UI = KOTLIN / "ui" / "organize" / "ReiAnixOrganize.kt"
-MAIN = ROOT / "main.py"
 SQLITE_REPOSITORY = KOTLIN / "data" / "sqlite" / "ReiAnixSqliteLibraryRepository.kt"
 
 
@@ -94,17 +93,19 @@ class NativeGenreMigrationContractTests(unittest.TestCase):
         self.assertIn("SELECT DISTINCT ag.anime_id, g.id, g.canonical_name", repository)
         self.assertIn("COUNT(DISTINCT ag.anime_id)", self.read(REGISTRY))
 
-    def test_python_event_only_refreshes_projection_and_does_not_repeat_genre_writes(self):
-        main = self.read(MAIN)
-        start = main.index("if event_type == 'native_genres_committed':")
-        end = main.index("if event_type == 'artwork_published':", start)
-        handler = main[start:end]
-        self.assertIn("compose_library_bridge.request_publish", handler)
-        self.assertIn("native_genres_updated:", handler)
-        self.assertNotIn("genre_registry", handler)
-        self.assertNotIn("sync_anime", handler)
-        self.assertNotIn("UPDATE anime", handler)
 
+    def test_native_genre_classification_commits_through_the_shared_sqlite_registry(self):
+        registry = self.read(REGISTRY)
+        viewmodel = self.read(VIEWMODEL)
+        ui = self.read(ORGANIZE_UI)
+        dependencies = self.read(DEPENDENCIES)
+        self.assertIn("classifyMissingLocalGenres", registry)
+        self.assertIn("nativeGenreRegistry.classifyMissingLocalGenres()", viewmodel)
+        self.assertIn("ReiAnixGenreRegistry(nativeLibraryRepository.database)", viewmodel)
+        self.assertIn("onClassifyLocalGenres = viewModel::classifyMissingLocalGenres", ui)
+        self.assertIn("organizerGenreOperationState", ui)
+        self.assertIn("ReiAnixGenreRegistry(sqliteDatabase)", dependencies)
+        self.assertNotIn("import flet", self.read("android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt").casefold())
     def test_prompt_migration_doc_records_cutover_limitations(self):
         document = self.read(ROOT / "docs" / "KOTLIN_ORGANIZER_MIGRATION.md")
         self.assertIn("schema v29", document)
