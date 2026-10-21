@@ -153,12 +153,12 @@ class MainEntryPointTest {
 
     @Test
     fun lifecycleCallbacksNormalizeEventsAndTrackForegroundState() {
-        NativeLifecycleCoordinator.onEvent("AppLifecycleState.RESUME")
+        MainEntryPoint.onActivityLifecycleEvent("AppLifecycleState.RESUME")
         val resumed = NativeLifecycleCoordinator.state.value
         assertEquals("resumed", resumed.state)
         assertTrue(resumed.resumed)
 
-        NativeLifecycleCoordinator.onEvent(LifecycleEventFixture("PAUSE"))
+        MainEntryPoint.onActivityLifecycleEvent(LifecycleEventFixture("PAUSE"))
         val paused = NativeLifecycleCoordinator.state.value
         assertEquals("paused", paused.state)
         assertFalse(paused.resumed)
