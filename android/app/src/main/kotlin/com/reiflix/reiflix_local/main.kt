@@ -2938,7 +2938,7 @@ internal class NativeMainRuntimePort(
         )
     }
 
-    fun buildScreen(
+    fun buildScreenWithSettingsPath(
         route: String,
         force: Boolean = false,
         settingsPathOverride: List<String>? = null,
@@ -2980,11 +2980,7 @@ internal class NativeMainRuntimePort(
 
     fun flushNavigationState(): Boolean = flushUiPreferences()
 
-    /** Navigation route/back stack is process-local; clearing it never touches catalog data. */
-    fun clearPersistedNavigationState() {
-        clearPersistedNavigationState()
-        publish(action = "clear_navigation_state")
-    }
+    fun clearNavigationState() = clearPersistedNavigationState()
 
     fun handleFletViewPop(): Boolean = handleNativeBack()
 
@@ -3050,8 +3046,6 @@ internal class NativeMainRuntimePort(
 
     fun setHomeRefreshCancelled(requestId: String, reason: String = "cancelled"): Boolean =
         HomeRefreshCoordinator.cancel(requestId, reason)
-
-    fun safeUpdate() = Unit
 
     fun dispatchArtworkEvent(eventName: String, payload: org.json.JSONObject): Boolean =
         dispatchNativeEvent("artwork_published", payload.putIfAbsentSafe("event", eventName))
