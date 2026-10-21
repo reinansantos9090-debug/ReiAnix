@@ -3950,6 +3950,61 @@ internal class NativeMainRuntimePort(
                 )
                 true
             }
+            "native_error" -> {
+                val correlatedRequestId = eventRequestId ?: stringValue("requestId")
+                val nested = payload.optJSONObject("payload")
+                fun errorField(vararg keys: String): String? {
+                    stringValue(*keys)?.let { return it }
+                    for (key in keys) {
+                        val value = nested?.optString(key, "")?.trim().orEmpty()
+                        if (value.isNotEmpty()) return value
+                    }
+                    return null
+                }
+                val failedAction = errorField("action")?.lowercase(Locale.ROOT) ?: return false
+                val message = errorField("message", "detail")
+                    ?: "A operação nativa foi rejeitada."
+                val error = errorField("code", "error", "stage")
+                    ?: "native_command_failed"
+                when (failedAction) {
+                    "select_tree" -> finishPendingSafSelection(
+                        eventRequestId = correlatedRequestId,
+                        status = "ERROR",
+                        message = message,
+                        error = error,
+                        payload = payload,
+                    )
+                    "release_tree" -> finishPendingSafRemoval(
+                        eventRequestId = correlatedRequestId,
+                        treeUri = errorField("treeUri", "tree_uri"),
+                        status = "ERROR",
+                        message = message,
+                        error = error,
+                        payload = payload,
+                    )
+                    "request_media_access", "check_storage_access",
+                    "open_broad_storage_settings", "scan_library" ->
+                        finishPendingStorageOperation(
+                            eventRequestId = correlatedRequestId,
+                            expectedNativeActions = setOf(failedAction),
+                            status = "FAILED",
+                            message = message,
+                            error = error,
+                            payload = payload,
+                        )
+                    else -> {
+                        recordDiagnostic(
+                            name = "NATIVE_COMMAND_ERROR_OBSERVED",
+                            severity = "WARN",
+                            requestId = correlatedRequestId,
+                            result = failedAction,
+                            error = IllegalStateException(message),
+                            context = mapOf("error_code" to error),
+                        )
+                        false
+                    }
+                }
+            }
             "storage_capabilities" -> {
                 val correlatedRequestId = eventRequestId ?: stringValue("requestId")
                 finishPendingStorageOperation(
