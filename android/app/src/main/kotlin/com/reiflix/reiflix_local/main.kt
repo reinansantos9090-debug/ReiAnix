@@ -124,6 +124,16 @@ internal object MainEntryPoint {
                 libraryViewModel = libraryViewModel,
                 settingsViewModel = settingsViewModel,
             )
+            if (!recoveryRequired) {
+                val runtimePort = NativeMainRuntimePort(
+                    activity = activity,
+                    libraryViewModel = libraryViewModel,
+                    settingsViewModel = settingsViewModel,
+                    composeHost = host,
+                )
+                runtimePort.onRuntimeReconnect()
+                runtimePort.scheduleThumbnailReconciliation("startup_ready")
+            }
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_RUNTIME_COMPOSITION_READY",
                 severity = if (recoveryRequired) "WARN" else "INFO",
@@ -626,6 +636,7 @@ internal class NativeMainRuntimePort(
     val storageState: StateFlow<NativeMainStorageSnapshot?> = mutableStorageState.asStateFlow()
     private val pendingStorageOperations = ConcurrentHashMap<String, PendingNativeStorageOperation>()
     private val metadataHydrationRequests = Channel<String>(Channel.CONFLATED)
+    private val thumbnailReconciliationRequests = Channel<String>(Channel.CONFLATED)
     @Volatile private var lastStorageMutationAtMillis: Long = 0L
     @Volatile private var pendingSafSelectionStartedAtMillis: Long = 0L
     @Volatile private var pendingSafSelectionRequestId: String? = null
@@ -681,6 +692,22 @@ internal class NativeMainRuntimePort(
                 }
             }
         }
+        activity.lifecycleScope.launch {
+            for (reason in thumbnailReconciliationRequests) {
+                try {
+                    reconcileMissingLocalThumbnails(reason)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    recordDiagnostic(
+                        name = "THUMBNAIL_RECONCILIATION_FAILED",
+                        severity = "WARN",
+                        result = reason,
+                        error = failure,
+                    )
+                }
+            }
+        }
     }
 
     /** Coalesced native replacement for schedule_catalog_metadata_hydration(). */
@@ -695,6 +722,104 @@ internal class NativeMainRuntimePort(
             )
         }
         return result.isSuccess
+    }
+
+    /** Native replacement for the bounded thumbnail-candidate reconciliation worker. */
+    fun scheduleThumbnailReconciliation(reason: String = "catalog_changed"): Boolean {
+        val normalizedReason = reason.trim().take(160).ifEmpty { "catalog_changed" }
+        val result = thumbnailReconciliationRequests.trySend(normalizedReason)
+        if (result.isFailure) {
+            recordDiagnostic(
+                name = "THUMBNAIL_RECONCILIATION_NOT_QUEUED",
+                severity = "WARN",
+                result = normalizedReason,
+            )
+        }
+        return result.isSuccess
+    }
+
+    private suspend fun reconcileMissingLocalThumbnails(reason: String) {
+        val state = withTimeoutOrNull(20_000L) {
+            libraryViewModel.uiState.first { it.status.name != "LOADING" }
+        } ?: run {
+            recordDiagnostic(
+                name = "THUMBNAIL_RECONCILIATION_SKIPPED",
+                severity = "WARN",
+                result = "catalog_not_ready",
+                context = mapOf("reason" to reason),
+            )
+            return
+        }
+        if (state.status.name == "ERROR") {
+            recordDiagnostic(
+                name = "THUMBNAIL_RECONCILIATION_SKIPPED",
+                severity = "WARN",
+                result = "catalog_read_failed",
+                context = mapOf("reason" to reason),
+            )
+            return
+        }
+
+        val candidates = buildList {
+            state.animes.forEach { anime ->
+                anime.seasons.forEach { season -> addAll(season.episodes) }
+                addAll(anime.specials)
+                addAll(anime.mediaFiles)
+            }
+        }.distinctBy { it.id }
+        var queued = 0
+        var skipped = 0
+        for (episode in candidates) {
+            if (!lifecycleIsAlive || activity.isFinishing || activity.isDestroyed) return
+            val reference = episode.media.reference?.trim().orEmpty()
+            if (reference.isEmpty()) {
+                skipped += 1
+                continue
+            }
+            val artworkPath = episode.artwork?.localPath?.trim().orEmpty()
+            if (artworkPath.isNotEmpty() && runCatching { File(artworkPath).isFile }.getOrDefault(false)) {
+                continue
+            }
+            val parsed = runCatching { Uri.parse(reference) }.getOrNull()
+            val supported = when (parsed?.scheme?.lowercase(Locale.ROOT)) {
+                "content", "file" -> true
+                null -> reference.startsWith("/")
+                else -> false
+            }
+            if (!supported) {
+                skipped += 1
+                continue
+            }
+
+            val size = episode.fileSizeBytes?.coerceAtLeast(0L) ?: 0L
+            val modifiedAt = episode.modifiedAt?.toLong()?.coerceAtLeast(0L) ?: 0L
+            val identity = episode.media.mediaIdentity?.trim()?.takeIf { it.isNotEmpty() }
+                ?: ("episode:" + episode.id.toString())
+            while (lifecycleIsAlive && !activity.isFinishing && !activity.isDestroyed) {
+                if (enqueueLocalThumbnail(reference, size, modifiedAt, identity, priority = 100)) {
+                    queued += 1
+                    break
+                }
+                val queueHasRoom = synchronized(thumbnailQueueLock) {
+                    thumbnailRequests.size < MAX_PENDING_THUMBNAIL_REQUESTS
+                }
+                if (queueHasRoom) {
+                    skipped += 1
+                    break
+                }
+                delay(100L)
+            }
+        }
+        recordDiagnostic(
+            name = "THUMBNAIL_RECONCILIATION_FINISHED",
+            result = "completed",
+            context = mapOf(
+                "reason" to reason,
+                "candidate_count" to candidates.size,
+                "queued_count" to queued,
+                "skipped_count" to skipped,
+            ),
+        )
     }
 
     private fun updateScanUiState(snapshots: Collection<ScanProgressSnapshot>) {
@@ -3170,7 +3295,10 @@ internal class NativeMainRuntimePort(
             libraryViewModel.refreshDetails(refreshDetailsForAnimeId)
         }
         val accepted = refreshCanonicalCatalog()
-        if (accepted) scheduleCatalogMetadataHydration("catalog_changed")
+        if (accepted) {
+            scheduleCatalogMetadataHydration("catalog_changed")
+            scheduleThumbnailReconciliation("catalog_changed")
+        }
         return accepted
     }
 
@@ -4348,6 +4476,7 @@ internal class NativeMainRuntimePort(
                     val status = stringValue("status")?.uppercase(Locale.ROOT) ?: "UNKNOWN"
                     if (status in setOf("COMPLETED", "PARTIAL")) {
                         scheduleCatalogMetadataHydration("native_scan_$status")
+                        scheduleThumbnailReconciliation("native_scan_$status")
                     }
                     val requestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
                     val mappedStatus = when (status) {
