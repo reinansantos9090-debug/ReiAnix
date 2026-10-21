@@ -3786,11 +3786,11 @@ internal class NativeMainRuntimePort(
     }
 
     /** Versioned settings snapshots are validated and committed atomically in canonical SQLite. */
-    suspend fun exportSettingsJson(): String = settingsFileService.exportJson()
+    suspend fun exportSettingsJson(): String = withContext(Dispatchers.IO) { settingsFileService.exportJson() }
 
     suspend fun importSettingsJson(raw: String): ReiAnixSettingsFileService.ImportResult {
         require(raw.length <= 1_048_576) { "O arquivo de configurações excede o limite suportado." }
-        val result = settingsFileService.importJson(raw)
+        val result = withContext(Dispatchers.IO) { settingsFileService.importJson(raw) }
         settingsViewModel.refresh()
         publish(action = "import_settings", transform = {
             it.copy(
@@ -3805,28 +3805,31 @@ internal class NativeMainRuntimePort(
 
     fun exportSettingsToPrivateFile(): Boolean =
         launchTracked("export_settings", lane = "settings") {
-            val raw = settingsFileService.exportJson()
-            val target = File(File(activity.filesDir, "data"), "settings-export.json")
-            val parent = target.parentFile
-            check(parent != null && (parent.isDirectory || parent.mkdirs())) {
-                "Não foi possível criar a pasta de exportação de configurações."
-            }
-            val temporary = File(parent, target.name + ".tmp")
-            try {
-                FileOutputStream(temporary).use { stream ->
-                    stream.write(raw.toByteArray(Charsets.UTF_8))
-                    stream.fd.sync()
+            val artifactPath = withContext(Dispatchers.IO) {
+                val raw = settingsFileService.exportJson()
+                val target = File(File(activity.filesDir, "data"), "settings-export.json")
+                val parent = target.parentFile
+                check(parent != null && (parent.isDirectory || parent.mkdirs())) {
+                    "Não foi possível criar a pasta de exportação de configurações."
                 }
+                val temporary = File(parent, target.name + ".tmp")
                 try {
-                    Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-                } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-                    Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    FileOutputStream(temporary).use { stream ->
+                        stream.write(raw.toByteArray(Charsets.UTF_8))
+                        stream.fd.sync()
+                    }
+                    try {
+                        Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                        Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    }
+                } catch (failure: Throwable) {
+                    temporary.delete()
+                    throw failure
                 }
-            } catch (failure: Throwable) {
-                temporary.delete()
-                throw failure
+                target.absolutePath
             }
-            publish(action = "export_settings", transform = { it.copy(lastArtifactPath = target.absolutePath) })
+            publish(action = "export_settings", transform = { it.copy(lastArtifactPath = artifactPath) })
         }
 
     fun importSettingsFromPrivateFile(file: File): Boolean {
@@ -3839,7 +3842,8 @@ internal class NativeMainRuntimePort(
             return false
         }
         return launchTracked("import_settings", lane = "settings") {
-            importSettingsJson(file.readText(Charsets.UTF_8))
+            val raw = withContext(Dispatchers.IO) { file.readText(Charsets.UTF_8) }
+            importSettingsJson(raw)
             publish(action = "import_settings", transform = { it.copy(lastArtifactPath = file.absolutePath) })
         }
     }
