@@ -825,7 +825,7 @@ internal class NativeMainRuntimePort(
                 }
             }
             if (episodeRows.isEmpty()) {
-                return@read emptyList<NativeThumbnailCandidateRow>() to emptyList<Pair<Long, String>>()
+                return@read Pair(emptyList<NativeThumbnailCandidateRow>(), emptyList<Pair<Long, String>>())
             }
 
             val idPlaceholders = episodeRows.joinToString(",") { "?" }
