@@ -660,6 +660,7 @@ internal class NativeMainRuntimePort(
     @Volatile private var pendingSafRemovalReference: String? = null
     @Volatile private var pendingSafRemovalBridge: String = "library"
     @Volatile private var pendingSafRemovalResultAction: String = "remove_saf"
+    @Volatile private var pendingFolderRemovalRequestId: String? = null
     private var scanObserverJob: Job? = null
     private val preferenceLock = Any()
     private val preferenceFile = File(File(activity.filesDir, "data"), "navigation_state.json")
@@ -2819,6 +2820,14 @@ internal class NativeMainRuntimePort(
     fun canMutateSafRoots(): Boolean =
         pendingSafSelectionRequestId.isNullOrBlank() &&
             pendingSafRemovalRequestId.isNullOrBlank() &&
+            pendingFolderRemovalRequestId.isNullOrBlank() &&
+            !hasAnyNativeScanInProgress() &&
+            !activity.nativeStorageOnboardingState.value.phase.equals("folder_picker_open", ignoreCase = true)
+
+    private fun canContinueFolderRemoval(requestId: String): Boolean =
+        pendingFolderRemovalRequestId == requestId &&
+            pendingSafSelectionRequestId.isNullOrBlank() &&
+            pendingSafRemovalRequestId.isNullOrBlank() &&
             !hasAnyNativeScanInProgress() &&
             !activity.nativeStorageOnboardingState.value.phase.equals("folder_picker_open", ignoreCase = true)
 
@@ -3601,7 +3610,15 @@ internal class NativeMainRuntimePort(
             )
             return false
         }
-        if (!canMutateSafRoots()) {
+        val reserved = synchronized(lock) {
+            if (!canMutateSafRoots()) {
+                false
+            } else {
+                pendingFolderRemovalRequestId = resolvedRequestId
+                true
+            }
+        }
+        if (!reserved) {
             publishOperationResult(
                 requestId = resolvedRequestId,
                 action = normalizedAction,
@@ -3622,6 +3639,9 @@ internal class NativeMainRuntimePort(
         )
         val accepted = launchTracked("remove_folder", lane = "storage") {
             try {
+                if (!canContinueFolderRemoval(resolvedRequestId)) {
+                    throw IllegalStateException("A operação de armazenamento não pode continuar neste momento.")
+                }
                 val folder = withContext(Dispatchers.IO) {
                     dependencies.sqliteLibraryRepository.listFolders()
                         .firstOrNull { it.path == normalizedReference }
@@ -3633,7 +3653,7 @@ internal class NativeMainRuntimePort(
                 }
 
                 if (isSaf) {
-                    if (!canMutateSafRoots()) {
+                    if (!canContinueFolderRemoval(resolvedRequestId)) {
                         throw IllegalStateException("Outra operação de armazenamento está em andamento.")
                     }
                     val parsedTree = runCatching { Uri.parse(folder.path) }.getOrNull()
@@ -3652,6 +3672,7 @@ internal class NativeMainRuntimePort(
                         it == "library" || it == "settings"
                     } ?: "library"
                     pendingSafRemovalResultAction = normalizedAction
+                    pendingFolderRemovalRequestId = null
                     try {
                         withContext(Dispatchers.Main) {
                             activity.startActivity(
@@ -3676,7 +3697,7 @@ internal class NativeMainRuntimePort(
                     return@launchTracked
                 }
 
-                if (!canMutateSafRoots()) {
+                if (!canContinueFolderRemoval(resolvedRequestId)) {
                     throw IllegalStateException("Outra operação de armazenamento está em andamento.")
                 }
                 val removed = withContext(Dispatchers.IO) {
@@ -3685,6 +3706,9 @@ internal class NativeMainRuntimePort(
                 if (!removed) throw IllegalStateException("A pasta não pôde ser removida do catálogo local.")
                 libraryViewModel.refreshNativeFolders()
                 libraryViewModel.refresh()
+                if (pendingFolderRemovalRequestId == resolvedRequestId) {
+                    pendingFolderRemovalRequestId = null
+                }
                 publishOperationResult(
                     requestId = resolvedRequestId,
                     action = normalizedAction,
@@ -3704,6 +3728,9 @@ internal class NativeMainRuntimePort(
                 publish(action = "remove_folder")
             } catch (cancelled: CancellationException) {
                 if (pendingSafRemovalRequestId == resolvedRequestId) clearPendingSafRemovalContext()
+                if (pendingFolderRemovalRequestId == resolvedRequestId) {
+                    pendingFolderRemovalRequestId = null
+                }
                 publishOperationResult(
                     requestId = resolvedRequestId,
                     action = normalizedAction,
@@ -3714,6 +3741,9 @@ internal class NativeMainRuntimePort(
                 throw cancelled
             } catch (failure: Throwable) {
                 if (pendingSafRemovalRequestId == resolvedRequestId) clearPendingSafRemovalContext()
+                if (pendingFolderRemovalRequestId == resolvedRequestId) {
+                    pendingFolderRemovalRequestId = null
+                }
                 publishOperationResult(
                     requestId = resolvedRequestId,
                     action = normalizedAction,
@@ -3732,6 +3762,9 @@ internal class NativeMainRuntimePort(
             }
         }
         if (!accepted) {
+            if (pendingFolderRemovalRequestId == resolvedRequestId) {
+                pendingFolderRemovalRequestId = null
+            }
             publishOperationResult(
                 requestId = resolvedRequestId,
                 action = normalizedAction,
