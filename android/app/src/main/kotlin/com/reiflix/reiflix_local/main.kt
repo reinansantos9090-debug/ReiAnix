@@ -5568,7 +5568,7 @@ internal class NativeMainRuntimePort(
                 (nonBlank("accountAction") ?: nonBlank("account_action"))?.let(::requestAccountActionTracked) ?: false
             "set_theme" -> setSettingSerialized("appearance.theme", payload.optString("theme", "dark"))
 
-            "open_episode", "play_episode" -> {
+            "open_episode", "open_media", "play_episode" -> {
                 val episodeId = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
                 val animeId = positiveLong("animeId") ?: positiveLong("anime_id")
                 openEpisode(episodeId, animeId) != null
