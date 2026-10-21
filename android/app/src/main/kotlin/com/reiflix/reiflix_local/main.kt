@@ -2946,12 +2946,17 @@ internal class NativeMainRuntimePort(
             "navigate_storage" -> navigateStorage()
             "navigate_search" -> navigateSearch()
             "navigate_my_list" -> navigateMyList()
-            "navigate_back", "back" -> navigateBack()
+            "navigate_back", "back", "previous" -> navigateBack()
             "navigate_settings_category" ->
                 navigateSettingsCategory(nonBlank("category") ?: return false)
 
+            "refresh" -> requestLibraryScan()
             "refresh_library" -> refreshLibrary()
             "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog()
+            "publish_catalog" -> {
+                invalidateCatalogViews()
+                true
+            }
             "refresh_settings" -> refreshSettingsIfActive()
             "close_home_search" -> {
                 closeHomeSearch()
@@ -2981,8 +2986,9 @@ internal class NativeMainRuntimePort(
             "refresh_home_library", "request_home_refresh" -> requestHomeRefresh(
                 source = nonBlank("source") ?: "native_action",
             )
-            "remove_folder", "remove_saf_tree", "release_tree" ->
-                (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference"))?.let(::removeConfiguredSafFolder) ?: false
+            "remove_folder", "remove_saf_tree", "remove_saf", "release_tree" ->
+                (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference") ?: nonBlank("source"))
+                    ?.let(::removeConfiguredSafFolder) ?: false
 
             "set_setting", "compose_settings_set" -> {
                 val key = nonBlank("key") ?: nonBlank("setting_key") ?: return false
@@ -3006,7 +3012,7 @@ internal class NativeMainRuntimePort(
                     libraryViewModel.toggleFavorite(it)
                     true
                 } ?: false
-            "mark_episode_watched", "set_episode_watched" -> {
+            "mark_episode_watched", "set_episode_watched", "set_watched" -> {
                 val id = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
                 markEpisodeWatched(id, payload.optBoolean("watched", true))
                 true
