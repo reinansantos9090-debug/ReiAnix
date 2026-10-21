@@ -4588,12 +4588,38 @@ internal class NativeMainRuntimePort(
                 val position = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
                 val duration = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
                 if (position < 0L) return false
-                savePlaybackProgress(
-                    episodeId = episodeId,
-                    positionMs = position,
-                    durationMs = duration.takeIf { it > 0L },
-                    completed = type == "player_completed" || payload.optBoolean("completed", false),
+                if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
+                    // NativePlayerActivity already committed this checkpoint to canonical SQLite.
+                    // Validate the callback and refresh Compose, but never issue a second write.
+                    libraryViewModel.refresh()
+                    recordDiagnostic(
+                        name = "PLAYER_PROGRESS_NATIVE_COMMIT_REUSED",
+                        requestId = eventRequestId,
+                        sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
+                        result = type,
+                        context = mapOf("episode_id" to episodeId, "position_ms" to position),
+                    )
+                    true
+                } else {
+                    savePlaybackProgress(
+                        episodeId = episodeId,
+                        positionMs = position,
+                        durationMs = duration.takeIf { it > 0L },
+                        completed = type == "player_completed" || payload.optBoolean("completed", false),
+                    )
+                }
+            }
+            "player_autoplay_changed" -> {
+                // NativePlayerActivity persists player.autoplay_next before publishing this event.
+                // Consume it as an invalidation signal, not as a second settings write.
+                settingsViewModel.refresh()
+                val enabled = payload.optBoolean("enabled", false)
+                recordDiagnostic(
+                    name = "PLAYER_AUTOPLAY_CHANGED",
+                    requestId = eventRequestId,
+                    result = if (enabled) "enabled" else "disabled",
                 )
+                true
             }
             "player_mark_watched", "player_mark_unwatched" -> {
                 val validation = validatePlayerCallback(
@@ -4660,12 +4686,25 @@ internal class NativeMainRuntimePort(
                 val positionMs = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
                 val durationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
                 if (positionMs < 0L) return false
-                savePlaybackProgress(
-                    episodeId = episodeId,
-                    positionMs = positionMs,
-                    durationMs = durationMs.takeIf { it > 0L },
-                    completed = payload.optBoolean("completed", false),
-                )
+                if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
+                    // The player saved this exact episode checkpoint before publishing the mailbox event.
+                    libraryViewModel.refresh()
+                    recordDiagnostic(
+                        name = "PLAYER_PROGRESS_NATIVE_COMMIT_REUSED",
+                        requestId = eventRequestId,
+                        sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
+                        result = type,
+                        context = mapOf("episode_id" to episodeId, "position_ms" to positionMs),
+                    )
+                    true
+                } else {
+                    savePlaybackProgress(
+                        episodeId = episodeId,
+                        positionMs = positionMs,
+                        durationMs = durationMs.takeIf { it > 0L },
+                        completed = payload.optBoolean("completed", false),
+                    )
+                }
             }
             "player_exited", "player_exit" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: return false
