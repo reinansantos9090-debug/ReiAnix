@@ -587,6 +587,7 @@ internal class NativeMainRuntimePort(
     private val thumbnailInFlight = ConcurrentHashMap.newKeySet<String>()
     private val thumbnailSemaphore = Semaphore(2)
     @Volatile private var thumbnailPumpActive = false
+    @Volatile private var thumbnailPumpJob: Job? = null
     @Volatile private var homeRefreshJob: Job? = null
     private val mutableUiPreferences = MutableStateFlow(loadDurableUiPreferences())
     val uiPreferences: StateFlow<NativeMainUiPreferences> = mutableUiPreferences.asStateFlow()
@@ -1116,7 +1117,7 @@ internal class NativeMainRuntimePort(
     private fun startThumbnailPumpLocked() {
         if (thumbnailPumpActive || thumbnailQueue.isEmpty() || activity.isFinishing || activity.isDestroyed) return
         thumbnailPumpActive = true
-        activity.lifecycleScope.launch {
+        thumbnailPumpJob = activity.lifecycleScope.launch {
             try {
                 while (true) {
                     val request = synchronized(thumbnailQueueLock) {
@@ -1171,7 +1172,8 @@ internal class NativeMainRuntimePort(
             } finally {
                 synchronized(thumbnailQueueLock) {
                     thumbnailPumpActive = false
-                    if (thumbnailQueue.isNotEmpty()) startThumbnailPumpLocked()
+                    thumbnailPumpJob = null
+                    if (thumbnailQueue.isNotEmpty() && lifecycleIsAlive) startThumbnailPumpLocked()
                 }
             }
         }
@@ -2847,12 +2849,28 @@ internal class NativeMainRuntimePort(
     fun cancelBackgroundTasks() {
         val copy = synchronized(lock) { jobs.toList() }
         copy.forEach { it.cancel() }
+        homeRefreshJob?.cancel()
+        homeRefreshJob = null
+        thumbnailPumpJob?.cancel()
+        thumbnailPumpJob = null
+        synchronized(thumbnailQueueLock) {
+            thumbnailQueue.clear()
+            thumbnailRequests.values.forEach { it.completion.cancel() }
+            thumbnailRequests.clear()
+            thumbnailInFlight.clear()
+            thumbnailPumpActive = false
+        }
         lifecycleIsAlive = false
-        publish(action = "cancel_background_tasks")
+        publish(action = "cancel_background_tasks", transform = {
+            it.copy(queuedThumbnailCount = 0, activeThumbnailCount = 0)
+        })
     }
 
     fun resumeRuntimeTasks() {
         lifecycleIsAlive = true
+        synchronized(thumbnailQueueLock) {
+            if (thumbnailQueue.isNotEmpty()) startThumbnailPumpLocked()
+        }
         publish(action = "resume_runtime_tasks")
     }
 }
