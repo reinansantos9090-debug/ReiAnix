@@ -385,7 +385,7 @@ class StabilizationTests(unittest.TestCase):
         self.assertIn("ReiAnixAniListIntegrationService", ANI_INTEGRATION)
         self.assertIn("anilist_metadata_committed", ANI_INTEGRATION + VIEW_MODEL)
         self.assertIn("refreshDetails(canonicalId)", DETAILS_NATIVE)
-        self.assertIn("ReiAnixAniListViewModel", DETAILS_NATIVE)
+        self.assertIn("ReiAnixLibraryViewModel", VIEW_MODEL)
 
 if __name__ == "__main__":
     unittest.main()

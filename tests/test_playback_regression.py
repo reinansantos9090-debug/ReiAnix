@@ -31,13 +31,19 @@ class PlaybackRegressionTests(unittest.TestCase):
         self.assertIn('anime_id=item.get("anime_id")', HOME)
         self.assertNotIn('anime_id=item.get("id")', HOME)
 
-    def test_python_player_launch_preserves_nonzero_resume_position(self):
-        block = MAIN[MAIN.index("def play_episode"):MAIN.index("def open_marathon")]
-        self.assertIn("progress_seconds", block)
-        self.assertIn("max(0, int(progress_seconds * 1000))", block)
-        self.assertIn('settings.get("player.resume")', block)
-        self.assertIn("episode_id=episode_id", MAIN)
-        self.assertIn("anime_id=anime_id", MAIN)
+    def test_native_player_launch_preserves_nonzero_resume_position(self):
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        request = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8")
+        launch_start = view_model.index("fun openEpisode(episodeId: Long, expectedAnimeId: Long?")
+        launch_end = view_model.index("override fun onCleared()", launch_start)
+        block = view_model[launch_start:launch_end]
+        self.assertIn("val progressSeconds = episode.progress", block)
+        self.assertIn("(progressSeconds * 1_000.0).toLong()", block)
+        self.assertIn('preferenceValue("player.resume")', block)
+        self.assertIn('.appendQueryParameter("episode_id", episode.id.toString())', block)
+        self.assertIn('.appendQueryParameter("anime_id", episode.animeId.toString())', block)
+        self.assertIn("positionWasExplicit", request)
+        self.assertIn("position_ms", block)
 
     def test_bridge_carries_resume_and_identity_to_native_request(self):
         self.assertIn("position_ms: int | None = None", BRIDGE)
@@ -54,14 +60,16 @@ class PlaybackRegressionTests(unittest.TestCase):
         self.assertIn('putExtra("animeId", animeId)', REQUEST)
 
     def test_resume_contract_omits_default_zero_but_preserves_explicit_zero(self):
-        self.assertIn("launch_position_ms = None", MAIN)
-        self.assertIn("launch_position_ms = 0", MAIN)
-        self.assertIn("target_position_ms = None", MAIN)
-        self.assertIn("target_watched", MAIN)
+        view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        request = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/NativePlayerRequest.kt").read_text(encoding="utf-8")
+        self.assertIn("val positionMs = if (resumeEnabled)", view_model)
+        self.assertIn('appendQueryParameter("position_ms", positionMs.toString())', view_model)
+        self.assertIn("positionWasExplicit = rawPositionMs != null && parsedPositionMs != null", request)
+        self.assertIn("positionParameterInvalid = rawPositionMs != null && parsedPositionMs == null", request)
         prepare = PLAYER[PLAYER.index("private fun prepareCurrentMedia"):PLAYER.index("private fun createPlayerListener")]
         self.assertIn("initialPositionMsForGeneration = (restoredPositionMs", prepare)
-        self.assertIn("?: intent.getLongExtra(\"positionMs\", 0L)", prepare)
-        self.assertIn("!intent.getBooleanExtra(\"positionMsSpecified\", intent.hasExtra(\"positionMs\"))", prepare)
+        self.assertIn('?: intent.getLongExtra("positionMs", 0L)', prepare)
+        self.assertIn('!intent.getBooleanExtra("positionMsSpecified", intent.hasExtra("positionMs"))', prepare)
         reuse = PLAYER[PLAYER.index("override fun onNewIntent"):PLAYER.index("private fun currentEpisodeId")]
         self.assertIn("restoredPositionMs = null", reuse)
 

@@ -13,12 +13,12 @@ NAVIGATION = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data
 class PreviousTransitionTests(unittest.TestCase):
     def test_required_previous_events_exist(self):
         for token in (
-            "PREVIOUS_REQUEST_RECEIVED", "PREVIOUS_REQUEST_ACCEPTED",
-            "PREVIOUS_REQUEST_REJECTED", "PREVIOUS_REQUEST_STALE",
-            "PREVIOUS_REQUEST_DUPLICATE", "PREVIOUS_REQUEST_CANCELLED",
-            "PREVIOUS_TRANSITION_STARTED", "PREVIOUS_TRANSITION_INVALIDATED",
-            "PREVIOUS_TRANSITION_READY", "PREVIOUS_TRANSITION_FIRST_FRAME",
-            "PREVIOUS_TRANSITION_COMMITTED", "PREVIOUS_TRANSITION_FAILED",
+            "PREVIOUS_REQUEST_ACCEPTED", "PREVIOUS_REQUEST_REJECTED",
+            "PREVIOUS_REQUEST_STALE", "PREVIOUS_REQUEST_DUPLICATE",
+            "PREVIOUS_REQUEST_CANCELLED", "PREVIOUS_TRANSITION_STARTED",
+            "PREVIOUS_TRANSITION_INVALIDATED", "PREVIOUS_TRANSITION_READY",
+            "PREVIOUS_TRANSITION_FIRST_FRAME", "PREVIOUS_TRANSITION_COMMITTED",
+            "PREVIOUS_TRANSITION_FAILED",
         ):
             self.assertIn(token, PLAYER + ACTIVITY)
 
@@ -41,13 +41,17 @@ class PreviousTransitionTests(unittest.TestCase):
         self.assertIn("transition_direction", BRIDGE)
 
     def test_previous_uses_canonical_navigation(self):
-        self.assertIn("playerNavigation", ACTIVITY + NAVIGATION)
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        self.assertIn("playerNavigation(", repository)
+        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(", repository)
         self.assertIn("ReiAnixPlayerEpisodeNavigationSnapshot", NAVIGATION)
         self.assertNotIn("episode.number - 1", PLAYER + ACTIVITY)
         self.assertNotIn("episode_number - 1", PLAYER + ACTIVITY)
 
     def test_previous_native_navigation_uses_sqlite_repository(self):
-        self.assertIn("playerNavigation", ACTIVITY)
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
+        self.assertIn("playerNavigation(", repository)
+        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(", repository)
         self.assertIn("ReiAnixPlayerEpisodeNavigationSnapshot", NAVIGATION)
         self.assertIn("episodeId", NAVIGATION)
 

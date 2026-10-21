@@ -33,7 +33,8 @@ class ZoomContractTests(unittest.TestCase):
         self.assertIn('self.settings.set("player.zoom_enabled", True)', self.store_test)
 
     def test_native_to_android_request_has_explicit_zoom_flag_and_false_fallback(self):
-        self.assertIn('"player.zoom_enabled": settings.get("player.zoom_enabled")', self.main)
+        self.assertIn('"player.zoom_enabled" to "setting_player_zoom_enabled"', self.main)
+        self.assertIn("preferenceValue(preferenceKey)", self.main)
         self.assertIn('val zoomEnabled: Boolean', self.request)
         self.assertIn('zoomEnabled = get("setting_player_zoom_enabled")?.toBooleanStrictOrNull() ?: false', self.request)
         self.assertIn('.putExtra("setting_player_zoom_enabled", zoomEnabled)', self.request)

@@ -95,10 +95,12 @@ class RegressionTests(unittest.TestCase):
     def test_full_regression_contract_keeps_core_flows_present(self):
         view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
         navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixPlayerEpisodeNavigation.kt").read_text(encoding="utf-8")
+        repository = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
         activity = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt").read_text(encoding="utf-8")
         self.assertIn("refreshNativeCatalog()", view_model)
         self.assertIn("openEpisode(episodeId", view_model)
-        self.assertIn("playerNavigation", navigation + view_model)
+        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(", repository)
+        self.assertIn("ReiAnixPlayerEpisodeNavigationSnapshot", navigation)
         self.assertIn("reportPlayerExit", PLAYER)
         self.assertIn("saveProgress(", PLAYER)
         self.assertIn("ReiAnixArtworkService", MAIN)

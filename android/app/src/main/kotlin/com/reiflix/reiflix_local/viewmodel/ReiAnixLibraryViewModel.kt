@@ -1905,34 +1905,21 @@ class ReiAnixLibraryViewModel(
                 nativeLibraryRepository.getAnime(episode.animeId)
                     ?: throw IllegalStateException("O anime associado ao episódio não existe no catálogo.")
 
-                val persistedSettings = appDependencies?.sqliteSettingsRepository?.allPreferences().orEmpty()
+                val dependencies = appDependencies
+                    ?: throw IllegalStateException("O grafo nativo ainda não está pronto para abrir episódios.")
+                val persistedSettings = dependencies.sqliteSettingsRepository.allPreferences()
                 fun preferenceValue(key: String): String =
                     persistedSettings[key] ?: ReiAnixSettingsContract.defaultFor(key).orEmpty()
 
-                // Preserve the availability predicate and ordering used by
-                // LibraryStore.player_navigation()/adjacent_episode() for Next/Previous.
-                // The native path must not silently change episode adjacency while
-                // removing the Python OPEN_MEDIA dispatcher.
-                val neighborKeys = nativeLibraryRepository.listEpisodes(episode.animeId)
-                    .asSequence()
-                    .filter { it.missing == false }
-                    .filter {
-                        it.availabilityState == null || it.availabilityState == "available"
-                    }
-                    // SQL NOT IN excludes NULL episode_type rows.
-                    .filter {
-                        it.episodeType != null &&
-                            it.episodeType !in REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES
-                    }
-                    .map(::nativePlayerEpisodeOrderKey)
-                    .toList()
-                val currentEpisodeKey = nativePlayerEpisodeOrderKey(episode)
-                val currentIsRegularEpisode = episode.episodeType.orEmpty()
-                    .lowercase(Locale.ROOT) !in REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES
-                val canPrevious = currentIsRegularEpisode &&
-                    neighborKeys.any { it < currentEpisodeKey }
-                val canNext = currentIsRegularEpisode &&
-                    neighborKeys.any { it > currentEpisodeKey }
+                // Keep episode adjacency in one canonical SQLite query. This applies
+                // the same availability predicate and ordering as the retained LibraryStore.
+                val navigation = dependencies.sqliteLibraryRepository.playerNavigation(episodeId)
+                    ?: throw IllegalArgumentException("O episódio não existe no catálogo local.")
+                require(navigation.current.id == episodeId && navigation.current.animeId == episode.animeId) {
+                    "O catálogo local mudou durante a abertura do episódio."
+                }
+                val canPrevious = navigation.previous != null
+                val canNext = navigation.next != null
 
                 val rawReference = episode.path.trim()
                 val parsedReference = Uri.parse(rawReference)

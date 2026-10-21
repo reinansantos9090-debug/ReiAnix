@@ -70,11 +70,14 @@ class PlaybackContractTests(unittest.TestCase):
 
     def test_play_launch_neighbor_queries_use_canonical_native_repository_off_ui_thread(self):
         view_model = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt").read_text(encoding="utf-8")
+        navigation = (ROOT / "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteLibraryRepository.kt").read_text(encoding="utf-8")
         self.assertIn("dependencies.sqliteLibraryRepository.playerNavigation(episodeId)", view_model)
         self.assertIn("withContext(Dispatchers.IO)", view_model)
+        self.assertIn("ReiAnixPlayerEpisodeNavigator.resolve(current, availableEpisodes)", navigation)
         self.assertIn("startActivity(intent)", view_model)
         self.assertIn("sourcePlayerSessionId", self.player)
         self.assertIn("transitionGeneration", self.player)
+
     def test_native_player_handoff_dedupes_exact_request_id_without_uri_window(self):
         source = self.main_activity
         self.assertIn("seenPlayerRequestIds", source)
