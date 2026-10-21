@@ -135,11 +135,34 @@ class ReiAnixComposeLibraryHost(
                         }
 
                         val requestId = activeRefreshRequestId ?: return@collectLatest
+                        val terminalUiState = libraryViewModel.uiState.value
+                        val terminalStatus = (
+                            terminalUiState.lastScanStatus ?: terminalUiState.scanState
+                        ).trim().uppercase()
+                        when (terminalStatus) {
+                            "CANCELLED", "CANCELED" -> {
+                                HomeRefreshCoordinator.cancel(requestId, "scan_$terminalStatus")
+                                activeRefreshRequestId = null
+                                return@collectLatest
+                            }
+                            "PARTIAL", "FAILED", "ERROR", "BLOCKED" -> {
+                                HomeRefreshCoordinator.fail(requestId, "scan_$terminalStatus")
+                                activeRefreshRequestId = null
+                                return@collectLatest
+                            }
+                            "COMPLETED", "SUCCESS", "SUCCEEDED", "EMPTY_COMPLETE" -> Unit
+                            else -> {
+                                HomeRefreshCoordinator.fail(requestId, "scan_terminal_status_unverified")
+                                activeRefreshRequestId = null
+                                return@collectLatest
+                            }
+                        }
                         if (!HomeRefreshCoordinator.markScanTerminal(requestId)) {
+                            HomeRefreshCoordinator.fail(requestId, "scan_terminal_transition_rejected")
                             activeRefreshRequestId = null
                             return@collectLatest
                         }
-                        if (libraryViewModel.uiState.value.animes.isNotEmpty()) {
+                        if (terminalUiState.animes.isNotEmpty()) {
                             val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
                             try {
                                 withContext(Dispatchers.IO) {
