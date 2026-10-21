@@ -2772,6 +2772,162 @@ internal class NativeMainRuntimePort(
         return true
     }
 
+    /**
+     * Native equivalent of LibraryStore.mark_source_unavailable() for a SAF root.
+     * A failed/revoked source must not leave episodes from that source playable just
+     * because a failed scan correctly avoided destructive full-scan reconciliation.
+     */
+    private suspend fun markSafSourceUnavailable(
+        treeUri: String,
+        authorization: String,
+        reason: String,
+    ): Int {
+        val reference = treeUri.trim()
+        if (reference.isEmpty()) return 0
+        val normalizedAuthorization = authorization.trim().lowercase(Locale.ROOT)
+            .takeIf { it in setOf("revoked", "unavailable") } ?: "unavailable"
+        val normalizedReason = reason.trim().takeIf { it.isNotEmpty() } ?: "saf_scan_error"
+        return withContext(Dispatchers.IO) {
+            dependencies.sqliteDatabase.transaction { database ->
+                val now = System.currentTimeMillis() / 1000.0
+                val folderValues = android.content.ContentValues().apply {
+                    put("authorization", normalizedAuthorization)
+                    put("last_error", normalizedReason)
+                    put("last_scan_at", now)
+                }
+                database.update(
+                    "folders",
+                    folderValues,
+                    "path=? AND kind='saf'",
+                    arrayOf(reference),
+                )
+
+                val affectedEpisodes = linkedSetOf<Long>()
+                database.rawQuery(
+                    "SELECT DISTINCT episode_id FROM episode_observations WHERE source_kind='saf' AND scope_ref=?",
+                    arrayOf(reference),
+                ).use { cursor ->
+                    while (cursor.moveToNext()) affectedEpisodes.add(cursor.getLong(0))
+                }
+
+                var changed = 0
+                for (episodeId in affectedEpisodes) {
+                    val observationValues = android.content.ContentValues().apply {
+                        put("state", "scope_unavailable")
+                        put("error", normalizedReason)
+                        put("last_checked_at", now)
+                    }
+                    changed += database.update(
+                        "episode_observations",
+                        observationValues,
+                        "episode_id=? AND source_kind='saf' AND scope_ref=?",
+                        arrayOf(episodeId.toString(), reference),
+                    )
+
+                    // Keep the repository's canonical precedence when an episode also
+                    // exists under another source: any current available observation wins.
+                    val latestByLocation = linkedMapOf<String, String>()
+                    database.rawQuery(
+                        "SELECT source_kind,scope_kind,scope_ref,volume_id,state " +
+                            "FROM episode_observations WHERE episode_id=? ORDER BY last_checked_at DESC,id DESC",
+                        arrayOf(episodeId.toString()),
+                    ).use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val source = cursor.getString(0).orEmpty().trim()
+                                .lowercase(Locale.ROOT).ifBlank { "unknown" }
+                            val scopeKind = cursor.getString(1).orEmpty().trim()
+                                .lowercase(Locale.ROOT).ifBlank { "source" }
+                            val scopeRef = cursor.getString(2).orEmpty().trim()
+                            val volumeId = cursor.getString(3).orEmpty().trim()
+                            val key = if (volumeId.isNotEmpty()) {
+                                "$source|volume|$volumeId"
+                            } else {
+                                "$source|$scopeKind|$scopeRef"
+                            }
+                            if (!latestByLocation.containsKey(key)) {
+                                latestByLocation[key] = cursor.getString(4).orEmpty()
+                                    .trim().lowercase(Locale.ROOT)
+                            }
+                        }
+                    }
+                    if (latestByLocation.isNotEmpty()) {
+                        val states = latestByLocation.values.toSet()
+                        val (missing, availability) = when {
+                            "available" in states -> 0 to "available"
+                            "volume_unavailable" in states -> 1 to "volume_unavailable"
+                            "scope_unavailable" in states -> 1 to "scope_unavailable"
+                            "unavailable" in states -> 1 to "unavailable"
+                            states.all { it == "scope_removed" } -> 1 to "scope_removed"
+                            else -> 1 to "missing"
+                        }
+                        database.update(
+                            "episodes",
+                            android.content.ContentValues().apply {
+                                put("missing", missing)
+                                put("availability_state", availability)
+                            },
+                            "id=?",
+                            arrayOf(episodeId.toString()),
+                        )
+                    }
+                }
+
+                // Legacy episodes without an observation row still need to reflect the
+                // unavailable source, matching mark_source_unavailable() in LibraryStore.
+                changed += database.update(
+                    "episodes",
+                    android.content.ContentValues().apply {
+                        put("missing", 1)
+                        put("availability_state", "scope_unavailable")
+                    },
+                    "source_folder=? AND availability_state != 'scope_removed' " +
+                        "AND id NOT IN (SELECT episode_id FROM episode_observations)",
+                    arrayOf(reference),
+                )
+                changed
+            }
+        }
+    }
+
+    /**
+     * A verify_tree result is a confirmation of an existing source, not permission to
+     * create a new library root from an arbitrary persisted Android grant.
+     */
+    private suspend fun reconcileVerifiedSafRoot(
+        treeUri: String,
+        payload: org.json.JSONObject,
+    ): Boolean {
+        val reference = treeUri.trim()
+        val uri = runCatching { Uri.parse(reference) }.getOrNull() ?: return false
+        if (reference.isEmpty() || uri.scheme != "content" || !DocumentsContract.isTreeUri(uri)) return false
+        val persistedReadUris = activity.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .map { it.uri.toString() }
+        if (StorageAuthorization.safAccess(reference, persistedReadUris) != SafAccessLevel.AVAILABLE) return false
+
+        val suppliedIdentity = payload.optString("identity", payload.optString("safIdentity", "")).trim()
+        val canonicalIdentity = StorageAuthorization.safIdentity(reference) ?: suppliedIdentity.takeIf { it.isNotEmpty() }
+        val folders = withContext(Dispatchers.IO) { dependencies.sqliteLibraryRepository.listFolders() }
+        val existing = folders.firstOrNull { folder ->
+            folder.kind.equals("saf", ignoreCase = true) &&
+                (folder.path == reference ||
+                    (!suppliedIdentity.isNullOrBlank() && folder.safIdentity == suppliedIdentity) ||
+                    (!canonicalIdentity.isNullOrBlank() && folder.safIdentity == canonicalIdentity))
+        } ?: return false
+
+        dependencies.sqliteLibraryRepository.upsertSafFolder(
+            reference = reference,
+            name = payload.optString("name", "").trim().ifBlank { existing.name },
+            authority = payload.optString("authority", "").trim().ifBlank { existing.safAuthority.orEmpty() },
+            documentId = payload.optString("documentId", payload.optString("document_id", ""))
+                .trim().ifBlank { existing.safDocumentId.orEmpty() },
+            volumeId = payload.optString("volumeId", payload.optString("volume_id", ""))
+                .trim().ifBlank { existing.safVolumeId.orEmpty() },
+            identity = canonicalIdentity?.takeIf { it.isNotBlank() } ?: existing.safIdentity,
+        )
+        return true
+    }
+
     fun updateSafCapabilities(currentUris: Collection<String>): NativeMainStorageSnapshot {
         val configured = configuredSafTreeUris().map { it.toString() }.toSet()
         val persisted = activity.contentResolver.persistedUriPermissions
@@ -6665,6 +6821,33 @@ internal class NativeMainRuntimePort(
                         val message = stringValue("message", "reason", "status")
                             ?: "Não foi possível concluir a operação de armazenamento."
                         val error = stringValue("error", "reason", "status") ?: "saf_operation_failed"
+                        val treeUri = stringValue("treeUri", "tree_uri")
+                        val scanStatus = stringValue("status")?.uppercase(Locale.ROOT).orEmpty()
+                        val isPendingRemoval = !pendingSafRemovalRequestId.isNullOrBlank() &&
+                            (
+                                pendingSafRemovalRequestId == correlatedRequestId ||
+                                    (!treeUri.isNullOrBlank() && pendingSafRemovalReference == treeUri)
+                            )
+                        if (!treeUri.isNullOrBlank() && !isPendingRemoval) {
+                            val authorization = if (scanStatus == "REVOKED") "revoked" else "unavailable"
+                            val unavailableReason = when (scanStatus) {
+                                "REVOKED" -> "saf_permission_revoked"
+                                "UNAVAILABLE", "FAILED", "PARTIAL" -> "saf_provider_unavailable"
+                                else -> "saf_scan_error"
+                            }
+                            launchTracked("saf_source_unavailable", lane = "storage") {
+                                val changed = markSafSourceUnavailable(treeUri, authorization, unavailableReason)
+                                libraryViewModel.refreshNativeFolders()
+                                libraryViewModel.refresh()
+                                recordDiagnostic(
+                                    name = "SAF_SOURCE_MARKED_UNAVAILABLE",
+                                    severity = "WARN",
+                                    requestId = correlatedRequestId,
+                                    result = unavailableReason,
+                                    context = mapOf("updated_rows" to changed, "status" to scanStatus),
+                                )
+                            }
+                        }
                         finishPendingSafSelection(
                             eventRequestId = correlatedRequestId,
                             status = "ERROR",
@@ -6674,7 +6857,7 @@ internal class NativeMainRuntimePort(
                         )
                         finishPendingSafRemoval(
                             eventRequestId = correlatedRequestId,
-                            treeUri = stringValue("treeUri", "tree_uri"),
+                            treeUri = treeUri,
                             status = "ERROR",
                             message = message,
                             error = error,
@@ -6728,23 +6911,64 @@ internal class NativeMainRuntimePort(
                         error = stringValue("error", "status") ?: "broad_storage_action_failed",
                         payload = payload,
                     )
-                    "saf_permission" -> if (payload.optBoolean("selected", false)) {
+                    "saf_permission" -> {
                         val treeUri = stringValue("treeUri", "tree_uri")
-                        val persistedReadUris = activity.contentResolver.persistedUriPermissions
-                            .filter { it.isReadPermission }
-                            .map { it.uri.toString() }
-                        val authorized = payload.optBoolean("granted", false) &&
-                            !treeUri.isNullOrBlank() &&
-                            StorageAuthorization.safAccess(treeUri, persistedReadUris) == SafAccessLevel.AVAILABLE &&
-                            mergeAuthoritativeSafRoot(treeUri)
-                        finishPendingSafSelection(
-                            eventRequestId = correlatedRequestId,
-                            status = if (authorized) "COMPLETED" else "ERROR",
-                            message = if (authorized) "Pasta autorizada e configurada."
-                                else "O Android não confirmou uma fonte SAF válida para a biblioteca.",
-                            error = if (authorized) null else "saf_source_validation_failed",
-                            payload = payload,
+                        val granted = payload.optBoolean("granted", false)
+                        val selected = payload.optBoolean("selected", false)
+                        val nativeFolderConfigOwner = payload.optBoolean(
+                            "nativeFolderConfigOwner",
+                            payload.optBoolean("native_folder_config_owner", false),
                         )
+                        if (!granted && !treeUri.isNullOrBlank()) {
+                            launchTracked("saf_permission_revoked", lane = "storage") {
+                                val changed = markSafSourceUnavailable(
+                                    treeUri,
+                                    authorization = "revoked",
+                                    reason = "saf_permission_revoked",
+                                )
+                                libraryViewModel.refreshNativeFolders()
+                                libraryViewModel.refresh()
+                                recordDiagnostic(
+                                    name = "SAF_SOURCE_MARKED_UNAVAILABLE",
+                                    severity = "WARN",
+                                    requestId = correlatedRequestId,
+                                    result = "saf_permission_revoked",
+                                    context = mapOf("updated_rows" to changed),
+                                )
+                            }
+                        } else if (!selected && granted && !nativeFolderConfigOwner && !treeUri.isNullOrBlank()) {
+                            launchTracked("saf_permission_revalidated", lane = "storage") {
+                                val updated = reconcileVerifiedSafRoot(treeUri, payload)
+                                if (updated) {
+                                    libraryViewModel.refreshNativeFolders()
+                                    libraryViewModel.refresh()
+                                }
+                                recordDiagnostic(
+                                    name = "SAF_PERMISSION_REVALIDATED",
+                                    severity = if (updated) "INFO" else "WARN",
+                                    requestId = correlatedRequestId,
+                                    result = if (updated) "granted" else "existing_source_not_reconciled",
+                                    context = mapOf("tree_uri_present" to true),
+                                )
+                            }
+                        }
+                        if (selected) {
+                            val persistedReadUris = activity.contentResolver.persistedUriPermissions
+                                .filter { it.isReadPermission }
+                                .map { it.uri.toString() }
+                            val authorized = granted &&
+                                !treeUri.isNullOrBlank() &&
+                                StorageAuthorization.safAccess(treeUri, persistedReadUris) == SafAccessLevel.AVAILABLE &&
+                                mergeAuthoritativeSafRoot(treeUri)
+                            finishPendingSafSelection(
+                                eventRequestId = correlatedRequestId,
+                                status = if (authorized) "COMPLETED" else "ERROR",
+                                message = if (authorized) "Pasta autorizada e configurada."
+                                    else "O Android não confirmou uma fonte SAF válida para a biblioteca.",
+                                error = if (authorized) null else "saf_source_validation_failed",
+                                payload = payload,
+                            )
+                        }
                     }
                 }
                 refreshAuthoritativeStorageSnapshot(payload, payload.optLong("createdAt", 0L))
