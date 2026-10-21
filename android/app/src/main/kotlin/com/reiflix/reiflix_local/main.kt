@@ -4142,17 +4142,7 @@ internal class NativeMainRuntimePort(
         return when (normalized) {
             "reset_player" -> resetSettingsByPrefixes(setOf("player.", "gestures.", "audio."))
             "reset_all_settings" -> resetSettingsByPrefixes(emptySet())
-            "clear_anilist_cache" -> {
-                // Do not misrepresent reconciliation as cache deletion. This native
-                // service exposes metadata refresh but no independent cache-clear API.
-                recordDiagnostic(
-                    name = "SETTINGS_ACTION_UNSUPPORTED",
-                    severity = "WARN",
-                    result = "clear_anilist_cache",
-                    context = mapOf("reason" to "native_service_has_no_cache_clear_contract"),
-                )
-                false
-            }
+            "clear_anilist_cache", "clear_artwork_cache" -> clearManagedArtworkCache()
             "settings_export" -> exportSettingsToPrivateFile()
             "settings_import" -> stringValueFromPayload(payload, "path", "filePath", "file_path")
                 ?.let { importSettingsFromPrivateFile(File(it)) } ?: false
