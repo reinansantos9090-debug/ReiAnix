@@ -4651,6 +4651,55 @@ internal class NativeMainRuntimePort(
         return true
     }
 
+    /**
+     * Re-scan only the tree whose canonical document identity was successfully re-keyed.
+     * This mirrors the legacy follow-up request without changing source configuration or
+     * rescanning after a rejected/ambiguous reconciliation.
+     */
+    private fun requestSafIdentityReconciliationRescan(
+        treeUri: String,
+        sourceRequestId: String? = null,
+    ): Boolean {
+        val normalizedTreeUri = treeUri.trim()
+        if (normalizedTreeUri.isEmpty()) return false
+        return launchTracked("saf_identity_followup_scan", lane = "scan") {
+            val persistedReadUris = activity.contentResolver.persistedUriPermissions
+                .filter { it.isReadPermission }
+                .map { it.uri.toString() }
+            if (
+                StorageAuthorization.safAccess(normalizedTreeUri, persistedReadUris) != SafAccessLevel.AVAILABLE ||
+                authorizedScanTargets("saf", normalizedTreeUri).isEmpty()
+            ) {
+                recordDiagnostic(
+                    name = "SAF_IDENTITY_FOLLOWUP_SCAN_SKIPPED",
+                    severity = "WARN",
+                    requestId = sourceRequestId,
+                    result = "tree_not_authorized",
+                    context = mapOf("tree_uri_present" to true),
+                )
+                return@launchTracked
+            }
+            val followupRequestId = UUID.randomUUID().toString()
+            withContext(Dispatchers.Main) {
+                activity.startActivity(
+                    MainActivity.createNativeStorageActionIntent(
+                        context = activity,
+                        action = "scan_tree",
+                        treeUri = normalizedTreeUri,
+                        requestId = followupRequestId,
+                        reason = "saf_document_identity_reconciled",
+                    ),
+                )
+            }
+            recordDiagnostic(
+                name = "SAF_IDENTITY_FOLLOWUP_SCAN_REQUESTED",
+                requestId = followupRequestId,
+                result = "scan_tree",
+                context = mapOf("source_request_id" to sourceRequestId),
+            )
+        }
+    }
+
     fun dispatchNativeEvent(
         eventType: String,
         payload: org.json.JSONObject,
@@ -5041,10 +5090,17 @@ internal class NativeMainRuntimePort(
                     // A newer Kotlin scanner already committed the canonical re-key.
                     libraryViewModel.refreshNativeFolders()
                     libraryViewModel.refresh()
+                    val reconciliationStatus = stringValue("status")?.lowercase(Locale.ROOT).orEmpty()
+                    if (reconciliationStatus in setOf("reconciled", "already_reconciled")) {
+                        requestSafIdentityReconciliationRescan(
+                            treeUri = treeUri,
+                            sourceRequestId = eventRequestId ?: stringValue("requestId"),
+                        )
+                    }
                     recordDiagnostic(
                         name = "SAF_IDENTITY_PROJECTION_REFRESH",
                         requestId = eventRequestId ?: stringValue("requestId"),
-                        result = stringValue("status") ?: "native_commit_already_applied",
+                        result = reconciliationStatus.ifBlank { "native_commit_already_applied" },
                         context = mapOf("episode_id" to longValue("episodeId", "episode_id")),
                     )
                     true
@@ -5080,6 +5136,10 @@ internal class NativeMainRuntimePort(
                             libraryViewModel.refreshNativeFolders()
                             libraryViewModel.refresh()
                             libraryViewModel.queryNativeArtwork()
+                            requestSafIdentityReconciliationRescan(
+                                treeUri = treeUri,
+                                sourceRequestId = eventRequestId ?: stringValue("requestId"),
+                            )
                             recordDiagnostic(
                                 name = "SAF_IDENTITY_RECONCILED",
                                 requestId = eventRequestId ?: stringValue("requestId"),
