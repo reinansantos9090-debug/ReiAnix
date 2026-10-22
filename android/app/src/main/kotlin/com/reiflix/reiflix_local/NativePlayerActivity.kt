@@ -4796,8 +4796,39 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     dependencies.sqliteLibraryRepository.playerNavigation(episodeId)
                 } ?: throw NoSuchElementException("O episódio atual não existe no catálogo local.")
 
-                if (navigation.current.id != episodeId || navigation.current.animeId != animeId) {
-                    throw IllegalStateException("O catálogo local mudou durante a transição do player.")
+                // Match main.py's sqlite_current_row_mismatch guard. Resolve the active
+                // media URI back to the canonical row instead of trusting episodeId alone:
+                // a file may have been moved/replaced while this player session stayed open.
+                val sourceValidation = validateNativePlayerTransitionSource(
+                    dependencies = dependencies,
+                    sourceUri = sourceUri,
+                    expectedEpisodeId = episodeId,
+                    expectedAnimeId = animeId,
+                )
+                if (
+                    !sourceValidation.isCurrent ||
+                    navigation.current.id != episodeId ||
+                    navigation.current.animeId != animeId
+                ) {
+                    val reason = sourceValidation.reason ?: "sqlite_current_row_mismatch"
+                    publishNavigationTransitionDiagnostic(
+                        if (isNextRequest) "NEXT_REQUEST_STALE" else "PREVIOUS_REQUEST_STALE",
+                        reason,
+                        JSONObject()
+                            .put("episodeId", episodeId)
+                            .put("animeId", animeId)
+                            .put("transitionGeneration", generation),
+                    )
+                    publishNavigationTransitionDiagnostic(
+                        if (isNextRequest) "PLAYER_NEXT_STALE_REJECTED" else "PLAYER_PREVIOUS_STALE_REJECTED",
+                        reason,
+                        JSONObject()
+                            .put("episodeId", episodeId)
+                            .put("animeId", animeId)
+                            .put("transitionGeneration", generation),
+                    )
+                    invalidateTransition(reason)
+                    return@launch
                 }
                 if (!isCurrentTransition(
                         generation = generation,
