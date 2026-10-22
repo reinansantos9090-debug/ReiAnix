@@ -8402,7 +8402,29 @@ internal class NativeMainRuntimePort(
                                 remoteId,
                             )
                             if (result is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure) {
-                                throw IllegalStateException(result.error.toString())
+                                val associationError = result.error
+                                val integrationDisabled =
+                                    associationError is com.reiflix.reiflix_local.data.anilist.AniListError.InvalidRequest &&
+                                        associationError.message.contains("disabled in settings", ignoreCase = true)
+                                if (integrationDisabled) {
+                                    publishOperationResult(
+                                        requestId = correlatedRequestId,
+                                        action = normalized,
+                                        status = "BLOCKED",
+                                        operationState = "BLOCKED",
+                                        message = "O AniList está desativado nas configurações.",
+                                        error = "anilist_disabled",
+                                    )
+                                    recordDiagnostic(
+                                        name = "ANILIST_MANUAL_ASSOCIATION_BLOCKED",
+                                        severity = "WARN",
+                                        requestId = correlatedRequestId,
+                                        result = "anilist_disabled",
+                                        context = mapOf("anime_id" to resolvedAnimeId),
+                                    )
+                                    return@launchTracked
+                                }
+                                throw IllegalStateException(associationError.toString())
                             }
                             libraryViewModel.refreshDetails(resolvedAnimeId)
                             libraryViewModel.refreshCatalogProjection()
