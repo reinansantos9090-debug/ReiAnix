@@ -2986,10 +2986,23 @@ internal class NativeMainRuntimePort(
                     delay(HOME_REFRESH_TERMINAL_SETTLE_MS)
                     // Re-enter through the same guards: a new scan, restore or
                     // storage mutation may have begun while this request waited.
-                    requestLibraryScan(
+                    val scanAccepted = requestLibraryScan(
                         requestId = queuedRequestId,
                         resultAction = resultAction,
                     )
+                    if (!scanAccepted) {
+                        val refresh = HomeRefreshCoordinator.state.value
+                        if (refresh.active && refresh.requestId == queuedRequestId) {
+                            HomeRefreshCoordinator.fail(queuedRequestId, "queued_scan_request_rejected")
+                            recordDiagnostic(
+                                name = "HOME_REFRESH_FAILED",
+                                severity = "WARN",
+                                requestId = queuedRequestId,
+                                refreshId = refresh.refreshId,
+                                result = "queued_scan_request_rejected",
+                            )
+                        }
+                    }
                 } catch (cancelled: CancellationException) {
                     publishOperationResult(
                         requestId = queuedRequestId,
