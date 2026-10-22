@@ -11567,12 +11567,17 @@ internal class NativeMainRuntimePort(
                 // main.py saves a supplied exit checkpoint even when negative, after
                 // clamping it to zero; an omitted checkpoint remains absent.
                 val exitPositionMs = if (rawExitPosition == null) {
+                    // Python skips the exit checkpoint only when positionMs is absent/null.
                     -1L
+                } else if (!pythonTruthyJsonValue(rawExitPosition)) {
+                    // Python float(value or 0.0) treats falsey JSON values, including empty
+                    // arrays/objects and an empty string, as a zero-position checkpoint.
+                    0L
                 } else {
                     val numericExitPosition = when (rawExitPosition) {
                         is Number -> rawExitPosition.toDouble()
                         is Boolean -> if (rawExitPosition) 1.0 else 0.0
-                        is String -> if (rawExitPosition.isBlank()) 0.0 else rawExitPosition.toDoubleOrNull()
+                        is String -> if (rawExitPosition.isEmpty()) 0.0 else rawExitPosition.toDoubleOrNull()
                         else -> null
                     }
                     numericExitPosition
