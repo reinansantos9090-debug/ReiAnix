@@ -10697,9 +10697,13 @@ internal class NativeMainRuntimePort(
                         requestId = request,
                         result = "missing_player_session_id",
                     )
-                    return false
+                    // The legacy mailbox loop consumes rejected player_opened events;
+                    // acknowledge this malformed event after recording the rejection.
+                    return true
                 }
                 val originRequestId = stringValue("originRequestId", "origin_request_id").orEmpty()
+                val transitionDirection = stringValue("transitionDirection", "transition_direction")
+                    ?.uppercase(Locale.ROOT).orEmpty()
                 if (originRequestId.isNotBlank()) {
                     // Port the legacy pending-transition target check. A successor may
                     // reuse the same Activity/session, so session equality alone is not
@@ -10712,7 +10716,7 @@ internal class NativeMainRuntimePort(
                         payload.optLong("origin_transition_generation", 0L),
                     )
                     val openedGeneration = payload.optLong("transitionGeneration", 0L)
-                    val direction = stringValue("transitionDirection", "transition_direction").orEmpty()
+                    val direction = transitionDirection
                     val revoked = originSessionId.isNotBlank() &&
                         MainActivity.isPlayerTransitionRevoked(originRequestId, originSessionId)
                     val transitionMismatch = when {
@@ -10747,7 +10751,7 @@ internal class NativeMainRuntimePort(
                             result = transitionMismatch,
                             context = mapOf("origin_request_id" to originRequestId),
                         )
-                        return false
+                        return true
                     }
                 }
                 if (!current.activePlayerSessionId.isNullOrBlank() &&
@@ -10767,7 +10771,7 @@ internal class NativeMainRuntimePort(
                         sessionId = sessionId,
                         result = "stale_player_session",
                     )
-                    return false
+                    return true
                 }
                 notePlayerSession(
                     requestId = request,
@@ -10802,6 +10806,26 @@ internal class NativeMainRuntimePort(
                             "reason" to "player_opened",
                         ),
                     )
+                }
+                if (originRequestId.isNotBlank()) {
+                    when (transitionDirection) {
+                        "NEXT", "PREVIOUS" -> recordDiagnostic(
+                            name = if (transitionDirection == "NEXT") {
+                                "NEXT_TRANSITION_READY"
+                            } else {
+                                "PREVIOUS_TRANSITION_READY"
+                            },
+                            requestId = originRequestId,
+                            sessionId = sessionId,
+                            result = "ready",
+                            context = mapOf(
+                                "target_request_id" to request,
+                                "episode_id" to longValue("episodeId", "episode_id"),
+                                "player_generation" to mutableSnapshot.value.activePlayerGeneration,
+                                "transition_generation" to payload.optLong("transitionGeneration", 0L),
+                            ),
+                        )
+                    }
                 }
                 recordDiagnostic(
                     name = "PLAYER_OPENED_EVENT",
