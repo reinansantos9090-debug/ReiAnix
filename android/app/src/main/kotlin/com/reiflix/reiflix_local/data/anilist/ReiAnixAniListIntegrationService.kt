@@ -18,6 +18,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
 import com.reiflix.reiflix_local.data.sqlite.recordAniListAutoMatchOutcome
+import com.reiflix.reiflix_local.data.sqlite.setMetadataStatusByLookupTitle
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 
 import java.io.File
@@ -104,11 +105,64 @@ class ReiAnixAniListIntegrationService(
             ?: return AniListResult.Failure(
                 AniListError.InvalidRequest("This local anime has no valid AniList association."),
             )
-        val remote = when (val result = client.getAnime(remoteId.toInt())) {
-            is AniListResult.Success -> result.value
-            is AniListResult.Failure -> return result
-        } ?: return AniListResult.Failure(AniListError.InvalidResponse("AniList returned no anime for this ID."))
-        return applyRemote(local, remote, manual = local.anilistMatchManual == true, score = local.anilistMatchScore, margin = local.anilistMatchMargin)
+
+        // Port main.py's refresh_metadata lifecycle: a cached local record remains
+        // visible while a forced refresh runs, and failed requests mark it stale.
+        // The canonical SQLite row stays the only metadata/status source.
+        library.setMetadataStatusByLookupTitle(
+            lookupTitle = local.lookupTitle,
+            status = "refreshing",
+            confidence = local.metadataConfidence,
+        )
+
+        suspend fun retainStaleMetadata(): AniListResult<ReiAnixAnimeRecord> {
+            library.setMetadataStatusByLookupTitle(
+                lookupTitle = local.lookupTitle,
+                status = "stale",
+                confidence = local.metadataConfidence ?: "low",
+            )
+            val stale = library.getAnime(animeId) ?: local.copy(metadataStatus = "stale")
+            return AniListResult.Success(stale)
+        }
+
+        val remoteResult = try {
+            client.getAnime(remoteId.toInt())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            Log.w("ReiAnixAniList", "Metadata refresh failed; retaining stale local metadata animeId=$animeId", failure)
+            return retainStaleMetadata()
+        }
+        val remote = when (remoteResult) {
+            is AniListResult.Success -> remoteResult.value
+            is AniListResult.Failure -> {
+                Log.w(
+                    "ReiAnixAniList",
+                    "Metadata refresh failed; retaining stale local metadata animeId=$animeId error=${remoteResult.error}",
+                )
+                return retainStaleMetadata()
+            }
+        } ?: run {
+            Log.w("ReiAnixAniList", "Metadata refresh returned no record; retaining stale local metadata animeId=$animeId")
+            return retainStaleMetadata()
+        }
+
+        return when (
+            val applied = applyRemote(
+                local,
+                remote,
+                manual = local.anilistMatchManual == true,
+                score = local.anilistMatchScore,
+                margin = local.anilistMatchMargin,
+            )
+        ) {
+            is AniListResult.Success -> applied
+            is AniListResult.Failure -> {
+                // Failed metadata writes must not leave the local projection looking
+                // like it is still being refreshed.
+                retainStaleMetadata()
+            }
+        }
     }
 
     suspend fun associateManually(animeId: Long, anilistId: Int): AniListResult<ReiAnixAnimeRecord> {
