@@ -6558,14 +6558,227 @@ internal class NativeMainRuntimePort(
     suspend fun autoMatchAniList(animeId: Long) =
         dependencies.aniListIntegrationService.autoMatch(animeId)
 
-    fun refreshAniListMetadata(animeId: Long): Boolean {
-        if (animeId <= 0L) return false
-        return launchTracked("refresh_anilist_metadata", lane = "metadata") {
-            val result = dependencies.aniListIntegrationService.refreshMetadata(animeId)
-            publish(action = "refresh_anilist_metadata", transform = {
-                it.copy(lastResultJson = result.toString())
-            })
+    /**
+     * Port of main.py refresh_current_metadata: refresh the existing local
+     * association, or perform the legacy forced title-match flow when no
+     * valid AniList ID has been assigned. SQLite remains the only catalog.
+     */
+    fun refreshAniListMetadata(
+        animeId: Long,
+        requestId: String? = null,
+        resultAction: String = "refresh_anilist_metadata",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
+        val operation = resultAction.trim().ifEmpty { "refresh_anilist_metadata" }
+        if (animeId <= 0L) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = operation,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "O identificador local do anime é inválido.",
+                error = "invalid_anime_id",
+            )
+            return false
         }
+        publishOperationResult(
+            requestId = correlatedRequestId,
+            action = operation,
+            status = "QUEUED",
+            operationState = "QUEUED",
+            message = "Atualização dos metadados AniList enfileirada.",
+        )
+        val accepted = launchTracked("refresh_anilist_metadata", lane = "metadata") {
+            try {
+                val integration = dependencies.aniListIntegrationService
+                var result = integration.refreshMetadata(animeId)
+                var completionMessage = "Metadados AniList atualizados."
+                var completionPayload = org.json.JSONObject().put("animeId", animeId)
+
+                if (result is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure) {
+                    val error = result.error
+                    val missingAssociation = error is com.reiflix.reiflix_local.data.anilist.AniListError.InvalidRequest &&
+                        error.message.contains("no valid AniList association", ignoreCase = true)
+                    if (missingAssociation) {
+                        when (val matchResult = integration.autoMatch(animeId, force = true)) {
+                            is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure -> {
+                                throw IllegalStateException(matchResult.error.toString())
+                            }
+                            is com.reiflix.reiflix_local.data.anilist.AniListResult.Success -> {
+                                when (val match = matchResult.value) {
+                                    is com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.Matched -> {
+                                        result = com.reiflix.reiflix_local.data.anilist.AniListResult.Success(match.anime)
+                                        completionMessage = "Metadados AniList encontrados e atualizados."
+                                        completionPayload
+                                            .put("match", "matched")
+                                            .put("anilistId", match.remote.id)
+                                    }
+                                    is com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.AlreadyMatched,
+                                    is com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.AlreadyManuallyMatched -> {
+                                        result = integration.refreshMetadata(animeId)
+                                        completionMessage = "Associação AniList existente verificada."
+                                        completionPayload.put("match", "already_matched")
+                                    }
+                                    is com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.Ambiguous -> {
+                                        val candidates = org.json.JSONArray().apply {
+                                            match.candidates.forEach { candidate ->
+                                                put(
+                                                    org.json.JSONObject()
+                                                        .put("id", candidate.id)
+                                                        .put("titleRomaji", candidate.titleRomaji ?: org.json.JSONObject.NULL)
+                                                        .put("titleEnglish", candidate.titleEnglish ?: org.json.JSONObject.NULL)
+                                                        .put("titleNative", candidate.titleNative ?: org.json.JSONObject.NULL)
+                                                        .put("year", candidate.seasonYear ?: org.json.JSONObject.NULL)
+                                                        .put("format", candidate.format ?: org.json.JSONObject.NULL),
+                                                )
+                                            }
+                                        }
+                                        completionPayload
+                                            .put("match", "ambiguous")
+                                            .put("candidates", candidates)
+                                        completionMessage = "Foram encontradas várias correspondências possíveis. Revise as opções AniList antes de associar."
+                                        publishOperationResult(
+                                            requestId = correlatedRequestId,
+                                            action = operation,
+                                            status = "COMPLETED",
+                                            operationState = "COMPLETED",
+                                            message = completionMessage,
+                                            payload = completionPayload,
+                                        )
+                                        publish(action = "refresh_anilist_metadata", transform = {
+                                            it.copy(lastResultJson = completionPayload.toString(), selectedAnimeId = animeId)
+                                        })
+                                        return@launchTracked
+                                    }
+                                    com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.NoMatch -> {
+                                        completionPayload.put("match", "no_match")
+                                        completionMessage = "Nenhuma correspondência AniList confiável foi encontrada."
+                                        publishOperationResult(
+                                            requestId = correlatedRequestId,
+                                            action = operation,
+                                            status = "COMPLETED",
+                                            operationState = "COMPLETED",
+                                            message = completionMessage,
+                                            payload = completionPayload,
+                                        )
+                                        publish(action = "refresh_anilist_metadata", transform = {
+                                            it.copy(lastResultJson = completionPayload.toString(), selectedAnimeId = animeId)
+                                        })
+                                        return@launchTracked
+                                    }
+                                    com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.RecentlyAttempted -> {
+                                        completionPayload.put("match", "recently_attempted")
+                                        completionMessage = "A correspondência AniList foi tentada recentemente. Tente novamente mais tarde."
+                                        publishOperationResult(
+                                            requestId = correlatedRequestId,
+                                            action = operation,
+                                            status = "COMPLETED",
+                                            operationState = "COMPLETED",
+                                            message = completionMessage,
+                                            payload = completionPayload,
+                                        )
+                                        publish(action = "refresh_anilist_metadata", transform = {
+                                            it.copy(lastResultJson = completionPayload.toString(), selectedAnimeId = animeId)
+                                        })
+                                        return@launchTracked
+                                    }
+                                    com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.Disabled -> {
+                                        publishOperationResult(
+                                            requestId = correlatedRequestId,
+                                            action = operation,
+                                            status = "BLOCKED",
+                                            operationState = "BLOCKED",
+                                            message = "O auto-match AniList está desativado nas configurações.",
+                                            error = "auto_match_disabled",
+                                        )
+                                        return@launchTracked
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        throw IllegalStateException(error.toString())
+                    }
+                }
+
+                when (val finalResult = result) {
+                    is com.reiflix.reiflix_local.data.anilist.AniListResult.Success -> {
+                        val refreshedRecord = finalResult.value
+                        val stale = refreshedRecord?.metadataStatus.equals("stale", ignoreCase = true)
+                        if (stale) {
+                            completionMessage = "Não foi possível atualizar os metadados AniList agora; os dados locais foram mantidos e marcados como desatualizados."
+                            completionPayload.put("metadataStatus", "stale")
+                        }
+                        libraryViewModel.refreshDetails(animeId)
+                        libraryViewModel.refreshCatalogProjection()
+                        settingsViewModel.refresh()
+                        completionPayload.put("result", "success")
+                        publish(
+                            action = "refresh_anilist_metadata",
+                            transform = {
+                                it.copy(lastResultJson = completionPayload.toString(), selectedAnimeId = animeId)
+                            },
+                        )
+                        publishOperationResult(
+                            requestId = correlatedRequestId,
+                            action = operation,
+                            status = "COMPLETED",
+                            operationState = "COMPLETED",
+                            message = completionMessage,
+                            payload = completionPayload,
+                        )
+                        recordDiagnostic(
+                            name = "ANILIST_METADATA_REFRESH_COMPLETED",
+                            requestId = correlatedRequestId,
+                            result = if (stale) "stale_metadata_retained" else "updated",
+                            context = mapOf("anime_id" to animeId),
+                        )
+                    }
+                    is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure -> {
+                        throw IllegalStateException(finalResult.error.toString())
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                publishOperationResult(
+                    requestId = correlatedRequestId,
+                    action = operation,
+                    status = "CANCELLED",
+                    operationState = "CANCELLED",
+                    message = "A atualização dos metadados AniList foi cancelada.",
+                )
+                throw cancelled
+            } catch (failure: Throwable) {
+                publishOperationResult(
+                    requestId = correlatedRequestId,
+                    action = operation,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = failure.message ?: "Não foi possível atualizar os metadados AniList.",
+                    error = failure.javaClass.simpleName,
+                )
+                recordDiagnostic(
+                    name = "ANILIST_METADATA_REFRESH_FAILED",
+                    severity = "WARN",
+                    requestId = correlatedRequestId,
+                    result = failure.javaClass.simpleName,
+                    error = failure,
+                    context = mapOf("anime_id" to animeId),
+                )
+                throw failure
+            }
+        }
+        if (!accepted) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = operation,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A atualização dos metadados AniList não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
     }
 
     fun reconcileUnmatchedAniListMetadata(): Boolean =
@@ -8035,7 +8248,13 @@ internal class NativeMainRuntimePort(
             } ?: false
             "refresh_details" -> positiveLong("animeId")?.let(::refreshCurrentDetails) ?: false
             "refresh_anilist_metadata", "refresh_current_metadata", "refresh_metadata" ->
-                positiveLong("animeId")?.let(::refreshAniListMetadata) ?: false
+                positiveLong("animeId")?.let { animeId ->
+                    refreshAniListMetadata(
+                        animeId = animeId,
+                        requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                        resultAction = normalized,
+                    )
+                } ?: false
             "resolve_match", "associate_anilist" -> {
                 val remoteIdLong = positiveLong("anilistId") ?: positiveLong("anilist_id") ?: return false
                 val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
