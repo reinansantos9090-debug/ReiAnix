@@ -396,6 +396,43 @@ class MainActivity : ComponentActivity() {
             return true
         }
 
+        /**
+         * Clear only the currently tracked native player identity when a lifecycle
+         * or session-invalidation event arrives without a PLAYER_EXIT event.
+         * Unlike notePlayerExit(), this reconciliation must not advance the exit
+         * timestamp, because it is not evidence that an actual exit was observed.
+         */
+        @JvmStatic
+        fun clearPlayerSessionIfCurrent(
+            requestId: String?,
+            sessionId: String?,
+            activityInstanceId: String?,
+        ): Boolean {
+            val normalizedRequest = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            val normalizedSession = sessionId?.trim()?.takeIf { it.isNotEmpty() }
+            val normalizedInstance = activityInstanceId?.trim()?.takeIf { it.isNotEmpty() }
+            if (normalizedRequest == null && normalizedSession == null && normalizedInstance == null) {
+                return false
+            }
+            if (normalizedRequest != null && activePlayerRequestId != normalizedRequest) return false
+            if (normalizedSession != null && activePlayerSessionId != normalizedSession) return false
+            if (normalizedInstance != null && activePlayerActivityInstanceId != normalizedInstance) return false
+            if (normalizedRequest == null && normalizedSession == null) return false
+
+            activePlayerRequestId = null
+            activePlayerSessionId = null
+            activePlayerActivityInstanceId = null
+            activePlayerTransitionGeneration = 0L
+            Log.i(
+                LOG_TAG,
+                "PLAYER_SESSION_TRACKING_CLEARED requestId=" + (normalizedRequest ?: "-") +
+                    " playerSessionId=" + (normalizedSession ?: "-") +
+                    " activityInstanceId=" + (normalizedInstance ?: "-") +
+                    " reason=explicit_invalidation",
+            )
+            return true
+        }
+
         @JvmStatic
         fun notePlayerExit(
             requestId: String,
