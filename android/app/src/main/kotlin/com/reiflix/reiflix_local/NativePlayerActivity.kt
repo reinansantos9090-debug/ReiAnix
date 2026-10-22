@@ -4840,6 +4840,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
                 val target = if (isNextRequest) navigation.next else navigation.previous
                 if (target == null) {
+                    // Preserve the legacy NEXT/PREVIOUS_TRANSITION_FAILED signal before
+                    // invalidating the in-flight request, so diagnostics distinguish
+                    // "no adjacent item" from a successful transition that was cancelled.
+                    publishNavigationTransitionDiagnostic(
+                        if (isNextRequest) "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
+                        "no_target",
+                        JSONObject()
+                            .put("episodeId", episodeId)
+                            .put("animeId", animeId)
+                            .put("direction", direction),
+                    )
                     invalidateTransition("no_adjacent_episode")
                     showFeedback("Não existe outro episódio local disponível nesta direção.", 2_200L)
                     return@launch
@@ -4987,10 +4998,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                val errorMessage = error.message?.takeIf { it.isNotBlank() }
+                    ?: error::class.java.simpleName
                 Log.e(
                     "NativePlayerActivity",
                     "Native adjacent episode transition failed requestId=$sourceRequestId direction=$direction",
                     error,
+                )
+                publishNavigationTransitionDiagnostic(
+                    if (isNextRequest) "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
+                    "exception",
+                    JSONObject()
+                        .put("error", errorMessage)
+                        .put("direction", direction)
+                        .put("transitionGeneration", generation),
                 )
                 if (isCurrentTransition(
                         generation = generation,
@@ -4999,6 +5020,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         expectedSessionId = sourcePlayerSessionId,
                     )
                 ) {
+                    publishNavigationTransitionDiagnostic(
+                        if (isNextRequest) "PLAYER_NEXT_FAILED" else "PLAYER_PREVIOUS_FAILED",
+                        "transition_failed",
+                        JSONObject()
+                            .put("error", errorMessage)
+                            .put("direction", direction)
+                            .put("episodeId", currentEpisodeId()),
+                    )
                     invalidateTransition("native_adjacent_transition_failed")
                     showFeedback(
                         "Não foi possível abrir o episódio local.",
