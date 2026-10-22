@@ -1937,6 +1937,37 @@ class ReiAnixLibraryViewModel(
         error: String? = null,
     ) {
         repository.reportNativePlayerHandoff(requestId, status, error)
+        val normalizedStatus = status.trim().uppercase(Locale.ROOT)
+        val eventName = when (normalizedStatus) {
+            "COMPLETED", "ACCEPTED", "SUCCESS" -> "PLAYER_HANDOFF_ACCEPTED"
+            "CANCELLED", "CANCELED" -> "PLAYER_HANDOFF_CANCELLED"
+            else -> "PLAYER_HANDOFF_FAILED"
+        }
+        ReiAnixDiagnosticTimeline.record(
+            name = eventName,
+            severity = if (eventName == "PLAYER_HANDOFF_FAILED") "WARN" else "INFO",
+            source = "ReiAnixLibraryViewModel",
+            result = normalizedStatus.ifBlank { "UNKNOWN" },
+            requestId = requestId,
+            context = mapOf(
+                "has_error" to !error.isNullOrBlank(),
+                "status" to normalizedStatus,
+            ),
+        )
+        if (eventName == "PLAYER_HANDOFF_ACCEPTED") {
+            ReiAnixDiagnosticTimeline.record(
+                name = "ASSIST_REQUEST_ACCEPTED",
+                source = "ReiAnixLibraryViewModel",
+                result = "native_handoff_confirmed",
+                requestId = requestId,
+            )
+            ReiAnixDiagnosticTimeline.record(
+                name = "CONTINUE_REQUEST_ACCEPTED",
+                source = "ReiAnixLibraryViewModel",
+                result = "native_handoff_confirmed",
+                requestId = requestId,
+            )
+        }
         synchronized(nativePlayerHandoffLock) {
             if (pendingNativePlayerHandoffRequestId == requestId) {
                 pendingNativePlayerHandoffRequestId = null
@@ -1979,8 +2010,49 @@ class ReiAnixLibraryViewModel(
             var nativeIntentStarted = false
             try {
                 require(episodeId > 0L) { "O identificador do episódio é inválido." }
+                val progressLookupStartedAtMs = System.currentTimeMillis()
+                ReiAnixDiagnosticTimeline.record(
+                    name = "CONTINUE_REQUEST_CREATED",
+                    source = "ReiAnixLibraryViewModel",
+                    requestId = requestId,
+                    context = mapOf(
+                        "episode_id" to episodeId,
+                        "expected_anime_id" to (expectedAnimeId ?: 0L),
+                    ),
+                )
+                ReiAnixDiagnosticTimeline.record(
+                    name = "PROGRESS_LOOKUP_STARTED",
+                    source = "ReiAnixLibraryViewModel",
+                    requestId = requestId,
+                    context = mapOf("episode_id" to episodeId),
+                )
                 val episode = nativeLibraryRepository.getEpisode(episodeId)
-                    ?: throw IllegalArgumentException("Episódio não encontrado no catálogo local.")
+                    ?: run {
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "PROGRESS_LOOKUP_COMPLETED",
+                            severity = "WARN",
+                            source = "ReiAnixLibraryViewModel",
+                            result = "not_found",
+                            requestId = requestId,
+                            context = mapOf(
+                                "episode_id" to episodeId,
+                                "found" to false,
+                                "duration_ms" to (System.currentTimeMillis() - progressLookupStartedAtMs).coerceAtLeast(0L),
+                            ),
+                        )
+                        throw IllegalArgumentException("Episódio não encontrado no catálogo local.")
+                    }
+                ReiAnixDiagnosticTimeline.record(
+                    name = "PROGRESS_LOOKUP_COMPLETED",
+                    source = "ReiAnixLibraryViewModel",
+                    result = "found",
+                    requestId = requestId,
+                    context = mapOf(
+                        "episode_id" to episodeId,
+                        "found" to true,
+                        "duration_ms" to (System.currentTimeMillis() - progressLookupStartedAtMs).coerceAtLeast(0L),
+                    ),
+                )
                 require(expectedAnimeId == null || episode.animeId == expectedAnimeId) {
                     "O episódio não pertence ao anime solicitado."
                 }
@@ -2005,6 +2077,18 @@ class ReiAnixLibraryViewModel(
                 }
                 val canPrevious = navigation.previous != null
                 val canNext = navigation.next != null
+                ReiAnixDiagnosticTimeline.record(
+                    name = "EPISODE_RESOLVED",
+                    source = "ReiAnixLibraryViewModel",
+                    requestId = requestId,
+                    context = mapOf(
+                        "episode_id" to episode.id,
+                        "anime_id" to episode.animeId,
+                        "can_previous" to canPrevious,
+                        "can_next" to canNext,
+                        "source" to "sqlite_player_navigation",
+                    ),
+                )
 
                 val rawReference = episode.path.trim()
                 val parsedReference = Uri.parse(rawReference)
@@ -2028,6 +2112,20 @@ class ReiAnixLibraryViewModel(
                     watched = episode.watched,
                     resumeEnabled = resumeEnabled,
                 )
+                ReiAnixDiagnosticTimeline.record(
+                    name = "PROGRESS_VALIDATED",
+                    severity = if (playbackStart.progressInvalid) "WARN" else "INFO",
+                    source = "ReiAnixLibraryViewModel",
+                    result = if (playbackStart.progressInvalid) "INVALID_PERSISTED_PROGRESS" else "valid",
+                    requestId = requestId,
+                    context = mapOf(
+                        "episode_id" to episode.id,
+                        "progress_seconds" to playbackStart.positionSeconds,
+                        "duration_seconds" to (episode.duration ?: 0.0),
+                        "resume_enabled" to resumeEnabled,
+                        "watched" to (episode.watched == true),
+                    ),
+                )
                 if (playbackStart.progressInvalid) {
                     Log.w(
                         TAG,
@@ -2047,6 +2145,28 @@ class ReiAnixLibraryViewModel(
                 }
                 val createdAtMs = System.currentTimeMillis()
                 val playerSessionId = UUID.randomUUID().toString()
+                ReiAnixDiagnosticTimeline.record(
+                    name = "ASSIST_REQUEST_CREATED",
+                    source = "ReiAnixLibraryViewModel",
+                    requestId = requestId,
+                    sessionId = playerSessionId,
+                    context = mapOf(
+                        "episode_id" to episode.id,
+                        "anime_id" to episode.animeId,
+                        "origin" to "details_or_episode_card",
+                    ),
+                )
+                ReiAnixDiagnosticTimeline.record(
+                    name = "PLAYER_SESSION_CREATED",
+                    source = "ReiAnixLibraryViewModel",
+                    requestId = requestId,
+                    sessionId = playerSessionId,
+                    context = mapOf(
+                        "episode_id" to episode.id,
+                        "anime_id" to episode.animeId,
+                        "origin" to "kotlin_launch",
+                    ),
+                )
                 val title = episode.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
                     ?: episode.fileName.trim().takeIf { it.isNotEmpty() }
                     ?: "Episódio"
@@ -2073,6 +2193,17 @@ class ReiAnixLibraryViewModel(
                         preferenceValue("player.autoplay_next").toBooleanStrictOrNull()?.toString() ?: "true",
                     )
                     .appendQueryParameter("native_compose", "true")
+                ReiAnixDiagnosticTimeline.record(
+                    name = "MEDIA_RESOLVED",
+                    source = "ReiAnixLibraryViewModel",
+                    requestId = requestId,
+                    sessionId = playerSessionId,
+                    context = mapOf(
+                        "episode_id" to episode.id,
+                        "anime_id" to episode.animeId,
+                        "uri_source" to "canonical_sqlite_row",
+                    ),
+                )
 
                 val playerSettings = listOf(
                     "player.default_speed" to "setting_player_default_speed",
@@ -2113,6 +2244,17 @@ class ReiAnixLibraryViewModel(
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP,
                 )
+                ReiAnixDiagnosticTimeline.record(
+                    name = "PLAYER_HANDOFF_STARTED",
+                    source = "ReiAnixLibraryViewModel",
+                    requestId = requestId,
+                    sessionId = playerSessionId,
+                    context = mapOf(
+                        "episode_id" to episode.id,
+                        "anime_id" to episode.animeId,
+                        "destination" to "MainActivity",
+                    ),
+                )
                 withContext(Dispatchers.Main) {
                     appContext.startActivity(intent)
                 }
@@ -2129,6 +2271,24 @@ class ReiAnixLibraryViewModel(
                     TAG,
                     "Native Compose player handoff failed requestId=$requestId episodeId=$episodeId",
                     error,
+                )
+                ReiAnixDiagnosticTimeline.record(
+                    name = "ASSIST_FAILED",
+                    severity = "ERROR",
+                    source = "ReiAnixLibraryViewModel",
+                    result = "native_handoff_exception",
+                    requestId = requestId,
+                    error = error,
+                    context = mapOf("episode_id" to episodeId),
+                )
+                ReiAnixDiagnosticTimeline.record(
+                    name = "CONTINUE_FAILED",
+                    severity = "ERROR",
+                    source = "ReiAnixLibraryViewModel",
+                    result = "native_handoff_exception",
+                    requestId = requestId,
+                    error = error,
+                    context = mapOf("episode_id" to episodeId),
                 )
                 reportNativePlayerHandoff(
                     requestId = requestId,
