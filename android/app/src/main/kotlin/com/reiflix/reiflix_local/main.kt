@@ -5231,11 +5231,12 @@ internal class NativeMainRuntimePort(
         scheduleThumbnailReconciliation("legacy_schedule_thumbnail_reconciliation")
 
 
-    fun requestAccountActionTracked(action: String): Boolean {
+    fun requestAccountActionTracked(action: String, requestId: String? = null): Boolean {
         val normalized = action.trim()
         if (normalized.isEmpty()) return false
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
         return launchTracked("account_action", lane = "settings") {
-            settingsViewModel.requestAccountAction(normalized)
+            settingsViewModel.requestAccountAction(normalized, correlatedRequestId)
         }
     }
 
@@ -6715,7 +6716,12 @@ internal class NativeMainRuntimePort(
             "settings_action", "compose_settings_action" ->
                 (nonBlank("action") ?: nonBlank("setting_action"))?.let(::requestSettingsActionTracked) ?: false
             "account_action", "compose_account_action", "compose_settings_account_action" ->
-                (nonBlank("accountAction") ?: nonBlank("account_action"))?.let(::requestAccountActionTracked) ?: false
+                (nonBlank("accountAction") ?: nonBlank("account_action"))?.let { accountAction ->
+                    requestAccountActionTracked(
+                        accountAction,
+                        requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    )
+                } ?: false
             "set_theme" -> setSettingSerialized("appearance.theme", payload.optString("theme", "dark"))
 
             "open_episode", "open_media", "play_episode" -> {
@@ -7528,7 +7534,10 @@ internal class NativeMainRuntimePort(
                     requestId.isNullOrBlank() ||
                     !claimRequestId(requestId, "compose_account")
                 ) return false
-                requestAccountActionTracked(if (action == "switch") "switch_account" else action)
+                requestAccountActionTracked(
+                    if (action == "switch") "switch" else action,
+                    requestId,
+                )
             }
             "compose_library_command" -> {
                 val action = stringValue("action") ?: return false
