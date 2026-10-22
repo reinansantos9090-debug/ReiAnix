@@ -12127,13 +12127,15 @@ internal class NativeMainRuntimePort(
                                     launchTracked("continue_completed", lane = "playback") {
                                         val resumeContext = loadContinueResumeContext(continueEpisodeId)
                                             ?: return@launchTracked
-                                        if (sessionId.isNullOrBlank() ||
-                                            !continueCompletedPlayerSessions.add(sessionId)
-                                        ) return@launchTracked
+                                        val completedSessionId = sessionId?.takeIf { it.isNotBlank() }
+                                            ?: return@launchTracked
+                                        if (!continueCompletedPlayerSessions.add(completedSessionId)) {
+                                            return@launchTracked
+                                        }
                                         recordDiagnostic(
                                             name = "CONTINUE_COMPLETED",
                                             requestId = requestId,
-                                            sessionId = sessionId,
+                                            sessionId = completedSessionId,
                                             result = "completed",
                                             context = mapOf(
                                                 "episode_id" to resumeContext.episodeId,
@@ -12144,7 +12146,7 @@ internal class NativeMainRuntimePort(
                                         )
                                         if (continueCompletedPlayerSessions.size > 128) {
                                             continueCompletedPlayerSessions.clear()
-                                            continueCompletedPlayerSessions.add(sessionId)
+                                            continueCompletedPlayerSessions.add(completedSessionId)
                                         }
                                     }
                                 }
