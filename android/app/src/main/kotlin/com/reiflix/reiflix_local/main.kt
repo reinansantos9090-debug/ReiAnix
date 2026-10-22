@@ -49,6 +49,7 @@ import com.reiflix.reiflix_local.scanner.BroadStorageScanner
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.storage.SafAccessLevel
 import com.reiflix.reiflix_local.storage.StorageAuthorization
+import com.reiflix.reiflix_local.storage.NativeStorageOnboardingState
 import android.net.Uri
 import android.provider.DocumentsContract
 import kotlinx.coroutines.CoroutineScope
@@ -3645,6 +3646,53 @@ internal class NativeMainRuntimePort(
                     safVolumeId = candidate.optString("volumeId", treeIdentity.volumeId),
                     safIdentity = identity,
                 )
+                // The legacy flow verified that the selected URI became a valid
+                // configured library source before acknowledging recovery. A
+                // persisted Android grant alone must never mark setup as complete.
+                val recoveredRoot = withContext(Dispatchers.IO) {
+                    configuredValidLibrarySafRoots().firstOrNull { configured ->
+                        configured == treeUri ||
+                            StorageAuthorization.safIdentity(configured) == identity
+                    }
+                }
+                if (recoveredRoot == null) {
+                    val message =
+                        "O Android autorizou a pasta, mas o ReiAnix não conseguiu confirmar a fonte da biblioteca. Toque em ESCOLHER PASTA para tentar novamente."
+                    activity.reportNativeStorageOnboardingState(
+                        phase = NativeStorageOnboardingState.PHASE_ERROR,
+                        message = message,
+                        error = "selected_saf_source_validation_failed",
+                        dismissed = false,
+                    )
+                    libraryViewModel.refreshNativeFolders()
+                    settingsViewModel.refresh()
+                    libraryViewModel.refresh()
+                    mutableStorageState.value = storageSnapshot()
+                    finishPendingSafSelection(
+                        eventRequestId = request,
+                        status = "ERROR",
+                        message = message,
+                        error = "selected_saf_source_validation_failed",
+                        payload = org.json.JSONObject()
+                            .put("treeUri", treeUri)
+                            .put("identity", identity)
+                            .put("recoveredFromInventory", true),
+                    )
+                    recordDiagnostic(
+                        name = "STORAGE_SOURCE_VALIDATION_FAILED",
+                        severity = "WARN",
+                        requestId = request,
+                        result = "inventory_recovery_validation_failed",
+                        context = mapOf("identity" to identity),
+                    )
+                    return@launchTracked
+                }
+                activity.reportNativeStorageOnboardingState(
+                    phase = NativeStorageOnboardingState.PHASE_READY,
+                    message = null,
+                    error = null,
+                    dismissed = false,
+                )
                 recordStorageMutation("saf_selection_recovered_from_inventory", treeUri)
                 libraryViewModel.refreshNativeFolders()
                 settingsViewModel.refresh()
@@ -3696,6 +3744,13 @@ internal class NativeMainRuntimePort(
                 )
                 throw cancelled
             } catch (failure: Throwable) {
+                val message = failure.message ?: "Não foi possível recuperar a seleção de pasta."
+                activity.reportNativeStorageOnboardingState(
+                    phase = NativeStorageOnboardingState.PHASE_ERROR,
+                    message = message,
+                    error = failure.javaClass.simpleName,
+                    dismissed = false,
+                )
                 recordDiagnostic(
                     name = "SAF_SELECTION_INVENTORY_RECOVERY_FAILED",
                     severity = "WARN",
@@ -3707,7 +3762,7 @@ internal class NativeMainRuntimePort(
                 finishPendingSafSelection(
                     eventRequestId = request,
                     status = "ERROR",
-                    message = failure.message ?: "Não foi possível recuperar a seleção de pasta.",
+                    message = message,
                     error = failure.javaClass.simpleName,
                     payload = org.json.JSONObject().put("treeUri", treeUri),
                 )
