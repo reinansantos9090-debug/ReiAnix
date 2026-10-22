@@ -6652,9 +6652,18 @@ internal class NativeMainRuntimePort(
                 true
             }
 
-            "login" -> login()
-            "logout" -> logout()
-            "switch", "switch_account", "switchaccount" -> switchAccount()
+            "login" -> requestAccountActionTracked(
+                "login",
+                requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+            )
+            "logout" -> requestAccountActionTracked(
+                "logout",
+                requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+            )
+            "switch", "switch_account", "switchaccount" -> requestAccountActionTracked(
+                "switch",
+                requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+            )
             "account_state_changed" -> {
                 setAccountState(payload.optString("state", "disconnected"), "native_event")
                 true
