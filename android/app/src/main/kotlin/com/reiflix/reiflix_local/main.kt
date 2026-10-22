@@ -9461,7 +9461,17 @@ internal class NativeMainRuntimePort(
                 true
             }
             "anilist_metadata_committed" -> {
-                val animeId = longValue("animeId", "anime_id") ?: return false
+                val animeId = longValue("animeId", "anime_id")
+                if (animeId == null || animeId <= 0L) {
+                    recordDiagnostic(
+                        name = "ANILIST_METADATA_PROJECTION_REFRESH_REJECTED",
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = "invalid_anime_id",
+                    )
+                    // main.py logs malformed metadata notifications and continues.
+                    return true
+                }
                 refreshCurrentDetails(animeId)
                 libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
@@ -9474,7 +9484,16 @@ internal class NativeMainRuntimePort(
             }
             "native_genres_committed" -> {
                 val count = payload.optInt("changedCount", payload.optInt("changed_count", 0))
-                if (count <= 0) return false
+                if (count <= 0) {
+                    recordDiagnostic(
+                        name = "NATIVE_GENRES_PROJECTION_REFRESH_REJECTED",
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        result = "invalid_changed_count",
+                    )
+                    // The legacy bridge ignores invalid counts without retrying the event.
+                    return true
+                }
                 libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
                     name = "NATIVE_GENRES_PROJECTION_REFRESH",
