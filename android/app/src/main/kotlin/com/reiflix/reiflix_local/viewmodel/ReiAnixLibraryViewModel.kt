@@ -1309,10 +1309,25 @@ class ReiAnixLibraryViewModel(
     }
 
     fun refresh() {
-        // The repository starts the native scan only. After its terminal event,
+        // Explicit user refresh is a scan request. After its terminal event,
         // refreshNativeCatalog() reloads both the canonical catalog and the active
         // filtered page directly from SQLite.
         repository.refresh()
+    }
+
+    /**
+     * Reloads the canonical SQLite projection without requesting another filesystem scan.
+     * Use after a completed local mutation, player checkpoint, permission-state update,
+     * metadata/artwork commit, or catalog event.
+     */
+    fun refreshCatalogProjection() {
+        viewModelScope.launch {
+            if (appDependencies == null) {
+                refreshNativeCatalog()
+            } else {
+                refreshCanonicalCatalogAfterBootstrapValidation()
+            }
+        }
     }
 
     /**
