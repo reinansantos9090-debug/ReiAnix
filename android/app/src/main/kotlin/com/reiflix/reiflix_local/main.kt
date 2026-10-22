@@ -10755,32 +10755,24 @@ internal class NativeMainRuntimePort(
                     )
                     return true
                 }
-                val nativePersisted = payload.optBoolean("nativePersisted", payload.optBoolean("native_persisted", true))
-                val accepted = if (nativePersisted) {
-                    // Python's worker re-reads canonical settings after Kotlin's atomic commit;
-                    // it never trusts event values or performs a second write.
-                    settingsViewModel.refresh()
-                    recordDiagnostic(
-                        name = "SETTINGS_RUNTIME_BULK_APPLIED",
-                        requestId = requestId,
-                        result = "SUCCESS",
-                        context = mapOf("setting_count" to settings.size, "owner" to "kotlin"),
-                    )
-                    true
-                } else {
-                    applySettingsAtomically(
-                        values = settings,
-                        requestId = requestId,
-                        resultAction = "compose_settings_bulk_applied",
-                    )
-                }
+                // This event is emitted after the Kotlin settings owner has already
+                // committed the entire settings set atomically. main.py's
+                // _run_compose_settings_bulk_applied always re-read canonical settings
+                // and never wrote values from this delayed notification back to SQLite.
+                settingsViewModel.refresh()
+                recordDiagnostic(
+                    name = "SETTINGS_RUNTIME_BULK_APPLIED",
+                    requestId = requestId,
+                    result = "SUCCESS",
+                    context = mapOf("setting_count" to settings.size, "owner" to "kotlin"),
+                )
                 recordDiagnostic(
                     name = "SETTINGS_RUNTIME_BULK_APPLY",
                     requestId = requestId,
-                    result = if (accepted) "accepted" else "rejected",
-                    context = mapOf("settings_count" to settings.size, "native_persisted" to nativePersisted),
+                    result = "accepted",
+                    context = mapOf("settings_count" to settings.size, "native_persisted" to true),
                 )
-                accepted
+                true
             }
             "compose_settings_native_account_changed" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
