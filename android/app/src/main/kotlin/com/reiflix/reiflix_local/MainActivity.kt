@@ -416,7 +416,13 @@ class MainActivity : ComponentActivity() {
             }
             if (normalizedRequest != null && activePlayerRequestId != normalizedRequest) return false
             if (normalizedSession != null && activePlayerSessionId != normalizedSession) return false
-            if (normalizedInstance != null && activePlayerActivityInstanceId != normalizedInstance) return false
+            // Match the legacy invalidation guard: a missing current activity
+            // instance is tolerated, but a different known instance is stale.
+            if (
+                normalizedInstance != null &&
+                activePlayerActivityInstanceId != null &&
+                activePlayerActivityInstanceId != normalizedInstance
+            ) return false
             if (normalizedRequest == null && normalizedSession == null) return false
 
             activePlayerRequestId = null
