@@ -9239,9 +9239,24 @@ internal class NativeMainRuntimePort(
     fun dispatchNativeMailboxEnvelope(event: org.json.JSONObject): Boolean {
         val eventType = event.optString("type", "").trim()
         if (eventType.isEmpty()) return false
-        val payload = event.optJSONObject("payload")
-            ?.let { org.json.JSONObject(it.toString()) }
-            ?: org.json.JSONObject()
+        val rawPayload = event.opt("payload")
+        val payload = when {
+            rawPayload == null || rawPayload === org.json.JSONObject.NULL -> org.json.JSONObject()
+            rawPayload is org.json.JSONObject -> org.json.JSONObject(rawPayload.toString())
+            else -> {
+                recordDiagnostic(
+                    name = "NATIVE_EVENT_REJECTED",
+                    severity = "WARN",
+                    requestId = event.optString("requestId", "").trim().takeIf { it.isNotEmpty() },
+                    result = "invalid_payload_type",
+                    context = mapOf(
+                        "type" to eventType,
+                        "payload_type" to rawPayload.javaClass.simpleName,
+                    ),
+                )
+                return false
+            }
+        }
         val sourceCreatedAt = event.opt("createdAt")
         val sourceEventTimestamp = if (pythonTruthyJsonValue(sourceCreatedAt)) {
             sourceCreatedAt
