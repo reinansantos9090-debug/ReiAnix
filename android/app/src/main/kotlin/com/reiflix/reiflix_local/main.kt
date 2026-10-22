@@ -12029,6 +12029,50 @@ internal class NativeMainRuntimePort(
                                         "completion" to "FIRST_FRAME_RENDERED",
                                     ),
                                 )
+
+                                // main.py separately completed the pending "continue
+                                // watching" action once the first frame of a resumed
+                                // episode was confirmed. Reconstruct that decision from
+                                // the same canonical episode progress and persisted
+                                // player.resume setting; do not count watched, invalid,
+                                // zero-progress, or resume-disabled starts as continuations.
+                                val completedEpisodeId = mutableSnapshot.value.activeEpisodeId
+                                    ?: longValue("episodeId", "episode_id")
+                                if (completedEpisodeId != null && completedEpisodeId > 0L) {
+                                    launchTracked("continue_completed", lane = "playback") {
+                                        val episodeNavigation = withContext(Dispatchers.IO) {
+                                            dependencies.sqliteLibraryRepository.playerNavigation(completedEpisodeId)
+                                        } ?: return@launchTracked
+                                        val persistedPreferences = withContext(Dispatchers.IO) {
+                                            dependencies.sqliteSettingsRepository.allPreferences()
+                                        }
+                                        val resumeEnabled = (
+                                            persistedPreferences["player.resume"]
+                                                ?: ReiAnixSettingsContract.defaultFor("player.resume").orEmpty()
+                                            ).toBooleanStrictOrNull() ?: true
+                                        val episode = episodeNavigation.current
+                                        val playbackStart = resolveNativePlaybackStartPosition(
+                                            progressSeconds = episode.progress,
+                                            durationSeconds = episode.duration,
+                                            watched = episode.watched,
+                                            resumeEnabled = resumeEnabled,
+                                        )
+                                        if (playbackStart.positionSeconds > 0.0) {
+                                            recordDiagnostic(
+                                                name = "CONTINUE_COMPLETED",
+                                                requestId = requestId,
+                                                sessionId = sessionId,
+                                                result = "completed",
+                                                context = mapOf(
+                                                    "episode_id" to episode.id,
+                                                    "anime_id" to episode.animeId,
+                                                    "resume_seconds" to playbackStart.positionSeconds,
+                                                    "completion" to "FIRST_FRAME_RENDERED",
+                                                ),
+                                            )
+                                        }
+                                    }
+                                }
                             }
                             recordLegacyDiagnosticProjection()
                             true
