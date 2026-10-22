@@ -9571,29 +9571,86 @@ internal class NativeMainRuntimePort(
                 false
             }
             "compose_settings_set" -> {
-                val key = stringValue("key") ?: return false
-                val value = if (payload.has("value")) payload.opt("value")?.toString().orEmpty() else ""
-                if (ReiAnixSettingsContract.definitions[key] == null) return false
-                val requestId = eventRequestId ?: stringValue("requestId")
-                if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_settings")) {
+                val key = stringValue("key") ?: stringValue("setting_key").orEmpty()
+                val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
+                if (requestId.isNullOrBlank() || key.isBlank()) {
                     recordDiagnostic(
-                        name = "COMPOSE_SETTINGS_DUPLICATE_OR_INVALID_REQUEST",
+                        name = "COMPOSE_SETTINGS_COMMAND_REJECTED",
                         severity = "WARN",
                         requestId = requestId,
-                        result = "ignored",
+                        result = "missing_request_id_or_key",
                         context = mapOf("key" to key),
                     )
-                    return false
+                    // Legacy main.py logs and continues for an incomplete command;
+                    // consume it so the same malformed mailbox item is not replayed.
+                    return true
                 }
+                if (!claimRequestId(requestId, "compose_settings")) {
+                    recordDiagnostic(
+                        name = "COMPOSE_SETTINGS_DUPLICATE_IGNORED",
+                        severity = "INFO",
+                        requestId = requestId,
+                        result = "duplicate_request",
+                        context = mapOf("key" to key),
+                    )
+                    return true
+                }
+                if (ReiAnixSettingsContract.definitions[key] == null) {
+                    recordDiagnostic(
+                        name = "SETTINGS_COMMAND_UNSUPPORTED",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = "unsupported_setting",
+                        context = mapOf("key" to key),
+                    )
+                    publishOperationResult(
+                        requestId = requestId,
+                        action = "set:" + key,
+                        status = "ERROR",
+                        operationState = "ERROR",
+                        message = "Configuração não suportada.",
+                        error = "unsupported_setting",
+                        payload = org.json.JSONObject().put("key", key),
+                    )
+                    return true
+                }
+                val value = if (payload.has("value")) payload.opt("value")?.toString().orEmpty()
+                    else payload.optString("setting_value", "")
                 if (payload.optBoolean("nativePersisted", payload.optBoolean("native_persisted", false))) {
+                    // The canonical SQLite write already happened in Kotlin's settings owner.
+                    // Re-read the committed projection without writing the value a second time.
                     settingsViewModel.refresh()
-                    recordDiagnostic("SETTINGS_RUNTIME_APPLY", requestId = requestId,
-                        result = "native_persisted_projection_refresh", context = mapOf("key" to key))
+                    recordDiagnostic(
+                        name = "SETTINGS_RUNTIME_APPLY",
+                        requestId = requestId,
+                        result = "native_persisted_projection_refresh",
+                        context = mapOf("key" to key),
+                    )
+                    recordDiagnostic(
+                        name = "SETTINGS_SNAPSHOT_PUBLISHED",
+                        requestId = requestId,
+                        result = "setting:" + key,
+                    )
                     true
                 } else {
                     val accepted = setSettingSerialized(key, value, requestId)
-                    recordDiagnostic("SETTINGS_COMMAND_RECEIVED", requestId = requestId,
-                        result = if (accepted) "queued" else "rejected", context = mapOf("key" to key))
+                    recordDiagnostic(
+                        name = "SETTINGS_COMMAND_RECEIVED",
+                        requestId = requestId,
+                        result = if (accepted) "queued" else "rejected",
+                        context = mapOf("key" to key),
+                    )
+                    if (!accepted) {
+                        publishOperationResult(
+                            requestId = requestId,
+                            action = "set:" + key,
+                            status = "ERROR",
+                            operationState = "ERROR",
+                            message = "Não foi possível agendar a alteração da configuração.",
+                            error = "operation_rejected",
+                            payload = org.json.JSONObject().put("key", key),
+                        )
+                    }
                     accepted
                 }
             }
