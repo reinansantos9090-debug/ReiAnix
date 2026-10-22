@@ -62,6 +62,40 @@ import java.util.Locale
 import java.security.MessageDigest
 
 /**
+ * Port of the persisted-progress validation performed by legacy main.py before
+ * the native player handoff. Unknown duration keeps any finite non-negative
+ * resume position; known duration rejects persisted progress beyond the media.
+ */
+internal data class NativePlaybackStartPosition(
+    val positionSeconds: Double,
+    val progressInvalid: Boolean,
+)
+
+internal fun resolveNativePlaybackStartPosition(
+    progressSeconds: Double?,
+    durationSeconds: Double?,
+    watched: Boolean?,
+    resumeEnabled: Boolean,
+): NativePlaybackStartPosition {
+    val rawProgress = progressSeconds ?: 0.0
+    // Python's max(0.0, duration) treats null/negative/NaN durations as unknown,
+    // while positive infinity remains a positive duration just as in the legacy path.
+    val knownDuration = durationSeconds?.takeIf { it > 0.0 } ?: 0.0
+    val invalid = resumeEnabled && (
+        !rawProgress.isFinite() ||
+            rawProgress < 0.0 ||
+            (knownDuration > 0.0 && rawProgress > knownDuration)
+        )
+    val position = when {
+        !resumeEnabled -> 0.0
+        invalid -> 0.0
+        watched == true -> 0.0
+        else -> rawProgress.coerceAtLeast(0.0)
+    }
+    return NativePlaybackStartPosition(positionSeconds = position, progressInvalid = invalid)
+}
+
+/**
  * Native Android entry-point orchestration shared by the launcher Activity.
  *
  * ReiAnixApplication remains the single owner of the process dependency graph.
