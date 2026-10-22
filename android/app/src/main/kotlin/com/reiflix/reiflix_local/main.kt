@@ -7506,12 +7506,27 @@ internal class NativeMainRuntimePort(
                     }
                 }
                 when (type) {
-                    "saf_cancelled" -> finishPendingSafSelection(
-                        eventRequestId = correlatedRequestId,
-                        status = "CANCELLED",
-                        message = stringValue("reason", "message") ?: "Seleção de pasta cancelada.",
-                        payload = payload,
-                    )
+                    "saf_cancelled" -> {
+                        val cancelMessage = stringValue("reason", "message") ?: "Seleção de pasta cancelada."
+                        finishPendingSafSelection(
+                            eventRequestId = correlatedRequestId,
+                            status = "CANCELLED",
+                            message = cancelMessage,
+                            payload = payload,
+                        )
+                        if (storageSnapshot().configuredSafRoots.isEmpty()) {
+                            publishStorageOnboardingState(
+                                state = "NEEDS_FOLDER",
+                                message = "O ReiAnix precisa de acesso à pasta onde seus animes estão armazenados.",
+                                error = null,
+                                dismissed = true,
+                                diagnosticEvent = "STORAGE_PICKER_CANCELLED",
+                                result = "picker_cancelled",
+                                requestId = correlatedRequestId,
+                            )
+                        }
+                        true
+                    }
                     "saf_error" -> {
                         val message = stringValue("message", "reason", "status")
                             ?: "Não foi possível concluir a operação de armazenamento."
@@ -7763,13 +7778,42 @@ internal class NativeMainRuntimePort(
                                 !treeUri.isNullOrBlank() &&
                                 StorageAuthorization.safAccess(treeUri, persistedReadUris) == SafAccessLevel.AVAILABLE &&
                                 mergeAuthoritativeSafRoot(treeUri)
+                            val selectionMessage = when {
+                                authorized -> "Pasta autorizada e configurada."
+                                treeUri.isBlank() -> "O Android retornou a seleção sem informar a pasta. Toque em ESCOLHER PASTA para tentar novamente."
+                                !granted -> "O Android não confirmou o acesso à pasta selecionada. Toque em ESCOLHER PASTA para tentar novamente."
+                                else -> "O Android autorizou a pasta, mas o ReiAnix não conseguiu confirmar essa fonte da biblioteca. Toque em ESCOLHER PASTA para tentar novamente."
+                            }
+                            val selectionError = when {
+                                authorized -> null
+                                treeUri.isBlank() -> "selected_saf_uri_missing"
+                                !granted -> "selected_saf_grant_missing"
+                                else -> "selected_saf_source_validation_failed"
+                            }
                             finishPendingSafSelection(
                                 eventRequestId = correlatedRequestId,
                                 status = if (authorized) "COMPLETED" else "ERROR",
-                                message = if (authorized) "Pasta autorizada e configurada."
-                                    else "O Android não confirmou uma fonte SAF válida para a biblioteca.",
-                                error = if (authorized) null else "saf_source_validation_failed",
+                                message = selectionMessage,
+                                error = selectionError,
                                 payload = payload,
+                            )
+                            publishStorageOnboardingState(
+                                state = if (authorized) "READY" else "ERROR",
+                                message = if (authorized) null else selectionMessage,
+                                error = selectionError,
+                                dismissed = false,
+                                diagnosticEvent = when {
+                                    authorized -> "STORAGE_READY"
+                                    !granted || treeUri.isBlank() -> "STORAGE_PERMISSION_MISSING"
+                                    else -> "STORAGE_SOURCE_VALIDATION_FAILED"
+                                },
+                                result = when {
+                                    authorized -> "library_root_valid"
+                                    treeUri.isBlank() -> "selected_tree_uri_missing"
+                                    !granted -> "selected_tree_not_granted"
+                                    else -> "configured_source_missing"
+                                },
+                                requestId = correlatedRequestId,
                             )
                         }
                     }
