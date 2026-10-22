@@ -7059,7 +7059,7 @@ internal class NativeMainRuntimePort(
                 )
                 return false
             }
-            if (!requestLibraryScan()) {
+            if (!requestLibraryScan(requestId = requestId, resultAction = "scan_library")) {
                 HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected")
                 recordDiagnostic(
                     name = "HOME_REFRESH_FAILED",
@@ -7113,7 +7113,7 @@ internal class NativeMainRuntimePort(
                             )
                             return@launch
                         }
-                        if (!requestLibraryScan()) {
+                        if (!requestLibraryScan(requestId = requestId, resultAction = "scan_library")) {
                             HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected_after_capability_check")
                             recordDiagnostic(
                                 name = "HOME_REFRESH_FAILED",
