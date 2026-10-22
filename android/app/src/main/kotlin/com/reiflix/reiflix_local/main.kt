@@ -5183,13 +5183,75 @@ internal class NativeMainRuntimePort(
         return accepted
     }
 
-    fun createRecoverySafetySnapshot(): Boolean =
-        launchTracked("create_recovery_safety_snapshot", lane = "backup") {
-            val file = withContext(Dispatchers.IO) { backupService.createRecoverySafetySnapshotForUser() }
-            publish(action = "create_recovery_safety_snapshot", transform = {
-                it.copy(lastArtifactPath = file.absolutePath)
-            })
+    fun createRecoverySafetySnapshot(
+        requestId: String? = null,
+        resultAction: String = "create_recovery_safety_snapshot",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Snapshot de segurança enfileirado.",
+            )
         }
+        val accepted = launchTracked("create_recovery_safety_snapshot", lane = "backup") {
+            try {
+                val file = withContext(Dispatchers.IO) { backupService.createRecoverySafetySnapshotForUser() }
+                publish(action = "create_recovery_safety_snapshot", transform = {
+                    it.copy(lastArtifactPath = file.absolutePath)
+                })
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Snapshot de segurança criado.",
+                        payload = org.json.JSONObject()
+                            .put("fileName", file.name)
+                            .put("sizeBytes", file.length()),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A criação do snapshot foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível criar o snapshot de segurança.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A criação do snapshot não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
+    }
 
     fun restoreRecoveryBackup(
         archive: File,
@@ -7538,7 +7600,10 @@ internal class NativeMainRuntimePort(
                     resultAction = normalized,
                 )
             }
-            "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
+            "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                resultAction = normalized,
+            )
             "restore_recovery_backup" -> {
                 val archive = nonBlank("archivePath")?.let(::resolvePrivateBackupFile) ?: return false
                 restoreRecoveryBackup(
