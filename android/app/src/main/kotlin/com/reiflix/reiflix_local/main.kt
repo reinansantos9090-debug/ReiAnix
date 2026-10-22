@@ -11094,9 +11094,31 @@ internal class NativeMainRuntimePort(
                 val requestId = eventRequestId ?: stringValue("requestId")
                 val sessionId = stringValue("playerSessionId", "sessionId", "session_id")
                 val activityInstanceId = stringValue("activityInstanceId", "activity_instance_id")
+                fun recordLegacyDiagnosticProjection() {
+                    // main.py recorded every diagnostic envelope after its specific
+                    // state handling, unless a stale callback explicitly continued.
+                    val diagnosticSource = firstTruthyJsonText(payload, "source")
+                        .takeIf { it.isNotEmpty() } ?: "NativeMainRuntimePort"
+                    recordDiagnostic(
+                        name = eventName,
+                        severity = stringValue("severity") ?: "INFO",
+                        result = firstTruthyJsonText(payload, "result", "access")
+                            .takeIf { it.isNotEmpty() },
+                        requestId = requestId,
+                        scanId = firstTruthyJsonText(payload, "scanId", "scan_id")
+                            .takeIf { it.isNotEmpty() },
+                        sessionId = sessionId,
+                        source = diagnosticSource,
+                        context = mapOf("event_type" to type),
+                    )
+                }
                 when (eventName) {
                     "PLAYER_SESSION_CREATED" -> {
-                        val createdSession = sessionId ?: stringValue("result") ?: return false
+                        val createdSession = sessionId ?: stringValue("result")
+                        if (createdSession.isNullOrBlank()) {
+                            recordLegacyDiagnosticProjection()
+                            return false
+                        }
                         val current = mutableSnapshot.value
                         if (current.playerSessionActive &&
                             current.activePlayerSessionId != null &&
@@ -11136,10 +11158,15 @@ internal class NativeMainRuntimePort(
                                 firstTruthyJsonLong(payload, "playerGeneration", "generation").takeIf { it != 0L },
                             )
                         }
+                        recordLegacyDiagnosticProjection()
                         true
                     }
                     "PLAYER_SESSION_INVALIDATED" -> {
-                        val invalidSession = sessionId ?: return false
+                        val invalidSession = sessionId
+                        if (invalidSession.isNullOrBlank()) {
+                            recordLegacyDiagnosticProjection()
+                            return false
+                        }
                         val current = mutableSnapshot.value
                         if (current.activePlayerSessionId != invalidSession ||
                             (!activityInstanceId.isNullOrBlank() &&
@@ -11153,20 +11180,24 @@ internal class NativeMainRuntimePort(
                                 sessionId = invalidSession,
                                 result = "stale_session_invalidated",
                             )
+                            recordLegacyDiagnosticProjection()
                             return false
                         }
-                        invalidatePlayerSession(
+                        val invalidated = invalidatePlayerSession(
                             reason = stringValue("reason") ?: "native_session_invalidated",
                             expectedSessionId = invalidSession,
                             expectedRequestId = requestId,
                         )
+                        recordLegacyDiagnosticProjection()
+                        invalidated
                     }
                     "PLAYER_HANDOFF_DISPATCHED" -> {
                         val active = mutableSnapshot.value
-                        if (requestId.isNullOrBlank() ||
-                            !active.playerSessionActive ||
-                            active.activePlayerSessionId != sessionId
-                        ) {
+                        if (requestId.isNullOrBlank()) {
+                            recordLegacyDiagnosticProjection()
+                            return false
+                        }
+                        if (!active.playerSessionActive || active.activePlayerSessionId != sessionId) {
                             recordDiagnostic(
                                 name = "PLAYER_CALLBACK_STALE",
                                 severity = "WARN",
@@ -11179,6 +11210,7 @@ internal class NativeMainRuntimePort(
                         publish(action = "player_handoff_dispatched", transform = {
                             it.copy(activePlayerRequestId = requestId)
                         })
+                        recordLegacyDiagnosticProjection()
                         true
                     }
                     "PLAYER_ACTIVITY_RESULT" -> {
@@ -11198,11 +11230,15 @@ internal class NativeMainRuntimePort(
                                     activePlayerActivityInstanceId = null,
                                 )
                             })
+                            recordLegacyDiagnosticProjection()
                             true
-                        } else false
+                        } else {
+                            recordLegacyDiagnosticProjection()
+                            false
+                        }
                     }
                     "PLAYER_LIFECYCLE" -> {
-                        val lifecycle = stringValue("lifecycle") ?: return false
+                        val lifecycle = stringValue("lifecycle").orEmpty()
                         val normalizedLifecycle = lifecycle.lowercase(Locale.ROOT)
                         val current = mutableSnapshot.value
                         if (
@@ -11228,9 +11264,15 @@ internal class NativeMainRuntimePort(
                         if (!sessionId.isNullOrBlank() &&
                             !current.activePlayerSessionId.isNullOrBlank() &&
                             current.activePlayerSessionId != sessionId
-                        ) return false
+                        ) {
+                            recordLegacyDiagnosticProjection()
+                            return false
+                        }
                         if (normalizedLifecycle in setOf("oncreate", "onnewintent", "onstart", "onresume")) {
-                            if (sessionId.isNullOrBlank()) return false
+                            if (sessionId.isNullOrBlank()) {
+                                recordLegacyDiagnosticProjection()
+                                return false
+                            }
                             // PLAYER_LIFECYCLE did not require requestId in the legacy
                             // handler; an omitted ID keeps the active request correlation.
                             val correlatedRequestId = requestId?.takeIf { it.isNotBlank() }
@@ -11254,6 +11296,7 @@ internal class NativeMainRuntimePort(
                             if (state in setOf("EXITING", "DESTROYED")) {
                                 invalidatePlayerSession("player_lifecycle_$lifecycle", sessionId, requestId)
                             }
+                            recordLegacyDiagnosticProjection()
                             true
                         } else if (
                             !sessionId.isNullOrBlank() &&
@@ -11266,13 +11309,16 @@ internal class NativeMainRuntimePort(
                             // Preserve the legacy lifecycle rule: an exiting session
                             // is invalidated on pause/stop, and any current session is
                             // invalidated on destroy even if requestId was omitted.
-                            invalidatePlayerSession(
+                            val invalidated = invalidatePlayerSession(
                                 "player_lifecycle_$lifecycle",
                                 sessionId,
                                 requestId,
                             )
+                            recordLegacyDiagnosticProjection()
+                            invalidated
                         } else {
                             NativeLifecycleCoordinator.onEvent(lifecycle)
+                            recordLegacyDiagnosticProjection()
                             true
                         }
                     }
@@ -11292,6 +11338,7 @@ internal class NativeMainRuntimePort(
                                 sessionId = sessionId,
                                 result = validation.reason,
                             )
+                            recordLegacyDiagnosticProjection()
                             false
                         } else {
                             recordDiagnostic(
@@ -11305,27 +11352,12 @@ internal class NativeMainRuntimePort(
                                     "transition_generation" to payload.optLong("transitionGeneration", 0L),
                                 ),
                             )
+                            recordLegacyDiagnosticProjection()
                             true
                         }
                     }
                     else -> {
-                        // Match main.py's generic diagnostic projection: the source
-                        // and scan correlation are part of the recorded event, while
-                        // "access" is the fallback when no truthy result was supplied.
-                        val diagnosticSource = firstTruthyJsonText(payload, "source")
-                            .takeIf { it.isNotEmpty() } ?: "NativeMainRuntimePort"
-                        recordDiagnostic(
-                            name = eventName,
-                            severity = stringValue("severity") ?: "INFO",
-                            result = firstTruthyJsonText(payload, "result", "access")
-                                .takeIf { it.isNotEmpty() },
-                            requestId = requestId,
-                            scanId = firstTruthyJsonText(payload, "scanId", "scan_id")
-                                .takeIf { it.isNotEmpty() },
-                            sessionId = sessionId,
-                            source = diagnosticSource,
-                            context = mapOf("event_type" to type),
-                        )
+                        recordLegacyDiagnosticProjection()
                         true
                     }
                 }
