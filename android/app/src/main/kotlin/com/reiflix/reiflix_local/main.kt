@@ -10818,9 +10818,12 @@ internal class NativeMainRuntimePort(
                     return false
                 }
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
-                val position = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
+                // Legacy main.py treats omitted/negative checkpoint values as zero
+                // rather than dropping an otherwise valid pause/completion callback.
+                val position = payload.optLong("positionMs", payload.optLong("position_ms", 0L))
+                    .coerceAtLeast(0L)
                 val duration = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
-                if (position < 0L) return false
+                    .coerceAtLeast(0L)
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // NativePlayerActivity already committed this checkpoint to canonical SQLite.
                     // Validate the callback and refresh Compose, but never issue a second write.
@@ -10974,9 +10977,12 @@ internal class NativeMainRuntimePort(
                     return false
                 }
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
-                val positionMs = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
+                // Python's max(0.0, float(value or 0.0)) clamps negative and
+                // defaults missing checkpoints to zero before saving progress.
+                val positionMs = payload.optLong("positionMs", payload.optLong("position_ms", 0L))
+                    .coerceAtLeast(0L)
                 val durationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
-                if (positionMs < 0L) return false
+                    .coerceAtLeast(0L)
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // The player saved this exact episode checkpoint before publishing the mailbox event.
                     libraryViewModel.refreshCatalogProjection()
