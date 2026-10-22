@@ -9638,7 +9638,7 @@ internal class NativeMainRuntimePort(
                 }
                 val value = if (payload.has("value")) payload.opt("value")?.toString().orEmpty()
                     else payload.optString("setting_value", "")
-                if (payload.optBoolean("nativePersisted", payload.optBoolean("native_persisted", false))) {
+                if (payload.opt("nativePersisted") == true) {
                     // The canonical SQLite write already happened in Kotlin's settings owner.
                     // Re-read the committed projection without writing the value a second time.
                     settingsViewModel.refresh()
@@ -9707,7 +9707,7 @@ internal class NativeMainRuntimePort(
                     )
                     return true
                 }
-                if (payload.optBoolean("nativeHandled", payload.optBoolean("native_handled", false))) {
+                if (payload.opt("nativeHandled") == true) {
                     // Native settings repositories publish a compatibility event after
                     // committing actions such as artwork-cache clearing. Consume it as
                     // a projection/acknowledgement only; do not execute the action twice.
@@ -9809,7 +9809,7 @@ internal class NativeMainRuntimePort(
             "broad_storage_permission", "broad_storage_status", "broad_storage_error" -> {
                 val correlatedRequestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
                 if (type == "volume_changed") {
-                    val nativeStorageOwner = payload.optBoolean("nativeStorageOwner", false)
+                    val nativeStorageOwner = payload.opt("nativeStorageOwner") == true
                     if (nativeStorageOwner && payload.optBoolean("nativeVolumeStateIgnored", false)) {
                         recordDiagnostic(
                             name = "NATIVE_VOLUME_CHANGE_IGNORED",
@@ -9827,7 +9827,7 @@ internal class NativeMainRuntimePort(
                             volumeEvent.optLong("timestamp", System.currentTimeMillis()),
                         )
                     }
-                    val nativeScanDispatchOwner = payload.optBoolean("nativeScanDispatchOwner", false)
+                    val nativeScanDispatchOwner = payload.opt("nativeScanDispatchOwner") == true
                     return launchTracked("volume_changed", lane = "storage") {
                         val volumeResult = if (nativeStorageOwner) {
                             org.json.JSONObject().put("ignored", false)
@@ -10166,10 +10166,7 @@ internal class NativeMainRuntimePort(
                                 payload.optLong("timestamp", 0L),
                             ),
                         )
-                        val nativeFolderConfigOwner = payload.optBoolean(
-                            "nativeFolderConfigOwner",
-                            payload.optBoolean("native_folder_config_owner", false),
-                        )
+                        val nativeFolderConfigOwner = payload.opt("nativeFolderConfigOwner") == true
                         if (!granted && !treeUri.isNullOrBlank()) {
                             launchTracked("saf_permission_revoked", lane = "storage") {
                                 val changed = markSafSourceUnavailable(
@@ -10414,10 +10411,7 @@ internal class NativeMainRuntimePort(
                 val newUri = stringValue("newUri", "new_uri") ?: return false
                 val name = stringValue("name", "displayName") ?: return false
                 val treeUri = stringValue("treeUri", "tree_uri") ?: return false
-                val nativeOwner = payload.optBoolean(
-                    "nativeIdentityOwner",
-                    payload.optBoolean("native_identity_owner", false),
-                )
+                val nativeOwner = payload.opt("nativeIdentityOwner") == true
                 if (nativeOwner) {
                     // A newer Kotlin scanner already committed the canonical re-key.
                     libraryViewModel.refreshNativeFolders()
