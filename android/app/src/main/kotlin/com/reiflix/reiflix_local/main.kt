@@ -10917,7 +10917,9 @@ internal class NativeMainRuntimePort(
                             episodeId = episodeId,
                             positionMs = position,
                             durationMs = duration.takeIf { it > 0L },
-                            completed = type == "player_completed" || payload.optBoolean("completed", false),
+                            // Python's LibraryStore computes watched from the canonical
+                            // completion ratio; the event type alone must not force completion.
+                            completed = false,
                             playedAtEpochSeconds = eventTime.epochSeconds ?: System.currentTimeMillis() / 1000.0,
                             callbackPayload = payload,
                             callbackRequestId = eventRequestId,
@@ -11135,7 +11137,9 @@ internal class NativeMainRuntimePort(
                             episodeId = episodeId,
                             positionMs = positionMs,
                             durationMs = durationMs.takeIf { it > 0L },
-                            completed = payload.optBoolean("completed", false),
+                            // Match LibraryStore.save_progress: the canonical ratio decides
+                            // completion, not a mailbox flag.
+                            completed = false,
                             playedAtEpochSeconds = eventTime.epochSeconds ?: System.currentTimeMillis() / 1000.0,
                             callbackPayload = payload,
                             callbackRequestId = eventRequestId,
@@ -11305,7 +11309,8 @@ internal class NativeMainRuntimePort(
                                             positionMs = exitPositionMs,
                                             durationMs = exitDurationMs.takeIf { it > 0L },
                                             playedAtEpochSeconds = timestampSeconds,
-                                            completed = payload.optBoolean("completed", false),
+                                            // The legacy store derives watched from progress/duration.
+                                            completed = false,
                                         )
                                         exitProgressResult = "SAVED"
                                     }
