@@ -855,7 +855,7 @@ internal class NativeMainRuntimePort(
                         delay(100)
                         continue
                     }
-                    if (changed > 0) libraryViewModel.refresh()
+                    if (changed > 0) libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "CATALOG_METADATA_HYDRATION_FINISHED",
                         result = if (changed > 0) "updated" else "no_unmatched_metadata",
@@ -1614,7 +1614,7 @@ internal class NativeMainRuntimePort(
                 if (!refreshed) {
                     throw IllegalStateException("O catálogo nativo ainda não pode ser atualizado antes da validação do banco.")
                 }
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 settingsViewModel.refresh()
                 correlatedRequestId?.let {
                     publishOperationResult(
@@ -1883,7 +1883,7 @@ internal class NativeMainRuntimePort(
                 playedAtEpochSeconds = playedAtEpochSeconds,
                 completed = completed,
             )
-            libraryViewModel.refresh()
+            libraryViewModel.refreshCatalogProjection()
             publish(action = "save_playback_progress", transform = {
                 it.copy(
                     lastResultJson = org.json.JSONObject()
@@ -1915,7 +1915,7 @@ internal class NativeMainRuntimePort(
                 }
             }
             val progress = dependencies.consumptionService.setWatched(episodeId, watched)
-            libraryViewModel.refresh()
+            libraryViewModel.refreshCatalogProjection()
             publish(action = "mark_episode_watched", transform = {
                 it.copy(
                     lastResultJson = org.json.JSONObject()
@@ -3012,7 +3012,7 @@ internal class NativeMainRuntimePort(
         mutableStorageState.value = snapshot
         settingsViewModel.refresh()
         libraryViewModel.refreshNativeFolders()
-        libraryViewModel.refresh()
+        libraryViewModel.refreshCatalogProjection()
         recordDiagnostic(
             name = "NATIVE_STORAGE_CAPABILITIES_APPLIED",
             requestId = pendingSafSelectionRequestId,
@@ -3544,7 +3544,7 @@ internal class NativeMainRuntimePort(
         updateSafCapabilities(availableConfiguredPaths)
         settingsViewModel.refresh()
         libraryViewModel.refreshNativeFolders()
-        libraryViewModel.refresh()
+        libraryViewModel.refreshCatalogProjection()
         mutableStorageState.value = storageSnapshot()
 
         // Use the same onboarding transition path as permission/removal events.
@@ -3953,7 +3953,7 @@ internal class NativeMainRuntimePort(
                 )
                 libraryViewModel.refreshNativeFolders()
                 settingsViewModel.refresh()
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 mutableStorageState.value = storageSnapshot()
                 finishPendingSafSelection(
                     eventRequestId = request,
@@ -3978,7 +3978,7 @@ internal class NativeMainRuntimePort(
             recordStorageMutation("saf_selection_recovered_from_inventory", treeUri)
             libraryViewModel.refreshNativeFolders()
             settingsViewModel.refresh()
-            libraryViewModel.refresh()
+            libraryViewModel.refreshCatalogProjection()
             mutableStorageState.value = storageSnapshot()
             activity.reportNativeStorageOnboardingState(
                 phase = NativeStorageOnboardingState.PHASE_READY,
@@ -4130,7 +4130,7 @@ internal class NativeMainRuntimePort(
         }
         if (repaired > 0) {
             libraryViewModel.refreshNativeFolders()
-            libraryViewModel.refresh()
+            libraryViewModel.refreshCatalogProjection()
             mutableStorageState.value = storageSnapshot()
         }
         return repaired
@@ -4640,7 +4640,7 @@ internal class NativeMainRuntimePort(
         resumeRuntimeTasks()
         ensureNativeCommandDispatcher()
         settingsViewModel.refresh()
-        libraryViewModel.refresh()
+        libraryViewModel.refreshCatalogProjection()
         ensureNativeMailboxPoller()
         showInterruptedScanNoticeIfNeeded()
         publish(action = "runtime_reconnect")
@@ -4675,20 +4675,20 @@ internal class NativeMainRuntimePort(
         val normalized = routeForScreen(route).ifBlank { route.trim() }
         if (normalized == mutableSnapshot.value.route) {
             if (normalized == ReiAnixRoutes.SETTINGS) settingsViewModel.refresh()
-            else libraryViewModel.refresh()
+            else libraryViewModel.refreshCatalogProjection()
         }
         publish(action = "drop_screen_cache", transform = { it.copy(generation = it.generation + 1L) })
     }
 
     fun clearScreenCache() {
-        libraryViewModel.refresh()
+        libraryViewModel.refreshCatalogProjection()
         settingsViewModel.refresh()
         publish(action = "clear_screen_cache", transform = { it.copy(generation = it.generation + 1L) })
     }
 
     fun invalidateCatalogViews(animeId: Long? = null) {
         if (animeId != null && animeId > 0L) libraryViewModel.refreshDetails(animeId)
-        libraryViewModel.refresh()
+        libraryViewModel.refreshCatalogProjection()
         publish(action = "invalidate_catalog_views", transform = { it.copy(generation = it.generation + 1L) })
     }
 
@@ -5213,7 +5213,7 @@ internal class NativeMainRuntimePort(
                         "warnings_count" to result.warnings.size,
                     ),
                 )
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 settingsViewModel.refresh()
                 scheduleCatalogMetadataHydration("backup_restored")
                 scheduleThumbnailReconciliation("backup_restored")
@@ -5436,7 +5436,7 @@ internal class NativeMainRuntimePort(
                         }
                     }
                 }
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 settingsViewModel.refresh()
                 scheduleCatalogMetadataHydration("recovery_backup_restored")
                 scheduleThumbnailReconciliation("recovery_backup_restored")
@@ -5585,7 +5585,7 @@ internal class NativeMainRuntimePort(
             publish(action = "reconcile_restored_file_availability", transform = {
                 it.copy(lastResultJson = org.json.JSONObject().put("updatedRows", count).toString())
             })
-            libraryViewModel.refresh()
+            libraryViewModel.refreshCatalogProjection()
         }
 
     /**
@@ -5648,7 +5648,7 @@ internal class NativeMainRuntimePort(
                 val updated = withContext(Dispatchers.IO) {
                     backupService.reconcileRestoredFileAvailability()
                 }
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 scheduleCatalogMetadataHydration("post_restore_reconciliation")
                 scheduleThumbnailReconciliation("post_restore_reconciliation")
 
@@ -6010,7 +6010,7 @@ internal class NativeMainRuntimePort(
         launchTracked("account_changed", lane = "settings") {
             setAccountState(state, reason)
             settingsViewModel.refresh()
-            libraryViewModel.refresh()
+            libraryViewModel.refreshCatalogProjection()
         }
 
     fun requestRecoveryDiagnostic(): Boolean = exportDiagnosticsJson()
@@ -6312,7 +6312,7 @@ internal class NativeMainRuntimePort(
                 }
                 if (!removed) throw IllegalStateException("A pasta não pôde ser removida do catálogo local.")
                 libraryViewModel.refreshNativeFolders()
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 if (pendingFolderRemovalRequestId == resolvedRequestId) {
                     pendingFolderRemovalRequestId = null
                 }
@@ -6580,7 +6580,7 @@ internal class NativeMainRuntimePort(
                         }
                     }
                 }
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 val resultPayload = org.json.JSONObject()
                     .put("removed", removed + legacyRemoved)
                     .put("managedRemoved", removed)
@@ -6920,7 +6920,7 @@ internal class NativeMainRuntimePort(
      */
     fun onCatalogChanged(refreshDetailsForAnimeId: Long? = null): Boolean =
         launchTracked("catalog_changed", lane = "library") {
-            libraryViewModel.refresh()
+            libraryViewModel.refreshCatalogProjection()
             settingsViewModel.refresh()
             if (refreshDetailsForAnimeId != null && refreshDetailsForAnimeId > 0L) {
                 libraryViewModel.refreshDetails(refreshDetailsForAnimeId)
@@ -7596,7 +7596,7 @@ internal class NativeMainRuntimePort(
                     }
                 }
                 val progress = dependencies.consumptionService.setWatched(episodeId, watched)
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 scheduleCatalogMetadataHydration("catalog_changed")
                 scheduleThumbnailReconciliation("catalog_changed")
                 val result = org.json.JSONObject()
@@ -7910,7 +7910,7 @@ internal class NativeMainRuntimePort(
                         throw IllegalStateException(result.error.toString())
                     }
                     libraryViewModel.refreshDetails(resolvedAnimeId)
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     settingsViewModel.refresh()
                     publish(
                         action = "associate_anilist",
@@ -8475,7 +8475,7 @@ internal class NativeMainRuntimePort(
                 refreshAuthoritativeStorageSnapshot(payload, payload.optLong("createdAt", 0L))
                 settingsViewModel.refresh()
                 libraryViewModel.refreshNativeFolders()
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
                     name = "STORAGE_PERMISSION_CANCELLED",
                     requestId = correlatedRequestId,
@@ -8501,7 +8501,7 @@ internal class NativeMainRuntimePort(
                 // The Python metadata listener republishes the catalog for all
                 // translation outcomes; only successful/cache-hit events hydrate
                 // Details, while failures still refresh the observable status.
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
                     name = "METADATA_TRANSLATION_PROJECTION_REFRESH",
                     severity = if (type == "translation_failed") "WARN" else "INFO",
@@ -8517,7 +8517,7 @@ internal class NativeMainRuntimePort(
             "anilist_metadata_committed" -> {
                 val animeId = longValue("animeId", "anime_id") ?: return false
                 refreshCurrentDetails(animeId)
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
                     name = "ANILIST_METADATA_PROJECTION_REFRESH",
                     requestId = eventRequestId ?: stringValue("requestId"),
@@ -8529,7 +8529,7 @@ internal class NativeMainRuntimePort(
             "native_genres_committed" -> {
                 val count = payload.optInt("changedCount", payload.optInt("changed_count", 0))
                 if (count <= 0) return false
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
                     name = "NATIVE_GENRES_PROJECTION_REFRESH",
                     requestId = eventRequestId ?: stringValue("requestId"),
@@ -8580,7 +8580,7 @@ internal class NativeMainRuntimePort(
                     }
                     if (entity in setOf("anime", "movie")) libraryViewModel.refreshDetails(entityId)
                     libraryViewModel.queryNativeArtwork()
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "ARTWORK_PROJECTION_REFRESH",
                         requestId = eventRequestId ?: stringValue("requestId"),
@@ -8601,7 +8601,7 @@ internal class NativeMainRuntimePort(
                         libraryViewModel.refreshDetails(entityId)
                     }
                     libraryViewModel.queryNativeArtwork()
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "ARTWORK_STATE_PROJECTION_REFRESH",
                         severity = if (event == "ARTWORK_DOWNLOAD_FAILED") "WARN" else "INFO",
@@ -8661,7 +8661,7 @@ internal class NativeMainRuntimePort(
                     // a projection/acknowledgement only; do not execute the action twice.
                     // Refresh the visible library state because the database change was
                     // already committed by the native settings repository.
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "SETTINGS_ACTION_ALREADY_HANDLED_NATIVELY",
                         requestId = requestId,
@@ -8740,7 +8740,7 @@ internal class NativeMainRuntimePort(
                             )
                         }
                         libraryViewModel.refreshNativeFolders()
-                        libraryViewModel.refresh()
+                        libraryViewModel.refreshCatalogProjection()
                         settingsViewModel.refresh()
                         scheduleCatalogMetadataHydration("volume_changed")
                         scheduleThumbnailReconciliation("volume_changed")
@@ -8859,7 +8859,7 @@ internal class NativeMainRuntimePort(
                             launchTracked("saf_source_unavailable", lane = "storage") {
                                 val changed = markSafSourceUnavailable(treeUri, authorization, unavailableReason)
                                 libraryViewModel.refreshNativeFolders()
-                                libraryViewModel.refresh()
+                                libraryViewModel.refreshCatalogProjection()
                                 recordDiagnostic(
                                     name = "SAF_SOURCE_MARKED_UNAVAILABLE",
                                     severity = "WARN",
@@ -8915,7 +8915,7 @@ internal class NativeMainRuntimePort(
                                     reason = "media_permission_revoked",
                                 )
                                 libraryViewModel.refreshNativeFolders()
-                                libraryViewModel.refresh()
+                                libraryViewModel.refreshCatalogProjection()
                                 recordDiagnostic(
                                     name = "MEDIASTORE_SOURCE_MARKED_UNAVAILABLE",
                                     severity = "WARN",
@@ -8946,7 +8946,7 @@ internal class NativeMainRuntimePort(
                                 reason = if (revoked) "media_permission_revoked" else "mediastore_scan_failed",
                             )
                             libraryViewModel.refreshNativeFolders()
-                            libraryViewModel.refresh()
+                            libraryViewModel.refreshCatalogProjection()
                             recordDiagnostic(
                                 name = "MEDIASTORE_SOURCE_MARKED_UNAVAILABLE",
                                 severity = "WARN",
@@ -8973,7 +8973,7 @@ internal class NativeMainRuntimePort(
                                     reason = "broad_access_revoked",
                                 )
                                 libraryViewModel.refreshNativeFolders()
-                                libraryViewModel.refresh()
+                                libraryViewModel.refreshCatalogProjection()
                                 recordDiagnostic(
                                     name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
                                     severity = "WARN",
@@ -8993,7 +8993,7 @@ internal class NativeMainRuntimePort(
                                     reason = "broad_access_denied",
                                 )
                                 libraryViewModel.refreshNativeFolders()
-                                libraryViewModel.refresh()
+                                libraryViewModel.refreshCatalogProjection()
                                 recordDiagnostic(
                                     name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
                                     severity = "WARN",
@@ -9022,7 +9022,7 @@ internal class NativeMainRuntimePort(
                                 reason = if (revoked) "broad_access_revoked" else "broad_scan_failed",
                             )
                             libraryViewModel.refreshNativeFolders()
-                            libraryViewModel.refresh()
+                            libraryViewModel.refreshCatalogProjection()
                             recordDiagnostic(
                                 name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
                                 severity = "WARN",
@@ -9067,7 +9067,7 @@ internal class NativeMainRuntimePort(
                                     reason = "saf_permission_revoked",
                                 )
                                 libraryViewModel.refreshNativeFolders()
-                                libraryViewModel.refresh()
+                                libraryViewModel.refreshCatalogProjection()
                                 recordDiagnostic(
                                     name = "SAF_SOURCE_MARKED_UNAVAILABLE",
                                     severity = "WARN",
@@ -9081,7 +9081,7 @@ internal class NativeMainRuntimePort(
                                 val updated = reconcileVerifiedSafRoot(treeUri, payload)
                                 if (updated) {
                                     libraryViewModel.refreshNativeFolders()
-                                    libraryViewModel.refresh()
+                                    libraryViewModel.refreshCatalogProjection()
                                 }
                                 recordDiagnostic(
                                     name = "SAF_PERMISSION_REVALIDATED",
@@ -9143,7 +9143,7 @@ internal class NativeMainRuntimePort(
                 refreshAuthoritativeStorageSnapshot(payload, payload.optLong("createdAt", 0L))
                 settingsViewModel.refresh()
                 libraryViewModel.refreshNativeFolders()
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 val reason = stringValue("reason", "state", "status", "message") ?: type
                 if (type in setOf("saf_permission", "saf_released", "saf_error", "saf_cancelled")) {
                     launchTracked("storage_onboarding_projection", lane = "storage") {
@@ -9288,7 +9288,7 @@ internal class NativeMainRuntimePort(
                 if (!treeUri.isNullOrBlank()) mergeAuthoritativeSafRoot(treeUri)
                 settingsViewModel.refresh()
                 libraryViewModel.refreshNativeFolders()
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
                     name = "NATIVE_SAF_PROJECTION_REFRESH",
                     requestId = eventRequestId ?: stringValue("requestId"),
@@ -9310,7 +9310,7 @@ internal class NativeMainRuntimePort(
                 if (nativeOwner) {
                     // A newer Kotlin scanner already committed the canonical re-key.
                     libraryViewModel.refreshNativeFolders()
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     val reconciliationStatus = stringValue("status")?.lowercase(Locale.ROOT).orEmpty()
                     if (reconciliationStatus in setOf("reconciled", "already_reconciled")) {
                         requestSafIdentityReconciliationRescan(
@@ -9355,7 +9355,7 @@ internal class NativeMainRuntimePort(
                         )
                         if (status in setOf("reconciled", "already_reconciled")) {
                             libraryViewModel.refreshNativeFolders()
-                            libraryViewModel.refresh()
+                            libraryViewModel.refreshCatalogProjection()
                             libraryViewModel.queryNativeArtwork()
                             requestSafIdentityReconciliationRescan(
                                 treeUri = treeUri,
@@ -9472,7 +9472,7 @@ internal class NativeMainRuntimePort(
                     }
                 }
                 libraryViewModel.queryNativeArtwork()
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
                     name = if (type == "thumbnail_ready") "NATIVE_THUMBNAIL_READY" else "NATIVE_THUMBNAIL_ERROR",
                     severity = if (type == "thumbnail_error") "WARN" else "INFO",
@@ -9498,7 +9498,7 @@ internal class NativeMainRuntimePort(
                             "native_$type",
                         )
                         settingsViewModel.refresh()
-                        libraryViewModel.refresh()
+                        libraryViewModel.refreshCatalogProjection()
                         recordDiagnostic(
                             name = "NATIVE_ACCOUNT_EVENT",
                             requestId = correlatedRequestId,
@@ -9538,7 +9538,7 @@ internal class NativeMainRuntimePort(
                             )
                     }
                     settingsViewModel.refresh()
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "NATIVE_ACCOUNT_EVENT",
                         severity = if (type == "google_error") "WARN" else "INFO",
@@ -9616,7 +9616,7 @@ internal class NativeMainRuntimePort(
                         "native_account_changed",
                     )
                     settingsViewModel.refresh()
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "NATIVE_COMPOSE_ACCOUNT_PROJECTION_REFRESHED",
                         requestId = requestId,
@@ -9646,7 +9646,7 @@ internal class NativeMainRuntimePort(
                 if (!claimRequestId(requestId, "compose_settings_backup_restored")) return false
                 settingsViewModel.refresh()
                 val reconciled = reconcileRestoredFileAvailability()
-                libraryViewModel.refresh()
+                libraryViewModel.refreshCatalogProjection()
                 scheduleCatalogMetadataHydration("backup_restored")
                 scheduleThumbnailReconciliation("backup_restored")
                 recordDiagnostic(
@@ -9752,7 +9752,7 @@ internal class NativeMainRuntimePort(
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // NativePlayerActivity already committed this checkpoint to canonical SQLite.
                     // Validate the callback and refresh Compose, but never issue a second write.
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "PLAYER_PROGRESS_NATIVE_COMMIT_REUSED",
                         requestId = eventRequestId,
@@ -9901,7 +9901,7 @@ internal class NativeMainRuntimePort(
                 if (positionMs < 0L) return false
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // The player saved this exact episode checkpoint before publishing the mailbox event.
-                    libraryViewModel.refresh()
+                    libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "PLAYER_PROGRESS_NATIVE_COMMIT_REUSED",
                         requestId = eventRequestId,
@@ -10000,7 +10000,7 @@ internal class NativeMainRuntimePort(
                         if (nativeProgressPersisted) {
                             // NativePlayerActivity already committed this final checkpoint.
                             // Refresh the projection but never write the checkpoint twice.
-                            libraryViewModel.refresh()
+                            libraryViewModel.refreshCatalogProjection()
                             exitProgressResult = "NATIVE_COMMIT_REUSED"
                         } else {
                             val eventTime = parseLegacyPlaybackTimestamp(payload)
@@ -10059,7 +10059,7 @@ internal class NativeMainRuntimePort(
                                         )
                                         exitProgressResult = "SAVED"
                                     }
-                                    libraryViewModel.refresh()
+                                    libraryViewModel.refreshCatalogProjection()
                                 }
                             }
                         }
