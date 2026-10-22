@@ -8029,35 +8029,126 @@ internal class NativeMainRuntimePort(
             "refresh_anilist_metadata", "refresh_current_metadata", "refresh_metadata" ->
                 positiveLong("animeId")?.let(::refreshAniListMetadata) ?: false
             "resolve_match", "associate_anilist" -> {
-                val remoteId = positiveLong("anilistId") ?: positiveLong("anilist_id") ?: return false
+                val remoteIdLong = positiveLong("anilistId") ?: positiveLong("anilist_id") ?: return false
+                val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: nonBlank("requestId")
+                    ?: nonBlank("request_id")
+                    ?: UUID.randomUUID().toString()
                 val animeId = positiveLong("animeId") ?: positiveLong("anime_id")
                 val lookupTitle = nonBlank("lookupTitle") ?: nonBlank("lookup_title")
-                if (animeId == null && lookupTitle.isNullOrBlank()) return false
-                launchTracked("associate_anilist", lane = "metadata") {
-                    val resolvedAnimeId = animeId
-                        ?: dependencies.sqliteLibraryRepository.getAnimeByLookupTitle(lookupTitle!!)
-                            ?.id
-                        ?: throw IllegalArgumentException("A chave local do anime não existe no catálogo SQLite.")
-                    val result = dependencies.aniListIntegrationService.associateManually(
-                        resolvedAnimeId,
-                        remoteId.toInt(),
-                    )
-                    if (result is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure) {
-                        throw IllegalStateException(result.error.toString())
-                    }
-                    libraryViewModel.refreshDetails(resolvedAnimeId)
-                    libraryViewModel.refreshCatalogProjection()
-                    settingsViewModel.refresh()
-                    publish(
+                val remoteId = remoteIdLong.takeIf { it <= Int.MAX_VALUE.toLong() }?.toInt()
+                if (remoteId == null) {
+                    val message = "O ID do AniList está fora do intervalo aceito."
+                    publishOperationResult(
+                        requestId = correlatedRequestId,
                         action = "associate_anilist",
-                        transform = { it.copy(lastResultJson = result.toString(), selectedAnimeId = resolvedAnimeId) },
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = message,
+                        error = "invalid_anilist_id",
                     )
                     recordDiagnostic(
-                        name = "ANILIST_MANUAL_ASSOCIATION_COMPLETED",
-                        requestId = requestId,
-                        result = "associated",
-                        context = mapOf("anime_id" to resolvedAnimeId, "anilist_id" to remoteId),
+                        name = "ANILIST_MANUAL_ASSOCIATION_REJECTED",
+                        severity = "WARN",
+                        requestId = correlatedRequestId,
+                        result = "invalid_anilist_id",
+                        context = mapOf("anilist_id" to remoteIdLong),
                     )
+                    false
+                } else if (animeId == null && lookupTitle.isNullOrBlank()) {
+                    val message = "Informe o anime local que deve ser associado."
+                    publishOperationResult(
+                        requestId = correlatedRequestId,
+                        action = "associate_anilist",
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = message,
+                        error = "missing_local_anime_identity",
+                    )
+                    false
+                } else {
+                    publishOperationResult(
+                        requestId = correlatedRequestId,
+                        action = "associate_anilist",
+                        status = "QUEUED",
+                        operationState = "QUEUED",
+                        message = "Associação AniList enfileirada.",
+                    )
+                    val accepted = launchTracked("associate_anilist", lane = "metadata") {
+                        try {
+                            val resolvedAnimeId = animeId
+                                ?: dependencies.sqliteLibraryRepository.getAnimeByLookupTitle(lookupTitle!!)
+                                    ?.id
+                                ?: throw IllegalArgumentException("A chave local do anime não existe no catálogo SQLite.")
+                            val result = dependencies.aniListIntegrationService.associateManually(
+                                resolvedAnimeId,
+                                remoteId,
+                            )
+                            if (result is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure) {
+                                throw IllegalStateException(result.error.toString())
+                            }
+                            libraryViewModel.refreshDetails(resolvedAnimeId)
+                            libraryViewModel.refreshCatalogProjection()
+                            settingsViewModel.refresh()
+                            publish(
+                                action = "associate_anilist",
+                                transform = { it.copy(lastResultJson = result.toString(), selectedAnimeId = resolvedAnimeId) },
+                            )
+                            publishOperationResult(
+                                requestId = correlatedRequestId,
+                                action = "associate_anilist",
+                                status = "COMPLETED",
+                                operationState = "COMPLETED",
+                                message = "Associação AniList salva e catálogo local preservado.",
+                                payload = org.json.JSONObject()
+                                    .put("animeId", resolvedAnimeId)
+                                    .put("anilistId", remoteId),
+                            )
+                            recordDiagnostic(
+                                name = "ANILIST_MANUAL_ASSOCIATION_COMPLETED",
+                                requestId = correlatedRequestId,
+                                result = "associated",
+                                context = mapOf("anime_id" to resolvedAnimeId, "anilist_id" to remoteId),
+                            )
+                        } catch (cancelled: CancellationException) {
+                            publishOperationResult(
+                                requestId = correlatedRequestId,
+                                action = "associate_anilist",
+                                status = "CANCELLED",
+                                operationState = "CANCELLED",
+                                message = "A associação AniList foi cancelada.",
+                            )
+                            throw cancelled
+                        } catch (failure: Throwable) {
+                            publishOperationResult(
+                                requestId = correlatedRequestId,
+                                action = "associate_anilist",
+                                status = "FAILED",
+                                operationState = "FAILED",
+                                message = failure.message ?: "Não foi possível salvar a associação AniList.",
+                                error = failure.javaClass.simpleName,
+                            )
+                            recordDiagnostic(
+                                name = "ANILIST_MANUAL_ASSOCIATION_FAILED",
+                                severity = "WARN",
+                                requestId = correlatedRequestId,
+                                result = failure.javaClass.simpleName,
+                                error = failure,
+                            )
+                            throw failure
+                        }
+                    }
+                    if (!accepted) {
+                        publishOperationResult(
+                            requestId = correlatedRequestId,
+                            action = "associate_anilist",
+                            status = "FAILED",
+                            operationState = "FAILED",
+                            message = "A associação AniList não foi aceita.",
+                            error = "operation_rejected",
+                        )
+                    }
+                    accepted
                 }
             }
             "reconcile_unmatched_metadata" -> reconcileUnmatchedAniListMetadata()
