@@ -4948,9 +4948,25 @@ internal class NativeMainRuntimePort(
     }
 
     /** Restore through the canonical Kotlin service, including its pre-restore safety backup. */
-    fun restoreBackup(archive: File): Boolean {
+    fun restoreBackup(
+        archive: File,
+        requestId: String? = null,
+        resultAction: String = "restore_backup",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
         if (!archive.isFile || archive.length() <= 0L) {
-            publish(action = "restore_backup", error = "O arquivo de backup está ausente ou vazio.")
+            val message = "O arquivo de backup está ausente ou vazio."
+            publish(action = "restore_backup", error = message)
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = message,
+                    error = "backup_missing_or_empty",
+                )
+            }
             return false
         }
         val reserved = synchronized(lock) {
@@ -4968,12 +4984,32 @@ internal class NativeMainRuntimePort(
         if (!reserved) {
             val message = "Finalize a varredura ou operação de armazenamento atual antes de restaurar um backup."
             publish(action = "restore_backup", error = message)
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "BLOCKED",
+                    operationState = "BLOCKED",
+                    message = message,
+                    error = "scan_in_progress_or_restore_active",
+                )
+            }
             recordDiagnostic(
                 name = "BACKUP_RESTORE_BLOCKED",
                 severity = "WARN",
+                requestId = correlatedRequestId,
                 result = "scan_in_progress_or_restore_active",
             )
             return false
+        }
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Restauração do backup enfileirada.",
+            )
         }
         val accepted = launchTracked("restore_backup", lane = "backup") {
             try {
@@ -5016,11 +5052,56 @@ internal class NativeMainRuntimePort(
                 publish(action = "restore_backup", transform = {
                     it.copy(lastArtifactPath = result.safetyBackup.absolutePath, lastResultJson = summary.toString())
                 })
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Backup restaurado.",
+                        payload = summary,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A restauração do backup foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível restaurar o backup.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
             } finally {
                 synchronized(lock) { restoreMaintenanceInProgress = false }
             }
         }
-        if (!accepted) synchronized(lock) { restoreMaintenanceInProgress = false }
+        if (!accepted) {
+            synchronized(lock) { restoreMaintenanceInProgress = false }
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = "A restauração do backup não foi aceita.",
+                    error = "operation_rejected",
+                )
+            }
+        }
         return accepted
     }
 
@@ -7169,7 +7250,14 @@ internal class NativeMainRuntimePort(
                     resultAction = normalized,
                 )
             }
-            "restore_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreBackup) ?: false
+            "restore_backup" -> {
+                val archive = nonBlank("archivePath")?.let(::resolvePrivateBackupFile) ?: return false
+                restoreBackup(
+                    archive = archive,
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    resultAction = normalized,
+                )
+            }
             "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
             "restore_recovery_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreRecoveryBackup) ?: false
             "integrity_check" -> checkDatabaseIntegrity()
@@ -9622,7 +9710,12 @@ internal class NativeMainRuntimePort(
             "backup_restore" -> {
                 val reference = stringValueFromPayload(payload, "archivePath", "path", "filePath")
                 if (reference != null) {
-                    resolvePrivateBackupFile(reference)?.let(::restoreBackup) ?: false
+                    val archive = resolvePrivateBackupFile(reference) ?: return false
+                    restoreBackup(
+                        archive = archive,
+                        requestId = resolvedRequestId,
+                        resultAction = normalized,
+                    )
                 } else {
                     launchNativeSettingsFileAction(normalized, resolvedRequestId)
                 }
