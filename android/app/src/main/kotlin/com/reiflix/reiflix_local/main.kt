@@ -10504,15 +10504,34 @@ internal class NativeMainRuntimePort(
                 // Port main.py's PerformanceMonitor.record_native_event(): retain event
                 // identity and stage, and calculate delivery latency when both clocks are
                 // present instead of relying only on an opaque serialized payload.
-                val createdAtMs = longValue(
-                    "createdAt",
-                    "_legacySourceEventCreatedAt",
-                    "commandCreatedAtMs",
-                    "command_created_at_ms",
-                )
-                val receivedAtMs = longValue("receivedAtMs", "received_at_ms")
+                // Keep the Python truthiness/fallback order: a present but malformed
+                // createdAt must invalidate latency, not silently fall through to a
+                // different clock and produce a misleading measurement.
+                val rawCreatedAt = sequenceOf(
+                    payload.opt("createdAt"),
+                    payload.opt("_legacySourceEventCreatedAt"),
+                    payload.opt("commandCreatedAtMs"),
+                    payload.opt("command_created_at_ms"),
+                ).firstOrNull { pythonTruthyJsonValue(it) }
+                val createdAtMs = when (rawCreatedAt) {
+                    is Number -> rawCreatedAt.toDouble().takeIf { it.isFinite() }
+                    is String -> rawCreatedAt.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
+                    is Boolean -> if (rawCreatedAt) 1.0 else 0.0
+                    else -> null
+                }
+                val rawReceivedAt = if (payload.has("receivedAtMs")) {
+                    payload.opt("receivedAtMs")
+                } else {
+                    payload.opt("received_at_ms")
+                }
+                val receivedAtMs = when (rawReceivedAt) {
+                    is Number -> rawReceivedAt.toDouble().takeIf { it.isFinite() }
+                    is String -> rawReceivedAt.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
+                    is Boolean -> if (rawReceivedAt) 1.0 else 0.0
+                    else -> null
+                }
                 val deliveryLatencyMs = if (createdAtMs != null && receivedAtMs != null) {
-                    (receivedAtMs - createdAtMs).coerceAtLeast(0L)
+                    (receivedAtMs - createdAtMs).coerceAtLeast(0.0)
                 } else {
                     null
                 }
