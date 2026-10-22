@@ -795,6 +795,7 @@ internal class NativeMainRuntimePort(
     @Volatile private var pendingSafSelectionRequestId: String? = null
     @Volatile private var pendingSafSelectionBridge: String = "library"
     @Volatile private var pendingSafSelectionBaselineIdentities: Set<String> = emptySet()
+    @Volatile private var pendingSafSelectionBaselineKnown: Boolean = false
     @Volatile private var pendingSafRemovalRequestId: String? = null
     @Volatile private var pendingSafRemovalReference: String? = null
     @Volatile private var pendingSafRemovalBridge: String = "library"
@@ -3471,6 +3472,7 @@ internal class NativeMainRuntimePort(
         pendingSafSelectionStartedAtMillis = 0L
         pendingSafSelectionBridge = "library"
         pendingSafSelectionBaselineIdentities = emptySet()
+        pendingSafSelectionBaselineKnown = false
         publish(action = "clear_pending_saf_selection")
     }
 
@@ -3579,7 +3581,7 @@ internal class NativeMainRuntimePort(
             payload.optBoolean("inventory_complete", payload.optBoolean("complete", false)),
         )
         if (request.isEmpty() || selectionStarted <= 0L || inventoryStarted < selectionStarted ||
-            inventoryStarted <= 0L || !inventoryComplete
+            inventoryStarted <= 0L || !inventoryComplete || !pendingSafSelectionBaselineKnown
         ) return false
 
         val trees = payload.optJSONArray("trees") ?: return false
@@ -3785,9 +3787,22 @@ internal class NativeMainRuntimePort(
         pendingSafSelectionBridge = bridge.trim().lowercase(Locale.ROOT).takeIf {
             it == "library" || it == "settings"
         } ?: "library"
-        pendingSafSelectionBaselineIdentities = configuredSafTreeUris()
-            .mapNotNull { StorageAuthorization.safIdentity(it.toString()) }
-            .toSet()
+        val baseline = runCatching {
+            activity.contentResolver.persistedUriPermissions
+                .filter { it.isReadPermission }
+                .mapNotNull { StorageAuthorization.safIdentity(it.uri.toString()) }
+                .toSet()
+        }
+        pendingSafSelectionBaselineKnown = baseline.isSuccess
+        pendingSafSelectionBaselineIdentities = baseline.getOrDefault(emptySet())
+        if (!pendingSafSelectionBaselineKnown) {
+            recordDiagnostic(
+                name = "SAF_SELECTION_BASELINE_UNAVAILABLE",
+                severity = "WARN",
+                requestId = pendingSafSelectionRequestId,
+                result = "inventory_recovery_disabled",
+            )
+        }
         pendingSafSelectionStartedAtMillis = System.currentTimeMillis()
         publish(action = "begin_saf_selection")
         return true
