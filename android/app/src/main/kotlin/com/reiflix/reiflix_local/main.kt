@@ -828,6 +828,7 @@ internal class NativeMainRuntimePort(
     // The legacy player_resume_context was consumed after its first error; keep a
     // per-session guard so duplicate mailbox errors cannot emit repeated CONTINUE_FAILED.
     private val continueFailureRecordedPlayerSessions = ConcurrentHashMap.newKeySet<String>()
+    private val continueCompletedPlayerSessions = ConcurrentHashMap.newKeySet<String>()
     private val claimedRequestIds = mutableMapOf<String, LinkedHashSet<String>>()
     private val jobs = linkedSetOf<Job>()
     private val jobLanes = mutableMapOf<Job, String>()
@@ -2603,6 +2604,7 @@ internal class NativeMainRuntimePort(
         // transition and record its diagnostic before clearing the session.
         current.activePlayerSessionId?.let(firstFrameRenderedPlayerSessions::remove)
         current.activePlayerSessionId?.let(continueFailureRecordedPlayerSessions::remove)
+        current.activePlayerSessionId?.let(continueCompletedPlayerSessions::remove)
         cancelPlayerTransition(reason)
         // Keep MainActivity's handoff ledger in sync when lifecycle/native
         // invalidation arrives without a player_exited event. Do not record a
@@ -12125,6 +12127,9 @@ internal class NativeMainRuntimePort(
                                     launchTracked("continue_completed", lane = "playback") {
                                         val resumeContext = loadContinueResumeContext(continueEpisodeId)
                                             ?: return@launchTracked
+                                        if (sessionId.isNullOrBlank() ||
+                                            !continueCompletedPlayerSessions.add(sessionId)
+                                        ) return@launchTracked
                                         recordDiagnostic(
                                             name = "CONTINUE_COMPLETED",
                                             requestId = requestId,
@@ -12137,6 +12142,10 @@ internal class NativeMainRuntimePort(
                                                 "completion" to "FIRST_FRAME_RENDERED",
                                             ),
                                         )
+                                        if (continueCompletedPlayerSessions.size > 128) {
+                                            continueCompletedPlayerSessions.clear()
+                                            continueCompletedPlayerSessions.add(sessionId)
+                                        }
                                     }
                                 }
                             }
