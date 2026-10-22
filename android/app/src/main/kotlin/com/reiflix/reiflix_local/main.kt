@@ -6699,7 +6699,23 @@ internal class NativeMainRuntimePort(
         val refreshId = UUID.randomUUID().toString()
         val startedAt = System.currentTimeMillis()
         val knownOperations = NativeScanController.progress.value.keys.toSet()
-        if (!HomeRefreshCoordinator.begin(requestId, refreshId, refreshSource)) return false
+        recordDiagnostic(
+            name = "HOME_REFRESH_REQUESTED",
+            requestId = requestId,
+            refreshId = refreshId,
+            result = refreshSource,
+            context = mapOf("source" to refreshSource),
+        )
+        if (!HomeRefreshCoordinator.begin(requestId, refreshId, refreshSource)) {
+            recordDiagnostic(
+                name = "HOME_REFRESH_REJECTED",
+                severity = "WARN",
+                requestId = requestId,
+                refreshId = refreshId,
+                result = "coordinator_rejected",
+            )
+            return false
+        }
         if (!canStartLibraryScan("saf")) {
             HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
             recordDiagnostic(
@@ -6713,8 +6729,22 @@ internal class NativeMainRuntimePort(
         }
         if (!requestLibraryScan()) {
             HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected")
+            recordDiagnostic(
+                name = "HOME_REFRESH_FAILED",
+                severity = "WARN",
+                requestId = requestId,
+                refreshId = refreshId,
+                result = "native_scan_request_rejected",
+            )
             return false
         }
+        recordDiagnostic(
+            name = "HOME_REFRESH_ACCEPTED",
+            requestId = requestId,
+            refreshId = refreshId,
+            result = "native_scan_request_accepted",
+            context = mapOf("source" to refreshSource),
+        )
         synchronized(lock) {
             homeRefreshJob?.cancel()
             homeRefreshJob = activity.lifecycleScope.launch {
@@ -6735,8 +6765,20 @@ internal class NativeMainRuntimePort(
                         return@launch
                     }
                     HomeRefreshCoordinator.markScanStarted(requestId)
-                    recordDiagnostic("HOME_REFRESH_SCAN_STARTED", requestId = requestId, refreshId = refreshId,
-                        context = mapOf("source" to refreshSource, "operation_count" to firstBatch.size))
+                    recordDiagnostic(
+                        name = "HOME_REFRESH_STARTED",
+                        requestId = requestId,
+                        refreshId = refreshId,
+                        result = "scan_started",
+                        context = mapOf("source" to refreshSource, "operation_count" to firstBatch.size),
+                    )
+                    recordDiagnostic(
+                        name = "HOME_REFRESH_SCAN_STARTED",
+                        requestId = requestId,
+                        refreshId = refreshId,
+                        result = "scan_started",
+                        context = mapOf("source" to refreshSource, "operation_count" to firstBatch.size),
+                    )
                     var stableTerminalBatch: List<ScanProgressSnapshot> = emptyList()
                     while (true) {
                         val current = NativeScanController.progress.value.values.filter {
