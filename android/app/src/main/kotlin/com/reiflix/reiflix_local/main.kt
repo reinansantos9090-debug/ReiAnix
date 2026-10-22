@@ -10517,6 +10517,10 @@ internal class NativeMainRuntimePort(
     }
 
     fun cancelBackgroundTasks() {
+        // Port main.py's disconnect cleanup: terminalize the refresh coordinator
+        // before cancelling its job so the Home UI cannot remain stuck in REFRESHING
+        // if cancellation arrives between coroutine suspension points.
+        cancelHomeRefreshOperation("background_tasks_cancelled")
         val copy = synchronized(lock) { jobs.toList() }
         copy.forEach { it.cancel() }
         homeRefreshJob?.cancel()
