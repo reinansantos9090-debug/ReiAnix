@@ -4756,8 +4756,20 @@ internal class NativeMainRuntimePort(
                 val events = coalesceNativeMailboxProgressEvents(claimedEvents)
                 for (item in events) {
                     val eventId = item.envelope.optString("eventId", "").trim()
+                    if (eventId.isBlank()) {
+                        // The legacy poller rejected malformed envelopes before dispatch.
+                        // Do not execute an uncorrelated event that cannot be deduplicated safely.
+                        recordDiagnostic(
+                            name = "NATIVE_EVENT_REJECTED",
+                            severity = "WARN",
+                            result = "missing_event_id",
+                            context = mapOf("type" to item.envelope.optString("type")),
+                        )
+                        acknowledgeNativeMailboxEvent(item)
+                        continue
+                    }
                     try {
-                        if (eventId.isBlank() || !hasClaimedNativeMailboxEvent(eventId)) {
+                        if (!hasClaimedNativeMailboxEvent(eventId)) {
                             item.envelope.put("receivedAtMs", System.currentTimeMillis())
                             dispatchNativeMailboxEnvelope(item.envelope)
                             persistNativeMailboxEventId(eventId)
