@@ -3759,6 +3759,18 @@ internal class NativeMainRuntimePort(
         reason: String,
         requestId: String? = null,
     ) {
+        // Port main.py's startup onboarding order: repair stale SAF source identities
+        // against Android's persisted read grants before deciding that a configured
+        // library root is unavailable and prompting the user to select it again.
+        val repairedSafIdentities = repairConfiguredSafSourceIdentities()
+        if (repairedSafIdentities > 0) {
+            recordDiagnostic(
+                name = "SAF_SOURCE_IDENTITIES_REPAIRED",
+                result = "startup_onboarding",
+                requestId = requestId,
+                context = mapOf("repaired_rows" to repairedSafIdentities, "reason" to reason),
+            )
+        }
         val validRoots = configuredValidLibrarySafRoots()
         val current = activity.nativeStorageOnboardingState.value
         if (validRoots.isNotEmpty()) {
