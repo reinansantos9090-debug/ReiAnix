@@ -5167,31 +5167,127 @@ internal class NativeMainRuntimePort(
         }
     }
     /** Validate the entire update before committing any settings row. */
-    fun applySettingsAtomically(values: Map<String, String>): Boolean {
-        if (values.isEmpty() || values.size > ReiAnixSettingsContract.definitions.size) return false
+    fun applySettingsAtomically(
+        values: Map<String, String>,
+        requestId: String? = null,
+        resultAction: String = "settings_bulk_applied",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        if (values.isEmpty() || values.size > ReiAnixSettingsContract.definitions.size) {
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = "A lista de configurações está vazia ou excede o limite permitido.",
+                    error = "invalid_settings_count",
+                )
+            }
+            return false
+        }
         val normalized = linkedMapOf<String, String>()
         for ((rawKey, rawValue) in values) {
             val key = rawKey.trim()
-            val definition = ReiAnixSettingsContract.definitions[key] ?: return false
-            val value = runCatching { definition.normalize(rawValue) }.getOrNull() ?: return false
+            val definition = ReiAnixSettingsContract.definitions[key]
+            if (definition == null) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = "A configuração solicitada não é reconhecida.",
+                        error = "unknown_setting_key",
+                        payload = org.json.JSONObject().put("key", key),
+                    )
+                }
+                return false
+            }
+            val value = runCatching { definition.normalize(rawValue) }.getOrNull()
+            if (value == null) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = "O valor de uma configuração não é válido.",
+                        error = "invalid_setting_value",
+                        payload = org.json.JSONObject().put("key", key),
+                    )
+                }
+                return false
+            }
             normalized[key] = value
         }
         if (normalized.isEmpty()) return false
-        return launchTracked("settings_bulk_applied", lane = "settings") {
-            dependencies.sqliteSettingsRepository.setPreferencesAtomically(normalized)
-            settingsViewModel.refresh()
-            publish(
-                action = "settings_bulk_applied",
-                transform = {
-                    it.copy(
-                        lastResultJson = org.json.JSONObject()
-                            .put("applied", normalized.size)
-                            .put("keys", org.json.JSONArray(normalized.keys.toList()))
-                            .toString(),
-                    )
-                },
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "As alterações de configuração foram enfileiradas.",
             )
         }
+        val accepted = launchTracked("settings_bulk_applied", lane = "settings") {
+            try {
+                dependencies.sqliteSettingsRepository.setPreferencesAtomically(normalized)
+                settingsViewModel.refresh()
+                val resultPayload = org.json.JSONObject()
+                    .put("applied", normalized.size)
+                    .put("keys", org.json.JSONArray(normalized.keys.toList()))
+                publish(
+                    action = "settings_bulk_applied",
+                    transform = { it.copy(lastResultJson = resultPayload.toString()) },
+                )
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "As configurações foram aplicadas.",
+                        payload = resultPayload,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A atualização das configurações foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível aplicar as configurações.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A operação de configurações não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
     }
 
     fun resetSettingToDefault(key: String): Boolean {
@@ -8453,7 +8549,11 @@ internal class NativeMainRuntimePort(
                     )
                     true
                 } else {
-                    applySettingsAtomically(settings)
+                    applySettingsAtomically(
+                        values = settings,
+                        requestId = requestId,
+                        resultAction = "compose_settings_bulk_applied",
+                    )
                 }
                 recordDiagnostic(
                     name = "SETTINGS_RUNTIME_BULK_APPLY",
@@ -9258,8 +9358,16 @@ internal class NativeMainRuntimePort(
         val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
             ?: stringValueFromPayload(payload, "requestId", "request_id")
         return when (normalized) {
-            "reset_player" -> resetSettingsByPrefixes(setOf("player."))
-            "reset_all_settings" -> resetSettingsByPrefixes(emptySet())
+            "reset_player" -> resetSettingsByPrefixes(
+                setOf("player."),
+                resolvedRequestId,
+                "reset_player",
+            )
+            "reset_all_settings" -> resetSettingsByPrefixes(
+                emptySet(),
+                resolvedRequestId,
+                "reset_all_settings",
+            )
             "clear_anilist_cache", "clear_artwork_cache" -> clearManagedArtworkCache()
             "settings_export" -> launchNativeSettingsFileAction(normalized, resolvedRequestId)
             "settings_import" -> {
@@ -9315,11 +9423,15 @@ internal class NativeMainRuntimePort(
         }
     }
 
-    private fun resetSettingsByPrefixes(prefixes: Set<String>): Boolean {
+    private fun resetSettingsByPrefixes(
+        prefixes: Set<String>,
+        requestId: String? = null,
+        resultAction: String = "settings_bulk_applied",
+    ): Boolean {
         val defaults = ReiAnixSettingsContract.definitions
             .filterKeys { key -> prefixes.isEmpty() || prefixes.any(key::startsWith) }
             .mapValues { (_, definition) -> definition.defaultValue }
-        return applySettingsAtomically(defaults)
+        return applySettingsAtomically(defaults, requestId, resultAction)
     }
 
     private fun org.json.JSONObject.putIfAbsentSafe(key: String, value: String): org.json.JSONObject =
