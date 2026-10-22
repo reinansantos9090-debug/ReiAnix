@@ -11582,7 +11582,10 @@ internal class NativeMainRuntimePort(
                         ?.toLong()
                         ?: -1L
                 }
-                val exitDurationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
+                // Python evaluates float(durationMs or 0.0) before deciding whether to reuse
+                // native persistence. Do not let optLong() silently turn malformed input into 0.
+                val parsedExitDurationMs = nonNegativeMillis("durationMs", "duration_ms")
+                val exitDurationMs = parsedExitDurationMs ?: 0L
                 val nativeProgressPersisted = payload.opt("nativeProgressPersisted") == true
                 // A valid exit may omit requestId; session/activity identity and the
                 // active snapshot still fence stale exits. The legacy path invalidated
@@ -11604,7 +11607,11 @@ internal class NativeMainRuntimePort(
                 return launchTracked("player_exit_finalize", lane = "playback") {
                     var exitProgressResult = "NOT_UPDATED"
                     if (exitUri.isNotBlank() && exitPositionMs >= 0L) {
-                        if (nativeProgressPersisted) {
+                        if (parsedExitDurationMs == null) {
+                            // The legacy conversion rejected the whole checkpoint when duration
+                            // was malformed, even if NativePlayerActivity claims it was persisted.
+                            exitProgressResult = "INVALID_DURATION"
+                        } else if (nativeProgressPersisted) {
                             // NativePlayerActivity already committed this final checkpoint.
                             // The awaited catalog projection below observes it without a second write.
                             exitProgressResult = "NATIVE_COMMIT_REUSED"
