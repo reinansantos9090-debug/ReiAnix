@@ -827,6 +827,7 @@ internal class NativeMainRuntimePort(
     private val firstFrameRenderedPlayerSessions = ConcurrentHashMap.newKeySet<String>()
     // The legacy player_resume_context was consumed after its first error; keep a
     // per-session guard so duplicate mailbox errors cannot emit repeated CONTINUE_FAILED.
+    private val continueFailurePendingPlayerSessions = ConcurrentHashMap.newKeySet<String>()
     private val continueFailureRecordedPlayerSessions = ConcurrentHashMap.newKeySet<String>()
     private val continueCompletedPlayerSessions = ConcurrentHashMap.newKeySet<String>()
     private val claimedRequestIds = mutableMapOf<String, LinkedHashSet<String>>()
@@ -2603,6 +2604,7 @@ internal class NativeMainRuntimePort(
         // Match the former invalidate_player_session order: cancel the
         // transition and record its diagnostic before clearing the session.
         current.activePlayerSessionId?.let(firstFrameRenderedPlayerSessions::remove)
+        current.activePlayerSessionId?.let(continueFailurePendingPlayerSessions::remove)
         current.activePlayerSessionId?.let(continueFailureRecordedPlayerSessions::remove)
         current.activePlayerSessionId?.let(continueCompletedPlayerSessions::remove)
         cancelPlayerTransition(reason)
@@ -11385,6 +11387,17 @@ internal class NativeMainRuntimePort(
                             ?: longValue("episodeId", "episode_id")
                         )?.takeIf { it > 0L }
                     failedEpisodeId?.let { continueEpisodeId ->
+                        // Consume the pending resume attempt at event receipt, as Python's
+                        // player_resume_context was cleared synchronously by player_error.
+                        // This prevents a delayed first-frame callback from later declaring
+                        // the same failed session successful while its SQLite lookup runs.
+                        if (!continueFailurePendingPlayerSessions.add(failedSessionId)) {
+                            return@let
+                        }
+                        if (continueFailurePendingPlayerSessions.size > 128) {
+                            continueFailurePendingPlayerSessions.clear()
+                            continueFailurePendingPlayerSessions.add(failedSessionId)
+                        }
                         launchTracked("continue_failed", lane = "playback") {
                             val resumeContext = loadContinueResumeContext(continueEpisodeId)
                                 ?: return@launchTracked
@@ -12146,6 +12159,10 @@ internal class NativeMainRuntimePort(
                                             ?: return@launchTracked
                                         val completedSessionId = sessionId?.takeIf { it.isNotBlank() }
                                             ?: return@launchTracked
+                                        if (
+                                            continueFailurePendingPlayerSessions.contains(completedSessionId) ||
+                                            continueFailureRecordedPlayerSessions.contains(completedSessionId)
+                                        ) return@launchTracked
                                         // FIRST_FRAME_RENDERED passed validation before the
                                         // async SQLite read. Recheck session/media identity,
                                         // but do not let a later transition generation suppress
