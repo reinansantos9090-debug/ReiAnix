@@ -10965,8 +10965,9 @@ internal class NativeMainRuntimePort(
                         currentPlayerRequestId == playerErrorRequestId) ||
                     matchesPendingTransitionOrigin
                 ) {
-                    if (!playerErrorOriginRequestId.isNullOrBlank() &&
-                        transitionDirection in setOf("NEXT", "PREVIOUS")
+                    if (
+                        !playerErrorOriginRequestId.isNullOrBlank() &&
+                        (transitionDirection == "NEXT" || transitionDirection == "PREVIOUS")
                     ) {
                         recordDiagnostic(
                             name = if (transitionDirection == "NEXT") "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
