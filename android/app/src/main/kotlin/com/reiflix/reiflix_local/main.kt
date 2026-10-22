@@ -10671,6 +10671,7 @@ internal class NativeMainRuntimePort(
                     expectedEpisodeId = longValue("episodeId", "episode_id"),
                     expectedAnimeId = longValue("animeId", "anime_id"),
                     expectedMediaId = stringValue("mediaId", "media_id"),
+                    allowMissingAnimeId = true,
                 )
                 if (!validation.isCurrent) {
                     recordDiagnostic(
