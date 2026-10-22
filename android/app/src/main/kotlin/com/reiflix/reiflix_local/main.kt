@@ -11352,6 +11352,36 @@ internal class NativeMainRuntimePort(
                                     "transition_generation" to payload.optLong("transitionGeneration", 0L),
                                 ),
                             )
+                            val frameGeneration = firstTruthyJsonLong(payload, "generation", "playerGeneration")
+                            val transitionDirection = firstTruthyJsonText(
+                                payload,
+                                "transitionDirection",
+                                "transition_direction",
+                            ).uppercase(Locale.ROOT)
+                            if (
+                                !sessionId.isNullOrBlank() &&
+                                frameGeneration > 0L &&
+                                transitionDirection !in setOf("NEXT", "PREVIOUS")
+                            ) {
+                                // Port main.py's successful initial-player first-frame
+                                // completion marker. Adjacent-episode transitions are
+                                // emitted by NativePlayerActivity and must not count as
+                                // a second initial playback completion here.
+                                recordDiagnostic(
+                                    name = "ASSIST_COMPLETED",
+                                    requestId = requestId,
+                                    sessionId = sessionId,
+                                    result = "completed",
+                                    context = mapOf(
+                                        "status" to "completed",
+                                        "episode_id" to payload.optLong("episodeId", 0L),
+                                        "anime_id" to payload.optLong("animeId", 0L),
+                                        "player_generation" to frameGeneration,
+                                        "transition_generation" to payload.optLong("transitionGeneration", 0L),
+                                        "completion" to "FIRST_FRAME_RENDERED",
+                                    ),
+                                )
+                            }
                             recordLegacyDiagnosticProjection()
                             true
                         }
