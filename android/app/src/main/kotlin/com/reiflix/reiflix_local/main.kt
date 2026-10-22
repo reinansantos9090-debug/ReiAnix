@@ -1949,11 +1949,14 @@ internal class NativeMainRuntimePort(
                 )
                 if (!postSaveValidation.isCurrent) {
                     recordDiagnostic(
-                        name = "PLAYER_PROGRESS_STALE",
+                        name = "PLAYER_TASK_STALE",
                         severity = "WARN",
                         requestId = callbackRequestId,
-                        result = "stale_after_persistence:" + postSaveValidation.reason,
-                        context = mapOf("episode_id" to episodeId),
+                        result = postSaveValidation.reason,
+                        context = mapOf(
+                            "episode_id" to episodeId,
+                            "stage" to "after_save_progress",
+                        ),
                     )
                     return@launchTracked
                 }
