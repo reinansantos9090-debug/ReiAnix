@@ -10377,13 +10377,42 @@ internal class NativeMainRuntimePort(
                         // The mailbox event is a notification, not the source of truth.
                         // Re-read the canonical account row so a delayed sign-out event
                         // cannot overwrite a newer successful login in the UI projection.
-                        val profile = dependencies.sqliteAccountRepository.loadProfile()
+                        val profile = if (type == "google_account") {
+                            val profileId = payload.opt("id") as? String
+                            val profileEmail = payload.opt("email") as? String
+                            if (profileId.isNullOrBlank() || profileEmail == null || !profileEmail.contains('@')) {
+                                val message = "A resposta da conta Google é inválida. Tente novamente."
+                                setAccountState("error", "google_profile_invalid")
+                                settingsViewModel.refresh()
+                                libraryViewModel.refreshCatalogProjection()
+                                recordDiagnostic(
+                                    name = "GOOGLE_PROFILE_REJECTED",
+                                    severity = "WARN",
+                                    requestId = correlatedRequestId,
+                                    result = "invalid_profile_payload",
+                                )
+                                publish(action = "google_error", error = message)
+                                return@launchTracked
+                            }
+                            dependencies.sqliteAccountRepository.saveProfile(
+                                com.reiflix.reiflix_local.data.sqlite.ReiAnixAccountProfile(
+                                    id = profileId.trim(),
+                                    name = (payload.opt("name") as? String).orEmpty(),
+                                    email = profileEmail.trim(),
+                                    picture = (payload.opt("picture") as? String).orEmpty(),
+                                ),
+                            )
+                        } else {
+                            // A sign-out notification reads the canonical row rather than
+                            // clearing a potentially newer login from a delayed event.
+                            dependencies.sqliteAccountRepository.loadProfile()
+                        }
                         val connected = profile != null &&
                             profile.id.isNotBlank() &&
                             profile.email.contains('@')
                         setAccountState(
                             if (connected) "connected" else "disconnected",
-                            "native_$type",
+                            if (type == "google_account") "google_account_connected" else "native_$type",
                         )
                         settingsViewModel.refresh()
                         libraryViewModel.refreshCatalogProjection()
