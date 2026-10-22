@@ -9514,10 +9514,9 @@ internal class NativeMainRuntimePort(
                     break
                 }
             }
-            if (!found || raw == null || raw === org.json.JSONObject.NULL) return 0L
-            if (raw == false || (raw is String && raw.isEmpty()) ||
-                (raw is Number && raw.toDouble() == 0.0)
-            ) return 0L
+            // Match Python's value-or-zero conversion for all falsey JSON values,
+            // including empty arrays and objects, not only null/false/zero/empty strings.
+            if (!found || !pythonTruthyJsonValue(raw)) return 0L
             val numeric = when (raw) {
                 is Number -> raw.toDouble()
                 is Boolean -> if (raw) 1.0 else 0.0
