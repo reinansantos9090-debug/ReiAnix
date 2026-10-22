@@ -5758,12 +5758,14 @@ internal class NativeMainRuntimePort(
      * accepted. Lifecycle resume alone never invokes this method.
      */
     fun requestHomeRefresh(source: String = "button"): Boolean {
+        val refreshSource = source.trim().lowercase(Locale.ROOT)
+            .takeIf { it == "button" || it == "pull" } ?: "button"
         if (restoreMaintenanceInProgress) {
             recordDiagnostic(
                 name = "HOME_REFRESH_BLOCKED",
                 severity = "WARN",
                 result = "restore_in_progress",
-                context = mapOf("source" to source),
+                context = mapOf("source" to refreshSource),
             )
             return false
         }
@@ -5772,7 +5774,7 @@ internal class NativeMainRuntimePort(
         val refreshId = UUID.randomUUID().toString()
         val startedAt = System.currentTimeMillis()
         val knownOperations = NativeScanController.progress.value.keys.toSet()
-        if (!HomeRefreshCoordinator.begin(requestId, refreshId, source)) return false
+        if (!HomeRefreshCoordinator.begin(requestId, refreshId, refreshSource)) return false
         if (!canStartLibraryScan("saf")) {
             HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
             recordDiagnostic(
@@ -5804,12 +5806,12 @@ internal class NativeMainRuntimePort(
                     if (firstBatch.isNullOrEmpty()) {
                         HomeRefreshCoordinator.fail(requestId, "native_scan_start_timeout")
                         recordDiagnostic("HOME_REFRESH_FAILED", result = "native_scan_start_timeout",
-                            requestId = requestId, context = mapOf("source" to source))
+                            requestId = requestId, context = mapOf("source" to refreshSource))
                         return@launch
                     }
                     HomeRefreshCoordinator.markScanStarted(requestId)
                     recordDiagnostic("HOME_REFRESH_SCAN_STARTED", requestId = requestId, refreshId = refreshId,
-                        context = mapOf("source" to source, "operation_count" to firstBatch.size))
+                        context = mapOf("source" to refreshSource, "operation_count" to firstBatch.size))
                     var stableTerminalBatch: List<ScanProgressSnapshot> = emptyList()
                     while (true) {
                         val current = NativeScanController.progress.value.values.filter {
