@@ -1914,7 +1914,7 @@ class ReiAnixLibraryViewModel(
         )
     }
 
-    fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String {
+    fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String? {
         val requestId = UUID.randomUUID().toString()
         val duplicateRequestId = synchronized(nativePlayerHandoffLock) {
             val existing = pendingNativePlayerHandoffRequestId
@@ -1927,7 +1927,10 @@ class ReiAnixLibraryViewModel(
         }
         if (duplicateRequestId != null) {
             Log.i(TAG, "PLAYER_HANDOFF_DUPLICATE_IGNORED episodeId=$episodeId pendingRequestId=$duplicateRequestId")
-            return duplicateRequestId
+            // The legacy player_launch_inflight guard ignored duplicate play taps.
+            // Returning null prevents Compose from treating the old request ID as
+            // a new launch and leaves the first handoff as the only player request.
+            return null
         }
 
         viewModelScope.launch(Dispatchers.IO) {
