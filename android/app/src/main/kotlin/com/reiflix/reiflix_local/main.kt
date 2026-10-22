@@ -8275,19 +8275,20 @@ internal class NativeMainRuntimePort(
                     )
                 } ?: false
             "resolve_match", "associate_anilist" -> {
-                val remoteIdLong = positiveLong("anilistId") ?: positiveLong("anilist_id") ?: return false
                 val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
                     ?: nonBlank("requestId")
                     ?: nonBlank("request_id")
                     ?: UUID.randomUUID().toString()
+                // Keep request correlation even when a malformed payload omits the remote ID.
+                val remoteIdLong = positiveLong("anilistId") ?: positiveLong("anilist_id") ?: 0L
                 val animeId = positiveLong("animeId") ?: positiveLong("anime_id")
                 val lookupTitle = nonBlank("lookupTitle") ?: nonBlank("lookup_title")
-                val remoteId = remoteIdLong.takeIf { it <= Int.MAX_VALUE.toLong() }?.toInt()
+                val remoteId = remoteIdLong.takeIf { it in 1L..Int.MAX_VALUE.toLong() }?.toInt()
                 if (remoteId == null) {
-                    val message = "O ID do AniList está fora do intervalo aceito."
+                    val message = "Informe um ID AniList positivo dentro do intervalo aceito."
                     publishOperationResult(
                         requestId = correlatedRequestId,
-                        action = "associate_anilist",
+                        action = normalized,
                         status = "FAILED",
                         operationState = "FAILED",
                         message = message,
@@ -8305,7 +8306,7 @@ internal class NativeMainRuntimePort(
                     val message = "Informe o anime local que deve ser associado."
                     publishOperationResult(
                         requestId = correlatedRequestId,
-                        action = "associate_anilist",
+                        action = normalized,
                         status = "FAILED",
                         operationState = "FAILED",
                         message = message,
@@ -8315,7 +8316,7 @@ internal class NativeMainRuntimePort(
                 } else {
                     publishOperationResult(
                         requestId = correlatedRequestId,
-                        action = "associate_anilist",
+                        action = normalized,
                         status = "QUEUED",
                         operationState = "QUEUED",
                         message = "Associação AniList enfileirada.",
@@ -8337,12 +8338,12 @@ internal class NativeMainRuntimePort(
                             libraryViewModel.refreshCatalogProjection()
                             settingsViewModel.refresh()
                             publish(
-                                action = "associate_anilist",
+                                action = normalized,
                                 transform = { it.copy(lastResultJson = result.toString(), selectedAnimeId = resolvedAnimeId) },
                             )
                             publishOperationResult(
                                 requestId = correlatedRequestId,
-                                action = "associate_anilist",
+                                action = normalized,
                                 status = "COMPLETED",
                                 operationState = "COMPLETED",
                                 message = "Associação AniList salva e catálogo local preservado.",
@@ -8359,7 +8360,7 @@ internal class NativeMainRuntimePort(
                         } catch (cancelled: CancellationException) {
                             publishOperationResult(
                                 requestId = correlatedRequestId,
-                                action = "associate_anilist",
+                                action = normalized,
                                 status = "CANCELLED",
                                 operationState = "CANCELLED",
                                 message = "A associação AniList foi cancelada.",
@@ -8368,7 +8369,7 @@ internal class NativeMainRuntimePort(
                         } catch (failure: Throwable) {
                             publishOperationResult(
                                 requestId = correlatedRequestId,
-                                action = "associate_anilist",
+                                action = normalized,
                                 status = "FAILED",
                                 operationState = "FAILED",
                                 message = failure.message ?: "Não foi possível salvar a associação AniList.",
@@ -8387,7 +8388,7 @@ internal class NativeMainRuntimePort(
                     if (!accepted) {
                         publishOperationResult(
                             requestId = correlatedRequestId,
-                            action = "associate_anilist",
+                            action = normalized,
                             status = "FAILED",
                             operationState = "FAILED",
                             message = "A associação AniList não foi aceita.",
