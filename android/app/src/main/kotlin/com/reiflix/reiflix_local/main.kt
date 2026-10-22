@@ -6780,21 +6780,36 @@ internal class NativeMainRuntimePort(
                         HomeRefreshCoordinator.fail(requestId, "canonical_catalog_refresh_rejected")
                         return@launch
                     }
-                    libraryViewModel.refresh()
+                    // refreshCanonicalCatalogAfterBootstrapValidation() already reloads
+                    // the canonical SQLite projection. Calling ViewModel.refresh() here
+                    // would enqueue a second filesystem scan instead of completing this
+                    // refresh, unlike main.py's on_catalog_changed/UI-commit path.
                     if (!HomeRefreshCoordinator.markCatalogUpdated(requestId)) {
                         throw IllegalStateException("Home refresh refused catalog update before scan completion.")
                     }
-                    // The canonical catalog and observed ViewModel state are now committed.
-                    // Do not force navigation back to Home if the user left during the scan;
-                    // Compose observes the refreshed StateFlow when the relevant screen is shown.
+                    // The Home StateFlow projection has been committed. Do not force
+                    // navigation if the user left during the scan; Compose observes the
+                    // updated StateFlow when the relevant screen is shown.
                     if (!HomeRefreshCoordinator.complete(requestId)) {
                         throw IllegalStateException("Home refresh refused completion before UI commit.")
                     }
-                    recordDiagnostic("HOME_REFRESH_COMPLETED", requestId = requestId, refreshId = refreshId,
+                    val elapsedMs = System.currentTimeMillis() - startedAt
+                    recordDiagnostic(
+                        "HOME_REFRESH_UI_UPDATED",
+                        requestId = requestId,
+                        refreshId = refreshId,
+                        context = mapOf("elapsed_ms" to elapsedMs, "rebuild" to false, "db_updated" to true),
+                    )
+                    PerformanceDiagnostics.counter("home.refresh.ui_updated")
+                    recordDiagnostic(
+                        "HOME_REFRESH_COMPLETED",
+                        requestId = requestId,
+                        refreshId = refreshId,
                         context = mapOf(
-                            "elapsed_ms" to (System.currentTimeMillis() - startedAt),
+                            "elapsed_ms" to elapsedMs,
                             "partial_count" to stableTerminalBatch.count { it.state == ScanLifecycleState.PARTIAL },
-                        ))
+                        ),
+                    )
                 } catch (cancelled: CancellationException) {
                     HomeRefreshCoordinator.cancel(requestId, "runtime_cancelled")
                     throw cancelled
