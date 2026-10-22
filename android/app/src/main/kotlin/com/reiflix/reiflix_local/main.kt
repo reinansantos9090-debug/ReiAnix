@@ -10682,26 +10682,57 @@ internal class NativeMainRuntimePort(
                 }
             }
             "compose_settings_bulk_applied" -> {
-                val requestId = eventRequestId ?: stringValue("requestId") ?: return false
-                if (!claimRequestId(requestId, "compose_settings")) return false
-                val values = payload.optJSONObject("settings") ?: return false
+                val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
+                val values = payload.optJSONObject("settings")
+                if (requestId.isNullOrBlank() || values == null || values.length() == 0) {
+                    recordDiagnostic(
+                        name = "SETTINGS_RUNTIME_BULK_APPLY_REJECTED",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = "missing_request_or_settings",
+                    )
+                    // main.py logs and continues when the notification lacks an ID or settings object.
+                    return true
+                }
+                if (!claimRequestId(requestId, "compose_settings")) {
+                    recordDiagnostic(
+                        name = "SETTINGS_RUNTIME_BULK_APPLY_DUPLICATE_IGNORED",
+                        severity = "INFO",
+                        requestId = requestId,
+                        result = "duplicate_request",
+                    )
+                    return true
+                }
                 val iterator = values.keys()
                 val settings = linkedMapOf<String, String>()
                 while (iterator.hasNext()) {
                     val key = iterator.next()
-                    val raw = values.opt(key) ?: return false
-                    settings[key] = raw.toString()
+                    settings[key] = values.opt(key)?.toString().orEmpty()
                 }
-                if (settings.isEmpty()) return false
+                val unsupportedKeys = settings.keys.filter { ReiAnixSettingsContract.definitions[it] == null }
+                if (unsupportedKeys.isNotEmpty()) {
+                    recordDiagnostic(
+                        name = "SETTINGS_RUNTIME_BULK_APPLY_FAILED",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = "unsupported_native_settings_key",
+                        context = mapOf(
+                            "unsupported_keys" to unsupportedKeys.sorted(),
+                            "setting_count" to settings.size,
+                        ),
+                    )
+                    return true
+                }
                 val nativePersisted = payload.optBoolean("nativePersisted", payload.optBoolean("native_persisted", true))
                 val accepted = if (nativePersisted) {
+                    // Python's worker re-reads canonical settings after Kotlin's atomic commit;
+                    // it never trusts event values or performs a second write.
                     settingsViewModel.refresh()
-                    publishOperationResult(
+                    recordDiagnostic(
+                        name = "SETTINGS_RUNTIME_BULK_APPLIED",
                         requestId = requestId,
-                        action = "settings_bulk_applied",
-                        status = "COMPLETED",
-                        operationState = "COMPLETED",
-                        payload = org.json.JSONObject().put("refreshed", true).put("settingsCount", settings.size),
+                        result = "SUCCESS",
+                        context = mapOf("setting_count" to settings.size, "owner" to "kotlin"),
                     )
                     true
                 } else {
@@ -10720,8 +10751,24 @@ internal class NativeMainRuntimePort(
                 accepted
             }
             "compose_settings_native_account_changed" -> {
-                val requestId = eventRequestId ?: stringValue("requestId") ?: return false
-                if (!claimRequestId(requestId, "compose_settings_account_changed")) return false
+                val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
+                if (requestId.isNullOrBlank()) {
+                    recordDiagnostic(
+                        name = "NATIVE_COMPOSE_ACCOUNT_PROJECTION_REJECTED",
+                        severity = "WARN",
+                        result = "missing_request_id",
+                    )
+                    return true
+                }
+                if (!claimRequestId(requestId, "compose_settings_account_changed")) {
+                    recordDiagnostic(
+                        name = "NATIVE_COMPOSE_ACCOUNT_PROJECTION_DUPLICATE_IGNORED",
+                        severity = "INFO",
+                        requestId = requestId,
+                        result = "duplicate_request",
+                    )
+                    return true
+                }
                 val accepted = launchTracked("compose_settings_native_account_changed", lane = "settings") {
                     // The event is only a notification that Kotlin has committed the
                     // account row. Re-read SQLite instead of trusting stale event state.
@@ -10760,8 +10807,24 @@ internal class NativeMainRuntimePort(
                 accepted
             }
             "compose_settings_native_backup_restored" -> {
-                val requestId = eventRequestId ?: stringValue("requestId") ?: return false
-                if (!claimRequestId(requestId, "compose_settings_backup_restored")) return false
+                val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
+                if (requestId.isNullOrBlank()) {
+                    recordDiagnostic(
+                        name = "NATIVE_BACKUP_RESTORE_PROJECTION_REJECTED",
+                        severity = "WARN",
+                        result = "missing_request_id",
+                    )
+                    return true
+                }
+                if (!claimRequestId(requestId, "compose_settings_backup_restored")) {
+                    recordDiagnostic(
+                        name = "NATIVE_BACKUP_RESTORE_PROJECTION_DUPLICATE_IGNORED",
+                        severity = "INFO",
+                        requestId = requestId,
+                        result = "duplicate_request",
+                    )
+                    return true
+                }
                 settingsViewModel.refresh()
                 val reconciled = reconcileRestoredFileAvailability()
                 libraryViewModel.refreshCatalogProjection()
